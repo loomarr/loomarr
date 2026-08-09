@@ -15,10 +15,7 @@ import (
 
 func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/p.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
 	opts.Store = st
 	opts.Auth = api.NewTokenAuthorizer(adminToken)

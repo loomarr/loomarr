@@ -61,10 +61,7 @@ type guideBody struct {
 
 func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/grid.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/grid.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	log := slog.New(slog.DiscardHandler)
@@ -90,10 +87,7 @@ func newGridServerWithConfig(
 	t *testing.T, g api.PlayoutGuide, p api.PodPreviewer, cfg map[string]string, cfgInt map[string]int,
 ) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/grid.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/grid.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	log := slog.New(slog.DiscardHandler)

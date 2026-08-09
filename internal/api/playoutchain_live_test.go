@@ -31,10 +31,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		t.Skip("no ffmpeg")
 	}
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/chain.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/chain.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	// Each program request returns a SHORT synthetic encode. Counting requests is how we

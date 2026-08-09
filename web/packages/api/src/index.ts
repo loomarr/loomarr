@@ -10,6 +10,7 @@ export * as dashboardApi from "../generated/endpoints/dashboard/dashboard";
 export * as eventsApi from "../generated/endpoints/events/events";
 export * as fillerApi from "../generated/endpoints/filler/filler";
 export * as helpApi from "../generated/endpoints/help/help";
+export * as imagesApi from "../generated/endpoints/images/images";
 export * as jobsApi from "../generated/endpoints/jobs/jobs";
 export * as libraryApi from "../generated/endpoints/library/library";
 export * as opsApi from "../generated/endpoints/ops/ops";

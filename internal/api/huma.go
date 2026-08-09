@@ -53,7 +53,11 @@ type Server struct {
 	collections CollectionService
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
-	icons  IconService
+	icons IconService
+	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
+	// byte route 404s and the record route reports the image absent, which is the honest answer
+	// for an instance where the service is not wired.
+	images ImageService
 	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
 	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
@@ -692,10 +696,14 @@ type Options struct {
 	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
 	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
 	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
-	Events        EventSource       // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler        FillerService     // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods          PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM     SystemLLMService  // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
+	// route 404s and the record route reports the image absent, which is the honest answer for an
+	// instance with no store behind it.
+	Images    ImageService
+	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
 	Database DatabaseService

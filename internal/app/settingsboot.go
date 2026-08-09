@@ -72,6 +72,19 @@ func (r resolved) boolOn(key string) bool {
 	return true
 }
 
+// strlist reads a KindStringList setting. Nil for an absent service or a non-list value, which
+// every caller must treat as "unset" and fall back to its own declared default — an empty list
+// means the operator configured nothing, never that they configured nothing-at-all.
+func (r resolved) strlist(key string) []string {
+	if r.svc == nil {
+		return nil
+	}
+	if v, ok := r.svc.Resolve(key).Value.([]string); ok {
+		return v
+	}
+	return nil
+}
+
 func (r resolved) boolv(key string) bool {
 	if r.svc == nil {
 		return false

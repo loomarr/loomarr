@@ -19,10 +19,7 @@ import (
 // per-source counts are counted rather than stubbed — the read-model's whole job.
 func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), c); err != nil {
@@ -147,10 +144,7 @@ func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
 // would report the old folder on the very screen an operator checks after changing it.
 func TestFillerSources_ReadsTheDirLive(t *testing.T) {
 	cfg := map[string]string{"filler.dir": "/data/filler"}
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:      st,
@@ -179,10 +173,7 @@ func TestFillerSources_ReadsTheDirLive(t *testing.T) {
 // does not panic. Sabotage it by pointing folderEnabled back at s.liveConfig.
 func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {

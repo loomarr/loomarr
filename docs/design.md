@@ -2940,6 +2940,11 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
+| Image decode + resize | **stdlib `image/*` + `golang.org/x/image`** (`webp` decoder, `draw.CatmullRom`) | The image service (§22) needs decode, high-quality downscale, and no cgo. `x/image` is Go-team maintained with zero supply-chain surface, and `CatmullRom` is the quality tier worth paying for on artwork. **`disintegration/imaging` rejected** — effectively unmaintained since 2019; its live fork adds ICC/animation we do not need. **`govips`/`bimg` rejected** — both are cgo bindings to libvips, which is 4–8× faster than ImageMagick and entirely beside the point: pulling libvips and its dependency tree into a QEMU-emulated `linux/arm64` build is exactly the cost `modernc.org/sqlite` was chosen to avoid, and it would drag LGPL-2.1+ into the image. |
+| WebP encode | **`github.com/gen2brain/webp`**, built with **`-tags nodynamic`** | The one no-cgo lossy-WebP encoder that is actually production-grade. ⚠ **It is no longer a wazero/WASM library** — a design written from 2023 knowledge would reject it on that basis and be wrong. It is now libwebp transpiled to **pure Go via `wasm2go`**, roughly 3× native libwebp (the older wazero path was ~5×). ⚠ **The `nodynamic` tag is not optional:** without it the library `dlopen`s a system libwebp when one is present, so the same image encodes differently depending on the base layer — a reproducibility hazard across our two architectures. **`nativewebp` rejected** (pure Go but **lossless VP8L only**, useless for posters); **`kolesa-team/go-webp` / `chai2010/webp` rejected** (cgo); `KarpelesLab/gowebp` and `skrashevich/go-webp` are genuinely pure-Go and worth watching, but at ~12–108 commits each they are too immature to be a primary encoder. |
+| AVIF encode | **the already-vendored `ffmpeg`** (`libaom-av1` / `libsvtav1`), via subprocess | **No new dependency.** In-process AVIF from Go exists (`gen2brain/avif`) and works, but AVIF encoding is 300–1200 ms for a ~1000px image — an order of magnitude past WebP — and paying that through a transpiled-C-in-Go path, on a request, is untenable. ffmpeg is already a core runtime dependency (§9.1), is natively multithreaded on both arches, and a subprocess is exactly what you want around a one-second CPU burn: killable, with a timeout. This is why §22 makes AVIF a background job rather than a lazy rendition. ⚠ The image build must **assert the AV1 encoder exists**, the way it already proves whisper by transcribing at build time rather than by `--help`. |
+| JPEG encode | **stdlib `image/jpeg`** | §22 keeps a JPEG floor for old iOS and legacy Android WebViews — over-represented among a self-hosted media server's clients (televisions, ageing tablets). ⚠ **`gen2brain/jpegli` was evaluated and rejected on inspection**, reversing an earlier intent recorded here: its ~20% density win is real, but it arrives on a **wazero WASM runtime** — a second, heavier interpreter in the binary, distinct from the `wasm2go`-transpiled path the WebP encoder uses — in order to improve *the rendition the fewest clients take*, which is a compatibility floor rather than a quality target. Stdlib costs nothing and is already correct. If JPEG ever becomes a primary format that trade flips. |
+| Image placeholder (LQIP) | **`github.com/galdor/go-thumbhash`** | The ~25-byte blur preview stored on every image row (§22). **BlurHash rejected** despite being the more widely deployed format: ThumbHash is smaller, higher quality per byte, faster to decode, and — the decider — **carries alpha**, where BlurHash renders transparency as **black**. Channel logos are routinely transparent PNGs, so BlurHash would have needed a composite-onto-dominant-colour step purely to avoid shipping black placeholder boxes. BlurHash's one remaining advantage is ecosystem breadth, which buys nothing in an app that owns both ends of the wire. *(Watching, not adopting: `google/wuffs`' **Handsum**, better again per byte, but published 2026-07 with no client-side decoder ecosystem yet.)* |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
 
 ### Frontend (Node 20+, Vite + React 18 + TypeScript)
@@ -2952,6 +2957,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Styling / components | **Tailwind CSS + shadcn/ui** on **`@base-ui/react`** (one package; per-component subpath exports) | Fast, decent defaults, copy-in components. The headless primitive library is the runtime piece shadcn wraps. **Every reason below for adopting a primitive still holds — only the vendor changed (V50a).** The enum control is a themed listbox, not a native `<select>`: native first shipped (accessible, mobile-correct, zero-dep) but renders an **unstyleable OS option list** (light popup on some platforms, off-theme), and richer selects (search, groups, icons) are planned that native can't do. Supersedes the earlier native-only choice recorded in `select.tsx`. **Tooltip** serves icon-only-button labels: the app has many icon-only affordances (sidebar search/sign-out, the channel-detail back arrow, row actions) whose meaning needs a hover/focus label, and the native `title=` attribute is unstyled, ~1s-delayed, and keyboard/touch-hostile. **Slider** backs the video scrubber (V39): a seek bar is a slider, and the hand-rolled `role="slider"` it replaced had to re-implement the WAI-ARIA keyboard contract (arrow steps, Home/End, `aria-valuetext`) by hand — semantics that rot silently, because nothing fails when they drift. **Menu** backs the video player's in-bar audio/subtitle controls (V47): these are icon-triggered MENUS (a speaker/CC glyph opens a list of language/mode choices), not a form `<select>`, and need the roving-focus/typeahead/Escape contract a menu has. ⚠ **The vendor change is Radix → Base UI (V50a), and it is a consolidation, not a preference.** Radix was six separately-versioned packages (`react-slot`, `react-select`, `react-tooltip`, `react-slider`, `react-dropdown-menu`, `react-dialog`) plus ~27 transitive `@radix-ui/*`; Base UI is one MIT package covering all of them and 30 more, so the primitives the app still hand-rolls (combobox, toggle-group, meter) stop needing a §14 conversation each. ⚠ **That list shrank twice and the removals are the record:** `menu` left it in V50b (the channel row's ⋮ menu), and `collapsible` in V50c. **Collapsible** backs `CollapsibleSection`, and it was adopted for `hiddenUntilFound` specifically — a closed section's text stays reachable by the browser's find-in-page, where the old `overflow:hidden` clip made it findable by nothing. ⚠ Its MOTION stayed hand-rolled: Base UI measures the panel (`scrollHeight` → `--collapsible-panel-height`) to transition `height`, while `styles.css`'s `.reveal` grid-rows 0fr→1fr trick is height-agnostic and cannot desync from a stale measurement, so the primitive owns state and semantics while the stylesheet still owns motion. **`combobox` remains hand-rolled deliberately, not by omission** — see `search-command.tsx`, which records why Autocomplete's Portal→Positioner→Popup shape does not fit an always-visible panel embedded in six layouts. shadcn ships a Base UI variant of all 57 relevant registry components, so the copy-in philosophy survives. Two API deltas are load-bearing and are recorded where they bite: `asChild` becomes a `render` prop (`useRender`/`mergeProps` replace `Slot`), and Portal→**Positioner**→Popup replaces Radix's single `Content`. ⚠ **One behavioural difference is NOT cosmetic:** Base UI's Tooltip is visual-only by design — no `role="tooltip"`, no `aria-describedby` — where Radix wired that association. Harmless everywhere the trigger's `aria-label` restates the tooltip, but `FieldHelp` renders each setting's `doc` prose and nothing else in the DOM carries it, so that component declares an explicit `sr-only` description. See §12 and `field-help.tsx`. *(This row names the retired vendor and its composition prop deliberately, to record what moved and why — retired-ok.)* |
 | Drag-and-drop (lineup reorder) | **`@dnd-kit`** (`@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`) | Reordering a channel's lineup (§7 PATCH, §12) is a sortable list. `@dnd-kit` is the current-gen, React-18/StrictMode-safe choice (`react-beautiful-dnd` is archived); it is headless (~10kb core, no runtime deps of its own, CSP-safe for the embedded assets) and ships **keyboard + screen-reader reordering** built in (arrow-key sort + live-region announcements), which is the accessibility cost that would otherwise make drag worse than up/down buttons. The reorder still commits through the same `PATCH /v1/channels/{id}` whole-list replace — DnD is presentation only. |
 | Guide row virtualization | **`@tanstack/react-virtual`** | The Guide (§12) renders one row per channel and one absolutely-positioned block per airing, so its DOM grows with **channels × airings-in-window** — a 12-hour window over 50 channels is thousands of nodes, and every zoom change re-lays-out all of them. `react-virtual` is headless (no DOM of its own, no runtime deps), ~4kb, and already the TanStack family this app standardizes on. It windows **rows only**: blocks are already clipped to the visible time span in the render loop, which is the horizontal half of the same idea. **Honest scope:** at the maintainer's current 4 channels this changes nothing measurable (147 grid nodes, no vertical scroll) — it is added for the shape of the surface, not for a measured problem today, and the row-count threshold where it starts paying is ~100+. |
+| Image placeholder decoding | **`thumbhash`** (evanw, MIT, ~13kB unpacked) | The client half of the ThumbHash the backend already stores on every image row (§22). Adopted with the `<Image>` primitive (V52 phase 4); without it the `placeholder` column is a value nothing can read, and the app would have to fall back to a flat dominant-colour block — losing the shape and alpha that were the whole reason ThumbHash beat BlurHash in the backend row above. It is the reference implementation by the format's author, has **no dependencies of its own**, and — the deciding detail — `thumbHashToDataURL` builds a PNG **by hand in pure JS**, so decoding needs no `<canvas>`: it works unchanged in jsdom units and in the offline `storybook-static` build, and a fifty-poster grid allocates no canvases on the main thread. *(No alternative was seriously considered: a second implementation of a format we already emit would be a compatibility risk with nothing to gain.)* |
 | Live updates | native `EventSource` wrapped in a small hook | SSE, cookie-authed same-origin |
 | Forms | **`@tanstack/react-form`** | Consumes the `packages/core` zod schemas **directly via Standard Schema** (zod ≥3.24) — no resolver adapter, so `react-hook-form` + `@hookform/resolvers` collapse to one dep; field names/values infer from `defaultValues` (the same end-to-end typing as orval DTOs + typed router links); `@tanstack/form-core` is framework-agnostic so mobile shares form logic like it already shares the schemas; consistent with TanStack Query + Router. Replaced `react-hook-form` — its stated justification was shadcn's RHF `<Form>` wrapper, which Loomarr never adopted (forms hand-compose `Label`+`Input`). Used by Login and the wizard's Bootstrap step. *(`SettingsGroupForm` was removed — Settings writes through `SettingsPage`'s one-save-bar-per-page path instead, config-design §5.)* |
 | Help rendering | `react-markdown` + `remark-gfm` over the embedded `docs/` markdown | Offline, consistent with §7.1 |
@@ -2989,7 +2995,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **35 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **36 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -3035,6 +3041,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
+| `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
 | `buildinfo` | The version stamped in at build time |
 
@@ -3116,6 +3123,13 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `LLM_API_KEY` | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own per-provider key in the settings store, overriding this — §8.1; **never echoed** by any API.)* |
 | `LLM_KEEP_ALIVE` | `30m` — how long a **local** Ollama model stays resident between calls (§8.2). Loading an 8B model costs ~9s vs ~0.5s warm, and Ollama unloads after 5m idle, so the stock behavior makes a describe→read→refine cycle re-pay the load every time. `0` disables (stock unload) for a memory-tight host. Ignored by hosted providers, which have no residency to manage. |
 | `TMDB_API_KEY` | *(secret; grounds suggestions — required if the suggester is enabled)* |
+| `IMAGES_DIR` | `/data/images` — where the image service (§22) stores originals and derivatives, inside the documented volume. ⚠ **Not covered by the application backup**, which is a database backup: `/data` is one volume and the volume is what to back up. Everything here is regenerable or re-fetchable **except** operator uploads. |
+| `IMAGES_FORMATS` | `avif,webp,jpeg` — which renditions to emit (§22). Dropping `jpeg` saves storage at the cost of very old iOS and legacy Android WebViews; dropping `avif` saves considerable CPU at ~25% more bytes on the wire. |
+| `IMAGES_MAX_UPLOAD_BYTES` | `8388608` (8 MiB) — the ceiling on an uploaded image, enforced on the read as well as the declared size. |
+| `IMAGES_REMOTE_FETCH_ENABLED` | `true` — whether to ingest remote artwork (TMDB, media-server) at all. `false` keeps the service to locally-produced images only; no outbound image requests are made. |
+| `IMAGES_REMOTE_MAX_CONCURRENCY` | `12` — simultaneous outbound image fetches. ⚠ **TMDB caps a client at 20 simultaneous connections**; this stays under it with room for the other outbound callers. Raising it past 20 earns 429s, not throughput. |
+| `IMAGES_REMOTE_TTL` | `4320h` (~6 months) — how long a fetched remote image may be kept before it is re-fetched or purged. ⚠ **This is a compliance ceiling, not a tuning knob:** TMDB's API terms forbid caching their content for longer than six months (§22). Raising it past the default puts the instance out of compliance with TMDB's terms. |
+| `IMAGES_CACHE_BUDGET_MB` | `2048` — soft cap on the derivative cache before the GC job evicts least-recently-used renditions. Derivatives are always regenerable, so eviction costs latency, never data. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
@@ -3427,3 +3441,291 @@ Each phase ends green (compiles + its tests pass) before the next.
 **Definition of done — manual smoke (real stack, maintainer-run):** against live Jellyfin/Emby + Tunarr + Seerr + Sonarr/Radarr (the Phase-0 environment): complete the first-run wizard with **all checklist items green** including the Tunarr media-source check and a real Sonarr **Test** webhook; run one intent → approve → **watch the channel actually play in Tunarr** with pods between programs. The end state is a **populated, self-maintaining Tunarr channel — with era-appropriate ad breaks — built from a sentence.**
 
 > **Enforcement (learned the hard way).** This manual smoke is exactly the flow **phase 12.5** gates. The first live run (2026-07-13/14) proved that phases can be individually gate-green while the *integration* is broken — because the per-phase gates test components in isolation, never the composition. The lesson: **"gate-green" ≠ "works end-to-end"**; the DoD is only real once phase 12.5's integration gate passes. Prerequisite for Tunarr playback: Tunarr must have the media-server libraries **enabled + scanned** (§6) — an empty Tunarr program index fails all programming pushes.
+
+---
+
+## 22. Image service — one pipeline for every image
+
+Loomarr shows images from four sources and, before this section, handled each one differently: uploaded
+channel icons lived as database blobs, clip stills and hover loops lived on disk inside `FILLER_DIR`,
+and TMDB posters were **hot-linked straight from the operator's browser**. Four storage models, four
+cache policies, four identity schemes, and no shared code.
+
+That was not merely untidy. It had three concrete consequences:
+
+- **One hardcoded width for every surface.** `const imageBase = ".../t/p/w500"` shipped a 500px poster
+  to a 40px timeline hover chip and to a full channel tile alike. There was no `srcset` anywhere in
+  the app because there was nothing capable of producing one.
+- **Third-party origins loaded in the operator's browser.** §10's clip-thumbnail URL builder already
+  refuses `http(s):` inputs on the grounds that an image from an arbitrary origin is "a beacon that
+  leaks who is browsing the catalog and when". That reasoning was applied to clips and **never to
+  TMDB**, which is on the guide, the timeline, and the icon picker — the three surfaces an operator
+  looks at most.
+- **No modern format on any still.** The only WebP in the product was the *animated* hover loop.
+
+This section defines `internal/images`: one service owning ingest → storage → derivatives → serving,
+which every image path uses and none bypasses.
+
+### Identity and storage
+
+An image is identified by the **sha256 of its original bytes**, matching the content-hash identity
+§10 arrived at for clips. Files live under `images.dir` (default `/data/images`), sharded two levels
+by hash prefix so no directory accumulates a hundred thousand entries:
+
+```text
+/data/images/
+  orig/ab/cd/abcdef0123….jpg          # original bytes, content-addressed
+  drv/ab/cd/abcdef0123…_w320.webp     # derivatives: regenerable, evictable
+  drv/ab/cd/abcdef0123…_w320.avif
+```
+
+⚠ **No image bytes are stored in the database.** The `channel_icons` table this replaces put upload
+bytes in the DB specifically so they would ride the §16 backup — which worked, but made the database
+the wrong shape for a general image service and would not have scaled to ingested remote artwork. See
+*Durability* below for what replaces that guarantee, and what deliberately does not.
+
+### Data model
+
+Three tables, added forward-only (§16):
+
+- **`images`** — one row per logical image: `hash` (PK), `origin` (`upload` | `remote` | `extracted` |
+  `generated`), `source_url`, `visibility` (`public` | `member`), `mime`, `width`, `height`, `bytes`,
+  `animated`, `placeholder` (ThumbHash), `dominant_hex`, `origin_fetched_at`, `meta` (JSON), and the
+  usual timestamps plus `last_used_at`.
+- **`image_refs`** — `(image_hash, owner_kind, owner_id, role)`. What an image *decorates*. Kept in
+  its own table rather than as a column on each domain so the garbage collector can find orphans
+  **without every domain knowing about images** — the same reasoning that keeps §10's clip identity
+  out of the channel schema.
+- **`image_derivatives`** — `(image_hash, format, width, bytes, path, created_at)`. Regenerable,
+  never backed up, freely deletable.
+
+⚠ `source_url` is the load-bearing column, not decoration: it is what makes a remote image
+*recoverable* rather than merely *cached*, and it is why losing the image directory is survivable for
+everything except uploads.
+
+### Derivatives: split by cost, not by symmetry
+
+WebP and AVIF are two orders of magnitude apart in encode cost, and treating them uniformly gets one
+of them wrong:
+
+- **WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
+  advance which widths a surface will ask for, so an eager matrix would encode mostly-unserved
+  renditions.
+- **AVIF generates in a background job, never on a request.**
+
+⚠ **The usual justification for that split is wrong, and it is worth recording why, because the
+correct reason leads to different decisions later.** The received wisdom is that AVIF costs an order
+of magnitude more than WebP (300–1200 ms per image). **Measured on a development box with
+`libaom -still-picture -cpu-used 6`, a 500px poster encodes in ~86 ms against WebP's ~67 ms** — about
+1.3×, not 10×. The alarming figures in circulation come from running a *video* encoder at video
+defaults: asked for a single 1000×1500 frame, SVT-AV1 allocated **2.34 GB** and spawned **82 threads**
+while producing a file **78% larger** than libaom's still-picture path.
+
+The reason that survives measurement is **concurrency, not latency**. Every AVIF encode is a forked,
+natively-multithreaded process; generating them lazily means a cold grid of fifty posters forks fifty
+at once, which will thrash a four-core NAS whatever the per-image number is. A job runs them at a
+controlled rate. A request cannot.
+
+⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
+`<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
+and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
+job has caught up.
+
+⚠ **Use `libaom-av1` with `-still-picture`, never `libsvtav1`,** for the measurements above. The
+dependency row in §14 says the image must *contain* an AV1 encoder; this says which one to call.
+
+### Formats and negotiation
+
+Three formats are emitted: **AVIF** (smallest), **WebP** (near-universal), and **JPEG** (the floor).
+
+⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at
+~95% and WebP ~97% global support, and a general web app could reasonably drop the fallback. The
+missing few percent are concentrated in old iOS and legacy Android WebViews — which is precisely the
+population of a self-hosted media server's clients: televisions, ageing tablets, embedded browsers.
+
+Selection is by **`<picture>` with `type=`, over distinct per-format URLs** — deliberately *not*
+`Accept` + `Vary: Accept`. The wider industry has moved toward `Accept` negotiation on coverage
+grounds (a `<picture>` element only helps `<img>` tags you author, so CSS backgrounds and third-party
+embeds keep receiving JPEG). That argument does not bind here: this design removes the app's only CSS
+`background-image` image consumer, and distinct URLs keep every artifact independently cacheable and
+genuinely immutable, which `Vary: Accept` does not. Revisit only if a non-`<img>` consumer appears.
+
+**JPEG XL is deliberately not supported.** It returned to active development in 2026 — Chrome shipped
+a Rust decoder, Firefox compiled one in — but **both are disabled by default**, leaving Safari as the
+only default-on implementation. Track it; ship nothing.
+
+### Serving and cache policy
+
+Derivative URLs are content-addressed, so they are safe to declare permanently immutable:
+`Cache-Control: public, max-age=31536000, immutable`, plus a **strong `ETag` equal to the content
+hash**. `Last-Modified` is deliberately **not** sent — it invites heuristic freshness and adds nothing
+when the URL already changes with the content.
+
+⚠ A conditional request must be answerable **from the URL hash alone, without touching disk**. The
+whole point of content addressing is that a 304 costs nothing.
+
+### Visibility is a property of the image, not the route
+
+Every other raw-byte route in §7.1 carries a fixed role. Images cannot: a **channel icon must be
+public** (Tunarr fetches it machine-to-machine with no credentials, exactly as it would fetch a TMDB
+poster), while a **clip still is member-visible**. So the serve operation mounts as `RolePublic` and
+the handler enforces the row's `visibility` against the session.
+
+⚠ **A member-visible image requested without a session is a 404, not a 403** — matching the existing
+convention for clip thumbnails, where a distinct error would confirm which hashes exist.
+
+### Security
+
+The properties the channel-icon path already established are carried forward, not re-derived:
+
+- **Raster-only, enforced by byte sniff**, never by the declared Content-Type or the filename. SVG
+  stays refused: the serve endpoint is public and returns bytes with an image content type, so an
+  uploaded SVG carrying `<script>` would be stored XSS in Loomarr's own origin. Raster-only removes
+  the class rather than attempting to sanitize it.
+- `X-Content-Type-Options: nosniff` on every serve.
+- Path containment by resolving to absolute form and testing with `filepath.Rel`, because a `..`
+  component in the result is the only reliable containment test however the input was spelled.
+- Serve URLs derive from `server.public_url`, **never** from request headers — `Host` and
+  `X-Forwarded-Host` are attacker-controllable, and these URLs are stored and fetched downstream.
+- ⚠ **New with this section: SSRF defence.** Adopting a remote image is a new outbound request driven
+  by input, which nothing in the product had before. Host allowlist, `https` only, no redirect into
+  private address ranges, a response size cap, and the §6 per-service timeout.
+
+### Durability — what survives a restore, and what does not
+
+§16's backup is a **database** backup. It always was; this section does not change it, and adds no
+second artifact. Recovery therefore differs by origin:
+
+| origin | after losing `/data/images` |
+| --- | --- |
+| derivative | regenerated on next request |
+| `remote` | re-fetched from `source_url` |
+| `extracted` | re-derived from the clip by the existing ffmpeg pass |
+| `upload` | **lost** |
+
+⚠ **Uploads are genuinely unrecoverable, and that is an accepted tradeoff — which obliges the system
+to make the loss visible rather than silent.** A row pointing at bytes that are not there must never
+render as a broken image, nor as an empty box that looks like a design decision. Two things carry
+that: the GC job **counts** rows with no file and no `source_url` and surfaces them as a system
+warning, and the affected surfaces fall back to their real designed empty states (a channel's
+monogram, the icon field's glyph).
+
+Operator-facing consequence, which must appear in the help docs and in the `images.dir` setting's own
+documentation: **`/data` is one volume, and the volume is what to back up** — the application backs up
+the database only.
+
+### TMDB compliance
+
+⚠ **TMDB's API terms permit caching but cap it at six months.** Caching is otherwise encouraged — TMDB
+staff recommend serving posters from your own cache, and the terms' "excessive bandwidth" restriction
+makes a local cache the *compliant* posture. But the ceiling is real, and it interacts with the
+permanently-immutable cache headers above.
+
+The resolution: the immutable header applies to **our** content-addressed derivative URLs, which are
+served from our own disk. Alongside it, the GC job expires any TMDB-origin image older than the
+configured TTL, keyed on `origin_fetched_at`. Because URLs are content-addressed, a re-fetch
+yielding identical bytes produces an identical URL, so revalidation is invisible downstream.
+
+⚠ **Expiry means the bytes are DELETED and the row is requeued, not refreshed in place** (V52 phase
+3b). The GC removes the original and every derivative, clears `origin_fetched_at`, and leaves the
+row on `images-fetch`'s work list — which runs every minute, so the operator-visible cost is a
+placeholder for well under a minute per image, once every six months.
+
+The alternative — re-fetch first and delete only if it fails — reads as strictly nicer and is
+wrong for a specific reason: it puts the compliance question inside an error branch. TMDB being
+unreachable for a day would silently keep serving expired bytes, and the ceiling would then be
+enforced by nothing. A ceiling that holds only while the network is up is not a ceiling. Deleting
+unconditionally means no cached TMDB byte outlives the TTL regardless of what upstream is doing,
+which is the only property the licence term actually asks for.
+
+⚠ **The GC collects orphans BEFORE it expires**, because both sweeps can select the same row: an
+image that is both past its TTL and no longer referenced. Expiring first would purge its bytes and
+queue a fresh download moments before the orphan sweep deleted it — and if that delete failed, a
+download instruction for an image no surface will ever show is what would survive.
+
+⚠ **This must exist from the first migration.** Retrofitting expiry into a content-addressed store is
+painful, and a store that has already accumulated a year of artwork cannot be brought into compliance
+by adding a column.
+
+Two further obligations:
+
+- **Attribution is mandatory and specific.** The TMDB logo must be shown, must be *less prominent*
+  than Loomarr's own branding, and this notice must appear prominently: *"This product uses TMDB and
+  the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."* This is a UI
+  deliverable, not a comment.
+- **Concurrency is capped at 20 simultaneous connections per IP** by TMDB. The fetcher stays
+  comfortably below it and backs off with jitter on 429/5xx.
+
+**Fetch `original` once and generate the ladder locally.** One origin request per artwork instead of
+one per width: far below the connection cap, full control of resampling quality, and the periodic
+re-fetch touches one file per image rather than the whole ladder.
+
+⚠ Two TMDB API details the ladder code must not assume away: `profile` sizes use a **height** token
+(`h632`), so size parsing cannot assume a `w` prefix; and **SVG assets are only offered at
+`original`** — TMDB does not resize them.
+
+### Width ladders
+
+Per role, mirroring TMDB's own size tokens so a matching target can pass through unmodified:
+
+| role | aspect | widths |
+| --- | --- | --- |
+| poster | 2:3 | 154, 185, 342, 500, 780 |
+| backdrop / still | 16:9 | 300, 780, 1280 |
+| icon / logo | — | 92, 185, 500 |
+
+⚠ **The ladder is code, not configuration.** It is per-role, and a single flat `images.widths` setting
+could not express that — it would be a knob whose value is necessarily wrong for two of the three
+roles. Every rung also costs an AVIF encode, which is why the ladders are short.
+
+Resizing uses a **stepped downscale** — one high-quality pass to the largest rung, then successive
+steps down — rather than resampling from full resolution to each target independently. Kernel
+interpolator cost scales with both source and destination extent, so the naive loop is materially more
+expensive at identical output quality.
+
+### Metadata
+
+Rich metadata is recorded in the `images.meta` column and **additionally embedded in the WebP
+rendition**, which is the one Tunarr fetches and can redistribute.
+
+⚠ **Embedding is WebP-only, and that is an ecosystem constraint rather than a preference.** No Go
+library writes image metadata into containers — the maintained reader is explicitly read-only forever,
+the XMP libraries emit packets but support no image containers, and the EXIF libraries emit IFDs but
+not containers. For WebP the remaining work is small and mechanical: promote to the extended format
+with a `VP8X` chunk carrying the metadata feature bits, then append the XMP and EXIF chunks with
+even-byte padding. For AVIF the equivalent is ISOBMFF box surgery, which is not worth hand-rolling;
+if AVIF metadata is ever needed it goes through ffmpeg. Everything else is **stripped**: smaller files,
+no incidental PII from operator uploads, no ICC ambiguity.
+
+### Two modes
+
+- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL.
+- **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails
+  such as source-search results. Ingesting hundreds of thumbnails for a search the operator abandons
+  would be the wrong trade; proxying still removes the third-party origin from the browser.
+
+### Background jobs (§18.1)
+
+| job | does |
+| --- | --- |
+| `images-fetch` | pulls bytes for `remote` rows that have none, under the concurrency cap |
+| `images-avif` | encodes the AVIF ladder via ffmpeg for images that have WebP but no AVIF |
+| `images-rehydrate` | re-fetches everything recoverable that is missing — the post-restore path |
+| `images-gc` | evicts unused derivatives, deletes images with no refs, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
+
+### Frontend contract
+
+One Layer-1 `Image` primitive consumes this service; no surface hand-writes an `<img>` against it.
+Beyond `<picture>`/`srcset`, three properties are required rather than optional:
+
+- **Explicit `width`/`height`**, from which browsers derive `aspect-ratio` — so cumulative layout shift
+  is zero. This is free here: the API returns real dimensions and the roles have fixed aspects.
+- **A `priority` mode.** ⚠ Lazy-loading the LCP image is the most common self-inflicted image
+  regression on the web, and a blanket "lazy-load everything" rule walks straight into it. `priority`
+  means eager loading with high fetch priority **and no async decoding** (async decode can defer the
+  very paint being measured); the default is lazy, async, low priority. The first row of any poster
+  grid is `priority`.
+- **A built-in error fallback**, because `logo` values can be operator-pasted arbitrary URLs.
+
+⚠ **Ship explicit `sizes`; do not use `sizes="auto"`.** Chrome and Firefox support it; **Safari does
+not, in any version**. It is an Interop 2026 focus, so revisit — but not yet.

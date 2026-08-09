@@ -3,11 +3,15 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -45,12 +49,103 @@ func (testAuthorizer) Authorize(r *http.Request) api.Role {
 	}
 }
 
-func newServer(t *testing.T) (*httptest.Server, store.Store) {
+// The migrated-template harness.
+//
+// ⚠ `store.Open` on a fresh file runs every migration, and this package calls it once per test.
+// Measured under `-race` on a 24-thread i9: **503ms** to migrate, **17ms** to build the router,
+// and there are 462 tests — so ~232s of a ~259s package was the same 45 migrations, re-run. CI's
+// 2–4 core runners are ~2.5× slower, which is what put the package past Go's default 10m
+// per-package timeout and turned a green suite into a `panic: test timed out` with no partial
+// results (the timeout kills the binary; it does not fail one test).
+//
+// So migrate ONCE per package into a template file and copy it per test: **26ms**, a 19.6×
+// reduction on the step, with every test still running against a real, fully-migrated database
+// built by the real `store.Open`. No assertion changed and nothing is shared between tests — the
+// copy is per-test exactly as `t.TempDir()` was.
+//
+// ⚠ It cannot produce a false green, and the reason is worth stating because "a shared fixture"
+// is normally where one hides. `autoMigrate` stays true on the per-test open, so the two ways
+// this can go wrong both fail safe: an empty or truncated copy is a version-0 database that
+// goose simply migrates the old way — slow, still correct — and a CORRUPT one fails `store.Open`
+// outright and calls t.Fatal. There is no path where a test runs against a schema it did not ask
+// for. The 10× wall-clock drop is the evidence the fast path is actually being taken.
+var (
+	templateOnce sync.Once
+	templateDB   string
+	templateErr  error
+)
+
+// migratedTemplate returns the path to a SQLite file with every migration applied.
+func migratedTemplate(t *testing.T) string {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
+	templateOnce.Do(func() {
+		var dir string
+		if dir, templateErr = os.MkdirTemp("", "loomarr-api-template"); templateErr != nil {
+			return
+		}
+		templateDB = filepath.Join(dir, "template.db")
+		var st store.Store
+		if st, templateErr = store.Open(context.Background(), "sqlite://"+templateDB, true); templateErr != nil {
+			return
+		}
+		// ⚠ Close BEFORE anything copies this. The last connection closing is what checkpoints
+		// WAL back into the main file; copying a live database is how you get a torn one.
+		templateErr = st.Close()
+	})
+	if templateErr != nil {
+		t.Fatalf("build migrated template: %v", templateErr)
+	}
+	return templateDB
+}
+
+// removeTemplate drops the template directory. Called from TestMain after the run, because a
+// t.Cleanup would delete it after the first test and strand the other 461.
+func removeTemplate() {
+	if templateDB != "" {
+		_ = os.RemoveAll(filepath.Dir(templateDB))
+	}
+}
+
+// copyTemplate lays the template down at dst. The `-wal`/`-shm` siblings are copied when present
+// rather than assumed checkpointed away — "usually checkpoints on close" is not a property worth
+// resting 462 tests on, and copying an absent file is a no-op.
+func copyTemplate(t *testing.T, src, dst string) {
+	t.Helper()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		data, err := os.ReadFile(src + suffix)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			t.Fatalf("read template%s: %v", suffix, err)
+		}
+		if err := os.WriteFile(dst+suffix, data, 0o600); err != nil {
+			t.Fatalf("write template%s: %v", suffix, err)
+		}
+	}
+}
+
+// openTestStore opens a fully-migrated SQLite store at path, laid down from the template.
+//
+// ⚠ Use this instead of calling `store.Open` directly in this package's tests. `newServer` alone
+// covers only 15 of ~462 tests here; the rest reach for a store through their own file-local
+// helper, and a site that opens a fresh file re-pays the whole 503ms migration run. Closing is
+// left to the caller so this drops into existing helpers without doubling their cleanup.
+func openTestStore(t *testing.T, path string) store.Store {
+	t.Helper()
+	copyTemplate(t, migratedTemplate(t), path)
+	// autoMigrate stays true: goose reads the version the template already carries and no-ops,
+	// which keeps this the same call production makes rather than a test-only shortcut.
+	st, err := store.Open(context.Background(), "sqlite://"+path, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return st
+}
+
+func newServer(t *testing.T) (*httptest.Server, store.Store) {
+	t.Helper()
+	st := openTestStore(t, filepath.Join(t.TempDir(), "api.db"))
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,

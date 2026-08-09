@@ -51,10 +51,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
 		t.Fatal(err)
 	}
 
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/m.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/m.db")
 	t.Cleanup(func() { _ = st.Close() })
 	// Hash → disk path. The wire identity is the hash (V45a); the route looks a clip up by hash
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
