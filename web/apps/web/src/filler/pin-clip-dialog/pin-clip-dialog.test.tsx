@@ -106,10 +106,15 @@ describe("PinClipDialog", () => {
     });
   });
 
-  // ⚠ The state the old pin-only dialog could not express, and the reason V35 replaced it:
-  // unticking must BLOCK the clip on that channel, which is a different write from clearing
-  // the pin. A single flag would make this a no-op and the operator's intent would vanish.
-  it("unticking an overridden channel writes an exclusion, not just a missing pin", async () => {
+  // ⚠ **This asserted the opposite until V51f, and it is the SECOND copy of that claim** — the
+  // picker's own unit test made it too. Two green tests stating that unticking blocks a clip is
+  // why the behaviour survived: it read as a decision someone had made twice, on a component
+  // whose header ⚠ warns that getting this wrong "silently blocks an operator's catalog".
+  //
+  // Releasing a pin now writes exactly what "Back to automatic" writes, because that is what it
+  // means. Blocking is still fully expressible — it has its own button — but an operator has to
+  // choose it.
+  it("unticking releases the pin instead of writing an exclusion", async () => {
     const user = userEvent.setup();
     const { patches } = stubPin({ pinned: true });
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
@@ -118,7 +123,22 @@ describe("PinClipDialog", () => {
 
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toMatchObject({
-      policy: { filler: { pinned: ["already-here"], excluded: ["clip-9-hash"] } },
+      policy: { filler: { pinned: ["already-here"], excluded: [] } },
+    });
+  });
+
+  // ...and the explicit Block button still writes the exclusion, so the state is not lost — only
+  // the accidental route to it is.
+  it("the Block action writes an exclusion", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubFetch({ pinned: false });
+    render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
+
+    await user.click(await screen.findByRole("button", { name: /^Block/ }));
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      policy: { filler: { excluded: ["clip-9-hash"] } },
     });
   });
 

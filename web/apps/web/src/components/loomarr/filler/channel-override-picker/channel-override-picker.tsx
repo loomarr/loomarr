@@ -1,5 +1,5 @@
 import type { ChannelFitDTO } from "@loomarr/api";
-import { RotateCcw } from "lucide-react";
+import { Ban, RotateCcw } from "lucide-react";
 import { Badge, Button, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ChannelOverridePickerProps } from "./channel-override-picker.type";
@@ -91,8 +91,16 @@ const ChannelOverridePicker = ({
               // the same as blocked until the row is overridden.
               checked={fit.pinned}
               disabled={busy}
+              // ⚠ **Unticking returns the row to AUTOMATIC; it does not block (§10 V51f).**
+              // This wrote `{pinned: false, excluded: true}`, so releasing a pin silently moved
+              // the clip to "never play here" — the exact failure the ⚠ at the top of this file
+              // warns about, committed by the file carrying the warning. Blocking is a decision,
+              // and it now has its own button; a checkbox cannot express three states, so the two
+              // that are not "pinned" must be reachable some other way.
               onChange={(e) =>
-                onSet(fit.channelId, { pinned: e.target.checked, excluded: !e.target.checked })
+                e.target.checked
+                  ? onSet(fit.channelId, { pinned: true, excluded: false })
+                  : onReset(fit.channelId)
               }
               className="size-4 shrink-0 accent-signal"
               // The visible channel name is in the next cell; naming the action here means a
@@ -127,7 +135,23 @@ const ChannelOverridePicker = ({
                 </Button>
               </>
             ) : (
-              <Badge variant="neutral">automatic</Badge>
+              <>
+                <Badge variant="neutral">automatic</Badge>
+                {/* ⚠ Blocking is now an EXPLICIT action rather than a side effect of unticking.
+                    It is the destructive half of the three states — "never play this here" — and
+                    the one an operator is most likely to trigger by accident when it rides on a
+                    checkbox they were using to un-pin. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onSet(fit.channelId, { pinned: false, excluded: true })}
+                  aria-label={`Block ${clipName} on ${fit.name}`}
+                >
+                  <Ban className="size-3.5" aria-hidden />
+                  Block
+                </Button>
+              </>
             )}
           </li>
         );

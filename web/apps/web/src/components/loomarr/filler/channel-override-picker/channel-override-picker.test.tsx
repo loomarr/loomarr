@@ -66,13 +66,43 @@ describe("ChannelOverridePicker", () => {
     expect(onSet).toHaveBeenCalledWith("ch-1", { pinned: true, excluded: false });
   });
 
-  it("unticking an overridden channel blocks it rather than clearing the override", async () => {
+  // ⚠ **This test used to assert the OPPOSITE, and that is why the bug read as deliberate
+  // (§10 V51f).** It was named "unticking an overridden channel blocks it rather than clearing
+  // the override" and pinned `{pinned: false, excluded: true}` — so releasing a pin silently moved
+  // the clip to "never play here", on a component whose own header ⚠ warns that collapsing the
+  // third state "silently blocks an operator's catalog". A green test stating the trap as the
+  // contract is worse than no test: it makes the behaviour look chosen, and anyone who noticed it
+  // would assume they were the one who was wrong.
+  it("unticking returns a channel to automatic instead of blocking it", async () => {
     const onSet = vi.fn();
-    render(<ChannelOverridePicker {...base} onSet={onSet} />);
+    const onReset = vi.fn();
+    render(<ChannelOverridePicker {...base} onSet={onSet} onReset={onReset} />);
 
     await userEvent.click(within(row("Retro Movies")).getByRole("checkbox", { name: /Always play/ }));
 
-    expect(onSet).toHaveBeenCalledWith("ch-4", { pinned: false, excluded: true });
+    expect(onReset).toHaveBeenCalledWith("ch-4");
+    expect(onSet).not.toHaveBeenCalled();
+  });
+
+  // Blocking is a decision, so it gets a button of its own rather than riding on the checkbox an
+  // operator uses to un-pin.
+  it("blocks only through the explicit Block action", async () => {
+    const onSet = vi.fn();
+    render(<ChannelOverridePicker {...base} onSet={onSet} />);
+
+    await userEvent.click(within(row("Saturday Mornings")).getByRole("button", { name: /Block/ }));
+
+    expect(onSet).toHaveBeenCalledWith("ch-1", { pinned: false, excluded: true });
+  });
+
+  // ⚠ ...and Block is offered only where there is nothing to undo. An overridden row already has
+  // "Automatic", and stacking a third control on it invites the same "which one releases this?"
+  // confusion the checkbox caused.
+  it("offers Block only on an automatic channel", () => {
+    render(<ChannelOverridePicker {...base} />);
+
+    expect(within(row("Saturday Mornings")).queryByRole("button", { name: /Block/ })).toBeInTheDocument();
+    expect(within(row("Newsreel")).queryByRole("button", { name: /Block/ })).not.toBeInTheDocument();
   });
 
   // ⚠ The only route back to the third state. A checkbox cannot express "automatic", so without
