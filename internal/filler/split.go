@@ -13,9 +13,16 @@ import (
 //
 // The pipeline (plan §6.4, designed from measurement on six real compilations):
 // triage (chapters) → coarse split (blackdetect + silencedetect) → transcript
-// rescue for over-long segments → classify each segment (existing tagger) →
-// dHash dedup → REVIEW (not optional — detection quality is a property of the
-// source, measured 69–100%, so nothing enters the catalog unconfirmed).
+// rescue for over-long segments → dHash dedup → REVIEW (not optional —
+// detection quality is a property of the source, measured 69–100%, so nothing
+// enters the catalog unconfirmed).
+//
+// ⚠ "classify each segment" used to sit before dedup and is GONE (§10 V51g). It
+// was one LLM turn per segment — 51 × 7.4s ≈ 377s on a 16m47s reel, against a
+// 120s pass — so the rung could never finish and restarted every two minutes.
+// **Split cuts; it does not describe.** Each segment is spawned as its own clip
+// and reaches `tag` on its own ladder, after `transcribe`, with a real
+// transcript instead of the string "… part 7".
 
 const (
 	// MinSegmentMs drops slivers: black/silence detection on real compilations

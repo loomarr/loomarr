@@ -1656,17 +1656,13 @@ components:
           format: uri
           readOnly: true
           type: string
-        asks:
+        clips:
           items:
-            $ref: "#/components/schemas/IncomingAskDTO"
-          type: array
-        pipeline:
-          items:
-            $ref: "#/components/schemas/IncomingPipelineDTO"
+            $ref: "#/components/schemas/IncomingClipDTO"
           type: array
         recentlyFiled:
           items:
-            $ref: "#/components/schemas/IncomingAskDTO"
+            $ref: "#/components/schemas/IncomingClipDTO"
           type: array
         reels:
           items:
@@ -1676,15 +1672,20 @@ components:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
           type: array
+        stageOrder:
+          description: Every pipeline stage id, in run order
+          items:
+            type: string
+          type: array
         total:
           description: Everything waiting on a human — asks plus reels
           format: int64
           type: integer
       required:
-        - asks
+        - clips
         - reels
-        - pipeline
         - rejected
+        - stageOrder
         - recentlyFiled
         - total
       type: object
@@ -2337,7 +2338,7 @@ components:
       required:
         - imported
       type: object
-    IncomingAskDTO:
+    IncomingClipDTO:
       additionalProperties: false
       properties:
         audience:
@@ -2364,9 +2365,13 @@ components:
           type: string
         name:
           type: string
+        needsDecision:
+          type: boolean
         path:
           description: The clip's disk path — used by the array-keyed hold/file/remove ops
           type: string
+        pipeline:
+          $ref: "#/components/schemas/IncomingPipelineDTO"
         reason:
           type: string
         suggestedEra:
@@ -2390,10 +2395,6 @@ components:
           description: Retries spent on the current stage; absent on the first try
           format: int64
           type: integer
-        hash:
-          type: string
-        name:
-          type: string
         progress:
           format: int64
           type: integer
@@ -2409,7 +2410,6 @@ components:
           description: RFC3339
           type: string
       required:
-        - hash
         - stage
         - status
         - progress

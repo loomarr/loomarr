@@ -26,6 +26,15 @@ RETIRED=(
   # production caller at all — the capability existed and the setting that gated it was inert —
   # so a doc describing it as a separate pass describes something that never ran.
   'NormalizeInPlace|V51b: loudness is applied by the transcode rung, in the pass that is already re-encoding'
+  # §10 V51e — Incoming became ONE conveyor. `asks` and `pipeline` were separate arrays over
+  # overlapping populations, and on a fresh scan 84 of 85 clips appeared in BOTH: a row demanding
+  # a decision above a row captioned "nothing here needs you". The names are the dangerous half
+  # here for the same reason the schedule keys were — a doc or a comment that still says "the
+  # asks list" sends the next reader looking for a field the response does not have, and the
+  # honest answer (`clips`, with `needsDecision` per row) is one word away from it.
+  'IncomingAskDTO|V51e: one belt, one type — IncomingClipDTO, with needsDecision saying which end a clip is at'
+  'NonTerminalOnly|V51e: PipelineFilter.ConveyorOnly returns running AND review — the two halves of one belt'
+  'body.Asks|V51e: the response carries `clips`; a clip appears exactly once, whichever end it is at'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
   'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'

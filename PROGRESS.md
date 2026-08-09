@@ -747,6 +747,138 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, branch
+`v51g-pipeline-budget`).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+Diagnosed from a live catalog, and the measurements are in §10 (V51g) because they are what
+corrected the diagnosis twice.
+
+**The symptom.** `WAGA-5/Fox Commercial Breaks(2/5/1995)`, a 16m47s reel, sat at *"Finding the ads
+inside"* through **twelve** passes — `attempts: 12` against a `MaxAttempts` of 3 — failing every
+two minutes with `context deadline exceeded` and starting over. ~25 minutes of GPU re-doing the
+same first third while the row animated as though it were progressing.
+
+**Measured on the real file, which is what found the cause** (the first two theories were wrong —
+"the detection scan is too slow" and "cutting is too slow" are both off by two orders of magnitude):
+
+| Step of `split` | Cost |
+| --- | --- |
+| blackdetect + silencedetect | **4s** (319× realtime) |
+| dedup — `GrayFrames` × 51 | **33s** |
+| cut — stream copy × 51 | **3s** |
+| **`classify` — one LLM turn × 51** | **≈377s**, against a 120s pass |
+
+⚠ **`classify` was strictly-worse duplicate work, not merely expensive.** It called the same
+`Classify` the `tag` rung calls, but with `SplitSegment.Transcript` — EMPTY unless `rescue` ran, and
+rescue only transcribes segments over ~120s (none qualified). So it classified 51 adverts from a
+generated name, `"… part 7"`, identical bar the number — then every spawned segment ran
+`transcribe` → `tag` and called the same function again with a real transcript. **Deleted, not
+unwired**: an orphaned method reads as a capability someone can switch back on.
+
+⚠ **The severe half is not about split at all.** `onFailure` computed the failure record, the
+backoff and the `MaxAttempts` resolution and wrote them through **the context whose expiry caused
+the failure** — so every one was discarded, and only the pre-work write (`status=running`,
+`attempts++`) survived. **Any rung that ever times out loops forever**; split was just the first
+slow enough to prove it. All decision-writes now go through a detached context.
+
+⚠ **Running out of time is not failing.** A cancelled context is a DEFERRAL: back to `queued`, the
+attempt rolled back (it was counted before the work began), no backoff, resume next pass — which is
+exactly how budget exhaustion already behaved. `ErrDeferred` and `PipelineResult.Deferred` keep it
+out of the failure count, because a reel too slow for one pass was emitting an identical WARN every
+two minutes and the summary blamed the clip.
+
+⚠ **The fake store had to start honouring cancellation before any of this was testable.**
+`pipeMemStore.UpsertClipPipeline` ignored `ctx`, so the code path that wrote through a dead context
+looked perfect in tests and failed only against a real store. Sabotage-verified: restoring the
+attached save reproduces the original bug precisely — `Advance` returns `context canceled`, the row
+keeps its burnt attempt, and the run counts it as a clip failure.
+
+**Three grounding assertions MOVED rather than being dropped** (§8 is not negotiable). They
+exercised `Classify` through `Propose`'s removed call; the rule is tested at its own seam —
+`TestClassify_EraGroundedBySourceText` and `TestClassify_UngroundedEraBecomesSuggestion`. What
+`Propose` owes now is the CUT, and the tests assert segments arrive with **no** tags at all.
+
+⚠ **Known gap, deliberately not built.** A ~3-hour capture is ~500 segments, so the fingerprint pass
+alone would be ~5 minutes and exceed a pass again. The fix then is a per-pass SEGMENT budget with
+resume by `(ParentHash, index)` — the lineage column exists (§10 V45, migration 00039). Not built
+because the measured corpus does not reach it, and resume interacts with proposal editing in ways
+that need their own design.
+
+**V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
+`v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
+(biome + tsc + unit + SPA + storybook build) + `make openapi-verify`. ⚠ **`make fe-visual` and
+`make e2e` were NOT run locally** — the maintainer's machine cannot carry Playwright, so both are
+**CI-verified only**, and three new stories mean the visual job may legitimately need baselines.
+Said plainly rather than implied green.
+
+**V51b built an ordered, watchable pipeline and shipped it to an audience of zero.**
+`GET /v1/filler/incoming` carried `pipeline` and `rejected`, `eventTypeMap` carried a
+`filler_clip` frame, `FillerClipEvent` was a typed DTO reaching orval — and `grep onFillerClip
+web/apps/web/src` returned nothing. The operator-visible symptom V51b existed to remove ("I
+downloaded forty commercials and nothing is happening") **survived V51b unchanged**, because
+every fact needed to fix it was being served to a frontend that never asked. That is the shape
+worth remembering: a phase can be complete on its own terms and deliver none of its purpose.
+
+⚠ **Two contract gaps between the V51 plan and what V51b actually built, both found by reading
+the Go rather than the plan.**
+
+**1. The plan's reason for "stages come from the server" was wrong; its conclusion was right for a
+different reason.** It argued installs vary in ladder LENGTH (vision off → 7 rungs). They do not:
+`filler.StageOrder` is a fixed eight-element compile-time constant and a disabled rung is recorded
+as `skipped`, which the plan separately insists must be rendered *with its reason*. The real
+constraint is that `IncomingPipelineDTO.stages` is the **visited** ladder — a clip at `split`
+sends three records — so a strip drawn from it would GROW as the clip advanced instead of filling.
+The response now carries `stageOrder`, derived from `StageOrder` itself. ⚠ Its guard compares
+against `filler.StageOrder` rather than a literal list, because a literal here would be the second
+copy of the sequence the field exists to prevent, and editing it is exactly how a real drift gets
+buried.
+
+**2. The plan's out-of-order guard had nothing to key on.** It specified "merge only ever advances,
+using the BE's monotonic `seq`" — `FillerClipEvent` has no `seq` and no timestamp. Ordering is
+derived from the ladder instead, and the rule is deliberately narrow: **a stage or status change
+is always applied; only the percentage within one rung is guarded.** Strictly advance-only was
+rejected on the maintainer's call — `Rewind` moves a clip backward on purpose, and a strict guard
+would blank the entire re-run until something forced a refetch. ⚠ **The status half is
+load-bearing and was not in the original choice**: `pipeline.go`'s retry path re-runs a failed rung
+with `Progress` reset to 0, so guarding on progress alone would pin the row at "failed at 80%"
+while the transcode had genuinely restarted. It has its own test.
+
+**Three defects found while building, none of which any existing test could see.**
+
+⚠ **A false green, and the mechanism is worth recording.** The Bash cwd silently reverted from the
+worktree to the primary repo mid-session (the trap `loomarr-bash-cwd-resets-use-git-c` already
+documents for *commits*). Edits landed correctly by absolute path; `go test ./internal/api/` ran
+against **main's** copy and printed `ok`. A brand-new test was reported verified having never been
+compiled — and once run in the right tree it did not even BUILD (`int` vs `int64`,
+`filler.KindCommercial` undefined). The tell was `[no tests to run]` on a `-run` regex naming a
+test that certainly existed: **a `-run` filter matching nothing exits 0**, so a typo and a
+wrong-directory run are indistinguishable from a pass. Use `-v` on a new test's first run; `--- PASS:
+<name>` proves it existed, `ok` does not.
+
+⚠ **The pipeline half of `/v1/filler/incoming` shipped in V51b with no API test of its contents at
+all** — the same shape as V51a's `clips.confidence`, where a column round-tripped perfectly and had
+no producer. A row is drawn as a clip card, so `durationMs` and `thumbnail` were added from the
+lookup `pipelineDTO` was already performing, and all three fields are now asserted against a clip
+whose values are deliberately distinct from each other and from its hash.
+
+⚠ **The strip and the expanded ladder both claimed the accessible name `Progress for <clip>`**,
+putting two identically-named lists in the tree for one row. It surfaced only because
+`hidden="until-found"` keeps a collapsed panel in the DOM — so `queryByText` found detail that was
+never exposed, and the first draft of the "stays collapsed" test **would have passed against a
+panel that never collapsed**. Names are now variant-specific and the test queries by ROLE, which
+asserts exposure rather than presence.
+
+**What was deliberately not built, so it reads as sequenced rather than forgotten.** Preview-then-
+accept on a pipeline row (a clip mid-`transcode` is being rewritten by ffmpeg; previewing it is a
+question this phase does not answer); the `CollapsibleSection` refactor onto the new `Disclosure`;
+migrating the app's three other progress bars onto `Progress`; and V51d's two parked capabilities
+(the composite container row, the sort control). The catalog decomposition of `filler-page.tsx`
+also stays open — this slice took the Incoming half only.
+
+**Sabotage-verified, each confirmed red then reverted:** the `stageOrder` drift guard (dropped one
+rung), the pipeline-row DTO (dropped `DurationMs`), the SSE merge guard (always-advance), the merge
+itself (wholesale row replacement), the ladder source (drew from `stages` — took 3 tests red), the
+events provider drift guard (removed one of the two wirings), and the collapse rule (`defaultOpen`).
+
 **V51d — the catalog is paged, sorted, and searched wider (2026-08-09).** Gate: `make check`
 (0 lint, `-race`) + `make test-pg` (both dialects, **4 new conformance suites × 2 backends**) +
 `make fe` (biome clean on 918 files + tsc + unit + SPA + storybook build) + `make openapi-verify`
