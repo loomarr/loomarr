@@ -99,17 +99,14 @@ const WithServiceHostedIcon: Story = {
       placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
       dominantHex: "#2b4a5e",
       animated: false,
-      // ⚠ **Both srcsets are EMPTY, and that is forced rather than lazy.** A base64 data URI
-      // always contains a comma (`data:image/png;base64,…`), and a comma is srcset's candidate
-      // separator — so a data URI in `srcset` yields a candidate the browser cannot load, and
-      // the <img> renders at naturalWidth 0. Remote URLs are banned in visual stories because
-      // they race the snapshot, so neither option works here. Empty srcsets make <picture> fall
-      // through to `src`, where a data URI is perfectly valid, and the story renders the icon it
-      // is meant to show. See issue: UI/Image's own stories hit this and their baselines
-      // captured the placeholder instead of the image.
-      srcSetWebp: "",
+      // ⚠ Same-origin static assets from `.storybook/story-assets/`, NOT data URIs. A base64 data
+      // URI always contains a comma — `srcset`'s candidate separator — so it is unloadable there
+      // (#210); remote URLs are banned because they race the snapshot. Each rung is a different
+      // colour, so the baseline shows WHICH one a 64px box selected (the 92w rung).
+      srcSetWebp: "/icon-92.webp 92w, /icon-185.webp 185w, /icon-500.webp 500w",
+      // Empty: AVIF is job-produced, so a freshly-uploaded icon has none — the ordinary state.
       srcSetAvif: "",
-      src: TNG_POSTER,
+      src: "/icon-fallback.jpg",
     },
   },
   decorators: [withSuggestions()],
