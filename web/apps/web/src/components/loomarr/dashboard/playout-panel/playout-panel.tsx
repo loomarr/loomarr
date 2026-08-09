@@ -86,14 +86,16 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
               reachable. (A native `title` also "worked" but its ~1.5s browser delay read as broken.) */}
           <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Channel id ${channel.channelId}`}
-                className="inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full text-static-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Info className="size-3" aria-hidden />
-              </button>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Channel id ${channel.channelId}`}
+                  className="inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full text-static-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              }
+            >
+              <Info className="size-3" aria-hidden />
             </TooltipTrigger>
             <TooltipContent>
               <span className="font-mono text-xs">{channel.channelId}</span>

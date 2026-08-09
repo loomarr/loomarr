@@ -1,41 +1,32 @@
-import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
-import * as React from "react";
 import { cn } from "@/lib";
+import type {
+  DialogContentProps,
+  DialogDescriptionProps,
+  DialogSectionProps,
+  DialogTitleProps,
+} from "./dialog.type";
 
-// The app's modal primitive, on Radix Dialog (design §14 — same Radix family as Select).
-// Radix gives the fiddly a11y for free: focus trap, Escape to close, aria-modal + labelling,
-// scroll-lock. Styling matches the app system — a `popover`/`card` surface with the signal
-// focus ring — so a dialog reads as the same design language as the rest of the UI.
+// The app's modal primitive, on Base UI Dialog (design §14 — same family as Select/Menu).
+// The primitive gives the fiddly a11y for free: focus trap, Escape to close, aria-modal +
+// labelling, scroll-lock. Styling matches the app system — a `popover`/`card` surface with the
+// signal focus ring — so a dialog reads as the same design language as the rest of the UI.
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogClose = DialogPrimitive.Close;
 
-const DialogOverlay = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/60 data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className,
-    )}
-    {...props}
-  />
-));
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
-
-const DialogContent = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+// ⚠ Radix's `Overlay` is Base UI's `Backdrop`, and it is a SIBLING of the popup inside the portal.
+// The old version carried `data-[state=open]:animate-in` / `fade-in-0` classes on both this and the
+// content; they are deleted rather than translated because `tailwindcss-animate` is not a
+// dependency here (see styles.css), so they compiled to nothing. Deleting them must not move a
+// pixel — which makes the visual baselines the check on that claim.
+const DialogContent = ({ className, children, ...props }: DialogContentProps) => (
   <DialogPrimitive.Portal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
+    <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
+    <DialogPrimitive.Popup
       className={cn(
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed top-1/2 left-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-card p-6 shadow-lg focus:outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+        "fixed top-1/2 left-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-card p-6 shadow-lg focus:outline-none",
         className,
       )}
       {...props}
@@ -47,38 +38,25 @@ const DialogContent = React.forwardRef<
       >
         <X className="size-4" aria-hidden />
       </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
+    </DialogPrimitive.Popup>
   </DialogPrimitive.Portal>
-));
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+);
 
-const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogHeader = ({ className, ...props }: DialogSectionProps) => (
   <div className={cn("flex flex-col gap-1.5", className)} {...props} />
 );
 
-const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogFooter = ({ className, ...props }: DialogSectionProps) => (
   <div className={cn("flex justify-end gap-2", className)} {...props} />
 );
 
-const DialogTitle = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn("font-semibold text-lg", className)} {...props} />
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+const DialogTitle = ({ className, ...props }: DialogTitleProps) => (
+  <DialogPrimitive.Title className={cn("font-semibold text-lg", className)} {...props} />
+);
 
-const DialogDescription = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    className={cn("text-muted-foreground text-sm", className)}
-    {...props}
-  />
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+const DialogDescription = ({ className, ...props }: DialogDescriptionProps) => (
+  <DialogPrimitive.Description className={cn("text-muted-foreground text-sm", className)} {...props} />
+);
 
 export {
   Dialog,

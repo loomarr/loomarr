@@ -144,7 +144,7 @@ All present after 13.0. `events` + `backup` are hand-written FE clients by desig
 
 **Now — the discipline that makes mobile a bolt-on (`frontend-design.md` §4.2):**
 - Shared across platforms: `packages/tokens` (+ preset NativeWind consumes), `packages/api` (orval types + TanStack Query hooks — runs on RN), `packages/core` (zod, SSE handling, domain logic, formatters, shared data contracts, the hand-written auth/bootstrap client), `packages/fixtures` (deterministic "test card" story/test data), CVA variant *contracts*, Storybook story *contracts* (CSF states), the lucide icon vocabulary.
-- Per-platform (never shared): component implementations (shadcn/Radix web ↔ React Native Reusables native), navigation (TanStack Router ↔ Expo Router), gestures/portals, styling where RN lacks the cascade, story *implementations* (`*.stories.tsx`), visual baselines.
+- Per-platform (never shared): component implementations (shadcn/Base UI web ↔ React Native Reusables native), navigation (TanStack Router ↔ Expo Router), gestures/portals, styling where RN lacks the cascade, story *implementations* (`*.stories.tsx`), visual baselines.
 - **Enforcement:** no DOM/web-only import may appear in `packages/{tokens,api,core,fixtures}`. A lint boundary (e.g. an import-restriction rule) fails CI if it does — this is the single rule that keeps "ready" honest.
 
 **Later — the future Expo phase (own PR, needs a §14 update):**

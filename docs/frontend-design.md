@@ -97,7 +97,7 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 ## 3. Component library — three layers
 
 **Layer 0 — tokens** (§2).
-**Layer 1 — primitives:** shadcn/ui (new-york style, Tailwind v4), copy-in per its philosophy. Restyled **only** via tokens/CSS variables — never fork primitive logic. Radix underneath gives focus management and a11y for free.
+**Layer 1 — primitives:** shadcn/ui (new-york style, Tailwind v4), copy-in per its philosophy. Restyled **only** via tokens/CSS variables — never fork primitive logic. **Base UI** (`@base-ui/react`) underneath gives focus management and a11y for free; shadcn ships a Base UI variant of every component the app uses, so the copy-in path is unchanged. ⚠ "For free" has one documented exception: Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
 **Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
@@ -142,14 +142,14 @@ web/
 
 | Shared across platforms | Per-platform |
 | --- | --- |
-| Design tokens + Tailwind preset (§2.5) | Component implementations (shadcn web ↔ React Native Reusables native) |
+| Design tokens + Tailwind preset (§2.5) | Component implementations (shadcn/Base UI web ↔ React Native Reusables native) |
 | `packages/api` (orval types + query hooks — TanStack Query runs on RN) | Navigation (TanStack Router ↔ Expo Router) |
 | `packages/core` (zod validation, SSE handling, domain logic, formatters, **shared data contracts**) | Gesture/touch interactions, portals (`PortalHost` on native) |
 | CVA variant definitions & component *contracts* (names, props, states) | Styling details where RN lacks cascade (each `Text` styled directly) |
 | **Storybook story *contracts*** (CSF states) + `packages/fixtures` "test card" args | Story *implementations* (`*.stories.tsx`: web shadcn ↔ RN Reusables) |
 | Icon vocabulary (lucide ↔ lucide-react-native, same names) | Visual-test baselines |
 
-**Rejected alternatives, on the record:** `react-native-web` (would forfeit shadcn/Radix and the decided web stack to render RN primitives on the web); universal kits like Tamagui/gluestack (different styling philosophy, heavier lock-in — our bridge is the token/preset layer, which NativeWind consumes natively). The future mobile app is Expo + NativeWind + React Native Reusables — the shadcn-philosophy port built on rn-primitives — consuming the same preset, tokens, and `packages/{api,core,fixtures}`. Its component workshop is **`@storybook/react-native`** (v10, on-device via the `withStorybook` Expo wrapper), authored in the same CSF format and reusing the same `packages/fixtures` args — so a component's *states* are defined once and rendered by each platform's own implementation. Consistent with the `react-native-web` rejection above, the mobile Storybook runs on-device, not by rendering RN primitives in a browser.
+**Rejected alternatives, on the record:** `react-native-web` (would forfeit shadcn/Base UI and the decided web stack to render RN primitives on the web); universal kits like Tamagui/gluestack (different styling philosophy, heavier lock-in — our bridge is the token/preset layer, which NativeWind consumes natively). The future mobile app is Expo + NativeWind + React Native Reusables — the shadcn-philosophy port built on rn-primitives — consuming the same preset, tokens, and `packages/{api,core,fixtures}`. Its component workshop is **`@storybook/react-native`** (v10, on-device via the `withStorybook` Expo wrapper), authored in the same CSF format and reusing the same `packages/fixtures` args — so a component's *states* are defined once and rendered by each platform's own implementation. Consistent with the `react-native-web` rejection above, the mobile Storybook runs on-device, not by rendering RN primitives in a browser.
 
 ### 4.3 Forms & state
 

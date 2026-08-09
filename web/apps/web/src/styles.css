@@ -96,6 +96,18 @@ body {
   font-size: var(--text-base);
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
+  /* Base UI portal requirement: iOS 26+ Safari mispositions a fixed backdrop after the page has
+     been scrolled unless the body establishes a containing block. Costs nothing elsewhere. */
+  position: relative;
+}
+
+/* Base UI portal requirement: popups (Dialog, Menu, Select, Tooltip) render into a portal at the
+   end of <body>, so the app root must not be able to paint over them. `isolation` gives the root
+   its own stacking context, which keeps a stray `z-index` inside the app from surfacing above an
+   open dialog. ⚠ Not a cosmetic line — without it a high-z element in a page can eclipse a modal,
+   and nothing in the test suite would show it. */
+#root {
+  isolation: isolate;
 }
 
 /* The onair pulse — the one live-motion signature (§2.4); off under reduced-motion. */

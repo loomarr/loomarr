@@ -1,4 +1,4 @@
-import * as SliderPrimitive from "@radix-ui/react-slider";
+import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { VolumeControlProps } from "./volume-control.type";
@@ -20,29 +20,36 @@ const VolumeControl = ({ volume, muted, onVolumeChange, onMutedChange }: VolumeC
     >
       {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
     </Button>
-    {/* Radix owns the slider's WAI-ARIA + keyboard contract. Styled to the mock (1010-1013): a
-        translucent-white track, a WHITE fill, and an ALWAYS-VISIBLE white dot — on the dark video
-        scrim a hover-only thumb + dim track reads as "no slider", which is exactly what happened. */}
+    {/* The primitive owns the slider's WAI-ARIA + keyboard contract. Styled to the mock (1010-1013):
+        a translucent-white track, a WHITE fill, and an ALWAYS-VISIBLE white dot — on the dark video
+        scrim a hover-only thumb + dim track reads as "no slider", which is exactly what happened.
+
+        ⚠ Base UI takes a PLAIN NUMBER where Radix took a one-element array, and adds a `Control`
+        element between Root and Track (Radix had none). `Range` is `Indicator` here. */}
     <SliderPrimitive.Root
-      value={[muted ? 0 : volume]}
+      value={muted ? 0 : volume}
       max={1}
       step={0.05}
-      onValueChange={([v]) => {
-        const next = v ?? 0;
+      onValueChange={(v) => {
+        const next = typeof v === "number" ? v : (v[0] ?? 0);
         onVolumeChange(next);
         onMutedChange(next === 0);
       }}
-      className="relative flex h-4 w-20 cursor-pointer touch-none select-none items-center"
+      className="relative flex h-4 w-20 shrink-0 cursor-pointer touch-none select-none items-center"
     >
-      <SliderPrimitive.Track className="relative h-1 w-full grow rounded-full bg-static-0/25">
-        <SliderPrimitive.Range className="absolute h-full rounded-full bg-static-0" />
-      </SliderPrimitive.Track>
-      {/* ⚠ aria-label goes on the THUMB, not the Root — Radix puts role="slider" on the thumb, so
-          the name must live there or a screen reader (and getByRole) sees an unnamed slider. */}
-      <SliderPrimitive.Thumb
-        aria-label="Volume"
-        className="block size-2.5 rounded-full bg-static-0 shadow transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal motion-reduce:transition-none"
-      />
+      <SliderPrimitive.Control className="flex w-full items-center">
+        <SliderPrimitive.Track className="relative h-1 w-full grow rounded-full bg-static-0/25">
+          <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-static-0" />
+          {/* ⚠ aria-label goes on the THUMB, not the Root. Under Radix that was because Radix put
+              role="slider" on the thumb; under Base UI it is because each thumb renders its own
+              nested <input type="range">, which is what carries the role. Same placement, different
+              reason — re-verified against Base UI rather than copied forward. */}
+          <SliderPrimitive.Thumb
+            aria-label="Volume"
+            className="block size-2.5 rounded-full bg-static-0 shadow transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal motion-reduce:transition-none"
+          />
+        </SliderPrimitive.Track>
+      </SliderPrimitive.Control>
     </SliderPrimitive.Root>
   </div>
 );

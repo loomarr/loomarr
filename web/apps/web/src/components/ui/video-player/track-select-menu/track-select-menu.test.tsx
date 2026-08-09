@@ -22,7 +22,10 @@ describe("TrackSelectMenu", () => {
 
     // The current selection is legible once opened: Spanish is checked, English is not.
     await userEvent.click(trigger);
-    expect(screen.getByRole("menuitemcheckbox", { name: "Spanish" })).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByRole("menuitemcheckbox", { name: "Spanish" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.getByRole("menuitemcheckbox", { name: "English" })).toHaveAttribute(
       "aria-checked",
       "false",
@@ -33,8 +36,9 @@ describe("TrackSelectMenu", () => {
     const onChange = vi.fn();
     render(<TrackSelectMenu icon={Volume2} label="Audio" options={OPTS} value="eng" onChange={onChange} />);
     await userEvent.click(screen.getByRole("button", { name: "Audio" }));
-    // Radix renders the items as menuitemcheckbox; pick Spanish.
-    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Spanish" }));
+    // The items render as menuitemcheckbox; pick Spanish. ⚠ `findBy`, not `getBy` — Base UI mounts
+    // the popup asynchronously where Radix had it in the DOM by the time click() resolved.
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Spanish" }));
     expect(onChange).toHaveBeenCalledWith("spa");
   });
 
@@ -51,7 +55,7 @@ describe("TrackSelectMenu", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Audio" }));
-    const spanish = screen.getByRole("menuitemcheckbox", { name: "Spanish" });
+    const spanish = await screen.findByRole("menuitemcheckbox", { name: "Spanish" });
     expect(spanish).toHaveAttribute("data-disabled");
   });
 });
