@@ -138,6 +138,29 @@ func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 	if c.MaxChannels < 1 {
 		t.Errorf("MaxChannels = %d, want at least 1", c.MaxChannels)
 	}
+	// ⚠ A WORKING ENCODER MUST HAVE A MEASURED SPEED. This is the assertion that catches a VACUOUS
+	// probe, and it is here because this test was green for months while trialEncode encoded
+	// nothing at all.
+	//
+	// The failure composed from three individually reasonable decisions: os.CreateTemp creates the
+	// output file, ffmpeg without `-y` refuses to overwrite it and EXITS ZERO, and hasKeyframe is
+	// deliberately best-effort about an unreadable file. Result: `Works: true` for every encoder
+	// the build lists — including h264_amf on a machine with no AMD hardware — and Speed 0 for all
+	// of them, so MaxChannels sat at capacityFloor (measured: 2 instead of 11 on an RTX 3080 Ti).
+	//
+	// "Works" alone cannot detect that, because a vacuous probe reports exactly what a real one
+	// does. A measured throughput cannot be faked by an encode that never ran.
+	for _, x := range c.All {
+		if x.Works && x.Speed <= 0 {
+			t.Errorf("%s reports Works with no measured speed — the trial exited cleanly without "+
+				"encoding anything, so this probe proves nothing", x.Encoder)
+		}
+		if !x.Works && x.Err == "" {
+			t.Errorf("%s failed with no reason recorded; the wizard's transcode check shows that "+
+				"text to an operator", x.Encoder)
+		}
+	}
+
 	// Whatever it chose must appear in All as Works.
 	for _, x := range c.All {
 		if x.Encoder == c.Chosen {
