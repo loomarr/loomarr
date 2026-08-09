@@ -71,6 +71,12 @@ func TestJobSet(t *testing.T) {
 		// references and evicts derivative FILES, and one of its duties is not tidying at all: the
 		// six-month TMDB ceiling is a licence term, so this row is the only thing keeping the
 		// install compliant. A future reader asking "what enforces the TTL?" is looking at it.
+		// ⚠ `images-adopt-artwork` runs every FIVE MINUTES, the tightest cadence in this list after
+		// images-fetch, and that is deliberate: it is the step between a clip's thumbnail being
+		// rendered and that thumbnail being visible through the image service. An hourly cadence
+		// would mean an operator importing clips watches the legacy artwork for an hour and reads
+		// it as the feature not working. Its work list is empty on a healthy install.
+		"images-adopt-artwork | 0 */5 * * * * | job.images_adopt_artwork.schedule",
 		"images-avif | 0 20 * * * * | job.images_avif.schedule",
 		"images-fetch | 0 * * * * * | job.images_fetch.schedule",
 		"images-gc | 0 0 5 * * * | job.images_gc.schedule",

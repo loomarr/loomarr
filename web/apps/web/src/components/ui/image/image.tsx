@@ -74,16 +74,22 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
     // Callers with a real designed empty state — a channel's monogram, the icon field's glyph —
     // pass `fallback` and get that instead. The default exists so a surface that never thought
     // about failure still renders something that looks deliberate.
+    // ⚠ `!== undefined`, NOT `??`. The two are different questions: `??` cannot tell "I did not
+    // specify a fallback" apart from "I explicitly want NOTHING rendered", and collapses both to
+    // the default block. That distinction is real — the clip card's hover loop stacks ON its still
+    // and must vanish on failure to reveal the still beneath, where a colour block would be a
+    // visible fault over the frame. Passing `null` says so; omitting the prop still gets the
+    // default. (`<></>` expressed it too, and Biome rejects a useless fragment — correctly, since
+    // the empty fragment was working around this API rather than saying what it meant.)
+    if (fallback !== undefined) return <>{fallback}</>;
     return (
-      fallback ?? (
-        <div
-          // `presentation` rather than `img`: there is no image here to describe. A `role="img"`
-          // with the original alt text would announce artwork that is not being shown.
-          role="presentation"
-          style={{ aspectRatio: aspect, backgroundColor: image.dominantHex || undefined }}
-          className={cn("w-full bg-static-800", className)}
-        />
-      )
+      <div
+        // `presentation` rather than `img`: there is no image here to describe. A `role="img"`
+        // with the original alt text would announce artwork that is not being shown.
+        role="presentation"
+        style={{ aspectRatio: aspect, backgroundColor: image.dominantHex || undefined }}
+        className={cn("w-full bg-static-800", className)}
+      />
     );
   }
 

@@ -77,3 +77,22 @@ func GCJob(g *GC) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := g.Run(ctx); return err },
 	}
 }
+
+// AdoptJobSpec declares the clip-artwork adoption pass (§22, V52 phase 6).
+//
+// ⚠ Every five minutes rather than hourly, because this is the step between a clip being rendered
+// and its artwork being VISIBLE through the image service. Until it runs, a freshly-scanned clip
+// shows through the legacy route (the migration window) — an hour of that on every import would
+// read as the feature not working.
+//
+// ⚠ Its work list empties on a healthy install, which is what makes the cadence cheap: the query
+// selects only clips that have artwork on disk and no image identity yet, so a steady state costs
+// one indexed query and nothing else.
+func AdoptJobSpec(j *AdoptJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "images-adopt-artwork", Title: "Bring clip artwork into the image library",
+		Description: "Copies the thumbnails and hover previews generated for your clips into the shared image library, so they get the same fast, modern formats as everything else. Runs in the background; until a clip is copied over, its old thumbnail still shows.",
+		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.images_adopt_artwork.schedule",
+		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}

@@ -2,7 +2,7 @@ import type { ClipDTO } from "@loomarr/api";
 import { clipHoverURL, clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
 import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, Image } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -166,34 +166,67 @@ const ClipFrame = ({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      <img
-        src={clipThumbURL(clip.hash)}
-        // Empty alt, deliberately: the clip's name is the very next element, so a description
-        // here would have a screen reader announce the same clip twice. The frame is decoration
-        // for a label that is already present.
-        alt=""
-        className="size-full object-cover"
-        // A catalog is hundreds of cards; without this every frame is fetched on mount.
-        loading="lazy"
-      />
+      {/* ⚠ Two paths during the §22 migration window. `thumbImage` is present once the adoption
+          job has copied this clip's artwork into the image service; until then the legacy route
+          still serves it, and a freshly-imported catalog is entirely in that state. Both retire
+          in phase 8.
+
+          Empty alt on BOTH, deliberately: the clip's name is the very next element, so a
+          description here would have a screen reader announce the same clip twice. The frame is
+          decoration for a label that is already present. */}
+      {clip.thumbImage ? (
+        // No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
+        // which is exactly right below the fold.
+        <Image
+          image={clip.thumbImage}
+          alt=""
+          sizes="(max-width: 640px) 45vw, 220px"
+          className="size-full object-cover"
+        />
+      ) : (
+        <img
+          src={clipThumbURL(clip.hash)}
+          alt=""
+          className="size-full object-cover"
+          // A catalog is hundreds of cards; without this every frame is fetched on mount.
+          loading="lazy"
+        />
+      )}
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
           simply covered once there is something to cover it with. */}
-      {showPreview && (
-        <img
-          src={clipHoverURL(clip.hash)}
-          alt=""
-          className="absolute inset-0 size-full object-cover"
-          // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
-          // A broken-image glyph over the frame would be a visible fault where the honest state
-          // is "this clip has no preview" — the common case on any install that has not re-synced
-          // since V39.
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
-        />
-      )}
+      {showPreview &&
+        (clip.hoverImage ? (
+          // ⚠ `fallback={null}` — render NOTHING on failure, revealing the still beneath. This is
+          // the one caller that wants no visible failure state at all: a colour block (the
+          // primitive's default) would be a visible fault over the frame where the honest answer
+          // is "this clip has no preview", which is the common case on any install that has not
+          // re-synced.
+          //
+          // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
+          // nominal here — it is the still beneath that does the responsive work.
+          <Image
+            image={clip.hoverImage}
+            alt=""
+            sizes="(max-width: 640px) 45vw, 220px"
+            className="absolute inset-0 size-full object-cover"
+            fallback={null}
+          />
+        ) : (
+          <img
+            src={clipHoverURL(clip.hash)}
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+            // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
+            // A broken-image glyph over the frame would be a visible fault where the honest state
+            // is "this clip has no preview" — the common case on any install that has not re-synced
+            // since V39.
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ))}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
           top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame

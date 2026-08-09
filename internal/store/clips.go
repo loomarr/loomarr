@@ -247,8 +247,13 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// exact failure the column was added to avoid. It has NO other writer: unlike its
 		// neighbours here there is no Set… method, because nothing may ever change when a clip
 		// arrived. See clipCreatedAt below for the insert-time value.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		//
+		// ⚠ `thumb_image_hash` / `hover_image_hash` (§22 V52 phase 6, migration 00047) are the
+		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
+		// job ingests the files. The scan knows nothing about image identities, so including them
+		// in the update list would blank every clip's artwork on re-sync.
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -258,6 +263,11 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
 		   preview=excluded.preview,
+		   -- ⚠ thumb_image_hash / hover_image_hash are DELIBERATELY ABSENT from this list, and
+		   -- their absence is load-bearing (§22, V52 phase 6). They are written by ONE writer —
+		   -- SetClipArtworkImages, after the ingest — and the folder scan that also calls this
+		   -- upsert has no idea what they are. Including them would blank a clip's artwork on
+		   -- every re-sync, which is the same class as is_composite/parent_hash above.
 		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
@@ -267,7 +277,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
 		// line is the fourth time it has bitten this session. `vision_tagged` joins them (00038).
-		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
+		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
 		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
 		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
@@ -296,7 +306,7 @@ func clipCreatedAt(c Clip) time.Time {
 }
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged,
+	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at, created_at FROM clips`
@@ -701,7 +711,8 @@ func scanClip(sc scannable) (Clip, error) {
 		createdAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt, &createdAt)
@@ -1047,6 +1058,72 @@ func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time
 // omits it, so a re-sync finding the original file on disk cannot flip a confirmed composite back to
 // an airable clip. Keyed by HASH — a composite is identified by its content, and the detection/
 // confirm paths hold the hash.
+// ClipArtworkPending is one clip whose rendered artwork has not been adopted into the image
+// service yet. Paths are RELATIVE to the artwork cache directory, exactly as the columns store
+// them — the store does not know where FILLER_DIR is, and resolving that here would put a
+// filesystem assumption inside a query.
+type ClipArtworkPending struct {
+	Hash      string
+	Thumbnail string
+	Preview   string
+}
+
+// ListClipsPendingArtworkAdoption returns clips that HAVE rendered artwork but no image-service
+// identity for it yet (§22, V52 phase 6) — the adoption job's work list.
+//
+// ⚠ The predicate is per-ASSET, not per-clip: a clip whose still adopted but whose animation did
+// not must come back, or the hover loop would never be adopted for any clip where the two renders
+// completed in different passes. `OR` rather than `AND` is the whole correctness of this query.
+//
+// ⚠ Tombstoned clips are excluded. Adopting artwork for a clip the operator removed would copy
+// bytes into the image store purely so the GC could collect them again later.
+func (s *sqlStore) ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT hash, thumbnail, preview FROM clips
+		  WHERE removed_at = 0
+		    AND (   (thumbnail <> '' AND thumb_image_hash = '')
+		         OR (preview   <> '' AND hover_image_hash = ''))
+		  ORDER BY updated_at
+		  LIMIT ?`), limit)
+	if err != nil {
+		return nil, fmt.Errorf("list clips pending artwork adoption: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []ClipArtworkPending
+	for rows.Next() {
+		var p ClipArtworkPending
+		if err := rows.Scan(&p.Hash, &p.Thumbnail, &p.Preview); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
+// (§22, V52 phase 6). The ONLY writer of those two columns — which is why they are absent from
+// UpsertClip's DO UPDATE list, exactly like is_composite and the play counters.
+//
+// ⚠ Both are written together because they come from ONE ffmpeg pass and one ingest step, but
+// either may legitimately be "" — the still can succeed while the animation fails, and a caller
+// that had only one would otherwise have to read-modify-write to avoid blanking the other.
+func (s *sqlStore) SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET thumb_image_hash = ?, hover_image_hash = ?, updated_at = ? WHERE hash = ?`),
+		thumbHash, hoverHash, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip artwork images %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *sqlStore) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	res, err := s.db.ExecContext(ctx,
 		s.ph(`UPDATE clips SET is_composite = ?, updated_at = ? WHERE hash = ?`),
