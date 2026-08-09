@@ -1,10 +1,20 @@
-import type { ChannelPolicy } from "@loomarr/api";
+import type { ChannelPolicy, ClipDTO, PodPoolDTO } from "@loomarr/api";
+import {
+  getChannelFillerCoverageMockHandler,
+  getListFillerMockHandler,
+  getListTaxonomyMockHandler,
+  getPreviewDraftChannelPodsMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { ChannelFiller } from "./channel-filler";
 
@@ -28,10 +38,7 @@ const renderSection = (ui: ReactNode) => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const previewBody = {
+const previewBody: PodPoolDTO = {
   entries: [
     {
       path: "b1.mp4",
@@ -56,44 +63,49 @@ const previewBody = {
 
 // Dispatches by method+path: POST …/pods/preview is the live draft preview; PATCH
 // …/channels/{id} is apply; GET /v1/filler is both the catalog resolve and the add-search.
-const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
+// ⚠ `catalogQueries` records the URL of every `GET /v1/filler` the component made, and ONLY those.
+// The old `calls` array recorded every request at any path and a test then filtered it with
+// `u.includes("/v1/filler?")` — which is a substring of `/v1/filler/pool`, `/v1/filler/watch`,
+// `/v1/filler/incoming` and every other filler read. The assertion it powers ("every resolve must
+// name the hashes it wants") is precisely the kind that a too-broad filter turns into a coin flip.
+const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
   const patches: unknown[] = [];
-  const calls: string[] = [];
   const previews: unknown[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const u = String(url);
-      calls.push(u);
-      const method = init?.method ?? "GET";
-      const body = init?.body ? JSON.parse(init.body as string) : undefined;
-      if (method === "POST" && u.endsWith("/pods/preview")) {
-        previews.push(body);
-        return Promise.resolve(jsonResponse(200, previewBody));
-      }
-      if (method === "PATCH") {
-        patches.push(body);
-        return Promise.resolve(jsonResponse(opts.patchStatus ?? 200, { id: "ch-1" }));
-      }
-      // GET /v1/taxonomy — the category vocabulary the criteria's product chips are now FETCHED from
-      // (§10 V45a; the hardcoded list is gone). A minimal product forest with the taxa these tests
-      // toggle (Toys, Candy) so the chips render for the interaction.
-      if (u.includes("/v1/taxonomy")) {
-        return Promise.resolve(
-          jsonResponse(200, {
-            taxa: [
-              { slug: "toys", label: "Toys", axis: "product" },
-              { slug: "candy", label: "Candy", axis: "product" },
-              { slug: "cars", label: "Cars", axis: "product" },
-            ],
-          }),
-        );
-      }
-      // GET /v1/filler — catalog + add-search.
-      return Promise.resolve(jsonResponse(200, { clips: opts.clips ?? [] }));
+  const catalogQueries: string[] = [];
+
+  server.use(
+    getPreviewDraftChannelPodsMockHandler(async ({ request }) => {
+      previews.push(await request.json());
+      return previewBody;
     }),
+    getUpdateChannelMockHandler(async ({ request }) => {
+      patches.push(await request.json());
+      return channel();
+    }),
+    // GET /v1/taxonomy — the category vocabulary the criteria's product chips are now FETCHED from
+    // (§10 V45a; the hardcoded list is gone). A minimal product forest with the taxa these tests
+    // toggle (Toys, Candy) so the chips render for the interaction.
+    getListTaxonomyMockHandler({
+      taxa: [
+        { slug: "toys", label: "Toys", axis: "product" },
+        { slug: "candy", label: "Candy", axis: "product" },
+        { slug: "cars", label: "Cars", axis: "product" },
+      ],
+    }),
+    // GET /v1/filler — catalog + add-search.
+    getListFillerMockHandler(({ request }) => {
+      catalogQueries.push(request.url);
+      const clips = opts.clips ?? [];
+      return { clips, total: clips.length };
+    }),
+    // ⚠ FOUND BY THE GUARD. The coverage meter reads this on mount and the old catch-all served
+    // it a CLIP LIST — `{ clips: [...] }` where the component wants `{ level, total, rungs }`. It
+    // rendered an empty meter rather than throwing, which is the wrong-shape-looks-fine failure
+    // this file's own sibling comments already warned about.
+    getChannelFillerCoverageMockHandler({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }),
   );
-  return { patches, previews, calls };
+
+  return { patches, previews, catalogQueries };
 };
 
 const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
@@ -101,8 +113,6 @@ const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
 });
-
-afterEach(() => vi.restoreAllMocks());
 
 // ⚠ The section starts CLOSED, and since V50c a closed CollapsibleSection panel carries
 // `hidden="until-found"` — so its contents are out of the accessibility tree until opened.
@@ -124,7 +134,7 @@ const openFiller = async (user: ReturnType<typeof userEvent.setup>) => {
 
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
-    stubFetch();
+    stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
@@ -138,7 +148,7 @@ describe("ChannelFiller", () => {
 
   it("editing a criterion re-previews and reveals Apply", async () => {
     const user = userEvent.setup();
-    const { previews } = stubFetch();
+    const { previews } = stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await openFiller(user);
@@ -160,7 +170,7 @@ describe("ChannelFiller", () => {
 
   it("Apply PATCHes the draft merged onto the saved policy; Discard clears the dirty state", async () => {
     const user = userEvent.setup();
-    const { patches } = stubFetch();
+    const { patches } = stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
 
     await openFiller(user);
@@ -185,7 +195,7 @@ describe("ChannelFiller", () => {
   // a paged catalog it would resolve whichever pins happened to land on page one and render the
   // rest as bare hashes — an override that looks like it has gone missing.
   it("resolves a pinned clip's id by asking for that hash, not by loading the catalog", async () => {
-    const { calls } = stubFetch({
+    const { catalogQueries } = stubChannelFiller({
       clips: [
         {
           hash: "p9-hash",
@@ -195,6 +205,8 @@ describe("ChannelFiller", () => {
           durationMs: 30000,
           tagged: true,
           aiTagged: false,
+          playCount: 0,
+          playsCounted: true,
         },
       ],
     });
@@ -202,24 +214,24 @@ describe("ChannelFiller", () => {
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
 
-    const resolves = calls.filter((u) => u.includes("/v1/filler?"));
-    expect(resolves.length, "the resolver must issue a listing request").toBeGreaterThan(0);
+    expect(catalogQueries.length, "the resolver must issue a listing request").toBeGreaterThan(0);
     expect(
-      resolves.every((u) => u.includes("hashes=p9-hash")),
+      catalogQueries.every((u) => new URL(u).searchParams.get("hashes") === "p9-hash"),
       "every resolve must name the hashes it wants — an unfiltered listing is a catalog read",
     ).toBe(true);
   });
 
   it("surfaces a preview failure rather than a silently empty break", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
-        const u = String(url);
-        if ((init?.method ?? "GET") === "POST" && u.endsWith("/pods/preview")) {
-          return Promise.resolve(jsonResponse(422, { title: "bad selection" }));
-        }
-        return Promise.resolve(jsonResponse(200, { clips: [] }));
-      }),
+    // ⚠ Hand-written, and it has to be: the spec declares errors via `default:` (RFC 7807) with
+    // no explicit 422, so orval generates no failing handler. The catalog read still comes from
+    // the generated one — only the endpoint under test is replaced.
+    server.use(
+      http.post("*/v1/channels/:id/pods/preview", () =>
+        HttpResponse.json({ title: "bad selection" }, { status: 422 }),
+      ),
+      getListFillerMockHandler({ clips: [], total: 0 }),
+      getListTaxonomyMockHandler({ taxa: [] }),
+      getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [] }),
     );
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();

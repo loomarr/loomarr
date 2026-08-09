@@ -1,9 +1,17 @@
 import type { FillerSourceDTO } from "@loomarr/api";
+import {
+  getAddFillerSourceMockHandler,
+  getListFillerSourcesMockHandler,
+  getMeMockHandler,
+  getSetFillerSourceEnabledMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { me } from "@/test/fixtures/users";
+import { server } from "@/test/msw/server";
 import { SourcesPanel } from "./sources-panel";
 
 // SourcesPanel owns the Sources tab's own state and mutations — the switches, the add form, the
@@ -23,43 +31,35 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
 // Records method + url + parsed body, so a test can prove WHAT was sent rather than only that
 // something was.
 // ⚠ `/v1/auth/me` must answer with an ADMIN — note the path, it is not `/v1/me`. The panel reads
 // `useAuth()`, and the add form, the switches and the per-source search are all admin-only, so a
 // stub that misses this route renders a read-only list and every admin assertion fails for the
 // wrong reason.
-const stubFetch = () => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      const u = String(url);
-      calls.push({
-        method,
-        url: u,
-        body: init?.body ? JSON.parse(init.body as string) : undefined,
-      });
-      if (u.includes("/v1/auth/me")) {
-        return Promise.resolve(
-          jsonResponse(200, {
-            id: "u1",
-            name: "Admin",
-            role: "admin",
-            autoApprove: true,
-            disabled: false,
-            quota: 0,
-          }),
-        );
-      }
-      return Promise.resolve(jsonResponse(200, { sources: [], total: 0, results: [] }));
+// ⚠ The catch-all answered EVERY non-`me` request with `{ sources: [], total: 0, results: [] }` —
+// a UNION of three different endpoints' shapes, merged so that whichever one asked would find
+// something plausible. That is the strongest possible form of the wrong-shape trap: it cannot fail,
+// because it is pre-satisfied for every caller.
+//
+// ⚠ The `me` fixture also omitted `local`, which MeBody requires. `me()` carries it.
+const stubSources = () => {
+  const adds: unknown[] = [];
+  const enables: { id: string; body: unknown }[] = [];
+  server.use(
+    getMeMockHandler(me({ name: "Admin" })),
+    getAddFillerSourceMockHandler(async ({ request }) => {
+      adds.push(await request.json());
+      // ⚠ The add returns a RemoteSourceDTO — `{ id, label, uri, enabled }` — not a bare id.
+      return { id: "src-new", label: "New source", uri: "/mnt/extra-ads", enabled: true };
     }),
+    getSetFillerSourceEnabledMockHandler(async ({ request, params }) => {
+      enables.push({ id: String(params.id), body: await request.json() });
+      return { id: String(params.id), enabled: false };
+    }),
+    getListFillerSourcesMockHandler({ sources: [], total: 0 }),
   );
-  return calls;
+  return { adds, enables };
 };
 
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
@@ -79,11 +79,9 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
 const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })]) =>
   render(<SourcesPanel sources={sources} />, { wrapper: makeWrapper() });
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe("SourcesPanel", () => {
   it("lists the sources it is given", () => {
-    stubFetch();
+    stubSources();
     renderPanel([
       source({ kind: "folder", id: "folder", target: "/data/filler" }),
       source({ kind: "archive", id: "archive:classic", target: "classic_tv_commercials" }),
@@ -98,17 +96,16 @@ describe("SourcesPanel", () => {
   // sent, the hardcoded archive validator rejected every playlist URL with a message about
   // archive.org collections.
   it("sends the chosen kind with the new source", async () => {
-    const calls = stubFetch();
+    const { adds } = stubSources();
     renderPanel();
 
-    // The add form is admin-only, so it appears only once `/v1/me` has resolved.
+    // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     const uri = await screen.findByRole("textbox");
     await userEvent.type(uri, "/mnt/extra-ads");
     await userEvent.click(screen.getByRole("button", { name: /add source/i }));
 
     await waitFor(() => {
-      const post = calls.find((c) => c.method === "POST" && c.url.includes("/v1/filler/sources"));
-      expect(post?.body).toEqual({ kind: "library", uri: "/mnt/extra-ads" });
+      expect(adds).toEqual([{ kind: "library", uri: "/mnt/extra-ads" }]);
     });
   });
 
@@ -116,15 +113,15 @@ describe("SourcesPanel", () => {
   // scanning; it does NOT remove clips already in the catalog. An operator who reads "off" as
   // "my clips are gone" will switch it back on and re-download everything they already have.
   it("switching a source off sends only the enabled flag", async () => {
-    const calls = stubFetch();
+    const { enables } = stubSources();
     renderPanel([source({ kind: "folder", id: "folder", target: "/data/filler" })]);
 
     await userEvent.click(screen.getByRole("switch", { name: "Use /data/filler" }));
 
     await waitFor(() => {
-      const patch = calls.find((c) => c.method === "PATCH");
-      expect(patch?.url).toContain("/v1/filler/sources/folder");
-      expect(patch?.body).toMatchObject({ enabled: false });
+      // The id is the PATH PARAM the resolver parsed, so this pins WHICH source was switched —
+      // the old version asserted `patch?.url` contained a string the test had also written.
+      expect(enables).toEqual([{ id: "folder", body: { enabled: false } }]);
     });
   });
 
@@ -132,7 +129,7 @@ describe("SourcesPanel", () => {
   // flag rather than testing the kind itself. A YouTube playlist can only be ENUMERATED by
   // yt-dlp, so a search box there would return nothing forever.
   it("offers search only on a searchable source", () => {
-    stubFetch();
+    stubSources();
     const { unmount } = renderPanel([source({ kind: "archive", id: "a", searchable: true })]);
     expect(screen.getByRole("button", { name: /search it/i })).toBeInTheDocument();
     unmount();
@@ -145,7 +142,7 @@ describe("SourcesPanel", () => {
   // gate or a deliberate per-result queue — an operator who expects "add" to start fetching would
   // otherwise read the silence as a failure.
   it("says that adding a source downloads nothing", async () => {
-    stubFetch();
+    stubSources();
     renderPanel();
     expect(await screen.findByText(/downloads nothing/i)).toBeInTheDocument();
   });

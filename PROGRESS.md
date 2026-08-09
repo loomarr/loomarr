@@ -609,11 +609,39 @@ coexist until the last stub is gone.
 Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
 fire on that string, and a mention that is deliberate should say so.
 
-**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 12 of 31 migrated; 19 remain.**
+**V53e — the migration, in batches (COMPLETE, 2026-08-09). 31 of 31 migrated.** Gate: `make fe`
+(**1243** app + 19 api + 51 core + 5 tokens, biome clean on 931 files) + `make retired-verify`
+(26 identifiers). The old mechanism is now BANNED by `scripts/check-retired.sh`, sabotage-verified:
+re-adding a `vi.stubGlobal("fetch"` line turns it red and reverting turns it clean.
 Batch 1 (`#206`): `use-auth`, `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`#207`):
 `wizard-ai-block`, `channel-row-menu`, `use-channel-refine`, plus the shared `channel()` fixture.
 Batch 3 (`#213`): `incoming-tab`, `split-review-page`. Batch 4: `channel-watch`, `app-router`, plus
-the shared `appHandlers()` baseline.
+the shared `appHandlers()` baseline. **Batch 5: the whole ROUTE-LEVEL set** — `help`, `users`,
+`guide-page`, `tasks-page`, `settings`, `wizard-router`, `filler`, `reachability` — plus the shared
+`me()`/`user()`/`setting()` fixtures.
+
+⚠ **`packages/api/src/mutator/mutator.test.ts` is a PERMANENT exception, not a to-do.** It tests
+`customFetch` itself and asserts on `credentials: "include"` and the `X-Loomarr-Csrf` header —
+neither of which an MSW resolver can observe, because MSW intercepts BELOW the layer under test.
+Stubbing `fetch` is the correct tool for testing the fetch wrapper. **When
+`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the final batch, this file needs an
+explicit carve-out** or the guard fails on the one file that is right.
+
+⚠ **`appHandlers()` MUST BE SPREAD LAST**, and this is the batch that found out why. MSW resolves
+the FIRST matching handler and `server.use()` PREPENDS, so "the most recent registration wins" is
+true across `use()` CALLS and exactly backwards WITHIN one. `test/help` overrode `/v1/docs` with two
+pages, got the baseline's `{ docs: [] }` instead, and failed as five 5-second TIMEOUTS with **no
+unhandled-request error** — the guard cannot help, because the request WAS handled, just by the
+wrong handler. Batch 4 never hit it only because everything `app-router` adds is absent from the
+baseline. The rule is now in `handlers.ts`'s header.
+
+⚠ **`main` WAS RED at `6f7269aa` and nobody knew.** `#214` added `handlers.ts` with
+`getListFillerMockHandler({ clips: [] })`; `#203` made `total` required on `ListFillerOutputBody`.
+Each was green against the main it branched from; together they did not typecheck, so main went red
+on the second merge and stayed red until `#217` fixed it in passing. **The coupling is the
+generated client, and neither diff mentions the other's file** — which is precisely the "two phases
+touching the same generated output" hazard CLAUDE.md's worktree section describes, in its
+harder-to-see form: not a merge conflict, but a clean merge that does not compile.
 
 ⚠ **The count is COUNTED, never tallied** — a running total in a commit message is exactly the sort
 of number that drifts, and it drifted twice before this rule:
@@ -642,21 +670,84 @@ grep -rl '@/test/msw/server' --include=*.test.tsx --include=*.test.ts .         
 
 ### What is left
 
-**Route-level (8)** — all mount the real app, all had the same catch-all, and `appHandlers()` now
-covers the common surface, so these should go far faster than `app-router` did (it paid the
-discovery cost for the set): `test/reachability` (538), `test/filler` (468), `test/wizard-router`
-(440), `test/settings` (359), `test/guide-page` (269), `settings/tasks-page` (285), `test/users`
-(202), `test/help` (154).
+**Route-level: DONE (batch 5).** The prediction that they would go faster than `app-router` held —
+`appHandlers()` covered most of the surface — but the catch-alls were hiding far more than expected:
+`test/reachability` alone had **13** (see below), against `app-router`'s nine.
 
-**Component-level (11)** — the established pattern applies directly: `channel-filler` (214),
-`channel-lineup-editor` (209), `tune-panel` (190), `use-channel-rules-draft` (189),
-`use-channel-filler-draft` (175), `refine-panel` (173), `filler-page` (167),
-`channel-suggest-panel` (164), `sources-panel` (152), `pin-clip-dialog` (152),
-`use-channel-lineup` (143).
+**Component-level: DONE (batch 6).** `channel-filler`, `channel-lineup-editor`, `tune-panel`,
+`use-channel-rules-draft`, `use-channel-filler-draft`, `refine-panel`, `filler-page`,
+`channel-suggest-panel`, `sources-panel`, `pin-clip-dialog`, `use-channel-lineup`. None mounts the
+route tree, so none needed `appHandlers()` — but the yield did not drop for being smaller files.
 
-⚠ **`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the FINAL batch only** — adding
-it sooner fails on every file still waiting. Until it lands, nothing stops a new test adding stub
-#20.
+⚠ **`vi.stubGlobal("fetch"` is now IN `scripts/check-retired.sh`** (batch 6, the final one). The
+carve-out for `mutator.test.ts` is the SEARCH PATH, not an allow-rule: the script searches
+`web/apps/web/src` and not `web/packages`. **Anyone widening `SEARCH` to `web/` must add an explicit
+exemption for that file in the same edit**, or the guard fails on the one file that is right.
+
+### Batch 5's findings — the yield went UP, not down
+
+**`test/reachability` was rendering 13 screens against `{}`.** It mounts every route in the
+generated tree, so it touches more of the API than any other file, and its entire purpose is to
+prove a screen shows REAL CONTENT. The catch-all was answering `/v1/playout/status`,
+`/v1/system/services`, `/v1/system/database`, `/v1/system/backups`, `/v1/system/restart`,
+`/v1/programming/vocabulary`, `/v1/library/collections`, `/v1/taxonomy`, `/v1/filler/pulls`,
+`/v1/channels/:id/{cycle,upcoming,tracks}`, `/v1/channels/:id/filler/coverage` and
+`POST …/pods/preview` — every one of which is a required array the page maps over. **A suite named
+"reachability" was asserting reachability against empty objects.**
+
+⚠ **Its own stub documented two of its failures in comments and they were never fixed** — both
+begin "Before the /v1/filler catalog match", describing how the sources tab and the incoming queue
+fell through to the CLIPS payload and rendered a wrong-shaped page that still passed. Its own words:
+*"a stub that answers the wrong shape is indistinguishable from a working page until something
+depends on the shape."* That is the argument for this whole migration, written by the thing it
+indicts. It also registered `/v1/proposals` **twice**, the second branch unreachable.
+
+**Eight more required fields no stub ever sent**, caught by `tsc` the moment the fixtures became
+typed: `UserBody.effectiveQuota` + `.pendingAcquisitions` (the users list was built by SPREADING
+the signed-in `MeBody`, a different type), `SettingEntry` × 4 (`advanced`/`doc`/`group`/`kind` —
+tests wrote four of its eight), `ClipDTO.playCount` + `.playsCounted`, `IncomingAskDTO.hash` (the
+clip's content identity, which every row action keys on), `SecretRevealOutputBody.displayable`,
+`LLMModelView.tools`, `ListFillerOutputBody.total`. Plus one response shape the API cannot
+produce: `TunarrConnectOutputBody` is `{ librariesEnabled, sourceId }`, and the test served
+`{ ok: true }`.
+
+**Three more substring collapses**, all in files that looked fine: `u.includes("/sessions")`
+matched both `GET /v1/users/:id/sessions` and `DELETE /v1/sessions/:hash`; `u.endsWith("/split")`
+was one character from `/v1/filler/splits/:id`, the read that immediately follows it; and
+`u.includes("/v1/filler/") && method === "PATCH"` matched both the single-clip tag write and
+`PATCH /v1/filler/sources/:id` — three assertions in `test/filler` then searched for "a PATCH, to
+anything" and read its body.
+
+### Batch 6's findings — smaller files, same rate
+
+⚠ **`init?.method === "PATCH"` with NO url check at all, in FIVE files** (`use-channel-lineup`,
+`channel-lineup-editor`, `use-channel-rules-draft`, `use-channel-filler-draft`, `pin-clip-dialog`,
+`tune-panel`). Every one recorded "a PATCH happened" and then asserted on its body. In
+`use-channel-rules-draft` that assertion carries the hook's CENTRAL claim — *editing previews and
+does not save* — so the one property the file exists to prove was resting on a predicate that a
+PATCH to any endpoint in the app would satisfy.
+
+⚠ **The strongest form of the wrong-shape trap, in `sources-panel`:** its catch-all answered every
+non-`me` request with `{ sources: [], total: 0, results: [] }` — a UNION of three endpoints' shapes,
+merged so whichever one asked would find its field. A stub like that cannot fail; it is pre-satisfied
+for every caller.
+
+⚠ **A second duplicated `/v1/proposals` branch** (`channel-suggest-panel`:
+`u.includes("/v1/proposals") || u.includes("/v1/proposals")`), matching the one in
+`test/reachability`. Dead code in a stub produces no symptom at all, which is why both survived.
+
+**Nine more required fields and two impossible shapes**, all caught by `tsc` the moment the fixtures
+became typed: `ClipDTO.playCount`/`.playsCounted`, `Proposal.alternates`/`.scores`,
+`ApproveOutputBody.status`, `SettingsListOutputBody.features`, plus `RemoteSourceDTO` (the add
+returns `{ id, label, uri, enabled }`, not a bare id) and `SetFillerSourceEnabledOutputBody` (a body,
+not 204). The two impossible ones: `filler-page` served `/v1/filler/pool` as
+`{ total, untagged, channels }` — `total` is not a field of `FillerPoolOutputBody` at all, and
+`clips`/`commercials`/`eligible` are all required — and `test/settings` served
+`TunarrConnectOutputBody` as `{ ok: true }` when the wire says `{ librariesEnabled, sourceId }`.
+
+⚠ **`vi.restoreAllMocks()` does not undo `vi.stubGlobal`.** Three files installed a mock
+`EventSource` that way and cleaned up with `restoreAllMocks`, so the capture leaked into whatever
+ran next. `unstubAllGlobals` is the matching call.
 
 ⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
 wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
@@ -687,11 +778,23 @@ Batch 1's first CI run went red on `mcr.microsoft.com` TLS handshake timeout —
 identical commit while 2/2 died in 57s, and a real snapshot diff cannot be shard-asymmetric on the
 same code. Re-run, not a code change.
 
-**Next up: V53f+** — the remaining 23 files in batches of 5–8, then add `vi.stubGlobal("fetch"` to
-`scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard would fail on every file
-still waiting. `use-channel-refine` is deliberately deferred — deferred promises plus method-only
-dispatch (its own comment says it avoids "pinning to exact URL strings", which is the weakness being
-removed), so it needs a careful pass rather than a batch slot.
+**V53e is CLOSED.** 31 files migrated across six batches, ~60 defects, and the guard that stops a
+thirty-second one. Nothing here is "next up".
+
+⚠ **The number worth carrying forward is the RATE, not the total: it never tapered.** Batch 1
+averaged a defect a file and so did batch 6, across files a third the size. That is the argument
+against the intuition this migration kept inviting — "the remaining ones are smaller, they will be
+clean". They were not, because size was never the variable. **A hand-rolled stub is UNTYPED and
+UNBOUND, and both properties fail silently**: the type lets a fixture omit a required field forever,
+and the substring lets an assertion match a request it was not about. A short file has fewer places
+to hide one, not a lower chance per place.
+
+⚠ **The two mechanisms that actually caught things are worth reusing anywhere mocks are involved.**
+The unhandled-request guard turned "answered with `{}`" into a named failure and found 13 endpoints
+in one file. The generated types turned "fixture omits a required field" into a compile error and
+found nineteen. Neither is a test anyone wrote; both are a *shape* that makes the defect
+unrepresentable. `appHandlers()` is the counterexample that proves it — a hand-maintained list,
+guarded only by the first mechanism, which is exactly why its header says so.
 
 **V50d(a) — the collapsed-body focus gap V50c left behind (2026-08-09).** Gate: `make fe`
 (**1223** app + 19 api + 51 core + 5 tokens, biome clean on 923 files).
@@ -780,8 +883,34 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
-**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, branch
-`v51g-pipeline-budget`).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+**Next up: V51f** — the last unbuilt phase of the V51 plan: the era RANGE whose `To` is rendered,
+typed, validated and never read; the audience setting that silently empties every ladder rung on an
+untagged catalog; three dead policy fields. ⚠ Before it, close the V51g loop that is still open —
+`WAGA-5/Fox Commercial Breaks(2/5/1995)` has never been seen to finish a split. It sat at
+`split/running` all session because it was STARVED, not because splitting is broken; with the yield
+in (#225) it should now get a turn. Watch it reach review before believing V51g is done.
+
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, PRs #223 and
+#225).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+
+⚠ **Three fixes, and only the first was the one that was planned.** Each was correct and exposed
+the next, one layer up — and **none of the last two were reachable from any test**; all three were
+found by reading a log line that looked fine.
+
+1. **The planned fix** (#223): delete `classify`, defer instead of failing, detach the writes.
+2. **The scheduler had the identical bug** — `UpsertScheduledJob` recorded a job's outcome through
+   the context whose expiry caused it, so ANY job killed by its deadline never persisted
+   `last_result`/`last_error`/`next_run`. Not filler-specific; every job in the registry. Found in
+   the log within a minute of running the first fix.
+3. **The polite deferral then STARVED the queue** (#225). Oldest-first work list, so the 2.4-hour
+   recording that could not fit a pass was handed the whole budget again on the next one — the
+   other **84 clips were never reached**. A deferral now yields (`NextRun` one pass ahead): not the
+   backoff a failure earns, a turn-taking rule.
+
+⚠ **`advanced=0 completed=0 rejected=0 failed=0` is what total starvation looks like**, and it is
+also what a healthy idle pass looks like. The field that distinguishes them — `deferred` — was the
+one added to the struct and forgotten in the log line. The old code at least said "failed". **A
+number removed from a log is a number an operator stops being able to act on.**
 Diagnosed from a live catalog, and the measurements are in §10 (V51g) because they are what
 corrected the diagnosis twice.
 
@@ -835,6 +964,21 @@ alone would be ~5 minutes and exceed a pass again. The fix then is a per-pass SE
 resume by `(ParentHash, index)` — the lineage column exists (§10 V45, migration 00039). Not built
 because the measured corpus does not reach it, and resume interacts with proposal editing in ways
 that need their own design.
+
+⚠ **This entry describes the FIRST half of #208. The second half — the conveyor merge — was found
+by looking at the rendered result and is recorded in §10 (V51e).** Briefly: `asks` and `pipeline`
+shipped as two arrays over overlapping populations, and on 85 real clips **84 appeared in both** —
+a row demanding a decision above a row captioned "nothing here needs you". The state that fixed it
+already existed and was never consulted: V51b's `review` disposition means exactly "the machine is
+finished and a human is needed", which is the population `asks` was inferring from tag-shape. One
+array (`clips`), `needsDecision` per row. `total` counted `len(asks)` — the same number by accident
+and the wrong rule by construction — and now counts `NeedsDecision`, so the badge and the list
+finally agree. Verified live: 85 rows, 85 unique hashes, badge 0.
+
+⚠ Also found by looking, not testing: `resolve` collapsed `queued` into `running`, so all 85
+enrolled clips rendered as actively being worked on when one was. And `role="alert"` on an `<li>`
+replaced its implicit `listitem` role, breaking the ladder's list semantics — an axe `serious` that
+was **hidden behind a colour-contrast failure on the same element** until that one cleared.
 
 **V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
 `v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`

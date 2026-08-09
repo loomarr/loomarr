@@ -1,11 +1,13 @@
+import { getGetDocMockHandler, getListDocsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
-
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
+import { me } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
 const TROUBLESHOOTING = `# Troubleshooting
 
@@ -20,45 +22,33 @@ Tunarr owns playout.
 One-time wiring.
 `;
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const DOCS = {
+  quickstart: { slug: "quickstart", title: "Quickstart", markdown: "# Quickstart\n\nStart here." },
+  troubleshooting: { slug: "troubleshooting", title: "Troubleshooting", markdown: TROUBLESHOOTING },
+} as const;
 
-const stubFetch = () => {
-  const mock = vi.fn((url: string) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-    if (u.includes("/v1/docs/troubleshooting")) {
-      return Promise.resolve(
-        json({ slug: "troubleshooting", title: "Troubleshooting", markdown: TROUBLESHOOTING }),
-      );
-    }
-    if (u.includes("/v1/docs/quickstart")) {
-      return Promise.resolve(
-        json({ slug: "quickstart", title: "Quickstart", markdown: "# Quickstart\n\nStart here." }),
-      );
-    }
-    if (u.includes("/v1/docs")) {
-      return Promise.resolve(
-        json({
-          docs: [
-            { slug: "quickstart", title: "Quickstart" },
-            { slug: "troubleshooting", title: "Troubleshooting" },
-          ],
-        }),
-      );
-    }
-    if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: [] }));
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
+// ⚠ The old stub matched docs by URL SUBSTRING, which forced a specificity ordering it had to get
+// right by hand: `/v1/docs/troubleshooting` was tested before `/v1/docs`, because `includes` has
+// no notion of a more specific route. `getGetDocMockHandler` binds to `*/v1/docs/:slug`, so MSW
+// parses the path and hands over `params.slug` — the list and the single-page reads can no longer
+// shadow each other, and a doc fetched at a path the spec does not declare goes UNHANDLED rather
+// than falling through to the list branch.
+const stubHelp = () => {
+  server.use(
+    getMeMockHandler(me()),
+    getListDocsMockHandler({
+      docs: [
+        { slug: "quickstart", title: "Quickstart" },
+        { slug: "troubleshooting", title: "Troubleshooting" },
+      ],
+    }),
+    getGetDocMockHandler(({ params }) => {
+      const doc = DOCS[params.slug as keyof typeof DOCS];
+      if (!doc) throw new Error(`test asked for an unmodelled doc: ${String(params.slug)}`);
+      return doc;
+    }),
+    ...appHandlers(),
   );
-  return mock;
 };
 
 const renderAt = (path: string) => {
@@ -75,8 +65,6 @@ const renderAt = (path: string) => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("Help page", () => {
   // Opening Help with nothing selected reads as broken, so it defaults to the first page.
   //
@@ -88,7 +76,7 @@ describe("Help page", () => {
   // Diagnosing it properly means reading the Help page's loading logic, which is V15's
   // rebuild — filed rather than papered over with a longer timeout.
   it("renders the first page as markdown, not raw source", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help");
     // A heading ELEMENT, not a literal "# Quickstart" string — the difference between
     // rendering markdown and printing it.
@@ -102,7 +90,7 @@ describe("Help page", () => {
   // heading must carry the matching id — a Go test and a core test both pin the anchors,
   // and this pins that the RENDERER applies them.
   it("opens the page named in the URL and gives headings their anchor ids", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help?page=troubleshooting");
     const heading = await screen.findByRole("heading", { name: "Tunarr" });
     expect(heading).toHaveAttribute("id", "tunarr");
@@ -110,7 +98,7 @@ describe("Help page", () => {
   });
 
   it("filters the page list", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help");
     await screen.findByRole("button", { name: "Troubleshooting" });
 
@@ -120,7 +108,7 @@ describe("Help page", () => {
   });
 
   it("switches pages from the nav", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help");
     await userEvent.click(await screen.findByRole("button", { name: "Troubleshooting" }));
     expect(await screen.findByRole("heading", { name: "Tunarr" })).toBeInTheDocument();
@@ -132,7 +120,7 @@ describe("Command palette", () => {
   // (`const [, setCommandOpen] = useState(false)`), so clicking it did nothing at all.
   // Both entry points now drive one piece of state.
   it("opens from the shell's Search button", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help");
     await screen.findByRole("button", { name: "Troubleshooting" });
 
@@ -141,7 +129,7 @@ describe("Command palette", () => {
   });
 
   it("opens and closes on the keyboard shortcut", async () => {
-    stubFetch();
+    stubHelp();
     renderAt("/help");
     await screen.findByRole("button", { name: "Troubleshooting" });
 
