@@ -19,6 +19,14 @@ type FillerSearch = {
   // filters are: a shared link should show what the sender was looking at. ⚠ Selection is
   // deliberately NOT here — see the note on `selected` in filler-page.
   view?: string;
+  // Which page of the catalog (§10 V51d), 1-based. In the URL because a pager that the back
+  // button cannot undo is a trap: paging to 7 and pressing back should return to 6, not leave
+  // the catalog entirely.
+  //
+  // ⚠ Dropped when it is 1, like `view: "grid"`, so the common link stays clean. ⚠ `pageSize`
+  // is deliberately NOT here — it is one constant for both views, so switching grid/list cannot
+  // renumber the pages under the operator.
+  page?: number;
 };
 
 const KINDS = ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
@@ -32,12 +40,17 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
   // Only "list" is carried; "grid" is the default and stays out of the URL so the common
   // view has a clean link. An unknown value falls back to the grid rather than erroring.
   const view = search.view === "list" ? "list" : undefined;
+  // ⚠ Clamped to a whole number ≥ 1 and dropped when it is 1. A hand-typed `?page=0` or
+  // `?page=abc` must land on page one rather than sending `offset=-60` (a 422) or NaN.
+  const rawPage = Number(search.page);
+  const page = Number.isFinite(rawPage) && rawPage > 1 ? Math.floor(rawPage) : undefined;
   return {
     ...(q ? { q } : {}),
     ...(kind ? { kind } : {}),
     ...(audience ? { audience } : {}),
     ...(untagged ? { untagged } : {}),
     ...(view ? { view } : {}),
+    ...(page ? { page } : {}),
   };
 };
 

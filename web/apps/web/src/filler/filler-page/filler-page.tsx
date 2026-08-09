@@ -63,6 +63,15 @@ type TagChange = Partial<Pick<ClipDTO, "era" | "audience">>;
 // editing is per-clip in the dialog, which serves the real vocabulary. Bulk era/audience stay: those
 // ARE single closed-enum values a menu fits. (The old category options were also a rule violation —
 // hardcoded, and a DIFFERENT 6-value set than every other place used; see the no-hardcode rule.)
+
+// How many clips one page of the catalog holds (§10 V51d).
+//
+// ⚠ **ONE size for both the grid and the list**, deliberately. A per-view size would renumber the
+// pages under the operator the moment they switched rendering — page 3 of the grid and page 3 of
+// the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
+// 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
+const CATALOG_PAGE_SIZE = 60;
+
 const BULK_TAG_FIELDS = [
   { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
   { key: "audience", label: "Set audience", options: ["kids", "family", "general", "late_night"] },
@@ -109,9 +118,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     audience = "",
     untagged = false,
     view = "grid",
+    page = 1,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
+  // ⚠ **Every filter change RESETS the page, and this is the single highest-risk line on the
+  // page** (§10 V51d). `setFilters` merges blindly; without the reset, typing in the search box
+  // while on page 7 lands on an empty page 7 of a two-page result and renders "No clips match"
+  // over a catalog that matches plenty. The rule lives HERE, in the one function every filter
+  // control calls, rather than at each control — six call sites is six chances to forget it.
+  //
+  // ⚠ Paging itself is the exception, so it passes `page` explicitly and keeps it.
   const setFilters = (next: Partial<FillerSearch>) =>
-    navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
+    navigate({
+      to: "/filler",
+      search: (prev) => ({ ...prev, page: undefined, ...next }),
+      replace: true,
+    });
 
   // What the Catalog tab's link carries back.
   //
@@ -126,6 +147,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(audience ? { audience } : {}),
     ...(untagged ? { untagged } : {}),
     ...(view !== "grid" ? { view } : {}),
+    // ⚠ The page rides back too: returning to Catalog from Incoming should land where you left,
+    // not silently on page one of a catalog you were seven pages into.
+    ...(page > 1 ? { page } : {}),
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
@@ -138,11 +162,16 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const features = unwrap(settings.data, (b) => b.features);
   const fillerConfigured = Boolean(features?.filler);
 
+  // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
+  // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
+  // silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller({
     ...(q ? { q } : {}),
     ...(kind ? { kind: kind as never } : {}),
     ...(audience ? { audience: audience as never } : {}),
     ...(untagged ? { untagged: true } : {}),
+    limit: CATALOG_PAGE_SIZE,
+    ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
   });
 
   // ⚠ `invalidateLifecycle` invalidates the clip list AND the two queue views (Incoming, pool).
@@ -223,6 +252,22 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       return next;
     });
   const clearSelection = () => setSelected(new Set());
+  // Paging (§10 V51d).
+  //
+  // ⚠ `replace: false`, unlike `setFilters`: paging IS navigation, so the back button should walk
+  // back through the pages. Typing in a search box should not stack one history entry per
+  // keystroke, which is why the two differ.
+  //
+  // ⚠ It clears the selection. "Select this page" means the rows in front of you, and the next
+  // control on the bulk bar is Remove-from-catalog — a selection that survived paging would let
+  // one click remove clips from a page nobody is looking at.
+  const goToPage = (next: number) => {
+    clearSelection();
+    navigate({
+      to: "/filler",
+      search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
+    });
+  };
   // "Select all" over the rows currently RENDERED (V35b). ⚠ Scoped to the filtered set on
   // purpose: `rows` is what the operator can see, and the bulk bar's next control is
   // "Remove from catalog". Selecting clips hidden behind a filter would arm a destructive
@@ -365,6 +410,14 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
+  // ⚠ `total` is how many clips MATCH THE FILTER, counted in SQL through the same predicate as
+  // the rows (§10 V51d) — not `rows.length`, which is one page. The two are the same number only
+  // on a single-page result, which is exactly why deriving one from the other looked fine for as
+  // long as the listing was unbounded.
+  const total = clips.data?.status === 200 ? (clips.data.data.total ?? 0) : 0;
+  const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
+  const firstOnPage = (page - 1) * CATALOG_PAGE_SIZE + 1;
+  const lastOnPage = (page - 1) * CATALOG_PAGE_SIZE + clipList.length;
 
   const filtered = Boolean(q || kind || audience || untagged);
 
@@ -457,7 +510,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         // sources on"), and a bare "5" beside the label answers a question nobody asked while
         // implying the tab is a backlog.
         tabs={[
-          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: clipList.length },
+          // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
+          // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
+          // moment the listing started paging.
+          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: total },
           ...(isAdmin
             ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
             : []),
@@ -690,15 +746,30 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             />
           ) : (
             <>
+              {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
+                  ("what's next?") — never both in one place. */}
               <div className="flex items-center gap-3">
-                <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
+                <p className="text-muted-foreground text-sm">
+                  {pageCount > 1
+                    ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
+                    : pluralize(total, "clip")}
+                </p>
                 {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                     what is on screen — not the whole catalog. Selecting rows the operator
                     cannot see, then offering "Remove from catalog", is how a bulk action
-                    surprises someone. The label says so when a filter is active. */}
+                    surprises someone. The label says so when a filter is active.
+                    ⚠ Paging sharpened that: "on screen" is now one PAGE, so the label says
+                    "Select this page" whenever there is more than one — and `goToPage` clears
+                    the selection, or a Remove would reach rows from a page nobody is looking at. */}
                 {isAdmin && (
                   <Button variant="ghost" size="sm" onClick={() => selectAll(rows)}>
-                    {allSelected(rows) ? "Clear selection" : filtered ? "Select these" : "Select all"}
+                    {allSelected(rows)
+                      ? "Clear selection"
+                      : pageCount > 1
+                        ? "Select this page"
+                        : filtered
+                          ? "Select these"
+                          : "Select all"}
                   </Button>
                 )}
               </div>
@@ -748,6 +819,34 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                     />
                   ))}
                 </div>
+              )}
+
+              {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
+                  "did my filter work?". Rendered only when there is more than one page, so the
+                  common household catalog never grows a control it does not need.
+
+                  ⚠ Prev/Next plus a position, not a numbered page strip. A strip is the V51e
+                  catalog redesign's call to make; what this must not do is leave the clips past
+                  row 60 unreachable, which is what a page size with no pager would be. */}
+              {pageCount > 1 && (
+                <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+                    Previous
+                  </Button>
+                  {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
+                      announcement a screen-reader user gets a silently different list. */}
+                  <p aria-live="polite" className="text-muted-foreground text-sm">
+                    Page {page.toLocaleString()} of {pageCount.toLocaleString()}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= pageCount}
+                    onClick={() => goToPage(page + 1)}
+                  >
+                    Next
+                  </Button>
+                </nav>
               )}
             </>
           )}

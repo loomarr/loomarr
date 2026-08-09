@@ -560,6 +560,75 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
+**V51d — the catalog is paged, sorted, and searched wider (2026-08-09).** Gate: `make check`
+(0 lint, `-race`) + `make test-pg` (both dialects, **4 new conformance suites × 2 backends**) +
+`make fe` (biome clean on 918 files + tsc + unit + SPA + storybook build) + `make openapi-verify`
++ `make retired-verify` (25 identifiers) + `make config-docs`.
+
+`GET /v1/filler` returned **every clip in the install** on every call, and four clients depended on
+it. `limit` now defaults to 100 and caps at 500, `total` rides every response, and the listing
+sorts by `name|duration|added|plays|confidence` in either direction. This also removes a latent
+hard failure: `attachTags` binds one parameter per clip in a single `IN (…)` and Postgres caps a
+statement at 65535, so the unpaginated read stopped working north of ~65k clips.
+
+⚠ **`ClipFilter.Limit == 0` means NO limit, and the default lives in the API.** Pod assembly loads
+the catalog through the zero filter, so a store-side default of 100 would silently cut every
+channel's break pool to a hundred clips — no error, no log line. `TestListFiller_DefaultsToOnePage…`
+pins the number at the HTTP edge for exactly that reason, and `minimum:"1"` on the parameter stops
+a client reaching the store's unbounded sentinel with `limit=0`.
+
+⚠ **The sabotage pass found the property I expected to be load-bearing was not.** Deleting the
+`hash` tie-break left `PagesConcatenateToTheWholeList` **green on SQLite** — its plan happens to be
+stable across `LIMIT/OFFSET` re-executions, so the property that exists to catch a missing total
+order could not catch it there. What does catch it, deterministically and on both backends, is
+`DescendingIsTheExactReverse`. Removing `LOWER(name)` fails loudly (SQLite's BINARY collation puts
+`'Z' < 'a'`), and removing the frontend's `page: undefined` reset turns its own test red. A
+first-try green on a new constraint stays suspect.
+
+**Four unbounded consumers, four different fixes** — the point is that paging *deleted* three of
+them rather than paginating them: the dashboard's clip count reads `/v1/filler/watch`'s SQL-counted
+total (it was fetching every column of every clip for one `.length`); the channel pin/exclude
+resolver asks for **the hashes it holds** (`ClipFilter.Hashes`) — the old catalog-and-map shape was
+not merely wasteful under paging but WRONG, resolving whichever pins landed on page one; the ⌘K
+palette asks for the six rows it renders, through one `CLIP_RESULTS` constant shared with the
+slice; and the Filler page wires the pager.
+
+⚠ **The highest-risk line is the frontend's, not the store's**: every filter change must reset
+`page`. `setFilters` merges blindly, so without it, typing in the search box on page 7 lands on an
+empty page 7 of a two-page result and renders "No clips match" over a catalog that matches plenty.
+The rule lives in the one function every filter control calls, and is sabotage-verified.
+
+**Search widens** to `name | brand | visible_text | tags` (an `EXISTS` over `clip_tags`, never a
+JOIN — a clip with three matching tags must be one row, or `CountClips` counts it three times and
+the total contradicts the rows). `transcript` stays behind `QueryTranscript`: kilobytes per clip
+and "ford" matches "afford". **No FTS** — FTS5 and `tsvector` are different engines with different
+tokenizers, which would force `ListClips` to branch on dialect and the suite to assert
+equivalent-but-not-identical results per backend (§5 forbids it).
+
+**Migration `00045`, not the plan's `00044`** — V51b took that number. `clips.created_at`, because
+`updated_at` is bumped by every re-sync and an "added" sort backed by it would reshuffle the whole
+catalog after a routine scan. Existing rows backfill from `updated_at` as a stated estimate. It is
+the **fourth** column omitted from `UpsertClip`'s `DO UPDATE`, and the only one with no `Set…`
+writer at all: nothing may ever change when a clip arrived.
+
+**Two capabilities land in the store and API but are deliberately NOT switched on in the UI yet**,
+both sequenced to V51e rather than left as accidents:
+
+- **Composites-as-containers.** `TopLevelOnly` + `IncludeComposites` work and are conformance-
+  tested, but the catalog listing does not pass them, because **nothing in the frontend renders
+  `isComposite`** (`grep` finds zero uses outside the generated client). Turning them on today
+  would draw a 16-minute recorded break as an ordinary playable clip card with no "NOT AIRABLE"
+  marker — worse than the current inverse, where segments show as flat rows. V51e owns the
+  container row (the `NN CUTS` badge, the expand chevron, the segment grid).
+- **Sort.** The five keys and both directions are live on the wire and pinned by the concatenation
+  property; the catalog sends none of them, because the control is V51e's `Select` with the
+  direction baked into each option. Recorded here so it is a sequenced gap, not a surface-audit
+  orphan.
+
+⚠ **`hashes` is comma-separated on the wire, not repeated.** Huma emits `explode: false`, so
+`?hashes=a&hashes=b` parses as one value and silently resolves one clip; orval's generated URL
+builder calls `value.toString()` on the array, which produces the right thing. An API test asserts
+the comma form so the two halves cannot drift.
 
 **V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
 `feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean

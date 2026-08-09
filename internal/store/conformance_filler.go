@@ -1791,3 +1791,403 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("the prune took a LIVE clip's pipeline row with it (found=%v, %v)", stillThere, kerr)
 	}
 }
+
+// clipHashes is the identity projection the paging property compares on. ⚠ Hashes, not paths:
+// `ids2` returns paths and the tie-break sorts on `hash`, so comparing paths would be comparing a
+// column the ORDER BY never mentions.
+func clipHashes(clips []Clip) []string {
+	out := make([]string, len(clips))
+	for i, c := range clips {
+		out[i] = c.Hash
+	}
+	return out
+}
+
+func sameHashes(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// testClipPaging covers the catalog's paging, sorting and widened search (§10 V51d) on BOTH
+// backends.
+//
+// ⚠ **The centrepiece is the CONCATENATION PROPERTY**: for every sort key, both directions, at
+// several page sizes, all pages concatenated must equal the unpaginated list exactly. One
+// assertion catches three distinct bugs that are individually easy to miss — a missing tie-break
+// (a row appears on two pages and another vanishes), an off-by-one offset, and a per-dialect
+// collation difference — and it catches them on whichever backend has them.
+//
+// ⚠ **The fixture is load-bearing in two specific ways.** It contains deliberate TIES on every
+// tieable column, because a total order is untestable against distinct values; and it contains
+// CASE-MIXED names, because SQLite's BINARY collation puts 'Z' before 'a' while Postgres's locale
+// collation does not — so a missing `LOWER()` fails on exactly one backend, which is the class
+// `make test-pg` exists to catch.
+func testClipPaging(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+
+	// ⚠ Names deliberately straddle the case boundary. Under SQLite's BINARY collation every
+	// capital sorts before every lowercase ('Z' = 90 < 'a' = 97); under Postgres's locale
+	// collation they interleave. `LOWER(name)` is what makes the two agree, and these rows are
+	// what prove it: an implementation without it orders "Zeppelin Ad" and "apple juice"
+	// differently on the two backends while every other assertion here still passes.
+	type row struct {
+		id       string
+		name     string
+		duration int64
+		plays    int64
+		conf     int
+		created  int64
+	}
+	rows := []row{
+		{"p1", "apple juice", 30000, 5, 70, 1_700_000_100},
+		{"p2", "Zeppelin Ad", 30000, 5, 70, 1_700_000_200}, // ties p1 on duration/plays/confidence
+		{"p3", "banana split", 15000, 0, 10, 1_700_000_300},
+		{"p4", "Banana bread", 15000, 0, 10, 1_700_000_300}, // ties p3 on EVERYTHING, created included
+		{"p5", "cereal, morning", 60000, 12, 95, 1_700_000_400},
+		{"p6", "Cereal, evening", 45000, 12, 95, 1_700_000_500},
+		{"p7", "zzz last", 5000, 1, 0, 1_700_000_600},
+		{"p8", "AAA first", 90000, 99, 100, 1_700_000_700},
+		{"p9", "middle of the road", 30000, 5, 50, 1_700_000_800},
+	}
+	for _, r := range rows {
+		c := sampleClip(r.id, r.name, filler.Commercial, 1990, filler.Kids, "toys")
+		c.DurationMs = r.duration
+		c.PlayCount = r.plays
+		c.Confidence = r.conf
+		c.CreatedAt = time.Unix(r.created, 0).UTC()
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sorts := []ClipSort{"", ClipSortName, ClipSortDuration, ClipSortAdded, ClipSortPlays, ClipSortConfidence}
+
+	t.Run("PagesConcatenateToTheWholeList", func(t *testing.T) {
+		for _, sort := range sorts {
+			for _, desc := range []bool{false, true} {
+				full, err := s.ListClips(ctx, ClipFilter{Sort: sort, Desc: desc})
+				if err != nil {
+					t.Fatalf("sort %q desc=%v: %v", sort, desc, err)
+				}
+				want := clipHashes(full)
+				for _, size := range []int{1, 2, 3, 4, 7, 100} {
+					var got []string
+					for offset := 0; ; offset += size {
+						page, err := s.ListClips(ctx, ClipFilter{Sort: sort, Desc: desc, Limit: size, Offset: offset})
+						if err != nil {
+							t.Fatalf("sort %q desc=%v page@%d: %v", sort, desc, offset, err)
+						}
+						if len(page) == 0 {
+							break
+						}
+						if len(page) > size {
+							t.Fatalf("sort %q: page of %d rows exceeds limit %d", sort, len(page), size)
+						}
+						got = append(got, clipHashes(page)...)
+						if offset > len(rows)*2 { // a paranoid stop, so a broken LIMIT cannot loop forever
+							t.Fatalf("sort %q: paging did not terminate", sort)
+						}
+					}
+					if !sameHashes(got, want) {
+						t.Errorf("sort %q desc=%v size %d: pages concatenate to\n  %v\nbut the unpaginated list is\n  %v\n"+
+							"— a duplicated or dropped row means the ORDER BY is not a TOTAL order",
+							sort, desc, size, got, want)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("DescendingIsTheExactReverse", func(t *testing.T) {
+		for _, sort := range sorts {
+			asc, err := s.ListClips(ctx, ClipFilter{Sort: sort})
+			if err != nil {
+				t.Fatal(err)
+			}
+			desc, err := s.ListClips(ctx, ClipFilter{Sort: sort, Desc: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, d := clipHashes(asc), clipHashes(desc)
+			for i := range a {
+				if a[i] != d[len(d)-1-i] {
+					t.Errorf("sort %q: descending is not the reverse of ascending (%v vs %v) — the tie-break "+
+						"does not flip with the sort", sort, a, d)
+					break
+				}
+			}
+		}
+	})
+
+	// ⚠ THE dialect assertion. Without `LOWER(name)` this passes on one backend and fails on the
+	// other, which is the entire reason the store conformance suite runs twice.
+	t.Run("NameSortsCaseInsensitivelyOnBothBackends", func(t *testing.T) {
+		got, err := s.ListClips(ctx, ClipFilter{Sort: ClipSortName})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"p8", "p1", "p4", "p3", "p6", "p5", "p9", "p2", "p7"}
+		if !sameHashes(clipHashes(got), want) {
+			t.Errorf("name order = %v, want %v — 'Zeppelin Ad' after 'middle of the road' and "+
+				"'AAA first' before 'apple juice' only hold when the column is LOWER()ed",
+				clipHashes(got), want)
+		}
+	})
+
+	t.Run("UnknownSortIsAnErrorNotAFallback", func(t *testing.T) {
+		if _, err := s.ListClips(ctx, ClipFilter{Sort: "; DROP TABLE clips"}); !errors.Is(err, ErrUnknownClipSort) {
+			t.Errorf("unknown sort returned %v, want ErrUnknownClipSort — a silent fall-back to the "+
+				"default order makes a broken sort control look like a UI glitch", err)
+		}
+	})
+
+	t.Run("CountIgnoresLimitOffsetAndSort", func(t *testing.T) {
+		total, err := s.CountClips(ctx, ClipFilter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != len(rows) {
+			t.Fatalf("catalog total = %d, want %d", total, len(rows))
+		}
+		paged, err := s.CountClips(ctx, ClipFilter{Limit: 2, Offset: 4, Sort: ClipSortPlays, Desc: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if paged != total {
+			t.Errorf("CountClips with a page = %d, want %d — the total is 'how many match', not "+
+				"'how many are on this page', or the pager reports 'showing 1-2 of 2'", paged, total)
+		}
+	})
+
+	t.Run("OffsetPastTheEndIsEmpty", func(t *testing.T) {
+		got, err := s.ListClips(ctx, ClipFilter{Sort: ClipSortName, Limit: 5, Offset: 500})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Errorf("offset past the end returned %d rows, want none", len(got))
+		}
+	})
+
+	// ⚠ Offset with no limit must be IGNORED rather than emulated: sqlite rejects a bare OFFSET,
+	// so an implementation that renders one errors on one backend only.
+	t.Run("OffsetWithoutLimitIsIgnored", func(t *testing.T) {
+		got, err := s.ListClips(ctx, ClipFilter{Offset: 3})
+		if err != nil {
+			t.Fatalf("offset with no limit: %v", err)
+		}
+		if len(got) != len(rows) {
+			t.Errorf("got %d rows, want the whole catalog (%d) — a page with no size is not a page", len(got), len(rows))
+		}
+	})
+
+	t.Run("HashesReadsExactlyTheAskedForClips", func(t *testing.T) {
+		got, err := s.ListClips(ctx, ClipFilter{Hashes: []string{"p3", "p8", "not-a-clip"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("got %d clips, want 2 (the unknown hash is simply absent, never an error)", len(got))
+		}
+		n, err := s.CountClips(ctx, ClipFilter{Hashes: []string{"p3", "p8", "not-a-clip"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 2 {
+			t.Errorf("CountClips over the same hashes = %d, want 2 — the predicate is shared, so it cannot differ", n)
+		}
+	})
+}
+
+// testClipSearchWidened covers the V51d search across name | brand | visible_text | tags, and the
+// opt-in transcript (§10 V51d).
+//
+// ⚠ Every case asserts CountClips alongside ListClips. They share `clipWhere` precisely so a
+// search's total cannot disagree with its rows, and an EXISTS that was written as a JOIN would
+// break exactly that — a clip with three matching tags counting three times.
+func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+
+	named := sampleClip("s1", "Crunchy Flakes 1994", filler.Commercial, 1994, filler.Kids, "cereal")
+	branded := sampleClip("s2", "unnamed spot", filler.Commercial, 1994, filler.Kids, "cereal")
+	branded.Brand = "Kellogg's"
+	seen := sampleClip("s3", "silent visual", filler.Commercial, 1994, filler.Kids, "cereal")
+	seen.VisibleText = "FORD TOUGH"
+	spoken := sampleClip("s4", "chatty spot", filler.Commercial, 1994, filler.Kids, "cereal")
+	spoken.Transcript = "you can afford a Ford this weekend"
+	for _, c := range []Clip{named, branded, seen, spoken} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ⚠ A REAL slug from the seeded forest, tagged through the real writer — a hand-inserted
+	// clip_tags row would not carry the rollups, and the search must match those too.
+	if err := s.SetClipTags(ctx, "s1", []string{"cereal"}, taxonomy.New(mustList(t, s, ctx)), time.Unix(1_800_000_000, 0).UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	hits := func(t *testing.T, f ClipFilter) []string {
+		t.Helper()
+		got, err := s.ListClips(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := s.CountClips(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != len(got) {
+			t.Errorf("CountClips = %d but ListClips returned %d for %+v — the shared predicate has drifted", n, len(got), f)
+		}
+		return clipHashes(got)
+	}
+
+	t.Run("MatchesName", func(t *testing.T) {
+		if got := hits(t, ClipFilter{Query: "crunchy"}); !sameHashes(got, []string{"s1"}) {
+			t.Errorf("name search = %v, want [s1]", got)
+		}
+	})
+	t.Run("MatchesBrand", func(t *testing.T) {
+		if got := hits(t, ClipFilter{Query: "kellogg"}); !sameHashes(got, []string{"s2"}) {
+			t.Errorf("brand search = %v, want [s2] — a catalog that cannot find a clip by its "+
+				"advertiser is a search box that looks broken", got)
+		}
+	})
+	t.Run("MatchesVisibleText", func(t *testing.T) {
+		if got := hits(t, ClipFilter{Query: "ford tough"}); !sameHashes(got, []string{"s3"}) {
+			t.Errorf("visible-text search = %v, want [s3]", got)
+		}
+	})
+	t.Run("MatchesTags", func(t *testing.T) {
+		if got := hits(t, ClipFilter{Query: "cereal"}); !sameHashes(got, []string{"s1"}) {
+			t.Errorf("tag search = %v, want [s1] exactly ONCE — a JOIN here would return the clip "+
+				"per matching tag and make the total disagree with the rows", got)
+		}
+	})
+	// ⚠ The transcript is opt-in, and this pair is what proves the flag does something. "afford"
+	// contains "ford", which is also the noise argument for keeping it opt-in.
+	t.Run("TranscriptOnlyWhenAskedFor", func(t *testing.T) {
+		if got := hits(t, ClipFilter{Query: "weekend"}); len(got) != 0 {
+			t.Errorf("default search matched the transcript (%v) — it is kilobytes per clip and the "+
+				"noisiest column; it must be opt-in", got)
+		}
+		if got := hits(t, ClipFilter{Query: "weekend", QueryTranscript: true}); !sameHashes(got, []string{"s4"}) {
+			t.Errorf("transcript search = %v, want [s4]", got)
+		}
+	})
+}
+
+// testClipTopLevelOnly pins the composite-as-container listing (§10 V51d).
+//
+// ⚠ The load-bearing half is the SECOND assertion: the ZERO filter must still return segments.
+// TopLevelOnly is opt-in because pod assembly reads through that zero filter, and segments are
+// the airable clips — an opt-out would delete every split-out advert from every channel's breaks.
+func testClipTopLevelOnly(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+
+	brk := sampleClip("brk", "KCPQ break 1996", filler.Commercial, 1996, filler.General, "")
+	brk.IsComposite = true
+	standalone := sampleClip("solo", "a single advert", filler.Commercial, 1996, filler.General, "toys")
+	segA := sampleClip("seg-a", "advert 1", filler.Commercial, 1996, filler.General, "toys")
+	segA.ParentHash = "brk"
+	segB := sampleClip("seg-b", "advert 2", filler.Commercial, 1996, filler.General, "toys")
+	segB.ParentHash = "brk"
+	for _, c := range []Clip{brk, standalone, segA, segB} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	zero, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := clipHashes(zero); !sameHashes(got, []string{"seg-a", "seg-b", "solo"}) {
+		t.Errorf("zero filter = %v, want the two SEGMENTS and the standalone clip (the composite is "+
+			"excluded, its segments are what air)", got)
+	}
+
+	top, err := s.ListClips(ctx, ClipFilter{TopLevelOnly: true, IncludeComposites: true, Sort: ClipSortName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := clipHashes(top); !sameHashes(got, []string{"solo", "brk"}) {
+		t.Errorf("top-level listing = %v, want [solo brk] — a break paginates as ONE container row", got)
+	}
+
+	// Expanding a break loads its segments, and TopLevelOnly must not silently empty that.
+	seg, err := s.ListClips(ctx, ClipFilter{ParentHash: "brk", TopLevelOnly: true, Sort: ClipSortName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := clipHashes(seg); !sameHashes(got, []string{"seg-a", "seg-b"}) {
+		t.Errorf("lineage read = %v, want both segments — ParentHash wins over TopLevelOnly, or "+
+			"expanding a break shows nothing on a break with twenty adverts in it", got)
+	}
+}
+
+// testClipCreatedAt pins the "recently added" column's single-writer rule (§10 V51d, 00045).
+//
+// ⚠ The whole point of the column is that a RE-SYNC must not move it. If `created_at` rode
+// UpsertClip's DO UPDATE list, every clip would read as "just added" after each folder scan and
+// the sort would be worthless — a failure with no error and no log line.
+func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+
+	arrived := time.Unix(1_700_000_000, 0).UTC()
+	c := sampleClip("ca1", "arrived once", filler.Commercial, 1994, filler.Kids, "toys")
+	c.CreatedAt = arrived
+	c.UpdatedAt = arrived
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+
+	// A re-sync: same clip, a later UpdatedAt, and — as the folder scan does — no CreatedAt at all.
+	rescanned := sampleClip("ca1", "arrived once", filler.Commercial, 1994, filler.Kids, "toys")
+	rescanned.UpdatedAt = arrived.Add(48 * time.Hour)
+	if err := s.UpsertClip(ctx, rescanned); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetClip(ctx, "ca1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.CreatedAt.Equal(arrived) {
+		t.Errorf("created_at = %v after a re-sync, want %v — the scan supplies a fresh timestamp "+
+			"every pass, so this column must be absent from the DO UPDATE list", got.CreatedAt, arrived)
+	}
+	if !got.UpdatedAt.Equal(arrived.Add(48 * time.Hour)) {
+		t.Errorf("updated_at = %v, want the re-sync's timestamp — it is the column that DOES ride", got.UpdatedAt)
+	}
+
+	// A writer that never heard of the column (every pre-V51d call site) still gets an honest
+	// value rather than a 0 that sorts to the far end of "recently added" forever.
+	fresh := sampleClip("ca2", "no created_at supplied", filler.Commercial, 1994, filler.Kids, "toys")
+	fresh.UpdatedAt = arrived
+	if err := s.UpsertClip(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := s.GetClip(ctx, "ca2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got2.CreatedAt.Equal(arrived) {
+		t.Errorf("created_at = %v with none supplied, want the UpdatedAt fallback (%v)", got2.CreatedAt, arrived)
+	}
+}

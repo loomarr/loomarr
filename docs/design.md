@@ -2458,6 +2458,92 @@ never *from which source*. So `bySource["archive"]` is 0 on essentially every in
 reports the **sum of its children's counts** — honest arithmetic over whatever the children claim,
 never an invented number. Per-source attribution is an **intake** change, tracked separately.
 
+### The catalog is paged, sorted, and searched wider (V51d)
+
+`GET /v1/filler` returned **every clip in the install** on every call, and four clients depended
+on that. On a catalog of a few hundred that is merely wasteful; at scale it is a hard failure —
+`attachTags` builds one bind parameter per clip in a single `IN (…)`, and Postgres caps a
+statement at 65535 parameters, so an unpaginated read stops working north of ~65k clips.
+
+**Offset pagination, not a cursor.** The catalog is a *filterable, sortable grid* that has to say
+"showing 61–120 of 1,204" and offer a page jump; a cursor expresses neither. A keyset cursor would
+also have to encode the full sort tuple — five sort keys × two directions is ten encoders, each an
+independent chance to get the tie-break wrong — while `total` here is free and correct **by
+construction**, because `CountClips` already shares `clipWhere` with `ListClips` (that sharing
+exists precisely so a second hand-written predicate cannot drift). A search can never return rows
+whose count disagrees with them.
+
+⚠ **`limit` defaults to 100 and caps at 500 — a deliberate behavioural break.** Three of the four
+clients were unbounded catalog reads that paging should *delete* rather than paginate, and all four
+are fixed in the same change: the dashboard's clip count reads `GET /v1/filler/watch`'s SQL-counted
+total; the channel-filler pin/exclude resolver asks for **the N hashes it actually holds**
+(`ClipFilter.Hashes`, a batch read) instead of loading the catalog to build a map; the ⌘K palette
+renders at most eight results and now asks for eight; and the Filler page wires the pager.
+
+⚠ **`ClipFilter.Limit == 0` means no `LIMIT` clause, and the default lives in the API, never in the
+store.** This is the single most important sequencing rule in the change: **pod assembly loads the
+catalog through the zero filter**, so a store-side default of 100 would silently cut every
+channel's break pool to the first hundred clips — a scheduling bug with no error and no log line.
+The same polarity argument the `IncludeHeld`/`IncludeComposites` flags carry, applied to a number.
+
+**Sort:** `name | duration | added | plays | confidence`, ascending or descending.
+
+- ⚠ **Every ordering appends `hash` as a tie-break.** Without a total order, `ORDER BY duration_ms`
+  under `LIMIT`/`OFFSET` may return one row on two pages and skip another — Postgres makes no
+  promise about the relative order of tied rows between statements. The tie-break is what makes
+  paging *correct*, not merely pretty.
+- ⚠ **`name` sorts as `LOWER(name), hash` on both dialects.** SQLite's default `BINARY` collation
+  puts `'Z' < 'a'`; Postgres's locale collation typically does not. Without the `LOWER()` this is
+  one suite producing two different orders, which is exactly the per-dialect fork §5's store rules
+  forbid — and the conformance fixture carries case-mixed names so that a regression fails on
+  exactly one backend, which is what `make test-pg` exists to catch.
+- ⚠ The sort column comes from a **fixed `switch`**, never concatenated from client input, and an
+  unknown value is an error rather than a silent fall-back to a default. A silent fall-back turns
+  "the sort control does nothing" into a bug nobody can see.
+
+**`added` needs a column — `clips.created_at` (migration `00045`).** `updated_at` cannot stand in:
+a re-sync bumps it on every clip it touches, so "recently added" would reshuffle the entire catalog
+after a routine folder scan. Existing rows backfill from `updated_at` as a **stated estimate** —
+the honest answer for clips that predate the column. ⚠ It is INSERTed but **omitted from
+`UpsertClip`'s `DO UPDATE`**, the same rule `held`, `removed_at`, `confidence` and the play counters
+already carry, and for the same reason: the scan supplies a fresh timestamp on every pass, so
+letting it ride the update list would make every clip "just added" after each sync — the precise
+failure the column exists to avoid.
+
+**Search widens** from `name` alone to `name | brand | visible_text | tags` (the last via an
+`EXISTS` over `clip_tags`, which is indexed both ways). `transcript` sits behind an explicit
+`QueryTranscript` flag rather than joining the default set: it is the one genuinely long column (a
+few KB per clip, so a 500-row page scans megabytes) and the one noisy one — "ford" matches "afford"
+with no ranking available to explain the hit.
+
+⚠ **No full-text search.** SQLite FTS5 and Postgres `tsvector` are two engines with different
+tokenizers and different ranking, so adopting them would force `ListClips` to branch on dialect and
+the conformance suite to assert *equivalent-but-not-identical* results per backend — one suite, two
+behaviours, which §5 forbids in as many words. A `LIKE` over four columns is slower in theory and
+indistinguishable at household scale. Because the predicate lives in the shared `clipWhere`, this
+widens `ListClips` and `CountClips` **together**, so `total` under a search cannot disagree with the
+rows returned.
+
+**Composites paginate as containers.** A new `ClipFilter.TopLevelOnly` (`parent_hash = ''`) is
+**opt-in**, set only by the catalog listing, and its opt-in argument is sharper than its siblings':
+**segments are the airable clips**, and pod assembly loads through the zero filter — so an opt-*out*
+would remove every advert split out of a recorded break from every channel's breaks, the exact
+inverse of what V45 exists to achieve. `ClipFilter.ParentHash` is exposed on the route so expanding
+a break loads its segments.
+
+⚠ **A shape defect this exposes:** `listFiller` passed **neither** `IncludeComposites` nor
+`TopLevelOnly`, so composites were invisible while their segments appeared as flat rows — the
+inverse of the composites design. The catalog listing now asks for composites *as containers* and
+hides the segments beneath them.
+
+**`ClipDTO` gains** `brand`, `confidence`, `held` (with `includeHeld` — the field and the parameter
+ship together, never the parameter alone, or a client can ask for held clips and not be told which
+ones they are), `language` (all three states documented), `visionTagged`, `license` (carrying
+`FillerSourceDTO.License`'s warning verbatim — **empty means UNKNOWN, never public domain**), and
+`hasTranscript`. ⚠ **Not `transcript` itself** — kilobytes per clip that no grid renders; at 100
+rows it would be roughly ten times the rest of the payload. ⚠ Not `visibleText`, which is the audit
+trail behind a vision-grounded tag and therefore a detail-surface concern.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.

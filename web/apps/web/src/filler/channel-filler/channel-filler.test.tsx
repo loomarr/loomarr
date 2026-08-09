@@ -58,11 +58,13 @@ const previewBody = {
 // …/channels/{id} is apply; GET /v1/filler is both the catalog resolve and the add-search.
 const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
   const patches: unknown[] = [];
+  const calls: string[] = [];
   const previews: unknown[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
+      calls.push(u);
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       if (method === "POST" && u.endsWith("/pods/preview")) {
@@ -91,7 +93,7 @@ const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
       return Promise.resolve(jsonResponse(200, { clips: opts.clips ?? [] }));
     }),
   );
-  return { patches, previews };
+  return { patches, previews, calls };
 };
 
 const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
@@ -178,8 +180,12 @@ describe("ChannelFiller", () => {
     });
   });
 
-  it("resolves a pinned clip's id to its name via the catalog", async () => {
-    stubFetch({
+  // ⚠ It resolves by asking for THOSE HASHES, not by loading the catalog and mapping it
+  // client-side (§10 V51d). The old shape worked only while the listing was unbounded: against
+  // a paged catalog it would resolve whichever pins happened to land on page one and render the
+  // rest as bare hashes — an override that looks like it has gone missing.
+  it("resolves a pinned clip's id by asking for that hash, not by loading the catalog", async () => {
+    const { calls } = stubFetch({
       clips: [
         {
           hash: "p9-hash",
@@ -195,6 +201,13 @@ describe("ChannelFiller", () => {
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
+
+    const resolves = calls.filter((u) => u.includes("/v1/filler?"));
+    expect(resolves.length, "the resolver must issue a listing request").toBeGreaterThan(0);
+    expect(
+      resolves.every((u) => u.includes("hashes=p9-hash")),
+      "every resolve must name the hashes it wants — an unfiltered listing is a catalog read",
+    ).toBe(true);
   });
 
   it("surfaces a preview failure rather than a silently empty break", async () => {
