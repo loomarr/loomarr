@@ -7,8 +7,6 @@ import { ClipPipeline } from "./clip-pipeline";
 const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
 
 const at = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
-  hash: "hash-cola",
-  name: "Coca-Cola 1985",
   stage: "tag",
   status: "running",
   progress: -1,
@@ -36,7 +34,7 @@ const at = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
 const meta = {
   title: "Filler/ClipPipeline",
   component: ClipPipeline,
-  args: { ladder: LADDER, row: at() },
+  args: { ladder: LADDER, name: "Coca-Cola 1985", row: at() },
   parameters: { layout: "padded" },
 } satisfies Meta<typeof ClipPipeline>;
 
@@ -76,7 +74,7 @@ const StripStates: Story = {
       ].map(({ label, row }) => (
         <div key={label} className="flex items-center gap-4">
           <span className="w-48 shrink-0 text-static-400 text-xs">{label}</span>
-          <ClipPipeline row={row} ladder={LADDER} />
+          <ClipPipeline row={row} name={label} ladder={LADDER} />
         </div>
       ))}
     </div>

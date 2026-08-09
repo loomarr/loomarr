@@ -4,8 +4,7 @@ import type {
   DiscoveredClip,
   FillerSourceDTO,
   GuideChannelTimeline,
-  IncomingAskDTO,
-  IncomingPipelineDTO,
+  IncomingClipDTO,
   IncomingReelDTO,
   IncomingRejectDTO,
   PodEntryDTO,
@@ -65,7 +64,7 @@ const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0,
 
 // An era the tagger proposed but could NOT ground in the clip's text — a decision with a
 // proposed answer the operator confirms or rejects.
-const guessedEraAsk: IncomingAskDTO = {
+const guessedEraAsk: IncomingClipDTO = {
   path: "1988/toys.mp4",
   hash: "hash-guessed-era-ask",
   name: "Transformers holiday spot",
@@ -79,7 +78,7 @@ const guessedEraAsk: IncomingAskDTO = {
 };
 
 // ⚠ A DIFFERENT question from the one above: nothing to confirm, so no proposed answer.
-const untaggedAsk: IncomingAskDTO = {
+const untaggedAsk: IncomingClipDTO = {
   path: "mystery.mp4",
   hash: "hash-untagged-ask",
   name: "mystery.mp4",
@@ -98,46 +97,82 @@ const stageLadder = ["probe", "transcode", "split", "language", "transcribe", "t
 
 // A clip on the rung that cannot measure itself: progress is the -1 sentinel, so the row must
 // show motion without a bar.
-const taggingClip: IncomingPipelineDTO = {
+//
+// ⚠ `needsDecision` is absent (falsy) — the MACHINE still owns this clip. That is the whole point
+// of the merged conveyor: it is one row on one belt, not an entry in a second list.
+const taggingClip: IncomingClipDTO = {
   hash: "c4e2000000000000000000000000000000000000000000000000000000001985",
+  path: "c4/e2/c4e2000000000000000000000000000000000000000000000000000000001985.mp4",
   name: "Coca-Cola 1985",
-  stage: "tag",
-  status: "running",
-  progress: -1,
+  kind: "commercial",
   durationMs: 31_000,
   thumbnail: "1985/cola.jpg",
-  stages: [
-    { stage: "probe", status: "done", at: "2026-08-01T12:00:00Z" },
-    { stage: "transcode", status: "done", at: "2026-08-01T12:00:20Z" },
-    {
-      stage: "split",
-      status: "skipped",
-      note: "it is a single advert, not a compilation",
-      at: "2026-08-01T12:00:21Z",
-    },
-    { stage: "language", status: "done", at: "2026-08-01T12:00:40Z" },
-    {
-      stage: "transcribe",
-      status: "skipped",
-      note: "the description already says enough",
-      at: "2026-08-01T12:00:41Z",
-    },
-  ],
-  updatedAt: "2026-08-01T12:01:00Z",
+  reason: "Loomarr is still working on this one.",
+  pipeline: {
+    stage: "tag",
+    status: "running",
+    progress: -1,
+    updatedAt: "2026-08-01T12:01:00Z",
+    stages: [
+      { stage: "probe", status: "done", at: "2026-08-01T12:00:00Z" },
+      { stage: "transcode", status: "done", at: "2026-08-01T12:00:20Z" },
+      {
+        stage: "split",
+        status: "skipped",
+        note: "it is a single advert, not a compilation",
+        at: "2026-08-01T12:00:21Z",
+      },
+      { stage: "language", status: "done", at: "2026-08-01T12:00:40Z" },
+      {
+        stage: "transcribe",
+        status: "skipped",
+        note: "the description already says enough",
+        at: "2026-08-01T12:00:41Z",
+      },
+    ],
+  },
 };
 
 // The ONE rung that can measure itself — ffmpeg reports out_time against a known duration.
 // ⚠ No thumbnail: a clip this early has not had one made, which is why the row reads `thumbnail`
 // rather than firing an <img> at the hash and hoping.
-const transcodingClip: IncomingPipelineDTO = {
+const transcodingClip: IncomingClipDTO = {
   hash: "d1a7000000000000000000000000000000000000000000000000000000001991",
+  path: "d1/a7/d1a7000000000000000000000000000000000000000000000000000000001991.mp4",
   name: "Fanta 1991",
-  stage: "transcode",
-  status: "running",
-  progress: 62,
+  kind: "commercial",
   durationMs: 28_000,
-  stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:02:00Z" }],
-  updatedAt: "2026-08-01T12:02:10Z",
+  reason: "Loomarr is still working on this one.",
+  pipeline: {
+    stage: "transcode",
+    status: "running",
+    progress: 62,
+    stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:02:00Z" }],
+    updatedAt: "2026-08-01T12:02:10Z",
+  },
+};
+
+// ⚠ The other end of the SAME belt: the machine has finished and handed this one over. It exists
+// so a story can show both row shapes in one list — which is the arrangement the two-list version
+// made impossible, and where it rendered the same clip twice.
+const needsDecisionClip: IncomingClipDTO = {
+  hash: "e5f3000000000000000000000000000000000000000000000000000000001993",
+  path: "e5/f3/e5f3000000000000000000000000000000000000000000000000000000001993.mp4",
+  name: "Frosted Flakes 1993",
+  kind: "commercial",
+  durationMs: 30_000,
+  suggestedEra: 1993,
+  audience: "kids",
+  confidence: 62,
+  needsDecision: true,
+  reason: "The year isn't written anywhere in this clip's name or description, so Loomarr guessed it.",
+  pipeline: {
+    stage: "score",
+    status: "done",
+    progress: -1,
+    stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:03:00Z" }],
+    updatedAt: "2026-08-01T12:03:30Z",
+  },
 };
 
 // A soft refusal: nothing in the clip said what it was. ⚠ `restorable` because
@@ -839,6 +874,7 @@ export {
   guideTo,
   healthyPool,
   intentTemplates,
+  needsDecisionClip,
   noAudioReject,
   pendingPull,
   podClips,

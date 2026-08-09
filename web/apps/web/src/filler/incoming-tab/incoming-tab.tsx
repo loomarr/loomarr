@@ -29,10 +29,9 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   useClipPipeline();
 
   const incomingQuery = fillerApi.useFillerIncoming();
-  const asks = unwrap(incomingQuery.data, (b) => b.asks) ?? [];
+  const clips = unwrap(incomingQuery.data, (b) => b.clips) ?? [];
   const reels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
   const recentlyFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
-  const pipeline = unwrap(incomingQuery.data, (b) => b.pipeline) ?? [];
   const rejected = unwrap(incomingQuery.data, (b) => b.rejected) ?? [];
   const stageOrder = unwrap(incomingQuery.data, (b) => b.stageOrder) ?? [];
 
@@ -83,12 +82,11 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       {/* ⚠ ABOVE the queue, matching the mock: the policy is the context the rows below are
           read in. Its counts come from this tab's query rather than a second one — the panel
           reports on the queue it sits over. */}
-      <TunePanel filed={recentlyFiled.length} needsYou={asks.length} />
+      <TunePanel filed={recentlyFiled.length} needsYou={clips.filter((c) => c.needsDecision).length} />
       <IncomingPanel
-        asks={asks}
+        clips={clips}
         reels={reels}
         recentlyFiled={recentlyFiled}
-        pipeline={pipeline}
         rejected={rejected}
         stageOrder={stageOrder}
         // ⚠ Restore rides the EXISTING bulk route with `restore: true`, not a second endpoint.
@@ -112,7 +110,7 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
             data: {
               // The clip is identified by `hash` in the body (§10 V45a) — this PATCH goes
               // through the single-clip tag route, which is hash-keyed. `busyClip`/`busyPath`
-              // above stay on `ask.path`: that's a local UI key only, and IncomingAskDTO still
+              // above stay on `ask.path`: that's a local UI key only, and IncomingClipDTO still
               // carries `path` for the array-keyed hold/file/remove ops below.
               hash: ask.hash,
               era: ask.suggestedEra ?? 0,
@@ -126,7 +124,7 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         onDismiss={(ask) => {
           setBusyClip(ask.path);
           // ⚠ bulk-remove is HASH-keyed (§10 V45a) — unlike file/hold below, which stay `paths` (the
-          // V38 SetClipsHeld/File store methods are path-keyed by design). IncomingAskDTO carries both.
+          // V38 SetClipsHeld/File store methods are path-keyed by design). IncomingClipDTO carries both.
           removeClips.mutate({ data: { hashes: [ask.hash] } });
         }}
         // "Use it" files a clip as it stands — its tags are right enough. No era to confirm, so
@@ -139,7 +137,9 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         // proposed era. Sending one era for the whole selection is what the bulk tag bar does,
         // and it is the wrong answer for a queue of different guesses.
         onFileAllAsSuggested={() =>
-          fileClips.mutate({ data: { paths: asks.map((a) => a.path), asSuggested: true } })
+          fileClips.mutate({
+            data: { paths: clips.filter((c) => c.needsDecision).map((a) => a.path), asSuggested: true },
+          })
         }
         // The undo for auto-filing. ⚠ NOT a removal: the clip and its file both stay, it simply
         // stops being matched into pods until someone decides.

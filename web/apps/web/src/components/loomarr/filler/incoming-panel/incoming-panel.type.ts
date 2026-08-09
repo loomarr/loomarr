@@ -1,19 +1,22 @@
-import type { IncomingAskDTO, IncomingPipelineDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
+import type { IncomingClipDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
 
 interface IncomingPanelProps {
-  // The server's answer, verbatim (contract 1:1) — the two halves of one read.
-  asks: IncomingAskDTO[];
-  reels: IncomingReelDTO[];
   /**
-   * What is still being PREPARED (§10 V51b) — the answer to "I downloaded forty clips and nothing
-   * is happening". Nothing here needs the operator; it is the machine showing its work.
+   * The conveyor, verbatim from the server (contract 1:1): every clip downloaded and not yet
+   * filed, whether the machine is still preparing it or has handed it over. Ordered
+   * decisions-first.
+   *
+   * ⚠ ONE list. It was `asks` + `pipeline`, two arrays over overlapping populations, and the same
+   * clip rendered twice — once demanding a decision, once captioned "nothing here needs you".
+   * `needsDecision` on the row is what this panel branches on.
    */
-  pipeline?: IncomingPipelineDTO[];
+  clips: IncomingClipDTO[];
+  reels: IncomingReelDTO[];
   /**
    * The whole stage ladder in run order — the response's `stageOrder`.
    *
-   * ⚠ Required alongside `pipeline` and NOT derived from it: a row's `stages` is the VISITED
-   * ladder, so a strip drawn from it would grow as a clip advances instead of filling.
+   * ⚠ NOT derived from a row's `stages`, which is the VISITED ladder: a strip drawn from that
+   * would grow as a clip advances instead of filling.
    */
   stageOrder?: string[];
   /**
@@ -36,19 +39,19 @@ interface IncomingPanelProps {
    * entering the catalog unattended; an operator who did not expect that must be able to see
    * exactly what was filed and send any of it back. Absent renders no section at all.
    */
-  recentlyFiled?: IncomingAskDTO[];
+  recentlyFiled?: IncomingClipDTO[];
   // Confirms an era the tagger guessed. ⚠ Confirming is what CLEARS the suggestion (§10 V34),
   // and it goes through the ordinary tag edit so the grounding rule has one implementation.
-  onConfirmEra?: (clip: IncomingAskDTO) => void;
+  onConfirmEra?: (clip: IncomingClipDTO) => void;
   // Opens the full tag editor for a clip whose guess was wrong, or which has no guess at all.
-  onEditTags?: (clip: IncomingAskDTO) => void;
+  onEditTags?: (clip: IncomingClipDTO) => void;
   // Removes a clip from the catalog. ⚠ A tombstone, never a file delete.
-  onDismiss?: (clip: IncomingAskDTO) => void;
+  onDismiss?: (clip: IncomingClipDTO) => void;
   /**
    * Files one clip as it stands — its tags are right enough, whatever the score said.
    * Distinct from `onConfirmEra`, which first CONFIRMS a guessed era.
    */
-  onFile?: (clip: IncomingAskDTO) => void;
+  onFile?: (clip: IncomingClipDTO) => void;
   /**
    * Files every ask, confirming each clip's OWN suggested era (the mock's "File all as
    * suggested").
@@ -61,7 +64,7 @@ interface IncomingPanelProps {
    * Sends an auto-filed clip back to the queue — the undo. ⚠ It does NOT remove the clip: the
    * row and the file both stay, which is what separates it from `onDismiss`.
    */
-  onSendBack?: (clip: IncomingAskDTO) => void;
+  onSendBack?: (clip: IncomingClipDTO) => void;
   // Which clip path is currently being written, so its row can say so.
   busyPath?: string;
   className?: string;

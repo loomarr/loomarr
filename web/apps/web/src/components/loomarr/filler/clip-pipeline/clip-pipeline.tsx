@@ -26,7 +26,13 @@ const COPY: Record<string, { active: string; label: string }> = {
 // report) more than "Unknown stage" ever could.
 const copyFor = (id: string) => COPY[id] ?? { label: id, active: id };
 
-type RungStatus = "done" | "failed" | "running" | "skipped" | "upcoming";
+// ⚠ `queued` is distinct from BOTH `running` and `upcoming`, and the distinction was found by
+// looking at 85 real clips rather than by a test. The runner enrols every clip at `probe/queued`
+// and works one at a time, so collapsing queued into running drew the entire queue as though all
+// 85 were being processed at once — the same "it looks like something it isn't" inversion V51b
+// exists to remove, pointing the other way. It is not `upcoming` either: an enrolled clip has been
+// admitted to the pipeline, which a rung the clip has not reached has not.
+type RungStatus = "done" | "failed" | "queued" | "running" | "skipped" | "upcoming";
 
 // resolve reads one rung's state off the row: the visited ladder if it has been reached, the
 // clip's current position if it is the one running, and `upcoming` otherwise.
@@ -40,6 +46,7 @@ const resolve = (id: string, row: IncomingPipelineDTO): { note?: string; status:
     if (row.status === "done") return { status: "done" };
     if (row.status === "failed") return { status: "failed" };
     if (row.status === "skipped") return { status: "skipped" };
+    if (row.status === "queued") return { status: "queued" };
     return { status: "running" };
   }
   const seen = (row.stages ?? []).find((s) => s.stage === id);
@@ -55,6 +62,11 @@ const resolve = (id: string, row: IncomingPipelineDTO): { note?: string; status:
 const PIP: Record<RungStatus, string> = {
   done: "bg-lock",
   failed: "bg-onair-300",
+  // ⚠ Neutral and STILL. Not `tune` (that means work is happening now) and deliberately not
+  // `signal` amber either, which this app's palette reserves for "a human is needed" — 85 amber
+  // rows would read as a queue demanding attention, which is the opposite of what this section
+  // says about itself.
+  queued: "bg-static-500",
   running: "bg-tune motion-safe:animate-pulse",
   skipped: "bg-static-400",
   upcoming: "bg-static-700",
@@ -64,6 +76,7 @@ const PIP: Record<RungStatus, string> = {
 const SPOKEN: Record<RungStatus, string> = {
   done: "done",
   failed: "failed",
+  queued: "waiting",
   running: "in progress",
   skipped: "skipped",
   upcoming: "not started",
@@ -72,6 +85,9 @@ const SPOKEN: Record<RungStatus, string> = {
 const ICON: Record<RungStatus, typeof Check | null> = {
   done: Check,
   failed: X,
+  // No icon: a queued rung shows the same neutral dot as an unreached one, because the honest
+  // difference between them is the label, not a symbol claiming activity.
+  queued: null,
   running: Loader2,
   skipped: Minus,
   upcoming: null,
@@ -80,13 +96,13 @@ const ICON: Record<RungStatus, typeof Check | null> = {
 const ICON_TONE: Record<RungStatus, string> = {
   done: "text-lock",
   failed: "text-onair-300",
+  queued: "text-static-500",
   running: "text-tune motion-safe:animate-spin",
   skipped: "text-static-400",
   upcoming: "text-static-700",
 };
 
-const ClipPipeline = ({ row, ladder, variant = "strip", className }: ClipPipelineProps) => {
-  const name = row.name || row.hash;
+const ClipPipeline = ({ row, name, ladder, variant = "strip", className }: ClipPipelineProps) => {
   // ⚠ The two variants take DIFFERENT accessible names even though they describe the same clip.
   // A row renders both — the strip in the header, the list inside the disclosure — so one shared
   // name would put two identically-named lists in the tree, and "Progress for Coca-Cola 1985"

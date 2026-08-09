@@ -642,6 +642,19 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
+**Next up: V51g — a rung may not spend per SEGMENT what the budget allows per CLIP.** Specified in
+§10 (V51g) with the measurements; not built. Three changes, all small and independent: delete
+`classify` from `Splitter.Propose`; treat `context deadline exceeded` after `stage.Run` as a
+DEFERRAL (queued, attempts unchanged) rather than a failure; and persist failure/deferral through a
+DETACHED context so the record, the backoff and the `MaxAttempts` resolution actually land.
+
+⚠ **The third one is the severe one and it is not about split.** `onFailure` writes its bookkeeping
+through the context whose expiry caused the failure, so none of it persists — only the pre-work
+`status=running, attempts++` survives. **Any rung that ever times out loops forever.** Found live:
+one clip at 12 attempts against a `MaxAttempts` of 3, ~25 minutes of GPU re-doing the first third
+of the same reel while the UI showed it advancing. Measured cause: 51 LLM turns at 7.4s inside a
+120s pass; everything else in that rung totals ~40s.
+
 **V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
 `v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
 (biome + tsc + unit + SPA + storybook build) + `make openapi-verify`. ⚠ **`make fe-visual` and

@@ -12,11 +12,26 @@ import (
 )
 
 type incomingBody struct {
-	Asks []struct {
-		Path         string `json:"path"`
-		SuggestedEra int    `json:"suggestedEra"`
-		Reason       string `json:"reason"`
-	} `json:"asks"`
+	// The conveyor: being-prepared and needs-a-decision in ONE list (§10 V51e).
+	Clips []struct {
+		Path          string `json:"path"`
+		Name          string `json:"name"`
+		SuggestedEra  int    `json:"suggestedEra"`
+		Reason        string `json:"reason"`
+		NeedsDecision bool   `json:"needsDecision"`
+		Pipeline      *struct {
+			Stage      string `json:"stage"`
+			Status     string `json:"status"`
+			Progress   int    `json:"progress"`
+			DurationMs int64  `json:"durationMs"`
+			Thumbnail  string `json:"thumbnail"`
+			Stages     []struct {
+				Stage  string `json:"stage"`
+				Status string `json:"status"`
+				Note   string `json:"note"`
+			} `json:"stages"`
+		} `json:"pipeline"`
+	} `json:"clips"`
 	Reels []struct {
 		ProposalID     string `json:"proposalId"`
 		ClipHash       string `json:"clipHash"`
@@ -24,20 +39,6 @@ type incomingBody struct {
 		Segments       int    `json:"segments"`
 		NeedsAttention int    `json:"needsAttention"`
 	} `json:"reels"`
-	Pipeline []struct {
-		Hash       string `json:"hash"`
-		Name       string `json:"name"`
-		DurationMs int64  `json:"durationMs"`
-		Thumbnail  string `json:"thumbnail"`
-		Stage      string `json:"stage"`
-		Status     string `json:"status"`
-		Progress   int    `json:"progress"`
-		Stages     []struct {
-			Stage  string `json:"stage"`
-			Status string `json:"status"`
-			Note   string `json:"note"`
-		} `json:"stages"`
-	} `json:"pipeline"`
 	StageOrder []string `json:"stageOrder"`
 	Total      int      `json:"total"`
 }
@@ -92,14 +93,14 @@ func TestFillerIncoming_QueuesTheTwoAskKindsSeparately(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
-	if len(body.Asks) != 2 {
-		t.Fatalf("asks = %d, want 2 — a fully tagged clip is not waiting on anyone", len(body.Asks))
+	if len(body.Clips) != 2 {
+		t.Fatalf("clips = %d, want 2 — a fully tagged clip is not waiting on anyone", len(body.Clips))
 	}
 	// An ungrounded era sorts first: it is one click, where an untagged clip needs everything.
-	if body.Asks[0].Path != "guess.mp4" || body.Asks[0].SuggestedEra != 1988 {
-		t.Errorf("asks[0] = %+v, want the ungrounded-era clip first", body.Asks[0])
+	if body.Clips[0].Path != "guess.mp4" || body.Clips[0].SuggestedEra != 1988 {
+		t.Errorf("clips[0] = %+v, want the ungrounded-era clip first", body.Clips[0])
 	}
-	if body.Asks[0].Reason == body.Asks[1].Reason {
+	if body.Clips[0].Reason == body.Clips[1].Reason {
 		t.Error("both asks carry the same reason — the two questions have been collapsed into one")
 	}
 }
@@ -113,8 +114,8 @@ func TestFillerIncoming_DoesNotQueueBumpers(t *testing.T) {
 
 	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
 
-	if len(body.Asks) != 0 {
-		t.Errorf("queued %d bookend clips: %+v", len(body.Asks), body.Asks)
+	if len(body.Clips) != 0 {
+		t.Errorf("queued %d bookend clips: %+v", len(body.Clips), body.Clips)
 	}
 }
 
@@ -212,7 +213,7 @@ func TestFillerIncoming_EmptyHalvesAreArrays(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"asks", "reels"} {
+	for _, k := range []string{"clips", "reels"} {
 		if got := string(raw[k]); got != "[]" {
 			t.Errorf("%s = %s, want []", k, got)
 		}
@@ -249,21 +250,110 @@ func TestFillerIncoming_PipelineRowCarriesTheClipItDescribes(t *testing.T) {
 
 	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
 
-	if len(body.Pipeline) != 1 {
-		t.Fatalf("pipeline has %d rows, want 1", len(body.Pipeline))
+	if len(body.Clips) != 1 {
+		t.Fatalf("conveyor has %d rows, want 1", len(body.Clips))
 	}
-	got := body.Pipeline[0]
-	if got.Name != "Coca-Cola 1985" || got.DurationMs != 31_000 || got.Thumbnail != "1985/cola.jpg" {
-		t.Errorf("row = {name %q, durationMs %d, thumbnail %q}, want the clip's own three",
-			got.Name, got.DurationMs, got.Thumbnail)
+	got := body.Clips[0]
+	if got.Name != "Coca-Cola 1985" {
+		t.Errorf("name = %q, want the clip's own", got.Name)
 	}
-	if got.Stage != "tag" || got.Status != "running" || got.Progress != -1 {
-		t.Errorf("row = {stage %q, status %q, progress %d}, want {tag, running, -1}", got.Stage, got.Status, got.Progress)
+	// ⚠ A clip the machine is still working on does NOT need a decision. This is the assertion the
+	// whole merge exists for: before it, the same clip appeared in an `asks` list demanding one.
+	if got.NeedsDecision {
+		t.Error("a clip mid-pipeline is marked as needing a decision — it is waiting on the machine")
+	}
+	if got.Pipeline == nil {
+		t.Fatal("no pipeline block on a clip that has a pipeline row")
+	}
+	if got.Pipeline.Stage != "tag" || got.Pipeline.Status != "running" || got.Pipeline.Progress != -1 {
+		t.Errorf("pipeline = {stage %q, status %q, progress %d}, want {tag, running, -1}",
+			got.Pipeline.Stage, got.Pipeline.Status, got.Pipeline.Progress)
 	}
 	// ⚠ The VISITED ladder, including the skip and its reason. A stage that silently did not
 	// happen reads as broken, so the note is the half that makes the skip legible.
-	if len(got.Stages) != 2 || got.Stages[1].Status != "skipped" || got.Stages[1].Note == "" {
-		t.Errorf("stages = %+v, want probe/done then transcribe/skipped with its note", got.Stages)
+	if len(got.Pipeline.Stages) != 2 || got.Pipeline.Stages[1].Status != "skipped" || got.Pipeline.Stages[1].Note == "" {
+		t.Errorf("stages = %+v, want probe/done then transcribe/skipped with its note", got.Pipeline.Stages)
+	}
+}
+
+// ⚠ THE regression this phase exists to prevent: one clip, one row, one place on the belt.
+//
+// Before the merge a held clip mid-pipeline satisfied BOTH the `asks` query (held and untagged)
+// and the `pipeline` query (non-terminal), so it rendered twice — once demanding a decision, once
+// captioned "nothing here needs you". On a fresh scan that was 84 of 85 clips, because the runner
+// enrols everything at `probe/queued` and a freshly scanned clip is held and untagged by
+// definition. Nothing in the old shape could catch it: both lists were individually correct.
+func TestFillerIncoming_AClipAppearsExactlyOnce(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Hash: "hash-dup", Path: "dup.mp4", Name: "Held and enrolled",
+		Kind: filler.Commercial, DurationMs: 30_000, Held: true,
+	})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "hash-dup", Stage: filler.StageProbe, Status: filler.StatusQueued,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want 1 — held AND enrolled is one clip, not two rows", len(body.Clips))
+	}
+	if body.Clips[0].NeedsDecision {
+		t.Error("held-and-enrolled reported as needing a decision; the machine has not finished")
+	}
+	// ⚠ And the badge agrees with the list. `total` counted `len(asks)` before, which included
+	// clips the machine still owned — a number that disagreed with the rows underneath it.
+	if body.Total != 0 {
+		t.Errorf("total = %d, want 0 — nothing is waiting on a person yet", body.Total)
+	}
+}
+
+// The other end of the belt: once the pipeline hands a clip over, it becomes the operator's.
+func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Hash: "hash-review", Path: "review.mp4", Name: "Machine gave up",
+		Kind: filler.Commercial, DurationMs: 30_000, Held: true,
+	})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "hash-review", Stage: filler.StageScore, Status: filler.StatusDone,
+		Disposition: filler.DispositionReview, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want 1", len(body.Clips))
+	}
+	if !body.Clips[0].NeedsDecision {
+		t.Error("a clip at `review` is not marked as needing a decision — review IS the handoff")
+	}
+	if body.Total != 1 {
+		t.Errorf("total = %d, want 1", body.Total)
+	}
+}
+
+// ⚠ A clip catalogued BEFORE V51b has no pipeline row at all. Treating "no row" as "still being
+// prepared" would strand it in a section that says nothing needs the operator, permanently.
+func TestFillerIncoming_AClipWithNoPipelineRowStillAsks(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Path: "legacy.mp4", Name: "legacy.mp4", Kind: filler.Commercial,
+		DurationMs: 30_000, Held: true,
+	})
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 || !body.Clips[0].NeedsDecision {
+		t.Fatalf("clips = %+v, want one clip needing a decision via the legacy fallback", body.Clips)
+	}
+	if body.Clips[0].Pipeline != nil {
+		t.Error("invented a pipeline block for a clip that has no row")
 	}
 }
 

@@ -2,6 +2,7 @@ import {
   cleanReel,
   compilationReel,
   guessedEraAsk,
+  needsDecisionClip,
   noAudioReject,
   stageLadder,
   taggingClip,
@@ -33,7 +34,7 @@ type Story = StoryObj<typeof meta>;
 // a guessed era has a proposed answer to confirm, an untagged clip has nothing to confirm.
 const BothAskKinds: Story = {
   args: {
-    asks: [guessedEraAsk, untaggedAsk],
+    clips: [guessedEraAsk, untaggedAsk].map((c) => ({ ...c, needsDecision: true })),
     reels: [],
     onConfirmEra: () => {},
     onEditTags: () => {},
@@ -44,14 +45,14 @@ const BothAskKinds: Story = {
 // Compilations mid-split. The count of segments needing a look is shown BEFORE the review is
 // opened, because twelve clean segments and twelve with three problems are different jobs.
 const CompilationsToReview: Story = {
-  args: { asks: [], reels: [compilationReel, cleanReel] },
+  args: { clips: [], reels: [compilationReel, cleanReel] },
 };
 
 // One row writing. Only that row disables — a page that greys out entirely while a single
 // confirm lands reads as having frozen.
 const OneRowBusy: Story = {
   args: {
-    asks: [guessedEraAsk, untaggedAsk],
+    clips: [guessedEraAsk, untaggedAsk].map((c) => ({ ...c, needsDecision: true })),
     reels: [],
     busyPath: guessedEraAsk.path,
     onConfirmEra: () => {},
@@ -62,7 +63,7 @@ const OneRowBusy: Story = {
 // The all-clear. Worth a story of its own: it is the state an operator should see most of the
 // time, and it has to read as success rather than as an empty page.
 const NothingWaiting: Story = {
-  args: { asks: [], reels: [] },
+  args: { clips: [], reels: [] },
 };
 
 // V38: the confidence meter, on the three bands the colour switches between. ⚠ The score is
@@ -70,7 +71,7 @@ const NothingWaiting: Story = {
 // claimed to be, which is why it can never reach the auto-file threshold.
 const WithConfidence: Story = {
   args: {
-    asks: [
+    clips: [
       { ...untaggedAsk, path: "low.mp4", name: "Unidentified toy spot", confidence: 40 },
       { ...untaggedAsk, path: "mid.mp4", name: "Cereal ad", confidence: 72 },
       { ...guessedEraAsk, path: "high.mp4", name: "Frosted Flakes 1993", confidence: 92 },
@@ -89,7 +90,7 @@ const WithConfidence: Story = {
 // exactly the install where the first is true.
 const FiledWithoutAsking: Story = {
   args: {
-    asks: [],
+    clips: [],
     reels: [],
     recentlyFiled: [
       {
@@ -113,27 +114,28 @@ const FiledWithoutAsking: Story = {
   },
 };
 
-// ⚠ THE state V51b built and nothing rendered: forty clips downloaded, the machine working, and
-// before this the queue said "waiting to be checked" for up to an hour. Note it renders BESIDE
-// "Nothing needs you" — both statements are true at once, and on a fresh download that pair is
-// the complete answer.
+// ⚠ THE arrangement the whole merge exists for: ONE belt, both row shapes, in order. The first row
+// is the machine's handoff — it needs a decision and carries controls. The two below it are still
+// being prepared and carry the pip strip instead. Before the merge these were separate lists over
+// overlapping populations, and the same clip appeared in both.
 //
-// The two rows are deliberately on different rungs: `tag` cannot measure itself (the -1 sentinel,
-// so no bar) while `transcode` can. A queue where every row measured would hide the distinction.
-const BeingPrepared: Story = {
+// The two preparing rows are deliberately on different rungs: `tag` cannot measure itself (the -1
+// sentinel, so no bar) while `transcode` can. A queue where every row measured hides the difference.
+const OneBelt: Story = {
   args: {
-    asks: [],
+    clips: [needsDecisionClip, taggingClip, transcodingClip],
     reels: [],
-    pipeline: [taggingClip, transcodingClip],
     stageOrder: stageLadder,
+    onConfirmEra: () => {},
+    onEditTags: () => {},
   },
 };
 
 // Expanded, so the named ladder and the skip REASONS are in the baseline. A stage that silently
 // does not happen reads as broken — "Listen — skipped" invites the bug report that
 // "(the description already says enough)" answers.
-const BeingPreparedExpanded: Story = {
-  args: { ...BeingPrepared.args },
+const OneBeltExpanded: Story = {
+  args: { ...OneBelt.args },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole("button", { name: /Show what is happening to Coca-Cola/ }));
   },
@@ -146,7 +148,7 @@ const BeingPreparedExpanded: Story = {
 // keeps finding.
 const Rejected: Story = {
   args: {
-    asks: [],
+    clips: [],
     reels: [],
     rejected: [unidentifiedReject, noAudioReject],
     onRestore: () => {},
@@ -155,12 +157,12 @@ const Rejected: Story = {
 
 export default meta;
 export {
-  BeingPrepared,
-  BeingPreparedExpanded,
   BothAskKinds,
   CompilationsToReview,
   FiledWithoutAsking,
   NothingWaiting,
+  OneBelt,
+  OneBeltExpanded,
   OneRowBusy,
   Rejected,
   WithConfidence,

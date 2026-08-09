@@ -1,4 +1,10 @@
-import { type FillerIncomingOutputBody, fillerApi, type IncomingPipelineDTO, isOk } from "@loomarr/api";
+import {
+  type FillerIncomingOutputBody,
+  fillerApi,
+  type IncomingClipDTO,
+  type IncomingPipelineDTO,
+  isOk,
+} from "@loomarr/api";
 import type { FillerClipEvent } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLoomarrEventListener } from "@/events";
@@ -35,24 +41,26 @@ const useClipPipeline = (): void => {
       queryClient.setQueryData(key, (prev: unknown) => {
         if (!isOk(prev as { data: unknown; status: number } | undefined)) return prev;
         const res = prev as { data: FillerIncomingOutputBody; status: 200 };
-        const rows = res.data.pipeline ?? [];
+        const rows = res.data.clips ?? [];
 
         // ⚠ Matched by `find` rather than by index. `noUncheckedIndexedAccess` makes `rows[i]`
         // possibly-undefined, and the tempting fix — a `if (!rows[i]) return prev` after a
         // successful findIndex — is a guard that can never fire, which reads to the next person
         // as a case that CAN happen.
         const current = rows.find((r) => r.hash === frame.hash);
-        if (!current) {
-          // Rule 2: a clip that just entered the pipeline has no row to merge onto. Ask for the
-          // real one rather than inventing a partial.
+        // ⚠ A clip with no `pipeline` block is treated exactly like an unknown hash. It is either
+        // brand new or pre-V51b, and either way the frame carries no `stages`, `attempts` or
+        // `updatedAt` — building the block from it would render a ladder with no rungs behind it.
+        if (!current?.pipeline) {
+          // Rule 2: ask for the real row rather than inventing a partial.
           void queryClient.invalidateQueries({ queryKey: key });
           return prev;
         }
 
-        if (!advances(current, frame)) return prev;
+        if (!advances(current.pipeline, frame)) return prev;
 
         const merged = rows.map((r) => (r.hash === frame.hash ? applyFrame(r, frame) : r));
-        return { ...res, data: { ...res.data, pipeline: merged } };
+        return { ...res, data: { ...res.data, clips: merged } };
       });
     },
   });
@@ -63,12 +71,18 @@ const useClipPipeline = (): void => {
 // ⚠ It touches only what the frame actually measured. `stages` (the visited ladder), `attempts`
 // and `updatedAt` are the GET's to own: the frame carries no value for them, and spreading a
 // partial over a full row is how a rendered detail list loses the rungs behind it.
-const applyFrame = (row: IncomingPipelineDTO, frame: FillerClipEvent): IncomingPipelineDTO => ({
-  ...row,
-  stage: frame.stage,
-  status: frame.status,
-  progress: frame.progress,
+const applyFrame = (clip: IncomingClipDTO, frame: FillerClipEvent): IncomingClipDTO => ({
+  ...clip,
   ...(frame.name ? { name: frame.name } : {}),
+  // ⚠ The nested block is rebuilt, the clip is spread. `stages`, `attempts` and `updatedAt` live
+  // on the block and the frame carries none of them, so replacing the block wholesale would blank
+  // the ladder the expanded row renders.
+  pipeline: {
+    ...clip.pipeline,
+    stage: frame.stage,
+    status: frame.status,
+    progress: frame.progress,
+  } as IncomingPipelineDTO,
 });
 
 /**

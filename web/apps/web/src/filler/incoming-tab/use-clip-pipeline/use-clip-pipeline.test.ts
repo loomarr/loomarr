@@ -2,6 +2,7 @@ import {
   type FillerClipEvent,
   type FillerIncomingOutputBody,
   fillerApi,
+  type IncomingClipDTO,
   type IncomingPipelineDTO,
 } from "@loomarr/api";
 import type { EventHandlers } from "@loomarr/core";
@@ -27,18 +28,26 @@ vi.mock("@/events", () => ({
 
 const KEY = fillerApi.getFillerIncomingQueryKey();
 
-const row = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
+// ⚠ The pipeline block is NESTED on the clip. The merge writes into it while spreading the clip,
+// so a test whose fixture flattened the two would pass against a merge that clobbered the parent.
+const row = (over: Partial<IncomingPipelineDTO> = {}): IncomingClipDTO => ({
   hash: "hash-cola",
+  path: "cola.mp4",
   name: "Coca-Cola 1985",
-  stage: "transcode",
-  status: "running",
-  progress: 80,
-  // ⚠ Seeded non-empty on purpose: `stages` is the VISITED ladder and the frame carries no value
-  // for it, so a merge that spread a partial over the row would silently empty the expanded
-  // detail list. Nothing else in this file would notice.
-  stages: [{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }],
-  updatedAt: "2026-08-08T10:01:00Z",
-  ...over,
+  kind: "commercial",
+  durationMs: 31_000,
+  reason: "Loomarr is still working on this one.",
+  pipeline: {
+    stage: "transcode",
+    status: "running",
+    progress: 80,
+    // ⚠ Seeded non-empty on purpose: `stages` is the VISITED ladder and the frame carries no
+    // value for it, so a merge that replaced the block wholesale would silently empty the
+    // expanded detail list. Nothing else in this file would notice.
+    stages: [{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }],
+    updatedAt: "2026-08-08T10:01:00Z",
+    ...over,
+  },
 });
 
 const frame = (over: Partial<FillerClipEvent> = {}): FillerClipEvent => ({
@@ -50,26 +59,25 @@ const frame = (over: Partial<FillerClipEvent> = {}): FillerClipEvent => ({
   ...over,
 });
 
-const body = (pipeline: IncomingPipelineDTO[]): FillerIncomingOutputBody => ({
-  asks: [],
+const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
+  clips,
   reels: [],
-  pipeline,
   rejected: [],
   recentlyFiled: [],
   stageOrder: ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"],
   total: 0,
 });
 
-const setup = (pipeline: IncomingPipelineDTO[]) => {
+const setup = (clips: IncomingClipDTO[]) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(KEY, { data: body(pipeline), status: 200 });
+  client.setQueryData(KEY, { data: body(clips), status: 200 });
   const invalidate = vi.spyOn(client, "invalidateQueries").mockResolvedValue();
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
   renderHook(() => useClipPipeline(), { wrapper });
 
   const send = (f: FillerClipEvent) => mocks.handlers?.onFillerClip?.(f);
-  const rows = () => (client.getQueryData(KEY) as { data: FillerIncomingOutputBody }).data.pipeline ?? [];
+  const rows = () => (client.getQueryData(KEY) as { data: FillerIncomingOutputBody }).data.clips ?? [];
   return { invalidate, rows, send };
 };
 
@@ -79,7 +87,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ progress: 90 }));
 
-    expect(rows()[0]).toMatchObject({ hash: "hash-cola", progress: 90, stage: "transcode" });
+    expect(rows()[0]?.pipeline).toMatchObject({ progress: 90, stage: "transcode" });
   });
 
   // ⚠ The frame carries no `stages`, `attempts` or `updatedAt`. Spreading it over the row would
@@ -89,7 +97,9 @@ describe("useClipPipeline", () => {
 
     send(frame({ progress: 95 }));
 
-    expect(rows()[0]?.stages).toEqual([{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }]);
+    expect(rows()[0]?.pipeline?.stages).toEqual([
+      { stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" },
+    ]);
   });
 
   // Rule 2. A row assembled from a frame is missing every field the detail view needs, so a clip
@@ -110,7 +120,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ disposition: "filed", stage: "score", status: "done", progress: 100 }));
 
-    expect(rows()[0]).toMatchObject({ stage: "transcode", progress: 80 });
+    expect(rows()[0]?.pipeline).toMatchObject({ stage: "transcode", progress: 80 });
   });
 
   it("refuses a late frame that would drag the percentage backwards inside one rung", () => {
@@ -118,7 +128,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ progress: 12 }));
 
-    expect(rows()[0]?.progress).toBe(80);
+    expect(rows()[0]?.pipeline?.progress).toBe(80);
   });
 
   // ⚠ THE case the narrow rule exists for. A stage that fails and retries re-runs on the SAME
@@ -130,7 +140,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ progress: 0, status: "running" }));
 
-    expect(rows()[0]).toMatchObject({ progress: 0, status: "running" });
+    expect(rows()[0]?.pipeline).toMatchObject({ progress: 0, status: "running" });
   });
 
   // The sanctioned re-tag/re-split path (Rewind) moves a clip BACKWARD on purpose. A strictly
@@ -140,7 +150,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ stage: "split", status: "queued", progress: 0 }));
 
-    expect(rows()[0]).toMatchObject({ stage: "split", status: "queued", progress: 0 });
+    expect(rows()[0]?.pipeline).toMatchObject({ stage: "split", status: "queued", progress: 0 });
   });
 
   // -1 is the "this rung cannot measure itself" sentinel, not a small number. Republishing it
@@ -150,6 +160,7 @@ describe("useClipPipeline", () => {
 
     send(frame({ stage: "transcribe", progress: -1, name: "Renamed" }));
 
-    expect(rows()[0]).toMatchObject({ name: "Renamed", progress: -1 });
+    expect(rows()[0]).toMatchObject({ name: "Renamed" });
+    expect(rows()[0]?.pipeline?.progress).toBe(-1);
   });
 });
