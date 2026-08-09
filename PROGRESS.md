@@ -473,11 +473,37 @@ still waiting. `use-channel-refine` is deliberately deferred — deferred promis
 dispatch (its own comment says it avoids "pinning to exact URL strings", which is the weakness being
 removed), so it needs a careful pass rather than a batch slot.
 
-**Also still open, and not superseded by the V53 arc: V50d** (house-style conformance across
-`components/ui`), carrying `connection-block`'s collapsed-body focus gap — its Test action and Fix
-link remain keyboard-reachable while the section is closed, and it has no story so axe never sees
-it. Recorded here because V50c's own forward pointer was removed with it: two live "Next up" lines
-is the pattern this file warns about, but a gap with no pointer at all is worse.
+**V50d(a) — the collapsed-body focus gap V50c left behind (2026-08-09).** Gate: `make fe`
+(**1223** app + 19 api + 51 core + 5 tokens, biome clean on 923 files).
+
+`connection-block` closed with `grid-template-rows: 0fr` + `overflow:hidden` — zero height but
+**NOT `display:none`** — so its body stayed in the accessibility tree and stayed **focusable**. That
+body holds a "Test connection" button and, when a check fails, a "Fix" link into the Help centre:
+**a keyboard user tabbing the wizard reached both while the section was visibly shut.**
+
+⚠ **V50c fixed exactly this in `CollapsibleSection` and left its lookalike behind**, so the two
+disagreed for three phases. That is the cost of the duplication the component's own header comment
+flags — it borrows `.reveal` from CollapsibleSection but is a separate implementation, and a fix to
+one is not a fix to the other. `Collapsible.Panel hiddenUntilFound` now renders the closed body as
+`content-visibility: hidden`: out of the a11y tree, still mounted (a half-filled connection form
+keeps its state), still reachable by find-in-page.
+
+⚠ **It has no story, so axe never sees this component** — which is why the regression is a UNIT test
+asserting `hidden="until-found"` plus the absence of the inner control, not a visual one.
+Sabotage-verified: swapping `hiddenUntilFound` for `keepMounted` (mounted but reachable — precisely
+the old bug) fails it while the other nine pass.
+
+**Also in this PR: `make fe-visual`/`e2e` now run Docker as the host user.** The Playwright image
+runs as root, so everything it wrote into the bind mount was root-owned — and the symptom surfaced
+far from the cause: `git worktree remove` half-failed on `test-results/`, git **deregistered the
+worktree anyway**, and ~550MB per worktree was stranded with no git record it existed. Three
+worktrees had accumulated **1.7GB** that way. `--user $(id -u):$(id -g)` fixes it; `-e HOME=/tmp`
+rides along because a non-root uid's default `/root` is unwritable and fails in a way that reads
+like a Playwright bug. ⚠ **Unverifiable locally by policy** (Playwright is not run on this machine)
+— CI is the verifier, and a broken job shows up red on this PR rather than silently.
+
+**Next up: the rest of V50d** — house-style conformance across `components/ui`, which is what the
+phase was originally about; this PR only took its one accessibility defect.
 
 **V53b — arrays are not nullable; `null` stops being a second empty list (2026-08-09, branch
 `feat/non-nullable-arrays`).** Gate: `make check` (0 lint, `-race`) + `make openapi-verify` +
