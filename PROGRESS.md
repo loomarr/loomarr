@@ -51,7 +51,28 @@ does. Re-check with `gh pr checks 199`; the local gate was green on the same tre
 before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
 *after* a successful install.
 
-⚠ **START HERE: `Server.images` is nil, so those three routes 404 in a running instance.** The
+⚠⚠ **BLOCKER 1 — the migration number collides. Fix this before anything else.** This branch
+defines `00044_images.sql`; **V51b merged `00044_filler_clip_pipeline.sql` to main** while this
+branch was open. Rebase onto main and renumber both dialects to **`00045_images.sql`**.
+
+This is worse than a rename, because goose records applied migrations **by version**: a database
+that already ran one `00044` will **silently skip** the other — no error, no failure, until
+something queries a table that was never created. Check `goose_db_version` on the dev DB for a
+stale `44`; if it is there, rebuild the DB rather than hand-editing it. Forward-only (§16) means
+the **unmerged** one moves, never the merged one. This is the concrete form of the conflict
+CLAUDE.md's worktree table warns about, and 00043 carries a comment about the same trap.
+
+⚠⚠ **BLOCKER 2 — CI is RED on the Go job, and the local gate did not catch it.**
+`panic: test timed out after 10m0s` → `FAIL internal/api 600.060s`. Locally that package takes
+**253s** on a 24-thread i9; a 2–4 core runner is ~2.5× slower, which lands past Go's default 10m
+per-package timeout. ⚠ **Read this as a pre-existing fragility this branch tipped over, not as a
+bug in the image routes** — nothing here adds an `internal/api` test, and `internal/images` only
+joins that package's *compile*. Postgres conformance **passed** in CI, including the schema-reset
+change. The honest fixes are to raise the timeout (`-timeout` in the Makefile's test target) or to
+split that suite; picking one is a maintainer call, because "make the gate laxer" deserves a
+decision rather than a quiet flag.
+
+⚠ **THEN: `Server.images` is nil, so those three routes 404 in a running instance.** The
 app adapter (`store.Store` → `images.Store`, constructing `images.Service` from settings) is not
 written. This is precisely the *"a built component nobody imported"* pattern recorded against
 V1/V17a/V23 above — flagged deliberately rather than left to be discovered, and it is the first
