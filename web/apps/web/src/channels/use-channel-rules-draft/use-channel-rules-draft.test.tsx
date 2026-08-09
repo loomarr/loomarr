@@ -1,8 +1,11 @@
-import type { ChannelPolicy } from "@loomarr/api";
+import type { ChannelPolicy, PreviewProgrammingOutputBody } from "@loomarr/api";
+import { getPreviewChannelProgrammingMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelRulesDraft } from "./use-channel-rules-draft";
 
 const makeWrapper = () => {
@@ -12,10 +15,7 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const previewBody = {
+const previewBody: PreviewProgrammingOutputBody = {
   at: "2026-07-30T12:00:00Z",
   activeRule: { id: "r1", label: "Weekend marathon", priority: 5, matched: true },
   windowMs: 0,
@@ -23,24 +23,29 @@ const previewBody = {
   pods: { entries: [], totalMs: 0, matchLevel: "exact" },
 };
 
-// Records every request so a test can assert what the preview POST / apply PATCH actually
-// SENT — the wire shape, not a mocked hook's arguments.
-const stubFetch = (opts: { previewStatus?: number } = {}) => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      const body = init?.body ? JSON.parse(init.body as string) : undefined;
-      calls.push({ method, url: String(url), body });
-      if (method === "POST" && String(url).includes("/programming/preview")) {
-        return Promise.resolve(jsonResponse(opts.previewStatus ?? 200, previewBody));
-      }
-      if (method === "PATCH") return Promise.resolve(jsonResponse(200, { id: "ch-1" }));
-      return Promise.resolve(jsonResponse(200, {}));
+// Records what the preview POST / apply PATCH actually SENT — the wire shape, not a mocked
+// hook's arguments.
+//
+// ⚠ Two separate lists, because they are two separate ROUTES. The stub this replaces kept one
+// `calls` array and filtered it by `c.method === "PATCH"` — true of a PATCH to anything — and by
+// `c.url.includes("/programming/preview")`, a string the test itself supplied. Splitting them at
+// the resolver means "a preview happened" and "a save happened" can no longer be confused, which
+// matters here more than usual: the central claim of this hook is that editing previews and does
+// NOT save, so the two must be distinguishable by construction.
+const stubDraft = () => {
+  const previews: { url: string; body: unknown }[] = [];
+  const saves: { body: unknown }[] = [];
+  server.use(
+    getPreviewChannelProgrammingMockHandler(async ({ request }) => {
+      previews.push({ url: request.url, body: await request.json() });
+      return previewBody;
+    }),
+    getUpdateChannelMockHandler(async ({ request }) => {
+      saves.push({ body: await request.json() });
+      return channel();
     }),
   );
-  return { calls };
+  return { previews, saves };
 };
 
 const policy = (over: Partial<ChannelPolicy> = {}): ChannelPolicy => ({
@@ -81,7 +86,7 @@ describe("canonicalize", () => {
 
 describe("useChannelRulesDraft", () => {
   it("previews the DRAFT through POST …/programming/preview, not the saved policy", async () => {
-    const { calls } = stubFetch();
+    const { previews } = stubDraft();
     const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
@@ -90,40 +95,45 @@ describe("useChannelRulesDraft", () => {
     act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
 
     await waitFor(() => {
-      const post = calls.find((c) => c.method === "POST" && c.url.includes("/programming/preview"));
-      expect(post).toBeDefined();
       // The EDITED policy is on the wire — the assertion that this previews the draft rather
-      // than re-reading what is saved.
-      // Non-null after the toBeDefined above — Biome rightly refuses `(x?.y as T).z`, which
-      // would throw rather than fail the assertion if the request were missing.
-      expect((post as { body: { policy: ChannelPolicy } }).body.policy.ordering).toBe("sequential");
+      // than re-reading what is saved. Reaching the resolver bound to
+      // `POST /v1/channels/:id/programming/preview` is what proves the ROUTE.
+      //
+      // ⚠ Destructured rather than `(previews[0]?.body as T).policy` — Biome rightly refuses
+      // that shape, since a short-circuit to `undefined` would THROW here instead of failing
+      // the assertion.
+      const [first] = previews;
+      if (!first) throw new Error("no preview reached the route");
+      expect((first.body as { policy: ChannelPolicy }).policy.ordering).toBe("sequential");
     });
   });
 
   // ⚠ The whole reason this surface drafts: rules are interdependent, so intermediate states
   // must not reach Tunarr. Nothing may PATCH until apply is called.
   it("does NOT save while editing — only apply writes", async () => {
-    const { calls } = stubFetch();
+    const { previews, saves } = stubDraft();
     const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
     act(() => result.current.setDraft(policy({ ordering: "sequential" })));
     act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
-    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    await waitFor(() => expect(previews).not.toHaveLength(0));
 
-    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+    // ⚠ Was `calls.some(c => c.method === "PATCH")` — which a PATCH to ANY endpoint would have
+    // satisfied. `saves` can only be fed by `PATCH /v1/channels/:id`.
+    expect(saves).toHaveLength(0);
 
     act(() => result.current.apply());
     await waitFor(() => {
-      const patch = calls.find((c) => c.method === "PATCH");
-      expect(patch).toBeDefined();
-      expect((patch as { body: { policy: ChannelPolicy } }).body.policy.ordering).toBe("sequential");
+      const [first] = saves;
+      if (!first) throw new Error("apply did not reach PATCH /v1/channels/:id");
+      expect((first.body as { policy: ChannelPolicy }).policy.ordering).toBe("sequential");
     });
   });
 
   it("is dirty only once the draft differs, and discard returns to saved", () => {
-    stubFetch();
+    stubDraft();
     const saved = policy();
     const { result } = renderHook(() => useChannelRulesDraft("ch-1", saved), {
       wrapper: makeWrapper(),
@@ -142,7 +152,7 @@ describe("useChannelRulesDraft", () => {
   // A fresh object with identical content arrives on every parent render. Treating that as an
   // edit would show an Apply bar nobody asked for, on a page nobody touched.
   it("a re-render with an equal-but-new policy object is not dirty", () => {
-    stubFetch();
+    stubDraft();
     const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
@@ -155,7 +165,7 @@ describe("useChannelRulesDraft", () => {
   // A genuine server update (an apply landing, a refine reseeding rules) must ADOPT — otherwise
   // the draft would silently shadow what the server now holds.
   it("adopts a genuinely changed saved policy", () => {
-    stubFetch();
+    stubDraft();
     const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
@@ -169,21 +179,22 @@ describe("useChannelRulesDraft", () => {
   // `at` is a preview INPUT, so changing it must re-POST — otherwise time-travel would silently
   // keep showing the previous moment.
   it("re-previews when the evaluation time changes", async () => {
-    const { calls } = stubFetch();
+    const { previews } = stubDraft();
     const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
     act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
-    await waitFor(() => expect(calls.filter((c) => c.method === "POST").length).toBe(1));
+    await waitFor(() => expect(previews).toHaveLength(1));
 
     act(() => result.current.setAt("2026-12-25T09:00:00Z"));
     act(() => void vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS + 10));
 
     await waitFor(() => {
-      const posts = calls.filter((c) => c.method === "POST");
-      expect(posts.length).toBe(2);
-      expect(posts[1]?.url).toContain("at=");
+      expect(previews).toHaveLength(2);
+      // The url is read off the REQUEST the resolver received, so `at=` is being asserted on
+      // what the hook actually sent rather than on a string the stub echoed back.
+      expect(previews[1]?.url).toContain("at=");
     });
   });
 });

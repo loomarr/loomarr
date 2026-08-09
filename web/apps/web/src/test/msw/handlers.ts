@@ -16,6 +16,8 @@ import {
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
+  getSystemLlmDiscoverMockHandler,
+  getSystemLlmStatusMockHandler,
 } from "@loomarr/api/msw";
 import type { RequestHandler } from "msw";
 import { channel } from "../fixtures/channels";
@@ -31,8 +33,20 @@ import { channel } from "../fixtures/channels";
 //
 // ⚠ EVERY response here is EMPTY-BUT-VALID, and that is deliberate: these are the "this screen
 // renders at all" reads, not the data any assertion depends on. A test that cares about content
-// passes its own override via `server.use(...)` AFTER these — MSW resolves the most recently
-// registered matching handler first, so a later `server.use` wins without removing the baseline.
+// overrides the one endpoint it asserts on and leaves the rest of the baseline alone.
+//
+// ⚠⚠ SPREAD IT LAST — `server.use(myOverride, ...appHandlers())`, NOT the other way round.
+// MSW resolves the FIRST matching handler in its list, and `server.use()` PREPENDS its arguments
+// to that list. So "the most recently registered handler wins" is true across separate `use()`
+// CALLS and exactly backwards WITHIN one: spread the baseline first and its empty response sits
+// in front of the override, which then never fires.
+//
+// This is not theoretical and it is not loud. `test/help` overrode `/v1/docs` with two pages,
+// got `{ docs: [] }` from the baseline instead, and failed as five 5-SECOND TIMEOUTS with no
+// unhandled-request error — the guard cannot help here, because the request WAS handled, just by
+// the wrong handler. Silent-empty is the precise failure mode this whole layer exists to remove,
+// so the ordering is load-bearing. `test/app-router` never hit it only because everything it adds
+// (`/v1/auth/me`, login) is absent from the list below.
 //
 // ⚠ It is a HAND-MAINTAINED LIST, which is the drift class this repo tracks in three other places.
 // It cannot be generated, because "which endpoints does the app fetch on route X" is a property of
@@ -74,6 +88,19 @@ const appHandlers = (): RequestHandler[] => [
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
   getJobsListMockHandler({ jobs: [] }),
   getListActivityMockHandler({ activity: [] }),
+  // The AI connection block reads both of these on mount, and it renders on the wizard's
+  // connections step AS WELL AS on Settings → AI — so they are common surface, not one screen's
+  // detail. ⚠ `local` and `reachable` are REQUIRED on the status body; a stub answering `{}`
+  // (which is what every catch-all did) reads as neither, which is a coherent-looking lie.
+  getSystemLlmStatusMockHandler({
+    local: true,
+    reachable: false,
+    provider: "ollama",
+    model: "",
+    catalog: [],
+    hosted: [],
+  }),
+  getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 }),
   getFillerWatchMockHandler({ clips: 0, health: "healthy", held: 0, sourcesOn: 0, sourcesTotal: 0 }),

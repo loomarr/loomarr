@@ -1,10 +1,13 @@
-import type { LineupEntryDTO } from "@loomarr/api";
+import type { LineupEntryDTO, SearchCandidate } from "@loomarr/api";
+import { getSearchMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { ChannelLineupEditor } from "./channel-lineup-editor";
 
 // The remove button carries a tooltip, and Radix tooltips need a provider ancestor
@@ -19,39 +22,32 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
 const heat: LineupEntryDTO = { key: "movie:tmdb:949", name: "Heat", year: 1995 };
 const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
 
-// Dispatches by method+path: GET /v1/search answers the add-a-title palette, PATCH
-// /v1/channels/{id} is the whole-list-replace commit this editor exists to drive.
-// `search.candidates` is read fresh on every call so a test can change it mid-flow
-// (e.g. proving a re-search still excludes whatever just got added).
-const stubFetch = (opts: { candidates?: unknown[]; patchStatus?: number } = {}) => {
+// GET /v1/search answers the add-a-title palette; PATCH /v1/channels/{id} is the
+// whole-list-replace commit this editor exists to drive. `candidates` is read fresh on every call
+// so a test can change it mid-flow (e.g. proving a re-search still excludes whatever just got
+// added).
+//
+// ⚠ The PATCH branch dispatched on `init?.method === "PATCH"` with NO url check — a PATCH to any
+// endpoint would have been recorded as a lineup commit — and answered with `{ id: "ch-1" }`, ten
+// fields short of a ChannelDTO.
+const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
   const patches: unknown[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      if (typeof url === "string" && url.includes("/v1/search")) {
-        return Promise.resolve(jsonResponse(200, { candidates: opts.candidates ?? [] }));
-      }
-      if (init?.method === "PATCH") {
-        patches.push(init.body ? JSON.parse(init.body as string) : undefined);
-        return Promise.resolve(jsonResponse(opts.patchStatus ?? 200, { id: "ch-1" }));
-      }
-      return Promise.resolve(jsonResponse(200, {}));
+  server.use(
+    getSearchMockHandler(() => ({ candidates: opts.candidates ?? [] })),
+    getUpdateChannelMockHandler(async ({ request }) => {
+      patches.push(await request.json());
+      return channel();
     }),
   );
   return { patches };
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("ChannelLineupEditor", () => {
   it("renders the current lineup with drag handles and remove buttons", () => {
-    stubFetch();
+    stubEditor();
     render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
@@ -63,7 +59,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("shows an empty state when the lineup is empty", () => {
-    stubFetch();
+    stubEditor();
     render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
     expect(screen.getByText(/nothing in the lineup yet/i)).toBeInTheDocument();
   });
@@ -72,7 +68,7 @@ describe("ChannelLineupEditor", () => {
   // the lineup prop (not client-only memory), so a channel loaded fresh with an acquiring/
   // unavailable title shows the right badge without ever having added it this session.
   it("renders each entry's server-provided state badge (durable across reloads)", () => {
-    stubFetch();
+    stubEditor();
     render(
       <ChannelLineupEditor
         channelId="ch-1"
@@ -95,7 +91,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("add: searching, picking a result appends it and commits the full ordered list", async () => {
-    const { patches } = stubFetch({
+    const { patches } = stubEditor({
       candidates: [{ mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true }],
     });
     render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
@@ -117,7 +113,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("a not-in-library pick still commits and reads as Pending", async () => {
-    const { patches } = stubFetch({
+    const { patches } = stubEditor({
       candidates: [
         { mediaType: "series", tvdbId: 81189, name: "Breaking Bad", year: 2008, inLibrary: false },
       ],
@@ -140,7 +136,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
-    const { patches } = stubFetch();
+    const { patches } = stubEditor();
     render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
@@ -152,7 +148,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("a candidate whose key is already in the lineup is not offered", async () => {
-    stubFetch({
+    stubEditor({
       candidates: [
         { mediaType: "movie", tmdbId: 949, name: "Heat", year: 1995, inLibrary: true },
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
@@ -176,7 +172,7 @@ describe("ChannelLineupEditor", () => {
   // 422. Rather than let a user pick it and watch the optimistic add snap back, it is
   // filtered out of the results entirely (a title with no id can't be provisioned anyway).
   it("a candidate with no usable id is not offered (its key is unaddable)", async () => {
-    const { patches } = stubFetch({
+    const { patches } = stubEditor({
       candidates: [
         { mediaType: "movie", name: "Some Obscure Film", year: 1980, inLibrary: false }, // no tmdbId
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
@@ -195,7 +191,7 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("cancelling the add palette closes it without committing", async () => {
-    const { patches } = stubFetch();
+    const { patches } = stubEditor();
     render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));

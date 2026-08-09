@@ -1,9 +1,24 @@
+import type { MeBody, TitleDTO } from "@loomarr/api";
+import {
+  getChannelGuideMockHandler,
+  getEnqueueTitleMockHandler,
+  getListChannelsMockHandler,
+  getListTitlesMockHandler,
+  getMeMockHandler,
+  getSettingsListMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { channel } from "@/test/fixtures/channels";
+import { setting } from "@/test/fixtures/settings";
+import { me } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
 // The Guide — the channels surface — through the REAL route tree.
 //
@@ -13,44 +28,34 @@ import { routeTree } from "@/routeTree.gen";
 // per-row actions menu, the inline "Add a channel" door, and the absence of any manual
 // rebuild control (§9 self-maintaining). The card-list-shaped ones did not survive, because
 // the cards did not.
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
-const MEMBER = { id: "u2", name: "Kid", role: "member", autoApprove: false, disabled: false, quota: 0 };
+const MEMBER: MeBody = me({ id: "u2", name: "Kid", role: "member", autoApprove: false });
 
+// ⚠ Both of these were written inline as ten-field objects and were missing `lineup`, which
+// ChannelDTO requires. `channel()` carries the full required set.
 const CHANNELS = [
-  {
+  channel({
     id: "ch-live",
     name: "Saturday Cartoons",
     number: 42,
-    status: "live",
-    strategy: "shuffle",
     programCount: 10,
-    pendingCount: 0,
     breakCount: 4,
     slotCount: 14,
-    policy: {},
-  },
-  {
+  }),
+  channel({
     id: "ch-part",
     name: "Late Night",
     number: 43,
-    status: "live",
-    strategy: "shuffle",
     programCount: 3,
     pendingCount: 7,
-    breakCount: 0,
     slotCount: 10,
-    policy: {},
-  },
+  }),
 ];
 
-const TITLES = [
+const TITLES: TitleDTO[] = [
   { key: "movie:tmdb:1", mediaType: "movie", state: "available", name: "Landed" },
   { key: "movie:tmdb:2", mediaType: "movie", state: "downloading", name: "Coming" },
   { key: "movie:tmdb:3", mediaType: "movie", state: "unavailable", name: "Gave Up", tmdbId: 3 },
 ];
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // GET /v1/guide's shape, read off the generated GuideChannelTimeline/GuideAiring DTOs
 // rather than remembered — the same rule the fixtures carry, and the one that caught two
@@ -64,56 +69,67 @@ const GUIDE = {
       channelId: "ch-live",
       name: "Saturday Cartoons",
       number: 42,
-      status: "live",
+      status: "live" as const,
       pendingCount: 0,
       airings: [
-        { kind: "program", title: "The Matrix", startMs: NOW, stopMs: NOW + 7_200_000, runtimeMs: 7_200_000 },
+        {
+          kind: "program" as const,
+          title: "The Matrix",
+          startMs: NOW,
+          stopMs: NOW + 7_200_000,
+          runtimeMs: 7_200_000,
+        },
       ],
     },
   ],
 };
 
+// ⚠ GET /v1/titles is a single-state FILTER and it 400s without a `state` param — mirroring
+// `internal/api/titles.go`, so a caller that forgets the param fails HERE exactly as it would in
+// production. Answering every titles request with the full set is what let the Board ship a
+// param-less call that 400s live while the suite stayed green.
+//
+// This is the one case in the file that cannot be generated: the spec declares errors via
+// `default:` (RFC 7807) with no explicit 400, so orval has no status to emit a handler for. The
+// shape used is MSW's PASS-THROUGH — a resolver that returns nothing declines the request and the
+// next matching handler takes it — so the 400 is a hand-written GUARD in front of the generated
+// success path, rather than a hand-written replacement for it.
+const titlesRequireState = () =>
+  http.get("*/v1/titles", ({ request }) => {
+    if (new URL(request.url).searchParams.get("state")) return undefined;
+    return HttpResponse.json(
+      { title: "Bad Request", detail: "state query param is required" },
+      { status: 400 },
+    );
+  });
+
 // `empty` serves a guide with NO channels, which is the fresh-install state the "Dead air"
 // empty state and the hidden header door both hang off.
-const stubFetch = (me: unknown = ADMIN, opts: { empty?: boolean } = {}) => {
-  const mock = vi.fn((url: string, _init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
-    if (u.includes("/v1/guide"))
-      return Promise.resolve(json(opts.empty ? { ...GUIDE, channels: [] } : GUIDE));
-    if (u.includes("/v1/channels")) return Promise.resolve(json({ channels: opts.empty ? [] : CHANNELS }));
-    // GET /v1/titles is a single-state FILTER, and it 400s without a `state` — mirror the
-    // real handler (internal/api/titles.go) rather than answering any URL, so a caller
-    // that forgets the param fails here exactly as it would in production. Returning the
-    // full set for every request is what let the Board ship a param-less call that 400s
-    // live while the suite stayed green.
-    if (u.includes("/v1/titles") && (!_init || _init.method === undefined || _init.method === "GET")) {
-      const state = new URL(u, "http://x").searchParams.get("state");
-      if (!state)
-        return Promise.resolve(json({ title: "Bad Request", detail: "state query param is required" }, 400));
-      return Promise.resolve(json({ titles: TITLES.filter((t) => t.state === state) }));
-    }
-    if (u.includes("/v1/settings")) {
-      // tunarr.url set → the list's Rebuild button is enabled (it's gated on Tunarr being
-      // connected, so a rebuild can't 501). Minimal entry shape the useTunarrReady hook reads.
-      return Promise.resolve(
-        json({
-          features: {},
-          settings: [{ key: "tunarr.url", set: true, provenance: "db", secret: false }],
-        }),
-      );
-    }
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
+const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
+  const enqueued: unknown[] = [];
+
+  server.use(
+    getMeMockHandler(who),
+    getChannelGuideMockHandler(opts.empty ? { ...GUIDE, channels: [] } : GUIDE),
+    getListChannelsMockHandler({ channels: opts.empty ? [] : CHANNELS }),
+    titlesRequireState(),
+    getListTitlesMockHandler(({ request }) => {
+      const state = new URL(request.url).searchParams.get("state");
+      return { titles: TITLES.filter((t) => t.state === state) };
+    }),
+    getEnqueueTitleMockHandler(async ({ request }) => {
+      enqueued.push(await request.json());
+      return { key: "movie:tmdb:3", mediaType: "movie", state: "wanted" };
+    }),
+    // tunarr.url set → the list's Rebuild button is enabled (it's gated on Tunarr being
+    // connected, so a rebuild can't 501). ⚠ The old entry supplied four of SettingEntry's eight
+    // required fields; `setting()` carries the rest.
+    getSettingsListMockHandler({ features: {}, settings: [setting({ key: "tunarr.url" })] }),
+    // Spread LAST — see handlers.ts: MSW takes the FIRST match and `use()` prepends.
+    ...appHandlers(),
   );
-  return mock;
+
+  return { enqueued };
 };
 
 const renderAt = (path: string) => {
@@ -133,11 +149,9 @@ const renderAt = (path: string) => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("Guide", () => {
   it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
-    stubFetch();
+    stubGuide();
     renderAt("/guide");
     // The heading is "Channels", not "Guide": one surface, and the mock names it for the
     // objects it lists rather than the view it uses (§12).
@@ -147,7 +161,7 @@ describe("Guide", () => {
   });
 
   it("has no manual rebuild/refresh — edits are seamless (§9) — and each row opens its channel", async () => {
-    stubFetch();
+    stubGuide();
     renderAt("/guide");
 
     // The row is present (its ⋮ actions menu is the stable, explicitly-labelled handle on
@@ -163,7 +177,7 @@ describe("Guide", () => {
 
   it("owns origination: 'Add a channel' opens the describe panel in place", async () => {
     const user = userEvent.setup();
-    stubFetch();
+    stubGuide();
     renderAt("/guide");
 
     // Each row carries a ⋮ actions menu (pause/resume + delete) so removing a channel doesn't
@@ -182,7 +196,7 @@ describe("Guide", () => {
   // handler, opening the same panel — which then titled itself "Add a channel". Three
   // labels, one action, two of them visible at once.
   it("shows only ONE origination door on an empty guide, and names it the same as the header", async () => {
-    stubFetch(ADMIN, { empty: true });
+    stubGuide(me(), { empty: true });
     renderAt("/guide");
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
@@ -198,7 +212,7 @@ describe("Guide", () => {
   // unconditionally would leave the panel with no way out.
   it("brings the header door back as Close once the panel is open on an empty guide", async () => {
     const user = userEvent.setup();
-    stubFetch(ADMIN, { empty: true });
+    stubGuide(me(), { empty: true });
     const view = renderAt("/guide");
 
     // Wait for the EMPTY STATE, not just the button. "Dead air" only renders once the guide
@@ -216,7 +230,7 @@ describe("Guide", () => {
   });
 
   it("keeps the header door on a populated guide, where no empty state offers it", async () => {
-    stubFetch();
+    stubGuide();
     renderAt("/guide");
 
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
@@ -225,7 +239,7 @@ describe("Guide", () => {
   });
 
   it("names the origination door for a member — they request rather than add", async () => {
-    stubFetch(MEMBER);
+    stubGuide(MEMBER);
     renderAt("/guide");
     // A member has no other way to ask for a channel now that /suggest is gone, so the
     // affordance must be present for them too — worded for what they are actually doing.
@@ -234,7 +248,7 @@ describe("Guide", () => {
   });
 
   it("opens the describe panel when the wizard hands off ?intent=", async () => {
-    stubFetch();
+    stubGuide();
     renderAt("/guide?intent=saturday-morning%20cartoons");
     // §13's blank-page killer: the handoff must land on a FILLED form, not a bare grid with
     // the operator wondering where their template went.
@@ -245,7 +259,7 @@ describe("Guide", () => {
 
 describe("Board", () => {
   it("leads with the journey, not a table of states", async () => {
-    stubFetch();
+    stubGuide();
     renderAt("/queue");
     // "1 of 3 have landed" — the member framing (§13).
     expect(await screen.findByText(/1 of 3 titles have landed/i)).toBeInTheDocument();
@@ -253,17 +267,16 @@ describe("Board", () => {
   });
 
   it("offers a retry only for a title that gave up", async () => {
-    const fetchMock = stubFetch();
+    const { enqueued } = stubGuide();
     renderAt("/queue");
 
     const retries = await screen.findAllByRole("button", { name: /try again/i });
     expect(retries).toHaveLength(1); // only the unavailable one
     await userEvent.click(retries[0] as HTMLElement);
 
-    const posted = fetchMock.mock.calls.find(
-      ([u, i]) => String(u).includes("/v1/titles") && String(i?.method) === "POST",
-    );
     // Re-enqueued by identity, not by key — that is what the enqueue contract takes.
-    expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({ mediaType: "movie", tmdbId: 3 });
+    // ⚠ The old assertion scanned `fetchMock.mock.calls` for a POST whose url contained
+    // "/v1/titles"; landing in the handler bound to `POST /v1/titles` proves the route itself.
+    await expect.poll(() => enqueued).toEqual([expect.objectContaining({ mediaType: "movie", tmdbId: 3 })]);
   });
 });
