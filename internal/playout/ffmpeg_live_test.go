@@ -607,7 +607,7 @@ func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/playlist") {
 			// The same two-identical-entries shape the real playlist endpoint emits.
-			fmt.Fprintf(w, "ffconcat version 1.0\nfile '%s/seg'\nfile '%s/seg'\n", srv.URL, srv.URL)
+			_, _ = fmt.Fprintf(w, "ffconcat version 1.0\nfile '%s/seg'\nfile '%s/seg'\n", srv.URL, srv.URL)
 			return
 		}
 		fetches.Add(1)
