@@ -124,13 +124,30 @@ type ClipPipeline struct {
 	UpdatedAt  time.Time
 }
 
-// Record appends (or replaces) this stage's entry on the ladder.
+// Record appends (or replaces) this stage's entry on the ladder, and moves the row's own Status
+// to match when the rung being recorded is the CURRENT one.
 //
 // ⚠ Replaces in place when the stage is already present, so a retry does not append a second row
 // for the same rung. The ladder is a picture of the pipeline, not a log of attempts — the attempt
 // COUNT carries that, and a ladder that grew a row per retry would push the useful rungs off the
 // operator's screen for exactly the clips that are struggling.
+//
+// ⚠ **Record is the ONLY writer of `Status` once a rung resolves, and that is the fix for a defect
+// the whole suite was green over.** `Status` is the CURRENT rung's state; `Disposition` is the
+// clip's. The verdict paths set `Disposition` and recorded the rung, but left `Status` at the
+// `running` written on entry — so a clip handed to a person persisted as `split/running, 0%`
+// while its own ladder entry said `done`. One row disagreeing with itself. Nothing FUNCTIONAL
+// broke, which is why no test caught it: every store predicate keys on `disposition`, never on
+// `status`. It broke only the picture — `ClipPipeline.resolve` on the frontend prefers
+// `row.stage`/`row.status` over the visited ladder (correctly: a rung mid-run has no entry yet),
+// so the pip pulsed "in progress" forever and the reject note was never shown. Measured live
+// (§10 V51g): eight reels, one of them WAGA-5, all finished within seconds and all drawn as
+// though still working. Keeping the two in step HERE means the next verdict path cannot
+// reintroduce it by forgetting a line.
 func (p *ClipPipeline) Record(stage StageID, status StageStatus, note string, attempts int, at time.Time) {
+	if stage == p.Stage {
+		p.Status = status
+	}
 	for i := range p.Stages {
 		if p.Stages[i].Stage == stage {
 			p.Stages[i] = StageRecord{Stage: stage, Status: status, Note: note, Attempts: attempts, At: at}
