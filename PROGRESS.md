@@ -4,6 +4,74 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V53d — one mock layer instead of 31, and the first migrated file found two defects in the stub
+it replaced (2026-08-09, branch `feat/msw-fixtures`).** Gate: `make fe` (**1222** app + **19** api +
+51 core + 5 tokens, biome clean on 922 files) + `make retired-verify` (25). Zero Go files touched.
+
+31 test files each hand-rolled a local `stubFetch`, so **31 places independently encoded what the
+wire looks like** — the frontend doing exactly what the Go side bans (*"Phases do not invent private
+mocks; extend the testkit"*). This is that shared layer: `msw` + orval-generated handlers behind
+`@loomarr/api/msw`, with `src/test/msw/server.ts` owning the lifecycle.
+
+⚠ **V53c was PLANNED AND DISSOLVED, on evidence.** It was to be runtime response validation through
+the mutator. Orval cannot do it here: `runtimeValidation` does not exist in 7.21.0 (zero occurrences
+in any `@orval/*` package), and in 8.24.0 the **only** `.parse()` injection is the Angular
+`.pipe(map(...))` path — the fetch client's mutator branch builds its request function and returns
+before reaching it. Loomarr's transport IS a custom mutator (CSRF, cookie auth, RFC 7807), and orval
+PR #3226 — *"pass zod schema to custom fetch response implementation"* — is still open. **But the
+value survived the design dying:** what it was actually for was catching FIXTURE drift, not backend
+drift (`openapi-verify` already covers that), and a test knows which endpoint it stubs, so
+`validated(schema, fixture)` needs no URL→schema map and no transport change.
+
+**What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so
+a renamed route is fixed by a regenerate where a hand-written path silently stops matching and its
+test keeps passing against nothing. ⚠ **The generated DATA is never trusted:** optional fields emit
+as `arrayElement([value, undefined])`, so presence varies per CALL and nothing is seeded — flaky
+rather than merely arbitrary. `useExamples` stays unset (it reads singular `example`; Huma emits 3.1
+plural `examples:`).
+
+⚠ **`onUnhandledRequest: "error"` is NOT used, because it does not fail a test.** MSW's docs define
+it as *"print an error and halt request execution"*, and the maintainer confirms in mswjs/msw#946
+that the interceptor handles the exception as the native class would, so *"from MSW's perspective no
+exception has happened"* and the runner never sees it. The server records unhandled requests and
+throws in `afterEach` instead. **Verified by direct probe** — a fetch to an unrouted path fails the
+test by name — after a first sabotage attempt passed and looked like a broken guard. It was not: the
+sabotage was invalid, because the component never made the request I removed the handler for.
+
+⚠ **THE FIRST MIGRATED FILE FOUND TWO REAL DEFECTS IN THE STUB IT REPLACED, and this is the argument
+for the sweep.** Neither was findable by reading:
+
+- The old stub answered every non-PATCH call with `{ entries: [] }`, which read as *"the modal loads
+  the settings list on mount."* It does not. **A catch-all stub structurally cannot distinguish
+  "handled" from "never asked for"** — MSW can, because an unmatched request is now an error.
+- It returned `{ results: {} }` where the wire says `results: SettingResult[]`. **The test asserted
+  against a shape the API never produces**, and passed for as long as it existed, because a
+  hand-rolled stub is untyped by construction. The generated handler is typed, so it is now a
+  compile error.
+
+Also: the old stub matched on `init?.method === "PATCH"` alone, so it would have accepted a PATCH to
+ANY url — including one the component should never call.
+
+**Migration is incremental by construction.** MSW installs globally with NO handlers, and an
+unmigrated test's `vi.stubGlobal("fetch", …)` replaces global fetch outright and never reaches the
+interceptor — verified: all 158 files still pass with the server installed. The two mechanisms
+coexist until the last stub is gone.
+
+⚠ **`retired-verify` caught this entry's own prose**: the §14 row and `server.ts` both cite
+`/v1/suggestions` → `/v1/proposals` as the historical rename example, which is a banned identifier.
+Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
+fire on that string, and a mention that is deliberate should say so.
+
+**Next up: V53e+** — migrate the remaining 30 `stubFetch` files in batches of 5–8, then add
+`vi.stubGlobal("fetch"` to `scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard
+would fail on every file still waiting.
+
+**Also still open, and not superseded by the V53 arc: V50d** (house-style conformance across
+`components/ui`), carrying `connection-block`'s collapsed-body focus gap — its Test action and Fix
+link remain keyboard-reachable while the section is closed, and it has no story so axe never sees
+it. Recorded here because V50c's own forward pointer was removed with it: two live "Next up" lines
+is the pattern this file warns about, but a gap with no pointer at all is worse.
+
 **V53b — arrays are not nullable; `null` stops being a second empty list (2026-08-09, branch
 `feat/non-nullable-arrays`).** Gate: `make check` (0 lint, `-race`) + `make openapi-verify` +
 `make retired-verify` (25) + `make fe` (**1222** app + 18 api + 51 core + 5 tokens, biome clean on
@@ -59,9 +127,6 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
-**Next up: V53c** (runtime response validation through the mutator, dev/test only), then V53d (MSW
-handlers — now materially smaller, since generated mock defaults are usable and typed fixtures are
-needed only where a test asserts on specific data).
 
 **V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
 `feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean
@@ -113,8 +178,6 @@ populated** — and `useExamples` reads singular `.example` where Huma emits plu
 **0 of 53** example tags are used, across **1304 unseeded faker calls**. Not configurable away. The
 zod generator handled the same 3.1 spec correctly, which is what isolates the gap to the mock half.
 
-**Next up: V53b** (runtime response validation through the mutator, dev/test only), then V53c+ (MSW
-handlers over typed fixtures, replacing 31 hand-rolled `stubFetch` helpers in batches).
 
 **V51c — sources roll up by provider, with no column, no table and no migration (2026-08-09).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
@@ -334,8 +397,6 @@ collapsed body — a Test action and a Fix link — **remains focusable and anno
 left alone because scope is one component; it has no story, so axe never sees it. This is the
 strongest candidate for the next slice.
 
-**Next up: V50d** (house-style conformance across `components/ui`), with `connection-block`'s
-collapsed-body focus gap folded in.
 
 **V50b — the hand-rolled overlays fold onto the primitives (2026-08-08, branch
 `feat/base-ui-v50b`).** Gate: `make fe` (**1221** app + 17 api + 51 core + 5 tokens, biome clean on
