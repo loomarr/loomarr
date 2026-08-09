@@ -2,9 +2,6 @@ import type {
   HowVocab,
   RuleOrdering,
   ScopePolicy,
-  VocabularyHow,
-  VocabularyWhat,
-  VocabularyWhen,
   WhatVocab,
   WhenVocab,
 } from "@loomarr/api";
@@ -15,22 +12,33 @@ import type {
 // drift hazard are gone). What stays here is only the PARAMETRIC lowering the endpoint can't
 // enumerate (series:<key>, genre:<name>, era:<range> are composed from the channel's own
 // lineup) plus the reverse lookups, all parameterized BY the served vocabulary so there is a
-// single source of truth. The served arrays are nullable on the wire (`X[] | null`); every
-// function here coalesces null → [] so a not-yet-loaded vocabulary is simply "no options".
+// single source of truth.
+//
+// ⚠ The served arrays are NO LONGER nullable on the wire (V53b — `huma.DefaultArrayNullable` is
+// false and a guard proves no handler returns nil). This comment used to say they were, and the
+// coalescing below existed for that. The coalescing STAYS, for a different and still-real reason:
+// the vocabulary arrives from a query, so it is `undefined` until the fetch resolves, and a
+// not-yet-loaded vocabulary should read as "no options" rather than crash. Null is gone; unloaded
+// is not.
+//
+// ⚠ The generated `VocabularyWhen`/`VocabularyWhat`/`VocabularyHow` aliases these signatures used
+// are gone too, and that is a side effect worth knowing: orval only emitted them because
+// `X[] | null` needed a name. Non-nullable arrays inline to `WhenVocab[]`, so the aliases stopped
+// being generated — nothing was renamed, they simply had no reason to exist.
 
 const arr = <T>(x: readonly T[] | null | undefined): readonly T[] => x ?? [];
 
 // ---- WHEN --------------------------------------------------------------------------------
 
-const whenOptions = (when: VocabularyWhen): { value: string; label: string }[] =>
+const whenOptions = (when: WhenVocab[]): { value: string; label: string }[] =>
   arr<WhenVocab>(when).map((p) => ({ value: p.token, label: p.label }));
-const whenShortLabels = (when: VocabularyWhen): { value: string; label: string }[] =>
+const whenShortLabels = (when: WhenVocab[]): { value: string; label: string }[] =>
   arr<WhenVocab>(when).map((p) => ({ value: p.token, label: p.shortLabel }));
 
 // lowerWhen — token → the predicate + priority the BE lowers it to (from the served
 // vocabulary, so the editor's preview matches the server exactly).
 const lowerWhen = (
-  when: VocabularyWhen,
+  when: WhenVocab[],
   token: string,
 ): { predicate: WhenVocab["predicate"]; priority: number } | undefined => {
   const p = arr<WhenVocab>(when).find((w) => w.token === token);
@@ -39,7 +47,7 @@ const lowerWhen = (
 
 // tokenForWhen — reverse lookup: which served token produced this rule's predicate, so the
 // editor preselects the right option. No match (hand-authored/composite) → "" ("Custom").
-const tokenForWhen = (when: VocabularyWhen, w: WhenVocab["predicate"] | undefined): string => {
+const tokenForWhen = (when: WhenVocab[], w: WhenVocab["predicate"] | undefined): string => {
   if (!w) return "";
   const match = arr<WhenVocab>(when).find(
     (p) =>
@@ -54,12 +62,12 @@ const tokenForWhen = (when: VocabularyWhen, w: WhenVocab["predicate"] | undefine
 
 // ---- WHAT (served static + parametric prefixes here) ------------------------------------
 
-const whatStaticOptions = (what: VocabularyWhat): { value: string; label: string }[] =>
+const whatStaticOptions = (what: WhatVocab[]): { value: string; label: string }[] =>
   arr<WhatVocab>(what).map((w) => ({ value: w.token, label: w.label }));
 
 // lowerWhat — token → scope. Parametric prefixes (series:/genre:/era:) are parsed here (the
 // endpoint can't enumerate them); the static tokens' scopes come from the served vocabulary.
-const lowerWhat = (what: VocabularyWhat, token: string): { scope: ScopePolicy | undefined } | undefined => {
+const lowerWhat = (what: WhatVocab[], token: string): { scope: ScopePolicy | undefined } | undefined => {
   const t = token.trim();
   if (t.startsWith("series:")) {
     const key = t.slice("series:".length).trim();
@@ -80,7 +88,7 @@ const lowerWhat = (what: VocabularyWhat, token: string): { scope: ScopePolicy | 
 
 // tokenForWhat — reverse lookup for a rule's scope. Parametric shapes recognized directly;
 // otherwise it matches a served static preset's scope.
-const tokenForWhat = (what: VocabularyWhat, scope: ScopePolicy | null | undefined): string => {
+const tokenForWhat = (what: WhatVocab[], scope: ScopePolicy | null | undefined): string => {
   if (!scope) return "all";
   const series = scope.series;
   if (series && series.length > 0) return `series:${series[0]}`;
@@ -125,15 +133,15 @@ const parseEraToken = (s: string): { from?: number; to?: number } | undefined =>
 
 // ---- HOW ---------------------------------------------------------------------------------
 
-const howOptions = (how: VocabularyHow): { value: string; label: string }[] =>
+const howOptions = (how: HowVocab[]): { value: string; label: string }[] =>
   arr<HowVocab>(how).map((p) => ({ value: p.token, label: p.label }));
-const howShortLabels = (how: VocabularyHow): { value: string; label: string }[] =>
+const howShortLabels = (how: HowVocab[]): { value: string; label: string }[] =>
   arr<HowVocab>(how).map((p) => ({ value: p.token, label: p.shortLabel }));
 
 // lowerHow — token → the RuleOrdering + whether it pins the full run (marathon), from the
 // served vocabulary. `window: "full"` mirrors schedule.WindowFull.
 const lowerHow = (
-  how: VocabularyHow,
+  how: HowVocab[],
   token: string,
 ): { ordering: RuleOrdering; window?: "full" } | undefined => {
   const p = arr<HowVocab>(how).find((h) => h.token === token);
@@ -142,7 +150,7 @@ const lowerHow = (
 };
 
 // tokenForHow — reverse lookup for a rule's RuleOrdering. "" ("Custom") when nothing matches.
-const tokenForHow = (how: VocabularyHow, ordering: RuleOrdering | undefined): string => {
+const tokenForHow = (how: HowVocab[], ordering: RuleOrdering | undefined): string => {
   if (!ordering?.ordering) return "";
   const match = arr<HowVocab>(how).find(
     (p) =>

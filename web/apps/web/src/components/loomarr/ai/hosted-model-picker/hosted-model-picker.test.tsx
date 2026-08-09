@@ -46,7 +46,7 @@ describe("HostedModelPicker", () => {
 
   it("points at where to get a key when none is configured", () => {
     render(
-      <HostedModelPicker providers={[provider({ keyConfigured: false, models: null })]} onSelect={vi.fn()} />,
+      <HostedModelPicker providers={[provider({ keyConfigured: false, models: [] })]} onSelect={vi.fn()} />,
     );
     expect(screen.getByText(/press Test to list its models/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /get a key/i })).toHaveAttribute(
