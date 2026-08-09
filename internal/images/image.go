@@ -208,7 +208,14 @@ type Derivative struct {
 	Format    Format
 	Width     int
 	Bytes     int64
-	Path      string // relative to the images dir
+	// Path is where the file actually is — `images.dir` included, as blobStore.DerivativePath
+	// builds it.
+	//
+	// ⚠ This said "relative to the images dir" and was never true of anything written here. It
+	// matters now that the GC evicts by handing this value straight to a remove: a path that had
+	// to be re-joined with a directory the collector does not hold would delete nothing while
+	// reporting success, and the budget would never come down.
+	Path      string
 	CreatedAt time.Time
 }
 

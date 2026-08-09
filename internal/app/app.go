@@ -653,6 +653,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The image service (§22, V52). First in this block deliberately: it depends on nothing
 		// else here, and the jobs registered later need it.
 		imageSvc = newImageService(st, set)
+		registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client

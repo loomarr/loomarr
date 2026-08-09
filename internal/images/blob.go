@@ -135,15 +135,32 @@ func (b *blobStore) Write(path string, data []byte) error {
 // remote response's Content-Length are both claims by the other side; the only number that bounds
 // what actually lands on our disk is how many bytes we agree to copy.
 func (b *blobStore) WriteFrom(path string, r io.Reader, maxBytes int64) ([]byte, error) {
+	data, err := readCapped(r, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.Write(path, data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// readCapped reads at most maxBytes, treating one byte more as a refusal rather than a truncation.
+//
+// ⚠ The `+1` is the whole mechanism: LimitReader alone would silently hand back a truncated image,
+// which decodes as a corrupt file rather than as an over-large one. Reading one byte past the
+// limit is what makes "too big" distinguishable from "exactly at the limit".
+//
+// Shared by the upload path and the remote fetch because the rule is the same in both: the cap is
+// enforced on what we actually read, never on a Content-Length or a multipart Size, both of which
+// are claims by the other side.
+func readCapped(r io.Reader, maxBytes int64) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("images: read: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
 		return nil, fmt.Errorf("images: larger than the %d byte limit", maxBytes)
-	}
-	if err := b.Write(path, data); err != nil {
-		return nil, err
 	}
 	return data, nil
 }

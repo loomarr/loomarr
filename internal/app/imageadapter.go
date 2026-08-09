@@ -126,6 +126,77 @@ func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.
 	if err != nil {
 		return nil, err
 	}
+	return fromStoreDerivatives(rows), nil
+}
+
+// --- The background jobs' half of the contract (V52 phase 3b) ---
+//
+// ⚠ The domain names these methods for what they DO to images (ListOrphans, ListExpiredBefore)
+// while the store names them for the table (ListOrphanImages, ListImagesExpiredBefore), and the
+// rename happens here rather than in either package. That is the same translation the type
+// conversions above perform, one level up: `internal/images` reads as a subsystem talking about
+// its own subject, and `internal/store` reads as a schema, because neither had to compromise to
+// match the other.
+
+func (a imageStore) ListAwaitingFetch(ctx context.Context, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesAwaitingFetch(ctx, limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListByOrigin(ctx context.Context, origin images.Origin, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesByOrigin(ctx, string(origin), limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesExpiredBefore(ctx, cutoff, limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListOrphans(ctx context.Context, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListOrphanImages(ctx, limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListUnrecoverable(ctx context.Context, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListUnrecoverableImages(ctx, limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListMissingFormat(ctx context.Context, f images.Format, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesMissingFormat(ctx, string(f), limit)
+	return fromStoreImages(rows), err
+}
+
+func (a imageStore) ListColdestDerivatives(ctx context.Context, limit int) ([]images.Derivative, error) {
+	rows, err := a.st.ListColdestDerivatives(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	return fromStoreDerivatives(rows), nil
+}
+
+func (a imageStore) TotalDerivativeBytes(ctx context.Context) (int64, error) {
+	return a.st.TotalImageDerivativeBytes(ctx)
+}
+
+func (a imageStore) DeleteDerivative(ctx context.Context, hash string, f images.Format, width int) error {
+	return a.st.DeleteImageDerivative(ctx, hash, string(f), width)
+}
+
+func (a imageStore) DeleteDerivatives(ctx context.Context, hash string) error {
+	return a.st.DeleteImageDerivatives(ctx, hash)
+}
+
+func (a imageStore) DeleteImage(ctx context.Context, hash string) error {
+	return a.st.DeleteImage(ctx, hash)
+}
+
+func (a imageStore) RepointRefs(ctx context.Context, from, to string) error {
+	return a.st.RepointImageRefs(ctx, from, to)
+}
+
+func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
 	out := make([]images.Derivative, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, images.Derivative{
@@ -137,7 +208,15 @@ func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.
 			CreatedAt: d.CreatedAt,
 		})
 	}
-	return out, nil
+	return out
+}
+
+func fromStoreImages(rows []store.Image) []images.Image {
+	out := make([]images.Image, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, fromStoreImage(r))
+	}
+	return out
 }
 
 // mapImageErr translates the store's not-found into the domain's sentinel.

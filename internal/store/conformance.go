@@ -102,5 +102,10 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ImageUnrecoverableSelection", func(t *testing.T) { testImageUnrecoverableSelection(t, newStore) })
 		t.Run("ImageDeleteCascades", func(t *testing.T) { testImageDeleteCascades(t, newStore) })
 		t.Run("ImageTouch", func(t *testing.T) { testImageTouch(t, newStore) })
+		t.Run("ImagesByOrigin", func(t *testing.T) { testImagesByOrigin(t, newStore) })
+		t.Run("ImageRefsRepoint", func(t *testing.T) { testImageRefsRepoint(t, newStore) })
+		t.Run("ImageDerivativeBudgetAndEvictionOrder", func(t *testing.T) {
+			testImageDerivativeBudgetAndEvictionOrder(t, newStore)
+		})
 	})
 }

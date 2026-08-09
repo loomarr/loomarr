@@ -439,6 +439,187 @@ func testImageTouch(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// The rehydrate job's work list — every image of one origin, whatever its fetch state.
+//
+// ⚠ This set is deliberately NOT expressible by the two lists that already exist, and the test
+// says so by construction: it seeds a remote image that has been fetched and one that has not,
+// and requires both back. `ListImagesAwaitingFetch` is scoped to the never-fetched sentinel and
+// the expiry sweep to a cutoff, but a file can go missing under a row in either state — which is
+// the only thing rehydrate is looking for.
+func testImagesByOrigin(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+
+	fetched := imageAt("rho", at)
+	fetched.Origin, fetched.OriginFetchedAt = "remote", at
+	pending := imageAt("sigma", at)
+	pending.Origin, pending.OriginFetchedAt = "remote", time.Time{}
+	uploaded := imageAt("tau", at)
+	uploaded.Origin, uploaded.OriginFetchedAt = "upload", at
+
+	for _, img := range []Image{fetched, pending, uploaded} {
+		if err := s.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.ListImagesByOrigin(ctx, "remote", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ListImagesByOrigin(remote) = %d rows, want 2 (the fetched one and the pending one)", len(got))
+	}
+	for _, img := range got {
+		if img.Hash == uploaded.Hash {
+			t.Error("ListImagesByOrigin(remote) returned an upload — the origin filter is not applied")
+		}
+	}
+
+	if got, err = s.ListImagesByOrigin(ctx, "upload", 50); err != nil {
+		t.Fatal(err)
+	} else if len(got) != 1 || got[0].Hash != uploaded.Hash {
+		t.Errorf("ListImagesByOrigin(upload) = %d rows, want just the upload", len(got))
+	}
+}
+
+// The fetch job's re-key: an adopted row keyed on its source URL becomes a row keyed on the
+// content hash, and its refs must travel with it.
+//
+// ⚠ The collision half is the part worth testing, and it is why this is not an UPDATE. Two
+// distinct source URLs can hold identical bytes — the same poster reached by two paths — so both
+// placeholder rows re-key onto ONE content hash. A second repoint carrying the same
+// (owner_kind, owner_id, role) must be a no-op rather than a primary-key violation.
+func testImageRefsRepoint(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+
+	placeholderA := imageAt("upsilon", at)
+	placeholderB := imageAt("phi", at)
+	content := imageAt("chi", at)
+	for _, img := range []Image{placeholderA, placeholderB, content} {
+		if err := s.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Both placeholders decorate the SAME owner in the same role — the collision case.
+	for _, h := range []string{placeholderA.Hash, placeholderB.Hash} {
+		if err := s.PutImageRef(ctx, ImageRef{
+			ImageHash: h, OwnerKind: "channel", OwnerID: "ch-repoint", Role: "poster",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.RepointImageRefs(ctx, placeholderA.Hash, content.Hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RepointImageRefs(ctx, placeholderB.Hash, content.Hash); err != nil {
+		t.Fatalf("the second repoint onto the same content hash failed — an UPDATE would collide here: %v", err)
+	}
+
+	owned, err := s.ImagesForOwner(ctx, "channel", "ch-repoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(owned) != 1 || owned[0].Hash != content.Hash {
+		t.Fatalf("after repointing, the owner has %d images, want just the content-hashed one", len(owned))
+	}
+
+	// The placeholders are now orphans, which is what lets the GC delete them.
+	orphans, err := s.ListOrphanImages(ctx, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawA, sawB bool
+	for _, o := range orphans {
+		sawA = sawA || o.Hash == placeholderA.Hash
+		sawB = sawB || o.Hash == placeholderB.Hash
+	}
+	if !sawA || !sawB {
+		t.Error("a repointed-away placeholder is still referenced — the source refs were not cleared")
+	}
+}
+
+// The GC's two eviction inputs: how much disk the derivatives occupy, and which to drop first.
+//
+// ⚠ The order comes from the parent IMAGE's last_used_at, not the derivative's created_at, and
+// this test pins that by making the two disagree: the coldest image's derivative is the NEWEST
+// file. A created_at ordering would return them in exactly the wrong order and still look
+// plausible, which is why the fixture is built to distinguish them rather than to pass.
+func testImageDerivativeBudgetAndEvictionOrder(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+
+	hot := imageAt("psi", at)
+	hot.LastUsedAt = at.Add(72 * time.Hour)
+	cold := imageAt("omega", at)
+	cold.LastUsedAt = at
+	for _, img := range []Image{hot, cold} {
+		if err := s.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if total, err := s.TotalImageDerivativeBytes(ctx); err != nil {
+		t.Fatalf("total over an empty table must be 0, not an error: %v", err)
+	} else if total != 0 {
+		t.Errorf("TotalImageDerivativeBytes on a fresh store = %d, want 0", total)
+	}
+
+	// The cold image's derivative is the NEWER file — so created_at and last_used_at disagree.
+	if err := s.PutImageDerivative(ctx, ImageDerivative{
+		ImageHash: hot.Hash, Format: "webp", Width: 500, Bytes: 12000,
+		Path: "drv/h/o/hot_w500.webp", CreatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutImageDerivative(ctx, ImageDerivative{
+		ImageHash: cold.Hash, Format: "webp", Width: 500, Bytes: 8000,
+		Path: "drv/c/o/cold_w500.webp", CreatedAt: at.Add(96 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	total, err := s.TotalImageDerivativeBytes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 20000 {
+		t.Errorf("TotalImageDerivativeBytes = %d, want 20000", total)
+	}
+
+	coldest, err := s.ListColdestDerivatives(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(coldest) != 2 {
+		t.Fatalf("ListColdestDerivatives = %d rows, want 2", len(coldest))
+	}
+	if coldest[0].ImageHash != cold.Hash {
+		t.Errorf("eviction order starts with the hot image — the order must come from the parent "+
+			"image's last_used_at, not the derivative's created_at (got %s, want %s)",
+			coldest[0].ImageHash, cold.Hash)
+	}
+
+	// Evicting one rung leaves the other rung and both parent rows alone.
+	if err := s.DeleteImageDerivative(ctx, cold.Hash, "webp", 500); err != nil {
+		t.Fatal(err)
+	}
+	if total, err = s.TotalImageDerivativeBytes(ctx); err != nil {
+		t.Fatal(err)
+	} else if total != 12000 {
+		t.Errorf("after evicting one rung the total is %d, want 12000", total)
+	}
+	if _, err := s.GetImage(ctx, cold.Hash); err != nil {
+		t.Errorf("evicting a derivative deleted its image: %v", err)
+	}
+}
+
 // jsonHasAttribution avoids depending on byte-identical JSON across dialects: Postgres JSONB
 // normalises whitespace and key order, sqlite TEXT preserves whatever was written. Asserting on
 // the VALUE rather than the encoding is what keeps this one assertion honest on both.

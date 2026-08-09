@@ -133,13 +133,9 @@ func (s *Service) Produces(f Format) bool {
 // already held updates the row's mutable half and rewrites nothing on disk. That is what makes the
 // upload path safe to retry.
 func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (Image, error) {
-	max := s.cfg.MaxUploadBytes()
-	data, err := io.ReadAll(io.LimitReader(r, max+1))
+	data, err := readCapped(r, s.cfg.MaxUploadBytes())
 	if err != nil {
-		return Image{}, fmt.Errorf("images: read upload: %w", err)
-	}
-	if int64(len(data)) > max {
-		return Image{}, fmt.Errorf("images: larger than the %d byte limit", max)
+		return Image{}, err
 	}
 
 	// ⚠ Decode BEFORE storing. It is both the format allowlist (a sniff the client cannot lie past)

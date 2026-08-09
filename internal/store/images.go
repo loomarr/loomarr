@@ -88,9 +88,45 @@ type ImageStore interface {
 	DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error
 	ImagesForOwner(ctx context.Context, ownerKind, ownerID string) ([]Image, error)
 
+	// ListImagesByOrigin returns images of one origin, oldest first. The rehydrate job's work
+	// list: "every remote image" is a set no other method describes, because
+	// ListImagesAwaitingFetch is scoped to the never-fetched sentinel and the expiry sweep is
+	// scoped to a cutoff, while a file can go missing under a row in either state.
+	ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]Image, error)
+
+	// RepointImageRefs moves every ref from one image hash to another.
+	//
+	// ⚠ This exists for exactly one caller and it is not a convenience. `Adopt` keys a
+	// not-yet-fetched remote row on a hash of its SOURCE URL, because the content hash cannot be
+	// known before the bytes arrive; when the fetch lands, identity becomes the real content hash
+	// or `Cache-Control: immutable` stops being true. Re-keying a row that `image_refs` already
+	// points at needs the refs to move with it, and a naive UPDATE collides whenever two source
+	// URLs turn out to hold the same bytes for the same owner — so this is insert-then-delete,
+	// not an update.
+	RepointImageRefs(ctx context.Context, from, to string) error
+
 	PutImageDerivative(ctx context.Context, d ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error)
 	DeleteImageDerivatives(ctx context.Context, hash string) error
+	// DeleteImageDerivative removes one rendition's row. The GC's eviction unit: a derivative is
+	// regenerable, so dropping one costs a re-encode and never data.
+	DeleteImageDerivative(ctx context.Context, hash, format string, width int) error
+	// TotalImageDerivativeBytes is the disk the cache budget is measured against.
+	//
+	// ⚠ Sums the RECORDED sizes rather than walking the directory. The two can disagree — a file
+	// written and never recorded, or a row whose file was removed by hand — and the row is the
+	// right authority here because it is what the eviction loop deletes: a budget computed from
+	// bytes the GC cannot free would make the loop run forever without ever getting under it.
+	TotalImageDerivativeBytes(ctx context.Context) (int64, error)
+	// ListColdestDerivatives returns derivatives ordered by their parent image's last use,
+	// coldest first — the eviction order.
+	//
+	// ⚠ Ordered by the IMAGE's last_used_at, not the derivative's own created_at, and the
+	// difference is the whole policy (V52 phase 3b). `image_derivatives` has no last_used_at and
+	// deliberately gains none: a per-derivative LRU would make every image request a row WRITE,
+	// so a fifty-poster grid would be fifty writes per page load against SQLite's single writer.
+	// Image-level LRU costs one write per image request, which `TouchImage` already does.
+	ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error)
 	// ListImagesMissingFormat returns images that have at least one derivative but none in the
 	// given format — the AVIF job's work list, expressed without the job knowing SQL.
 	ListImagesMissingFormat(ctx context.Context, format string, limit int) ([]Image, error)
@@ -276,6 +312,82 @@ func (s *sqlStore) DeleteImageDerivatives(ctx context.Context, hash string) erro
 		`DELETE FROM image_derivatives WHERE image_hash = ?`), hash)
 	if err != nil {
 		return fmt.Errorf("delete derivatives %s: %w", hash, err)
+	}
+	return nil
+}
+
+func (s *sqlStore) DeleteImageDerivative(ctx context.Context, hash, format string, width int) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`DELETE FROM image_derivatives WHERE image_hash = ? AND format = ? AND width = ?`),
+		hash, format, width)
+	if err != nil {
+		return fmt.Errorf("delete derivative %s %s w%d: %w", hash, format, width, err)
+	}
+	return nil
+}
+
+func (s *sqlStore) TotalImageDerivativeBytes(ctx context.Context) (int64, error) {
+	// COALESCE because SUM over no rows is NULL in both dialects, and a fresh install has no
+	// derivatives — scanning NULL into int64 is an error, not a zero.
+	var total int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(bytes), 0) FROM image_derivatives`).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("total derivative bytes: %w", err)
+	}
+	return total, nil
+}
+
+func (s *sqlStore) ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error) {
+	// The join is what makes this image-level LRU: the order comes from the parent row's
+	// last_used_at, which every serve already updates, rather than from a column on the
+	// derivative that would need a write per rendition served.
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT d.image_hash, d.format, d.width, d.bytes, d.path, d.created_at
+		 FROM image_derivatives d
+		 JOIN images i ON i.hash = d.image_hash
+		 ORDER BY i.last_used_at, d.image_hash, d.format, d.width
+		 LIMIT ?`), limit)
+	if err != nil {
+		return nil, fmt.Errorf("list coldest derivatives: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []ImageDerivative
+	for rows.Next() {
+		var d ImageDerivative
+		var created int64
+		if err := rows.Scan(&d.ImageHash, &d.Format, &d.Width, &d.Bytes, &d.Path, &created); err != nil {
+			return nil, fmt.Errorf("scan derivative: %w", err)
+		}
+		d.CreatedAt = time.Unix(created, 0)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *sqlStore) ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]Image, error) {
+	return s.queryImages(ctx,
+		`SELECT `+imageColumns+` FROM images
+		 WHERE origin = ?
+		 ORDER BY created_at LIMIT ?`, origin, limit)
+}
+
+func (s *sqlStore) RepointImageRefs(ctx context.Context, from, to string) error {
+	// ⚠ INSERT-then-DELETE rather than `UPDATE image_refs SET image_hash = ?`. The update looks
+	// obviously right and breaks the day two source URLs resolve to the same bytes: both rows
+	// re-key onto one content hash, and the second update violates the primary key
+	// (image_hash, owner_kind, owner_id, role). DO NOTHING makes the collision the no-op it
+	// should be — the ref already says what the update was trying to say.
+	if _, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role)
+		 SELECT ?, owner_kind, owner_id, role FROM image_refs WHERE image_hash = ?
+		 ON CONFLICT (image_hash, owner_kind, owner_id, role) DO NOTHING`), to, from); err != nil {
+		return fmt.Errorf("repoint image refs %s->%s: %w", from, to, err)
+	}
+	if _, err := s.db.ExecContext(ctx, s.ph(
+		`DELETE FROM image_refs WHERE image_hash = ?`), from); err != nil {
+		return fmt.Errorf("clear image refs %s: %w", from, err)
 	}
 	return nil
 }

@@ -3547,9 +3547,26 @@ makes a local cache the *compliant* posture. But the ceiling is real, and it int
 permanently-immutable cache headers above.
 
 The resolution: the immutable header applies to **our** content-addressed derivative URLs, which are
-served from our own disk. Alongside it, the GC job re-fetches or purges any TMDB-origin image older
-than the configured TTL, keyed on `origin_fetched_at`. Because URLs are content-addressed, a re-fetch
+served from our own disk. Alongside it, the GC job expires any TMDB-origin image older than the
+configured TTL, keyed on `origin_fetched_at`. Because URLs are content-addressed, a re-fetch
 yielding identical bytes produces an identical URL, so revalidation is invisible downstream.
+
+⚠ **Expiry means the bytes are DELETED and the row is requeued, not refreshed in place** (V52 phase
+3b). The GC removes the original and every derivative, clears `origin_fetched_at`, and leaves the
+row on `images-fetch`'s work list — which runs every minute, so the operator-visible cost is a
+placeholder for well under a minute per image, once every six months.
+
+The alternative — re-fetch first and delete only if it fails — reads as strictly nicer and is
+wrong for a specific reason: it puts the compliance question inside an error branch. TMDB being
+unreachable for a day would silently keep serving expired bytes, and the ceiling would then be
+enforced by nothing. A ceiling that holds only while the network is up is not a ceiling. Deleting
+unconditionally means no cached TMDB byte outlives the TTL regardless of what upstream is doing,
+which is the only property the licence term actually asks for.
+
+⚠ **The GC collects orphans BEFORE it expires**, because both sweeps can select the same row: an
+image that is both past its TTL and no longer referenced. Expiring first would purge its bytes and
+queue a fresh download moments before the orphan sweep deleted it — and if that delete failed, a
+download instruction for an image no surface will ever show is what would survive.
 
 ⚠ **This must exist from the first migration.** Retrofitting expiry into a content-addressed store is
 painful, and a store that has already accumulated a year of artwork cannot be brought into compliance
