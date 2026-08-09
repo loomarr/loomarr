@@ -4,6 +4,50 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–1 of 8 done.**
+Gate for what has landed: `make check` green (0 lint, `-race`) + `make test-pg` green with the
+11 new `Images` conformance subtests **verified to actually execute under Postgres**.
+Commits `a47cc1a` (§22 doc), `7a6c48a` (codec), `931e23a` (service + store + migration 00044).
+
+Loomarr shows images from four sources and handled each differently — icons as **database
+blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
+the operator's browser**. `internal/images` (§22) is one pipeline: sha256 content addressing,
+disk storage sharded 2/2 under `images.dir`, AVIF+WebP+JPEG, ThumbHash placeholders, immutable
+cache headers. **Nothing is wired yet** — phases 2–8 add the routes, jobs, FE primitive, and
+migrate the four existing paths onto it.
+
+⚠ **Three measurements contradicted the research the plan was built on, and the doc was corrected
+rather than left to be discovered.** (1) `-tags nodynamic` costs **5.3×**, not ~3× — 12.5ms →
+66.9ms per 500px WebP encode, and the fast path is fast *because* this box has a system libwebp
+the library `dlopen`s, which is exactly the non-reproducibility the tag prevents. (2) **AVIF is
+NOT an order of magnitude past WebP**: with `libaom -still-picture -cpu-used 6` it is **86ms vs
+67ms**, about 1.3×. The scary 300–1200ms figures come from running a *video* encoder at video
+defaults — asked for ONE frame, SVT-AV1 allocated **2.34 GB**, spawned **82 threads**, and
+produced a file **78% larger** than libaom. The AVIF-is-a-job decision survives on a reason
+measurement supports — **concurrency, not latency**: each encode forks a multithreaded process,
+so a cold grid of 50 posters forks 50 at once. (3) A benchmark caught the plan's own rule being
+broken in its own implementation (`Resize` per rung re-walks the halving chain: 231ms → 100ms).
+
+⚠ **Two pre-existing defects found by adding one test group, both worth knowing:**
+
+1. **`make test-pg | tail` reports exit 0 while `make` exited 1.** The pipe masks the status; the
+   suite was RED and looked green. Capture the exit code directly, always.
+2. **The Postgres conformance `TRUNCATE` list was a hand-written literal** covering ~8 of 20
+   tables, under a comment asking the next person to keep it in step. Rows leaked between
+   sub-tests, so an assertion over a GLOBAL query passed on SQLite (fresh file per sub-test) and
+   failed only on Postgres. ⚠ **Completing the list is WRONG** — proven by two Filler tests going
+   red: `filler_sources` and the taxonomy carry **migration-seeded** rows, and nothing in the
+   literal distinguished "omitted by accident" from "omitted on purpose". Replaced with
+   `DROP SCHEMA` + `CREATE SCHEMA` so `Open` re-runs every migration: seeded rows return by
+   construction and new tables are covered the day they exist. Integration suite 9s → 21s.
+
+**Next up: phase 2** — the API surface (`rawOp` serve + multipart upload + record route, per-row
+visibility, SSRF guard), then 3 jobs, 4 FE `<Image>` primitive, 5–7 the migrations of channel
+icons / clip artwork / TMDB, 8 retirements. ⚠ Phases 5–7 each regenerate the orval client, so
+per CLAUDE.md's worktree rule they are **not** parallelisable with each other.
+⚠ **`images.dir` has no `Dockerfile` pre-create yet** — `/data/filler` has one and `/data/images`
+will need the same, or a zero-env first run writes into a root-owned volume.
+
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
 `make retired-verify` (**25 identifiers**, up from 9) + `make config-docs`.
