@@ -2544,6 +2544,154 @@ ones they are), `language` (all three states documented), `visionTagged`, `licen
 rows it would be roughly ten times the rest of the payload. ⚠ Not `visibleText`, which is the audit
 trail behind a vision-grounded tag and therefore a detail-surface concern.
 
+### The pipeline becomes visible (V51e)
+
+V51b made ingest an ordered, watchable pipeline and served every fact about it. **Nothing
+rendered any of it.** `GET /v1/filler/incoming` carried `pipeline` and `rejected`, the bus
+published a `filler_clip` frame per transition, and the frontend subscribed to neither — so the
+operator-visible symptom V51b was built to remove ("I downloaded forty commercials and nothing is
+happening") survived V51b intact. V51e is the rendering half, and it is the phase that makes the
+previous one true.
+
+**Incoming is ONE conveyor, not a queue beside a progress list.** A clip is somewhere on a single
+belt: the machine is still working on it, or the machine has finished and wants a person. One row
+per clip, and the row says which.
+
+- **Still being prepared** — thumbnail, name, duration, an eight-pip strip, and the active-voice
+  sentence for the rung it is on ("Working out what it is"). Expanding gives the named ladder with
+  skip reasons and, where one exists, a percentage. Nothing here is work the operator owes.
+- **Needs a decision** — the same row, once the pipeline hands the clip over: its tags, its
+  grounding-capped confidence, the reason it could not be settled automatically, and the file /
+  retag / discard controls.
+
+⚠ **The two were separate lists and it was a mistake, caught by looking at 85 real clips rather
+than by any test.** `asks` was V38-era logic — *held and untagged* — and `pipeline` was V51b's
+non-terminal rows. Nothing joined them, and the runner enrols **every** clip at `probe/queued` on
+scan, so the two sets were identical by construction on a fresh catalog: **84 of 85 clips appeared
+in both**, one row demanding a decision while a row below it said *"nothing here needs you — it's
+just working"*. The page contradicted itself about the same clip.
+
+⚠ **The state that resolves it already existed and was never consulted.** V51b's `Disposition` is
+`running → review | filed | rejected`, and `review` means precisely *"the machine is finished and a
+human is needed"* — the population `asks` was trying to describe. `asks` predated the enum and
+computed membership from tag-shape instead. So this is not two features disagreeing; it is one
+query answering a question the pipeline had taken ownership of. `needsDecision` now comes from the
+disposition, with the old held-and-untagged test surviving **only** as the fallback for a clip
+catalogued before V51b, which has no pipeline row at all and must not become invisible.
+
+⚠ Ordering is decisions first, in-flight after: work the operator owes outranks work they merely
+watch. `total` still counts only what is waiting on a human — which now actually matches the rows
+beneath it, where before it disagreed with its own list.
+
+**Refusals stay their own section** — *"Loomarr didn't use N clips"*, the audit half V51b's text
+already promised, carrying the reason in the operator's words, the measured detail, and a one-click
+restore for the soft cases only. It is deliberately NOT on the conveyor: a refused clip has left
+the belt, and mixing it back in would make "what is Loomarr doing" and "what did Loomarr decide
+without me" the same list again.
+
+⚠ **The ladder is served, not hardcoded — and `IncomingPipelineDTO.stages` is the wrong source for
+it.** That field is the *visited* ladder, so a clip at `split` carries three records; a strip drawn
+from it would grow as the clip advanced instead of filling, and the operator could never see how
+much was left. The response therefore carries **`stageOrder`**, the whole sequence in run order,
+derived from `filler.StageOrder` — the same list the runner walks. A rung added to the pipeline
+appears in the UI without a second edit, and a guard test compares the served list against
+`StageOrder` itself rather than a literal, so the obvious way to "fix" a failure is not also the
+way to hide the bug.
+
+⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
+an eight-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+description already says enough)"). A stage that silently does not happen reads as broken, and the
+sentence is what turns a bug report into an answer.
+
+⚠ **`stageOrder` and the per-clip status are the only things the frame is allowed to move.** SSE
+frames merge onto the cached row and never assemble it: the bus drops frames for a slow subscriber
+by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
+and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
+nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
+what keeps forty clips × eight rungs from becoming 320 refetches.
+
+⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
+carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the
+pipeline's own shape: a stage or status CHANGE is always applied, and only the percentage *within*
+one rung is guarded against going backwards. Strict advance-only was rejected — `Rewind`, the
+sanctioned re-tag/re-split path, moves a clip backward on purpose, and a guard that refused it
+would blank the whole re-run until something forced a refetch. A stale repaint lasts until the
+next frame; a suppressed re-run looks like the machine has stopped.
+
+⚠ **This does not contradict V40's "no badge, no review step", and the boundary is worth stating
+because the next reader will otherwise take V40 as forbidding this section.** V40 refuses files at
+the **scan** boundary, before they are catalogued, where listing every skipped file in an
+operator's media folder would be noise about files Loomarr never took responsibility for. These
+refusals happen **after** cataloguing, to clips Loomarr accepted and then decided against — and
+`filler.reject.unidentified` is ON by default, so a default that can turn down a good clip has to
+show its work.
+
+### A rung may not spend per SEGMENT what the budget allows per CLIP (V51g)
+
+**Found on a live catalog, not by a test.** `WAGA-5/Fox Commercial Breaks(2/5/1995)` — a 16m47s
+recording — sat at *"Finding the ads inside"* through **twelve** consecutive pipeline passes,
+failing every two minutes with `context deadline exceeded` and starting again from the beginning.
+Roughly 25 minutes of GPU spent re-doing the first third of one clip, while the row animated as
+though it were making progress.
+
+**Measured, on the real file** (the numbers are the point — the first three diagnoses were wrong
+without them):
+
+| Step of the `split` rung | Cost | Fits a 120s pass? |
+| --- | --- | --- |
+| `blackdetect` + `silencedetect` | **4s** (319× realtime; 44 + 53 hits) | ✅ |
+| `dedup` — `GrayFrames` × 51 | **33s** (662ms/segment) | ✅ |
+| cut — ffmpeg stream copy × 51 | **3s** (59ms/segment) | ✅ |
+| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **3× the whole budget** |
+
+⚠ **The rule this establishes.** The scheduler's unit of work is a CLIP: `Cost()`, the per-run
+budgets (`FILLER_PIPELINE_MAX_CLIPS`, `…MAX_WHISPER`) and the retry policy are all sized per clip.
+A rung whose cost scales with a clip's CONTENT breaks that, and no retry helps — attempt two is
+exactly as impossible as attempt one. Cheap per-segment work is fine (the fingerprint pass is 51
+segments in 33 seconds). **What a rung may not do is spend a model call per segment.**
+
+⚠ **`classify` inside `Propose` was that, and it was strictly-worse duplicate work.** It calls the
+same `Classify` the `tag` rung calls, but with `SplitSegment.Transcript` — which is EMPTY unless
+`rescue` ran, and `rescue` only transcribes segments over ~120s. On this reel **none** qualified
+(longest 60s), so all 51 calls classified on nothing but a generated name: `"… part 7"`, identical
+across segments apart from the number. `Confirm` writes those results onto each spawned clip, but
+`Tagged()` needs `Era > 0 && Audience != "" && Category != ""` — and a bare part-number grounds no
+category — so the `tag` rung re-runs anyway, this time after `transcribe`, with a real transcript.
+The pipeline paid twice and kept the worse answer's cost.
+
+**The fix is removal, not rescheduling.** Split CUTS; it does not describe. Every segment is
+spawned as its own clip and runs the whole ladder for itself, so the classification already happens
+downstream — one clip at a time, budget-bounded, resumable, and individually visible in Incoming.
+Without `classify` the rung completes in **~40s** and all 51 children are enrolled in a single
+pass, after which they progress **independently and out of order**: a 16-second silent advert
+reaches `score` while its sibling is still being transcribed.
+
+⚠ **The atomic confirm STAYS.** Cutting all 51 costs 3 seconds, so streaming enrolment buys nothing
+here and would cost a deliberate safety property: a proposal is editable, so a partially-applied
+confirm leaves orphan cuts of a plan that no longer exists. `Confirm`'s own comment states the
+invariant — the proposal is consumed only once every segment exists on disk and in the catalog.
+
+**Two mechanical rules, independent of split and true of every rung:**
+
+⚠ **Running out of time is not failing.** A `context deadline exceeded` is a DEFERRAL: status back
+to `queued`, attempts unchanged, resume next pass. V51b already treats budget exhaustion exactly
+this way; the deadline path never got the same treatment, so a timeout burned an attempt and took a
+backoff it had not earned.
+
+⚠ **Failure bookkeeping must outlive the failure.** `onFailure` computes the record, the backoff
+and the `MaxAttempts` resolution, then persists them through `ctx` — *the context whose expiry
+caused the failure*. The save fails and all of it is discarded; only the pre-work write
+(`status=running`, `attempts++`) survives, because that one happened while the context was alive.
+That is why attempts reached 12 against a `MaxAttempts` of 3, and why the row never left `running`.
+**Any rung that ever times out loops forever**; `split` is simply the one that timed out first.
+Failure and deferral both persist through a detached context.
+
+**Known gap, deliberately not built.** A much longer recording — a 3-hour capture is ~500 segments
+— would spend ~5 minutes in the fingerprint pass alone and exceed a pass again. The fix then is a
+per-pass SEGMENT budget with resume by `(ParentHash, index)`; the lineage column already exists
+(§10 V45, migration 00039). Not built because the measured corpus does not reach it, and a resume
+rule interacts with proposal editing in ways that need their own design.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
@@ -3276,6 +3424,8 @@ It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh
 **The cost, stated plainly:** the default download grows by more than an order of magnitude (31MB → a rootfs of ~1.3GB uncompressed, ~821MB of it before V34's whisper model) and every install carries an encoder whether or not it uses internal playout, plus a speech model whether or not it ever splits a compilation. That is the price of the capability, and it is the third time this packaging question has been decided — sidecar → opt-in tag → single image. Each reversal followed a change in what the tooling was *for*; if a future change makes the encoder optional again, revisit it with that history in view rather than as a fresh question.
 
 Every binary is invoked via `exec` — `yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are the only vendored non-Go artifacts the project permits (§14).
+
+**Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
 ### Compose (profiles: sqlite · postgres · ai)
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.

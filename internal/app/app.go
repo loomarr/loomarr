@@ -1522,7 +1522,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont: playout.CardFontFor(set.str("playout.ffmpeg_path")),
+		PlayoutFont:    playout.CardFontFor(set.str("playout.ffmpeg_path")),
+		PlayoutTonemap: playout.TonemapperFor(set.str("playout.ffmpeg_path")),
 		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
 		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
 		// always targets whatever model is currently resident. Only the local ollama provider holds

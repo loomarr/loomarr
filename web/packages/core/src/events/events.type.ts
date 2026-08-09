@@ -25,6 +25,7 @@ import type {
   ActivityEvent,
   ChannelEvent,
   DatabaseEvent,
+  FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
   JobEvent,
@@ -48,6 +49,7 @@ interface EventHandlers {
   onLlmPull?: (e: LlmPullEvent) => void;
   onFillerIngest?: (e: FillerIngestEvent) => void;
   onFillerSplit?: (e: FillerSplitEvent) => void;
+  onFillerClip?: (e: FillerClipEvent) => void;
   onJob?: (e: JobEvent) => void;
   onPlayout?: (e: PlayoutEvent) => void;
   onDatabase?: (e: DatabaseEvent) => void;
@@ -59,6 +61,7 @@ export type {
   ChannelEvent,
   DatabaseEvent,
   EventHandlers,
+  FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
   JobEvent,

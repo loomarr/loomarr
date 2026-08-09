@@ -151,4 +151,32 @@ func (c *chainResolver) Profile(context.Context) playout.Profile { return c.prof
 // from asserting a language preference the chain test does not exercise.
 func (c *chainResolver) AudioTrackFor(context.Context, string) int { return 0 }
 
+// Tracks and PlanFor complete api.PlayoutResolver.
+//
+// ⚠ This double had been INCOMPLETE and therefore uncompilable since V47 added PlanFor to the
+// interface — in the same commit, which left the stub behind. Nothing noticed for months because
+// `make check` runs untagged, so every file behind `//go:build ffmpeg` (plus `eval` and
+// `integration`) is invisible to the gate: `go vet ./...` exits 0 in silence while
+// `go vet -tags 'ffmpeg eval integration' ./...` exits 1.
+//
+// The cost was specific. TestLiveChain_RealFfmpegAdvancesThroughPrograms is, by its own comment,
+// "the only test that proves programs actually sequence" — so the one test covering the concat
+// mechanism had not run since the direct-play work that most needed it.
+//
+// A CI step that BUILDS the tagged tests (no hardware required) is the durable fix and is not part
+// of this change; this restores the double so the suite compiles again.
+func (c *chainResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
+	return playout.MediaTracks{}, nil
+}
+
+// PlanFor: transcode both, with no source probe.
+//
+// The zero MediaFormat is the honest answer here — this double has no prober — and it is also the
+// value the real resolver returns when a probe fails, so the chain test exercises the same
+// fail-safe path a live install falls back to. It means no tone-mapping, which is correct: the
+// fixture is SDR `testsrc`.
+func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
+	return playout.CopyPlan{}, playout.MediaFormat{}
+}
+
 var _ = http.MethodGet

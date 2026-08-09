@@ -167,8 +167,18 @@ func Admit(budget, committed, newCost int) bool {
 // Hardware encoders take the bitrate ladder instead — most hardware rate-control
 // implementations handle a bitrate target far better than a quality one, and several
 // (v4l2m2m especially) have no usable CRF equivalent at all.
+//
+// ⚠ Keyed on the FAMILY, not the encoder value. `p.Encoder != EncoderSoftware` excluded
+// `libx265` — so an HEVC software encode got `-b:v`/`-maxrate`/`-bufsize` and no `-crf` at all,
+// which is the bitrate ladder this function exists to override. Its sibling defect in
+// capability.go had the same shape and the same cause: nine HEVC encoders added in V49, and every
+// switch already written against the h264 constants silently kept excluding them.
+//
+// The test that should have caught it enumerated the eight h264 hardware encoders — a set that
+// could not contain the failing case, so it was green by construction. It now derives its
+// iteration from h264Engines and covers both codecs (TestQualityArgs_CrfIsSoftwareOnly).
 func (p Profile) qualityArgs() []string {
-	if p.Encoder != EncoderSoftware {
+	if familyOf(p.Encoder) != familySoftware {
 		return nil
 	}
 	// A CRF derived from the rung's bitrate: the ladder already encodes the operator's

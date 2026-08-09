@@ -57,6 +57,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onFillerSplit: (e) => {
         for (const l of listeners.current) l.onFillerSplit?.(e);
       },
+      onFillerClip: (e) => {
+        for (const l of listeners.current) l.onFillerClip?.(e);
+      },
       onPlayout: (e) => {
         for (const l of listeners.current) l.onPlayout?.(e);
       },
@@ -91,6 +94,7 @@ const useLoomarrEventListener = (handlers: EventHandlers): void => {
       onLlmPull: (e) => ref.current.onLlmPull?.(e),
       onFillerIngest: (e) => ref.current.onFillerIngest?.(e),
       onFillerSplit: (e) => ref.current.onFillerSplit?.(e),
+      onFillerClip: (e) => ref.current.onFillerClip?.(e),
       onJob: (e) => ref.current.onJob?.(e),
       onActivity: (e) => ref.current.onActivity?.(e),
       // ⚠ **These two were MISSING, and the drift guard was green over it.** The provider fanned
