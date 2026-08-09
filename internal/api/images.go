@@ -229,7 +229,18 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 	if err != nil {
 		return nil, errNotFound("Image not found", "That image doesn't exist — it may have been removed.")
 	}
-	out := &getImageOutput{Body: ImageDTO{
+	return &getImageOutput{Body: s.imageToDTO(rec)}, nil
+}
+
+// imageToDTO renders an image record for the wire.
+//
+// ⚠ Extracted so there is ONE construction of this DTO. It is embedded on a channel as well as
+// served standalone (V52 phase 5), and two hand-written copies of the same projection is the drift
+// class this repo has already been bitten by more than once — the second copy is the one that
+// forgets `srcSetAvif` when the AVIF job lands, and nothing fails, it just quietly serves WebP
+// forever on one surface.
+func (s *Server) imageToDTO(rec images.Image) ImageDTO {
+	return ImageDTO{
 		Hash:        rec.Hash,
 		Role:        string(rec.Role),
 		Width:       rec.Width,
@@ -240,8 +251,7 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 		SrcSetAVIF:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF),
 		SrcSetWebP:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP),
 		Src:         s.images.URLFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
-	}}
-	return out, nil
+	}
 }
 
 // imageUploadForm is the multipart body.

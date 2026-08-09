@@ -82,6 +82,32 @@ const WithIcon: Story = {
   decorators: [withSuggestions()],
 };
 
+// ⚠ The service-hosted case (V52 phase 5), and the reason it is a SEPARATE story from WithIcon.
+// When `logoImage` is present the preview renders through the <Image> primitive — srcset at the
+// icon ladder, a ThumbHash underneath, and the field's own glyph as the designed failure state.
+// `WithIcon` above keeps exercising the plain-<img> path, which is what an operator-pasted
+// external URL still gets; both paths ship, so both need a baseline.
+const WithServiceHostedIcon: Story = {
+  args: {
+    isAdmin: true,
+    logo: "/v1/images/9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503/w500.jpg",
+    logoImage: {
+      hash: "9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503",
+      role: "icon",
+      width: 512,
+      height: 512,
+      placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+      dominantHex: "#2b4a5e",
+      animated: false,
+      // Inline data: URIs, never remote — a remote <img> races the visual snapshot.
+      srcSetWebp: `${TNG_POSTER} 92w, ${TNG_POSTER} 185w, ${TNG_POSTER} 500w`,
+      srcSetAvif: "",
+      src: TNG_POSTER,
+    },
+  },
+  decorators: [withSuggestions()],
+};
+
 // A viewer (non-admin): the icon shows, but none of the editing affordances render.
 const ViewerOnly: Story = {
   args: {
@@ -124,4 +150,4 @@ const TmdbNotConfigured: Story = {
 };
 
 export default meta;
-export { NoIcon, SuggestionsLoaded, TmdbNotConfigured, ViewerOnly, WithIcon };
+export { NoIcon, SuggestionsLoaded, TmdbNotConfigured, ViewerOnly, WithIcon, WithServiceHostedIcon };

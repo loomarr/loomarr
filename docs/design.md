@@ -3729,3 +3729,26 @@ Beyond `<picture>`/`srcset`, three properties are required rather than optional:
 
 ⚠ **Ship explicit `sizes`; do not use `sizes="auto"`.** Chrome and Firefox support it; **Safari does
 not, in any version**. It is an Interop 2026 focus, so revisit — but not yet.
+
+**Reaching the primitive from a resource that stores a URL.** `Image` takes the whole image record,
+not a hash — real `width`/`height`, the ThumbHash and both srcsets are exactly what a URL cannot
+carry. A resource whose field is a URL therefore carries the record ALONGSIDE it: `ChannelDTO` has
+`logo` (the URL, unchanged) and an optional `logoImage` (the record, present only when the logo
+resolves to one of this instance's images).
+
+⚠ **Enrichment, never replacement.** Substituting a hash for the URL would permanently break the
+external case, and the external case is not a legacy state — pasting an arbitrary image URL is a
+supported way to set a channel icon. An external logo simply has no `logoImage`, and the surface
+falls back to a plain `<img>`, which is the only honest rendering for bytes this instance does not
+own and knows no dimensions for.
+
+⚠ **The URL→record lookup VALIDATES, it does not merely parse.** The field is operator-writable
+(`PATCH /v1/channels/{id}` accepts any string), so whatever is extracted is attacker-influenced and
+is handed to the image store as a lookup key. Require a full 64-character lowercase hex hash;
+anything else is treated as an external URL. Extracting "the path segment after `/v1/images/`"
+without validating forwards traversal.
+
+⚠ **Resolve the batch before the loop, never inside the per-item mapper.** A list endpoint maps once
+per row, so a lookup inside the mapper is an N+1 — pre-resolve the distinct hashes for the whole
+page. A failed lookup is an absent record, never an error: an image row lost with `/data/images` (see
+*Durability*) must still let its channel render.

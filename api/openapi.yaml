@@ -487,6 +487,9 @@ components:
         logo:
           description: Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)
           type: string
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The image record when the logo is served by this instance's image service; absent for an external URL
         name:
           examples:
             - Saturday Morning Cartoons
@@ -5764,7 +5767,7 @@ paths:
         - filler
   /v1/channels/{id}/icon:
     get:
-      description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day; the ?v= cache-bust changes on re-upload."
+      description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at /v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, and it retires with the channel_icons table in phase 8."
       operationId: channel-icon
       parameters:
         - in: path
@@ -5808,7 +5811,7 @@ paths:
       tags:
         - channels
     post:
-      description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Stores the bytes, points the channel's logo at the serve URL, and reconciles so Tunarr picks it up.
+      description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Ingests the bytes into the image service (§22), points the channel's logo at the content-addressed URL, and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a different image yields a different one, so no cache-bust is needed.
       operationId: upload-channel-icon
       parameters:
         - in: path

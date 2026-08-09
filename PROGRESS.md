@@ -288,7 +288,67 @@ shape is discarded at merge, so linear history buys nothing here. ⚠ `pnpm-lock
 --frozen-lockfile` is the cheap proof that the merged lockfile and merged `package.json` agree, and
 `pnpm codegen` had to re-run because main changed `orval.config.ts` (it now emits `zod` and `msw`).
 
-**Next up: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
+**Phase 5 — channel icons onto the service (2026-08-09, branch `v52-phase5-channel-icons`).**
+The upload ingests through the image service (role=icon, visibility=public, origin=upload) with the
+owner Ref that stops the GC collecting a live icon as an orphan, and the channel's logo becomes the
+content-addressed URL. `ChannelDTO` gains `logoImage`, and the icon field's preview renders through
+`<Image>`. Gate: `make check` + `make fe` (1239) + `make openapi-verify`, 9 new Go tests.
+
+⚠ **The `?v=` cache-bust is DELETED rather than reimplemented, and that is the shape of the win.**
+The old URL addressed a CHANNEL, so replacing an icon reused the URL and needed a query param to
+defeat Tunarr's and Emby's caches. The new URL addresses the BYTES, so a different icon is
+structurally a different URL. `TestUploadChannelIcon_URLFollowsTheBytesNotTheChannel` pins both
+halves — same bytes ⇒ same URL, different bytes ⇒ different URL — because a regression to a
+channel-addressed URL would serve a stale logo indefinitely and nothing else would notice.
+
+⚠ **JPEG at w500, and this is the one place §22's compatibility floor earns its keep.** The floor
+exists for old iOS and legacy Android WebViews; this URL is consumed by exactly that chain — Tunarr
+hands it to Emby, which hands it to a television. WebP's ~97% support is a BROWSER number, and
+browsers are not the population fetching this.
+
+⚠ **`logoImage` ENRICHES `logo`, it does not replace it**, because an operator-pasted URL is a
+supported way to set a channel icon rather than a legacy state. `imageHashFromLogo` therefore
+VALIDATES (64 lowercase hex) rather than merely extracting: `PATCH /v1/channels/{id}` accepts any
+logo string, so its output is attacker-influenced by construction and is handed straight to the
+image store as a lookup key. A bare "take the segment after `/v1/images/`" would forward
+`../../etc/passwd`. Pinned in `channellogo_internal_test.go`, traversal case included.
+
+⚠ **The list handler pre-resolves BEFORE the loop, deduped by hash.** `channelToDTO` runs once per
+channel, so a lookup inside it is an N+1 — the shape a profile here has already caught once, and the
+reason `LineupEntryDTO.State` is documented as list-omitted. Twenty channels sharing an icon cost
+one lookup. `imageToDTO` was extracted at the same time so there is ONE construction of that
+projection; two hand-written copies is the drift class where the second one forgets `srcSetAvif`
+when the AVIF job lands and quietly serves WebP forever on one surface.
+
+⚠ **Two operation descriptions were corrected in the same pass** — the serve route still advertised
+"the ?v= cache-bust changes on re-upload" and the upload still said "points the channel's logo at
+the serve URL". Both became false the moment the handler changed. The serve route is now marked
+LEGACY: it is the migration window for pre-V52 icons and retires with `channel_icons` in phase 8.
+
+⚠ **A sabotage check nearly recorded a false verification, and the mechanism generalises.** The
+first attempt to challenge the `logoImage` wiring test used a LINE-NUMBERED `sed` that silently
+no-opped — earlier edits in the same file had shifted the target line by four — so it reported
+success while changing nothing, and the test "passed" having never been challenged. Same shape as
+`go test` printing `[no tests to run]` and exiting 0. **Make a sabotage PRINT what it changed before
+running the test**; a verification you cannot see happen is not one. Redone correctly: red, then
+green on restore.
+
+⚠ **gofmt's aligned-block trap bit again, exactly as phase 3a recorded it.** Adding `LogoImage` to
+`ChannelDTO` re-aligned nine neighbouring fields, and `make check` failed at `fmt` — its FIRST step,
+before vet or a single test. This is now the second occurrence on this branch; the durable reading
+is that a hand-added field in an aligned struct block is unformatted BY DEFAULT, so run `gofmt -l`
+after any struct edit rather than waiting for the gate.
+
+**Backfill deferred to phase 8, deliberately.** Existing `channel_icons` rows still serve through
+the legacy route, so nothing breaks; a backfill job built now would sit idle through phases 6 and 7
+and only matter the moment the table is dropped. It belongs next to the retirement it enables.
+
+⚠ **One seam is open and named rather than hidden:** a logo that is an external URL gets no
+`logoImage`, so the preview falls back to a plain `<img>`. That is correct today — the instance does
+not own those bytes and knows no dimensions for them. **Phase 7 is where adopting remote logos would
+close it**; if that is wanted, it is a decision to make BEFORE phase 7, not after.
+
+**Next up: 6–7** clip artwork and TMDB onto the service; **8** retirements +
 `scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
 so per CLAUDE.md's worktree rule they are **not** parallelisable. ⚠ A fresh worktree needs
 `npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen` first —
