@@ -156,13 +156,27 @@ func TestQualityArgs_CrfIsSoftwareOnly(t *testing.T) {
 	if !strings.Contains(sw, "-crf") {
 		t.Errorf("software should get a CRF target, got %q", sw)
 	}
-	for _, enc := range []Encoder{
-		EncoderNVENC, EncoderQSV, EncoderVAAPI, EncoderAMF,
-		EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M, EncoderVulkan,
-	} {
-		p := Profile{Encoder: enc, VideoBitrate: 5000}
-		if got := p.qualityArgs(); len(got) != 0 {
-			t.Errorf("%s must not get CRF args, got %v", enc, got)
+	// libx265 is SOFTWARE too. Keying on the value rather than the family excluded it, so an HEVC
+	// software encode got the bitrate ladder with no `-crf` — the exact thing this function exists
+	// to override. Asserted explicitly because it is the case that was wrong.
+	swHEVC := strings.Join(Profile{Encoder: EncoderSoftwareHEVC, VideoBitrate: 5000}.qualityArgs(), " ")
+	if !strings.Contains(swHEVC, "-crf") {
+		t.Errorf("libx265 is software and should get a CRF target, got %q", swHEVC)
+	}
+
+	// ⚠ Derived from h264Engines, NOT a hand-written list. The previous version enumerated the
+	// eight h264 hardware encoders, which is why V49's nine HEVC additions were invisible to it:
+	// a test whose iteration source cannot contain the failing case is green by construction.
+	// Anything added to h264Engines is now covered here, in both codecs, with no second edit.
+	for _, base := range h264Engines {
+		if base == EncoderSoftware {
+			continue // asserted above — software is the one that DOES get CRF
+		}
+		for _, enc := range []Encoder{base, hevcVariant(base)} {
+			p := Profile{Encoder: enc, VideoBitrate: 5000}
+			if got := p.qualityArgs(); len(got) != 0 {
+				t.Errorf("%s is hardware and must not get CRF args, got %v", enc, got)
+			}
 		}
 	}
 }
