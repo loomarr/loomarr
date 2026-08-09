@@ -104,10 +104,26 @@ jobs:
           fi
 
   go:
-    name: Go — check + spec/config drift
+    name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
+    # `make check` was 308–428s and the whole job 7.2–12.2 min — the critical path on every
+    # Go-touching PR. `go test -race` is effectively all of it (measured 2026-08-09: `make
+    # lint` is 5.4s warm, so splitting lint off would buy nothing; the 41 packages sum to
+    # 436s and the runner has 4 cores). So the TESTS are what shards.
+    #
+    # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
+    # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
+    # is the guard, and it is not optional.
+    #
+    # fmt/vet/lint re-run in every shard rather than being hoisted to one. That is deliberate:
+    # it keeps CI invoking the same `make check` a developer runs, which is the whole point of
+    # the harness contract, and the duplication is parallel so it costs no wall clock.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -162,10 +178,15 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
+          # a shared key would have them overwrite each other's build objects every run — each
+          # shard restoring a cache built for the other's packages and recompiling its own.
+          # It also makes the save well-defined: without it both shards race to write one key
+          # and whichever lost simply skipped, so half the objects were never cached at all.
+          key: go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-${{ hashFiles('go.sum') }}-
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-
+            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
       # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
       # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
       # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
@@ -257,12 +278,23 @@ jobs:
         run: |
           command -v ffmpeg
           command -v ffprobe
-      - run: make check
+      # ⚠ RUN THE GUARD BEFORE THE SUITE, not after. It is the only thing standing between a
+      # bad split and a green run over untested packages, and a guard that reports after the
+      # tests have already "passed" is one cancelled job away from never running at all.
+      - name: The shard split covers every package
+        run: make go-shard-verify SHARDS=${{ strategy.job-total }}
+      - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # The drift checks are whole-repo and shard-independent: running them per shard would
+      # just diff the same generated files N times. Shard 1 by the same convention that runs
+      # e2e on one Playwright shard.
       - name: OpenAPI spec is committed and current
+        if: matrix.shard == 1
         run: make openapi-verify
       - name: Config docs are committed and current
+        if: matrix.shard == 1
         run: make config-docs-verify
       - name: Retired identifiers are gone from prose
+        if: matrix.shard == 1
         run: make retired-verify
       # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
       # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
@@ -274,6 +306,7 @@ jobs:
       # happened when the image filter was added (SC2129 on the grouped redirects). If this
       # step is red and your local run was green, install shellcheck before doubting CI.
       - name: Workflows are valid
+        if: matrix.shard == 1
         run: make ci-lint
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
