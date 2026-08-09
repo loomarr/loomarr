@@ -370,6 +370,164 @@ func TestLive_ConcatArgsAreAcceptedByFfmpeg(t *testing.T) {
 }
 
 // replaceOutput swaps the trailing "pipe:1" for a bounded file output.
+// makeHDRSource synthesizes an HDR10 clip — PQ transfer, BT.2020 primaries, 10-bit — into the
+// test's temp dir.
+//
+// SYNTHESIZED, NOT COMMITTED, and that is a deliberate departure from ErsatzTV, whose test suite
+// carries ~3MB of fixture `.ts` files across a resolution × codec × bit-depth × HDR × anamorphic
+// matrix. Every axis in that matrix is producible by the ffmpeg this build tag already requires,
+// so committing the bytes buys nothing and costs a repo that grows with the matrix. Measured here:
+// this clip is ~26KB and takes under half a second to make.
+//
+// It also fixes the gap that let the defect ship. Every other live test sources `testsrc` or a
+// real Emby URL — 8-bit, SDR, progressive, square-pixel — so no gate had ever put non-SDR content
+// through the filter chain. The encoder-family axis was well covered; the SOURCE axis was not.
+func makeHDRSource(t *testing.T, bin string) string {
+	t.Helper()
+	out := t.TempDir() + "/hdr.ts"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=1280x720:rate=25:duration=2",
+		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+		"-c:v", "libx265", "-pix_fmt", "yuv420p10le",
+		"-x265-params", "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc",
+		"-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+		"-c:a", "aac", "-shortest", "-t", "2", "-f", "mpegts", out)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("cannot synthesize an HDR source with this build (libx265?): %v\n%s", err, b)
+	}
+	return out
+}
+
+// probeColor returns pix_fmt, transfer, primaries, matrix and range for a file's video stream.
+func probeColor(t *testing.T, probe, path string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	got, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=pix_fmt,color_transfer,color_primaries,color_space,color_range",
+		"-of", "csv=p=0", path).Output()
+	if err != nil {
+		t.Fatalf("ffprobe: %v", err)
+	}
+	// An MPEG-TS repeats its program map, so ffprobe can print the same stream more than once.
+	return strings.TrimSpace(strings.Split(strings.TrimSpace(string(got)), "\n")[0])
+}
+
+// AN HDR PROGRAM MUST COME OUT AS HONEST SDR — tone-mapped AND correctly labelled.
+//
+// This is the test that could not have been written as an arg-shape assertion, and the defect it
+// guards was BOTH halves at once. Before this change the chain ended in a bare `format=yuv420p`
+// with no colour tags, so a real HDR10 source produced:
+//
+//	yuv420p,bt2020nc,smpte2084,bt2020
+//
+// — 8-bit SDR-range pixels still announcing PQ/BT.2020. A player that believes the tags applies an
+// HDR transfer to SDR data, which is worse than doing nothing, and no client-side handling can
+// recover it because the information needed is gone.
+//
+// The two assertions are independent ON PURPOSE. Tags alone would pass if the filter silently did
+// nothing; a changed picture alone would pass while still mislabelled. Both defects were live
+// simultaneously, and either one checked without the other reads as success.
+func TestLive_HDRSourceIsTonemappedAndLabelledSDR(t *testing.T) {
+	bin := ffmpegBin(t)
+	probe := ffprobeBin(t)
+
+	if !TonemapperFor(bin)() {
+		t.Skip("this ffmpeg build has no zscale/tonemap — the code correctly emits no chain")
+	}
+	src := makeHDRSource(t, bin)
+
+	// Confirm the fixture really IS HDR. A source that quietly lost its tags would make every
+	// assertion below pass for the wrong reason — the fixture-collapse trap.
+	if got := probeColor(t, probe, src); !strings.Contains(got, "smpte2084") {
+		t.Fatalf("synthesized source is not HDR (%s); the rest of this test would be vacuous", got)
+	}
+
+	p := DefaultProfile()
+	p.Encoder = Detect(context.Background(), bin, p, "").Chosen
+
+	run := func(name string, spec ProgramSpec) string {
+		t.Helper()
+		out := t.TempDir() + "/" + name + ".ts"
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), out), nil, nil)
+		if err != nil {
+			t.Fatalf("%s: start: %v", name, err)
+		}
+		go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
+		if err := proc.Wait(); err != nil {
+			t.Fatalf("%s: encode failed: %v\nlast stderr: %s", name, err, proc.LastError())
+		}
+		return out
+	}
+
+	base := ProgramSpec{Profile: p, Input: src, Limit: 1 * time.Second, Source: hdrSource()}
+
+	tonemapped := base
+	tonemapped.Tonemap = true
+	withTM := run("tonemapped", tonemapped)
+
+	untouched := base // Tonemap false — what a build without zscale produces
+	withoutTM := run("untouched", untouched)
+
+	// HALF ONE: the labels are honest.
+	got := probeColor(t, probe, withTM)
+	t.Logf("tone-mapped output: %s", got)
+	for _, want := range []string{"bt709"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("tone-mapped output is not labelled %s: %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"smpte2084", "bt2020"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("output still carries the source's HDR tag %q — SDR pixels announcing PQ is "+
+				"the half no client can recover from: %s", unwanted, got)
+		}
+	}
+
+	// HALF TWO: the picture actually changed. Frame hashes, because "did the filter run" and
+	// "are the tags right" are different questions and the tags can be right while the filter did
+	// nothing at all.
+	hashTM, hashPlain := frameHash(t, bin, withTM), frameHash(t, bin, withoutTM)
+	if hashTM == hashPlain {
+		t.Errorf("tone-mapped and untouched output are pixel-identical (%s) — the tags changed "+
+			"but the filter did no work", hashTM)
+	}
+}
+
+// frameHash is the hash of a file's first VIDEO frame.
+//
+// ⚠ `-map 0:v:0` is load-bearing. Without it framehash also emits the AUDIO frames, and since both
+// files here carry identical silence, reading the wrong line reports two different pictures as
+// identical. Cost me one wrong conclusion before the stream index was pinned.
+func frameHash(t *testing.T, bin, path string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error",
+		"-i", path, "-map", "0:v:0", "-frames:v", "1", "-f", "framehash", "-").Output()
+	if err != nil {
+		t.Fatalf("framehash: %v", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, ",")
+		return strings.TrimSpace(f[len(f)-1])
+	}
+	t.Fatalf("no frame hash in output: %s", out)
+	return ""
+}
+
 func replaceOutput(args []string, extra ...string) []string {
 	out := make([]string, 0, len(args)+len(extra))
 	for _, a := range args {

@@ -255,7 +255,7 @@ func TestScaleFilter_UploadsAfterScalingWhereRequired(t *testing.T) {
 		EncoderAMF, EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M,
 	} {
 		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
-		vf, ok := argsAfter(p.scaleFilterArgs(), "-vf")
+		vf, ok := argsAfter(p.scaleFilterArgs(""), "-vf")
 		if !ok {
 			t.Errorf("%s: no filter chain", enc)
 			continue
@@ -311,7 +311,7 @@ func TestProgramArgs_InitialisesTheHardwareDeviceBeforeTheInput(t *testing.T) {
 // Software needs no upload — and adding one would fail, since there is no hardware device.
 func TestScaleFilter_SoftwareGetsNoHardwareUpload(t *testing.T) {
 	p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: EncoderSoftware}
-	vf, _ := argsAfter(p.scaleFilterArgs(), "-vf")
+	vf, _ := argsAfter(p.scaleFilterArgs(""), "-vf")
 	if strings.Contains(vf, "hwupload") {
 		t.Errorf("software must not hwupload (there is no device): %q", vf)
 	}
@@ -436,7 +436,7 @@ func TestSeconds_NeverUsesExponentNotation(t *testing.T) {
 func TestScaleFilter_EveryEncoderPinsAnEightBitPixelFormat(t *testing.T) {
 	for _, enc := range encoderPreference {
 		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
-		vf, ok := argsAfter(p.scaleFilterArgs(), "-vf")
+		vf, ok := argsAfter(p.scaleFilterArgs(""), "-vf")
 		if !ok {
 			t.Errorf("%s: no filter chain at all", enc)
 			continue
@@ -457,7 +457,7 @@ func TestScaleFilter_CPUFrameEncodersGetYuv420p(t *testing.T) {
 		EncoderNVENC, EncoderAMF, EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M,
 	} {
 		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
-		vf, _ := argsAfter(p.scaleFilterArgs(), "-vf")
+		vf, _ := argsAfter(p.scaleFilterArgs(""), "-vf")
 		if !strings.Contains(vf, "format=yuv420p") {
 			t.Errorf("%s takes CPU frames and has no upload filter, so it needs an explicit "+
 				"8-bit format: %q", enc, vf)
@@ -591,5 +591,165 @@ func TestProgramArgs_LoudnessIsSinglePass(t *testing.T) {
 
 	if joined := strings.Join(args, " "); strings.Contains(joined, "measured_I") {
 		t.Error("two-pass loudnorm would stall the stream until the whole clip was read")
+	}
+}
+
+// --- HDR → SDR tone-mapping ----------------------------------------------------
+
+// hdrSource is a PQ/BT.2020 10-bit source, as ffprobe reports one.
+func hdrSource() MediaFormat {
+	return MediaFormat{
+		VideoCodec: "hevc", PixelFormat: "yuv420p10le",
+		ColorTransfer: "smpte2084", Width: 3840, Height: 2160,
+	}
+}
+
+// BOTH CONDITIONS ARE REQUIRED, and they fail in opposite directions.
+//
+// Content-is-HDR and build-can-tone-map are independent facts, and folding either into the other
+// breaks something: emitting the chain on a build without zscale kills the channel at graph-init,
+// while tone-mapping an SDR source compresses a range that was already correct.
+func TestTonemapStep_NeedsBothHDRContentAndACapableBuild(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		spec    ProgramSpec
+		wantMap bool
+	}{
+		{"hdr source, capable build", ProgramSpec{Source: hdrSource(), Tonemap: true}, true},
+		{"hdr source, build without zscale", ProgramSpec{Source: hdrSource(), Tonemap: false}, false},
+		{"sdr source, capable build", ProgramSpec{Source: MediaFormat{ColorTransfer: "bt709"}, Tonemap: true}, false},
+		{"unprobed source, capable build", ProgramSpec{Tonemap: true}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.spec.tonemapStep() != ""; got != tc.wantMap {
+				t.Errorf("tone-map = %v, want %v", got, tc.wantMap)
+			}
+		})
+	}
+}
+
+// HLG is HDR too. `arib-std-b67` is the other transfer function broadcast HDR ships as, and the
+// chain handles it identically (zscale reads the input transfer from the stream) — so the only
+// thing that could get it wrong is the predicate.
+func TestTonemapStep_CoversHLGNotJustPQ(t *testing.T) {
+	hlg := ProgramSpec{Source: MediaFormat{ColorTransfer: "arib-std-b67"}, Tonemap: true}
+	if hlg.tonemapStep() == "" {
+		t.Error("HLG source was not tone-mapped; it is HDR exactly as PQ is")
+	}
+}
+
+// PLACEMENT IS THE CORRECTNESS BIT, and getting it wrong produces no error — only a worse picture.
+//
+//   - After `fps`/`scale`, because tone-mapping is per-pixel and the scale has already cut a 4K
+//     frame to 1080p. Before it, the same result costs four times the pixels on a realtime budget.
+//   - Before `format=yuv420p`, because the chain's last zscale PRESERVES BIT DEPTH. Reversed, the
+//     8-bit truncation happens first and the tone-map operates on an already-flattened picture —
+//     which is most of what this change exists to fix.
+func TestScaleFilter_TonemapsAfterScalingAndBeforePixelFormat(t *testing.T) {
+	p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderSoftware}
+	vf, ok := argsAfter(p.scaleFilterArgs(hdrToSDRChain), "-vf")
+	if !ok {
+		t.Fatal("no filter chain")
+	}
+
+	iScale := strings.Index(vf, "scale=1920:1080")
+	iTonemap := strings.Index(vf, "tonemap=tonemap=")
+	iFormat := strings.Index(vf, "format=yuv420p")
+	if iScale < 0 || iTonemap < 0 || iFormat < 0 {
+		t.Fatalf("chain is missing a step (scale=%d tonemap=%d format=%d): %q", iScale, iTonemap, iFormat, vf)
+	}
+	if iScale > iTonemap {
+		t.Errorf("tone-map runs before the scale — four times the pixels for the same result: %q", vf)
+	}
+	if iTonemap > iFormat {
+		t.Errorf("tone-map runs after the 8-bit conversion, so it maps an already-truncated "+
+			"picture — the defect this fixes: %q", vf)
+	}
+}
+
+// The hardware families upload to GPU memory, and the tone-map is a CPU filter — so it must land
+// before the upload, or it is handed frames it cannot read.
+func TestScaleFilter_TonemapsBeforeTheHardwareUpload(t *testing.T) {
+	for _, enc := range []Encoder{EncoderVAAPI, EncoderQSV, EncoderVulkan} {
+		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
+		vf, _ := argsAfter(p.scaleFilterArgs(hdrToSDRChain), "-vf")
+		iTonemap, iUpload := strings.Index(vf, "tonemap=tonemap="), strings.Index(vf, "hwupload")
+		if iTonemap < 0 || iUpload < 0 {
+			t.Errorf("%s: chain missing tonemap or hwupload: %q", enc, vf)
+			continue
+		}
+		if iTonemap > iUpload {
+			t.Errorf("%s: CPU tone-map placed after the GPU upload; it cannot read those frames: %q", enc, vf)
+		}
+	}
+}
+
+// An SDR program must be byte-for-byte what it was before tone-mapping existed. The overwhelming
+// majority of programs take this path, so a regression here is a regression everywhere.
+func TestScaleFilter_SDRChainIsUnchanged(t *testing.T) {
+	p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderSoftware}
+	vf, _ := argsAfter(p.scaleFilterArgs(""), "-vf")
+	for _, unwanted := range []string{"zscale", "tonemap"} {
+		if strings.Contains(vf, unwanted) {
+			t.Errorf("SDR chain picked up %q: %q", unwanted, vf)
+		}
+	}
+}
+
+// THE MISLABELLING HALF, which is the one no client could recover from: SDR pixels still
+// announcing PQ/BT.2020, because ffmpeg carries source colour metadata to the output when nothing
+// changes it.
+//
+// The relabelling is done by the tone-map's final zscale, not by output flags — see hdrToSDRChain
+// for the measurement showing the flags were redundant. So the assertion is that the CHAIN is
+// present or absent, and the live test (TestLive_HDRSourceIsTonemappedAndLabelledSDR) is what
+// proves the resulting file is actually tagged bt709.
+func TestProgramArgs_TonemapAppearsOnlyWhenBothConditionsHold(t *testing.T) {
+	base := ProgramSpec{
+		Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 5000, Encoder: EncoderSoftware},
+		Input:   "/m.mkv",
+	}
+
+	hdr := base
+	hdr.Source, hdr.Tonemap = hdrSource(), true
+	got := joined(ProgramArgs(hdr))
+	if !strings.Contains(got, "tonemap=tonemap=") {
+		t.Fatalf("HDR program was not tone-mapped: %q", got)
+	}
+	// The relabelling is the chain's own last step; without it the output keeps the source's
+	// smpte2084/bt2020 tags while carrying SDR pixels.
+	if !strings.Contains(got, "zscale=p=bt709") {
+		t.Errorf("tone-map does not convert back to bt709, so the output stays labelled HDR: %q", got)
+	}
+
+	// SDR on a capable build: untouched.
+	sdr := base
+	sdr.Tonemap = true
+	if got := joined(ProgramArgs(sdr)); strings.Contains(got, "tonemap") {
+		t.Errorf("an SDR program was tone-mapped, compressing a range that was already correct: %q", got)
+	}
+
+	// HDR on a build that cannot tone-map: no chain at all. Emitting it would fail at graph-init
+	// and take the channel with it, which is strictly worse than a flat picture.
+	incapable := base
+	incapable.Source = hdrSource()
+	if got := joined(ProgramArgs(incapable)); strings.Contains(got, "zscale") {
+		t.Errorf("emitted the chain on a build without zscale — graph-init would fail: %q", got)
+	}
+}
+
+// A COPY is never tone-mapped. `-c:v copy` decodes nothing, so there is no filter graph to put the
+// chain in — and an HDR program copied to an HDR-capable client is CORRECT, not a defect.
+func TestProgramArgs_CopyIsNeverTonemapped(t *testing.T) {
+	spec := ProgramSpec{
+		Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderSoftware},
+		Input:   "/m.mkv",
+		Source:  hdrSource(),
+		Tonemap: true,
+		Plan:    CopyPlan{CopyVideo: true, CopyAudio: true},
+	}
+	got := joined(ProgramArgs(spec))
+	if strings.Contains(got, "tonemap") || strings.Contains(got, "-color_trc") {
+		t.Errorf("a video copy grew a filter chain: %q", got)
 	}
 }

@@ -13,6 +13,7 @@ import type {
   ChannelEvent,
   DatabaseEvent,
   EventHandlers,
+  FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
   JobEvent,
@@ -45,6 +46,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<LlmPullEvent>("llm_pull", handlers.onLlmPull);
   on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
   on<FillerSplitEvent>("filler_split", handlers.onFillerSplit);
+  on<FillerClipEvent>("filler_clip", handlers.onFillerClip);
   on<JobEvent>("job", handlers.onJob);
   on<PlayoutEvent>("playout", handlers.onPlayout);
   on<DatabaseEvent>("database", handlers.onDatabase);
@@ -111,6 +113,23 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         // frame's job here is the handoff — the terminal success carries the proposal id
         // the review route navigates to — so it passes straight through to listeners.
         extraRef.current?.onFillerSplit?.(e);
+      },
+      onFillerClip: (e) => {
+        // One clip moved a rung (§10 V51b). ⚠ **Only a TERMINAL frame invalidates**, and the
+        // asymmetry is the whole point: forty clips × eight rungs is 320 frames, so invalidating
+        // on each would refetch the incoming queue 320 times to render a queue that already knows
+        // how to draw itself from the frame. A running frame is a repaint; leaving it is what the
+        // consumer's cache merge is for.
+        //
+        // ⚠ The invalidation lives HERE rather than in the panel because it is not about the
+        // panel. A clip reaching `filed` changes the CATALOG, and the operator watching the
+        // catalog tab — or the dashboard, or nothing at all — has no pipeline listener mounted to
+        // notice. The rule "the thing that changed is invalidated by whoever knows it changed"
+        // is what keeps that from depending on which tab happens to be open.
+        if (e.disposition !== "running") {
+          invalidateByPrefix(qc, "/v1/filler");
+        }
+        extraRef.current?.onFillerClip?.(e);
       },
       onJob: (e) => {
         // A scheduled job changed state (§18.1) — refetch /v1/jobs so the Tasks page

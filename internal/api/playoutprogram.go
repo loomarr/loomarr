@@ -54,7 +54,12 @@ type PlayoutResolver interface {
 	// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play,
 	// V47): copy the streams the target can play, transcode the rest. Fails safe toward transcode
 	// (the zero CopyPlan) when the source cannot be probed.
-	PlanFor(ctx context.Context, input string, target playout.EncodePlan) playout.CopyPlan
+	//
+	// It also returns the MediaFormat the plan was derived from, so the transcode path can act on
+	// what the probe already learned without paying for a second ffprobe on the program boundary.
+	// Tone-mapping is the first caller; the zero value means "not probed", which every consumer
+	// must treat as unknown rather than as a positive claim.
+	PlanFor(ctx context.Context, input string, target playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat)
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -99,12 +104,14 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		s.log.Warn("playout: could not resolve what is airing", "channel", channelID, "err", err)
-		// 502, not 500: the usual cause is the media server being unreachable, which is
-		// upstream of us. It also matters that this is RETRYABLE — the demuxer will
-		// re-request, so a transient library outage heals itself.
-		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't work out what's on",
-			"Loomarr couldn't resolve this channel's current program.")
+		s.log.Warn("playout: could not resolve what is airing — showing the card", "channel", channelID, "err", err)
+		// The card, not a 502 (see serveCard): the usual cause is the media server being
+		// unreachable, which is upstream of us and typically transient — and writing an error
+		// document into the concat demuxer's stream would end the channel for every viewer
+		// rather than the one program we could not resolve.
+		if !s.serveCard(w, r, channelID, encPlan, s.playoutResolver.Profile(r.Context()), cardUnavailable) {
+			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
+		}
 		return
 	}
 
@@ -117,34 +124,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// time, so the loop paces itself — and the viewer sees "nothing scheduled" rather than a
 	// channel that fails to tune.
 	if !airing.Playable() || streamURL == "" {
-		// The font comes from the composition root, not playout.FindFont(), because the
-		// question is not "does this host have a font file?" but "can this ffmpeg BUILD draw
-		// one?" — a build without drawtext dies at graph-init and takes the channel with it.
-		// See playout.CardFontFor. Nil-guarded: "" is an unlabelled card, a valid rendering.
-		font := ""
-		if s.playoutFont != nil {
-			font = s.playoutFont()
+		if !s.serveCard(w, r, channelID, encPlan, profile, cardNothingScheduled) {
+			// The card itself failed. This is the one honestly terminal case — there is no
+			// further fallback to reach for, so the channel does stop here.
+			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
 		}
-		// The card is a synthetic lavfi source, so it does not contend for VRAM the way a decode+
-		// transcode does — but it still uses the profile's encoder, so it gets the SOFTWARE fallback
-		// (not the VRAM eviction step): a card that cannot hardware-encode should still render rather
-		// than leave the channel with no offline frame either.
-		card := func(enc playout.Encoder) []string {
-			p := profile
-			p.Encoder = enc
-			return playout.OfflineCardArgs(p, font, "Nothing scheduled", channelID, offlineCardDuration)
-		}
-		if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
-			s.pipeChild(w, r, channelID, "offline card", c)
-			return
-		}
-		if profile.Encoder != playout.EncoderSoftware {
-			if c := s.startChild(r.Context(), channelID, encPlan, playout.EncoderSoftware, true, card(playout.EncoderSoftware)); c != nil {
-				s.pipeChild(w, r, channelID, "offline card", c)
-				return
-			}
-		}
-		s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
 		return
 	}
 
@@ -177,7 +161,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// fMP4. A channel's stream is not one thing — different clients attach their own session with their
 	// own served plan — and this handler feeds that session's parent. ParseEncodePlan defaults to
 	// PlanBaseline, so an un-parameterised request stays h264/TS (the black-frame-safe floor).
-	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
+	//
+	// `source` is the probe the plan came from, kept rather than discarded so the transcode below
+	// can act on what was already learned (HDR today) without a second ffprobe at the program
+	// boundary — the one moment continuity is most fragile.
+	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
 	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
@@ -197,6 +185,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		AudioTrack: audioTrack,
 		TargetLUFS: targetLUFS,
 		Plan:       plan,
+		Source:     source,
+		// Whether this BUILD can tone-map, asked once per process by the composition root. Nil
+		// here means "no" — the same fail-safe direction as playoutFont: a missing filter emitted
+		// anyway fails at graph-init and kills the channel, so an unknown answer must never be
+		// optimistic.
+		Tonemap: s.playoutTonemap != nil && s.playoutTonemap(),
 	}
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
@@ -211,6 +205,78 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 // a title, an acquisition completes, the next re-request finds it), long enough that an empty
 // channel is not re-encoding every second.
 const offlineCardDuration = 30 * time.Second
+
+// The card's headline. Which one is showing is the only thing distinguishing "this channel has
+// nothing on it" from "something went wrong just now", so they must not be merged: the first is a
+// steady state an operator fixes by approving content, the second is transient and usually fixes
+// itself. Both are titles, not error text — this is rendered into a video frame someone is
+// watching on a television, not into a log.
+const (
+	cardNothingScheduled = "Nothing scheduled"
+	cardUnavailable      = "Program unavailable"
+)
+
+// serveCard renders the offline card and streams it, returning false only if even the card could
+// not be produced.
+//
+// ⚠ **Why every non-fatal playout failure ends up here rather than at an HTTP error.**
+//
+// This handler's response body IS an entry in the parent ffmpeg's concat playlist. An RFC7807
+// problem document written to it is not "an error the client handles" — it is malformed MPEG-TS
+// arriving where the demuxer expected a program. Executed against the pinned BtbN n7.1 build the
+// image ships, a 5xx on an entry open ends the parent:
+//
+//	[in#0/concat] Error during demuxing: Server returned 5XX Server Error reply
+//	PARENT EXITED after 388ms  err=signal: segmentation fault
+//
+// and the parent dying takes the whole channel with it — session.close() drops every viewer and
+// the HLS remux directory is removed underneath the browser player. So ONE unreadable file used
+// to end the broadcast for everyone watching, until the next tune-in.
+//
+// Two comments in this file previously asserted the opposite — that a 502 was "RETRYABLE, the
+// demuxer will re-request, so a transient library outage heals itself". No such mechanism exists:
+// ConcatArgs sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP error
+// STATUS, and `reconnect_on_http_error` appears nowhere in the tree.
+//
+// The card is what a broadcaster actually does with a dead feed, and it works here for a reason
+// specific to Loomarr's model: "what is on now" is re-derived from the wall clock on every
+// request, so the card needs no knowledge of how long the failed program had left. It occupies
+// offlineCardDuration, the demuxer re-asks, and the channel resumes at whatever is genuinely airing
+// by then — mid-program, which is correct for a wall clock. A transient media-server outage now
+// costs the viewer a caption for a few seconds instead of the channel.
+func (s *Server) serveCard(
+	w http.ResponseWriter, r *http.Request, channelID string,
+	encPlan playout.EncodePlan, profile playout.Profile, title string,
+) bool {
+	// The font comes from the composition root, not playout.FindFont(), because the question is
+	// not "does this host have a font file?" but "can this ffmpeg BUILD draw one?" — a build
+	// without drawtext dies at graph-init and takes the channel with it. See playout.CardFontFor.
+	// Nil-guarded: "" is an unlabelled card, a valid rendering.
+	font := ""
+	if s.playoutFont != nil {
+		font = s.playoutFont()
+	}
+	// The card is a synthetic lavfi source, so it does not contend for VRAM the way a decode+
+	// transcode does — but it still uses the profile's encoder, so it gets the SOFTWARE fallback
+	// (not the VRAM eviction step): a card that cannot hardware-encode should still render rather
+	// than leave the channel with no frame either.
+	card := func(enc playout.Encoder) []string {
+		p := profile
+		p.Encoder = enc
+		return playout.OfflineCardArgs(p, font, title, channelID, offlineCardDuration)
+	}
+	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
+		s.pipeChild(w, r, channelID, "offline card", c)
+		return true
+	}
+	if profile.Encoder != playout.EncoderSoftware {
+		if c := s.startChild(r.Context(), channelID, encPlan, playout.EncoderSoftware, true, card(playout.EncoderSoftware)); c != nil {
+			s.pipeChild(w, r, channelID, "offline card", c)
+			return true
+		}
+	}
+	return false
+}
 
 // streamProgram runs ONE program down the retry ladder (§9.1 V47), then streams it to the response.
 //
@@ -258,9 +324,11 @@ func (s *Server) streamProgram(
 		return
 	}
 
-	// Only a VIDEO TRANSCODE can be rescued by the ladder — a copy failing is a bad file.
+	// Only a VIDEO TRANSCODE can be rescued by the ladder — a copy failing is a bad file. But a bad
+	// file is one PROGRAM, not the channel: fall through to the card so the demuxer gets valid
+	// MPEG-TS and the lineup carries on past it (see serveCard).
 	if !transcoding {
-		s.failProgram(w, r, channelID, what, "the source could not be read")
+		s.cardOrFail(w, r, channelID, target, spec.Profile, what, "the source could not be read")
 		return
 	}
 
@@ -293,8 +361,26 @@ func (s *Server) streamProgram(
 		}
 	}
 
-	// Even software produced nothing — genuinely unplayable (a corrupt file, a missing mount).
-	s.failProgram(w, r, channelID, what, "no encoder could produce this program")
+	// Even software produced nothing — genuinely unplayable (a corrupt file, a missing mount). The
+	// PROGRAM is lost either way; the card is what keeps the CHANNEL.
+	s.cardOrFail(w, r, channelID, target, spec.Profile, what, "no encoder could produce this program")
+}
+
+// cardOrFail is the end of the ladder: this program cannot be produced, so show the card, and only
+// if even that fails write the error that ends the channel.
+//
+// Split out so the two terminal sites in streamProgram cannot drift apart, and so the log keeps the
+// real reason — the card is what the VIEWER sees, `reason` is what the OPERATOR needs, and merging
+// them would trade one for the other.
+func (s *Server) cardOrFail(
+	w http.ResponseWriter, r *http.Request, channelID string,
+	target playout.EncodePlan, profile playout.Profile, what, reason string,
+) {
+	s.log.Warn("playout: program could not be produced — showing the card and continuing",
+		"channel", channelID, "program", what, "reason", reason)
+	if !s.serveCard(w, r, channelID, target, profile, cardUnavailable) {
+		s.failProgram(w, r, channelID, what, reason)
+	}
 }
 
 // liveChild is an encoder that has PROVEN it produces output — its peeked first chunk plus the
@@ -382,7 +468,19 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 }
 
 // failProgram writes the 502 for a program that could not be produced at all — every ladder step
-// exhausted. Retryable by the demuxer (it re-requests), so a transient library outage self-heals.
+// exhausted AND the offline card itself unrenderable.
+//
+// ⚠ **This ends the channel, for everyone watching.** The comment here used to claim the opposite
+// ("Retryable by the demuxer (it re-requests), so a transient library outage self-heals"); it was
+// wrong, and it was wrong in the direction that made a 502 look cheap. A 5xx on a concat entry open
+// kills the parent ffmpeg — measured on the pinned n7.1 build, `Error during demuxing` then
+// `signal: segmentation fault` — which drops every viewer and removes the HLS remux directory.
+// `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP error
+// status, and `reconnect_on_http_error` is nowhere in this tree.
+//
+// So this is a LAST RESORT and there are exactly two callers, both of which have already tried the
+// card. Anything that reaches for it without doing so first is trading a broken program for a
+// broken channel.
 func (s *Server) failProgram(w http.ResponseWriter, r *http.Request, channelID, what, reason string) {
 	s.log.Warn("playout: program could not be produced — this channel will not play",
 		"channel", channelID, "program", what, "reason", reason)

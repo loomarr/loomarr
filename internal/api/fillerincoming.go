@@ -13,13 +13,13 @@ import (
 
 // The Incoming tab — the ingest conveyor (§10 V35).
 //
-// What has been downloaded but is not yet filed, in two shapes:
+// What has been downloaded but is not yet filed:
 //
-//   - **asks**: clips whose tags need a human. Today that means an AI-proposed era the tagger
-//     could NOT ground in the clip's text (V34's rule: an era is persisted as fact only when the
-//     year appears literally in the filename, sidecar or transcript), plus commercials with no
-//     match tags at all.
+//   - **clips**: the conveyor (§10 V51e) — one row per clip, whether the machine is still
+//     preparing it or has finished and handed it over. `needsDecision` says which end it is at.
 //   - **reels**: compilations mid-split — the persisted split proposals V34 already writes.
+//   - **rejected** / **recentlyFiled**: the two audit halves — what was refused, and what was
+//     filed with nobody looking.
 //
 // ⚠ **One read behind the tab, not a fan-out the client assembles.** The two halves answer one
 // question ("what is waiting on me?"), and a client that fetched them separately would render a
@@ -36,8 +36,24 @@ import (
 // ⚠ The bar the rule set still applies to everything else here: `reason` stays derived from real
 // state and is never generated prose.
 
-// IncomingAskDTO is one clip waiting on a human decision about its tags.
-type IncomingAskDTO struct {
+// IncomingClipDTO is one clip on the Incoming conveyor — being prepared, or waiting on a person.
+//
+// ⚠ **ONE type for both, because they are one belt.** It was `IncomingAskDTO` (retired-ok), in `asks`
+// beside a separate `pipeline` array, and the two overlapped almost completely: the runner enrols
+// every clip at `probe/queued` on scan while `asks` asked the older question "is it held and
+// untagged?", so on a fresh catalog **84 of 85 clips were in both lists** — one row asking for a
+// decision above another saying nothing needed the operator. A clip is at one place on the belt;
+// the DTO now says which via `NeedsDecision`.
+type IncomingClipDTO struct {
+	// NeedsDecision is whether the MACHINE is finished and a person is required.
+	//
+	// ⚠ Derived from the pipeline's `review` disposition — V51b's own word for the handoff, which
+	// the old `asks` query predated and never consulted. The held-and-untagged test survives only
+	// as the fallback below for a clip catalogued before V51b: it has no pipeline row at all, and
+	// treating "no row" as "still working" would make it invisible forever.
+	NeedsDecision bool `json:"needsDecision,omitempty"`
+	// Pipeline is where the machine has got to. Absent for a clip with no pipeline row.
+	Pipeline *IncomingPipelineDTO `json:"pipeline,omitempty"`
 	// Hash is the clip's identity (V45a) — used by the single-clip tag PATCH (`/v1/filler/tags`).
 	Hash string `json:"hash" doc:"Clip identity — its content hash"`
 	// Path is retained for the ARRAY-keyed ops (hold/file/remove take `paths: []` — SetClipsHeld/
@@ -51,9 +67,10 @@ type IncomingAskDTO struct {
 	// ThumbImage is the extracted frame as an image-service record (§22).
 	//
 	// ⚠ It replaced a `thumbnail` string in V52 phase 8. That field held a path relative to the
-	// artwork cache and was only usable via /v1/filler/thumb/{hash}, which is retired — a client
-	// can do nothing with a cache-relative path now. Absent until the adoption job has reached the
-	// clip, or when no frame was extracted; both render as no image, never a placeholder.
+	// artwork cache and was only usable through /v1/filler/thumb/{hash}, which retired with it — a
+	// cache-relative path is not something a client can do anything with. Absent until the adoption
+	// job has reached the clip, or when no frame was extracted; both render as no image, never a
+	// placeholder.
 	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the extracted frame; absent until adopted or when none was extracted"`
 	// Kind is what Loomarr already believes; Era/Audience/Category are its current tags.
 	Kind     string `json:"kind"`
@@ -112,9 +129,11 @@ type IncomingReelDTO struct {
 // a cold load and on reconnect. The `filler_clip` SSE frames are a latency optimisation that the
 // bus drops under load, so a client that built the ladder from frames would render a queue
 // silently missing steps.
+// ⚠ It carries NO identity and no display fields. It is nested inside the clip it describes, which
+// already has the hash, the name, the duration and the thumbnail — and the version of this struct
+// that repeated them also performed a `GetClip` PER ROW to fill them in, 85 extra reads to render
+// one page. A nested type that re-answers its parent's questions is two sources for one fact.
 type IncomingPipelineDTO struct {
-	Hash string `json:"hash"`
-	Name string `json:"name,omitempty"`
 	// Stage/Status/Progress are where it is now. Progress is **-1 when the stage cannot measure
 	// itself** — a sentinel to render as an indeterminate spinner, never as 0%.
 	Stage    string `json:"stage"`
@@ -162,13 +181,32 @@ type IncomingRejectDTO struct {
 
 type fillerIncomingOutput struct {
 	Body struct {
-		Asks  []IncomingAskDTO  `json:"asks"`
+		// Clips is the whole conveyor, in one list: what is being prepared and what is waiting on
+		// a person, ordered decisions-first.
+		//
+		// ⚠ This replaced `asks` + `pipeline`. They were separate arrays over overlapping
+		// populations, and the operator saw the same clip twice — once demanded of them, once
+		// described as "just working". One belt, one row per clip, `needsDecision` says which end.
+		Clips []IncomingClipDTO `json:"clips"`
 		Reels []IncomingReelDTO `json:"reels"`
-		// Pipeline is what is still being prepared — the answer to "I downloaded forty clips and
-		// nothing is happening", which before V51b no endpoint could give.
-		Pipeline []IncomingPipelineDTO `json:"pipeline"`
 		// Rejected is the audit half of refusal, the sibling of RecentlyFiled.
 		Rejected []IncomingRejectDTO `json:"rejected"`
+		// StageOrder is the whole ladder, in order — the answer to "which rungs are still ahead
+		// of this clip", which no per-clip row can give.
+		//
+		// ⚠ **`IncomingPipelineDTO.Stages` is the VISITED ladder, not the whole one.** A clip
+		// sitting at `split` carries three records; a strip that draws one pip per record would
+		// grow as the clip advances, so the operator could never see how far there is left to go.
+		// The remaining rungs have to come from somewhere, and the only honest source is the
+		// server: `filler.StageOrder` is the runner's own sequence, and rendering from it means a
+		// rung added to the pipeline appears in the UI without a second edit.
+		//
+		// ⚠ It is NOT filtered by what applies to this install. A disabled stage still runs as a
+		// `skipped` record with its reason attached — "vision tagging is off" is a fact an
+		// operator needs, and a ladder that silently omitted the rung would present a shorter
+		// pipeline as if that were the whole of it. Applicability is per clip and re-evaluated
+		// every pass (§10 V51b); the ladder is fixed.
+		StageOrder []string `json:"stageOrder" doc:"Every pipeline stage id, in run order"`
 		// RecentlyFiled is what Loomarr filed WITHOUT asking (§10 V38) — the audit half of
 		// auto-filing.
 		//
@@ -176,8 +214,8 @@ type fillerIncomingOutput struct {
 		// upgraded install clips begin entering the catalog unattended; an operator who did not
 		// expect that must be able to see exactly what was filed and send any of it back. An
 		// unattended decision that cannot be found is not one an appliance gets to make (§10).
-		RecentlyFiled []IncomingAskDTO `json:"recentlyFiled"`
-		Total         int              `json:"total" doc:"Everything waiting on a human — asks plus reels"`
+		RecentlyFiled []IncomingClipDTO `json:"recentlyFiled"`
+		Total         int               `json:"total" doc:"Everything waiting on a human — asks plus reels"`
 	}
 }
 
@@ -210,19 +248,79 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	}
 
 	out := &fillerIncomingOutput{}
-	out.Body.Asks = make([]IncomingAskDTO, 0, len(held))
-	// One batched lookup for the whole list (§22) — the same shape the catalog grid uses, and the
-	// reason clipArtworkResolver takes a slice rather than a hash.
-	heldImg := s.clipArtworkResolver(ctx, held)
-	for _, c := range held {
-		out.Body.Asks = append(out.Body.Asks, incomingDTO(c, askReasonFor(c), heldImg))
+
+	// The conveyor, assembled from two reads that used to be two LISTS (§10 V51e).
+	//
+	// ⚠ A pipeline read failure degrades the belt to the held clips rather than emptying the tab:
+	// the same non-fatal treatment the split proposals and the audit list get. Every clip then
+	// reports `needsDecision` through the legacy fallback, which is the honest answer when the
+	// pipeline's state could not be read at all.
+	pipeByHash := map[string]filler.ClipPipeline{}
+	if rows, perr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true, Limit: incomingPipelineLimit}); perr != nil {
+		s.log.Warn("list pipeline rows for incoming", "err", perr)
+	} else {
+		for _, r := range rows {
+			pipeByHash[r.ClipHash] = r
+		}
 	}
-	// An ungrounded era sorts ahead of a bare untagged clip: it is a decision with a proposed
-	// answer (one click), where an untagged clip needs the operator to supply everything.
-	sort.SliceStable(out.Body.Asks, func(i, j int) bool {
-		a, b := out.Body.Asks[i], out.Body.Asks[j]
-		if (a.SuggestedEra > 0) != (b.SuggestedEra > 0) {
-			return a.SuggestedEra > 0
+
+	// ⚠ The belt is COLLECTED before any of it is rendered, and that ordering is what keeps the
+	// artwork lookup batched (§22, V52 phase 8). Rendering inside the loops below would resolve one
+	// image per clip — the N+1 `clipArtworkResolver` exists to prevent — and the belt is the
+	// longest list on this tab, so it is the worst place to pay it.
+	type beltEntry struct {
+		clip store.Clip
+		row  filler.ClipPipeline
+	}
+	belt := make([]beltEntry, 0, len(held))
+	seen := make(map[string]bool, len(held))
+	for _, c := range held {
+		seen[c.Hash] = true
+		belt = append(belt, beltEntry{clip: c, row: pipeByHash[c.Hash]})
+	}
+	// ⚠ A clip on the belt that is NOT held still belongs here. Holding and enrolment are set by
+	// different writers, so "enrolled but not held" is reachable — and a clip the machine is
+	// visibly working on must not vanish from the one surface that reports on it.
+	for hash, row := range pipeByHash {
+		if seen[hash] {
+			continue
+		}
+		clip, cerr := s.store.GetClip(ctx, hash)
+		if cerr != nil {
+			continue
+		}
+		belt = append(belt, beltEntry{clip: clip, row: row})
+	}
+
+	beltClips := make([]store.Clip, 0, len(belt))
+	for _, e := range belt {
+		beltClips = append(beltClips, e.clip)
+	}
+	beltImg := s.clipArtworkResolver(ctx, beltClips)
+
+	out.Body.Clips = make([]IncomingClipDTO, 0, len(belt))
+	for _, e := range belt {
+		out.Body.Clips = append(out.Body.Clips, conveyorDTO(e.clip, e.row, beltImg))
+	}
+
+	// ⚠ Decisions first: work the operator OWES outranks work they merely watch. Within the
+	// decisions an ungrounded era sorts ahead of a bare untagged clip — it is one click, where an
+	// untagged clip needs everything supplied. Within the in-flight half, most recently moved
+	// first, so the rows that are actually changing sit where the eye already is.
+	sort.SliceStable(out.Body.Clips, func(i, j int) bool {
+		a, b := out.Body.Clips[i], out.Body.Clips[j]
+		if a.NeedsDecision != b.NeedsDecision {
+			return a.NeedsDecision
+		}
+		if a.NeedsDecision {
+			if (a.SuggestedEra > 0) != (b.SuggestedEra > 0) {
+				return a.SuggestedEra > 0
+			}
+			return a.Path < b.Path
+		}
+		ap, bp := a.Pipeline, b.Pipeline
+		if ap != nil && bp != nil && ap.UpdatedAt != bp.UpdatedAt {
+			return ap.UpdatedAt > bp.UpdatedAt
 		}
 		return a.Path < b.Path
 	})
@@ -256,7 +354,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// The audit half: what was filed with nobody looking. ⚠ A read failure here is NOT fatal —
 	// same call as the split proposals above. Losing the whole tab because the audit list did not
 	// load would take away the queue an operator CAN act on.
-	out.Body.RecentlyFiled = make([]IncomingAskDTO, 0)
+	out.Body.RecentlyFiled = make([]IncomingClipDTO, 0)
 	// ⚠ Narrowed in SQL. This loaded the WHOLE catalog and discarded all but the auto-filed rows
 	// in Go — on an install with thousands of clips, to render a handful of audit cards.
 	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{AutoFiledOnly: true}); ferr != nil {
@@ -273,18 +371,17 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		})
 	}
 
-	// The pipeline halves (§10 V51b) — what is moving, and what was refused. ⚠ Both are
-	// non-fatal reads, the same call the split proposals and the audit list make: losing the
-	// whole tab because a secondary list did not load would take away the queue an operator CAN
-	// act on.
-	out.Body.Pipeline = make([]IncomingPipelineDTO, 0)
-	if rows, perr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{NonTerminalOnly: true, Limit: incomingPipelineLimit}); perr != nil {
-		s.log.Warn("list pipeline rows for incoming", "err", perr)
-	} else {
-		for _, r := range rows {
-			out.Body.Pipeline = append(out.Body.Pipeline, pipelineDTO(ctx, s, r))
-		}
+	// The audit half of refusal (§10 V51b). ⚠ Deliberately NOT on the conveyor: a refused clip has
+	// left the belt, and folding it back in would make "what is Loomarr doing" and "what did
+	// Loomarr decide without me" the same list again — the merge this phase just undid.
+	// ⚠ Derived from `filler.StageOrder` rather than listed here. A second copy of the sequence
+	// is the drift class this codebase keeps finding: the runner would advance through one list
+	// and the UI would draw another, and the only symptom would be a pip in the wrong place.
+	out.Body.StageOrder = make([]string, 0, len(filler.StageOrder))
+	for _, id := range filler.StageOrder {
+		out.Body.StageOrder = append(out.Body.StageOrder, string(id))
 	}
+
 	out.Body.Rejected = make([]IncomingRejectDTO, 0)
 	if rows, rerr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true, Limit: incomingRejectLimit}); rerr != nil {
 		s.log.Warn("list rejected clips for incoming", "err", rerr)
@@ -298,11 +395,21 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// list, not work. Including it would put a badge on the tab that never clears, and a count
 	// that cannot reach zero stops being read.
 	//
-	// ⚠ **`pipeline` and `rejected` are excluded for the SAME reason, and the reason differs
-	// between them.** A clip mid-ingest is not waiting on a person — it is waiting on the machine,
+	// ⚠ **Clips still being PREPARED and `rejected` are excluded for the same reason, arrived at
+	// differently.** A clip mid-ingest is not waiting on a person — it is waiting on the machine,
 	// and badging it would make the tab count tick up every time a download starts. A reject is
 	// an audit row exactly like an auto-filed one. Neither is work the operator owes.
-	out.Body.Total = len(out.Body.Asks) + len(out.Body.Reels)
+	//
+	// ⚠ This used to read `len(out.Body.Asks)`, which was the same number by accident and the
+	// wrong rule by construction: `asks` included clips the machine had not finished with, so the
+	// badge counted work nobody owed. Counting `NeedsDecision` makes the number and the list agree
+	// — they disagreed before, and the list was the honest one.
+	for _, c := range out.Body.Clips {
+		if c.NeedsDecision {
+			out.Body.Total++
+		}
+	}
+	out.Body.Total += len(out.Body.Reels)
 	return out, nil
 }
 
@@ -321,15 +428,30 @@ const (
 //
 // ⚠ A missing clip is not an error. A row whose clip has gone is what a pruned catalog looks like
 // mid-pass, and falling back to the identity is more honest than a blank row.
-func pipelineDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingPipelineDTO {
+// conveyorDTO renders one clip on the belt, with its pipeline state attached when it has one.
+//
+// ⚠ **`needsDecision` is the pipeline's answer, not a second opinion derived from tags.** The
+// zero-value `row` (no pipeline row at all) is the only case that falls back to the V38 test, and
+// it exists for one population: clips catalogued before V51b. Treating "no row" as "still being
+// prepared" would strand them in a section that says nothing needs the operator, forever.
+func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageDTO) IncomingClipDTO {
+	dto := incomingDTO(c, askReasonFor(c), img)
+	if row.ClipHash == "" {
+		dto.NeedsDecision = true
+		return dto
+	}
+	p := pipelineDTO(row)
+	dto.Pipeline = &p
+	dto.NeedsDecision = row.Disposition == filler.DispositionReview
+	return dto
+}
+
+func pipelineDTO(r filler.ClipPipeline) IncomingPipelineDTO {
 	dto := IncomingPipelineDTO{
-		Hash: r.ClipHash, Stage: string(r.Stage), Status: string(r.Status),
+		Stage: string(r.Stage), Status: string(r.Status),
 		Progress: r.Progress, Attempts: r.Attempts,
 		Stages:    make([]IncomingStageDTO, 0, len(r.Stages)),
 		UpdatedAt: r.UpdatedAt.UTC().Format(time.RFC3339),
-	}
-	if clip, err := s.store.GetClip(ctx, r.ClipHash); err == nil && clip.Name != "" {
-		dto.Name = clip.Name
 	}
 	for _, rec := range r.Stages {
 		dto.Stages = append(dto.Stages, IncomingStageDTO{
@@ -359,10 +481,12 @@ func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRe
 
 // incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row
 // cannot drift into describing the same clip differently.
-// `img`, when non-nil, resolves an image hash to its record — pre-resolved by the caller so a
-// list of forty asks is one batched lookup rather than forty (see clipArtworkResolver).
-func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) IncomingAskDTO {
-	d := IncomingAskDTO{
+//
+// `img`, when non-nil, resolves an image hash to its record. Pre-resolved BY THE CALLER so a belt
+// of forty clips costs one batched lookup rather than forty — the same rule the catalog grid
+// follows, and the reason clipArtworkResolver takes a slice (§22).
+func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) IncomingClipDTO {
+	d := IncomingClipDTO{
 		Hash: c.Hash, Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
 		Kind: string(c.Kind), Era: c.Era,
 		Audience: string(c.Audience), Category: c.Category,

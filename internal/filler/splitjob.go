@@ -116,10 +116,29 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	// land on Unsplittable, never on a guessed cut.
 	segs = sp.rescue(ctx, file, base, segs)
 
-	// 4. Classify each segment through the SAME tagger the tag job uses (§10) —
-	// including the era grounding rule: an era whose year is not in the text
-	// arrives as SuggestedEra only.
-	sp.classify(ctx, segs)
+	// 4. RETIRED (§10 V51g): classify no longer runs here.
+	//
+	// ⚠ **It was one LLM turn per segment, inside a two-minute pass.** Measured on a 16m47s reel:
+	// 51 segments × 7.4s ≈ 377s, against a budget of 120 — so the rung could never finish, threw
+	// its work away, and started over every two minutes. Everything else in `Propose` totals ~40s
+	// (detect 4s, dedup 33s, cut 3s); this one step was the entire overrun.
+	//
+	// ⚠ And it was strictly WORSE duplicate work. It called the same `Classify` the `tag` rung
+	// calls, but with `SplitSegment.Transcript` — EMPTY unless `rescue` ran, and rescue only
+	// transcribes segments over ~120s (none on that reel). So it classified 51 adverts from
+	// nothing but a generated name, `"… part 7"`, identical across segments bar the number. Then
+	// every spawned segment ran `transcribe` → `tag` and called the same function again, this time
+	// with a real transcript. The pipeline paid twice and kept the second answer.
+	//
+	// **Split CUTS; it does not describe.** Each segment is spawned as its own clip and runs the
+	// whole ladder for itself — one clip at a time, budget-bounded, resumable, and individually
+	// visible in Incoming. The classification still happens; it happens where the scheduler can
+	// hold it.
+	//
+	// ⚠ The cost: the split-review screen shows cuts without tags. That is the right trade — that
+	// screen asks "are these the right cuts?", which an operator answers from the filmstrip and the
+	// timings. "What is each one?" is a different question, asked later, per clip, once there is a
+	// transcript to answer it from.
 
 	// 5. Dedup against the catalog — a FLAG on the proposal, never a silent drop.
 	sp.dedup(ctx, file, clipHash, segs)
@@ -214,38 +233,9 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 	return out
 }
 
-// classify tags every segment with the existing tagger. A classify failure
-// leaves the segment untagged — the review shows that, and the tag job can
-// retry after confirm.
-//
-// ⚠ Loads the taxonomy ONCE (§10 V45a) and serves/grounds every segment against it — the same forest
-// the tag job uses, so a split segment and a directly-tagged clip are grounded identically. A ListTaxa
-// failure leaves the forest nil, which grounds no tags (segments come out untagged) rather than
-// failing the whole split — the honest degradation, matching the nil-provider case.
-func (sp *Splitter) classify(ctx context.Context, segs []SplitSegment) {
-	if sp.provider == nil {
-		return
-	}
-	taxa, err := sp.store.ListTaxa(ctx)
-	if err != nil && sp.log != nil {
-		sp.log.Warn("split classify: could not load taxonomy; segments will be untagged", "err", err)
-	}
-	forest := taxonomy.New(taxa)
-	for i := range segs {
-		sug, err := Classify(ctx, sp.provider, forest, segs[i].Name, segs[i].Transcript)
-		if err != nil {
-			if sp.log != nil {
-				sp.log.Warn("segment classify failed", "segment", segs[i].Name, "err", err)
-			}
-			continue
-		}
-		segs[i].Era = sug.Era
-		segs[i].SuggestedEra = sug.SuggestedEra
-		segs[i].Audience = sug.Audience
-		segs[i].Tags = sug.Tags
-		segs[i].Category = sug.Category
-	}
-}
+// `classify` is DELETED (§10 V51g), not merely unwired — an orphaned method reads as a capability
+// the next person can switch back on, and this one must not come back to this file. The tagging it
+// did happens on each spawned segment's own `tag` rung, with a transcript, one clip at a time.
 
 // dedup flags segments whose dHash matches an existing catalog clip. Hashing
 // failures (undecodable span, unreadable catalog file) mean NO flag — a false
