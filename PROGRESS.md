@@ -4,10 +4,49 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: phases 0–5 of 8 MERGED to main.** `ca15ba1d` (#199, phases 0–4) and
-`309c5dfc` (#209, phase 5). **Next: 6** clip artwork, **7** TMDB, **8** retirements +
-`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ 6–7 each regenerate the orval client, so per
-CLAUDE.md's worktree rule they are **not** parallelisable.
+**V52 — the image service: phases 0–6 of 8.** Merged: `ca15ba1d` (#199, phases 0–4),
+`309c5dfc` (#209, phase 5). **Phase 6 is PR #217.** **Next: 7** TMDB, **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ 7 regenerates the orval client, so per
+CLAUDE.md's worktree rule it is not parallelisable with anything that adds an endpoint.
+
+**Phase 6 — clip artwork onto the service (2026-08-09, PR #217).** Stills and hover loops lived
+only as files under `FILLER_DIR`; they now carry image-service identities, so they get srcset, a
+modern format on the STILL (the only WebP in the product was the animated hover), content
+addressing and honest caching. Gate: `make check` + `make openapi-verify` + `make fe` (1243 app +
+19 api) + `make fe-visual` (782), all exit 0.
+
+⚠ **Adoption is a JOB (`images-adopt-artwork`, every 5 min), and choosing that over an inline call
+is what removes work from phase 8.** Its work list is "artwork on disk with no image identity", so
+EXISTING and newly-rendered artwork adopt through one path — there is no separate clip backfill to
+write, and therefore no second implementation to drift. Inline would also have coupled
+`internal/filler` to `internal/images`, which the layering does not allow.
+
+⚠ **`thumb_image_hash`/`hover_image_hash` are OMITTED from `UpsertClip`'s DO UPDATE.** The folder
+scan calls the same upsert knowing nothing about image identities; including them would blank every
+clip's artwork on re-sync. That block now documents SIX columns sharing this rule — V51d's
+`created_at` joined it in the same merge, for the same class of reason.
+
+⚠ **`<Image>` gained a THIRD fallback state, and a real caller forced it.** The clip card's hover
+loop stacks ON its still and must render NOTHING on failure to reveal it; a colour block there is a
+visible fault where the honest state is "no preview". `fallback ?? default` cannot express that —
+it collapses "unspecified" and "explicitly nothing". Now `!== undefined`, so **`null` means
+nothing**. ⚠ Biome rejecting the `<></>` workaround is what surfaced it: the lint was pointing at an
+API gap, not a style nit.
+
+⚠ **The SECOND migration collision of this arc.** V51d took `00046` while phase 6 was open; mine
+renumbered to `00047`. Migration numbers are a hand-allocated global namespace with **no reservation
+step**, and git merges two same-numbered files without complaint — different names, no textual
+conflict. `ls internal/store/migrations/sqlite | tail` after EVERY merge, not only when writing one.
+Both sides also added columns to one INSERT: verify column count against placeholder count
+programmatically, because an arity mismatch is a runtime error no compiler catches.
+
+⚠ **Main was ALREADY RED when phase 6 merged it in** (`6f7269aa`), and the mechanism is one this
+file has recorded before under a different name. #214 added
+`getListFillerMockHandler({ clips: [] })`; #203 made `total` REQUIRED on `ListFillerOutputBody`.
+Each was green against the main it branched from; together they do not typecheck, and #203 merged
+because its CI ran against a base without #214. **The generated client is the coupling, and neither
+diff mentions the other's file** — exactly the `playoutApi` barrel story. Fixed in this PR (one
+line), so merging phase 6 returns main to green.
 
 Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
 `make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
