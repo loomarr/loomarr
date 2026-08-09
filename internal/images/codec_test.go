@@ -251,7 +251,9 @@ func BenchmarkResizeLadder(b *testing.B) {
 	}
 }
 
-var posterWidths = []int{154, 185, 342, 500, 780}
+// Sourced from the real ladder rather than re-listed. A second copy of these numbers is exactly
+// the hand-maintained list this repo has repeatedly watched drift from the thing it mirrors.
+var posterWidths = RolePoster.Widths()
 
 func TestResizeLadderMatchesIndividualResizes(t *testing.T) {
 	src := testImage(2000, 3000)

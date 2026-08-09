@@ -440,6 +440,7 @@ type Store interface {
 	ActivityStore
 	SettingStore
 	CountStore
+	ImageStore
 
 	// Close releases the underlying database handle.
 	Close() error

@@ -89,4 +89,18 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 		t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	})
+
+	t.Run("Images", func(t *testing.T) {
+		t.Run("ImageRoundTrip", func(t *testing.T) { testImageRoundTrip(t, newStore) })
+		t.Run("ImageMissingIsNotFound", func(t *testing.T) { testImageMissingIsNotFound(t, newStore) })
+		t.Run("ImageUpsertPreservesCreatedAt", func(t *testing.T) { testImageUpsertPreservesCreatedAt(t, newStore) })
+		t.Run("ImageRefsAndOwnerLookup", func(t *testing.T) { testImageRefsAndOwnerLookup(t, newStore) })
+		t.Run("ImageOrphanDetection", func(t *testing.T) { testImageOrphanDetection(t, newStore) })
+		t.Run("ImageDerivatives", func(t *testing.T) { testImageDerivatives(t, newStore) })
+		t.Run("ImagesMissingFormat", func(t *testing.T) { testImagesMissingFormat(t, newStore) })
+		t.Run("ImageFetchQueueAndExpirySweepAreDisjoint", func(t *testing.T) { testImageFetchQueueAndExpirySweepAreDisjoint(t, newStore) })
+		t.Run("ImageUnrecoverableSelection", func(t *testing.T) { testImageUnrecoverableSelection(t, newStore) })
+		t.Run("ImageDeleteCascades", func(t *testing.T) { testImageDeleteCascades(t, newStore) })
+		t.Run("ImageTouch", func(t *testing.T) { testImageTouch(t, newStore) })
+	})
 }

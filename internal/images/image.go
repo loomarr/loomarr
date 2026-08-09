@@ -168,7 +168,10 @@ type Image struct {
 
 	// Meta is free-form JSON: attribution, licence, upstream ids, generation parameters. Kept
 	// opaque at this layer on purpose — the service must not grow a schema per producer.
-	Meta []byte
+	//
+	// A string rather than []byte, matching the store: the Postgres column is JSONB, and a []byte
+	// parameter binds as bytea while a string binds as text and casts cleanly.
+	Meta string
 
 	// OriginFetchedAt is when the bytes were obtained from upstream.
 	//

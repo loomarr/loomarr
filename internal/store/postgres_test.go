@@ -59,11 +59,34 @@ func TestPostgresConformance(t *testing.T) {
 			t.Fatalf("open postgres store: %v", err)
 		}
 		t.Cleanup(func() {
-			// Truncate between sub-tests so shared-DB state doesn't leak. Keep
-			// this list in step with the schema — every conformance table.
+			// Reset the shared database by DROPPING THE SCHEMA, so the next sub-test's Open
+			// re-runs every migration against an empty database.
+			//
+			// ⚠ **This replaces a hand-written TRUNCATE list, and the reason is worth keeping.**
+			// The list read `titles, settings, channels, sessions, users, jobs, proposals, clips`
+			// under a comment asking the next person to keep it in step with the schema. By the
+			// time V52 arrived it covered roughly eight of twenty tables — and the failure it
+			// produced was the worst kind: rows from earlier sub-tests survived into later ones,
+			// so any assertion over a GLOBAL query passed on SQLite (which hands every sub-test a
+			// fresh file) and failed only on Postgres.
+			//
+			// ⚠ **But the list was not purely drift, and simply completing it is WRONG.**
+			// `filler_sources` and the taxonomy carry rows a MIGRATION seeds; truncating those
+			// destroys fixture data nothing puts back, which is exactly what completing the list
+			// did — it turned two Filler failures on. Nothing in the literal distinguished
+			// "omitted by accident" from "omitted on purpose".
+			//
+			// Dropping the schema sidesteps both problems instead of balancing them: seeded rows
+			// come back because the seeding migration runs again, new tables are covered the day
+			// they exist, and the semantics finally MATCH the SQLite path (a genuinely fresh
+			// database per sub-test) rather than approximating it.
 			pg := s.(*sqlStore)
-			_, _ = pg.db.ExecContext(context.Background(),
-				"TRUNCATE titles, settings, channels, sessions, users, jobs, proposals, clips")
+			ctx := context.Background()
+			// CASCADE takes the foreign keys with it; recreating public restores the default
+			// search_path the next connection expects. goose's bookkeeping table goes too, which
+			// is what makes the migrations re-run rather than being skipped as already-applied.
+			_, _ = pg.db.ExecContext(ctx, "DROP SCHEMA public CASCADE")
+			_, _ = pg.db.ExecContext(ctx, "CREATE SCHEMA public")
 			_ = s.Close()
 		})
 		return s
