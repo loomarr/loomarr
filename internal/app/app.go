@@ -645,6 +645,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// imageSvc is the image service (§22, V52) — the one pipeline every image travels. Built
 	// below on the store alone; nil without one, which the /v1/images routes answer as "absent".
 	var imageSvc *images.Service
+	// imageFetcher is the same fetcher the background jobs use, shared with the interactive
+	// callers that adopt on a request (the icon picker — see iconAdapter). One fetcher, so the
+	// SSRF allowlist and the concurrency cap are enforced identically whoever asks.
+	var imageFetcher *images.Fetcher
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
 	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
 	// timeline handles by rendering the strip with no images.
@@ -653,7 +657,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The image service (§22, V52). First in this block deliberately: it depends on nothing
 		// else here, and the jobs registered later need it.
 		imageSvc = newImageService(st, set)
-		registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
+		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
@@ -667,7 +671,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
 		// renders with no images, which is a supported (image-less) rendering.
 		if tmdbClient != nil {
-			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient}
+			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc}
 		}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
@@ -700,7 +704,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Channel icon suggestions (§icon P2): gated on TMDB, same as search/suggest above —
 		// posters are TMDB-only, so no TMDB key means no suggestions, and the route 501s.
 		if tmdbClient != nil {
-			iconSvc = iconAdapter{store: st, tmdb: tmdbClient, log: log}
+			iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
 		}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the

@@ -109,7 +109,8 @@ func (f *Fetcher) FetchPending(ctx context.Context) (FetchResult, error) {
 	if err != nil {
 		return FetchResult{}, err
 	}
-	return f.fetchAll(ctx, pending), nil
+	res, _ := f.fetchAll(ctx, pending)
+	return res, nil
 }
 
 // Rehydrate re-fetches remote images whose files are gone — the post-restore path (§22).
@@ -144,7 +145,59 @@ func (f *Fetcher) Rehydrate(ctx context.Context) (FetchResult, error) {
 		return FetchResult{}, nil
 	}
 	f.log.Info("rehydrating images whose files are missing", "count", len(missing))
-	return f.fetchAll(ctx, missing), nil
+	res, _ := f.fetchAll(ctx, missing)
+	return res, nil
+}
+
+// FetchNow fetches a work list synchronously for an INTERACTIVE caller and returns the resulting
+// rows keyed by source URL. Anything that does not land inside `budget` is simply absent.
+//
+// ⚠ **Keyed by source URL rather than by hash, and that is the entire reason it returns a map.**
+// fetchOne RE-KEYS: the row `Adopt` created under a hash of the URL is deleted the moment real
+// bytes arrive and their content hash becomes the identity. So a caller holding the record `Adopt`
+// handed back is holding a hash that no longer resolves — it would render a 404 and look exactly
+// like a broken image. `source_url` is the one field carried across the re-key unchanged, which
+// makes it the only key a caller can still match on afterwards.
+//
+// ⚠ **This is a deliberate exception to the rule stated at the top of this file, not a repeal of
+// it.** Adopt does not download because a guide page adopting fifty posters would put TMDB's
+// latency on Loomarr's page load. The icon picker is the opposite shape: a dozen images, on an
+// explicit operator action, where the whole point of the screen is to look at them. Fetching there
+// is not new latency either — it is the same dozen downloads the browser was making itself before
+// §22, moved server-side so they stop being third-party requests from the operator's browser.
+//
+// Best-effort by construction: a miss is never an error. `images-fetch` runs every minute and owns
+// whatever did not make it, so the caller renders a placeholder for the difference and the screen
+// is complete a moment later.
+func (f *Fetcher) FetchNow(ctx context.Context, work []Image, budget time.Duration) map[string]Image {
+	out := make(map[string]Image, len(work))
+	if !f.enabled() {
+		return out
+	}
+
+	todo := make([]Image, 0, len(work))
+	for _, img := range work {
+		if img.SourceURL == "" {
+			continue
+		}
+		if !img.OriginFetchedAt.IsZero() {
+			out[img.SourceURL] = img // already warm — nothing to download
+			continue
+		}
+		todo = append(todo, img)
+	}
+	if len(todo) == 0 {
+		return out
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
+	_, byURL := f.fetchAll(ctx, todo)
+	for u, rec := range byURL {
+		out[u] = rec
+	}
+	return out
 }
 
 // fetchAll runs a work list under the concurrency cap.
@@ -153,7 +206,9 @@ func (f *Fetcher) Rehydrate(ctx context.Context) (FetchResult, error) {
 // Tasks row permanently red and stop the other sixty-three images being fetched at all. An error
 // comes back only when EVERY attempt failed, which is the shape that distinguishes "one bad URL"
 // from "the network is gone" — the second is worth an operator's attention and the first is not.
-func (f *Fetcher) fetchAll(ctx context.Context, work []Image) FetchResult {
+// It returns the post-fetch records keyed by SOURCE URL alongside the counts. The jobs discard the
+// map; FetchNow is the reason it exists — see there for why the key is the URL and not the hash.
+func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[string]Image) {
 	limit := f.concurrency()
 	if limit < 1 {
 		limit = 1
@@ -171,6 +226,7 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) FetchResult {
 	_ = g.Wait() // every goroutine returns nil; the outcome is in results
 
 	out := FetchResult{Considered: len(work)}
+	byURL := make(map[string]Image, len(work))
 	for i, r := range results {
 		switch {
 		case r.err != nil:
@@ -181,14 +237,20 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) FetchResult {
 			if r.rekeyed {
 				out.Rekeyed++
 			}
+			if r.rec.SourceURL != "" {
+				byURL[r.rec.SourceURL] = r.rec
+			}
 		}
 	}
-	return out
+	return out, byURL
 }
 
 type fetchOutcome struct {
 	err     error
 	rekeyed bool
+	// rec is the row as it exists AFTER the fetch — which is not the row that went in, because
+	// fetchOne re-keys. Only FetchNow reads it; the jobs care about counts.
+	rec Image
 }
 
 // fetchOne downloads one image and reconciles its identity with the bytes that arrived.
@@ -249,7 +311,7 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	}
 
 	if hash == img.Hash {
-		return fetchOutcome{} // a re-fetch that produced identical bytes: same row, same URLs
+		return fetchOutcome{rec: rec} // a re-fetch that produced identical bytes: same row, same URLs
 	}
 
 	// ⚠ Order matters and is not interchangeable. The new row exists before the refs move, so no
@@ -271,7 +333,7 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	}
 	_ = f.svc.blob.RemoveAllFor(img.Hash)
 
-	return fetchOutcome{rekeyed: true}
+	return fetchOutcome{rekeyed: true, rec: rec}
 }
 
 // download performs the guarded GET and returns the body, capped.

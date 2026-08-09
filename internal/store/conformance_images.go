@@ -491,6 +491,68 @@ func testImagesByOrigin(t *testing.T, newStore NewStoreFunc) {
 // distinct source URLs can hold identical bytes — the same poster reached by two paths — so both
 // placeholder rows re-key onto ONE content hash. A second repoint carrying the same
 // (owner_kind, owner_id, role) must be a no-op rather than a primary-key violation.
+// Finding a remote image by the URL it came from — the lookup that stops a re-adopt from
+// re-downloading bytes already on disk (V52 phase 7).
+//
+// ⚠ **The `origin_fetched_at > 0` half is the point, not a tidy-up.** Adopt keys a pending row on a
+// hash of the source URL; the fetch re-keys it onto the content hash and deletes the placeholder,
+// and for the width of that operation BOTH rows carry the same source URL — deliberately, so no
+// ref ever points at a hash with no row. A lookup that returned the placeholder would hand back a
+// hash that is about to stop resolving, which is worse than returning nothing.
+func testImageFetchedBySourceURL(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+
+	fetched := imageAt("fetched", at)
+	if err := s.PutImage(ctx, fetched); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	if err != nil {
+		t.Fatalf("GetFetchedImageBySourceURL: %v", err)
+	}
+	if got.Hash != fetched.Hash {
+		t.Errorf("hash = %q, want %q", got.Hash, fetched.Hash)
+	}
+
+	// A row adopted but never fetched must NOT be returned: it has no bytes to reuse, and its hash
+	// is the placeholder the re-key deletes.
+	pending := imageAt("pending", at)
+	pending.OriginFetchedAt = time.Time{}
+	if err := s.PutImage(ctx, pending); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetFetchedImageBySourceURL(ctx, pending.SourceURL); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a never-fetched row was returned (err = %v), want ErrNotFound", err)
+	}
+
+	// Both rows sharing one source URL — the state that exists during a re-key. The fetched one
+	// wins; without the predicate this is a coin toss decided by row order.
+	shadow := imageAt("shadow", at)
+	shadow.SourceURL = fetched.SourceURL
+	shadow.OriginFetchedAt = time.Time{}
+	if err := s.PutImage(ctx, shadow); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	if err != nil {
+		t.Fatalf("GetFetchedImageBySourceURL with a placeholder alongside: %v", err)
+	}
+	if got.Hash != fetched.Hash {
+		t.Errorf("hash = %q, want the FETCHED row %q — the placeholder shadowed it", got.Hash, fetched.Hash)
+	}
+
+	// An empty URL is every non-remote row's value, so it must never match one.
+	if _, err := s.GetFetchedImageBySourceURL(ctx, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("empty source URL returned %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetFetchedImageBySourceURL(ctx, "https://nothing.example.test/x.jpg"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown source URL returned %v, want ErrNotFound", err)
+	}
+}
+
 func testImageRefsRepoint(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)

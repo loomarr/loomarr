@@ -99,6 +99,14 @@ func (a imageStore) GetImage(ctx context.Context, hash string) (images.Image, er
 	return fromStoreImage(rec), nil
 }
 
+func (a imageStore) GetFetchedBySourceURL(ctx context.Context, src string) (images.Image, error) {
+	rec, err := a.st.GetFetchedImageBySourceURL(ctx, src)
+	if err != nil {
+		return images.Image{}, mapImageErr(err)
+	}
+	return fromStoreImage(rec), nil
+}
+
 func (a imageStore) TouchImage(ctx context.Context, hash string, at time.Time) error {
 	return a.st.TouchImage(ctx, hash, at)
 }

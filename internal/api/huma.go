@@ -548,11 +548,24 @@ type IconService interface {
 	IconSuggestions(ctx context.Context, channelID string) ([]IconSuggestion, error)
 }
 
-// IconSuggestion is one candidate channel icon: a lineup title's display name paired
-// with a directly-fetchable poster image URL (TMDB's CDN — no proxying needed).
+// IconSuggestion is one candidate channel icon: a lineup title's display name paired with the
+// poster's URL on THIS instance's image service.
+//
+// ⚠ **`url` stopped being a TMDB URL in V52 phase 7.** It used to point at TMDB's CDN, which meant
+// the icon picker — one of the three surfaces an operator looks at most — loaded a dozen
+// third-party images in their browser. The poster is now adopted, fetched server-side, and served
+// from our own disk (§22). The field keeps its name and its job: it is what the channel's `logo`
+// is set to when the operator picks this suggestion.
 type IconSuggestion struct {
 	Title string `json:"title" example:"Star Trek: The Next Generation"`
-	URL   string `json:"url" example:"https://image.tmdb.org/t/p/w500/xyz.jpg"`
+	URL   string `json:"url" example:"https://loomarr.example/v1/images/9f2b1c4e/w500.jpg" doc:"Image-service URL for the poster; becomes the channel's logo when picked"`
+	// ImageHash links the suggestion to its image record. Carried separately from `url` because
+	// the handler resolves it to `image` in one deduplicated pass — see imageDTOsByHash.
+	ImageHash string `json:"imageHash,omitempty" doc:"Content hash of the poster's image record"`
+	// Image is the full record the frontend's <Image> primitive needs: real width/height, the
+	// ThumbHash, and both srcsets. Absent only if the record disappeared between listing and
+	// enrichment, in which case the plain `url` still renders.
+	Image *ImageDTO `json:"image,omitempty" doc:"The poster's image record, for srcset and placeholder rendering"`
 }
 
 // ChannelService is the channel-management surface the API depends on (§9).

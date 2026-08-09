@@ -22,7 +22,10 @@ import (
 // guard for this lives in jobset_test.go, against the real BuildHandler.
 
 // registerImageJobs constructs the four jobs and adds them to the registry.
-func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) {
+// It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
+// an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
+// building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
+func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return set.boolv("images.remote_fetch_enabled") },
 		func() int { return set.intv("images.remote_max_concurrency") },
@@ -72,6 +75,8 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 		func() time.Duration { return set.dur("images.remote_ttl") },
 		func() int { return set.intv("images.cache_budget_mb") },
 		notify, log)))
+
+	return fetcher
 }
 
 // imageFetchHosts is the SSRF allowlist the fetcher enforces (§22).
