@@ -752,8 +752,8 @@ and the answer was not the one it predicted** (fix 4 below): WAGA-5 was not star
 had finished in **three seconds** and been waiting on a person ever since. Nothing could show that,
 which is why "never been seen to finish" was the honest observation and the wrong conclusion.
 
-**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, PRs #223 and
-#225).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09,
+PRs #223, #225 and #229).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
 
 ⚠ **Four fixes, and only the first was the one that was planned.** Each was correct and exposed
 the next, one layer up — and **none of the last three were reachable from any test**; all four were
@@ -768,13 +768,14 @@ found by reading output that looked fine.
    recording that could not fit a pass was handed the whole budget again on the next one — the
    other **84 clips were never reached**. A deferral now yields (`NextRun` one pass ahead): not the
    backoff a failure earns, a turn-taking rule.
-4. **And then the belt could not show that any of it had worked** (#225). `Status` is the CURRENT
-   rung's state, `Disposition` is the clip's. The `VerdictReview`/`VerdictReject` paths — and the
-   fatal branch of `onFailure`, one function away — set the disposition and recorded the rung, but
-   left `Status` at the `running` written on entry. A clip handed to a person persisted as
-   `split/running, 0%` while its own ladder entry said `done`: **one row disagreeing with itself.**
-   `Record` is now the single writer of `Status`, so the next verdict path cannot reintroduce it by
-   forgetting a line.
+4. **And then the belt could not show that any of it had worked** (#229 — #225 merged while this
+   was being written, so it is a follow-up PR, not a commit on that branch). `Status` is the
+   CURRENT rung's state, `Disposition` is the clip's. The `VerdictReview`/`VerdictReject` paths,
+   and the fatal branch of `onFailure` one function away, set the disposition and recorded the
+   rung but left `Status` at the `running` written on entry. A clip handed to a person persisted
+   as `split/running, 0%` while its own ladder entry said `done`: **one row disagreeing with
+   itself.** `Record` is now the single writer of `Status`, so the next verdict path cannot
+   reintroduce it by forgetting a line.
 
 ⚠ **Nothing FUNCTIONAL broke, which is exactly why the suite was green over it.** Every store
 predicate in `clippipeline.go` keys on `disposition`; not one selects on `status`. What broke was
