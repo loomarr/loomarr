@@ -1,10 +1,17 @@
-import type { ChannelDTO } from "@loomarr/api";
+import type { ChannelTracksOutputBody } from "@loomarr/api";
+import {
+  getChannelPlayUrlMockHandler,
+  getChannelTimelineMockHandler,
+  getChannelTracksMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { ChannelWatch } from "./channel-watch";
 
 const makeWrapper = () => {
@@ -18,32 +25,38 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-// stubTracks makes GET /tracks return the given audio/subtitle tracks; everything else 200s empty.
-const stubTracks = (tracks: { audio?: unknown[]; subtitles?: unknown[] }) => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (String(url).includes("/tracks")) {
-        return Promise.resolve(
-          jsonResponse(200, { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] }),
-        );
-      }
-      return Promise.resolve(jsonResponse(200, {}));
+// stubTracks makes GET /v1/channels/:id/tracks return the given audio/subtitle tracks, and
+// reports whether it was asked at all — the last test's whole claim is that it was NOT.
+//
+// ⚠ The stub this replaced ended in a catch-all `jsonResponse(200, {})`, so any other request the
+// player made was answered with an empty object and nothing said so. It also matched on the
+// substring "/tracks", which would have accepted that path under any resource.
+const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
+  let probed = false;
+  server.use(
+    // ⚠ The player also reads the channel timeline; the OLD catch-all answered it with `{}`, so
+    // the strip rendered against an empty object and nothing said so. The guard named it.
+    getChannelTimelineMockHandler({ airings: [] }),
+    // ⚠ And the play-url mint. THREE requests this component makes were answered by the old
+    // `json({})` catch-all — timeline, play-url and any other — so three code paths ran against
+    // an empty object with nothing to say so.
+    getChannelPlayUrlMockHandler({
+      url: "http://localhost/hls/master.m3u8",
+      relativeUrl: "/hls/master.m3u8",
+      expiresAt: "2026-08-09T23:59:59Z",
+    }),
+    getChannelTracksMockHandler(() => {
+      probed = true;
+      return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
     }),
   );
+  return { wasProbed: () => probed };
 };
 
-const live: ChannelDTO = {
-  id: "ch-1",
-  name: "Late Night Noir",
-  number: 42,
-  status: "live",
-} as ChannelDTO;
-
-afterEach(() => vi.unstubAllGlobals());
+// ⚠ `as ChannelDTO` is GONE. The cast silenced eleven missing required fields — it is the exact
+// escape hatch the shared `channel()` fixture exists to remove, and a component reading
+// `pendingCount` off this object would have seen undefined where the server always sends a number.
+const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: "live" });
 
 describe("ChannelWatch pickers", () => {
   // The audio/subtitle controls live IN the player's bar now (V47), so the player must be started
@@ -91,19 +104,17 @@ describe("ChannelWatch pickers", () => {
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
-    const fetchSpy = vi.fn((_url: string) =>
-      Promise.resolve(jsonResponse(200, { audio: [], subtitles: [] })),
-    );
-    vi.stubGlobal("fetch", fetchSpy);
+    const { wasProbed } = stubTracks();
 
-    render(
-      <ChannelWatch channel={{ ...live, status: "paused" } as ChannelDTO} isAdmin onSavePolicy={vi.fn()} />,
-      {
-        wrapper: makeWrapper(),
-      },
-    );
+    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin onSavePolicy={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
 
     await screen.findByText(/off air/i);
-    expect(fetchSpy.mock.calls.some((args) => String(args[0]).includes("/tracks"))).toBe(false);
+    // ⚠ The handler simply never fires. The old form asked whether any recorded url CONTAINED
+    // "/tracks" — true only of the spelling the test itself chose. And if a paused channel ever
+    // did fetch something unmodelled, the unhandled-request guard now fails this test by name
+    // rather than a catch-all answering it.
+    expect(wasProbed()).toBe(false);
   });
 });

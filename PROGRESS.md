@@ -432,11 +432,54 @@ coexist until the last stub is gone.
 Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
 fire on that string, and a mention that is deliberate should say so.
 
-**V53e — the migration, in batches (IN PROGRESS, 2026-08-09).** Batch 1 (`#206`): `use-auth`,
-`users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`feat/msw-batch-2`): `wizard-ai-block`,
-`channel-row-menu`, `use-channel-refine`, plus a shared `channel()` fixture. **8 of 31 migrated; 23
-remain** — counted (`grep -rl 'const stubFetch|vi.stubGlobal("fetch"'` vs `@/test/msw/server`), not
-tallied, because a running count in a commit message is exactly the sort of number that drifts.
+**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 12 of 31 migrated; 19 remain.**
+Batch 1 (`#206`): `use-auth`, `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`#207`):
+`wizard-ai-block`, `channel-row-menu`, `use-channel-refine`, plus the shared `channel()` fixture.
+Batch 3 (`#213`): `incoming-tab`, `split-review-page`. Batch 4: `channel-watch`, `app-router`, plus
+the shared `appHandlers()` baseline.
+
+⚠ **The count is COUNTED, never tallied** — a running total in a commit message is exactly the sort
+of number that drifts, and it drifted twice before this rule:
+
+```
+grep -rl 'const stubFetch\|vi.stubGlobal("fetch"' --include=*.test.tsx --include=*.test.ts .   # remaining
+grep -rl '@/test/msw/server' --include=*.test.tsx --include=*.test.ts .                        # migrated
+```
+
+### How to migrate one (the playbook, so the next session does not re-derive it)
+
+1. **Read the old stub for its catch-all.** Nearly every one ends in `return json({})` or similar.
+   That branch is answering real requests — `channel-watch`'s hid THREE, `app-router`'s hid NINE.
+2. **Use the generated handler** from `@loomarr/api/msw`; add `appHandlers()` first for anything
+   that mounts the real route tree. Run the test and let the **unhandled-request guard enumerate**
+   what the catch-all was covering — it reports the full list per test, by name.
+3. **Expect the types to reject the old fixtures.** They are usually missing required fields;
+   `MeBody.local` alone has been absent in FOUR files. Fix the fixture, never cast — `as ChannelDTO`
+   in `channel-watch` was silencing eleven fields.
+4. **Error cases stay hand-written** (`http.get(...)` + `HttpResponse.json(..., { status })`): the
+   spec declares errors via `default:` (RFC 7807) on 132 of 134 operations, with ZERO explicit
+   4xx/5xx, so orval has no status to generate from. Safe against renames anyway — a stale path
+   stops matching and the real request goes unhandled, failing the test by name.
+5. **Replace `mock.calls` assertions with resolver-recorded values.** A url-substring filter only
+   proves the test's own spelling; reaching a route-bound resolver proves the route.
+
+### What is left
+
+**Route-level (8)** — all mount the real app, all had the same catch-all, and `appHandlers()` now
+covers the common surface, so these should go far faster than `app-router` did (it paid the
+discovery cost for the set): `test/reachability` (538), `test/filler` (468), `test/wizard-router`
+(440), `test/settings` (359), `test/guide-page` (269), `settings/tasks-page` (285), `test/users`
+(202), `test/help` (154).
+
+**Component-level (11)** — the established pattern applies directly: `channel-filler` (214),
+`channel-lineup-editor` (209), `tune-panel` (190), `use-channel-rules-draft` (189),
+`use-channel-filler-draft` (175), `refine-panel` (173), `filler-page` (167),
+`channel-suggest-panel` (164), `sources-panel` (152), `pin-clip-dialog` (152),
+`use-channel-lineup` (143).
+
+⚠ **`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the FINAL batch only** — adding
+it sooner fails on every file still waiting. Until it lands, nothing stops a new test adding stub
+#20.
 
 ⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
 wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
