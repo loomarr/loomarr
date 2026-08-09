@@ -217,6 +217,16 @@ type ClipDTO struct {
 	// of every clip on an install that has not re-synced since V39, and of any clip ffmpeg could
 	// not render. The card falls back to the still, which is what shipped before this existed.
 	Preview string `json:"preview,omitempty" doc:"Animated hover preview; absent when not generated — fall back to the thumbnail, do not render a placeholder"`
+	// ThumbImage / HoverImage are the image-service records for the same two assets (§22, V52
+	// phase 6), present once the adoption job has copied them in.
+	//
+	// ⚠ They ENRICH thumbnail/preview rather than replacing them, for the same reason ChannelDTO
+	// carries both `logo` and `logoImage`: the legacy routes still serve every clip that has not
+	// been adopted yet, which is all of them the moment this ships. A client renders through
+	// <Image> when the record is present and falls back to the legacy URL when it is not. Both
+	// retire together in phase 8.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run"`
+	HoverImage *ImageDTO `json:"hoverImage,omitempty" doc:"Image-service record for the hover loop; absent until adopted, or when no animation was rendered"`
 	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
 	//
 	// ⚠ PlaysCounted is what stops this being a lie. A Tunarr-backed channel airs its filler
@@ -271,7 +281,36 @@ func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool)
 
 // clipToDTO maps a stored clip. playsCounted comes from the caller because it is a property
 // of the INSTALL (does internal playout run here?), not of the clip.
-func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
+// clipArtworkResolver pre-resolves every artwork image for a page of clips in one pass.
+//
+// ⚠ **Called ONCE per page, before the render loop — never inside it.** The filler catalog is a
+// grid, and each tile has a still AND a hover loop, so a per-row lookup is two queries per tile:
+// a 200-clip page would be 400 round trips to render one screen. This is the same N+1 the channel
+// list already avoids, one surface over, and it matters more here because the page is bigger.
+func (s *Server) clipArtworkResolver(ctx context.Context, clips []store.Clip) func(string) *ImageDTO {
+	if s.images == nil || len(clips) == 0 {
+		return nil
+	}
+	hashes := make([]string, 0, len(clips)*2)
+	for _, c := range clips {
+		hashes = append(hashes, c.ThumbImageHash, c.HoverImageHash)
+	}
+	byHash := s.imageDTOsByHash(ctx, hashes)
+	if len(byHash) == 0 {
+		return nil
+	}
+	return func(hash string) *ImageDTO {
+		if hash == "" {
+			return nil
+		}
+		return byHash[hash]
+	}
+}
+
+// clipToDTO renders a clip for the wire. `img`, when non-nil, resolves an image hash to its
+// record — pre-resolved by the caller for the whole page, never looked up per clip (see
+// imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
+func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags,
@@ -283,6 +322,10 @@ func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 	}
 	if !c.LastPlayedAt.IsZero() {
 		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)
+	}
+	if img != nil {
+		d.ThumbImage = img(c.ThumbImageHash)
+		d.HoverImage = img(c.HoverImageHash)
 	}
 	return d
 }
@@ -318,8 +361,11 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	}
 	out := &listFillerOutput{}
 	out.Body.Clips = make([]ClipDTO, 0, len(clips))
+	// Resolved for the whole page BEFORE the loop — see clipArtworkResolver on why a lookup
+	// inside the loop would be two queries per tile.
+	img := s.clipArtworkResolver(ctx, clips)
 	for _, c := range clips {
-		out.Body.Clips = append(out.Body.Clips, clipToDTO(c, s.playsCounted()))
+		out.Body.Clips = append(out.Body.Clips, clipToDTO(c, s.playsCounted(), img))
 	}
 	return out, nil
 }
@@ -425,7 +471,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err != nil {
 		return nil, err
 	}
-	return &clipOutput{Body: clipToDTO(c, s.playsCounted())}, nil
+	return &clipOutput{Body: clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []store.Clip{c}))}, nil
 }
 
 type syncFillerOutput struct {

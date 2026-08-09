@@ -79,25 +79,13 @@ func (s *Server) logoImageResolver(ctx context.Context, logos []string) func(str
 	if s.images == nil {
 		return nil
 	}
-	byHash := make(map[string]*ImageDTO, len(logos))
+	hashes := make([]string, 0, len(logos))
 	for _, logo := range logos {
-		hash := imageHashFromLogo(logo)
-		if hash == "" {
-			continue
+		if h := imageHashFromLogo(logo); h != "" {
+			hashes = append(hashes, h)
 		}
-		if _, seen := byHash[hash]; seen {
-			continue
-		}
-		// Recorded even on failure, so a shared broken hash is looked up once rather than once
-		// per channel that references it.
-		byHash[hash] = nil
-		rec, err := s.images.Get(ctx, hash)
-		if err != nil {
-			continue
-		}
-		dto := s.imageToDTO(ctx, rec)
-		byHash[hash] = &dto
 	}
+	byHash := s.imageDTOsByHash(ctx, hashes)
 	if len(byHash) == 0 {
 		return nil
 	}
@@ -108,4 +96,39 @@ func (s *Server) logoImageResolver(ctx context.Context, logos []string) func(str
 		}
 		return byHash[hash]
 	}
+}
+
+// imageDTOsByHash resolves a set of image hashes in ONE pass, deduplicated.
+//
+// ⚠ **Every list endpoint that renders images must go through this rather than looking one up per
+// row.** A per-row lookup is an N+1 — the shape a profile here has already caught once — and it
+// gets worse as the surface gets bigger: a channel list is tens of rows, but the filler catalog is
+// a GRID of clips, each with a still and a hover loop, so the naive version is two queries per
+// tile. Distinct hashes are fetched once each even when many rows share one.
+//
+// ⚠ A failed lookup is recorded as a nil ENTRY rather than skipped, so a shared broken hash costs
+// one lookup instead of one per referencing row. And a miss is never an error: §22's Durability
+// section makes "the row is here, the file is not" an accepted state, so a surface must still
+// render — falling back to whatever it showed before the image service existed.
+func (s *Server) imageDTOsByHash(ctx context.Context, hashes []string) map[string]*ImageDTO {
+	if s.images == nil || len(hashes) == 0 {
+		return nil
+	}
+	byHash := make(map[string]*ImageDTO, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, seen := byHash[hash]; seen {
+			continue
+		}
+		byHash[hash] = nil
+		rec, err := s.images.Get(ctx, hash)
+		if err != nil {
+			continue
+		}
+		dto := s.imageToDTO(ctx, rec)
+		byHash[hash] = &dto
+	}
+	return byHash
 }

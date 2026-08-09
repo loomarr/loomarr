@@ -210,6 +210,13 @@ type ClipStore interface {
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
+	// (§22, V52 phase 6). Sole writer of those columns — they are omitted from UpsertClip's
+	// DO UPDATE so a folder re-sync cannot blank them.
+	SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error
+	// ListClipsPendingArtworkAdoption is the adoption job's work list: clips with rendered
+	// artwork but no image-service identity for it yet. Paths are relative to the artwork cache.
+	ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error)
 	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
 	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)

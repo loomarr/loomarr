@@ -52,6 +52,15 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 	}
 	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, enc, log), avifDisabled))
 
+	// ⚠ The adoption pass, and it is what makes the clip half of §22 real: without it, artwork
+	// keeps living only as files under FILLER_DIR and every clip surface stays on the legacy route.
+	// `st.st` is the underlying store rather than the image-shaped adapter — this job speaks to the
+	// CLIPS table, which the image adapter deliberately knows nothing about.
+	reg.Add(images.AdoptJobSpec(images.NewAdoptJob(svc, artworkAdoptStore{
+		st:        st.st,
+		fillerDir: func() string { return set.str("filler.dir") },
+	}, nil, log)))
+
 	// ⚠ `rec` may be nil (no store-backed activity feed), and NewGC takes the interface, so this
 	// cannot be handed over unconditionally: a nil *activity.Recorder assigned into a non-nil
 	// interface is the same trap `imageService` exists to avoid one file over.

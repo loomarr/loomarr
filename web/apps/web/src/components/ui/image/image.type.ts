@@ -49,7 +49,14 @@ interface ImageProps {
   /**
    * What to render instead when the bytes cannot be loaded.
    *
-   * See the note in image.tsx for why this is caller-supplied and what the default is.
+   * ⚠ **Three states, not two.** Omitted ⇒ the built-in flat block in the image's dominant colour.
+   * A node ⇒ that node (a channel's monogram, the icon field's glyph). **`null` ⇒ render NOTHING**,
+   * for a caller layering this over something that should show through — the clip card's hover
+   * loop sits on its still, and a colour block there would be a visible fault where the honest
+   * state is "this clip has no preview".
+   *
+   * The implementation tests `!== undefined` rather than using `??` precisely so `null` can mean
+   * the third thing. See the note in image.tsx.
    */
   fallback?: ReactNode;
 

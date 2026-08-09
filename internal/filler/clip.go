@@ -127,6 +127,20 @@ type Clip struct {
 	// STILL succeeded, so a clip whose preview render failed would render a broken image on hover
 	// instead of simply not having one.
 	Preview string
+	// ThumbImageHash / HoverImageHash are the image-service identities of the same two assets
+	// (§22, V52 phase 6); "" = not ingested yet.
+	//
+	// ⚠ **They coexist with Thumbnail/Preview during the migration window rather than replacing
+	// them**, because those still point at real files the existing /v1/filler routes still serve,
+	// and the phase-8 backfill reads them to find artwork that predates this. Dropping them now
+	// would strand every clip that has not re-rendered — which is all of them the moment this
+	// lands. The pair retires in phase 8, once nothing reads it.
+	//
+	// ⚠ The two hashes are SEPARATE for the same reason Preview is stored rather than derived
+	// from Thumbnail: the still and the animation are ingested independently, so either can be
+	// present without the other. Deriving one from the other would assert bytes exist that do not.
+	ThumbImageHash string
+	HoverImageHash string
 	// Language is what the detection job heard, and it has THREE meaningful states (§10 V40,
 	// migration 00036):
 	//

@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -277,4 +279,50 @@ func fromStoreImage(rec store.Image) images.Image {
 		UpdatedAt:       rec.UpdatedAt,
 		LastUsedAt:      rec.LastUsedAt,
 	}
+}
+
+// artworkAdoptStore bridges the clips table onto images.ArtworkAdoptStore (§22, V52 phase 6).
+//
+// ⚠ **Resolving the artwork cache path is THIS layer's job, and that is why the store returns
+// relative paths.** `internal/store` must not know where FILLER_DIR is — a query that joined a
+// filesystem location onto a row would make the same SQL wrong the moment an operator moved the
+// folder. `internal/images` must not know either; it takes absolute paths and never asks what
+// produced them. The two vocabularies meet here, like every other translation in this file.
+type artworkAdoptStore struct {
+	st        store.Store
+	fillerDir func() string
+}
+
+func (a artworkAdoptStore) ListPendingArtwork(ctx context.Context, limit int) ([]images.PendingArtwork, error) {
+	dir := a.fillerDir()
+	if dir == "" {
+		// No filler directory configured: there is no artwork cache to adopt from. Not an error —
+		// an install with no filler is a supported shape (§10).
+		return nil, nil
+	}
+	cache := filepath.Join(dir, filler.ThumbDirName)
+
+	rows, err := a.st.ListClipsPendingArtworkAdoption(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]images.PendingArtwork, 0, len(rows))
+	for _, r := range rows {
+		p := images.PendingArtwork{OwnerID: r.Hash}
+		// ⚠ Empty stays EMPTY rather than becoming the cache directory itself. filepath.Join("x","")
+		// returns "x", so joining unconditionally would hand the job a directory to open as an
+		// image — which fails as an ingest error rather than as the "nothing rendered" state it is.
+		if r.Thumbnail != "" {
+			p.StillPath = filepath.Join(cache, r.Thumbnail)
+		}
+		if r.Preview != "" {
+			p.AnimPath = filepath.Join(cache, r.Preview)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (a artworkAdoptStore) SetAdoptedArtwork(ctx context.Context, ownerID, stillHash, animHash string, at time.Time) error {
+	return a.st.SetClipArtworkImages(ctx, ownerID, stillHash, animHash, at)
 }

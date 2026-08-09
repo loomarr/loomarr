@@ -765,6 +765,9 @@ components:
           type: integer
         hash:
           type: string
+        hoverImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Image-service record for the hover loop; absent until adopted, or when no animation was rendered
         isComposite:
           description: A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)
           type: boolean
@@ -811,6 +814,9 @@ components:
           items:
             type: string
           type: array
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Image-service record for the still; absent until the adoption job has run
         thumbnail:
           type: string
         tunarrProgramId:
