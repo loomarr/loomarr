@@ -35,7 +35,7 @@ const CUSTOM: HostedProviderView = {
   keyConfigured: false,
   active: false,
   modelsLive: false,
-  models: null,
+  models: [],
 };
 
 // The §8.1 hosted picker: the BE curates providers and fetches their live model lists;
@@ -56,7 +56,7 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 const NoKeyYet: Story = {
-  args: { providers: [OPENROUTER({ keyConfigured: false, active: false, models: null }), CUSTOM] },
+  args: { providers: [OPENROUTER({ keyConfigured: false, active: false, models: [] }), CUSTOM] },
 };
 const CuratedFallback: Story = {
   args: { providers: [OPENROUTER({ modelsLive: false })] },

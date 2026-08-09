@@ -532,6 +532,21 @@ Single source of truth: spec, request validation, and served docs all derive fro
 
 **Requirements:** OpenAPI **3.1** at `/openapi.{json,yaml}`; interactive docs at `/docs` with **bundled assets** — note Huma's default docs page loads Stoplight Elements **from a CDN**, which violates the offline rule: override the docs handler to serve self-hosted assets (works air-gapped on LAN); every operation has summary/description/operationId/tags + an example; schemas generated from domain types (`Title`, `Record`, `State` enum, `Channel`, `Proposal`, `Clip`, `Pod`, RFC 7807 error) — the spec `State` enum must equal the code enum; `make openapi` exports and commits `api/openapi.yaml` (diffed in review, published as CI artifact).
 
+⚠ **Arrays are NOT nullable, and `null` is not a valid empty list anywhere in this API (V53b).**
+Huma's `DefaultArrayNullable` defaults to *true* — correctly, in that a Go nil slice really does
+marshal to `null` — which typed every list field `T[] | null` (**109** nullable type-unions against
+4 plain arrays) and forced every client to handle two representations of "nothing" forever. It is
+set to `false` in `humaConfig`, the single constructor behind both the served API and the spec
+export, so the runtime and the document cannot disagree about it.
+
+⚠ **The flag alone would make the document lie**, and Huma says so in its own doc comment: *"any
+`nil` slice will still encode as `null` in JSON."* It is honest only because
+`TestResponses_ContainNoJSONNull` drives every parameterless GET — derived from the exported spec,
+never a hand-kept roster — against an **empty store**, the state that actually produces nil slices,
+and fails on any `null` in a success body. Since the spec now declares nothing nullable, *"no null
+anywhere"* is the exact invariant. **A handler that returns a nil slice is a bug against this
+section, not a style preference:** build response slices with `make([]T, 0, …)`.
+
 **Every `/v1` route is a Huma operation — including the ones that do not return JSON.** "Define each operation once" was true of the typed routes and quietly false elsewhere: a binary download, an image, an SSE stream, a multipart upload and a 302 were registered straight onto the `ServeMux`. That is a fact about a route's *response shape*, and it was being read as a fact about where the route belongs. The cost was never mainly documentation:
 
 - **Authorization forked.** A Huma operation carries its required role in `Operation.Metadata`, enforced by one middleware that **fails closed** for an operation declaring nothing. Raw handlers called a second helper, and two of them had already drifted to opposite answers on what a nil authorizer means (`backupHandler` denied, `eventsHandler` allowed).

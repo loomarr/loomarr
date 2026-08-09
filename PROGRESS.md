@@ -4,6 +4,65 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V53b — arrays are not nullable; `null` stops being a second empty list (2026-08-09, branch
+`feat/non-nullable-arrays`).** Gate: `make check` (0 lint, `-race`) + `make openapi-verify` +
+`make retired-verify` (25) + `make fe` (**1222** app + 18 api + 51 core + 5 tokens, biome clean on
+919 files).
+
+Every list field in this API was typed `T[] | null` — **109 nullable type-unions against 4 plain
+arrays** — so every client handled two representations of "nothing", forever. The generated zod
+carried `.nullish()` on every array and the FE coalesced `?? []` at each use.
+
+The cause was `huma.DefaultArrayNullable`, which defaults to true *correctly*: a Go nil slice really
+does marshal to `null`. It is now false, set in `humaConfig` — the single constructor behind both
+the served API and the spec export, so runtime and document cannot disagree.
+
+⚠ **The flag alone would have made the spec LIE**, and Huma says so in its own doc comment: *"any
+`nil` slice will still encode as `null` in JSON."* Flipping it changes what the document CLAIMS
+without changing what the wire SENDS. It ships with a guard or not at all.
+
+**The guard.** `TestResponses_ContainNoJSONNull` drives every parameterless GET — **derived from the
+exported spec**, not a hand-kept roster, because a new list endpoint nobody added to a list is
+exactly the one that would regress — against an **EMPTY STORE**, and fails on any JSON null in a
+success body. ⚠ The empty store is the point, not an accident: nil slices are what a repository
+returns when it finds no rows, so a fresh database is precisely the state that produces them, and a
+seeded fixture would hide the entire class by never taking the empty branch. Since the spec now
+declares nothing nullable, *"no null anywhere in the body"* is the exact invariant.
+
+**It found one leak in 46 paths, and it was the one that matters most.** `/v1/setup/status`
+returned `checks: null`: `runConnectionChecks` used `var checks []SetupCheck` and deliberately
+contributes no check for unwired services — so an **unconfigured install, the wizard's entire reason
+to exist**, was the case that produced it. One leak in 46 is also the shape of the change: 51
+`make([]T, 0)` guards already existed across the handlers, so this finishes an inconsistency rather
+than inventing a convention.
+
+**Frontend fallout, all benign and all worth naming:**
+
+- The generated zod lost `.nullish()` **entirely** (count: 0) — the ambiguity is gone from the
+  schemas, not merely handled at each call site.
+- ⚠ `VocabularyWhen`/`VocabularyWhat`/`VocabularyHow` **stopped being generated, and nothing was
+  renamed.** Orval only emitted those aliases because `X[] | null` needed a name; a non-nullable
+  array inlines to `WhenVocab[]`, so they had no reason to exist. First read was "orval renamed
+  them" — worth checking rather than assuming, because the fix differs.
+- `presets.ts` carried a comment stating the served arrays *"are nullable on the wire"*. True when
+  written, and about to become a lie. The coalescing it justified **stays**, for a different and
+  still-real reason: the vocabulary is `undefined` until its query resolves. **Null is gone;
+  unloaded is not.**
+- Three fixtures passed `models: null`; the component already does `hp.models ?? []` and branches on
+  `length === 0`, so `[]` is the identical branch rather than a changed one — checked before
+  swapping, since a fixture edit that silently moves a branch is how a test stops testing.
+
+⚠ **This also unblocks orval's MOCK generator, which V53a recorded as rejected** — it degraded
+`type: ["array","null"]` to `arrayElement([[], null])` without descending into `items`. Re-measured
+on the new spec: **137 never-populated list mocks → 0**, and **247** populated `Array.from(...)`
+generators. That is a consequence, not the justification: `null` vs `[]` was an API defect on its
+own terms, and if codegen had been the only argument the right answer would have been to leave it
+alone.
+
+**Next up: V53c** (runtime response validation through the mutator, dev/test only), then V53d (MSW
+handlers — now materially smaller, since generated mock defaults are usable and typed fixtures are
+needed only where a test asserts on specific data).
+
 **V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
 `feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean
 on 919 files) + `make retired-verify` (25 identifiers). Zero Go files touched.
