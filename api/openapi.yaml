@@ -121,16 +121,12 @@ components:
           description: Titles to add as acquisitions
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         drop:
           description: Provisioning keys to remove from the proposal before approving
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         note:
           description: A message to the requester, stored with the approval
           type: string
@@ -148,9 +144,7 @@ components:
         dropSourceIds:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         note:
           description: Narrowing instruction, e.g. 'no local dealers, no PSAs'
           type: string
@@ -236,9 +230,7 @@ components:
           description: On disk, newest first
           items:
             $ref: "#/components/schemas/BackupEntry"
-          type:
-            - array
-            - "null"
+          type: array
         dir:
           description: Where backups are written (backup.dir)
           type: string
@@ -315,9 +307,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - ids
       type: object
@@ -338,9 +328,7 @@ components:
         results:
           items:
             $ref: "#/components/schemas/BulkApproveResult"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - results
         - approved
@@ -380,9 +368,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
         restore:
           description: Put the clips back in the catalog instead of removing them
           type: boolean
@@ -437,9 +423,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
         tags:
           description: Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a).
           items:
@@ -499,9 +483,7 @@ components:
           description: The channel's titles, in order (the intent-level lineup, not the expanded slots)
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         logo:
           description: Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)
           type: string
@@ -695,9 +677,7 @@ components:
         applied:
           items:
             $ref: "#/components/schemas/AppliedRelaxation"
-          type:
-            - array
-            - "null"
+          type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
@@ -707,9 +687,7 @@ components:
         operatorSet:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         ordering:
           type: string
         playout:
@@ -717,9 +695,7 @@ components:
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
-          type:
-            - array
-            - "null"
+          type: array
         scope:
           $ref: "#/components/schemas/ScopePolicy"
         seasonal:
@@ -746,15 +722,11 @@ components:
         audio:
           items:
             $ref: "#/components/schemas/TrackDTO"
-          type:
-            - array
-            - "null"
+          type: array
         subtitles:
           items:
             $ref: "#/components/schemas/TrackDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - audio
         - subtitles
@@ -835,9 +807,7 @@ components:
           description: The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         thumbnail:
           type: string
         tunarrProgramId:
@@ -865,9 +835,7 @@ components:
         channels:
           items:
             $ref: "#/components/schemas/ChannelFitDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -884,9 +852,7 @@ components:
         collections:
           items:
             $ref: "#/components/schemas/LibraryCollection"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - collections
       type: object
@@ -904,9 +870,7 @@ components:
           items:
             $ref: "#/components/schemas/SplitSegment"
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - segments
       type: object
@@ -948,9 +912,7 @@ components:
           description: Ladder rungs, TIGHTEST FIRST. A rung the channel's policy skips is absent, not zero.
           items:
             $ref: "#/components/schemas/CoverageRungDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           description: Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times.
           format: int64
@@ -1152,9 +1114,7 @@ components:
           description: Per-table progress; empty when idle
           items:
             $ref: "#/components/schemas/DatabaseTable"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - phase
         - parity
@@ -1172,9 +1132,7 @@ components:
         checks:
           items:
             $ref: "#/components/schemas/DatabaseCheck"
-          type:
-            - array
-            - "null"
+          type: array
         passed:
           description: True only if every check passed
           type: boolean
@@ -1214,9 +1172,7 @@ components:
           description: Per-table progress; empty when idle
           items:
             $ref: "#/components/schemas/DatabaseTable"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - backend
         - canMigrate
@@ -1321,9 +1277,7 @@ components:
           description: Audio codecs the client can decode (e.g. ["eac3","ac3"]). aac is always implied.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         hdr:
           description: Whether the client can display HDR (PQ/HLG).
           type: boolean
@@ -1335,9 +1289,7 @@ components:
           description: Video codecs the client can DECODE (e.g. ["hevc"]). h264 is always implied.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         video10bit:
           description: Whether the client can decode 10-bit (or deeper) video.
           type: boolean
@@ -1355,9 +1307,7 @@ components:
         items:
           items:
             $ref: "#/components/schemas/DiscoveredClip"
-          type:
-            - array
-            - "null"
+          type: array
         licenceNote:
           type: string
         total:
@@ -1503,9 +1453,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         tmdbId:
           format: int64
           type: integer
@@ -1549,9 +1497,7 @@ components:
           description: Optional list of individual error details
           items:
             $ref: "#/components/schemas/ErrorDetail"
-          type:
-            - array
-            - "null"
+          type: array
         instance:
           description: A URI reference that identifies the specific occurrence of the problem.
           examples:
@@ -1623,9 +1569,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - paths
       type: object
@@ -1689,33 +1633,23 @@ components:
         asks:
           items:
             $ref: "#/components/schemas/IncomingAskDTO"
-          type:
-            - array
-            - "null"
+          type: array
         pipeline:
           items:
             $ref: "#/components/schemas/IncomingPipelineDTO"
-          type:
-            - array
-            - "null"
+          type: array
         recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingAskDTO"
-          type:
-            - array
-            - "null"
+          type: array
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
-          type:
-            - array
-            - "null"
+          type: array
         rejected:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           description: Everything waiting on a human — asks plus reels
           format: int64
@@ -1769,29 +1703,21 @@ components:
         categories:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         era:
           $ref: "#/components/schemas/Range"
         excluded:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         kinds:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         pinned:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     FillerSourceDTO:
       additionalProperties: false
@@ -1860,9 +1786,7 @@ components:
         sources:
           items:
             $ref: "#/components/schemas/FillerSourceDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           format: int64
           type: integer
@@ -1942,15 +1866,11 @@ components:
         exclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         include:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     GetDocOutputBody:
       additionalProperties: false
@@ -1984,9 +1904,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         itemId:
           description: Media-server item id, when the content is available
           type: string
@@ -2046,9 +1964,7 @@ components:
           description: In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them
           items:
             $ref: "#/components/schemas/GuideAiring"
-          type:
-            - array
-            - "null"
+          type: array
         channelId:
           type: string
         logo:
@@ -2091,9 +2007,7 @@ components:
         channels:
           items:
             $ref: "#/components/schemas/GuideChannelTimeline"
-          type:
-            - array
-            - "null"
+          type: array
         fromMs:
           description: The window actually served, after clamping
           format: int64
@@ -2140,9 +2054,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - paths
       type: object
@@ -2188,9 +2100,7 @@ components:
         models:
           items:
             $ref: "#/components/schemas/HostedModelView"
-          type:
-            - array
-            - "null"
+          type: array
         modelsLive:
           description: Models were fetched live from the provider (false = curated fallback)
           type: boolean
@@ -2254,9 +2164,7 @@ components:
         suggestions:
           items:
             $ref: "#/components/schemas/IconSuggestion"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - suggestions
       type: object
@@ -2297,9 +2205,7 @@ components:
         candidates:
           items:
             $ref: "#/components/schemas/ImportCandidate"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - candidates
       type: object
@@ -2317,9 +2223,7 @@ components:
           description: Media-server user ids to allowlist.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         makeAdmin:
           description: Grant admin to imported users that are media-server admins (default member).
           type: boolean
@@ -2407,9 +2311,7 @@ components:
         stages:
           items:
             $ref: "#/components/schemas/IncomingStageDTO"
-          type:
-            - array
-            - "null"
+          type: array
         status:
           type: string
         updatedAt:
@@ -2508,9 +2410,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - urls
       type: object
@@ -2543,15 +2443,11 @@ components:
         adjacent:
           items:
             $ref: "#/components/schemas/AdjacentContext"
-          type:
-            - array
-            - "null"
+          type: array
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
-          type:
-            - array
-            - "null"
+          type: array
         description:
           type: string
         era:
@@ -2562,15 +2458,11 @@ components:
         mustExclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         mustInclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         refineText:
           type: string
         runtimeTargetMin:
@@ -2655,9 +2547,7 @@ components:
         jobs:
           items:
             $ref: "#/components/schemas/JobView"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - jobs
       type: object
@@ -2782,9 +2672,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         key:
           description: Provisioning key, e.g. movie:tmdb:603
           type: string
@@ -2830,9 +2718,7 @@ components:
         activity:
           items:
             $ref: "#/components/schemas/Activity"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - activity
       type: object
@@ -2849,9 +2735,7 @@ components:
         channels:
           items:
             $ref: "#/components/schemas/ChannelDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -2868,9 +2752,7 @@ components:
         docs:
           items:
             $ref: "#/components/schemas/DocSummary"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - docs
       type: object
@@ -2887,9 +2769,7 @@ components:
         clips:
           items:
             $ref: "#/components/schemas/ClipDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - clips
       type: object
@@ -2906,9 +2786,7 @@ components:
         pulls:
           items:
             $ref: "#/components/schemas/PullDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           format: int64
           type: integer
@@ -2929,9 +2807,7 @@ components:
         titles:
           items:
             $ref: "#/components/schemas/TitleDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - titles
       type: object
@@ -2948,9 +2824,7 @@ components:
         proposals:
           items:
             $ref: "#/components/schemas/ProposalDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - proposals
       type: object
@@ -2967,9 +2841,7 @@ components:
         taxa:
           items:
             $ref: "#/components/schemas/TaxonDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - taxa
       type: object
@@ -2986,9 +2858,7 @@ components:
         sessions:
           items:
             $ref: "#/components/schemas/SessionBody"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - sessions
       type: object
@@ -3005,9 +2875,7 @@ components:
         users:
           items:
             $ref: "#/components/schemas/UserBody"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - users
       type: object
@@ -3121,9 +2989,7 @@ components:
         channels:
           items:
             $ref: "#/components/schemas/ChannelNowNext"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -3271,9 +3137,7 @@ components:
         channels:
           items:
             $ref: "#/components/schemas/ChannelHealth"
-          type:
-            - array
-            - "null"
+          type: array
         gpu:
           $ref: "#/components/schemas/PlayoutGPU"
         running:
@@ -3305,9 +3169,7 @@ components:
         sessions:
           items:
             $ref: "#/components/schemas/SessionStat"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - sessions
         - active
@@ -3383,9 +3245,7 @@ components:
         entries:
           items:
             $ref: "#/components/schemas/PodEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         matchLevel:
           description: How far down the fallback ladder assembly went (§10)
           enum:
@@ -3448,9 +3308,7 @@ components:
           description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
           items:
             $ref: "#/components/schemas/PoolChannelDTO"
-          type:
-            - array
-            - "null"
+          type: array
         clips:
           description: Every clip in the catalog, of every kind
           format: int64
@@ -3493,9 +3351,7 @@ components:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
-          type:
-            - array
-            - "null"
+          type: array
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -3534,9 +3390,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
       type: object
@@ -3562,9 +3416,7 @@ components:
           description: Leading slots of the resolved cycle, in play order (capped)
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
-          type:
-            - array
-            - "null"
+          type: array
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -3582,15 +3434,11 @@ components:
         acquisitions:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         alternates:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         channelName:
           type: string
         intent:
@@ -3598,9 +3446,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
@@ -3608,9 +3454,7 @@ components:
         retired:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         scores:
           $ref: "#/components/schemas/Scores"
       required:
@@ -3675,9 +3519,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         inLibrary:
           type: boolean
         libraryItemId:
@@ -3702,9 +3544,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         source:
           type: string
         tmdbId:
@@ -3767,9 +3607,7 @@ components:
         plan:
           items:
             $ref: "#/components/schemas/PullPlanRowDTO"
-          type:
-            - array
-            - "null"
+          type: array
         proposedBy:
           type: string
         reason:
@@ -3951,9 +3789,7 @@ components:
           description: Boot-time settings waiting on a restart, e.g. DATABASE_URL
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         restartRequired:
           description: A boot-time setting has changed and needs a restart to apply
           type: boolean
@@ -4007,9 +3843,7 @@ components:
         collections:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         era:
           $ref: "#/components/schemas/Range"
         genres:
@@ -4022,9 +3856,7 @@ components:
         series:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     Scores:
       additionalProperties: false
@@ -4053,9 +3885,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         inLibrary:
           type: boolean
         libraryItemId:
@@ -4093,9 +3923,7 @@ components:
         candidates:
           items:
             $ref: "#/components/schemas/SearchCandidate"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - candidates
       type: object
@@ -4105,9 +3933,7 @@ components:
         holidays:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         mode:
           type: string
         offSeason:
@@ -4233,9 +4059,7 @@ components:
         rows:
           items:
             $ref: "#/components/schemas/ServiceRow"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - loomarr
         - rows
@@ -4371,16 +4195,12 @@ components:
           description: Enum values (the closed set) — labels are in enumOptions.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         enumOptions:
           description: Enum choices with display labels (config-design §5).
           items:
             $ref: "#/components/schemas/SettingEnumOption"
-          type:
-            - array
-            - "null"
+          type: array
         envOverride:
           description: "An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."
           type: boolean
@@ -4417,9 +4237,7 @@ components:
           additionalProperties:
             items:
               type: string
-            type:
-              - array
-              - "null"
+            type: array
           description: "Conditional visibility: show only when a named key's current value is listed (§5)."
           type: object
         updatedAt:
@@ -4504,9 +4322,7 @@ components:
         settings:
           items:
             $ref: "#/components/schemas/SettingEntry"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - settings
         - features
@@ -4542,9 +4358,7 @@ components:
         results:
           items:
             $ref: "#/components/schemas/SettingResult"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - results
       type: object
@@ -4641,9 +4455,7 @@ components:
         checks:
           items:
             $ref: "#/components/schemas/SetupCheck"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - checks
       type: object
@@ -4699,9 +4511,7 @@ components:
         segments:
           items:
             $ref: "#/components/schemas/SplitSegment"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - id
         - clipHash
@@ -4737,9 +4547,7 @@ components:
         tags:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         transcript:
           type: string
         unsplittable:
@@ -4843,9 +4651,7 @@ components:
         models:
           items:
             $ref: "#/components/schemas/DiscoverModelView"
-          type:
-            - array
-            - "null"
+          type: array
         sourceOk:
           description: False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state
           type: boolean
@@ -4951,18 +4757,14 @@ components:
           description: Curated local models annotated for this machine
           items:
             $ref: "#/components/schemas/LLMModelView"
-          type:
-            - array
-            - "null"
+          type: array
         gpuName:
           type: string
         hosted:
           description: Curated hosted providers + recommended models
           items:
             $ref: "#/components/schemas/HostedProviderView"
-          type:
-            - array
-            - "null"
+          type: array
         local:
           description: True for local Ollama (probe + local catalog apply)
           type: boolean
@@ -5033,9 +4835,7 @@ components:
         checks:
           items:
             $ref: "#/components/schemas/SetupCheck"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - checks
       type: object
@@ -5151,18 +4951,14 @@ components:
           description: Former slugs that still resolve here after a rename (§10)
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         slug:
           description: Stable machine id — the token the tagger emits and clip_tags references
           type: string
         synonyms:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - slug
         - label
@@ -5182,9 +4978,7 @@ components:
           description: The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block
           items:
             $ref: "#/components/schemas/GuideAiring"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - airings
       type: object
@@ -5327,9 +5121,7 @@ components:
           description: The program airing now (first, if any) then the next ones in airtime order; gaps skipped
           items:
             $ref: "#/components/schemas/NowNextEntry"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - upcoming
       type: object
@@ -5450,21 +5242,15 @@ components:
         how:
           items:
             $ref: "#/components/schemas/HowVocab"
-          type:
-            - array
-            - "null"
+          type: array
         what:
           items:
             $ref: "#/components/schemas/WhatVocab"
-          type:
-            - array
-            - "null"
+          type: array
         when:
           items:
             $ref: "#/components/schemas/WhenVocab"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - when
         - what
@@ -5496,9 +5282,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         holiday:
           type: string
         hourFrom:
@@ -6795,9 +6579,7 @@ paths:
             items:
               type: string
             maxItems: 25
-            type:
-              - array
-              - "null"
+            type: array
       responses:
         "200":
           content:
