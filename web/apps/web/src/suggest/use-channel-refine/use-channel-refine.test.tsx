@@ -97,9 +97,7 @@ describe("useChannelRefine", () => {
     const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
 
     act(() => result.current.start("ch-1", "less horror, more action"));
-    act(() =>
-      landProposals([row({ id: "other", jobId: "job-other" }), row({ id: "mine", jobId: "job-1" })]),
-    );
+    act(() => landProposals([row({ id: "other", jobId: "job-other" }), row({ id: "mine", jobId: "job-1" })]));
 
     await waitFor(() => expect(result.current.proposal?.id).toBe("mine"));
   });

@@ -64,7 +64,9 @@ fire on that string, and a mention that is deliberate should say so.
 
 **V53e — the migration, in batches (IN PROGRESS, 2026-08-09).** Batch 1 (`#206`): `use-auth`,
 `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`feat/msw-batch-2`): `wizard-ai-block`,
-`channel-row-menu`, plus a shared `channel()` fixture. **8 of 31 migrated; 23 remain.**
+`channel-row-menu`, `use-channel-refine`, plus a shared `channel()` fixture. **8 of 31 migrated; 23
+remain** — counted (`grep -rl 'const stubFetch|vi.stubGlobal("fetch"'` vs `@/test/msw/server`), not
+tallied, because a running count in a commit message is exactly the sort of number that drifts.
 
 ⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
 wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
