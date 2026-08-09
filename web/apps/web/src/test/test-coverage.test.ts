@@ -61,9 +61,13 @@ const KNOWN_GAPS = new Set([
   "components/ui/checkbox/checkbox.tsx",
   "dashboard/restart-watch-provider/restart-watch-provider.tsx",
   "dashboard/use-restart-watch/use-restart-watch.ts",
-  "filler/channel-filler/filler-clip-list/filler-clip-list.tsx",
   // filler-criteria.tsx left this register in V51f — it grew tests when the era field gained
   // three states worth defending.
+  // filler-clip-list.tsx left it when the dead-pin and pod_max fixes landed (#237/#238).
+  // ⚠ Both removals in one place: V51f and this branch each retired a DIFFERENT entry, which
+  // conflicts here by construction. The resolution keeps neither path — a merge that kept one
+  // would re-exempt a module that now has tests, and the third assertion below is what catches
+  // that rather than leaving the register quietly wrong.
   "filler/channel-filler/use-filler-catalog/use-filler-catalog.ts",
   "filler/clip-tag-dialog/clip-tag-dialog.tsx",
   "help/help-page/help-page.tsx",
