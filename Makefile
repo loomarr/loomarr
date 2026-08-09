@@ -33,7 +33,18 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 
 .PHONY: test
 test: ## unit tests only (never touch the network — §19)
-	$(GO) test -race $(PKG)
+# ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
+# past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
+# is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out
+# after 10m0s`. The dump named one test at `(0s)`, which is the tell that nothing HUNG: tests were
+# still starting when the alarm fired, and the package was simply long. A genuine hang shows the
+# stuck test with a large duration beside it.
+#
+# ⚠ This is an infrastructure limit, not the gate — raising it weakens nothing, because the gate is
+# the assertions and every one of them still runs. What it must not do is hide growth: `internal/api`
+# is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
+# to share that setup, NOT to raise the number a second time.
+	$(GO) test -race -timeout 25m $(PKG)
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)

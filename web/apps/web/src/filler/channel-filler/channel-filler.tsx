@@ -21,9 +21,16 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
   const { draft, setDraft, preview, isPreviewing, previewError, isDirty, apply, isApplying, discard } =
     useChannelFillerDraft(channelId, policy);
 
-  // A small shared catalog so pinned/excluded ids can render as names, and so pin can't
-  // offer a clip already excluded (and vice-versa). Cheap: a single filler list read.
-  const { resolve } = useFillerCatalog();
+  const pinned = draft.pinned ?? [];
+  const excluded = draft.excluded ?? [];
+
+  // A small shared lookup so pinned/excluded ids can render as names, and so pin can't offer a
+  // clip already excluded (and vice-versa).
+  //
+  // ⚠ It asks for exactly THESE ids (§10 V51d), not the catalog. Reading the catalog and mapping
+  // it client-side worked only while the listing was unbounded; against a 100-row page it would
+  // resolve whichever pins happened to land on page one and render the rest as bare hashes.
+  const { resolve } = useFillerCatalog([...pinned, ...excluded]);
 
   // Coverage for the channel's SAVED selection (V29b). `enabled: open` because the section
   // starts collapsed and this is one more request per channel page otherwise; retry: false
@@ -35,8 +42,6 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
   const coverage = unwrap(coverageQuery.data);
 
   const entries = preview?.entries ?? [];
-  const pinned = draft.pinned ?? [];
-  const excluded = draft.excluded ?? [];
 
   return (
     // A collapsible section (starts closed): the sandbox is heavy, so it opens only when you
