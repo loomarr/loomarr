@@ -5,8 +5,13 @@ import { CollapsibleSection } from "./collapsible-section";
 
 // The `.reveal` grid trick keeps the body in the DOM even when collapsed (it's clipped, not
 // unmounted), so presence/absence assertions can't rely on the body being removed. Instead
-// assert the header's aria-expanded + the reveal container's data-open, which is what actually
-// drives visibility — and the visible/toggle behavior the user experiences.
+// assert the header's aria-expanded + the reveal container's state attribute, which is what
+// actually drives visibility — and the visible/toggle behavior the user experiences.
+//
+// ⚠ The closed marker is `data-closed`, NOT `data-open="false"` (changed in V50c). Base UI's
+// Collapsible.Panel emits `data-open` VALUELESS when open and swaps to `data-closed` when shut,
+// where the hand-rolled version wrote a stringified React boolean. styles.css matches both
+// shapes on purpose — connection-block still passes the boolean form.
 const bodyText = "the section body";
 
 describe("CollapsibleSection", () => {
@@ -21,14 +26,32 @@ describe("CollapsibleSection", () => {
     const header = screen.getByRole("button", { name: /programming rules/i });
     expect(header).toHaveAttribute("aria-expanded", "false");
     // The reveal container is closed.
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-closed");
 
     await user.click(header);
     expect(header).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "true");
+    // ⚠ Asserted as the EMPTY STRING, which is what a valueless attribute reads back as. The
+    // stylesheet's `[data-open=""]` selector depends on exactly this, so a change in Base UI's
+    // emission would fail here rather than silently stop matching in CSS no test evaluates.
+    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "");
 
     await user.click(header);
     expect(header).toHaveAttribute("aria-expanded", "false");
+  });
+
+  // The capability the V50c port was for: a closed section's text stays reachable by the
+  // browser's find-in-page, which the old `overflow:hidden` clip made impossible.
+  it("keeps a closed body findable in-page rather than merely clipped", () => {
+    render(
+      <CollapsibleSection title="Advanced">
+        <p>{bodyText}</p>
+      </CollapsibleSection>,
+    );
+    const panel = screen.getByText(bodyText).closest(".reveal");
+    // Still mounted while closed — `hiddenUntilFound` forces keepMounted, so find-in-page has
+    // something to match against.
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute("hidden", "until-found");
   });
 
   it("honors defaultOpen", () => {
