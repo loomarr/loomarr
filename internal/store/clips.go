@@ -19,7 +19,7 @@ import (
 type Clip struct {
 	filler.Clip
 	UpdatedAt time.Time
-	// CreatedAt is when the clip ENTERED the catalog (§10 V51d, migration 00045) — the "recently
+	// CreatedAt is when the clip ENTERED the catalog (§10 V51d, migration 00046) — the "recently
 	// added" sort order, and the only honest answer to "what arrived while I was away?".
 	//
 	// ⚠ A separate column rather than a reading of UpdatedAt, because a folder re-sync bumps
@@ -240,7 +240,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// file is a composite or whose segment it is, so a re-sync must not flip a confirmed composite
 		// back or blank a segment's lineage. Written by SetClipComposite / SetClipParent below.
 		//
-		// ⚠ `created_at` (§10 V51d, migration 00045) is the FOURTH column with this rule, and this
+		// ⚠ `created_at` (§10 V51d, migration 00046) is the FOURTH column with this rule, and this
 		// block is where people look for the list. INSERTed so a new row records when it arrived;
 		// omitted from DO UPDATE because the scan supplies a fresh timestamp on every pass — riding
 		// the update list would mark the entire catalog "just added" after each sync, which is the
@@ -696,7 +696,7 @@ func scanClip(sc scannable) (Clip, error) {
 		// is_composite is BOOLEAN (00039), the same side again.
 		isComposite bool
 		updatedAt   int64
-		// created_at is BIGINT on Postgres and INTEGER on sqlite (00045) — the same per-column
+		// created_at is BIGINT on Postgres and INTEGER on sqlite (00046) — the same per-column
 		// dialect split every epoch value here follows, and both are 64-bit.
 		createdAt int64
 	)

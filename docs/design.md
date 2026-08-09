@@ -2501,7 +2501,7 @@ The same polarity argument the `IncludeHeld`/`IncludeComposites` flags carry, ap
   unknown value is an error rather than a silent fall-back to a default. A silent fall-back turns
   "the sort control does nothing" into a bug nobody can see.
 
-**`added` needs a column — `clips.created_at` (migration `00045`).** `updated_at` cannot stand in:
+**`added` needs a column — `clips.created_at` (migration `00046`).** `updated_at` cannot stand in:
 a re-sync bumps it on every clip it touches, so "recently added" would reshuffle the entire catalog
 after a routine folder scan. Existing rows backfill from `updated_at` as a **stated estimate** —
 the honest answer for clips that predate the column. ⚠ It is INSERTed but **omitted from

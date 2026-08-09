@@ -605,7 +605,7 @@ and "ford" matches "afford". **No FTS** — FTS5 and `tsvector` are different en
 tokenizers, which would force `ListClips` to branch on dialect and the suite to assert
 equivalent-but-not-identical results per backend (§5 forbids it).
 
-**Migration `00045`, not the plan's `00044`** — V51b took that number. `clips.created_at`, because
+**Migration `00046`.** V51b took `00044`; `00045` went to V52's images table, which merged first — so this was renumbered from `00045` before landing, while it was still unapplied anywhere. `clips.created_at`, because
 `updated_at` is bumped by every re-sync and an "added" sort backed by it would reshuffle the whole
 catalog after a routine scan. Existing rows backfill from `updated_at` as a stated estimate. It is
 the **fourth** column omitted from `UpsertClip`'s `DO UPDATE`, and the only one with no `Set…`
