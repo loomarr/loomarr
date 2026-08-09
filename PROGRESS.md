@@ -4,6 +4,59 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
+`feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean
+on 919 files) + `make retired-verify` (25 identifiers). Zero Go files touched.
+
+`packages/core`'s three zod schemas mirrored wire field names **by hand**, and that shipped a bug:
+`intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` and `runtimeTarget` where it
+says `runtimeTargetMin`. Both parsed, both serialized into JSON the server ignored, and a user's
+acquisition cap and runtime target silently vanished. A contract test was written afterwards to
+catch it — and covered **one of the three**. `bootstrapSchema` and `loginSchema` were unguarded
+(checked: neither had drifted, yet).
+
+Orval now emits zod schemas from the same spec (`@loomarr/api/zod`), and each form schema is
+`.pick()`ed off its wire schema, then `.extend()`ed with the rules. **A lookalike name is now a
+compile error at the schema definition**, for all three and every future one.
+
+⚠ **The error message is cryptic and worth recognising**: picking a key that is not on the wire
+fails as `Type 'true' is not assignable to type 'never'`. It means exactly one thing — *that field
+does not exist on the wire*. Verified by sabotage: restoring `maxAcquire`/`runtimeTarget` fails
+`tsc` at both lines.
+
+⚠ **Generation carries NAMES and TYPES, not RULES — and the split is deliberate, not a shortcut.**
+This spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` across ~9k lines, `maxAcquisitions`
+has no bounds at all, and OpenAPI has nowhere to put a user-facing message. So the trims, the 0–200
+cap, the 8-character password floor and every message stay hand-authored in `.extend()` — and
+`confirm` (form-only, never sent) is added there too. That is why the pattern is pick-then-extend
+rather than a straight derive: **the wire decides which names are real; the form is free to add its
+own on top.**
+
+⚠ **The contract test was kept, not deleted, and the reason is a real distinction.** `.pick()`
+guarantees the NAMES exist on the wire; `intent-contract.test.ts`'s assignability check guarantees
+the parsed OUTPUT still satisfies `Intent` after `.extend()` rewrites the value types. Proven
+complementary rather than assumed: changing `maxAcquisitions` to `z.string()` in the extend produced
+**0 errors** in core and **failed** the assignability check. Two claims, two guards.
+
+**The zod barrel is hand-written and therefore guarded** (`barrel.test.ts`), same as the endpoint
+barrel — a generated module nobody can import is indistinguishable from one that was never built.
+⚠ It checks the ZOD output directory, not the endpoint one: `events` is SSE and has no schemas to
+generate, so comparing against endpoints would fail forever on a tag that is correct to be absent.
+Sabotage-verified (dropping `users` reports it by name). It is FLAT where the endpoint barrel is
+namespaced — namespacing exists there only because orval repeats helper enums per tag file, and zod
+names are operation-scoped and collision-free.
+
+⚠ **Only the zod half of orval's generation was adopted; the mock generator was measured and
+rejected for its DATA.** It targets OpenAPI 3.0 idioms and this spec is 3.1: **109 nullable
+type-unions vs 4 plain arrays, 0 `nullable: true`**. Meeting `type: ["array","null"]` it emits
+`arrayElement([[], null])` without descending into `items` — **137 list fields that are never
+populated** — and `useExamples` reads singular `.example` where Huma emits plural `examples:`, so
+**0 of 53** example tags are used, across **1304 unseeded faker calls**. Not configurable away. The
+zod generator handled the same 3.1 spec correctly, which is what isolates the gap to the mock half.
+
+**Next up: V53b** (runtime response validation through the mutator, dev/test only), then V53c+ (MSW
+handlers over typed fixtures, replacing 31 hand-rolled `stubFetch` helpers in batches).
+
 **V51c — sources roll up by provider, with no column, no table and no migration (2026-08-09).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
 `make retired-verify` + `make config-docs`.

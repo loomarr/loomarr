@@ -6,7 +6,8 @@
   "description": "Orval-generated types + TanStack Query hooks from api/openapi.yaml (platform-agnostic).",
   "exports": {
     ".": "./src/index.ts",
-    "./mutator": "./src/mutator/index.ts"
+    "./mutator": "./src/mutator/index.ts",
+    "./zod": "./src/zod/index.ts"
   },
   "scripts": {
     "generate": "orval --config orval.config.ts",
@@ -14,7 +15,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.101.4"
+    "@tanstack/react-query": "^5.101.4",
+    "zod": "^3.24.1"
   },
   "peerDependencies": {
     "react": "^18.3.1 || ^19.0.0"
