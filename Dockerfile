@@ -105,7 +105,39 @@ FROM debian:stable-slim AS runtime
 ARG TARGETARCH
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
-ARG FFMPEG_TAG=n7.1-latest
+# ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AGAINST THE NEW BUILD.
+#
+# **ffmpeg n9 BREAKS INTERNAL PLAYOUT ENTIRELY** (§9.1), so this pin has a CEILING, not just a
+# floor. n9's HTTP protocol treats a response with no Content-Length as having length UINT64_MAX,
+# so when the body ends it reports
+#
+#   [http] Stream ends prematurely at 85916, should be 18446744073709551615
+#   [in#0/concat] Error during demuxing: Input/output error
+#
+# and the concat demuxer STOPS instead of opening the next playlist entry.
+# `/v1/playout/program/{id}` streams a live encode and therefore can NEVER send a Content-Length,
+# so on n9 every internal-playout channel plays one programme and then repeats it forever.
+#
+# Measured 2026-08-09, identical harness, chunked entry:
+#
+#   n7.1.5 → 5 entry fetches, advances ✓
+#   n8.1.2 → 5 entry fetches, advances ✓   ← this pin
+#   n9.0   → 1 fetch, 3× EIO            ✗
+#
+# Mitigations that do NOT work on n9 (all tested — do not spend time re-trying): dropping the
+# -reconnect flags, -reconnect_streamed, -seekable 0/1, connection-close (HTTP/1.0) framing,
+# -ignore_io_errors (HLS-only, not a concat option), -multiple_requests (hangs). n9's concat
+# demuxer exposes no error-tolerance option at all. Getting onto n9 needs an ARCHITECTURE change
+# — the parent must stop consuming a chunked HTTP stream — not a flag.
+#
+# `TestLive_ConcatAdvancesPastAChunkedHTTPEntry` is the guard and runs in under a second. Nothing
+# else catches this: `-stream_loop -1` masks it by replaying the buffered programme, so the parent
+# still emits continuous output and exits 0, and the failure presents as "the channel repeats one
+# show" rather than as an error.
+#
+# n8.1 is the newest series BtbN publishes in the `latest` release (it ships 7.1 and 8.1 only), and
+# the full `make test-ffmpeg` playout suite is green against it.
+ARG FFMPEG_TAG=n8.1-latest
 ARG WHISPER_VERSION=v1.9.1
 # The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
 # that silently changes content changes transcription, and transcription decides where
@@ -130,7 +162,13 @@ RUN set -eux; \
       arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; DENO_ARCH=aarch64; FFMPEG_ARCH=linuxarm64; WHISPER_ARCH=arm64 ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    FFMPEG_BUILD="ffmpeg-${FFMPEG_TAG}-${FFMPEG_ARCH}-gpl-7.1"; \
+    # BtbN's asset name repeats the release series in the SUFFIX
+    # (ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz), so it is DERIVED from FFMPEG_TAG rather than
+    # written out a second time. It used to be a literal `gpl-7.1`, which meant bumping the pin in
+    # one place produced a 404 at build time instead of a new ffmpeg — the same hand-maintained
+    # coupling this repo has been bitten by elsewhere.
+    FFMPEG_SERIES="${FFMPEG_TAG%-latest}"; FFMPEG_SERIES="${FFMPEG_SERIES#n}"; \
+    FFMPEG_BUILD="ffmpeg-${FFMPEG_TAG}-${FFMPEG_ARCH}-gpl-${FFMPEG_SERIES}"; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
