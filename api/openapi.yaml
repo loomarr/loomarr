@@ -1807,6 +1807,8 @@ components:
           type: boolean
         fetchable:
           type: boolean
+        group:
+          type: boolean
         id:
           type: string
         kind:
@@ -1821,6 +1823,8 @@ components:
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
+        parentId:
           type: string
         removable:
           type: boolean

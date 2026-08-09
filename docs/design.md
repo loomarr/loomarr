@@ -2386,6 +2386,63 @@ gets to make.**
 ⚠ `clips.removed_at` stays the *airability* gate and pod assembly is untouched. Two places, one
 truth: `removed_at` is **whether**, the pipeline row is **why**.
 
+### Sources roll up by provider (V51c)
+
+Three archive.org collections sat as three sibling rows with no indication they are one service,
+and adding YouTube channels would have made it worse. The Sources tab now shows one **Archive.org**
+row and one **YouTube** row, each twirling down to the targets an operator added beneath it.
+
+⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`, no new table, and
+no migration** — and that is a correctness argument, not a shortcut. *The grouping being asked for
+is already a column*: every `archive` row belongs under Archive.org, and there is no representable
+case where it belongs anywhere else. A stored parent would be a second encoding of a fact `kind`
+already carries, and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`).
+
+Three concrete costs a stored parent would have added, each measured against code that exists:
+
+- Migration `00034` already seeds a blank-URI `youtube` row shaped exactly like a provider root.
+  Inserting `provider:youtube` beside it produces **two** blank-URI YouTube rows, both invisible to
+  `idx_filler_sources_uri` (whose `WHERE uri <> ''` predicate excludes them) and both eligible for
+  the read model — "one source appears twice", which `00023` and `00029` both exist to prevent.
+- It creates a **three-tier inherit problem** for `fetch_every_seconds`/`fetch_max_per_run`, whose
+  nil/0/N encoding already carries a ⚠ saying both callers "must not re-derive this three-state
+  logic separately". A parent tier makes `child=nil, parent=0` mean *never* while
+  `child=nil, parent=nil` means *global* — four states, re-derived in three places.
+- `filler_pulls.plan_json` stores `SourceID` strings looked up at approve time, so rewriting the
+  seeded `youtube` row's id would 409 any pending pull.
+
+⚠ **The escape hatch, recorded so this is not re-litigated:** if a provider ever gains state of its
+own — a YouTube API key, an archive.org rate budget — add a `filler_providers` table keyed on the
+existing `kind` vocabulary. **Not `parent_id`**, because that state is per-provider, not per-node.
+
+**Wire shape: flat, pre-ordered, `group` + `parentId`.** Not nested — a recursive `children: []`
+generates badly through orval and the frontend has no tree primitive, while a flat pre-order array
+is exactly what a twirl-down renders from (hide rows whose parent is collapsed). It is purely
+additive, so a client that knows neither field renders the flat list it always did.
+
+**What does NOT inherit, and why each one is deliberate:**
+
+- ⚠ **`enabled`: no group switch.** Cascade-on-write destroys each child's own choice, which §10
+  forbids in as many words ("Disabling is not deleting… switching it back on restores what was
+  there"). A computed `effective = parent && child` is worse: a fifth thing every call site must
+  remember, whose failure direction is *fetching from a provider the operator switched off*. The
+  group reports `enabled` as ANY-child-on and offers no lever. A master switch, if ever wanted,
+  ships as a **visible bulk write** over the children.
+- **Fetch overrides: leaf only** — see the three-tier argument above.
+- **`lastFetchedAt`: a read-only `MAX` over children**, computed in the API so no column can
+  disagree. Absent when no child has fetched, so the row reads "never" rather than an epoch date.
+
+⚠ **`folder` and `library` do not group.** A twirl-down exists because ONE SERVICE offers many
+targets; two watched folders are unrelated directories with no service in common, so a "Folders"
+container would be a row that dims and changes nothing — the shape §10 forbids.
+
+⚠ **An honest gap this exposes rather than creates:** `sync.go` writes `Source = "filler-dir"` for
+every clip the folder scan finds, and the sidecar records only *whether* Loomarr downloaded a clip,
+never *from which source*. So `bySource["archive"]` is 0 on essentially every install. A group
+reports the **sum of its children's counts** — honest arithmetic over whatever the children claim,
+never an invented number. Per-source attribution is an **intake** change, tracked separately.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
