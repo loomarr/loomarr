@@ -58,12 +58,20 @@ type GuideAiring struct {
 	Year        int      `json:"year,omitempty"`
 	Rating      string   `json:"rating,omitempty"`
 	ItemID      string   `json:"itemId,omitempty" doc:"Media-server item id, when the content is available"`
-	// ThumbURL is a preview image for this block (§9.1 Watch timeline, V47): a TMDB episode still
-	// for a series, a poster for a movie, resolved server-side from the provisioning key. Empty for a
-	// break/flex block or when TMDB has no image — the client renders a fallback. Only the Watch
+	// ThumbURL is a preview image for this block (§9.1 Watch timeline, V47): an episode still for a
+	// series, a poster for a movie, resolved server-side from the provisioning key. Empty for a
+	// break/flex block or when no image is available — the client renders a fallback. Only the Watch
 	// timeline populates it (the main grid's hover card does not need per-block images); it is
 	// omitempty so the grid's payload is unchanged.
-	ThumbURL string `json:"thumbUrl,omitempty" doc:"TMDB preview image (episode still or poster); empty for breaks or when unavailable"`
+	//
+	// ⚠ **It points at THIS instance's image service, not TMDB, since V52 phase 7.** The image
+	// still originates on TMDB; it is adopted, fetched server-side and served from our own disk, so
+	// the Watch timeline stops loading third-party images in the operator's browser (§22).
+	ThumbURL string `json:"thumbUrl,omitempty" doc:"Image-service preview URL (episode still or poster); empty for breaks or when unavailable"`
+	// ThumbImage is the image record behind ThumbURL — width/height, ThumbHash and both srcsets.
+	// Absent while the image is still being fetched, in which case ThumbURL is empty too and the
+	// strip shows its fallback; the every-minute fetch job fills it in.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset and placeholder rendering"`
 	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
 	// occupies the schedule). They normally agree; where they differ — a 22m episode in a 30m
 	// slot — the difference is what makes padding visible.

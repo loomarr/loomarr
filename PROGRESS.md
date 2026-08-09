@@ -4,10 +4,55 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: phases 0–6 of 8.** Merged: `ca15ba1d` (#199, phases 0–4),
-`309c5dfc` (#209, phase 5). **Phase 6 is PR #217.** **Next: 7** TMDB, **8** retirements +
-`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ 7 regenerates the orval client, so per
-CLAUDE.md's worktree rule it is not parallelisable with anything that adds an endpoint.
+**V52 — the image service: phases 0–7 of 8.** Merged: `ca15ba1d` (#199, phases 0–4),
+`309c5dfc` (#209, phase 5), `db241852` (#217, phase 6). **Phase 7 is on `v52-phase7-tmdb`.**
+**Next: 8** retirements + `scripts/check-retired.sh` + the `docs/help/` sweep.
+
+⚠ **The header said "Phase 6 is PR #217" for the whole time that PR was merged**, which is the
+third time this paragraph has outlived its work — the two warnings below already say so, and both
+were written by sessions that then left a fresh stale pointer behind them. The durable reading is
+that "the current phase is PR #N" is a form that CANNOT stay true: a PR is a state, not a record.
+A merged phase is named by its SHA, and only the unmerged one may name a branch.
+
+**Phase 7 — TMDB onto the service (2026-08-09, branch `v52-phase7-tmdb`).** The icon picker, the
+Watch timeline and the guide loaded posters and stills straight from `image.tmdb.org` in the
+operator's browser — the third of the three defects §22 exists to remove, and the one §10's clip
+rule had already named ("a beacon that leaks who is browsing the catalog and when") without ever
+being applied to TMDB. Both producers now adopt; `imageBase` moves `w500` → `original`, because
+these URLs are no longer fetched by any client and §22 builds the ladder locally. Gate: `make
+check` exit 0 (34 packages `ok`, zero `FAIL` / `no tests to run`) + `make openapi` regenerated +
+`make fe` exit 0 (1249 app + 19 api; the four `TmdbAttribution` tests verified BY NAME under
+`--reporter=verbose`, not by exit code).
+
+⚠ **A suggestion or thumb is emitted only once its bytes exist, and this is a correctness rule.**
+`Adopt` keys a pending row on a hash of the SOURCE URL and the fetch re-keys it onto the content
+hash, deleting the placeholder. A URL built from a placeholder hash therefore resolves for under a
+minute and 404s forever — and for the icon picker that URL becomes the channel's stored `logo`, so
+it would rot permanently. A cold picker returning fewer than twelve posters is the strictly better
+failure, and `images-fetch` fills it in within the minute.
+
+⚠ **This phase FIXED A LATENT DEFECT IN PHASE 3b, found only because phase 7 was its first
+caller.** The same re-key means `GetImage(hashOfURL(src))` misses forever afterwards, so a second
+`Adopt` of one URL minted a fresh placeholder and the fetch job re-downloaded bytes already on
+disk. Invisible while `Adopt` had no production caller; on an interactive surface the steady state
+would have been twelve TMDB downloads per picker open, against an origin that caps a client at 20
+simultaneous connections. Proved first (`origin hits = 2, want 1`), then fixed with migration
+`00048` (index on `source_url`, both dialects) and a lookup asking only for FETCHED rows — two
+rows share a source URL for the width of a re-key BY DESIGN, and the placeholder is precisely the
+one a caller must not be handed. The new 15th `Images` conformance subtest was verified by
+sabotage: dropping `origin_fetched_at > 0` makes it go red.
+
+⚠ **`make fe-visual` baselines are NOT regenerated on this branch.** `Channels/ChannelIconField`
+now renders its suggestion grid through `<Image>` rather than a plain `<img>`, which changes those
+snapshots; the sanctioned path is `make fe-visual-update`, reviewed in the PR. It was not run here
+because Playwright is not run locally in this project — CI owns that gate.
+
+⚠ **The TMDB LOGO is still outstanding — the notice ships, the mark does not.** §22 requires both:
+the notice verbatim (done, `TmdbAttribution` on Settings → Connections, asserted literally so a
+copy-edit cannot silently break compliance) and TMDB's logo shown less prominently than Loomarr's
+own branding. The logo is TMDB's trademark and this repository carries no brand assets; the
+component takes it as a prop and renders the notice alone without one. **Supplying that asset is
+the remaining half of the §22 attribution obligation** and is not something phase 8 retires.
 
 **Phase 6 — clip artwork onto the service (2026-08-09, PR #217).** Stills and hover loops lived
 only as files under `FILLER_DIR`; they now carry image-service identities, so they get srcset, a

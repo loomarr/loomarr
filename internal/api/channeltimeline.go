@@ -32,10 +32,14 @@ const timelineWindow = 3 * time.Hour
 // the timeline still works, just with no images (the strip renders a fallback), because TMDB is
 // optional and a missing image must never fail the strip.
 type TimelineThumbResolver interface {
-	// ThumbFor returns a preview image URL for a block, best-effort: "" (never an error to the
-	// caller) when there is no key, TMDB is unconfigured, or TMDB has no image. `season`/`episode`
+	// ThumbFor returns a preview image URL and the content hash behind it, best-effort: two empty
+	// strings (never an error to the caller) when there is no key, TMDB is unconfigured, TMDB has
+	// no image, or the image has been adopted but its bytes have not landed yet. `season`/`episode`
 	// are 0 for a movie; a series uses them to fetch the episode's own still.
-	ThumbFor(ctx context.Context, key string, season, episode int) string
+	//
+	// ⚠ The hash is returned SEPARATELY rather than parsed back out of the URL, so the handler can
+	// resolve every block's record in one deduplicated pass instead of one lookup per block.
+	ThumbFor(ctx context.Context, key string, season, episode int) (url, hash string)
 }
 
 type timelineOutput struct {
@@ -70,16 +74,32 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 	}
 
 	airings := make([]GuideAiring, 0, len(bs))
+	// ⚠ A PARALLEL slice rather than a field on GuideAiring. The hash is plumbing between the two
+	// loops below, not part of the resource — and GuideAiring is the shared projection the main
+	// guide grid also serves, so a field here would appear in a payload that has no use for it.
+	thumbHashes := make([]string, 0, len(bs))
 	for _, b := range bs {
 		a := guideAiringOf(b)
+		hash := ""
 		// A preview image for PROGRAMME blocks only (a break/flex/pending block has no title image
 		// to show). Best-effort and gated on a resolver being wired — an install without TMDB shows
 		// the strip with fallbacks rather than failing.
 		if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
-			a.ThumbURL = s.timelineThumbs.ThumbFor(ctx, string(b.Key), b.Season, b.Episode)
+			a.ThumbURL, hash = s.timelineThumbs.ThumbFor(ctx, string(b.Key), b.Season, b.Episode)
 		}
 		airings = append(airings, a)
+		thumbHashes = append(thumbHashes, hash)
 	}
+
+	// One deduplicated pass for every block's image record (§22) — the shape imageDTOsByHash
+	// exists to enforce, rather than a lookup inside the loop above.
+	byHash := s.imageDTOsByHash(ctx, thumbHashes)
+	for i := range airings {
+		if thumbHashes[i] != "" {
+			airings[i].ThumbImage = byHash[thumbHashes[i]]
+		}
+	}
+
 	out.Body.Airings = airings
 	return out, nil
 }

@@ -224,6 +224,22 @@ func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput)
 	if err != nil {
 		return nil, err
 	}
+	// Enrich each suggestion with its image record in ONE deduplicated pass (§22). A per-row
+	// lookup here would be the same N+1 `logoImageResolver` exists to avoid, and the picker is
+	// twelve rows — the exact size where the naive shape starts to show.
+	hashes := make([]string, 0, len(suggestions))
+	for _, sg := range suggestions {
+		if sg.ImageHash != "" {
+			hashes = append(hashes, sg.ImageHash)
+		}
+	}
+	byHash := s.imageDTOsByHash(ctx, hashes)
+	for i := range suggestions {
+		// A miss leaves Image nil and the plain `url` still renders — §22's Durability section
+		// makes "the row is here, the file is not" an accepted state, so this must never fail.
+		suggestions[i].Image = byHash[suggestions[i].ImageHash]
+	}
+
 	out := &iconSuggestionsOutput{}
 	// Always a slice, never null: a lineup with no resolvable posters (e.g. all-TVDB
 	// entries with no TMDB bridge match) is a normal state, not a failure.

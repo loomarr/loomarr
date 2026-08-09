@@ -9,6 +9,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/reconcile"
@@ -290,33 +291,68 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 // its OWN still (per-episode), a movie its poster. The image always comes from TMDB, but the KEY may
 // be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges TVDB→TMDB via /find first.
 // Every failure is swallowed to "" so a missing image never fails the strip.
-type timelineThumbResolver struct{ tmdb *tmdb.Client }
+//
+// ⚠ Since V52 phase 7 the URL it returns is OURS, not TMDB's: the still is adopted into the image
+// service and served from our own disk, so the Watch timeline stops loading third-party images in
+// the operator's browser (§22).
+type timelineThumbResolver struct {
+	tmdb   *tmdb.Client
+	images *images.Service
+}
 
-func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season, episode int) string {
+// timelineThumbWidth is the rung the strip's `src` points at. The blocks are small — a strip of
+// preview chips, not hero art — so this is the bottom of the 16:9 ladder; `thumbImage` carries the
+// full srcset for a client that wants a denser rendition.
+const timelineThumbWidth = 300
+
+func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season, episode int) (string, string) {
 	mt, provider, id, ok := provision.ParseKey(provision.Key(key))
 	if !ok {
-		return "" // no usable key
+		return "", "" // no usable key
 	}
 	var (
-		url string
-		err error
+		src  string
+		err  error
+		role = images.RoleBackdrop // an episode still is 16:9
 	)
 	switch {
 	case mt == provision.Series && provider == "tvdb":
 		// The common series case (§3: series prefer a TVDB key). Bridge TVDB→TMDB, then the episode
 		// still — the strip is per-programme, so the episode's own still, not the show poster.
-		url, err = a.tmdb.EpisodeStillURLByTVDB(ctx, id, season, episode)
+		src, err = a.tmdb.EpisodeStillURLByTVDB(ctx, id, season, episode)
 	case mt == provision.Series: // provider == "tmdb"
-		url, err = a.tmdb.EpisodeStillURL(ctx, id, season, episode)
+		src, err = a.tmdb.EpisodeStillURL(ctx, id, season, episode)
 	case provider == "tmdb": // a movie
-		url, err = a.tmdb.PosterURL(ctx, mt, id)
+		src, err = a.tmdb.PosterURL(ctx, mt, id)
+		role = images.RolePoster // ⚠ a movie's image is its 2:3 poster, so a different ladder
 	default:
-		return "" // a tvdb-keyed movie is not a shape we produce
+		return "", "" // a tvdb-keyed movie is not a shape we produce
 	}
+	if err != nil || src == "" {
+		return "", ""
+	}
+	if a.images == nil {
+		// No image service ⇒ no image, NOT a fallback to TMDB's CDN. §22 exists to take third-party
+		// origins out of the operator's browser; the strip already renders a fallback for a missing
+		// image, which is the honest degradation.
+		return "", ""
+	}
+
+	// Member-visible: the Watch timeline is behind a session, unlike a channel icon that Tunarr
+	// fetches unauthenticated (§22 — visibility is a property of the image, not the route).
+	rec, err := a.images.Adopt(ctx, src, images.IngestRequest{Role: role, Visibility: images.VisibilityMember})
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return url
+	// ⚠ **Adopted but not yet fetched ⇒ no URL.** The row is keyed on a hash of the source URL
+	// until the bytes land, and the fetch then re-keys it and deletes that row — so a URL built
+	// from a placeholder hash would 404 within the minute. The strip renders its fallback and the
+	// every-minute job fills it in. Deliberately NOT a synchronous fetch: a timeline block is a
+	// passive render, and putting TMDB's latency on it is exactly what Adopt refuses to do.
+	if rec.OriginFetchedAt.IsZero() {
+		return "", ""
+	}
+	return a.images.URLFor(rec.Hash, timelineThumbWidth, images.FormatJPEG), rec.Hash
 }
 
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
