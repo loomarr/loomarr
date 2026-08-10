@@ -33,7 +33,7 @@ import (
 //     special case (verified — the BOOL branch in `coerce` below is a second belt, not
 //     the thing doing the work).
 //
-//     **Binary is the real exception.** `channel_icons.bytes` is BLOB/BYTEA, and routing
+//     **Binary is the real exception.** `channel_icons.bytes` is BLOB/BYTEA, and routing retired-ok
 //     it through a Go string corrupts every byte that is not valid UTF-8. That branch IS
 //     load-bearing and has a test that fails without it. Coercing by destination type is
 //     what keeps both cases — and any future divergence — in one rule instead of a list
@@ -64,7 +64,7 @@ type MigrationProgress struct {
 }
 
 // copyBatch is how many rows are read and inserted per round trip. Large enough that a
-// 100k-row table isn't 100k round trips, small enough that a wide table (channel_icons
+// 100k-row table isn't 100k round trips, small enough that a wide table (channel_icons retired-ok
 // carries image BYTEA) doesn't build a multi-hundred-MB statement.
 const copyBatch = 500
 
@@ -311,7 +311,7 @@ func countRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
 func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows func(int64)) (int64, error) {
 	// ⚠ Both from the DESTINATION — it is authoritative for the column set, the order,
 	// and the types `coerce` targets. Reading types from the source would silently pick
-	// SQLite's BLOB for `channel_icons.bytes` instead of Postgres's BYTEA; that column is
+	// SQLite's BLOB for `channel_icons.bytes` instead of Postgres's BYTEA; that column is retired-ok
 	// binary, and the difference decides whether icons survive as bytes or as mangled
 	// UTF-8.
 	cols, types, err := describe(ctx, dst, table)

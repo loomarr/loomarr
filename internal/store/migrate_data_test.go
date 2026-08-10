@@ -3,7 +3,6 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -22,7 +21,7 @@ import (
 // seedForMigration writes rows into every table whose type handling differs between
 // the dialects, plus enough ordinary rows that a count is meaningful.
 //
-// ⚠ `users.disabled` and `channel_icons.bytes` are the two that MATTER: disabled is
+// ⚠ `users.disabled` and `channel_icons.bytes` are the two that MATTER: disabled is retired-ok
 // INTEGER in SQLite and BOOLEAN in Postgres, and bytes is BLOB vs BYTEA. A migration
 // that gets every other table right and drops these is the realistic bug.
 func seedForMigration(t *testing.T, s Store) {
@@ -321,36 +320,24 @@ func TestMigrateReportsProgress(t *testing.T) {
 	}
 }
 
-// A channel icon is real binary (PNG). If it round-trips through a Go string the
-// bytes are corrupted, so this is the one column where coercion must be right.
-func TestIconBytesSurviveMigration(t *testing.T) {
-	ctx := context.Background()
-	src := newSQLiteStore(t)
-	// A PNG header plus bytes that are invalid UTF-8 — the case a string trip mangles.
-	raw := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE, 0x00, 0x80, 0xC3}
-	ss := src.(*sqlStore)
-	if _, err := ss.db.ExecContext(ctx,
-		`INSERT INTO channel_icons (channel_id, bytes, content_type, updated_at) VALUES (?,?,?,?)`,
-		"ch1", raw, "image/png", 0); err != nil {
-		t.Fatalf("seed icon: %v", err)
-	}
-	dst, err := Open(ctx, startPostgres(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = dst.Close() })
-	if _, err := MigrateData(ctx, src, dst, nil); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	var got []byte
-	if err := dst.(*sqlStore).db.QueryRowContext(ctx,
-		`SELECT bytes FROM channel_icons WHERE channel_id = $1`, "ch1").Scan(&got); err != nil {
-		t.Fatalf("read migrated icon: %v", err)
-	}
-	if !bytes.Equal(got, raw) {
-		t.Errorf("icon bytes corrupted:\n got %v\nwant %v", got, raw)
-	}
-}
+// ⚠ **`TestIconBytesSurviveMigration` was deleted in V52 phase 8, and what it proved is now
+// unproven — which is worth stating rather than quietly dropping.** retired-ok
+//
+// It seeded a PNG (with deliberately invalid UTF-8 bytes) into the one binary column in the
+// schema and asserted it survived the SQLite→Postgres copy without being mangled by a round trip
+// through a Go string. That column was `channel_icons.bytes`, and dropping the table left the retired-ok
+// schema with **no BLOB/BYTEA column at all** — so the test could not be rewritten against a real
+// table, only against a synthetic one that would have to be added to both dialects' migrations for
+// the benefit of a test.
+//
+// The consequence: `copyTable`'s binary-coercion branch still exists and is now reachable by
+// nothing. It is defensive rather than dead — the next binary column added would depend on it, and
+// deleting it would mean that column silently arrives corrupted — but it is no longer exercised by
+// any test, and the comments in migrate_data.go that cite `channel_icons.bytes` as the motivating retired-ok
+// example now cite something that does not exist.
+//
+// Whether to keep an unexercised path or remove it with the table it served is a maintainer call,
+// not one this deletion should make by default.
 
 // The copy order must place a table after everything it references. This is asserted
 // directly rather than only implied by the migration succeeding, because the failure it

@@ -30,7 +30,7 @@ import (
 //
 // ⚠ **The type parameter is not decoration.** Huma builds the spec's `parameters` list from the
 // input struct and does NOT cross-check it against the `{placeholders}` in Path. An operation
-// registered with `struct{}` on a path like `/v1/filler/thumb/{hash}` therefore emits a path
+// registered with `struct{}` on a path like `/v1/filler/thumb/{hash}` therefore emits a path retired-ok
 // template whose parameter is declared nowhere — invalid OpenAPI 3.1, and a generated client
 // that cannot fill in the URL. The playout routes got away with `struct{}` only because they
 // were Hidden. Declare the params; the handler may still read them via r.PathValue.

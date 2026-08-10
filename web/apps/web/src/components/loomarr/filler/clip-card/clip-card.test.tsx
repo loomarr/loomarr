@@ -18,6 +18,24 @@ const base: ClipDTO = {
   tunarrProgramId: "clip-test",
 };
 
+// Artwork is an image-service record since V52 phase 8 — `thumbnail`/`preview` and the
+// /v1/filler/thumb|hover routes they addressed are retired (§22).
+const imageRecord = (hash: string, animated = false) => ({
+  hash,
+  role: animated ? "thumb" : "thumb",
+  width: 500,
+  height: 281,
+  placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+  dominantHex: "#2b4a5e",
+  animated,
+  srcSetWebp: `/v1/images/${hash}/w342.webp 342w, /v1/images/${hash}/w500.webp 500w`,
+  srcSetAvif: "",
+  src: `/v1/images/${hash}/w500.jpg`,
+});
+
+const framedImage = imageRecord("aaaa1111");
+const hoverImage = imageRecord("bbbb2222", true);
+
 describe("ClipCard", () => {
   it("renders kind, era, audience chips and a sub-minute mono duration", () => {
     render(<ClipCard clip={base} />);
@@ -56,19 +74,20 @@ describe("ClipCard", () => {
   // catalog, and a grid of identical grey rectangles reads as a broken page rather than an
   // absent nicety. Absence is what shipped before this phase, and it already works.
   it("renders no image when the clip has no extracted frame", () => {
-    const { container } = render(<ClipCard clip={{ ...base, thumbnail: undefined }} />);
+    const { container } = render(<ClipCard clip={{ ...base, thumbImage: undefined }} />);
     expect(container.querySelector("img")).toBeNull();
   });
 
   it("renders the extracted frame when the clip has one", () => {
     const { container } = render(
-      <ClipCard clip={{ ...base, hash: "hash-intro", thumbnail: "80s/toys/intro.jpg" }} />,
+      <ClipCard clip={{ ...base, hash: "hash-intro", thumbImage: framedImage }} />,
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
-    // Built from the clip's HASH, not from `thumbnail` — the route derives the .jpg itself,
-    // so passing the thumbnail path would request `intro.jpg.jpg`.
-    expect(img).toHaveAttribute("src", "/v1/filler/thumb/hash-intro");
+    // ⚠ Addressed by the IMAGE's content hash, not the clip's. Until V52 phase 8 this asserted
+    // `/v1/filler/thumb/{clipHash}` — a route that derived the file from the clip server-side. retired-ok
+    // Artwork now has its own identity, which is what makes the URL immutably cacheable.
+    expect(img).toHaveAttribute("src", framedImage.src);
     // A catalog is hundreds of cards; without this every frame is fetched on mount.
     expect(img).toHaveAttribute("loading", "lazy");
   });
@@ -76,7 +95,9 @@ describe("ClipCard", () => {
   // Empty alt, deliberately: the clip's name is the very next element, so a description here
   // would have a screen reader announce the same clip twice.
   it("leaves the frame's alt empty because the name is already announced", () => {
-    const { container } = render(<ClipCard clip={{ ...base, name: "Frosted Flakes", thumbnail: "a.jpg" }} />);
+    const { container } = render(
+      <ClipCard clip={{ ...base, name: "Frosted Flakes", thumbImage: framedImage }} />,
+    );
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
     expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
   });
@@ -188,7 +209,7 @@ describe("ClipCard", () => {
 
   // The hover preview and its play button (V39).
   describe("preview and play", () => {
-    const framed = { ...base, hash: "hash-intro", thumbnail: "80s/toys/intro.jpg" };
+    const framed = { ...base, hash: "hash-intro", thumbImage: framedImage };
 
     // ⚠ **The name says WHICH clip.** A grid of buttons all called "Play" is meaningless in a
     // screen reader's element list and unusable by voice control ("click play" — which one?).
@@ -213,17 +234,16 @@ describe("ClipCard", () => {
     // preview would pull the whole grid's worth of webp immediately — the exact cost the still
     // exists to avoid.
     it("loads the animation only once hovered", () => {
-      const { container } = render(
-        <ClipCard clip={{ ...framed, preview: "80s/toys/intro.webp" }} onPlay={() => {}} />,
-      );
+      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onPlay={() => {}} />);
 
-      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+      expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
 
       fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
-      const preview = container.querySelector('img[src*="/v1/filler/hover/"]');
-      // Built from the clip's HASH, like the thumbnail: the route derives the .webp itself, so
-      // passing `preview` would request `intro.webp.webp`.
-      expect(preview).toHaveAttribute("src", "/v1/filler/hover/hash-intro");
+      const preview = container.querySelector('img[src*="bbbb2222"]');
+      // ⚠ The ANIMATION's own content hash, not the clip's. Until V52 phase 8 this was
+      // `/v1/filler/hover/{clipHash}`, a route that derived the .webp from the clip server-side; retired-ok
+      // the hover loop is an image-service image now and carries its own identity.
+      expect(preview).toHaveAttribute("src", hoverImage.src);
     });
 
     // ⚠ **Unmounting on leave is what makes the animation RESTART on the next hover.** An
@@ -233,20 +253,18 @@ describe("ClipCard", () => {
     //
     // This is the test that catches a "keep it mounted for caching" optimisation reintroducing it.
     it("unmounts the animation on leave so the next hover starts it again", () => {
-      const { container } = render(
-        <ClipCard clip={{ ...framed, preview: "80s/toys/intro.webp" }} onPlay={() => {}} />,
-      );
+      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onPlay={() => {}} />);
       const frame = container.querySelector(".group") as HTMLElement;
 
       fireEvent.mouseEnter(frame);
-      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeInTheDocument();
+      expect(container.querySelector('img[src*="bbbb2222"]')).toBeInTheDocument();
 
       fireEvent.mouseLeave(frame);
-      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+      expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
 
       // ...and it comes back, freshly decoded from frame 0.
       fireEvent.mouseEnter(frame);
-      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeInTheDocument();
+      expect(container.querySelector('img[src*="bbbb2222"]')).toBeInTheDocument();
     });
 
     // ⚠ A clip with no rendered preview must not request one. That is EVERY clip on an install
@@ -256,9 +274,9 @@ describe("ClipCard", () => {
       const { container } = render(<ClipCard clip={framed} onPlay={() => {}} />);
       fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
 
-      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+      expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
       // ...and the still is still there, which is the whole fallback.
-      expect(container.querySelector('img[src*="/v1/filler/thumb/"]')).toBeInTheDocument();
+      expect(container.querySelector('img[src*="aaaa1111"]')).toBeInTheDocument();
     });
 
     // ⚠ **Without a frame there is nowhere for the disc to sit** — and on a Tunarr-backed install,
@@ -266,7 +284,7 @@ describe("ClipCard", () => {
     // fallback, or the feature is invisible on exactly those installs.
     it("falls back to an action-row button when there is no thumbnail", () => {
       const onPlay = vi.fn();
-      render(<ClipCard clip={{ ...base, thumbnail: undefined }} onPlay={onPlay} />);
+      render(<ClipCard clip={{ ...base, thumbImage: undefined }} onPlay={onPlay} />);
 
       fireEvent.click(screen.getByRole("button", { name: /play/i }));
       expect(onPlay).toHaveBeenCalledOnce();

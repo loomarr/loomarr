@@ -64,7 +64,14 @@ type IncomingClipDTO struct {
 	// source is producing junk.
 	From       string `json:"from,omitempty"`
 	DurationMs int64  `json:"durationMs"`
-	Thumbnail  string `json:"thumbnail,omitempty"`
+	// ThumbImage is the extracted frame as an image-service record (§22).
+	//
+	// ⚠ It replaced a `thumbnail` string in V52 phase 8. That field held a path relative to the
+	// artwork cache and was only usable through /v1/filler/thumb/{hash}, which retired with it — a
+	// cache-relative path is not something a client can do anything with. Absent until the adoption
+	// job has reached the clip, or when no frame was extracted; both render as no image, never a
+	// placeholder.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the extracted frame; absent until adopted or when none was extracted"`
 	// Kind is what Loomarr already believes; Era/Audience/Category are its current tags.
 	Kind     string `json:"kind"`
 	Era      int    `json:"era,omitempty"`
@@ -257,11 +264,19 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 	}
 
-	out.Body.Clips = make([]IncomingClipDTO, 0, len(held))
+	// ⚠ The belt is COLLECTED before any of it is rendered, and that ordering is what keeps the
+	// artwork lookup batched (§22, V52 phase 8). Rendering inside the loops below would resolve one
+	// image per clip — the N+1 `clipArtworkResolver` exists to prevent — and the belt is the
+	// longest list on this tab, so it is the worst place to pay it.
+	type beltEntry struct {
+		clip store.Clip
+		row  filler.ClipPipeline
+	}
+	belt := make([]beltEntry, 0, len(held))
 	seen := make(map[string]bool, len(held))
 	for _, c := range held {
 		seen[c.Hash] = true
-		out.Body.Clips = append(out.Body.Clips, conveyorDTO(c, pipeByHash[c.Hash]))
+		belt = append(belt, beltEntry{clip: c, row: pipeByHash[c.Hash]})
 	}
 	// ⚠ A clip on the belt that is NOT held still belongs here. Holding and enrolment are set by
 	// different writers, so "enrolled but not held" is reachable — and a clip the machine is
@@ -274,7 +289,18 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		if cerr != nil {
 			continue
 		}
-		out.Body.Clips = append(out.Body.Clips, conveyorDTO(clip, row))
+		belt = append(belt, beltEntry{clip: clip, row: row})
+	}
+
+	beltClips := make([]store.Clip, 0, len(belt))
+	for _, e := range belt {
+		beltClips = append(beltClips, e.clip)
+	}
+	beltImg := s.clipArtworkResolver(ctx, beltClips)
+
+	out.Body.Clips = make([]IncomingClipDTO, 0, len(belt))
+	for _, e := range belt {
+		out.Body.Clips = append(out.Body.Clips, conveyorDTO(e.clip, e.row, beltImg))
 	}
 
 	// ⚠ Decisions first: work the operator OWES outranks work they merely watch. Within the
@@ -334,8 +360,9 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{AutoFiledOnly: true}); ferr != nil {
 		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
 	} else {
+		filedImg := s.clipArtworkResolver(ctx, filed)
 		for _, c := range filed {
-			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c)))
+			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c), filedImg))
 		}
 		// Highest confidence last: the ones worth a second look are the ones Loomarr was least
 		// sure about, so they sort to the top where an operator scanning the list meets them first.
@@ -407,8 +434,8 @@ const (
 // zero-value `row` (no pipeline row at all) is the only case that falls back to the V38 test, and
 // it exists for one population: clips catalogued before V51b. Treating "no row" as "still being
 // prepared" would strand them in a section that says nothing needs the operator, forever.
-func conveyorDTO(c store.Clip, row filler.ClipPipeline) IncomingClipDTO {
-	dto := incomingDTO(c, askReasonFor(c))
+func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageDTO) IncomingClipDTO {
+	dto := incomingDTO(c, askReasonFor(c), img)
 	if row.ClipHash == "" {
 		dto.NeedsDecision = true
 		return dto
@@ -454,14 +481,22 @@ func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRe
 
 // incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row
 // cannot drift into describing the same clip differently.
-func incomingDTO(c store.Clip, reason string) IncomingClipDTO {
-	return IncomingClipDTO{
+//
+// `img`, when non-nil, resolves an image hash to its record. Pre-resolved BY THE CALLER so a belt
+// of forty clips costs one batched lookup rather than forty — the same rule the catalog grid
+// follows, and the reason clipArtworkResolver takes a slice (§22).
+func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) IncomingClipDTO {
+	d := IncomingClipDTO{
 		Hash: c.Hash, Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
-		Thumbnail: c.Thumbnail, Kind: string(c.Kind), Era: c.Era,
+		Kind: string(c.Kind), Era: c.Era,
 		Audience: string(c.Audience), Category: c.Category,
 		SuggestedEra: c.SuggestedEra, Reason: reason,
 		Confidence: c.Confidence, AutoFiled: c.AutoFiled,
 	}
+	if img != nil {
+		d.ThumbImage = img(c.ThumbImageHash)
+	}
+	return d
 }
 
 // autoFiledReason says why Loomarr filed this without asking, in the operator's terms.

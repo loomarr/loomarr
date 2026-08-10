@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -13,17 +12,22 @@ import (
 	"github.com/mantonx/loomarr/internal/images"
 )
 
-// Channel icon upload + serve. Both are Huma operations registered in registerChannels: the
-// serve is a rawOp (it returns image bytes with their own Content-Type), the upload takes a
-// huma.MultipartFormFiles body. The bytes live in the DB (channel_icons), so there's no
-// writable-asset-dir config and the icon rides the §16 backup.
+// Channel icon UPLOAD. One Huma operation, registered in registerChannels, taking a
+// huma.MultipartFormFiles body.
 //
-// Flow: the FE POSTs an image → uploadChannelIcon stores the bytes + sets the channel's
-// logo to the absolute serve URL → the reconcile pushes that URL to Tunarr's channel icon →
-// Tunarr fetches GET /v1/channels/{id}/icon directly. The serve URL is built from the upload
-// request's Host (the reachable address the admin's browser used), which on a homelab is the
-// same host/IP Tunarr resolves — so no new public-base-URL setting is needed. An operator on
-// an unusual topology can always PATCH an explicit logo URL instead.
+// Flow: the FE POSTs an image → uploadChannelIcon ingests the bytes into the image service and
+// sets the channel's logo to the content-addressed URL → the reconcile pushes that URL to
+// Tunarr's channel icon → Tunarr fetches GET /v1/images/{hash}/w500.jpg directly, unauthenticated.
+//
+// ⚠ **There is no serve half here any more.** Until V52 phase 8 the bytes lived in the DB
+// (`channel_icons`) and a sibling route served them, which is why this comment used to describe a
+// blob that rode the §16 backup and a URL built from the upload request's Host. Both are gone: the
+// image service owns storage (§22), and its URLs derive from the operator-configured
+// `server.public_url` rather than from an attacker-controllable request header.
+//
+// The §16 trade is recorded rather than lost — an upload is the one image origin that cannot be
+// re-fetched after losing /data/images, which §22's Durability section accepts and the GC surfaces
+// as a system warning.
 
 // maxIconBytes caps an upload at 2 MiB — a channel icon is a small poster/logo; this fences
 // a hostile or accidental large upload out of the DB blob without a config knob.
@@ -126,7 +130,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 			"The image service isn't configured on this instance.")
 	}
 
-	// ⚠ The bytes go to the image service (§22), NOT into the database. `channel_icons` stored
+	// ⚠ The bytes go to the image service (§22), NOT into the database. `channel_icons` stored retired-ok
 	// them as a BLOB specifically so they would ride the §16 backup; §22 reverses that trade
 	// deliberately and records what replaces the guarantee (uploads are the one unrecoverable
 	// origin — see Durability). The Ref recorded here is what keeps the GC from collecting the
@@ -163,32 +167,14 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	return out, nil
 }
 
-// serveChannelIcon handles GET /v1/channels/{id}/icon — the raw image Tunarr/Emby fetch.
-// Public (no auth): Tunarr fetches it machine-to-machine with no credentials, exactly like
-// it fetches a TMDB poster URL; the bytes are a non-secret channel icon. A missing icon 404s
-// (the channel uses a TMDB/URL logo, or none).
-func (s *Server) serveChannelIcon(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	ct, data, updatedAt, ok, err := s.store.GetChannelIcon(r.Context(), id)
-	if err != nil {
-		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't load the icon", "Something went wrong reading the image.")
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	// nosniff so a browser can't re-interpret the bytes as HTML/script regardless of the
-	// declared type — defense in depth even though the allowlist is raster-only (no SVG).
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	// A stored icon is immutable for its updated_at; the ?v= cache-bust changes on re-upload,
-	// so a long cache is safe and keeps Tunarr/Emby from refetching every guide build.
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("Last-Modified", updatedAt.UTC().Format(http.TimeFormat))
-	_, _ = w.Write(data)
-}
+// ⚠ **`serveChannelIcon` and `GET /v1/channels/{id}/icon` were RETIRED in V52 phase 8.** They
+// served icon bytes out of the `channel_icons` table — a second image store, addressed by CHANNEL retired-ok
+// rather than by content, needing a `?v=` cache-bust precisely because its URL could not change
+// when its bytes did. Phase 5 moved uploads to the image service and left that route as the
+// migration window for icons uploaded before it; the window is closed and the table is gone.
+//
+// What replaced it is `channelLogoURL` below: a content-addressed /v1/images URL that Tunarr and
+// the media server fetch exactly as they fetched this one, with an honest immutable cache.
 
 // channelLogoURL builds the icon URL stored on the channel and pushed to Tunarr. It delegates
 // to the image service's URLFor, which derives the base from the OPERATOR-CONFIGURED

@@ -1,6 +1,6 @@
 import type { IncomingClipDTO } from "@loomarr/api";
-import { clipThumbURL, formatClipDuration } from "@loomarr/core";
-import { Caption, Disclosure } from "@/components/ui";
+import { formatClipDuration } from "@loomarr/core";
+import { Caption, Disclosure, Image } from "@/components/ui";
 import { ClipPipeline, copyFor } from "../../clip-pipeline";
 
 // One row of the Incoming conveyor for a clip the MACHINE still owns (§10 V51b/V51e).
@@ -41,16 +41,21 @@ const PreparingRow = ({ clip, ladder }: { clip: IncomingClipDTO; ladder: string[
               make anything else in here unreachable by keyboard. */}
           <Disclosure.Trigger label={`Show what is happening to ${name}`} />
 
-          {/* ⚠ Rendered only when the row says a thumbnail EXISTS. A clip still at `probe` has
-              none, and firing an <img> at /v1/filler/thumb/{hash} on the strength of the hash
-              alone would draw a broken image for exactly the newest rows — the ones an operator
-              is most likely to be watching. */}
-          {clip.thumbnail && (
-            <img
-              src={clipThumbURL(clip.hash)}
+          {/* ⚠ Rendered only when the row actually HAS an artwork record. A clip still at `probe`
+              has none, and drawing an image on the strength of the hash alone would show a broken
+              one for exactly the newest rows — the ones an operator is most likely watching.
+              That reasoning is unchanged from V51e; only what answers "is there artwork?" moved.
+
+              ⚠ `thumbImage`, not `thumbnail`: V52 phase 8 retired that field and the
+              /v1/filler/thumb route it addressed. A clip on this belt is the LEAST likely to have retired-ok
+              been adopted yet — it is being prepared right now — so the absent case is the common
+              one here, and it renders as no image rather than a placeholder. */}
+          {clip.thumbImage && (
+            <Image
+              image={clip.thumbImage}
               alt=""
+              sizes="3.5rem"
               className="h-8 w-14 shrink-0 rounded object-cover"
-              loading="lazy"
             />
           )}
 
