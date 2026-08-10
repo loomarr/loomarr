@@ -229,9 +229,30 @@ fe-lint: ## Biome lint + format check (web/)
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
+# FE_SHARD is a CI-only passthrough (`make fe FE_SHARD=1/2`), same contract as GO_SHARD and
+# PW_SHARD: EMPTY by default so a local `make fe` runs the whole suite. The shard COUNT lives
+# in ci.yml's `matrix.shard`.
+#
+# ⚠ ONLY apps/web is sharded, and that is not arbitrary. 166 of the 172 test files live there;
+# the other three packages hold 12 between them. More importantly `packages/core` and
+# `packages/tokens` run plain `vitest run` WITHOUT --passWithNoTests, so any shard that handed
+# them zero files would exit non-zero — a red CI caused purely by the split, appearing only at
+# higher shard counts. They stay unsharded, which is both safe and free.
+#
+# ⚠ NO `--` BEFORE THE FLAG. `pnpm --filter X test -- --shard=1/2` passes `-- --shard=1/2` to
+# vitest, which reads it as a FILENAME FILTER, matches nothing, falls back to everything, and
+# exits 0 having run all 166 files. Measured while writing this: the `--` form reported "166
+# passed" for BOTH shards — a green, doubled, entirely unsharded run that looks exactly like a
+# working one. The form below reports 83 and 83.
+FE_SHARD ?=
+FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
+
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
+	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck \
+	  && pnpm --filter '!@loomarr/web' -r --parallel test \
+	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
+	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: storybook
