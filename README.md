@@ -4,131 +4,120 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 
-Turn a natural-language channel intent into a live, self-maintaining
-[Tunarr](https://tunarr.com) channel: suggest a lineup (LLM, grounded against your library),
-acquire what's missing (Seerr → Sonarr/Radarr), schedule and insert era-appropriate commercial
-pods, push to Tunarr, and backfill as content lands.
+**Describe a TV channel in a sentence. Loomarr builds it, plays it, and keeps it running.**
 
-> **Status:** under construction, built in verifiable phases (0–14). See
-> [`PROGRESS.md`](PROGRESS.md) for the current phase and [`docs/design.md`](docs/design.md) for
-> the full design (the single source of truth).
+> *"90s Saturday morning cartoons for the kids"*
 
-## Stack
+It proposes a lineup grounded in your actual library, requests anything missing, schedules it
+with era-appropriate ad breaks, streams it to your media server as Live TV, and backfills the
+gaps as downloads land.
 
-Go 1.26 single binary · stdlib `net/http` + [Huma v2](https://huma.rocks) (code-first OpenAPI
-3.1, exported to [`api/openapi.yaml`](api/openapi.yaml) and consumed by the frontend via orval) ·
-`database/sql` over `modernc.org/sqlite` **or** `pgx` (Postgres) · goose migrations · an
-embedded Vite + React + TypeScript SPA (and the help docs) baked into the binary, so a single
-image serves API + UI + docs offline. LLM via local **Ollama** or any OpenAI-compatible provider.
-Distroless, non-root, cgo-free (~8 MB image). Full rationale in [`docs/design.md`](docs/design.md) §14.
+```mermaid
+graph LR
+  I["<b>Your intent</b><br/><i>one sentence</i>"]
+  P["<b>Proposal</b><br/>lineup + what's missing"]
+  A{"<b>You approve</b>"}
+  C["<b>Channel</b><br/>scheduled with ad breaks"]
+  T["<b>Live TV</b><br/>in Emby / Jellyfin"]
+  Q["<b>Acquire</b><br/>Seerr → Sonarr/Radarr"]
+
+  I -->|"grounded against<br/>your library + TMDB"| P
+  P --> A
+  A -->|"the only step<br/>that spends anything"| C
+  A --> Q
+  C --> T
+  Q -.->|"fills in as<br/>titles arrive"| C
+
+  classDef hi fill:#8a5a1a,stroke:#5c3b10,color:#fff
+  classDef norm fill:#2b3b52,stroke:#1b2736,color:#dbe4ef
+  classDef go fill:#1f6f4a,stroke:#134a31,color:#fff
+  class A hi
+  class T go
+  class I,P,C,Q norm
+```
+
+Every pick is **grounded** — a real title from your library or TMDB. The model can't invent one.
+Nothing is downloaded and no channel is created until an admin approves.
+
+The LLM runs locally through Ollama by default, so nothing leaves your network; any
+OpenAI-compatible provider works too. [What each option sends](docs/dev/ai.md#ai-as-a-feature).
+
+## Install
+
+You need **Emby or Jellyfin**. Everything else is optional and can be added later.
+
+```bash
+git clone https://github.com/mantonx/loomarr && cd loomarr
+docker compose -f docker/compose.yaml --profile sqlite up -d
+```
+
+Open `http://<host>:8080` and the setup wizard takes it from there.
+
+> No `v*` tag has been cut yet, so there is no published image and the command above **builds
+> locally**. Once a release is tagged this becomes a plain `docker pull`.
+
+→ **[Installation guide](docs/install/index.md)** · [Docker](docs/install/docker.md) ·
+[Hardware acceleration](docs/install/hardware.md) · [Upgrading](docs/install/upgrading.md) ·
+[Configuration reference](docs/configuration.md)
+
+## How it plays
+
+By default **Loomarr streams your channels itself** — it encodes and serves a tuner your media
+server picks up as Live TV, with nothing else to install. **Tunarr** is a fully supported
+alternative, chosen in the wizard and overridable per channel; pick it when your hardware can't
+transcode, or when you already run it.
 
 ## Develop
 
-Requires Go 1.26+, Node 22.5+, `ffmpeg`/`ffprobe` on PATH, Docker (from Phase 4 for Postgres testcontainers).
+Go 1.26+, Node 22.5+, `ffmpeg`/`ffprobe` on `PATH`, Docker for the Postgres and Playwright
+suites.
 
 ```bash
-make check      # fmt + vet + lint + unit tests  (the default gate)
-make build      # static binary -> bin/loomarr
-make dev        # dev dependencies (persistent Tunarr wired to Emby)
+make check          # the gate: fmt + vet + vet-tags + lint + unit tests
+make fe-install     # pnpm install — nothing else does this
+make dev-be         # backend :8080 with live reload
 ```
 
-The full `make` contract (`test-pg`, `openapi`, `fe`, `e2e`, `seed`, …) is in the
-[`Makefile`](Makefile); unimplemented targets fail loudly until their phase lands.
-
-Copy [`.env.example`](.env.example) to `.env` and fill in (config reference: `docs/design.md` §15).
-
-### Working on the app itself
-
-Two processes, each with live reload — run them in separate terminals:
-
-```bash
-make dev-be     # backend on :8080  — Air rebuilds + restarts on any Go change
-pnpm --filter @loomarr/web dev   # frontend on :5173 — Vite HMR (run from web/)
-```
-
-Develop against **:5173**. It proxies `/v1` to :8080, so both halves reload as you edit.
-
-⚠ **:8080 serves the embedded SPA that was built into the binary, not your working copy** —
-it is only stale-looking, never wrong, but a frontend change will not appear there.
-
-⚠ **A backend started with a bare `go run ./cmd/loomarr` does not reload.** Go's `run`
-supervises rather than execs, so killing the terminal can orphan the child; it then keeps
-serving pre-change code with no indication anything is out of date. If an API change is not
-showing up, check `curl -s localhost:8080/v1/system/version` — it reports the commit it was
-built from and whether the tree was dirty. Use `make dev-be` and this cannot happen.
-
-## Run (Docker)
-
-```bash
-docker compose -f docker/compose.yaml --profile sqlite   up -d   # SQLite backend
-docker compose -f docker/compose.yaml --profile postgres up -d   # Postgres backend
-```
-
-Add `--profile ai` to either to run a local Ollama (the default `LLM_PROVIDER`); omit it
-for a hosted or external LLM. Filler in-app clip download needs neither a profile nor a
-tag — the vendored yt-dlp + ffmpeg ship in the one published image (see `docs/design.md`
-§16).
-
-## Layout
-
-```text
-cmd/loomarr/         # main (Phase 1)
-internal/config/     # §15 env config
-internal/httpx/      # shared outbound HTTP client factory (§6 timeouts)
-internal/api/        # inbound HTTP (§7; Huma mounts here in Phase 8)
-internal/testkit/    # shared mocks + Phase-0 pinned fixtures (all tests use these)
-internal/…           # provision, store, library, schedule, suggest, filler (later phases)
-api/vendor/          # pinned external specs (Tunarr OpenAPI)
-docs/                # design.md (truth), companion designs, help/ (in-app Help), integrations/
-docker/              # deployment + dev compose, Dockerfile context
-```
+→ **[Developer guide](docs/dev/index.md)** · [Setup](docs/dev/setup.md) ·
+[Dev loop](docs/dev/dev-loop.md) · [Testing](docs/dev/testing.md) · [CI](docs/dev/ci.md) ·
+[Commands](docs/dev/commands.md)
 
 ## Documentation
 
-- **In-app Help** — the user-facing set ([`docs/help/`](docs/help/)) is embedded and served at
-  `/v1/docs`; open **Help** in the app. Start with [Quickstart](docs/help/quickstart.md).
-- **Design** — [`docs/design.md`](docs/design.md) is the single source of truth. Companion
-  designs: [`programming-design.md`](docs/programming-design.md),
-  [`config-design.md`](docs/config-design.md), [`frontend-design.md`](docs/frontend-design.md).
+| For | Where |
+| --- | --- |
+| Installing and running | [`docs/install/`](docs/install/index.md) |
+| Using it | [`docs/help/`](docs/help/quickstart.md) — also served in-app under **Help** |
+| Contributing | [`docs/dev/`](docs/dev/index.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| How it works | [`docs/design.md`](docs/design.md) — the single source of truth |
+
+The help pages are embedded in the binary and rendered offline, so they work air-gapped. The
+same files are rendered by the docs site — one source, three renderers, no copies.
+
+## Stack
+
+A single Go binary with the web UI, help pages and API baked in. stdlib `net/http` + Huma v2
+(code-first OpenAPI 3.1, consumed by the frontend through orval) · `database/sql` over
+`modernc.org/sqlite` **or** pgx · goose migrations · an embedded Vite + React SPA · ffmpeg for
+playout · LLM via local Ollama or any OpenAI-compatible provider. Non-root, cgo-free.
+Rationale in [`docs/design.md`](docs/design.md) §14.
 
 ## Operations
 
-- **Config** — everything is an env var ([`.env.example`](.env.example)); an env-set value locks
-  its field in Settings. Full reference: `docs/design.md` §15.
-- **Backup** — SQLite: `GET /v1/backup` streams a consistent snapshot, e.g. nightly:
-  `curl -sH "Authorization: Bearer $API_TOKEN" localhost:8080/v1/backup > loomarr-$(date +%F).db`.
-  Postgres: use `pg_dump` directly (the scratch image ships none, so `/v1/backup` returns 501).
-  Backups contain secrets — keep them safe.
-- **Upgrade** — migrations are forward-only, so the ritual is **back up, then pull.** Restore a
-  SQLite install by replacing `/data/loomarr.db`.
-- **Probes** — `/v1/healthz` and `/v1/readyz` are unauthenticated on the LAN for Docker
-  healthchecks and orchestrators. The bare `/healthz` and `/readyz` still answer identically
-  and always will: a healthcheck lives in someone's compose file, not in this repo, so the
-  paths moved under `/v1` without anything having to be reconfigured.
-- **Metrics** — `/v1/metrics` exposes Prometheus text (unauthenticated on the LAN; `/metrics`
-  is kept as an alias for existing scrape configs). Currently:
-  HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route),
-  the Go runtime + process collectors, the state gauges (`loomarr_titles{state}`,
-  `loomarr_jobs{status}`, `loomarr_active_sessions`), the event counters
-  (`loomarr_auth_logins_total{result}`, `loomarr_webhook_events_total{type}`), and the
-  latency series — outbound client RED per dependency (`loomarr_outbound_requests_total`,
-  `loomarr_outbound_request_duration_seconds`, labelled by `target`: tunarr/library/llm/…)
-  and channel reconcile timing (`loomarr_channel_reconciles_total{result}`,
-  `loomarr_channel_reconcile_duration_seconds`); and the domain counters —
-  `loomarr_llm_tokens_total{kind}`, `loomarr_filler_pods_total{match_level}` (fallback-ladder
-  depth), `loomarr_channel_slot_substitutions_total` (slot drift). This covers the §17 metric
-  set; **cost** is intentionally left to a dashboard recording rule (tokens × your provider's
-  posted rate) rather than a baked-in price table that would drift.
+- **Probes** — `/v1/healthz` and `/v1/readyz`, unauthenticated on the LAN. Bare `/healthz` and
+  `/readyz` answer identically and always will: a healthcheck lives in someone's compose file,
+  not in this repo.
+- **Metrics** — `/v1/metrics` exposes Prometheus text: HTTP RED, Go runtime, state gauges,
+  outbound per-dependency latency, channel reconcile timing, and the domain counters. Cost is
+  deliberately left to a dashboard recording rule rather than a price table that would drift.
+- **Backup** — `GET /v1/backup` for SQLite; `pg_dump` for Postgres. Backups contain secrets.
 
 ## Contributing
 
-Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
-the conventions that keep the tree green (doc-first, one gate per change, generated
-files never hand-edited). By participating you agree to the
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). By participating you agree to the
 [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE). Bundled and vendored components (notably the GPL `ffmpeg`) are
-inventoried in
+[MIT](LICENSE). Bundled components — notably the GPL `ffmpeg` — are inventoried in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

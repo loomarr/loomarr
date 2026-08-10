@@ -1,6 +1,9 @@
 # Playout prior art — Tunarr, ErsatzTV, viewra
 
-**Read before building V6.** Three working systems were mined rather than guessing at an
+> **ARCHIVED — this is a record, not an instruction.** V6 shipped; internal playout is the
+> default backend. The design this research produced is [`docs/design.md`](../../design.md) §9.1.
+
+**Read before building V6** *(as originally written)*. Three working systems were mined rather than guessing at an
 encoder. Two of them solve *exactly* our problem — and **they disagree about the central
 mechanism**, which is the most useful thing in this document.
 

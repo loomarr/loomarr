@@ -4,9 +4,18 @@ The short version of how Loomarr thinks.
 
 ## Who does what
 
-Loomarr decides **what plays and in what order**. It doesn't stream or transcode —
-**Tunarr** does that, and your **media server** owns the library. If you stop using
-Loomarr, the channels keep playing.
+Your **media server** (Emby or Jellyfin) owns the library — Loomarr only reads it.
+
+Loomarr decides **what plays and in what order**, and by default it also **plays it**:
+it encodes the stream and serves a tuner your media server picks up as Live TV. That is
+the `internal` playout backend, and it is what a new install gets.
+
+**Tunarr is the alternative**, chosen on the Playout step of the wizard and re-decidable
+per channel. Pick it when your hardware can't transcode, or when you already have Tunarr
+working. Loomarr then decides what plays and hands the schedule to Tunarr, which streams it.
+
+The difference that matters day to day: on the default backend, **Loomarr must be running
+for channels to play**. On the Tunarr backend, they keep playing without it.
 
 ## Intent → proposal → channel
 

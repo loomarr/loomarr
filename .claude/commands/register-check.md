@@ -13,9 +13,9 @@ file does not exist here — the v2 build plan references defect ids like `S2`, 
 without ever defining them, and `v2-build-plan.md` §8 records the companion plans as
 missing. So this checks the two registers this repo actually has:
 
-- **`docs/engineering/v2-build-plan.md` §4** — the phase table. Every row not marked done
+- **`docs/engineering/archive/v2-build-plan.md` §4** — the phase table. Every row not marked done
   in `PROGRESS.md`.
-- **`docs/engineering/v2-build-plan.md` §8** — "Known gaps in this plan".
+- **`docs/engineering/archive/v2-build-plan.md` §8** — "Known gaps in this plan".
 
 This is not hypothetical. `V7`, `V7b`, `V7c`, `V19` and `V24` were all complete in code and
 absent from `PROGRESS.md`, so the plan's "next up" pointed at finished work and a session

@@ -14,7 +14,7 @@ criteria and the artifact will not.
 **1. Assemble the brief. Do not analyse it yourself.**
 
 - `git diff main...HEAD` (or the working diff if not on a branch)
-- The phase's gate text, verbatim, from `docs/engineering/v2-build-plan.md`
+- The phase's gate text, verbatim, from `docs/engineering/archive/v2-build-plan.md`
 - The doc sections the gate references — the actual text, not your summary
 - The list of files touched
 

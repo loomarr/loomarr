@@ -1,6 +1,10 @@
 # Frontend Build Plan — Phase 13 (and its BE prerequisite)
 
-**Status:** approved sequencing, ready to execute · owner: phase 13
+> **ARCHIVED — this is a record, not an instruction.** Phase 13 shipped; the monorepo this
+> plans in future tense is the one in `web/` today. For the design system see
+> [`docs/frontend-design.md`](../../frontend-design.md).
+
+**Status (as written):** approved sequencing, ready to execute · owner: phase 13
 **Companion to:** `docs/frontend-design.md` (the "Test Card" design system — authoritative for *look/build*), `docs/design.md` §12/§13 (authoritative for *behavior*), `docs/config-design.md` §5–§7 (Settings IA), `design/` prototypes + `design/README.md` (pixel-perfect visual reference).
 **Precedence:** unchanged — `docs/design.md` wins on behavior; `frontend-design.md` wins on look; this doc is *process* (sequencing, gates, the FE↔BE reconciliation) and never overrides either.
 

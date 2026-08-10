@@ -1,6 +1,6 @@
 # Loomarr Frontend — Architecture & Design System ("Test Card")
 
-**Status:** Draft for implementation · companion to `loomarr-design.md`
+**Status:** Implemented · companion to [`design.md`](design.md)
 **Precedence:** the main design doc is authoritative for *behavior* (endpoints, flows, auth, phases). This doc is authoritative for *how the frontend looks and is built*. Conflicts → main doc wins on what, this doc wins on how; fix the loser in the same PR.
 **Language policy (main doc §14) applies:** everything here is build-time tooling and libraries that compile to static assets embedded in the Go binary.
 

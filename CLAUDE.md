@@ -53,46 +53,31 @@ sessions' worth of Docker Playwright runs on identical PNGs.
 
 A table the agent maintains — one row per phase: `phase | status (todo/active/done) | gate evidence (commit SHA + test command that proves it) | notes/deviations`. Phase-0 findings (contract surprises, Tunarr version, API-key answer) go in notes.
 
-## Commands (the harness contract — created in phase 1, used forever)
+## Commands
 
-```
-make check          # fmt + vet + vet-tags + golangci-lint + unit tests (the default gate)
-make test           # unit tests only
-make go-shard-verify # the GO_SHARD split must be a PARTITION of `go list ./...` (CI red on drift)
-                    # ⚠ A real gate, not a sanity check: a split that DROPS a package does not fail
-                    # — those tests never run, every shard reports success, and CI is green over
-                    # code it did not execute. CI runs this BEFORE the suite.
-make vet-tags       # go vet over the `//go:build ffmpeg|eval|integration` sources
-                    # ⚠ these files are INVISIBLE to plain `go vet ./...` and to golangci-lint —
-                    # both ask the build system which files exist. `go vet ./...` exited 0 while
-                    # `go vet -tags '…' ./...` exited 1 for MONTHS, and the one test that proves
-                    # programs actually sequence had not compiled since V47 (GH #227 §1).
-                    # ⚠ A tagged `go build` would NOT catch this: `go build ./...` skips _test.go
-                    # entirely and 9 of the 11 tagged files are tests. Only vet typechecks them.
-make tags-verify    # the Makefile's hand-maintained TAGS list still covers every tag in the tree
-make test-pg        # store conformance vs Postgres (testcontainers; requires Docker)
-make openapi        # export api/openapi.yaml from the running definitions
-make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
-make openapi-verify # regenerated spec must match committed (CI red on drift)
-make retired-verify # retired identifiers must not appear as live instructions (CI red on drift)
-make ci-lint        # actionlint over .github/workflows (a workflow can be valid YAML and still be rejected)
-                    # ⚠ needs shellcheck on PATH — without it actionlint SKIPS the shell half and exits 0 locally while CI fails
-make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
-make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
-make storybook      # Storybook dev workshop (the component gallery/contract)
-make storybook-build # offline storybook-static build (what fe-visual snapshots)
-make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
-                    # runs the WHOLE suite locally (389 stories x 2 viewports, ~780 tests as of
-                    # 2026-08-09); CI splits it with PW_SHARD (wall-clock only, never locally)
-                    # ⚠ Don't write the shard COUNT here or in the Makefile. It lives in ci.yml's
-                    # `matrix.shard`, and the denominator derives from `strategy.job-total`. This
-                    # line used to say "624 … --shard=N/2" long after both had changed.
-make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
-make e2e            # wizard flow smoke + page snapshots vs a mocked backend (Docker)
-make e2e-update     # sanctioned e2e page-snapshot baseline update (reviewed in PR)
-make dev            # dev compose stack
-make seed           # populate a dev store (fake users/titles/channels/clips via testkit)
-```
+**`make check` is the gate. Run it before every push.**
+
+⚠ **The full target list is NOT reproduced here.** It lives in
+[`docs/dev/commands.md`](docs/dev/commands.md), which is **generated** from the Makefile's `##`
+doc comments plus the `make` invocations in `.github/workflows`, and gated by
+`make dev-docs-verify`.
+
+This section used to carry a hand-written copy, and so did `README.md`, `CONTRIBUTING.md` and
+`AGENTS.md`. All four disagreed — on the Go version, the Node version, what `make fe` runs
+("Storybook browser tests", which do not exist), and the size of the visual suite, stated three
+ways with none correct. Twenty-one targets appeared in none of them. **Do not re-add a copy
+here**; fix the `##` doc comment in the Makefile and regenerate.
+
+The context that does *not* fit in a one-line target description — why `vet-tags` is not
+redundant, why `ci-lint` needs `shellcheck`, the ways a gate can exit 0 while proving nothing —
+is in [`docs/dev/testing.md`](docs/dev/testing.md) and [`docs/dev/ci.md`](docs/dev/ci.md). Read
+those before trusting a green.
+
+⚠ **`make tags-verify` is not a gate — on two counts.** No CI job runs it (it appears in
+`ci.yml` only inside a comment), and `scripts/check-tags.sh` could not fail if one did: it
+prints its two lists and exits 0, with an unfilled `TODO(maintainer)` for the comparison
+policy. The hand-maintained `TAGS` list therefore has no guard. See
+[`docs/dev/ci.md`](docs/dev/ci.md).
 
 CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a command doesn't exist yet for the active phase, creating it is part of the phase.
 
@@ -158,7 +143,8 @@ to get wrong:
 
 ## Environment prerequisites
 
-Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) — verify with `docker info` during phase 1 and record in PROGRESS.md. Playwright browsers install in phase 13. If Docker is unavailable in the current environment, stop and tell the maintainer; do not fake the Postgres conformance suite.
+Go 1.26+, Node 22.5+ (a hard floor — see [`docs/dev/setup.md`](docs/dev/setup.md)).
+**Docker is required from phase 4 onward** (testcontainers) — verify with `docker info` during phase 1 and record in PROGRESS.md. Playwright browsers install in phase 13. If Docker is unavailable in the current environment, stop and tell the maintainer; do not fake the Postgres conformance suite.
 
 ## Testing rules
 

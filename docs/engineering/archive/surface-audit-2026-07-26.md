@@ -1,5 +1,8 @@
 # Surface + drift audit — 2026-07-26
 
+> **ARCHIVED — a dated audit, not an open worklist.** Its findings were closed by the PRs it
+> prompted. For a current answer, re-run the `/surface-audit` command rather than reading this.
+
 Merged in **#86** (squashed as `d38d0dc`). Two audits run as parallel subagents
 (`/surface-audit channels`, `/doc-drift "design.md §12"`), verified against the code, with the
 outcome recorded here so the remaining work survives the session that found it.

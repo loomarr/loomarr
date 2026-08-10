@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,9 +20,30 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
+	}
+}
+
+// dispatch routes the command line. With no arguments — the ENTRYPOINT case — it boots
+// the server, so the shipped image's behaviour is unchanged.
+//
+// ⚠ main() previously ignored os.Args entirely, which meant every argument booted a
+// server. compose.yaml's healthcheck had been calling `/loomarr healthcheck` against
+// that for as long as the file existed: the argument was discarded and a second full
+// instance started, failed to bind the port, and exited non-zero every 30 seconds. The
+// unknown-subcommand error below is the part that keeps this honest — a typo now fails
+// visibly instead of quietly starting something.
+func dispatch(args []string) error {
+	if len(args) == 0 {
+		return run()
+	}
+	switch args[0] {
+	case "healthcheck":
+		return runHealthcheck()
+	default:
+		return fmt.Errorf("%w: %q", errUnknownSubcommand, args[0])
 	}
 }
 

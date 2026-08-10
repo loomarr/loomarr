@@ -1,5 +1,9 @@
 # Playout prior art — lessons from `mantonx/viewra`
 
+> **ARCHIVED — this is a record, not an instruction.** V6 shipped. Kept for the warnings it
+> collected. Current truth: [`docs/design.md`](../../design.md) §9.1.
+>
+
 > **Start with [`playout-prior-art.md`](playout-prior-art.md)** — it covers Tunarr and
 > ErsatzTV, which solve *exactly* our problem, and settles V6's central mechanism. This
 > document is the viewra-specific detail: same language as us, but VOD, so it is mostly a
