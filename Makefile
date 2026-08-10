@@ -6,6 +6,11 @@ GO      ?= go
 PKG     := ./...
 BIN_DIR := bin
 
+# CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
+# default — see the note on the `test` target, and PW_SHARD for the same contract on the
+# visual suite. Never set this in a local gate run.
+GO_SHARD ?=
+
 # Build-tagged sources are INVISIBLE to `go vet ./...` and to golangci-lint, because both ask
 # the Go build system which files exist and the build system honours `//go:build`. That blind
 # spot ran for months (GH #227 §1): `go vet ./...` exited 0 while `go vet -tags '…' ./...`
@@ -87,7 +92,26 @@ test: ## unit tests only (never touch the network — §19)
 # the assertions and every one of them still runs. What it must not do is hide growth: `internal/api`
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
-	$(GO) test -race -timeout 25m $(PKG)
+#
+# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`), the same contract as PW_SHARD:
+# EMPTY by default, so a local `make test` — and `make check` — runs the whole tree. Sharding must
+# never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
+# The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
+#
+# ⚠ `&&`, not a `$(shell ...)` expansion. `$(shell)` swallows a non-zero exit and yields the empty
+# string, and `go test` with NO packages exits 0 — so a bad GO_SHARD would have produced a silent
+# green over zero tests, which is the exact failure this sharding must not be able to cause. Here a
+# failing helper fails the recipe: `pkgs=$(...)` carries the substitution's status into the `&&`.
+	@pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))" && $(GO) test -race -timeout 25m $$pkgs
+
+.PHONY: go-shard-verify
+go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift)
+# ⚠ THIS IS A REAL GATE, not a sanity check. Sharding is the one optimization here that can
+# QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
+# run, every shard reports success, and CI is green over code it never executed. Nothing else in
+# the pipeline would notice. SHARDS must match ci.yml's `matrix.shard` count; CI passes it from
+# `strategy.job-total` so the two cannot drift apart.
+	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
