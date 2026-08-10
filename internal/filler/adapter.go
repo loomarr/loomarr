@@ -17,8 +17,35 @@ import (
 // to individual gaps.
 type PodAdapter struct {
 	catalog CatalogReader
-	policy  Policy
-	log     *slog.Logger
+	// policy is RESOLVED PER CALL, not captured once.
+	//
+	// ⚠ **It was a plain `Policy` value, and that quietly broke every filler setting's
+	// hot-apply.** `app.go` builds the struct at boot with `set.intv(…)`/`set.dur(…)`, so the
+	// values were a snapshot: changing `filler.pod_max`, `filler.min_quality` or (from V51f)
+	// `filler.min_clip_duration`/`max_clip_duration` did nothing until the process restarted.
+	// The setting persisted, the API read it back, and the assembler kept using the old number.
+	//
+	// ⚠ **No test could see it, and that is structural rather than an oversight.** Every unit
+	// test constructs a `Policy` literal and calls `Assemble`/`Coverage`/`PoolCounts` directly,
+	// so they exercise the FIELD and never the wiring from a setting to it. Found on the live
+	// stack: `filler.max_clip_duration=45s` left `PoolReport.Eligible` at 20 with a 64s clip in
+	// the catalog, and it dropped to 19 only after a restart.
+	//
+	// config-design §3 defines hot-apply for long-lived clients, and `AutoSplitPolicy` in this
+	// package already resolves per call for exactly this reason. This is the same fix applied one
+	// layer out: the DOMAIN functions still take a plain `Policy` value — they are pure and their
+	// tests stay literal — and only the boundary that owns a settings service resolves it.
+	policy func() Policy
+	log    *slog.Logger
+}
+
+// pol resolves the current policy. A nil resolver means "no policy" (the zero value), which is
+// what the majority of callers — tests and installs with nothing configured — actually want.
+func (a *PodAdapter) pol() Policy {
+	if a.policy == nil {
+		return Policy{}
+	}
+	return a.policy()
 }
 
 // CatalogReader loads clips for pod assembly (implemented by the store).
@@ -42,7 +69,10 @@ type Selection struct {
 }
 
 // NewPodAdapter builds the scheduler-facing pod assembler.
-func NewPodAdapter(catalog CatalogReader, policy Policy, log *slog.Logger) *PodAdapter {
+//
+// ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
+// next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
+func NewPodAdapter(catalog CatalogReader, policy func() Policy, log *slog.Logger) *PodAdapter {
 	return &PodAdapter{catalog: catalog, policy: policy, log: log}
 }
 
@@ -128,7 +158,11 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	if len(clips) == 0 {
 		return Pod{}, nil
 	}
-	podMax := a.policy.PodMax
+	// ⚠ Resolved ONCE and reused below. Calling the resolver twice in one assembly could read
+	// two different snapshots if a setting is written between them — a pod sized by one policy
+	// and filled by another, which is a bug that would appear only under a concurrent write.
+	pol := a.pol()
+	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)
 	}
@@ -137,7 +171,7 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
 	w := a.windowFor(channelID, seed, sel, podMax)
-	return Assemble(clips, w, a.policy, map[string]bool{}), nil
+	return Assemble(clips, w, pol, map[string]bool{}), nil
 }
 
 // windowFor builds the Window a channel's selection describes.
@@ -186,13 +220,14 @@ func (a *PodAdapter) Catalog(ctx context.Context) ([]Clip, error) { return a.cat
 // would eventually let them disagree. Sharing the computation is the invariant; re-reading the
 // catalog was never part of it.
 func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection) CoverageReport {
-	podMax := a.policy.PodMax
+	pol := a.pol()
+	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
 	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
 	// so nobody threads a real seed through expecting it to matter.
-	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy)
+	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), pol)
 }
 
 // FitForChannel reports how ONE clip relates to one channel's selection (§10 V35 item 1.7).
@@ -202,13 +237,14 @@ func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection)
 // than loading the catalog: the caller (the picker) already has it, and re-reading the whole
 // catalog once per channel row would make an N-channel picker an N-catalog-load operation.
 func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit {
-	podMax := a.policy.PodMax
+	pol := a.pol()
+	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
 	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
 	// of one break, so a real seed would imply an answer that varies per pod.
-	return FitFor(c, a.windowFor(channelID, 0, sel, podMax), a.policy)
+	return FitFor(c, a.windowFor(channelID, 0, sel, podMax), pol)
 }
 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material
@@ -221,7 +257,7 @@ func (a *PodAdapter) PoolCounts(ctx context.Context) (PoolReport, error) {
 	if err != nil {
 		return PoolReport{}, err
 	}
-	return PoolCounts(clips, a.policy), nil
+	return PoolCounts(clips, a.pol()), nil
 }
 
 var _ interface {

@@ -26,7 +26,7 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 // A preview that could drift from what actually ships is worse than no preview: it
 // would confidently show an operator commercials their channel never receives.
 func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
 	ctx := context.Background()
 	const channelID, era = "ch-1", 1992
 	const seed int64 = 424242
@@ -76,7 +76,7 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 // The sample catalog's commercials are all audience=kids, which is exactly the case that
 // used to yield nothing.
 func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
 	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 42, filler.Selection{Era: filler.Year(1992)})
 	if !ok {
 		t.Fatal("no filler list built from a catalog full of era-matching commercials")
@@ -102,7 +102,7 @@ func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 // seed must preview identically on every call, or "what you see is what you get" holds
 // only until the next refresh (§10 seeded-deterministic, §19).
 func TestPreviewIsSeedDeterministic(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, nil, discardLogger())
 	ctx := context.Background()
 
 	first, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: filler.Year(1992)})
@@ -127,7 +127,7 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 // An empty catalog is a normal state the UI renders as "no clips yet" — not an error,
 // and not a reason for the channel to fail. Reconcile treats it as "attach nothing".
 func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
-	adapter := filler.NewPodAdapter(stubCatalog{}, filler.Policy{}, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{}, nil, discardLogger())
 	pod, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{})
 	if err != nil {
 		t.Fatalf("empty catalog returned an error: %v", err)
@@ -145,7 +145,7 @@ func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 // deliberately different handling at the two call sites.
 func TestPreviewSurfacesCatalogErrorWhileReconcileDegrades(t *testing.T) {
 	boom := errors.New("store is down")
-	adapter := filler.NewPodAdapter(stubCatalog{err: boom}, filler.Policy{}, discardLogger())
+	adapter := filler.NewPodAdapter(stubCatalog{err: boom}, nil, discardLogger())
 
 	if _, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{}); !errors.Is(err, boom) {
 		t.Errorf("preview swallowed the catalog error: %v", err)
