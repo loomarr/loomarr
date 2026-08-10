@@ -1,4 +1,4 @@
-import { authApi } from "@loomarr/api";
+import { ApiError, authApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -68,12 +68,26 @@ const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
-    } catch {
+    } catch (err) {
+      // ⚠ **Only a 401 means "signed out".** This used to be a bare `catch {}`, and with
+      // `meQueryOptions` setting retry:false ("a 401 is a definite answer") NOTHING inspected the
+      // status — so a network blip, a 500, a proxy hiccup or this app's own self-restart bounced a
+      // user holding a perfectly valid cookie to /login?redirect=… . That is not an edge case
+      // here: RestartWatchProvider/RestartOverlay are wired into this very layout because the
+      // operator can restart the server from the Dashboard, and every such restart hit this path.
+      //
+      // A non-401 is rethrown so it surfaces as the failure it is — the restart overlay and the
+      // error boundary exist to handle exactly that, and neither can if the guard has already
+      // reported it as a logged-out session.
+      if (!(err instanceof ApiError) || err.status !== 401) throw err;
+
       // No session. Before sending them to a login form, ask whether this install
       // even HAS accounts yet (§7/§13): on a fresh one, /login is a door with no key
       // — nothing on the page says the install is unclaimed, so the owner is simply
       // stuck. Only reached on the 401 path, so a claimed install pays nothing.
       if (await needsBootstrap(context.queryClient)) throw redirect({ to: "/wizard" });
+      // `location.href` is path+search+hash with no origin, so it is same-app by construction;
+      // /login's validateSearch validates it again on arrival regardless.
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },

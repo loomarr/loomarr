@@ -1,7 +1,7 @@
 import { authApi, setupApi } from "@loomarr/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { meQueryOptions, needsBootstrap } from "@/auth";
+import { meQueryOptions, needsBootstrap, safeRedirectPath } from "@/auth";
 import { LoginForm, LoginShell } from "@/components/loomarr";
 import { useDocumentTitle } from "@/lib";
 
@@ -23,9 +23,17 @@ const LoginScreen = () => {
   const queryClient = useQueryClient();
   const { redirect: dest, sso: ssoError } = Route.useSearch();
 
+  // ⚠ REPLACE, not push. Pushing leaves /login?redirect=… in the back stack, so the first Back
+  // press after signing in lands on the login route, whose guard immediately redirects forward
+  // again — Back appears broken rather than slow.
+  //
+  // ⚠ Re-validated here even though validateSearch already sanitised it, which is the posture
+  // ssoroutes.go argues for at its own second call site ("Re-validated HERE, not merely at
+  // /start"): this is a navigation, and a navigation should not depend on a caller upstream
+  // having been careful.
   const landing = async () => {
     await queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
-    router.history.push(dest ?? "/guide");
+    router.history.replace(safeRedirectPath(dest) ?? "/guide");
   };
 
   const login = authApi.useLogin({ mutation: { onSuccess: landing } });
@@ -78,8 +86,12 @@ const LoginScreen = () => {
 };
 
 const Route = createFileRoute("/login")({
+  // ⚠ `redirect` is VALIDATED here, at the emitter, so a hostile value never reaches the
+  // component or either navigation (§11). `safeRedirectPath` also subsumes the old
+  // typeof-string check: anything that is not a same-app path becomes `undefined`, which is
+  // indistinguishable from the param being absent.
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
-    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    redirect: safeRedirectPath(search.redirect),
     sso: typeof search.sso === "string" ? search.sso : undefined,
   }),
   beforeLoad: async ({ context, search }) => {
@@ -93,7 +105,11 @@ const Route = createFileRoute("/login")({
       if (await needsBootstrap(context.queryClient)) throw redirect({ to: "/wizard" });
       return; // signed out on a claimed install → show the form
     }
-    throw redirect({ href: search.redirect ?? "/guide" });
+    // ⚠ The signed-in bounce is the path that was exploitable: the router force-commits a
+    // beforeLoad redirect with `replace: true`, so an off-site `href` became a
+    // window.location.replace() straight off the app. Re-validated for the same reason `landing`
+    // is — this is the second navigation, not the same one.
+    throw redirect({ href: safeRedirectPath(search.redirect) ?? "/guide" });
   },
   component: LoginScreen,
 });

@@ -2853,6 +2853,25 @@ the case that prefix-matching misses, because browsers resolving a special-schem
 value crosses a package boundary and a persisted map between the two routes, so `callback`
 re-validates rather than trusting a gate three hops upstream.
 
+**The SPA's own redirect param obeys the same rule, and for a while it did not (V54).** The
+`_authed` guard remembers a deep link as `/login?redirect=<path>`, which is a *second* value
+reaching a *second* navigation — and it was unvalidated. On an already-signed-in browser,
+`/login?redirect=https://evil.example` reached `throw redirect({ href })`, which the router
+force-commits with `replace: true`, so the app navigated **off-site**, gated only by an
+http/https scheme check. `safeRedirectPath` (`web/apps/web/src/auth/safe-redirect-path/`) is the
+frontend mirror of `safeReturnPath`, carrying the same parsed-not-prefix-matched rule and the same
+backslash case; it is applied in `validateSearch` so a hostile value never reaches the component,
+and again at each of the two navigations, on the same "do not trust a gate upstream" reasoning the
+paragraph above gives. Two implementations exist because two different values reach two different
+navigations, not because one was forgotten.
+
+**A failed identity call is not a logout — only a 401 is.** The `_authed` guard wraps its
+`ensureQueryData` in a `catch`, and the me query sets `retry:false` because a 401 is a definite
+answer. Those two facts together mean the guard must inspect the status: while it did not, any
+failure — a 500, a proxy blip, or the operator restarting the server from the Dashboard, which
+this very layout mounts the restart overlay for — reported a perfectly valid session as signed out
+and sent the user to `/login`. A non-401 is rethrown so it surfaces as the failure it is.
+
 ### Device authentication for playout (§9.1) — the one path that isn't a person
 
 Internal playout (§9.1) serves segments to a **television**, which cannot hold a session cookie. Those routes therefore authenticate a **device** by token rather than a **person** by session — the only route family that does not resolve to a `users` row. Stated explicitly rather than left implicit, because §11's whole model is "identity is the DB":
