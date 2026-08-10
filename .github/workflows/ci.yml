@@ -104,23 +104,45 @@ jobs:
           fi
 
   go:
-    name: Go — check + spec/config drift
+    name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
+    # `make check` was 308–428s and the whole job 7.2–12.2 min — the critical path on every
+    # Go-touching PR. `go test -race` is effectively all of it (measured 2026-08-09: `make
+    # lint` is 5.4s warm, so splitting lint off would buy nothing; the 41 packages sum to
+    # 436s and the runner has 4 cores). So the TESTS are what shards.
+    #
+    # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
+    # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
+    # is the guard, and it is not optional.
+    #
+    # fmt/vet/lint re-run in every shard rather than being hoisted to one. That is deliberate:
+    # it keeps CI invoking the same `make check` a developer runs, which is the whole point of
+    # the harness contract, and the duplication is parallel so it costs no wall clock.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
-      # `make lint` runs golangci-lint via `go run …@v2.12.2`. Its dependencies are NOT in
-      # go.sum, so setup-go's cache — keyed on go.sum — never covers them, and every run
-      # re-downloaded and recompiled the whole linter from source (visible in the logs as
-      # `go: downloading lipgloss / fatih-color / gofrs-flock`).
-      #
-      # Cached here as a SEPARATE entry keyed on the pinned version: the module source, the
-      # compiled objects, and golangci's own analysis cache.
+          # ⚠ DELIBERATELY OFF — the step below owns every Go cache path in this job.
+          # `cache: true` caches `~/go/pkg/mod` AND `~/.cache/go-build` keyed on go.sum,
+          # which is the SAME `~/.cache/go-build` the unified cache rolls. Both on meant
+          # restoring it twice and, whenever go.sum moved, SAVING it twice: measured
+          # 2026-08-09, `Post Cache golangci` 83s ran alongside `Post Run actions/setup-go`
+          # 91s in one job. Worse, setup-go's half is keyed on go.sum alone — exactly the
+          # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
+          # very cache the rolling key was added to keep fresh.
+          cache: false
+      # ONE cache for the whole Go toolchain: module downloads, build objects, and
+      # golangci's analysis cache. `make lint` runs golangci-lint via `go run …@v2.12.2`,
+      # whose dependencies are NOT in go.sum, so nothing keyed on go.sum alone ever covers
+      # them (visible in the logs as `go: downloading lipgloss / fatih-color / gofrs-flock`)
+      # — that is why the linter's module dir rides along here rather than in its own entry.
       #
       # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
       # NEVER overwrites an existing key — it skips the save when the key already hit. This
@@ -128,22 +150,43 @@ jobs:
       # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
       # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
       # being restored days and many source changes later, so `go test -race` recompiled
-      # nearly everything on every run (~224s of the job).
+      # nearly everything on every run (~224s of the job). `github.run_id` guarantees a miss
+      # on the exact key so the save always happens, while `restore-keys` still restores the
+      # newest prior cache to compile against.
       #
-      # `github.run_id` guarantees a miss on the exact key, so the save always happens, while
-      # `restore-keys` still restores the most recent prior cache to compile against. That is
-      # the documented rolling-cache pattern: unique key + prefix restore.
-      - name: Cache golangci-lint (module + build + analysis)
-        uses: actions/cache@v6
+      # ⚠ AND A ROLLING KEY MUST BE BOUNDED — the other half of the same trade, and the
+      # failure mode the fix above created. A stable key never re-SAVES; a rolling key never
+      # PRUNES. Neither actions/cache mode evicts anything, so this entry grew purely by
+      # accretion: every run restored the previous one, added to it, and saved the union.
+      # Measured 2026-08-09 it had reached **1.36 GB**, costing 85s to restore (74s of that
+      # spent EXTRACTING, not downloading) plus 83–122s to save — ~168s of a ~10 min job
+      # spent moving a tarball before a single test ran.
+      #
+      # The ISO week in the key is the bound. It rotates on its own, so there is no number
+      # for anyone to remember to bump — this repo has been bitten repeatedly by
+      # hand-maintained lists that drift — and it costs exactly one cold build per week. It
+      # is in the restore-keys prefixes too, deliberately: a prefix that outlived the epoch
+      # would restore the very accumulation the epoch exists to drop.
+      - name: Cache epoch (bounds rolling-cache growth)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go caches (modules + build + golangci)
+        id: gocache
+        uses: actions/cache/restore@v6
         with:
           path: |
-            ~/go/pkg/mod/github.com/golangci
+            ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
+          # a shared key would have them overwrite each other's build objects every run — each
+          # shard restoring a cache built for the other's packages and recompiling its own.
+          # It also makes the save well-defined: without it both shards race to write one key
+          # and whichever lost simply skipped, so half the objects were never cached at all.
+          key: go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-
-            golangci-${{ runner.os }}-v2.12.2-
+            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
       # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
       # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
       # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
@@ -235,12 +278,23 @@ jobs:
         run: |
           command -v ffmpeg
           command -v ffprobe
-      - run: make check
+      # ⚠ RUN THE GUARD BEFORE THE SUITE, not after. It is the only thing standing between a
+      # bad split and a green run over untested packages, and a guard that reports after the
+      # tests have already "passed" is one cancelled job away from never running at all.
+      - name: The shard split covers every package
+        run: make go-shard-verify SHARDS=${{ strategy.job-total }}
+      - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # The drift checks are whole-repo and shard-independent: running them per shard would
+      # just diff the same generated files N times. Shard 1 by the same convention that runs
+      # e2e on one Playwright shard.
       - name: OpenAPI spec is committed and current
+        if: matrix.shard == 1
         run: make openapi-verify
       - name: Config docs are committed and current
+        if: matrix.shard == 1
         run: make config-docs-verify
       - name: Retired identifiers are gone from prose
+        if: matrix.shard == 1
         run: make retired-verify
       # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
       # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
@@ -252,7 +306,27 @@ jobs:
       # happened when the image filter was added (SC2129 on the grouped redirects). If this
       # step is red and your local run was green, install shellcheck before doubting CI.
       - name: Workflows are valid
+        if: matrix.shard == 1
         run: make ci-lint
+      # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
+      # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
+      # restored again once that PR closes — cache reads are scoped to the branch and its
+      # base — so every PR save wrote ~1.4GB that only ever became eviction pressure on the
+      # caches that ARE read. That is the same 10GB-quota burn `cache-cleanup.yml` exists to
+      # mop up after; not creating the garbage beats deleting it. PRs restore from main's
+      # entry and skip the measured 83–122s save outright.
+      #
+      # `always()` so a RED gate still refreshes the build objects it already produced — the
+      # next run should not recompile from cold merely because an assertion failed.
+      - name: Save Go caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
 
   store-postgres:
     name: Store conformance (Postgres)
@@ -263,29 +337,65 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
+          # Off for the same reason as the `go` job: the step below owns both Go cache
+          # paths, and leaving setup-go's on would restore/save `~/.cache/go-build` twice
+          # under a go.sum-only (frozen) key.
+          cache: false
           go-version: ${{ env.GO_VERSION }}
-          cache: true
-      # setup-go's own cache covers the module DOWNLOADS but not `~/.cache/go-build`, so
-      # this job was compiling the store test binary from source every run. Separate key
-      # from the `go` job above: this one builds without -race, and mixing the two would
-      # have each evict the other's objects. Same rolling pattern — unique key so the save
-      # always happens, prefix restore so it compiles against the newest prior cache.
-      - name: Cache Go build (store conformance)
-        uses: actions/cache@v6
+      # This job was compiling the store test binary from source every run. ⚠ SEPARATE KEY
+      # from the `go` job above, and it must stay separate: this one builds WITHOUT -race,
+      # and race and non-race objects are distinct entries, so sharing a key would have each
+      # job evict the other's work on every run.
+      #
+      # Same rolling-key-plus-weekly-epoch pattern as the `go` job — see the long note there
+      # for why the key must be both unique per run (or it freezes) and epoch-bounded (or it
+      # snowballs). Modules ride along because setup-go no longer caches them.
+      - name: Cache epoch (bounds rolling-cache growth)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go caches (store conformance)
+        id: gocache
+        uses: actions/cache/restore@v6
         with:
-          path: ~/.cache/go-build
-          key: gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            gobuild-pg-${{ runner.os }}-
+            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-
+            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-
       # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
       - run: make test-pg
+      # main only — see the `go` job's save step for why a PR-scoped save is pure eviction
+      # pressure on caches that are still being read.
+      - name: Save Go caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
 
   frontend:
-    name: Frontend — biome + typecheck + unit + build
+    name: Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    # `make fe` was 394s and this job 7.0 min. The jsdom unit suite is the bulk of it ON THIS
+    # RUNNER, which is the part worth spelling out: locally the whole suite is 33.5s (measured
+    # 2026-08-09, 1307 tests over 166 files), and every other stage is small — biome 1.9s,
+    # typecheck 3.6s, vite build 5.0s, storybook 10.3s. What makes it the bulk here is cores.
+    # vitest is the most parallelism-hungry stage in the chain, and a 4-core runner is roughly
+    # a sixth of the dev box it was measured on, so it degrades far more than the rest.
+    #
+    # Everything except the unit tests re-runs in both shards. That is the same trade as the Go
+    # job: parallel, so it costs no wall clock, and it keeps CI running the same `make fe` a
+    # developer runs rather than a bespoke decomposition of it.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the others'
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -300,27 +410,48 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - run: make fe-install
-      - run: make fe
+      - run: make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # Whole-repo and shard-independent — diffing the same generated token artifacts in every
+      # shard would prove the same thing N times. Shard 1, matching the drift checks in the Go
+      # job and e2e in the Playwright job.
       - name: Token artifacts are committed and current
+        if: matrix.shard == 1
         run: make fe-tokens-verify
 
   playwright:
-    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/2)
+    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    # Sharded purely for WALL-CLOCK. 624 browser screenshots on a 4-core runner took ~6
-    # minutes of a ~7 minute build — this job alone WAS the critical path; every other job
-    # finished by 4.2 min. Two shards put it at ~3.8 min, which lands just under the Go
-    # job, and that is the point to stop: a third shard would only make Go the bottleneck.
+    # Sharded purely for WALL-CLOCK. The shard COUNT below is the only number to change —
+    # the denominator everywhere else derives from `strategy.job-total`, so editing
+    # `matrix.shard` cannot leave a stale `/2` behind in the job name or the make invocation.
     #
-    # ⚠ Free on a public repo, where standard-runner minutes are not billed — two runners
-    # cost the same as one and finish sooner. Do NOT copy this pattern into a private repo
-    # without re-checking that trade, where it doubles billed minutes to halve the wait.
+    # ⚠ THE MEASUREMENTS IN A COMMENT EXPIRE, AND THIS ONE DID. It used to read "624 browser
+    # screenshots … two shards put it at ~3.8 min … a third shard would only make Go the
+    # bottleneck". Every clause had gone stale: measured 2026-08-09 the suite is 389 stories
+    # × 2 viewports (~780 tests), ONE shard takes 8.4–9.1 min, and the Go job it was pegged
+    # against runs 7.2–12.2 min — so "Go becomes the bottleneck" had been true for a long
+    # time and the conclusion drawn from it was backwards. A stale comment cannot fail a
+    # build, which is exactly why the numbers here carry the date they were taken.
+    #
+    # Four, not more: 4 puts the visual suite near ~4.5 min, under the Go job even after it
+    # is sharded. Beyond that the per-shard fixed cost (checkout, pnpm install, codegen, a
+    # storybook build) starts to dominate the screenshots the sharding is meant to split.
+    #
+    # ⚠ Free on a public repo, where standard-runner minutes are not billed — N runners cost
+    # the same as one and finish sooner. Do NOT copy this pattern into a private repo without
+    # re-checking that trade, where it multiplies billed minutes to divide the wait.
+    #
+    # ⚠ Every shard builds its own storybook-static, and that is DELIBERATE. Hoisting it into
+    # one job + upload-artifact looks like the obvious de-duplication and is a net LOSS: the
+    # builds run in PARALLEL, so they cost redundant work but zero wall clock, whereas an
+    # artifact job adds a serial prefix that all N shards then wait on. Measured: the
+    # storybook build is ~11s local, and the suite it feeds is minutes.
     strategy:
-      fail-fast: false # one shard's failures must not hide the other's
+      fail-fast: false # one shard's failures must not hide the others'
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -342,7 +473,7 @@ jobs:
       # Both drive the pinned Playwright Docker image (the reference rasterizer,
       # §5.2), so CI and local snapshots are byte-identical.
       - name: Visual + a11y over storybook-static
-        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/2
+        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/${{ strategy.job-total }}
       # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
       # config and no sharding, so running it per-shard would duplicate it for nothing.
       - name: Wizard e2e smoke vs a mocked backend
