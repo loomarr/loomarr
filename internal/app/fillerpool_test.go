@@ -34,7 +34,7 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 			t.Fatal(err)
 		}
 	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, filler.Policy{}, slog.New(slog.DiscardHandler))
+	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, slog.New(slog.DiscardHandler))
 	return podPreviewAdapter{store: st, pods: pods}, st
 }
 
