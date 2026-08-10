@@ -103,8 +103,16 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
     at,
     setAt,
     isDirty: draftKey !== savedKey,
-    // PATCH replaces `policy` whole (only reconcile-owned `applied` is preserved server-side),
-    // so the draft IS the policy — no merge needed, unlike the filler draft which owns one key.
+    // PATCH replaces `policy` whole (only reconcile-owned `applied` and — since §10 V51f —
+    // an OMITTED `filler` are preserved server-side), so the draft IS the policy: no merge
+    // needed, unlike the filler draft which owns one key.
+    //
+    // ⚠ **This used to be safe only by accident.** The draft is seeded from `policy ?? {}`, so
+    // before the page's channel resolves it is the EMPTY object — and applying then sent a policy
+    // with no `filler`, wiping the channel's pins, exclusions and criteria with no way to get them
+    // back (nothing re-proposes an operator's filler selection the way a refine re-suggests a
+    // scope). The server now treats an absent `filler` as "unchanged", so the loss is unreachable
+    // from here regardless of what this hook sends or when.
     apply: () => update.mutate({ id: channelId, data: { policy: draft } }),
     isApplying: update.isPending,
     discard: () => setDraft(policy ?? {}),

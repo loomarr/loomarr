@@ -1,4 +1,4 @@
-import type { ChannelPolicy, PodPoolDTO } from "@loomarr/api";
+import type { ChannelPolicy, PreviewDraftPodsOutputBody } from "@loomarr/api";
 import { getPreviewDraftChannelPodsMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -16,7 +16,22 @@ const makeWrapper = () => {
   );
 };
 
-const previewBody: PodPoolDTO = {
+// ⚠ The DRAFT preview carries its own coverage since V51f — one selection answers both the pod
+// and the meter, so the two can no longer describe different things during an edit.
+const previewBody: PreviewDraftPodsOutputBody = {
+  coverage: {
+    level: "exact",
+    total: 1,
+    rungs: [{ level: "exact", clips: 1 }],
+    criteria: [
+      { criterion: "era", clips: 1 },
+      { criterion: "audience", clips: 1 },
+      { criterion: "category", clips: 1 },
+      { criterion: "kind", clips: 1 },
+      { criterion: "duration", clips: 1 },
+      { criterion: "quality", clips: 1 },
+    ],
+  },
   entries: [
     {
       path: "p1.mp4",

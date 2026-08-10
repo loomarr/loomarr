@@ -687,6 +687,20 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (fill
 	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
 }
 
+// CoverageDraft is Coverage for an UNSAVED selection (§10 V51f).
+//
+// ⚠ It takes the selection already resolved by the caller — `channels.SelectionFrom` at the API
+// boundary — for the same reason `PreviewDraft` stopped re-applying the scope era: the era's
+// inherit-vs-explicitly-any decision has exactly one writer, and a second application here could
+// not tell an operator who chose "any era" from one who left the field alone.
+func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.CoverageReport{}, err
+	}
+	return a.pods.CoverageFor(ctx, ch.ID, sel)
+}
+
 // ClipFit reports how one clip relates to every channel's selection (§10 V35 item 1.7).
 //
 // ⚠ Resolved through `SelectionForChannel` per channel, exactly like Coverage above — the note
@@ -794,15 +808,21 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 
 // PreviewDraft assembles the pool for a DRAFT selection (the POST …/pods/preview
 // sandbox) — the same seed as the saved preview (so only the selection differs), but the
-// caller's unsaved selection in place of the persisted one. The era still defaults from
-// the channel's program scope when the draft leaves it unset, matching SelectionForChannel.
+// caller's unsaved selection in place of the persisted one.
+//
+// ⚠ **It no longer re-applies the scope era, and removing that is a correctness fix rather than
+// tidying (V51f).** The rule lived in THREE places: `channels.SelectionForChannel` (applied it),
+// `api.fillerSelectionToDomain` (did not), and here (applied it) — so the API's omission was
+// silently rescued one layer down, which is why nothing looked broken. With the era a real range
+// and "explicitly any" a reachable state, this copy becomes actively wrong: it keyed off
+// `sel.Era == 0`, which cannot tell *unset* from an operator who chose ANY, so it would re-inherit
+// the channel's era over the top of an explicit choice — the exact bug §10 V51f exists to fix.
+// `channels.SelectionFrom` is now the single writer, applied at the API boundary where the draft
+// policy (and therefore the DRAFT's scope, not the saved channel's) is known.
 func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return filler.Pod{}, err
-	}
-	if sel.Era == 0 && ch.Policy.Scope.Era != nil {
-		sel.Era = ch.Policy.Scope.Era.From
 	}
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), sel)
 }

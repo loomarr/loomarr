@@ -115,7 +115,9 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 			if draftPolicy.Filler != nil {
 				sel = *draftPolicy.Filler
 			}
-			pod, err = s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(sel))
+			// ⚠ The DRAFT's scope era, not the saved channel's — this preview is answering
+			// "what would this policy play", and an unset filler era inherits from scope (V51f).
+			pod, err = s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(sel, draftPolicy.Scope.Era))
 		} else {
 			pod, err = s.pods.Preview(ctx, in.ID)
 		}

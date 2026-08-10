@@ -882,12 +882,87 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
-**Next up: V51f** — the last unbuilt phase of the V51 plan: the era RANGE whose `To` is rendered,
-typed, validated and never read; the audience setting that silently empties every ladder rung on an
-untagged catalog; three dead policy fields. **The V51g loop this line used to hold open is CLOSED —
-and the answer was not the one it predicted** (fix 4 below): WAGA-5 was not starved after #225, it
-had finished in **three seconds** and been waiting on a person ever since. Nothing could show that,
-which is why "never been seen to finish" was the honest observation and the wrong conclusion.
+**V51f shipped the phase this line used to point at** (see its own entry below). **The V51g loop it
+also held open is CLOSED — and the answer was not the one it predicted** (fix 4 above): WAGA-5 was
+not starved after #225, it had finished in **three seconds** and been waiting on a person ever
+since. Nothing could show that, which is why "never been seen to finish" was the honest observation
+and the wrong conclusion.
+
+---
+
+**V51f — honest filler controls: the era range becomes real, and four settings stop lying
+(2026-08-09, branch `v51f-policy-fields`).** Gate: `make check` (0 lint, `-race`) +
+`make openapi-verify` + `make retired-verify` (32) + `make fe` (**1320** app + 19 api + 51 core +
+5 tokens, biome clean on 961 files). The last phase of the V51 plan.
+
+⚠ **Every defect here had shipped code that READ convincingly, and three had green tests
+asserting them.** That is the through-line of the phase, not a coincidence: each was a control an
+operator could see and change, wired to something that ignored it.
+
+1. **The era range was half a range.** `filler.Selection.Era` and `filler.Window.Era` were one
+   `int`, so the "To year" the UI renders, types, canonicalises and *inverted-range-validates* was
+   discarded by every consumer: **1990–1999 behaved identically to 1990–2035**. Both bounds are
+   honoured now, via `filler.EraRange`.
+2. **"Any era" was unreachable.** The scope default keyed off `Era == 0` — what a cleared field and
+   a deliberate "any" both look like — so clearing re-inherited on the next derivation. Presence is
+   the opt-in now: absent inherits, PRESENT is the operator's answer even when empty.
+3. **Three `filler.Policy` fields were set in tests and nowhere else.** `EraStrict` is deleted (a
+   narrow range gives strictness through a control that exists); `MinClipMs`/`MaxClipMs` get real
+   settings. Until now `durationEligible` always returned true, so `PoolReport.Eligible` —
+   headlined as *"the number that surprises operators"* — was arithmetically identical to
+   `Commercials` **on every install ever run**.
+4. **Picking an Audience emptied the whole ladder on an untagged catalog.** `filterAudience`
+   admits `aud` or `general`; an unclassified clip is `""` and matched neither. Those clips now
+   fill the BOTTOM rung only — never above a grounded match.
+5. **A PATCH omitting `policy.filler` wiped the channel's pins, exclusions and criteria.** Same
+   silent-loss shape `policy_merge.go` already records for `scope`, in the half `OperatorSet`
+   cannot reach — and worse, because nothing re-proposes an operator's filler selection the way a
+   refine re-suggests a scope.
+6. **Unticking a pin BLOCKED the clip.** On a component whose own header ⚠ warns that collapsing
+   the third state "silently blocks an operator's catalog".
+
+⚠ **The safety asymmetry in (4) is tightened beyond the plan and is not negotiable.** The plan
+said "not `kids`"; family channels are watched by children, so the rule is an **allowlist** —
+`general` and `late_night` only. A denylist would hand every audience added later the permissive
+default, which is the wrong direction for the one rule here that is about safety. A kids channel
+with an untagged catalog correctly falls to its bumper card: a visible, fixable state rather than
+unclassified adverts in front of children.
+
+⚠ **Three defects were defended by green tests, and two of those tests said the same wrong thing.**
+`TestFitFor_StrictEraSkipsTheWidenedRung` proved a branch no operator could reach.
+`"unticking an overridden channel blocks it rather than clearing the override"` (the picker) and
+`"writes an exclusion, not just a missing pin"` (the dialog) both pinned the untick bug as the
+contract. **Stated twice, a trap reads as a decision** — anyone who noticed would assume they were
+the one who was wrong. Every replacement asserts the property rather than the symptom.
+
+⚠ **The per-criterion breakdown is NOT derived from `FitFor`, which the plan proposed.** `FitFor`
+short-circuits on the first failing predicate, so counting by its reason attributes a clip failing
+both category and audience to whichever check runs first — an answer that would change if someone
+reordered that function, with nothing to catch it. Each criterion is counted independently, from
+the predicate the ladder itself uses.
+
+⚠ **One rule had THREE implementations that disagreed, and the disagreement was invisible.**
+`SelectionForChannel` applied the scope era, `api.fillerSelectionToDomain` did not, and
+`podPreviewAdapter.PreviewDraft` applied it again — so the API's omission was silently rescued one
+layer down. Two copies cancelling out is the worst kind of agreement: nothing looks wrong, and it
+stops working the instant a third state exists. `channels.SelectionFrom` is the single writer.
+
+⚠ **Deviations from the plan, both deliberate.** The settings are `filler.min_clip_duration` /
+`max_clip_duration` (`KindDuration`), not the plan's `*_seconds` — the neighbouring
+`filler.min_duration` is a duration, and two unit conventions in one settings group is a trap of
+its own; the old names are in `scripts/check-retired.sh`. And the plan's "delete the three
+frontend workarounds" (H) did not apply: the two sites that spread `{...policy, filler}` are
+*editing* filler and must carry the rest of the policy. The real hazard was
+`use-channel-rules-draft`, safe only by accident — its draft is seeded `policy ?? {}`, so applying
+before the channel resolved sent a policy with no filler at all.
+
+**Not done, and deliberately left for a follow-up:** three of G's smaller honesty fixes — the
+`PodMax` clamp warning with its count, rendering a removed pinned clip as "no longer in the
+catalog" rather than a bare hash, and wiring the member-readable `GET /v1/channels/{id}/pods` into
+the channel Info tab (an endpoint with no UI, which is what `/surface-audit` exists to find).
+
+**Next up: nothing in the V51 plan** — V51f was its last phase. The follow-ups above are issues,
+not a phase; see CLAUDE.md's issue-tracker note before writing a row for them here.
 
 **V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09,
 PRs #223, #225 and #229).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).

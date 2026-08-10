@@ -75,10 +75,7 @@ func (e *Engine) CyclePreviewDraft(
 	}
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
-	chDomain.BreaksPerHour = 0
-	if hasFillerPool {
-		chDomain.BreaksPerHour = e.breaksPerHour
-	}
+	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHour)
 	chDomain.DefaultWindow = e.defaultWindow
 
 	// Resolve every movie's runtime in ONE media-server call before the layout asks for them one

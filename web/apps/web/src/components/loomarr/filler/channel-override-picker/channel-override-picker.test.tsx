@@ -66,13 +66,43 @@ describe("ChannelOverridePicker", () => {
     expect(onSet).toHaveBeenCalledWith("ch-1", { pinned: true, excluded: false });
   });
 
-  it("unticking an overridden channel blocks it rather than clearing the override", async () => {
+  // ⚠ **This test used to assert the OPPOSITE, and that is why the bug read as deliberate
+  // (§10 V51f).** It was named "unticking an overridden channel blocks it rather than clearing
+  // the override" and pinned `{pinned: false, excluded: true}` — so releasing a pin silently moved
+  // the clip to "never play here", on a component whose own header ⚠ warns that collapsing the
+  // third state "silently blocks an operator's catalog". A green test stating the trap as the
+  // contract is worse than no test: it makes the behaviour look chosen, and anyone who noticed it
+  // would assume they were the one who was wrong.
+  it("unticking returns a channel to automatic instead of blocking it", async () => {
     const onSet = vi.fn();
-    render(<ChannelOverridePicker {...base} onSet={onSet} />);
+    const onReset = vi.fn();
+    render(<ChannelOverridePicker {...base} onSet={onSet} onReset={onReset} />);
 
     await userEvent.click(within(row("Retro Movies")).getByRole("checkbox", { name: /Always play/ }));
 
-    expect(onSet).toHaveBeenCalledWith("ch-4", { pinned: false, excluded: true });
+    expect(onReset).toHaveBeenCalledWith("ch-4");
+    expect(onSet).not.toHaveBeenCalled();
+  });
+
+  // Blocking is a decision, so it gets a button of its own rather than riding on the checkbox an
+  // operator uses to un-pin.
+  it("blocks only through the explicit Block action", async () => {
+    const onSet = vi.fn();
+    render(<ChannelOverridePicker {...base} onSet={onSet} />);
+
+    await userEvent.click(within(row("Saturday Mornings")).getByRole("button", { name: /Block/ }));
+
+    expect(onSet).toHaveBeenCalledWith("ch-1", { pinned: false, excluded: true });
+  });
+
+  // ⚠ ...and Block is offered only where there is nothing to undo. An overridden row already has
+  // "Automatic", and stacking a third control on it invites the same "which one releases this?"
+  // confusion the checkbox caused.
+  it("offers Block only on an automatic channel", () => {
+    render(<ChannelOverridePicker {...base} />);
+
+    expect(within(row("Saturday Mornings")).queryByRole("button", { name: /Block/ })).toBeInTheDocument();
+    expect(within(row("Newsreel")).queryByRole("button", { name: /Block/ })).not.toBeInTheDocument();
   });
 
   // ⚠ The only route back to the third state. A checkbox cannot express "automatic", so without
@@ -96,10 +126,20 @@ describe("ChannelOverridePicker", () => {
 
   // The mode note carries the meaning the checkboxes cannot: that unticked is a decision only
   // once the row is overridden.
-  it("explains what the checkboxes mean before you use them", () => {
+  //
+  // ⚠ **This asserted only that the sentence EXISTED (`/picks channels for .* automatically/`),
+  // which is why it kept passing while the sentence was wrong.** The copy said "untick to block
+  // it" for the whole life of the untick bug, and went on saying it after the behaviour changed —
+  // through every green run of this file. Found by looking at a regenerated visual baseline, not
+  // by a test. It now asserts what the note actually INSTRUCTS, so copy and behaviour cannot
+  // drift apart silently again.
+  it("explains what the controls do, in terms that match what they do", () => {
     render(<ChannelOverridePicker {...base} />);
 
-    expect(screen.getByText(/picks channels for .* automatically/i)).toBeInTheDocument();
+    const note = screen.getByText(/picks channels for .* automatically/i);
+    expect(note).toHaveTextContent("Untick to hand the choice back to Loomarr");
+    expect(note).toHaveTextContent("use Block to keep it off that channel");
+    expect(note).not.toHaveTextContent(/untick to block/i);
   });
 
   // One row's write must not disable the whole list — the mutation's own isPending is global.

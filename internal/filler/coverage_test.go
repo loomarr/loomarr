@@ -26,18 +26,19 @@ func TestCoverageMatchesTheRungAssembleFills(t *testing.T) {
 	}{
 		{"exact era + audience", kidsWindow(1), filler.Policy{}},
 		// 1985 kids: no exact-era clip, but c5 is same-decade → widened.
-		{"no exact era, decade available", filler.Window{ChannelID: "ch1", Seed: 2, Era: 1987, Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{}},
+		{"no exact era, decade available", filler.Window{ChannelID: "ch1", Seed: 2, Era: filler.Year(1987), Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{}},
 		// 2015 kids: nothing in era or decade → any-era audience match.
-		{"no era or decade, audience only", filler.Window{ChannelID: "ch1", Seed: 3, Era: 2015, Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{}},
-		// EraStrict removes the widened rung entirely.
-		{"era strict drops the widened rung", filler.Window{ChannelID: "ch1", Seed: 4, Era: 1987, Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{EraStrict: true}},
+		{"no era or decade, audience only", filler.Window{ChannelID: "ch1", Seed: 3, Era: filler.Year(2015), Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{}},
+		// A SPAN rather than a single year — the case that could not be expressed before V51f,
+		// and the one where a decade-bucket widening would have collapsed into `exact`.
+		{"era span", filler.Window{ChannelID: "ch1", Seed: 4, Era: filler.EraRange{From: 1985, To: 1992}, Audience: filler.Kids, GapMs: 120000, PodMax: 4}, filler.Policy{}},
 		// An audience with nothing at all → the embedded bumper card.
-		{"no material at all", filler.Window{ChannelID: "ch1", Seed: 5, Era: 1992, Audience: filler.Audience("nobody"), GapMs: 120000, PodMax: 4}, filler.Policy{}},
+		{"no material at all", filler.Window{ChannelID: "ch1", Seed: 5, Era: filler.Year(1992), Audience: filler.Audience("nobody"), GapMs: 120000, PodMax: 4}, filler.Policy{}},
 		// Category narrowing shrinks the commercial pool before the ladder runs.
-		{"category narrowed", filler.Window{ChannelID: "ch1", Seed: 6, Era: 1992, Audience: filler.Kids, GapMs: 120000, PodMax: 4, Categories: []string{"toys"}}, filler.Policy{}},
+		{"category narrowed", filler.Window{ChannelID: "ch1", Seed: 6, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120000, PodMax: 4, Categories: []string{"toys"}}, filler.Policy{}},
 		// Excluding every exact-era clip must push coverage DOWN a rung, exactly as it
 		// pushes assembly down — this is where a coverage impl that ignored Excluded breaks.
-		{"exclusions push down a rung", filler.Window{ChannelID: "ch1", Seed: 7, Era: 1992, Audience: filler.Kids, GapMs: 120000, PodMax: 4, Excluded: []string{"c1.mp4", "c2.mp4", "c3.mp4", "c4.mp4"}}, filler.Policy{}},
+		{"exclusions push down a rung", filler.Window{ChannelID: "ch1", Seed: 7, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120000, PodMax: 4, Excluded: []string{"c1.mp4", "c2.mp4", "c3.mp4", "c4.mp4"}}, filler.Policy{}},
 	}
 
 	for _, tc := range cases {
@@ -72,20 +73,29 @@ func TestCoverageRungsAreInLadderOrder(t *testing.T) {
 	}
 }
 
-// ⚠ A skipped rung is ABSENT, not present-and-zero. Under EraStrict there is no widened rung
-// to be empty, and rendering one at 0 would read as a catalog gap the operator should fix
-// rather than a setting they chose.
-func TestCoverageOmitsTheWidenedRungUnderEraStrict(t *testing.T) {
-	report := filler.Coverage(sampleCatalog(), kidsWindow(1), filler.Policy{EraStrict: true})
+// ⚠ **Every rung is now always reported, and the test that asserted the opposite is gone with the
+// field it tested.** `TestCoverageOmitsTheWidenedRungUnderEraStrict` (retired-ok) proved that `EraStrict`
+// removed the widened rung — true, but unreachable: no key, no env var, no policy field, set in
+// tests and nowhere else. The absent-not-zero rule existed only to serve it. With the flag deleted
+// a rung at 0 means what a reader assumes: nothing in the catalog reaches it.
+func TestCoverageAlwaysReportsEveryRung(t *testing.T) {
+	// A 2015 window has no exact-era and no widened clip in this catalog, so two rungs are
+	// genuinely empty — precisely the case the old rule would have hidden.
+	w := filler.Window{ChannelID: "ch1", Seed: 4, Era: filler.Year(2015), Audience: filler.Kids, GapMs: 120000, PodMax: 4}
+	report := filler.Coverage(sampleCatalog(), w, filler.Policy{})
 
-	for _, r := range report.Rungs {
-		if r.Level == filler.MatchWidened {
-			t.Fatalf("widened rung present under EraStrict (clips=%d) — it should be absent, "+
-				"or the UI reports a setting as a gap", r.Clips)
+	if len(report.Rungs) != 3 {
+		t.Fatalf("got %d rungs, want 3 (exact, widened, audience) — a rung must never be dropped", len(report.Rungs))
+	}
+	want := []filler.MatchLevel{filler.MatchExact, filler.MatchWidened, filler.MatchAudience}
+	for i, lvl := range want {
+		if report.Rungs[i].Level != lvl {
+			t.Errorf("rung %d is %q, want %q", i, report.Rungs[i].Level, lvl)
 		}
 	}
-	if len(report.Rungs) != 2 {
-		t.Errorf("got %d rungs under EraStrict, want 2 (exact, audience)", len(report.Rungs))
+	if report.Rungs[0].Clips != 0 || report.Rungs[1].Clips != 0 {
+		t.Errorf("expected the 2015 exact/widened rungs to be empty, got %d/%d",
+			report.Rungs[0].Clips, report.Rungs[1].Clips)
 	}
 }
 
@@ -151,7 +161,7 @@ func TestCoverageExcludesPolicyIneligibleClips(t *testing.T) {
 // Conflating the two would have the meter tell an operator to acquire clips they already own.
 func TestCoverageIsAboutMaterialNotThisBreaksGap(t *testing.T) {
 	cat := sampleCatalog()
-	tiny := filler.Window{ChannelID: "ch1", Seed: 10, Era: 1992, Audience: filler.Kids, GapMs: 5000, PodMax: 4}
+	tiny := filler.Window{ChannelID: "ch1", Seed: 10, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 5000, PodMax: 4}
 
 	report := filler.Coverage(cat, tiny, filler.Policy{})
 	if report.Total == 0 {

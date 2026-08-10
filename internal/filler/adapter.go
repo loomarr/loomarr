@@ -33,7 +33,7 @@ type CatalogReader interface {
 // the filler domain free of a schedule dependency. All fields optional; the zero
 // Selection is the whole catalog (the prior global behaviour).
 type Selection struct {
-	Era        int      // 0 = any (a representative year for the era ladder)
+	Era        EraRange // zero value = any; the inherit-vs-any decision is made before this point
 	Audience   Audience // "" = any
 	Categories []string // empty = any
 	Kinds      []string // empty = the default kinds

@@ -26,7 +26,7 @@ func sampleCatalog() []filler.Clip {
 }
 
 func kidsWindow(seed int64) filler.Window {
-	return filler.Window{ChannelID: "ch1", Seed: seed, Era: 1992, Audience: filler.Kids, GapMs: 120000, PodMax: 4}
+	return filler.Window{ChannelID: "ch1", Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120000, PodMax: 4}
 }
 
 // Seeded-deterministic (§19): same catalog + same seed → identical pod.
@@ -61,7 +61,10 @@ func TestAssemble_Deterministic(t *testing.T) {
 // Era + audience matching (§10): exact-era kids ads are chosen; the wrong-audience
 // (late_night) and wrong-decade (1985) clips are NOT in an exact match.
 func TestAssemble_EraAudienceMatch(t *testing.T) {
-	p := filler.Assemble(sampleCatalog(), kidsWindow(1), filler.Policy{EraStrict: true}, nil)
+	// ⚠ No `EraStrict` (retired-ok) needed to make this exact — and that flag never was what made it exact.
+	// `fillCommercials` takes the TIGHTEST non-empty pool, so as long as the catalog has 1992 kids
+	// ads the exact rung wins on its own. The flag only ever removed the rung BELOW this one.
+	p := filler.Assemble(sampleCatalog(), kidsWindow(1), filler.Policy{}, nil)
 	if p.MatchLevel != filler.MatchExact {
 		t.Fatalf("expected exact match, got %s", p.MatchLevel)
 	}
@@ -125,15 +128,24 @@ func TestAssemble_NoRepeatInWindow(t *testing.T) {
 func TestAssemble_FallbackLadder(t *testing.T) {
 	cat := sampleCatalog()
 
-	// A 1970s kids window: no exact/decade match, but kids ads exist → audience level.
-	w70 := filler.Window{ChannelID: "ch", Seed: 5, Era: 1975, Audience: filler.Kids, GapMs: 120000, PodMax: 4}
-	p70 := filler.Assemble(cat, w70, filler.Policy{}, nil)
-	if p70.MatchLevel != filler.MatchAudience {
-		t.Errorf("1975 kids window should fall to audience level, got %s", p70.MatchLevel)
+	// A 1950s kids window: no exact match and nothing within a decade either, but kids ads
+	// exist → audience level.
+	//
+	// ⚠ **This was 1975 and had to move, because V51f changed what "widened" means.** The old
+	// rule bucketed to the containing DECADE (1975 → 1970–1979), so the catalog's 1985 clip was
+	// out and the window fell to `audience`. Widening now grows the range by ten years at each
+	// end (1975 → 1965–1985), which puts that 1985 clip IN — correctly: it really is within a
+	// decade of 1975. The clip played either way (the audience rung is any-era); only the
+	// reported rung changed. 1955 restores the case this test is actually about — a window with
+	// nothing near it at all.
+	w50 := filler.Window{ChannelID: "ch", Seed: 5, Era: filler.Year(1955), Audience: filler.Kids, GapMs: 120000, PodMax: 4}
+	p50 := filler.Assemble(cat, w50, filler.Policy{}, nil)
+	if p50.MatchLevel != filler.MatchAudience {
+		t.Errorf("1955 kids window should fall to audience level, got %s", p50.MatchLevel)
 	}
 	// A late_night window with only one late-night ad still fills; an audience with
 	// NO ads at all → bumper card.
-	wNone := filler.Window{ChannelID: "ch", Seed: 5, Era: 1992, Audience: filler.Family, GapMs: 120000, PodMax: 4}
+	wNone := filler.Window{ChannelID: "ch", Seed: 5, Era: filler.Year(1992), Audience: filler.Family, GapMs: 120000, PodMax: 4}
 	pNone := filler.Assemble(catNoFamily(), wNone, filler.Policy{}, nil)
 	if pNone.MatchLevel != filler.MatchBumperCard {
 		t.Fatalf("a window with no matching ads should be bumper-card-only, got %s", pNone.MatchLevel)
@@ -161,7 +173,7 @@ func TestAssemble_RespectsPodMax(t *testing.T) {
 			Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
-	w := filler.Window{ChannelID: "ch", Seed: 3, Era: 1992, Audience: filler.Kids, GapMs: 600000, PodMax: 2}
+	w := filler.Window{ChannelID: "ch", Seed: 3, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 600000, PodMax: 2}
 	p := filler.Assemble(cat, w, filler.Policy{}, nil)
 	commercials := 0
 	for _, e := range p.Entries {
@@ -241,7 +253,7 @@ func TestAssemble_ExcludeRemovesClip(t *testing.T) {
 func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
 	w := kidsWindow(7)
 	w.Pinned = []string{"c5.mp4"} // the 1985 toy ad — wrong decade for a 1992 exact match
-	p := filler.Assemble(sampleCatalog(), w, filler.Policy{EraStrict: true}, nil)
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
 	if !containsID(p, "c5.mp4") {
 		t.Error("a pinned off-ladder clip (c5, 1985) was not forced into the 1992 pod")
 	}
@@ -268,7 +280,7 @@ func TestAssemble_PinRespectsPodMax(t *testing.T) {
 			Era: 1992, Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
-	w := filler.Window{ChannelID: "ch", Seed: 1, Era: 1992, Audience: filler.Kids, GapMs: 600000, PodMax: 2}
+	w := filler.Window{ChannelID: "ch", Seed: 1, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 600000, PodMax: 2}
 	w.Pinned = []string{"pin0", "pin1", "pin2", "pin3"} // 4 pins, PodMax 2
 	p := filler.Assemble(cat, w, filler.Policy{}, nil)
 	commercials := 0

@@ -948,6 +948,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor
 			// existed — see the warning on Policy.MinQualityHeight.
 			MinQualityHeight: set.intv("filler.min_quality"),
+			// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
+			// default to 0s = off, so `durationEligible` keeps returning true on an untouched
+			// install — the difference is that it CAN now return false, which is what lets
+			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
+			MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
+			MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
 		}, log)
 		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
 		// Commercial breaks for internal playout (§10): the SAME pod assembler the API preview

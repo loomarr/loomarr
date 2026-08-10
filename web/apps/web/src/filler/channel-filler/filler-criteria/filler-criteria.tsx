@@ -77,13 +77,28 @@ const FillerCriteria = ({
   onChange,
   disabled,
   className,
+  scopeEra,
 }: {
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
   disabled?: boolean;
   className?: string;
+  // The CHANNEL's programming era, which an unset filler era inherits (§10 V51f). Passed in so
+  // the inheritance can be SHOWN — it was applied live by the server and rendered nowhere, so a
+  // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
+  scopeEra?: { from?: number; to?: number };
 }) => {
   const era = selection.era;
+  // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
+  // Absent = inherit the channel's era; PRESENT-but-empty = explicitly any; a set range = itself.
+  // Before V51f the first two were the same value, so "any era" was unreachable on any channel
+  // that had a programming era — clearing the field simply re-inherited on the next derivation.
+  const inheriting = era === undefined;
+  const explicitlyAny = era !== undefined && !era.from && !era.to;
+  const scopeLabel =
+    scopeEra?.from && scopeEra.to
+      ? `${scopeEra.from}–${scopeEra.to}`
+      : (scopeEra?.from ?? scopeEra?.to)?.toString();
   const categories = selection.categories ?? [];
   const kinds = selection.kinds ?? [];
   const productCategories = useProductCategories();
@@ -98,6 +113,42 @@ const FillerCriteria = ({
         <FieldLabel help="Match commercials from this era. Left blank, it follows the channel's own era.">
           Era
         </FieldLabel>
+        {/* ⚠ The inherited state is SHOWN rather than implied by an empty field (§10 V51f).
+            The server has always applied `policy.scope.era` to an unset filler era, live on every
+            derivation — but nothing said so, so a channel quietly drawing 1990s ads from two
+            blank inputs read as "any era". Naming it is what makes the escape below make sense. */}
+        {inheriting && scopeLabel && (
+          <p className="text-muted-foreground text-xs" data-testid="era-inherited">
+            Following the channel&rsquo;s era ({scopeLabel}).{" "}
+            <button
+              type="button"
+              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+              disabled={disabled}
+              // An EMPTY range, not a cleared field: presence is what tells the server the
+              // operator answered "any" rather than not answering.
+              onClick={() => onChange({ ...selection, era: {} })}
+            >
+              Use any era
+            </button>
+          </p>
+        )}
+        {explicitlyAny && scopeLabel && (
+          <p className="text-muted-foreground text-xs" data-testid="era-any">
+            Any era.{" "}
+            <button
+              type="button"
+              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+              disabled={disabled}
+              // Removing the key entirely is what "inherit" IS — the absence is the signal.
+              onClick={() => {
+                const { era: _dropped, ...rest } = selection;
+                onChange(rest);
+              }}
+            >
+              Follow the channel&rsquo;s era ({scopeLabel})
+            </button>
+          </p>
+        )}
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="filler-era-from" className="text-muted-foreground text-xs">
