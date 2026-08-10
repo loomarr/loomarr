@@ -605,7 +605,10 @@ func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]api.Disco
 func TestDiscoverFillerStats_AsksForExactlyTheIdsRequested(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 
-	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a,b", adminToken, "")
+	// ⚠ REPEATED params, not `?id=a,b`. This test used to hand-write the comma form and pass,
+	// while the generated client sent the repeated form and had one id bound — the two sides
+	// were each self-consistent and disagreed with each other, with nothing testing the seam.
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a&id=b", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -626,7 +629,7 @@ func TestDiscoverFillerStats_OmitsWhatItCouldNotLearnRatherThanZeroingIt(t *test
 	srv, _, _ := newFillerServer(t)
 
 	stats := decodeDiscoverStats(t,
-		do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=known,unprobed", adminToken, ""))
+		do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=known&id=unprobed", adminToken, ""))
 
 	if _, present := stats["unprobed"]; present {
 		t.Errorf("an unprobed id came back as %+v — absent is the only honest answer, since a "+
@@ -656,7 +659,11 @@ func TestDiscoverFillerStats_CapsTheIdList(t *testing.T) {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("item-%d", i)
 	}
-	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id="+strings.Join(ids, ","), adminToken, "")
+	// ⚠ **This is the assertion that could not fire before.** With explode off, 40 repeated
+	// params bound as ONE element, so `maxItems:25` saw a slice of length 1 and passed — the cap
+	// existed and was unreachable. Sent as repeated params (what the client sends), the slice is
+	// genuinely 40 long and the limit does its job.
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id="+strings.Join(ids, "&id="), adminToken, "")
 
 	if resp.StatusCode == http.StatusOK {
 		t.Errorf("40 ids were accepted — that is 40 upstream requests from one client call")
@@ -983,7 +990,12 @@ func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
 		Clips []struct{ Hash string }
 		Total int
 	}
-	resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=k1,k3,gone", adminToken, "")
+	// ⚠ REPEATED params — the form the generated client sends. Hand-written as `?hashes=k1,k3,gone`
+	// this passed for the whole time the feature was broken in the browser: the server split on
+	// commas, the client repeated the key, and only the FIRST pinned clip ever resolved. Every
+	// other pin rendered as unresolved, which the channel page reported as "no longer in your
+	// catalog" — a real clip, confidently declared missing.
+	resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=k1&hashes=k3&hashes=gone", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("hashes → %d", resp.StatusCode)
 	}
