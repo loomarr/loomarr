@@ -1,6 +1,14 @@
-# Gitignored files copied into every worktree Claude Code creates (`--worktree`, subagent
-# `isolation: worktree`, desktop parallel sessions). `.gitignore` syntax; only files that
-# match AND are gitignored are copied, so tracked files are never duplicated.
+# Gitignored files copied into a new worktree. `.gitignore` syntax; only files that match
+# AND are gitignored are copied, so tracked files are never duplicated.
+#
+# ⚠ ONE FILE, TWO TOOLS — this is not Claude-Code-specific. Claude Code reads it for
+# `--worktree` and subagent `isolation: worktree`; worktrunk's `wt step copy-ignored` reads
+# the same file with the same semantics. Do not add a second mechanism for either.
+#
+# ⚠ IT IS ALSO A SAFETY RAIL FOR WORKTRUNK, not just a convenience. `wt step copy-ignored`
+# copies **all** gitignored files when this file is absent — which here would mean
+# `.filler-smoke/` (15GB) and every `node_modules/`. On btrfs those are reflinks and nearly
+# free, but on any other filesystem it is a real copy. Listing files here caps it.
 #
 # ⚠ WITHOUT THIS, A WORKTREE HAS NO CREDENTIALS. `.env` is gitignored, so a fresh checkout
 # never carries it, and everything touching the live stack fails there in a way that reads

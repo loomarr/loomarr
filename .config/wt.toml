@@ -1,0 +1,41 @@
+# Worktrunk PROJECT config — committed, so every machine and clone gets the same worktree
+# setup. `wt config show` reports where this is read from and names any misplaced key.
+#
+# ⚠ NO `[projects."…"]` WRAPPER. That form belongs in the USER config, where one file covers
+# many repos; here the project is implied and settings sit at the top level. The failure is
+# quiet: `wt config show` says "will be ignored", but `wt switch` simply skips your hooks.
+#
+# ⚠ `worktree-path` AND `url` CANNOT LIVE HERE — worktrunk rejects them in a project config
+# ("belongs in user config" / "unknown key"). Worktree PLACEMENT is therefore per-machine in
+# worktrunk's model and cannot be shared through the repo. Each machine sets it in
+# `~/.config/worktrunk/config.toml`:
+#
+#   [projects."github.com/mantonx/loomarr"]
+#   worktree-path = "{{ repo_path }}/../{{ repo }}-{{ branch | sanitize }}"
+#   aliases.url  = "echo http://localhost:{{ branch | hash_port }}"
+#
+# ⚠ ONE HOOK SECTION ONLY — worktrunk v0.72.0 BUG. Declaring both `[post-create]` and
+# `[post-start]` fails to parse with "duplicate field `post-start`", even though each alone
+# is fine and the TOML is valid (Python's tomllib accepts it). Reproduced at five lines. If
+# a future version fixes it, splitting these is safe; until then, adding a second section
+# breaks worktree creation entirely rather than degrading.
+#
+# An array-of-tables runs steps IN SEQUENCE (a plain table runs them concurrently), which is
+# what we want: copy first, then build against what was copied.
+
+# Copy gitignored files in, filtered by `.worktreeinclude` at the repo root — the SAME file
+# Claude Code's own `--worktree` reads, so both tools agree on what a worktree needs and
+# there is one list to maintain, not two.
+#
+# ⚠ WITHOUT `.worktreeinclude` THIS COPIES EVERY GITIGNORED FILE, which here means
+# `.filler-smoke/` (15GB) and every `node_modules/`. On btrfs those are reflinks and nearly
+# free; on any other filesystem it is a real copy. The include file is the cap.
+[[post-create]]
+copy = "wt step copy-ignored"
+
+# `packages/api/generated/` is gitignored and deliberately NOT in `.worktreeinclude`, so it
+# must be generated. This is the load-bearing step: every `@loomarr/api` import fails to
+# resolve AFTER a successful install, so setup looks complete and only the typecheck says
+# otherwise.
+[[post-create]]
+deps = "cd web && npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen"
