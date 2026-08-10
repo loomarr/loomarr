@@ -64,10 +64,14 @@ const ChannelOverridePicker = ({
 }: ChannelOverridePickerProps) => (
   <div className={cn("flex flex-col gap-3", className)}>
     {/* The mock's `modeNote`: what the checkboxes mean, said once, above them. Without it a
-        row of unticked boxes reads as "blocked everywhere" rather than "decided automatically". */}
+        row of unticked boxes reads as "blocked everywhere" rather than "decided automatically".
+        ⚠ **This copy said "untick to block it" until V51f, and was describing the bug.** The
+        checkbox now releases a pin rather than blocking, and blocking has its own button — so the
+        sentence had to move with the behaviour. Caught by LOOKING at a regenerated visual
+        baseline: every unit test here asserts the write, and none of them read the instructions. */}
     <Caption>
-      Loomarr picks channels for {clipName} automatically. Tick a channel to always play it there, or untick
-      to block it — either way that channel stops deciding for itself.
+      Loomarr picks channels for {clipName} automatically. Tick a channel to always play it there, or use
+      Block to keep it off that channel. Untick to hand the choice back to Loomarr.
     </Caption>
 
     {error && <p className="text-onair-300 text-sm">{error}</p>}
