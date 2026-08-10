@@ -6,6 +6,11 @@ GO      ?= go
 PKG     := ./...
 BIN_DIR := bin
 
+# CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
+# default — see the note on the `test` target, and PW_SHARD for the same contract on the
+# visual suite. Never set this in a local gate run.
+GO_SHARD ?=
+
 # Build-tagged sources are INVISIBLE to `go vet ./...` and to golangci-lint, because both ask
 # the Go build system which files exist and the build system honours `//go:build`. That blind
 # spot ran for months (GH #227 §1): `go vet ./...` exited 0 while `go vet -tags '…' ./...`
@@ -87,7 +92,26 @@ test: ## unit tests only (never touch the network — §19)
 # the assertions and every one of them still runs. What it must not do is hide growth: `internal/api`
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
-	$(GO) test -race -timeout 25m $(PKG)
+#
+# GO_SHARD is a CI-only passthrough (`make check GO_SHARD=1/2`), the same contract as PW_SHARD:
+# EMPTY by default, so a local `make test` — and `make check` — runs the whole tree. Sharding must
+# never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
+# The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
+#
+# ⚠ `&&`, not a `$(shell ...)` expansion. `$(shell)` swallows a non-zero exit and yields the empty
+# string, and `go test` with NO packages exits 0 — so a bad GO_SHARD would have produced a silent
+# green over zero tests, which is the exact failure this sharding must not be able to cause. Here a
+# failing helper fails the recipe: `pkgs=$(...)` carries the substitution's status into the `&&`.
+	@pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))" && $(GO) test -race -timeout 25m $$pkgs
+
+.PHONY: go-shard-verify
+go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift)
+# ⚠ THIS IS A REAL GATE, not a sanity check. Sharding is the one optimization here that can
+# QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
+# run, every shard reports success, and CI is green over code it never executed. Nothing else in
+# the pipeline would notice. SHARDS must match ci.yml's `matrix.shard` count; CI passes it from
+# `strategy.job-total` so the two cannot drift apart.
+	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
@@ -148,8 +172,18 @@ dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-cont
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
 .PHONY: test-pg
-test-pg: ## store conformance vs Postgres (testcontainers; requires Docker)
-	$(GO) test -race -tags=integration -run TestPostgresConformance ./internal/store/
+test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker)
+# ⚠ The `-run TestPostgresConformance` filter this used to carry meant every OTHER integration test
+# in the package compiled and never ran — including TestMigrateSQLiteToPostgres, which its own file
+# header calls "the V11 gate", plus TestMigrateCoversEveryTable and the three TestPreflight* tests.
+# A filter is invisible in the output: the target printed a genuine pass and said nothing about the
+# six tests it had not selected. The migrator was broken the whole time (seeded destination rows
+# collided on insert) and no gate could have told anyone.
+#
+# This is the third variant of "green that proves nothing" this repo has hit — after a pipe masking
+# an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
+# compiling, and EXECUTING are three separate facts.
+	$(GO) test -race -tags=integration ./internal/store/
 
 ## ---- OpenAPI (Phase 8) ---------------------------------------------------
 
@@ -205,9 +239,30 @@ fe-lint: ## Biome lint + format check (web/)
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
+# FE_SHARD is a CI-only passthrough (`make fe FE_SHARD=1/2`), same contract as GO_SHARD and
+# PW_SHARD: EMPTY by default so a local `make fe` runs the whole suite. The shard COUNT lives
+# in ci.yml's `matrix.shard`.
+#
+# ⚠ ONLY apps/web is sharded, and that is not arbitrary. 166 of the 172 test files live there;
+# the other three packages hold 12 between them. More importantly `packages/core` and
+# `packages/tokens` run plain `vitest run` WITHOUT --passWithNoTests, so any shard that handed
+# them zero files would exit non-zero — a red CI caused purely by the split, appearing only at
+# higher shard counts. They stay unsharded, which is both safe and free.
+#
+# ⚠ NO `--` BEFORE THE FLAG. `pnpm --filter X test -- --shard=1/2` passes `-- --shard=1/2` to
+# vitest, which reads it as a FILENAME FILTER, matches nothing, falls back to everything, and
+# exits 0 having run all 166 files. Measured while writing this: the `--` form reported "166
+# passed" for BOTH shards — a green, doubled, entirely unsharded run that looks exactly like a
+# working one. The form below reports 83 and 83.
+FE_SHARD ?=
+FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
+
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
+	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck \
+	  && pnpm --filter '!@loomarr/web' -r --parallel test \
+	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
+	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: storybook
@@ -246,12 +301,15 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 PW_CI ?= 1
 PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
-# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/2`). Empty by
+# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/4`). Empty by
 # default, so a local `make fe-visual` still runs the WHOLE suite — sharding must never
 # be the default, or someone runs half the gate and reads it as green. CI splits the
-# suite across runners purely for wall-clock: 624 browser screenshots on a 4-core runner
-# are the critical path (~6 min of a ~7 min build), and public-repo standard runners are
-# free, so N runners cost the same as one and finish sooner.
+# suite across runners purely for wall-clock, and public-repo standard runners are free,
+# so N runners cost the same as one and finish sooner.
+#
+# ⚠ The shard COUNT lives in ci.yml's `matrix.shard` and nowhere else — the denominator is
+# derived there from `strategy.job-total`. Do not write a specific N into this file: the
+# "1/2" that used to be in the line above outlived the 2-shard config it described.
 PW_SHARD ?=
 
 # ⚠ Run the container AS THE HOST USER, or everything it writes into the bind mount is owned by

@@ -1,1 +1,1 @@
-export { clipHoverURL, clipMediaURL, clipThumbURL } from "./clip-thumb";
+export { clipMediaURL } from "./clip-thumb";

@@ -148,19 +148,19 @@ func (s *Server) registerFiller(api huma.API) {
 	// information than the row it decorates. NOT public like the channel icon — that one is open
 	// so Tunarr can fetch it machine-to-machine, a reason that does not apply here.
 	//
-	// ⚠ `thumb`/`media`/`hover`, never `preview`: /v1/channels/{id}/filler/coverage and
-	// PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
+	// ⚠ `media`, never `preview`: /v1/channels/{id}/filler/coverage and PodAdapter.Preview
+	// already mean "the pod pool a channel would get", as JSON.
 	//
-	// They keep the stdlib (w, r) signature because http.ServeContent answers Range,
-	// If-Modified-Since and 206 in one call — see rawop.go. Their URLs still reach clients as
-	// ClipDTO.thumbnail/.preview strings, so nothing in the browser builds them.
-	rawOp[hashInput](api, bytesResponse(huma.Operation{
-		OperationID: "filler-thumb", Method: http.MethodGet, Path: "/v1/filler/thumb/{hash}",
-		Summary:     "A clip's thumbnail frame",
-		Description: "Any authenticated user. The extracted frame ClipDTO.thumbnail points at.",
-		Tags:        []string{"filler"},
-	}, "A JPEG still.", "image/jpeg"), RoleMember, s.serveFillerThumb)
-
+	// ⚠ **`filler-thumb` and `filler-hover` were RETIRED in V52 phase 8.** A clip's still and
+	// hover loop are image-service images (§22): they are content-addressed, carry a srcset and a
+	// ThumbHash, and are served by /v1/images/{hash} under an honest immutable cache. Two routes
+	// serving the same two assets from a second store, with none of that, is the duplication §22
+	// exists to remove. `filler-media` stays — the clip's OWN bytes are not an image and the image
+	// service has no opinion about them.
+	//
+	// It keeps the stdlib (w, r) signature because http.ServeContent answers Range,
+	// If-Modified-Since and 206 in one call — see rawop.go.
+	//
 	// ⚠ Media type ranges, not a single type: this route serves whatever the clip's extension
 	// maps to in the `mediaTypes` allowlist (video/mp4, video/x-matroska, audio/mpeg, …). Naming
 	// one of them would be a documented lie, and enumerating eleven says less than the range does.
@@ -172,14 +172,6 @@ func (s *Server) registerFiller(api huma.API) {
 			"comes from a short server-side allowlist keyed by extension.",
 		Tags: []string{"filler"},
 	}, "The clip's own bytes.", "video/*", "audio/*"), RoleMember, s.serveFillerMedia)
-
-	rawOp[hashInput](api, bytesResponse(huma.Operation{
-		OperationID: "filler-hover", Method: http.MethodGet, Path: "/v1/filler/hover/{hash}",
-		Summary: "A clip's hover preview",
-		Description: "Any authenticated user. A few seconds of silent animation, so a grid of stills " +
-			"can answer \"is this actually the advert it says it is?\" without opening anything.",
-		Tags: []string{"filler"},
-	}, "An animated WebP.", "image/webp"), RoleMember, s.serveFillerHover)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
@@ -213,25 +205,26 @@ type ClipDTO struct {
 	// adding an opt-in floor, so it was amended in the same PR rather than left as a lie the
 	// generated client repeats.
 	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on."`
-	// Thumbnail is the extracted frame's path relative to the thumbnail cache; "" when
-	// extraction failed or has not run, which renders as no image rather than a broken one.
-	Thumbnail string `json:"thumbnail,omitempty"`
-	// Preview is the animated hover preview's path relative to the preview cache; "" when the
-	// render failed or has not run (V39).
+	// ThumbImage / HoverImage are the clip's still and hover loop, as image-service records
+	// (§22) — content-addressed, with a width ladder, a ThumbHash and honest immutable caching.
 	//
-	// ⚠ Absence is ORDINARY, not an error, and the client must treat it that way: it is the state
-	// of every clip on an install that has not re-synced since V39, and of any clip ffmpeg could
-	// not render. The card falls back to the still, which is what shipped before this existed.
-	Preview string `json:"preview,omitempty" doc:"Animated hover preview; absent when not generated — fall back to the thumbnail, do not render a placeholder"`
-	// ThumbImage / HoverImage are the image-service records for the same two assets (§22, V52
-	// phase 6), present once the adoption job has copied them in.
+	// ⚠ **They REPLACED `thumbnail`/`preview` in V52 phase 8; those two string fields and the
+	// routes behind them are gone.** Phase 6 carried both while the adoption job caught up, which
+	// was the right shape for a migration window and the wrong thing to keep: two ways to address
+	// one asset is the duplication §22 exists to remove, and the legacy pair carried none of what
+	// the image service provides.
 	//
-	// ⚠ They ENRICH thumbnail/preview rather than replacing them, for the same reason ChannelDTO
-	// carries both `logo` and `logoImage`: the legacy routes still serve every clip that has not
-	// been adopted yet, which is all of them the moment this ships. A client renders through
-	// <Image> when the record is present and falls back to the legacy URL when it is not. Both
-	// retire together in phase 8.
-	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run"`
+	// ⚠ **Absence is ORDINARY and the client must treat it that way** — it is not an error and not
+	// a reason to draw a placeholder. A clip whose artwork the adoption job has not reached yet has
+	// neither field, and so does one where ffmpeg never ran (the entire catalog on a Tunarr-backed
+	// install). The card's no-frame layout is the designed answer for both, and it is what shipped
+	// before extracted frames existed.
+	//
+	// The forward pointer on the clip ROW is still `thumbnail`/`preview` — the render pipeline
+	// writes files under FILLER_DIR and the adoption job converts them (§22, phase 6). Those
+	// columns are the seam between the two, deliberately not exposed here: a path relative to a
+	// cache directory is not something a client can do anything with now that the routes are gone.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run, or when no frame was extracted"`
 	HoverImage *ImageDTO `json:"hoverImage,omitempty" doc:"Image-service record for the hover loop; absent until adopted, or when no animation was rendered"`
 	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
 	//
@@ -354,7 +347,6 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
-		Thumbnail: c.Thumbnail, Preview: c.Preview,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,

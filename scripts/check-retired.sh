@@ -79,6 +79,28 @@ RETIRED=(
   # for merging onto a CHILD is the half-migrated vocabulary that outlives whoever reintroduced it.
   '@radix-ui|the primitive vendor is Base UI since V50a (design §14) — import from @base-ui/react'
   'asChild|Radix composition prop; Base UI composes with render={<El />} (design §14, V50a)'
+  # V52 phase 8 (§22): the image service became the ONE pipeline, so the two artwork stores it
+  # replaced retire together. Both are the docs/help hazard this script exists for — a page telling
+  # an operator to fetch /v1/filler/thumb/{hash} or /v1/channels/{id}/icon sends them to a 404 on
+  # every install, and those URLs are exactly the kind of thing that gets pasted into a
+  # troubleshooting note and never revisited.
+  'v1/filler/thumb|V52 phase 8: a clip still is an image-service image; the DTO carries thumbImage and the client renders /v1/images/{hash}'
+  'v1/filler/hover|V52 phase 8: a clip hover loop is an image-service image; the DTO carries hoverImage'
+  'clipThumbURL|V52 phase 8: retired with /v1/filler/thumb — render ClipDTO.thumbImage through the <Image> primitive'
+  'clipHoverURL|V52 phase 8: retired with /v1/filler/hover — render ClipDTO.hoverImage through the <Image> primitive'
+  # ⚠ The TABLE name, not the route: `channel_icons` was a second image store (bytes in the DB,
+  # keyed by channel) and any doc describing where a channel icon LIVES is now wrong. The route
+  # `/v1/channels/{id}/icon` is deliberately NOT banned — the POST upload half still exists at
+  # exactly that path, and banning the string would forbid documenting a live endpoint.
+  'channel_icons|V52 phase 8: dropped; a channel icon is an image-service image and its bytes live under images.dir, not in the database'
+  'GetChannelIcon|V52 phase 8: removed with channel_icons; read the image record via the image service'
+  'PutChannelIcon|V52 phase 8: removed with channel_icons; uploads go through images.Ingest'
+  # ⚠ `ClipDTO.thumbnail`/`.preview` are gone from the WIRE while `clips.thumbnail`/`.preview`
+  # remain as COLUMNS — the render pipeline writes files under FILLER_DIR and the adoption job
+  # converts them. So the bare words cannot be banned; the dotted DTO forms can, and they are what
+  # a client-facing doc would name.
+  'ClipDTO.thumbnail|V52 phase 8: the wire field is thumbImage (an image record); clips.thumbnail survives as the render→adopt column'
+  'ClipDTO.preview|V52 phase 8: the wire field is hoverImage (an image record); clips.preview survives as the render→adopt column'
   # V53e: 31 test files each hand-rolled a `stubFetch` that replaced global fetch. Every one was
   # UNTYPED (so a fixture could omit required fields indefinitely) and UNBOUND (so assertions
   # matched a url SUBSTRING the test itself wrote). The migration found ~40 defects across those
@@ -104,7 +126,13 @@ RETIRED=(
   'FILLER_MIN_CLIP_SECONDS|the setting is FILLER_MIN_CLIP_DURATION (a duration like 15s), matching the neighbouring FILLER_MIN_DURATION'
   'FILLER_MAX_CLIP_SECONDS|the setting is FILLER_MAX_CLIP_DURATION (a duration like 90s), matching the neighbouring FILLER_MIN_DURATION'
 )
-ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
+# ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
+# chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —
+# so `00012_channel_icons.sql` will say `channel_icons` for the life of the repository and cannot
+# be annotated out of the way. The migration that DROPS it has to name it too. Neither is an
+# instruction to an operator, which is what this ban protects; both are the historical record the
+# forward-only rule exists to keep.
+ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/|internal/store/migrations/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
 # §10's "keeps being re-decided" history survives, and how a corrective comment ("this used to
 # say X") points at the thing it corrects.
@@ -114,6 +142,7 @@ ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/
 # check for everybody. `retired-ok` is the EXPLICIT opt-out — put it on the line when the
 # mention is deliberate. Prefer it; a reader can see the claim, and it cannot be tripped by
 # accident the way "no longer" can.
+
 ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was removed|used to|does not exist|removed because|keeps being re-decided'
 # ⚠ internal/ and docker/ are searched too. They were not before, which is how a Go doc
 # comment could keep describing "the sidecar's OWN configuration" — and how a dead

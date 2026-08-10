@@ -33,11 +33,16 @@ import (
 //     special case (verified — the BOOL branch in `coerce` below is a second belt, not
 //     the thing doing the work).
 //
-//     **Binary is the real exception.** `channel_icons.bytes` is BLOB/BYTEA, and routing
-//     it through a Go string corrupts every byte that is not valid UTF-8. That branch IS
-//     load-bearing and has a test that fails without it. Coercing by destination type is
-//     what keeps both cases — and any future divergence — in one rule instead of a list
-//     of remembered exceptions.
+//     **Binary is the real exception.** Routing a BLOB/BYTEA column through a Go string
+//     corrupts every byte that is not valid UTF-8. That branch IS load-bearing and has a
+//     test that fails without it — verified by sabotage, not by assumption. Coercing by
+//     destination type is what keeps both cases, and any future divergence, in one rule
+//     rather than a list of remembered exceptions.
+//
+//     ⚠ Its motivating column was `channel_icons.bytes` (retired-ok), which V52 phase 8
+//     dropped — leaving the schema with NO binary column. The branch stays defensive, and
+//     `TestBinaryColumnsSurviveMigration` keeps it honest against a probe table the test
+//     creates itself, so no production column has to exist for a test's benefit.
 //
 //  3. **Row counts are compared per table, and a mismatch ABORTS before switchover.**
 //     Copying and verifying are separate phases for a reason: a copy that reports success
@@ -64,7 +69,7 @@ type MigrationProgress struct {
 }
 
 // copyBatch is how many rows are read and inserted per round trip. Large enough that a
-// 100k-row table isn't 100k round trips, small enough that a wide table (channel_icons
+// 100k-row table isn't 100k round trips, small enough that a wide table (channel_icons retired-ok
 // carries image BYTEA) doesn't build a multi-hundred-MB statement.
 const copyBatch = 500
 
@@ -95,6 +100,36 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 	tables, err := userTables(ctx, d)
 	if err != nil {
 		return MigrationProgress{}, err
+	}
+
+	// ⚠ **Clear what the destination's OWN migrations seeded, before copying anything.**
+	//
+	// Preflight refuses a populated target, so the destination was empty when the operator chose
+	// it — but `Open(dsn, true)` then runs goose against it, and some migrations INSERT rows
+	// (`filler_sources` seeds the default sources). The source has those same rows, because it was
+	// seeded by the same migrations when it was created. A plain insert therefore collides on the
+	// primary key, and the copy dies partway through with
+	// `duplicate key value violates unique constraint "filler_sources_pkey"`.
+	//
+	// That was not a hypothetical: it failed for every operator who ever tried to move an
+	// established SQLite install to Postgres, and no test said so because `make test-pg` filtered
+	// to `-run TestPostgresConformance` and never executed this file.
+	//
+	// ⚠ **DELETE rather than upsert-or-ignore, and the choice is about which side is
+	// authoritative.** The SOURCE is: it holds the operator's live data, which began from these
+	// same seeds and may since have been edited or deleted. `ON CONFLICT DO NOTHING` would keep
+	// the destination's pristine seed and silently discard that edit — the worst outcome, because
+	// it looks like success. `ON CONFLICT DO UPDATE` would need per-table primary-key discovery to
+	// express what "start from an empty table" says directly.
+	//
+	// ⚠ **Reverse order, which is what makes it safe with foreign keys.** `tables` is topologically
+	// sorted parents-first so inserts are legal; deleting is the same graph backwards, so a child's
+	// rows always go before the parent's. Doing it in forward order would fail against
+	// `sessions.user_id REFERENCES users(id)` the moment either table carried a seed.
+	for i := len(tables) - 1; i >= 0; i-- {
+		if _, err := d.db.ExecContext(ctx, `DELETE FROM `+quoteIdent(tables[i])); err != nil {
+			return MigrationProgress{}, fmt.Errorf("clear seeded rows from %s: %w", tables[i], err)
+		}
 	}
 
 	prog := MigrationProgress{Tables: make([]TableStat, 0, len(tables))}
@@ -311,7 +346,7 @@ func countRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
 func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows func(int64)) (int64, error) {
 	// ⚠ Both from the DESTINATION — it is authoritative for the column set, the order,
 	// and the types `coerce` targets. Reading types from the source would silently pick
-	// SQLite's BLOB for `channel_icons.bytes` instead of Postgres's BYTEA; that column is
+	// SQLite's BLOB for `channel_icons.bytes` instead of Postgres's BYTEA; that column is retired-ok
 	// binary, and the difference decides whether icons survive as bytes or as mangled
 	// UTF-8.
 	cols, types, err := describe(ctx, dst, table)

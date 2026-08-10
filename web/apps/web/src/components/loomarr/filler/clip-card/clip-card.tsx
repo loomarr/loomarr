@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
-import { clipHoverURL, clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
+import { formatClipDuration, formatRelative } from "@loomarr/core";
 import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, Image } from "@/components/ui";
@@ -127,7 +127,12 @@ const ClipFrame = ({
   onToggleSelect,
   onPlay,
 }: {
-  clip: ClipDTO;
+  // ⚠ `thumbImage` is REQUIRED here even though it is optional on ClipDTO. The frame exists only
+  // when there is artwork to put in it, and stating that in the type is what lets this component
+  // hand the record straight to <Image> — the caller's `clip.thumbImage &&` guard is then the one
+  // place the absence is handled, rather than a narrowing TypeScript cannot carry across the
+  // component boundary and a redundant re-check in here.
+  clip: ClipDTO & { thumbImage: NonNullable<ClipDTO["thumbImage"]> };
   selected?: boolean;
   onToggleSelect?: () => void;
   onPlay?: () => void;
@@ -146,7 +151,9 @@ const ClipFrame = ({
   // every preview up front would pull the whole grid's worth of animation immediately — precisely
   // what the still exists to avoid.
   const [hovered, setHovered] = useState(false);
-  const showPreview = hovered && Boolean(clip.preview);
+  // ⚠ Keys on `hoverImage`, not the retired `preview` path (V52 phase 8). Same question — "is
+  // there an animation to show?" — asked of the record that now answers it.
+  const showPreview = hovered && Boolean(clip.hoverImage);
 
   // ⚠ These handlers are DECORATIVE: they reveal a preview and do nothing else. The real control
   // is the play button inside, which is already focusable and already flips this same state via
@@ -166,67 +173,43 @@ const ClipFrame = ({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {/* ⚠ Two paths during the §22 migration window. `thumbImage` is present once the adoption
-          job has copied this clip's artwork into the image service; until then the legacy route
-          still serves it, and a freshly-imported catalog is entirely in that state. Both retire
-          in phase 8.
+      {/* ⚠ ONE path since V52 phase 8. The legacy `/v1/filler/thumb/{hash}` fallback that stood retired-ok
+          here through the migration window is retired with its route — a clip's artwork is an
+          image-service image (§22).
 
-          Empty alt on BOTH, deliberately: the clip's name is the very next element, so a
-          description here would have a screen reader announce the same clip twice. The frame is
-          decoration for a label that is already present. */}
-      {clip.thumbImage ? (
-        // No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
-        // which is exactly right below the fold.
-        <Image
-          image={clip.thumbImage}
-          alt=""
-          sizes="(max-width: 640px) 45vw, 220px"
-          className="size-full object-cover"
-        />
-      ) : (
-        <img
-          src={clipThumbURL(clip.hash)}
-          alt=""
-          className="size-full object-cover"
-          // A catalog is hundreds of cards; without this every frame is fetched on mount.
-          loading="lazy"
-        />
-      )}
+          Empty alt, deliberately: the clip's name is the very next element, so a description here
+          would have a screen reader announce the same clip twice. The frame is decoration for a
+          label that is already present.
+
+          No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
+          which is exactly right below the fold. */}
+      <Image
+        image={clip.thumbImage}
+        alt=""
+        sizes="(max-width: 640px) 45vw, 220px"
+        className="size-full object-cover"
+      />
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
           simply covered once there is something to cover it with. */}
-      {showPreview &&
-        (clip.hoverImage ? (
-          // ⚠ `fallback={null}` — render NOTHING on failure, revealing the still beneath. This is
-          // the one caller that wants no visible failure state at all: a colour block (the
-          // primitive's default) would be a visible fault over the frame where the honest answer
-          // is "this clip has no preview", which is the common case on any install that has not
-          // re-synced.
-          //
-          // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
-          // nominal here — it is the still beneath that does the responsive work.
-          <Image
-            image={clip.hoverImage}
-            alt=""
-            sizes="(max-width: 640px) 45vw, 220px"
-            className="absolute inset-0 size-full object-cover"
-            fallback={null}
-          />
-        ) : (
-          <img
-            src={clipHoverURL(clip.hash)}
-            alt=""
-            className="absolute inset-0 size-full object-cover"
-            // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
-            // A broken-image glyph over the frame would be a visible fault where the honest state
-            // is "this clip has no preview" — the common case on any install that has not re-synced
-            // since V39.
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
-        ))}
+      {showPreview && clip.hoverImage && (
+        // ⚠ `fallback={null}` — render NOTHING on failure, revealing the still beneath. This is
+        // the one caller that wants no visible failure state at all: a colour block (the
+        // primitive's default) would be a visible fault over the frame where the honest answer
+        // is "this clip has no preview", which is the common case on any install that has not
+        // re-synced.
+        //
+        // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
+        // nominal here — it is the still beneath that does the responsive work.
+        <Image
+          image={clip.hoverImage}
+          alt=""
+          sizes="(max-width: 640px) 45vw, 220px"
+          className="absolute inset-0 size-full object-cover"
+          fallback={null}
+        />
+      )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
           top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
@@ -329,8 +312,13 @@ const ClipCard = ({
         grid of identical grey rectangles reads as a broken page rather than an absent nicety.
         Absence is the honest rendering — the card without a frame is exactly what shipped
         before this phase, which is a design that already works. */}
-    {clip.thumbnail && (
-      <ClipFrame clip={clip} selected={selected} onToggleSelect={onToggleSelect} onPlay={onPlay} />
+    {clip.thumbImage && (
+      <ClipFrame
+        clip={{ ...clip, thumbImage: clip.thumbImage }}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
+        onPlay={onPlay}
+      />
     )}
 
     <div className="flex items-start justify-between gap-2">
@@ -338,7 +326,7 @@ const ClipCard = ({
           one. A clip with no extracted frame renders no image, so without this fallback the
           overlays would have nowhere to sit and the clip would become unselectable. On a
           Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
-      {!clip.thumbnail && onToggleSelect && (
+      {!clip.thumbImage && onToggleSelect && (
         <input
           type="checkbox"
           checked={Boolean(selected)}
@@ -348,7 +336,7 @@ const ClipCard = ({
         />
       )}
       <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
-      {!clip.thumbnail && (
+      {!clip.thumbImage && (
         <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">
           {formatClipDuration(clip.durationMs)}
         </span>
@@ -420,7 +408,7 @@ const ClipCard = ({
           ⚠ Only when there is NO thumbnail — with one, quality renders as an overlay on the
           frame (V35b, the mock). Dropping this branch entirely would hide the resolution on
           exactly the installs that extract no frames, which is the whole catalog on some. */}
-      {!clip.thumbnail && clip.quality ? (
+      {!clip.thumbImage && clip.quality ? (
         // aria-label per frontend-design §219: the badge renders mono/uppercase by house
         // style, so a screen reader would otherwise announce letter-spaced shouting.
         <Badge
@@ -439,7 +427,7 @@ const ClipCard = ({
         The wording (and the playsCounted trap) lives in `playsLine`, shared with the list row. */}
     <p className="text-static-400 text-xs">{playsLine(clip)}</p>
 
-    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit || (onPlay && !clip.thumbnail)) && (
+    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit || (onPlay && !clip.thumbImage)) && (
       <div className="flex flex-wrap gap-2">
         {/* ⚠ **Only when there is NO frame to overlay.** With a thumbnail the play control is the
             disc centred on it; duplicating it here would put two "Play X" buttons on one card,
@@ -448,7 +436,7 @@ const ClipCard = ({
             Without a thumbnail there is nowhere for the disc to sit — and on a Tunarr-backed
             install, or one where ffmpeg never ran, that is the ENTIRE catalog. Dropping this
             branch would make the whole feature invisible on exactly those installs. */}
-        {onPlay && !clip.thumbnail && (
+        {onPlay && !clip.thumbImage && (
           <Button variant="outline" size="sm" onClick={onPlay} title={`Play ${clip.name}`}>
             <Play aria-hidden />
             Play

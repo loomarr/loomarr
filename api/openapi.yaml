@@ -816,9 +816,6 @@ components:
         playsCounted:
           description: False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0
           type: boolean
-        preview:
-          description: Animated hover preview; absent when not generated — fall back to the thumbnail, do not render a placeholder
-          type: string
         quality:
           description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
@@ -838,9 +835,7 @@ components:
           type: array
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: Image-service record for the still; absent until the adoption job has run
-        thumbnail:
-          type: string
+          description: Image-service record for the still; absent until the adoption job has run, or when no frame was extracted
         tunarrProgramId:
           type: string
         visionTagged:
@@ -2412,8 +2407,9 @@ components:
         suggestedEra:
           format: int64
           type: integer
-        thumbnail:
-          type: string
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Image-service record for the extracted frame; absent until adopted or when none was extracted
       required:
         - hash
         - path
@@ -5873,50 +5869,6 @@ paths:
         - channels
         - filler
   /v1/channels/{id}/icon:
-    get:
-      description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at /v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, and it retires with the channel_icons table in phase 8."
-      operationId: channel-icon
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            examples:
-              - ch_abc123
-            type: string
-      responses:
-        "200":
-          content:
-            image/gif:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-            image/jpeg:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-            image/png:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-            image/webp:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-          description: The stored icon bytes.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: A channel's uploaded icon
-      tags:
-        - channels
     post:
       description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Ingests the bytes into the image service (§22), points the channel's logo at the content-addressed URL, and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a different image yields a different one, so no cache-bust is needed.
       operationId: upload-channel-icon
@@ -6929,38 +6881,6 @@ paths:
       summary: Send clips back to the review queue
       tags:
         - filler
-  /v1/filler/hover/{hash}:
-    get:
-      description: Any authenticated user. A few seconds of silent animation, so a grid of stills can answer "is this actually the advert it says it is?" without opening anything.
-      operationId: filler-hover
-      parameters:
-        - description: The clip's content hash (from ClipDTO)
-          in: path
-          name: hash
-          required: true
-          schema:
-            description: The clip's content hash (from ClipDTO)
-            examples:
-              - 9f2b1c4e8a7d6503
-            type: string
-      responses:
-        "200":
-          content:
-            image/webp:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-          description: An animated WebP.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: A clip's hover preview
-      tags:
-        - filler
   /v1/filler/incoming:
     get:
       description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
@@ -7445,38 +7365,6 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Edit a clip's tags
-      tags:
-        - filler
-  /v1/filler/thumb/{hash}:
-    get:
-      description: Any authenticated user. The extracted frame ClipDTO.thumbnail points at.
-      operationId: filler-thumb
-      parameters:
-        - description: The clip's content hash (from ClipDTO)
-          in: path
-          name: hash
-          required: true
-          schema:
-            description: The clip's content hash (from ClipDTO)
-            examples:
-              - 9f2b1c4e8a7d6503
-            type: string
-      responses:
-        "200":
-          content:
-            image/jpeg:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-          description: A JPEG still.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: A clip's thumbnail frame
       tags:
         - filler
   /v1/filler/watch:

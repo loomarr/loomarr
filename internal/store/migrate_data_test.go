@@ -22,9 +22,11 @@ import (
 // seedForMigration writes rows into every table whose type handling differs between
 // the dialects, plus enough ordinary rows that a count is meaningful.
 //
-// ⚠ `users.disabled` and `channel_icons.bytes` are the two that MATTER: disabled is
-// INTEGER in SQLite and BOOLEAN in Postgres, and bytes is BLOB vs BYTEA. A migration
-// that gets every other table right and drops these is the realistic bug.
+// ⚠ `users.disabled` is the one that MATTERS here: INTEGER in SQLite, BOOLEAN in Postgres, and a
+// migration that gets every other table right and drops it is the realistic bug. The BLOB/BYTEA
+// divergence used to be covered alongside it by `channel_icons.bytes` (retired-ok), which V52
+// phase 8 dropped — TestBinaryColumnsSurviveMigration now covers that half against a probe table
+// it creates itself, so no production column has to exist for a test's benefit.
 func seedForMigration(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
@@ -321,34 +323,62 @@ func TestMigrateReportsProgress(t *testing.T) {
 	}
 }
 
-// A channel icon is real binary (PNG). If it round-trips through a Go string the
-// bytes are corrupted, so this is the one column where coercion must be right.
-func TestIconBytesSurviveMigration(t *testing.T) {
+// Binary columns must survive the copy: a BLOB routed through a Go string corrupts every byte that
+// is not valid UTF-8, and `coerce`'s BYTEA/BLOB arm is the two lines that prevent it.
+//
+// ⚠ **This test CREATES ITS OWN TABLE, and that is the whole design rather than a shortcut.**
+// It replaces `TestIconBytesSurviveMigration`, which asserted the same property against
+// `channel_icons.bytes` — the schema's only binary column until V52 phase 8 dropped the table retired-ok
+// (retired-ok). That left the coercion branch defensive but unexercised, and the two obvious fixes
+// are both wrong: deleting the branch means the next binary column silently arrives mangled, and
+// adding a binary column to both dialects' migrations puts a table that exists for a test's benefit
+// into every operator's database.
+//
+// `MigrateData` enumerates tables from the DESTINATION catalog (`userTables`) and reads column
+// types from the destination too, so a table created here on both sides travels the identical code
+// path a real one would — same `copyTable`, same `describe`, same `coerce`. The probe is scoped to
+// this test's own containers and never reaches a migration.
+//
+// ⚠ The destination column is BYTEA against a source BLOB deliberately: it is the DESTINATION's
+// type that selects the coercion, which is the asymmetry the whole migrator is built around.
+func TestBinaryColumnsSurviveMigration(t *testing.T) {
 	ctx := context.Background()
 	src := newSQLiteStore(t)
-	// A PNG header plus bytes that are invalid UTF-8 — the case a string trip mangles.
-	raw := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE, 0x00, 0x80, 0xC3}
-	ss := src.(*sqlStore)
-	if _, err := ss.db.ExecContext(ctx,
-		`INSERT INTO channel_icons (channel_id, bytes, content_type, updated_at) VALUES (?,?,?,?)`,
-		"ch1", raw, "image/png", 0); err != nil {
-		t.Fatalf("seed icon: %v", err)
-	}
 	dst, err := Open(ctx, startPostgres(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = dst.Close() })
+
+	// A PNG header plus bytes that are invalid UTF-8 — precisely the case a string trip mangles.
+	// A payload of only printable ASCII would pass even with the coercion branch deleted, which
+	// would make this test a decoration.
+	raw := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE, 0x00, 0x80, 0xC3}
+
+	if _, err := src.(*sqlStore).db.ExecContext(ctx,
+		`CREATE TABLE binary_probe (id TEXT PRIMARY KEY, payload BLOB NOT NULL)`); err != nil {
+		t.Fatalf("create source probe: %v", err)
+	}
+	if _, err := src.(*sqlStore).db.ExecContext(ctx,
+		`INSERT INTO binary_probe (id, payload) VALUES (?, ?)`, "one", raw); err != nil {
+		t.Fatalf("seed probe: %v", err)
+	}
+	if _, err := dst.(*sqlStore).db.ExecContext(ctx,
+		`CREATE TABLE binary_probe (id TEXT PRIMARY KEY, payload BYTEA NOT NULL)`); err != nil {
+		t.Fatalf("create destination probe: %v", err)
+	}
+
 	if _, err := MigrateData(ctx, src, dst, nil); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+
 	var got []byte
 	if err := dst.(*sqlStore).db.QueryRowContext(ctx,
-		`SELECT bytes FROM channel_icons WHERE channel_id = $1`, "ch1").Scan(&got); err != nil {
-		t.Fatalf("read migrated icon: %v", err)
+		`SELECT payload FROM binary_probe WHERE id = $1`, "one").Scan(&got); err != nil {
+		t.Fatalf("read migrated bytes: %v", err)
 	}
 	if !bytes.Equal(got, raw) {
-		t.Errorf("icon bytes corrupted:\n got %v\nwant %v", got, raw)
+		t.Errorf("binary column corrupted:\n got %v\nwant %v", got, raw)
 	}
 }
 

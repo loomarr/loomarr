@@ -360,8 +360,13 @@ Four rules that are not negotiable, each because the obvious alternative is subt
    `goose_db_version` is never copied — the destination earns its own.
 3. **Values are coerced by the DESTINATION's column type.** Everything is scanned as a string,
    which makes the SQLite-INTEGER/Postgres-BOOLEAN divergence a non-event (both drivers parse
-   `"0"`/`"1"` correctly). Binary is the real exception: `channel_icons.bytes` is BLOB/BYTEA, and
-   routing it through a Go string corrupts every byte that is not valid UTF-8.
+   `"0"`/`"1"` correctly). Binary is the real exception — routing a BLOB/BYTEA column through a Go
+   string corrupts every byte that is not valid UTF-8. ⚠ **The schema currently has no binary
+   column at all.** `channel_icons.bytes` was the only one and it retired with the table in V52
+   phase 8 (§22), so the coercion branch is defensive rather than exercised, and the test that
+   proved it (`TestIconBytesSurviveMigration`) could not be rewritten against a real table. Keeping
+   the branch means the next binary column added does not silently arrive mangled; the cost is a
+   path no test covers. *(Named here as the historical example, not a live column — retired-ok.)*
 4. **Preflight refuses a populated target.** "Wipe it and retry" is safe advice only because this
    check guarantees there was nothing there to lose.
 
@@ -468,7 +473,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as a **job** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/splits/{proposalId}` | Read a split proposal (admin, §10 V34) — the source of truth on SSE reconnect, the same pattern as `/v1/proposals/{id}`. |
 | POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, written into the drop-folder, and the **original compilation row removed** — its identity is a path that now means twenty clips, not one. |
-| GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). Sibling of `/v1/filler/thumb/{path...}` and confined the same way — the path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**, for the reason `/thumb` is not: "preview" already means a pod listing in two places (build plan §6.2). |
+| GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. The PATCH body also carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
@@ -3722,10 +3727,12 @@ by hash prefix so no directory accumulates a hundred thousand entries:
   drv/ab/cd/abcdef0123…_w320.avif
 ```
 
-⚠ **No image bytes are stored in the database.** The `channel_icons` table this replaces put upload
-bytes in the DB specifically so they would ride the §16 backup — which worked, but made the database
+⚠ **No image bytes are stored in the database.** The `channel_icons` table this replaces (retired-ok)
+put upload bytes in the DB specifically so they would ride the §16 backup — which worked, but made the database
 the wrong shape for a general image service and would not have scaled to ingested remote artwork. See
-*Durability* below for what replaces that guarantee, and what deliberately does not.
+*Durability* below for what replaces that guarantee, and what deliberately does not. *(That table was
+dropped outright in V52 phase 8, with no backfill: this project has no production installs, so a job
+written to migrate data that does not exist would be debt rather than safety — retired-ok.)*
 
 ### Data model
 
