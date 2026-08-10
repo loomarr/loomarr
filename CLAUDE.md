@@ -15,9 +15,19 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 
 ## Session start ritual
 
-1. Read `PROGRESS.md` — find the active phase.
-2. Read **only** the design-doc sections for that phase (map below) plus §14 (stack) and §21 (the phase text itself). Don't load the whole doc; it wastes context.
-3. Run `make check` to confirm the tree is green before writing anything.
+1. **Run `/list-agents`.** If another session is live, assume it may be working the same
+   thing until you know otherwise, and `SendMessage` to say what you are taking before you
+   start. ⚠ Address a peer by the name **and** the `[ref]` the listing shows — a bare name
+   is rejected whenever a ref is displayed.
+2. Read `PROGRESS.md` — find the active phase.
+3. Read **only** the design-doc sections for that phase (map below) plus §14 (stack) and §21 (the phase text itself). Don't load the whole doc; it wastes context.
+4. Run `make check` to confirm the tree is green before writing anything.
+
+⚠ **Step 1 exists because it was skipped, on 2026-08-10.** Two sessions independently
+regenerated the same ten visual baselines for PR #226, and one had already fixed #236
+before the other began. Both were listed by `/list-agents` the whole time — the capability
+was never missing, only the habit of looking. The SessionStart hook now prints live peers
+automatically, so the cost of checking is zero; claiming the work is still on you.
 
 ### Phase → design-doc section map
 
@@ -200,22 +210,47 @@ regenerating the same visual baselines.
 A single session working through phases in order needs no worktree at all — there is no
 concurrency to isolate, and the branch is doing the same job.
 
-**Setting one up.** A worktree carries tracked files only, so everything gitignored is
-missing — and the non-obvious one is the generated API client, not `node_modules`:
+**Setting one up.** One command, either way:
 
-```
-git worktree add ../loomarr-<phase> -b <phase>
-cd ../loomarr-<phase>/web
-npx pnpm@11.13.1 install --frozen-lockfile   # ~2s; the pnpm store is shared, so it hard-links
-npx pnpm@11.13.1 codegen                     # REQUIRED — packages/api/generated/ is gitignored
+```sh
+make worktree NAME=<phase>     # or: claude --worktree <phase>
 ```
 
-Skip `codegen` and every `@loomarr/api` import fails to resolve, *after* a successful
-install — so the setup looks complete and the typecheck says otherwise. Go needs nothing:
-the module cache is shared and `go build ./...` works immediately.
+Both run `scripts/worktree-create.sh`, which places the worktree as a SIBLING
+(`../loomarr-<phase>`), copies `.env`, and runs `pnpm install` + `pnpm codegen`. The
+`WorktreeCreate` hook in `.claude/settings.json` points at the same script, so
+`claude --worktree`, `isolation: worktree` subagents and background sessions all get
+identical setup.
 
-`git worktree remove ../loomarr-<phase>` when the phase merges. `node_modules` is ~470MB
-per worktree, which is disk rather than download.
+⚠ **Do not hand-roll `git worktree add` any more.** It bypasses the hook, so it silently
+skips all three steps. That is how `loomarr-msw` ended up with no `.env`: it is gitignored,
+so a worktree never carries it, and everything needing live credentials fails there looking
+like a code bug. `make worktree` exists so the manual path and the agent path cannot drift.
+
+Two gitignored things a worktree lacks, in order of how confusing they are:
+
+- **`.env`** — copied by the script from the MAIN checkout (`git rev-parse --git-common-dir`),
+  never from the current tree, or a worktree without credentials would create more of them.
+- **`packages/api/generated/`** — `codegen` output. Skip it and every `@loomarr/api` import
+  fails to resolve *after* a successful install, so setup looks complete and the typecheck
+  disagrees.
+
+Go needs nothing: the module cache is shared and `go build ./...` works immediately.
+
+`git worktree remove ../loomarr-<phase>` when the phase merges — or just exit the session,
+since the `WorktreeRemove` hook does it and **refuses to delete a tree holding uncommitted
+or untracked work**.
+
+⚠ **Worktrees are nearly free on this box, but not for the reason this file used to give.**
+It said the pnpm store "hard-links". It does not — `links=1`, verified. `/home` is btrfs and
+pnpm uses REFLINKS, so each worktree's `node_modules` measures ~450MB by `du` while holding
+**1MB exclusive** (`btrfs filesystem du`, 2026-08-10). The conclusion was right; the
+mechanism was wrong, and on a filesystem without reflinks the real cost is ~450MB each.
+
+⚠ **Never park a worktree on `main`.** `loomarr-playout-fixes` does, and it makes
+`gh pr merge --delete-branch` exit non-zero — `fatal: 'main' is already used by worktree
+at …` — *after the merge has already succeeded*. An agent reads that as a failed merge and
+retries.
 
 ### The `using-git-worktrees` skill — where this repo overrides it
 
@@ -227,18 +262,28 @@ consent before creating one. Use it for that.
 It disagrees with the above in three places, and **this file wins**:
 
 1. ⚠ **Placement.** The skill defaults to a project-local `.worktrees/`; this repo uses a
-   SIBLING directory (`../loomarr-<phase>`). Sibling placement is deliberate — the
-   Playwright targets bind-mount the repo root into a container, so a worktree *inside*
-   the root would be mounted into every visual run.
+   SIBLING directory (`../loomarr-<phase>`). Sibling placement is deliberate and concrete:
+   `make e2e` / `e2e-update` mount the repo ROOT (`-v "$(PWD):/work"`, Makefile) because
+   e2e needs `internal/web/dist`, which lives outside `web/`. A worktree inside the root is
+   therefore mounted into every e2e run, carrying its `node_modules` with it. (`fe-visual`
+   mounts only `$(PWD)/web`, so it is the e2e pair that bites.)
 2. ⚠ **It will edit and COMMIT `.gitignore`.** Its safety step adds the worktree directory
-   and commits that change. `.worktrees/` is not ignored here, so following the skill
-   unmodified produces an unrequested commit. Don't; use the sibling path instead.
+   and commits that change. Don't; use the sibling path instead.
 3. ⚠ **Its Step 2/3 do not fit.** `go mod download` + `go test ./...` is not this repo's
    setup: the load-bearing step is `pnpm codegen` (the generated API client is gitignored,
    so a fresh worktree typechecks red without it), and the baseline gate is `make check`.
 
-Prefer the native `EnterWorktree` tool when one is available — the skill says so itself,
-and it owns placement and cleanup that manual `git worktree add` leaves as phantom state.
+**`EnterWorktree` and `--worktree` are now safe to prefer, and were not before.** Both
+default to `.claude/worktrees/` *inside* the repo — the placement rule 1 forbids — so this
+file used to tell you to prefer a tool that violated its own rule two paragraphs earlier.
+The `WorktreeCreate` hook resolves it: native creation now lands at `../loomarr-<name>`
+like everything else. `.claude/worktrees/` stays gitignored as insurance for the case where
+the hook is absent or fails and the built-in default takes over.
+
+⚠ **The hooks live in `.claude/settings.json`, which is TRACKED** (it was gitignored until
+2026-08-10). A gitignored settings file cannot deliver hooks to another machine, a fresh
+clone, or a new worktree — which is the one thing they exist to do. Machine-specific
+overrides belong in `.claude/settings.local.json`, which stays ignored.
 
 ## Ask the maintainer (stop points)
 

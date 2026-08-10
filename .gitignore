@@ -53,8 +53,23 @@ web/apps/web/dist/
 .DS_Store
 *.swp
 .playwright-mcp/
-.claude/settings.json
 .claude/scheduled_tasks.lock
+
+# ⚠ `.claude/settings.json` is TRACKED (it used to be ignored, here, on this line). It
+# carries the WorktreeCreate/WorktreeRemove/SessionStart hook wiring, and a gitignored
+# settings file cannot deliver hooks to anyone — not another machine, not a fresh clone,
+# not a new worktree. That is the one thing the hooks exist to fix, so ignoring the file
+# that configures them defeated the purpose. Personal, machine-specific overrides belong
+# in `.claude/settings.local.json`, which stays ignored below.
+.claude/settings.local.json
+
+# Claude Code's DEFAULT worktree location, which this repo does not use — the hooks place
+# worktrees as siblings (`../loomarr-<name>`) instead, because `make e2e` bind-mounts the
+# repo ROOT (`-v "$(PWD):/work"`) and would otherwise mount every worktree's ~450MB of
+# node_modules into the Playwright container. Ignored anyway as insurance: if the hooks are
+# ever absent or fail, the native default takes over and a stray worktree must not be
+# committable into the main checkout.
+.claude/worktrees/
 .filler-drop/
 .cmp-review/
 scratch-*.png

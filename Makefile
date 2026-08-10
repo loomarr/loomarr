@@ -121,6 +121,22 @@ test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
+## ---- worktrees -----------------------------------------------------------
+
+.PHONY: worktree
+worktree: ## create a sibling worktree, fully set up (make worktree NAME=my-phase)
+# ⚠ THE SAME SCRIPT CLAUDE CODE'S HOOK RUNS, deliberately, because two setup paths that
+# drift apart is how the current three-step block in CLAUDE.md ended up omitting `.env` —
+# `loomarr-msw` has no `.env` to this day, and everything needing live credentials there
+# fails looking like a code bug.
+#
+# The hook only fires for `claude --worktree`, `isolation: worktree` subagents, and
+# background sessions. A hand-run `git worktree add` — what CLAUDE.md documented, and what
+# every worktree in this repo was built with — bypasses it entirely. This target is that
+# gap closed: one implementation, reachable from either direction.
+	@test -n "$(NAME)" || { echo "usage: make worktree NAME=<name>"; exit 2; }
+	@printf '{"name":"%s"}' '$(NAME)' | ./scripts/worktree-create.sh
+
 ## ---- build / run ---------------------------------------------------------
 
 .PHONY: build
