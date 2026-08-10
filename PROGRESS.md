@@ -4,6 +4,47 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V54 — filler refresh 2: phase A ACTIVE (branch `v54-filler-refresh`).** Plan:
+`~/.claude/plans/v54-filler-refresh-2.md` (phases A–H; A severity · B sources twirl-down ·
+C split preview · D catalog artwork/hierarchy/pagination · E break length · F dHash · G a11y ·
+H §10 docs). Origin: the maintainer's ten reported filler problems, 2026-08-10. A 12-area audit
+(browser + source, each area re-verified by a second agent) confirmed all ten and found ~25
+unreported defects, five of them the "control does less than it says" class of #236/#240/#241.
+
+⚠ **The audit's error class, recorded because it recurred in 7 of 12 areas: a FALSE NEGATIVE
+claiming something was not built when it was.** A pod duration budget, cross-catalog dHash dedup,
+a frame-at-timestamp capability, and the missing-bytes operator warning were all reported absent
+and all exist. Treat "X does not exist" in that plan as a claim to re-grep, never a fact.
+
+**A1 — the open redirect, and a restart that read as a logout (2026-08-10).** Gate: `make fe`
+exit 0 (**1348** app + 49 core + 19 api + 5 tokens, biome clean on 972 files) + `make check`
+exit 0 + `make openapi-verify` exit 0 + `make retired-verify` exit 0. Each run without a pipe —
+see the pipe-masking warning below, which this session re-triggered by piping `make check` into
+`tail` and reading `tail`'s exit code.
+
+`/login?redirect=https://evil.example` on an already-signed-in browser navigated **off-site**:
+the guard's `throw redirect({ href })` is force-committed by the router with `replace: true`, so
+it became a `window.location.replace()`, gated only by an http/https scheme check. `?redirect=`
+was never validated — and no test covered the round trip at all (`reachability.test.tsx:328`
+excludes `/login`; `wizard.spec.ts:115` asserts a bare `/\/login/` regex that does not constrain
+the param). Fixed with `safeRedirectPath`, the frontend mirror of `safeReturnPath`
+(`ssoroutes.go:296-309`), applied in `validateSearch` and again at both navigations.
+
+⚠ **A second defect in the same guard: `_authed`'s bare `catch {}` treated ANY failure as a
+logout.** With `meQueryOptions` setting `retry:false`, a 500, a proxy blip or the operator
+restarting the server from the Dashboard — which this very layout mounts `RestartOverlay` for —
+bounced a valid session to `/login`. Now only an `ApiError` with status 401 means signed out;
+everything else is rethrown. Also fixed the back-button trap (`history.push` → `replace`).
+
+⚠ **A router-level backslash test was WRITTEN AND DELETED because sabotage left it green** —
+jsdom/memory-history does not commit that `href` the way a browser does, so it asserted nothing.
+The rule is covered where it bites (`safe-redirect-path.test.ts`) and was verified in a real
+browser instead: `?redirect=/\evil.example` → `/guide`. Every fix here was sabotage-checked; a
+first-try pass on a security test is the case this file's own warnings exist for.
+
+Live-verified in the browser, not only green: hostile → `/guide`, `/\`-hostile → `/guide`,
+legitimate `?redirect=/filler/sources` → `/filler/sources`.
+
 **V52 — the image service: phases 0–7 MERGED, phase 8 is PR #226.** `ca15ba1d` (#199, phases 0–4),
 `309c5dfc` (#209, phase 5), `db241852` (#217, phase 6), `2db769d9` (#221, phase 7). A follow-up,
 **PR #230**, closes the two items V52 itself left open and carries the migrator fix below.

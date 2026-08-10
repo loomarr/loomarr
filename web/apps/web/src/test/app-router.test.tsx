@@ -98,6 +98,74 @@ describe("app router auth", () => {
   });
 });
 
+// THE POST-LOGIN REDIRECT ROUND TRIP (§11).
+//
+// ⚠ Nothing covered this before: no test asserted the param is set, that login honours it, or
+// that a hostile value is refused — and `wizard.spec.ts:115` asserts `toHaveURL(/\/login/)`, a
+// regex that does not constrain the param either. The open redirect below shipped behind that gap.
+//
+// Assertions are on where the router SETTLED, via `at()` — the same reason the legacy-link block
+// below gives: a page can look right and still be at the wrong address.
+describe("post-login redirect", () => {
+  const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
+
+  // A real protected path rather than the reported /channels/<id>/filler, so the assertion does
+  // not depend on channel fixtures resolving; the mechanism under test is the param round trip,
+  // which is route-independent.
+  it("remembers the deep link a signed-out visitor asked for", async () => {
+    stubAuth(false);
+    const router = renderApp("/filler/sources");
+    await waitFor(() => expect(at(router)).toBe("/login?redirect=%2Ffiller%2Fsources"));
+  });
+
+  it("returns them to that deep link after signing in, not to the home page", async () => {
+    stubAuth(false);
+    const router = renderApp("/filler/sources");
+    await screen.findByLabelText("Username");
+
+    await userEvent.type(screen.getByLabelText("Username"), "ada");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!");
+    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => expect(at(router)).toBe("/filler/sources"));
+  });
+
+  // ⚠ THE OPEN REDIRECT. `/login?redirect=https://evil.example` on an ALREADY-SIGNED-IN browser
+  // hit `throw redirect({ href })`, which the router force-commits with `replace: true` — i.e. a
+  // window.location.replace() straight off the app, gated only by an http/https scheme check.
+  it("refuses an off-site destination and falls back to the home page", async () => {
+    stubAuth(true);
+    const router = renderApp("/login?redirect=https%3A%2F%2Fevil.example");
+    await waitFor(() => expect(at(router)).toBe("/guide"));
+  });
+
+  // ⚠ A router-level backslash case was written here and DELETED, because sabotaging the
+  // validator left it GREEN — jsdom/memory-history does not commit that href the way a browser
+  // would, so it asserted nothing. The backslash rule is covered where it does bite:
+  // safe-redirect-path.test.ts, whose backslash cases both go red under the same sabotage.
+  // A test that passes with the protection removed is worse than no test.
+});
+
+// ⚠ A SERVER HICCUP IS NOT A LOGOUT. The guard used to be a bare `catch {}` over a query with
+// retry:false, so ANY failure — a 500, a proxy blip, this app's own self-restart — reported a
+// valid session as signed out and bounced the user to /login. RestartWatchProvider is wired into
+// that very layout, so an operator restarting from the Dashboard hit it every time.
+describe("_authed guard distinguishes a failure from a logout", () => {
+  const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
+
+  it("does not send a user to /login when the identity call fails with a 500", async () => {
+    server.use(
+      ...appHandlers(),
+      http.get("*/v1/auth/me", () => HttpResponse.json({ title: "Boom" }, { status: 500 })),
+    );
+    const router = renderApp("/guide");
+
+    // Give the guard time to resolve and any redirect to commit before asserting the negative.
+    await waitFor(() => expect(at(router)).not.toBe("/login"));
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  });
+});
+
 // LEGACY DEEP LINKS — the bookmark-compatibility promise (V-nav-paths).
 //
 // ⚠ These exist because the Filler redirect SHIPPED BROKEN and every unit test passed. It threw
