@@ -6644,12 +6644,12 @@ paths:
           schema:
             description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
             type: string
-        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
-          explode: false
+        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
+          explode: true
           in: query
           name: hashes
           schema:
-            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
+            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
             items:
               type: string
             type: array
@@ -6772,13 +6772,13 @@ paths:
       description: "Admin only (§10, V35). Fills in the duration and quality a search deliberately omits. ⚠ This is ONE UPSTREAM CALL PER ID and archive.org is slow (median 1.8s, and it gets slower if asked for more at once), so send only the ids currently on screen — a full page of 25 measured 22.6s. An id archive.org cannot answer for is ABSENT from the response rather than zero: 0 would be indistinguishable from a genuinely empty clip."
       operationId: discover-filler-stats
       parameters:
-        - description: Comma-separated result ids to describe
-          explode: false
+        - description: Result ids to describe. Repeat the parameter per id (?id=a&id=b).
+          explode: true
           in: query
           name: id
           required: true
           schema:
-            description: Comma-separated result ids to describe
+            description: Result ids to describe. Repeat the parameter per id (?id=a&id=b).
             items:
               type: string
             maxItems: 25

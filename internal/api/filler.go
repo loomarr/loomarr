@@ -412,7 +412,16 @@ type listFillerInput struct {
 	//
 	// ⚠ It exists because paging deleted the alternative. The channel pin/exclude editor used to
 	// load the whole catalog to map N saved ids to names, which a 100-row page truncates.
-	Hashes []string `query:"hashes" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent."`
+	// Hashes resolves exactly these clip hashes — the batch read behind "name these N pinned clips".
+	//
+	// ⚠ **`explode`, and it is load-bearing.** Huma turns explode OFF by default for query fields
+	// ("parsing is *much* easier if we use comma-separated values"), which means `?hashes=a&hashes=b`
+	// binds ONE element — the rest are silently dropped and the request still returns 200. The
+	// generated TypeScript client sends exactly that repeated form, so before this tag every pinned
+	// clip after the first failed to resolve and the channel page reported real clips as "no longer
+	// in your catalog". Found on the live stack; neither side's tests could see it, because the Go
+	// tests hand-wrote `?hashes=a,b` and the client was generated from a spec that agreed with them.
+	Hashes []string `query:"hashes,explode" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent."`
 }
 type listFillerOutput struct {
 	Body struct {
@@ -762,16 +771,20 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 }
 
 type discoverStatsInput struct {
-	// IDs are the search-result identifiers to describe, COMMA-SEPARATED (`?id=a,b,c`).
+	// IDs are the search-result identifiers to describe, as REPEATED params (`?id=a&id=b&id=c`).
 	//
-	// ⚠ Not repeated params. Huma disables `explode` for query fields by default ("parsing is
-	// much easier if we use comma-separated values"), so `?id=a&id=b` silently yields ONE
-	// element — and `maxItems` then never fires, because the slice is never long. Both were
-	// caught by a test asserting the handler sees exactly what was sent.
+	// ⚠ **This was comma-separated, and the comment here used to explain why** — huma disables
+	// `explode` for query fields by default ("parsing is *much* easier if we use comma-separated
+	// values"), so `?id=a&id=b` bound ONE element. The note was correct about the mechanism and
+	// wrong about the conclusion: the generated TypeScript client sends the repeated form, so the
+	// documented convention was one nobody on the wire actually used. `explode` makes the contract
+	// match the caller instead of the other way round.
 	//
-	// ⚠ Capped, and the cap is the point: each id is one upstream call, so an uncapped list is
-	// a way to make Loomarr hammer archive.org on someone else's behalf. 25 matches the page.
-	IDs []string `query:"id" required:"true" maxItems:"25" doc:"Comma-separated result ids to describe"`
+	// ⚠ **It also makes `maxItems` work for the first time.** The old note said the cap "never
+	// fires, because the slice is never long" — which is exactly right and exactly the problem:
+	// each id is one upstream call, so the cap exists to stop an uncapped list making Loomarr
+	// hammer archive.org on someone else's behalf. A limit that cannot fire is not a limit.
+	IDs []string `query:"id,explode" required:"true" maxItems:"25" doc:"Result ids to describe. Repeat the parameter per id (?id=a&id=b)."`
 }
 
 type discoverStatsOutput struct {
