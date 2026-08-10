@@ -820,6 +820,30 @@ func declared() []Setting {
 			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
 		},
 		{
+			// ⚠ **ELIGIBILITY, not a reject — the pair to `filler.min_duration` above, and the
+			// distinction is which side of the catalog boundary they sit on.** `min_duration`
+			// refuses a file entry; these two decide whether a clip already IN the catalog may
+			// fill a break. A clip outside them stays filed, searchable and pinnable; it simply
+			// is not drawn automatically.
+			//
+			// ⚠ **`Policy.MinClipMs`/`MaxClipMs` existed for phases with no way to set them.**
+			// They were assigned in tests and nowhere else — no key, no env var, no policy field —
+			// so `durationEligible` always returned true and `PoolReport.Eligible`, which
+			// `coverage.go` headlines as "the number that surprises operators", was arithmetically
+			// identical to `Commercials` on every install. The pool strip showed one number twice
+			// and called the pair a diagnosis. Wiring them is what makes that strip mean something.
+			//
+			// Both default to 0 = OFF, so no existing install changes behaviour on upgrade.
+			Key: "filler.min_clip_duration", EnvVar: "FILLER_MIN_CLIP_DURATION", Group: GroupFiller,
+			Kind: KindDuration, Default: "0s", Advanced: true,
+			Doc: "Commercials shorter than this are not drawn into breaks automatically. 0s disables the floor. Unlike the minimum clip length above, this never rejects a clip — it stays in the catalog and can still be pinned to a channel.",
+		},
+		{
+			Key: "filler.max_clip_duration", EnvVar: "FILLER_MAX_CLIP_DURATION", Group: GroupFiller,
+			Kind: KindDuration, Default: "0s", Advanced: true,
+			Doc: "Commercials longer than this are not drawn into breaks automatically — the guard against a three-minute infomercial filling a thirty-second gap. 0s disables the ceiling. Never rejects a clip; it stays in the catalog and can still be pinned.",
+		},
+		{
 			// ⚠ Applied in the PLAYOUT chain, never written back to the file. The drop-folder
 			// holds the operator's own files; in-place normalisation is destructive, unrepeatable,
 			// and a re-scan cannot tell it already happened (§10 V40, §9.1).

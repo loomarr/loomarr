@@ -92,6 +92,21 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 	out := incoming
 	out.Applied = current.Applied // reconcile-owned
 
+	// ⚠ **An OMITTED `policy.filler` keeps the saved selection (§10 V51f) — the same class of
+	// silent data loss the comment above records for `scope`, in the half `OperatorSet` cannot
+	// protect.** `Filler` is operator-owned, so no pin ever guards it: a PATCH that left it out
+	// replaced it with nil and wiped the channel's pins, exclusions and criteria outright. Not a
+	// theoretical hazard — THREE frontend call sites had each grown their own copy of the
+	// workaround (`use-channel-filler-draft`, `pin-clip-dialog`, the channel route), and three
+	// copies of one workaround is how this repo's comments describe drift arriving.
+	//
+	// Absence now means "unchanged"; clearing stays expressible by sending a PRESENT empty
+	// selection (`"filler": {}`), which is the presence-as-opt-in shape `AutoCurate` and the
+	// V51f era range already use. A caller that genuinely wants no selection says so.
+	if incoming.Filler == nil {
+		out.Filler = current.Filler
+	}
+
 	set := pathSet(current.OperatorSet)
 	// pin marks a field operator-dirty only when it CHANGED and the new value is non-empty.
 	// An edit that empties a field instead UNPINS it, so the field returns to proposal

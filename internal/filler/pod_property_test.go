@@ -64,15 +64,36 @@ func randomWindow(rng *rand.Rand, windowSeed int64) filler.Window {
 	return filler.Window{
 		ChannelID: "ch",
 		Seed:      windowSeed,
-		Era:       propEras[rng.Intn(len(propEras))],
+		Era:       randomEraRange(rng),
 		Audience:  propAudiences[rng.Intn(len(propAudiences))],
 		GapMs:     int64(30000 + rng.Intn(20)*30000), // 30s .. ~10min
 		PodMax:    1 + rng.Intn(6),                   // 1..6
 	}
 }
 
+// randomEraRange picks one of the THREE shapes an operator can express since V51f — any era, a
+// single year, or a span — rather than the single year the field used to be limited to.
+//
+// ⚠ It replaces `EraStrict` (retired-ok) as this generator's era-varying dimension. That flag was reachable
+// only from tests, so randomising it explored a branch no install could ever be in; randomising
+// the range explores the branch every install is in.
+func randomEraRange(rng *rand.Rand) filler.EraRange {
+	switch rng.Intn(3) {
+	case 0:
+		return filler.EraRange{}
+	case 1:
+		return filler.Year(propEras[rng.Intn(len(propEras))])
+	default:
+		a, b := propEras[rng.Intn(len(propEras))], propEras[rng.Intn(len(propEras))]
+		if a > b {
+			a, b = b, a
+		}
+		return filler.EraRange{From: a, To: b}
+	}
+}
+
 func randomPolicy(rng *rand.Rand) filler.Policy {
-	p := filler.Policy{EraStrict: rng.Intn(2) == 0}
+	p := filler.Policy{}
 	// Occasionally bound clip durations, to exercise durationEligible pruning.
 	if rng.Intn(3) == 0 {
 		p.MinClipMs = 10000
@@ -235,7 +256,7 @@ func TestProp_DensityDefaultPodMax(t *testing.T) {
 		})
 	}
 	for seed := int64(0); seed < 40; seed++ {
-		w := filler.Window{ChannelID: "ch", Seed: seed, Era: 1992, Audience: filler.Kids, GapMs: 3600000, PodMax: 0}
+		w := filler.Window{ChannelID: "ch", Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 3600000, PodMax: 0}
 		p := filler.Assemble(cat, w, filler.Policy{}, map[string]bool{})
 		if got := commercialCount(p); got > 4 {
 			t.Fatalf("seed %d: PodMax<=0 should default the commercial cap to 4, got %d\n pod=%+v", seed, got, p)

@@ -685,6 +685,9 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        breaksPerHour:
+          format: int64
+          type: integer
         filler:
           $ref: "#/components/schemas/FillerSelection"
         operatorSet:
@@ -916,6 +919,27 @@ components:
       required:
         - clips
       type: object
+    CoverageCriterionDTO:
+      additionalProperties: false
+      properties:
+        clips:
+          description: Break-body commercials passing THIS setting alone, ignoring the others
+          format: int64
+          type: integer
+        criterion:
+          description: The channel setting this count is about
+          enum:
+            - era
+            - audience
+            - category
+            - kind
+            - duration
+            - quality
+          type: string
+      required:
+        - criterion
+        - clips
+      type: object
     CoverageDTO:
       additionalProperties: false
       properties:
@@ -926,6 +950,11 @@ components:
           format: uri
           readOnly: true
           type: string
+        criteria:
+          description: Per-setting counts, each measured independently, so a zero identifies the setting to change.
+          items:
+            $ref: "#/components/schemas/CoverageCriterionDTO"
+          type: array
         level:
           description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card.
           enum:
@@ -935,7 +964,7 @@ components:
             - bumper_card
           type: string
         rungs:
-          description: Ladder rungs, TIGHTEST FIRST. A rung the channel's policy skips is absent, not zero.
+          description: Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it.
           items:
             $ref: "#/components/schemas/CoverageRungDTO"
           type: array
@@ -945,6 +974,7 @@ components:
           type: integer
       required:
         - rungs
+        - criteria
         - level
         - total
       type: object
@@ -3473,6 +3503,40 @@ components:
       required:
         - filler
       type: object
+    PreviewDraftPodsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PreviewDraftPodsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        coverage:
+          $ref: "#/components/schemas/CoverageDTO"
+          description: What this DRAFT selection resolves to on the ladder — the same selection the pod above was assembled from.
+        entries:
+          items:
+            $ref: "#/components/schemas/PodEntryDTO"
+          type: array
+        matchLevel:
+          description: How far down the fallback ladder assembly went (§10)
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
+          type: string
+        totalMs:
+          format: int64
+          type: integer
+      required:
+        - coverage
+        - entries
+        - totalMs
+        - matchLevel
+      type: object
     PreviewProgrammingInputBody:
       additionalProperties: false
       properties:
@@ -5970,7 +6034,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PodPoolDTO"
+                $ref: "#/components/schemas/PreviewDraftPodsOutputBody"
           description: OK
         default:
           content:

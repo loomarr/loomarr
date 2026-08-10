@@ -293,14 +293,11 @@ func (c Clip) Tagged() bool {
 // structure: intro bumper → commercials → return bumper).
 func (c Clip) IsBumper() bool { return c.Kind == Bumper || c.Kind == StationID }
 
-// decade returns the clip's decade (1994 → 1990) for era-widening in the
-// fallback ladder (§10).
-func (c Clip) decade() int {
-	if c.Era <= 0 {
-		return 0
-	}
-	return (c.Era / 10) * 10
-}
+// ⚠ `Clip.decade()` was deleted here (V51f). It bucketed a clip to its containing decade for the
+// ladder's widened rung, and that rule could not generalise to a RANGE: a range already spanning
+// 1990–1999 snaps to itself, so the widened rung would collapse into `exact` exactly when the
+// operator asked for a decade. `EraRange.Widened` — ten years at each end — replaces it and is
+// strictly wider than `exact` for every range, which is what a fallback rung has to be.
 
 // KindFromString parses a Kind, defaulting to interstitial for an unknown value
 // (a clip with a weird kind is still placeable as generic filler, never a program).

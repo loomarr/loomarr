@@ -82,8 +82,9 @@ type Window struct {
 	// Seed derives from channel + window start so pod assembly is reproducible
 	// (§10/§19 seeded-deterministic). Tests pass a fixed seed.
 	Seed int64
-	// Era + Audience are the block's target (90s cartoons → 1990s + kids).
-	Era      int
+	// Era + Audience are the block's target (90s cartoons → 1990s + kids). Era is a RANGE
+	// (§10, V51f) — before that it was one int and the "To year" the UI collected was discarded.
+	Era      EraRange
 	Audience Audience
 	// GapMs is the flex gap to fill.
 	GapMs int64
@@ -103,10 +104,14 @@ type Window struct {
 
 // Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
 type Policy struct {
-	// EraStrict: when true, never widen era beyond exact (the "strict" pod era
-	// setting in the UI); when false, the ladder may widen (§10 fallback ladder).
-	EraStrict bool
-	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10).
+	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
+	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
+	//
+	// ⚠ **Until V51f these were set in TESTS ONLY, and that is what made `PoolReport.Eligible`
+	// a lie.** `durationEligible` therefore always returned true, so `Eligible` — which
+	// `coverage.go` headlines as "the number that surprises operators" — was arithmetically
+	// identical to `Commercials` for every install that has ever run. The pool strip printed the
+	// same number twice and presented the pair as a diagnosis.
 	MinClipMs int64
 	MaxClipMs int64
 	// PodMax caps clips per pod (FILLER_POD_MAX, §15). 0 ⇒ a sane default (fillCommercials

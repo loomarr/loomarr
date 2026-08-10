@@ -31,11 +31,11 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 	const channelID, era = "ch-1", 1992
 	const seed int64 = 424242
 
-	pod, err := adapter.Preview(ctx, channelID, seed, filler.Selection{Era: era})
+	pod, err := adapter.Preview(ctx, channelID, seed, filler.Selection{Era: filler.Year(era)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	attached, ok := adapter.BuildFillerList(ctx, channelID, seed, filler.Selection{Era: era})
+	attached, ok := adapter.BuildFillerList(ctx, channelID, seed, filler.Selection{Era: filler.Year(era)})
 	if !ok {
 		t.Fatal("BuildFillerList returned not-ok for a catalog that previewed fine")
 	}
@@ -77,7 +77,7 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 // used to yield nothing.
 func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
-	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 42, filler.Selection{Era: 1992})
+	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 42, filler.Selection{Era: filler.Year(1992)})
 	if !ok {
 		t.Fatal("no filler list built from a catalog full of era-matching commercials")
 	}
@@ -105,11 +105,11 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
 	ctx := context.Background()
 
-	first, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: 1992})
+	first, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: filler.Year(1992)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: 1992})
+	second, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: filler.Year(1992)})
 	if err != nil {
 		t.Fatal(err)
 	}

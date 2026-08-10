@@ -71,7 +71,14 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
           .
         </p>
 
-        <FillerCriteria selection={draft} onChange={setDraft} disabled={isApplying} />
+        {/* scopeEra so the criteria panel can SHOW that a blank era follows the channel's own
+            (§10 V51f) — the server has always applied it, and nothing said so. */}
+        <FillerCriteria
+          selection={draft}
+          onChange={setDraft}
+          disabled={isApplying}
+          scopeEra={policy?.scope?.era ?? undefined}
+        />
 
         <div className="flex flex-col gap-4 border-border border-t pt-5">
           <FillerClipList

@@ -63,6 +63,20 @@ type OperatorPolicy struct {
 	// catalog — the additive default). Edited on the channel page; seeded from Scope.Era
 	// at channel creation.
 	Filler *FillerSelection `json:"filler,omitempty"`
+	// BreaksPerHour overrides the global commercial-break density for THIS channel (§10, V51f).
+	//
+	// ⚠ **Three states, and the middle one is the switch that did not exist.** Nil = inherit
+	// `filler.breaks_per_hour`; a positive value = that density; **0 = no breaks on this channel
+	// at all**, which is the per-channel "turn filler off" an operator had no way to express — the
+	// only previous route was emptying the catalog, which affects every channel. Encoded as `*int`
+	// for the same reason `FetchEverySeconds` is: with a plain int, "inherit" and "none" are both
+	// zero and one of them becomes unreachable.
+	//
+	// ⚠ It does NOT override the dead-air rule. A channel with no filler pool still gets 0
+	// regardless of what this says: inserting break gaps with nothing to fill them leaves empty
+	// flex that Tunarr renders as large channel-named blocks, which is a promise of commercials
+	// Loomarr cannot keep. This knob lowers density, never forces breaks into existence.
+	BreaksPerHour *int `json:"breaksPerHour,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole

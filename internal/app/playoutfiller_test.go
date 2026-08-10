@@ -40,6 +40,13 @@ func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, erro
 	return filler.CoverageReport{}, s.err
 }
 
+func (s stubPods) CoverageDraft(ctx context.Context, _ string, _ filler.Selection) (filler.CoverageReport, error) {
+	if err := ctx.Err(); err != nil {
+		return filler.CoverageReport{}, err
+	}
+	return filler.CoverageReport{}, s.err
+}
+
 func (s stubPods) ClipFit(context.Context, string) (map[string]filler.Fit, error) {
 	return nil, s.err
 }

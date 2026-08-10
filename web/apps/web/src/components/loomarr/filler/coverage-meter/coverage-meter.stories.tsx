@@ -15,12 +15,24 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
+// A healthy per-setting breakdown — nothing at zero, so the diagnosis panel stays hidden. Shared
+// by the stories that are about the RUNGS rather than about the breakdown (§10 V51f).
+const HEALTHY = [
+  { criterion: "era" as const, clips: 9 },
+  { criterion: "audience" as const, clips: 9 },
+  { criterion: "category" as const, clips: 9 },
+  { criterion: "kind" as const, clips: 9 },
+  { criterion: "duration" as const, clips: 9 },
+  { criterion: "quality" as const, clips: 9 },
+];
+
 // The healthy case: era- and audience-matched commercials are available.
 const Exact: Story = {
   args: {
     coverage: {
       level: "exact",
       total: 9,
+      criteria: HEALTHY,
       rungs: [
         { level: "exact", clips: 4 },
         { level: "widened", clips: 5 },
@@ -38,6 +50,7 @@ const Widened: Story = {
     coverage: {
       level: "widened",
       total: 6,
+      criteria: HEALTHY,
       rungs: [
         { level: "exact", clips: 0 },
         { level: "widened", clips: 2 },
@@ -47,23 +60,37 @@ const Widened: Story = {
   },
 };
 
-// ⚠ Under the strict-era setting there is no widened rung at all — it is ABSENT, not zero.
-// A 0 row would read as a catalog gap rather than a setting the operator chose.
-const EraStrict: Story = {
+// ⚠ **`EraStrict` (retired-ok) was DELETED here (§10 V51f), story and setting together.** It documented a rung
+// being absent under the strict-era policy — a `filler.Policy` field that was set in tests and
+// nowhere else: no settings key, no env var, no policy field, no way for an operator to reach it.
+// A narrow era range is how a channel gets strictness now, and unlike the flag it is a control
+// that appears on screen. Its replacement below is the state operators actually hit.
+
+// The per-setting breakdown doing its job: the catalog is full of clips and ONE setting rules
+// out all of them. "Nothing in the catalog fits" reads as "acquire more clips"; naming the
+// audience says the catalog is fine and a setting is not.
+const OneSettingIsEmpty: Story = {
   args: {
     coverage: {
-      level: "exact",
-      total: 7,
-      rungs: [
-        { level: "exact", clips: 3 },
-        { level: "audience", clips: 7 },
+      level: "bumper_card",
+      total: 0,
+      rungs: [],
+      criteria: [
+        { criterion: "era", clips: 214 },
+        { criterion: "audience", clips: 0 },
+        { criterion: "category", clips: 112 },
+        { criterion: "kind", clips: 198 },
+        { criterion: "duration", clips: 214 },
+        { criterion: "quality", clips: 214 },
       ],
     },
   },
 };
 
 // The state an operator most needs named: breaks are running on the built-in card.
-const NothingFits: Story = { args: { coverage: { level: "bumper_card", total: 0, rungs: [] } } };
+const NothingFits: Story = {
+  args: { coverage: { level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY } },
+};
 
 export default meta;
-export { EraStrict, Exact, NothingFits, Widened };
+export { Exact, NothingFits, OneSettingIsEmpty, Widened };

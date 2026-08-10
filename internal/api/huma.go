@@ -440,6 +440,14 @@ type PodPreviewer interface {
 	// that it agrees with what airs, and splitting it onto its own service is the first step
 	// toward two implementations of "what would this channel get".
 	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
+	// CoverageDraft is Coverage for an UNSAVED selection — the draft half of the sandbox
+	// `PreviewDraft` already provides for pods (§10 V51f).
+	//
+	// ⚠ It exists because the meter and the pod timeline below it were describing different
+	// selections during an edit: the meter read the saved policy, the timeline the draft. Both
+	// now come from one selection in one response, which is the same "cannot disagree" property
+	// `Coverage` was added for in the first place, applied to the editing path.
+	CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error)
 	// ClipFit reports how ONE clip relates to EVERY channel's selection (§10 V35 item 1.7) —
 	// the override picker's per-channel note, keyed by channel id.
 	//

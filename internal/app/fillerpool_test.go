@@ -133,8 +133,16 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 	}{
 		// Nothing from the 1930s exists, so this one falls to any-audience — the worse rung.
 		{"ch-30s", filler.MatchAudience},
-		// 1992/1994 clips do not match 1990 exactly but do match the decade.
-		{"ch-90s", filler.MatchWidened},
+		// ⚠ **This was `MatchWidened`, and the change IS the V51f fix — visible in a fixture that
+		// had encoded the right answer all along.** `liveChannel` builds a scope era of
+		// `{From: 1990, To: 1999}`, a real decade. The old code read `.From` and threw the rest
+		// away, so the exact rung demanded the literal year 1990, no 90s clip could ever satisfy
+		// it, and every 90s channel permanently reported "widened" — a channel telling its
+		// operator its ads were only approximately right while sitting on a catalog of exact
+		// matches. With both bounds honoured, 1992 and 1994 are inside 1990–1999 and the rung is
+		// `exact`. The two channels still land on different rungs, so the worst-first ordering
+		// this test exists to check is still exercised.
+		{"ch-90s", filler.MatchExact},
 	}
 	if len(report.Channels) != len(want) {
 		t.Fatalf("want %d channels, got %d", len(want), len(report.Channels))

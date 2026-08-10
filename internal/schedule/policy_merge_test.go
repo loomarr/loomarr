@@ -299,3 +299,54 @@ func TestMergeFromProposal_NeverTouchesPlayoutBackend(t *testing.T) {
 		t.Fatalf("a proposal overwrote the operator's playout backend: %+v", got.Playout)
 	}
 }
+
+// ⚠ **A PATCH that omits `policy.filler` must not wipe the channel's break selection (§10 V51f).**
+// `Filler` is operator-owned, so `OperatorSet` never guarded it: an omitted field replaced the
+// saved selection with nil and destroyed the operator's pins, exclusions and criteria in one
+// write. It is the same silent-loss shape this file already records for `scope`, in the half
+// pinning cannot reach — and three separate frontend call sites had each grown their own
+// workaround for it rather than the merge boundary being fixed once.
+func TestMergeFromOperator_OmittedFillerKeepsTheSavedSelection(t *testing.T) {
+	current := ChannelPolicy{OperatorPolicy: OperatorPolicy{
+		Filler: &FillerSelection{
+			Era:      &Range{From: 1990, To: 1999},
+			Audience: "kids",
+			Pinned:   []string{"a-clip-the-operator-chose"},
+			Excluded: []string{"a-clip-they-never-want"},
+		},
+	}}
+
+	// A PATCH about something else entirely, carrying no filler at all.
+	out := current.MergeFromOperator(ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSequential}})
+
+	if out.Filler == nil {
+		t.Fatal("an omitted policy.filler wiped the saved selection — pins and exclusions are gone")
+	}
+	if len(out.Filler.Pinned) != 1 || out.Filler.Pinned[0] != "a-clip-the-operator-chose" {
+		t.Errorf("pins = %v, want them preserved", out.Filler.Pinned)
+	}
+	if len(out.Filler.Excluded) != 1 {
+		t.Errorf("exclusions = %v, want them preserved", out.Filler.Excluded)
+	}
+	if out.Filler.Era == nil || out.Filler.Era.To != 1999 {
+		t.Errorf("era = %+v, want the saved 1990-1999 range", out.Filler.Era)
+	}
+}
+
+// ...and clearing stays expressible: a PRESENT but empty selection is the operator saying "no
+// selection", which is different from not mentioning it. Same presence-as-opt-in shape the V51f
+// era range uses one layer down.
+func TestMergeFromOperator_AnEmptyFillerStillClears(t *testing.T) {
+	current := ChannelPolicy{OperatorPolicy: OperatorPolicy{
+		Filler: &FillerSelection{Audience: "kids", Pinned: []string{"x"}},
+	}}
+
+	out := current.MergeFromOperator(ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{}}})
+
+	if out.Filler == nil {
+		t.Fatal("a present empty selection became nil — absence and emptiness must stay distinct")
+	}
+	if out.Filler.Audience != "" || len(out.Filler.Pinned) != 0 {
+		t.Errorf("selection = %+v, want it cleared", out.Filler)
+	}
+}

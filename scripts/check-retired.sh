@@ -114,6 +114,17 @@ RETIRED=(
   # Anyone widening SEARCH to `web/` must add an explicit exemption for that file in the same edit,
   # or the guard fails on the one file that is right.
   'vi.stubGlobal("fetch"|V53e: use the shared MSW layer (src/test/msw) — a hand-rolled fetch stub is untyped AND unbound to a route'
+  # V51f: three `filler.Policy` fields that were set in TESTS AND NOWHERE ELSE — no settings key,
+  # no env var, no policy field, no UI. `EraStrict` is deleted outright (a narrow era range gives
+  # a channel strictness through a control an operator can actually see); the duration bounds keep
+  # their struct fields but are now wired to real settings, so the OLD names are what must not come
+  # back. ⚠ These are listed because the code READ convincingly: `coverage.go`, `fit.go` and
+  # `coverage-meter.tsx` all carried special copy for the strict-era branch, and `PoolReport.Eligible`
+  # was headlined as "the number that surprises operators" while being arithmetically identical to
+  # `Commercials` on every install ever run. Prose could not have caught that; a grep can.
+  'EraStrict|deleted in V51f — it was unreachable (tests only). A narrow policy.filler.era range is how a channel gets era strictness'
+  'FILLER_MIN_CLIP_SECONDS|the setting is FILLER_MIN_CLIP_DURATION (a duration like 15s), matching the neighbouring FILLER_MIN_DURATION'
+  'FILLER_MAX_CLIP_SECONDS|the setting is FILLER_MAX_CLIP_DURATION (a duration like 90s), matching the neighbouring FILLER_MIN_DURATION'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

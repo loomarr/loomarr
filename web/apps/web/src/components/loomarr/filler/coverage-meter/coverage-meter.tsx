@@ -1,4 +1,4 @@
-import type { CoverageDTOLevel } from "@loomarr/api";
+import type { CoverageCriterionDTOCriterion, CoverageDTOLevel } from "@loomarr/api";
 import { Link } from "@tanstack/react-router";
 import { Caption, StatusDot, type StatusTone } from "@/components/ui";
 import { cn } from "@/lib";
@@ -25,13 +25,13 @@ const LEVEL_COPY: Record<CoverageDTOLevel, { tone: StatusTone; label: string; hi
   },
   widened: {
     tone: "pending",
-    label: "Widened to the decade",
-    hint: "Nothing matches the exact year, so breaks draw from the same decade.",
+    label: "Widened the era",
+    hint: "Nothing matches this channel's era, so breaks draw from a decade either side of it.",
   },
   audience: {
     tone: "warn",
     label: "Audience only",
-    hint: "No era match at all — breaks draw from any commercial for this audience.",
+    hint: "No era match at all — breaks draw from any commercial this channel's audience can take.",
   },
   bumper_card: {
     tone: "error",
@@ -54,9 +54,20 @@ const UNKNOWN_LEVEL = {
 // compile error here rather than a blank row.
 const RUNG_LABEL: Record<CoverageDTOLevel, string> = {
   exact: "Exact era + audience",
-  widened: "Same decade",
+  widened: "A decade either side",
   audience: "Any era, right audience",
   bumper_card: "Built-in card",
+};
+
+// Criterion labels for the per-setting breakdown (V51f). Keyed by the same union the server
+// sends, so a new criterion is a compile error here rather than a blank row.
+const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
+  era: "Era",
+  audience: "Audience",
+  category: "Categories",
+  kind: "Clip kinds",
+  duration: "Clip length",
+  quality: "Quality floor",
 };
 
 const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
@@ -71,6 +82,10 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   // PodPoolDTO.entries, which channel-filler unwraps the same way — following the existing
   // convention rather than diverging from it.
   const rungs = coverage.rungs ?? [];
+  const criteria = coverage.criteria ?? [];
+  // The settings that rule out EVERYTHING on their own — the actionable ones. Computed here
+  // rather than in the JSX so the heading can say "one setting" or "these settings" honestly.
+  const emptyCriteria = criteria.filter((c) => c.clips === 0);
   // The widest rung is the denominator: the rungs NEST, so the bar shows how much of the
   // available material each tighter rung captures. Guarded because a catalog with nothing in
   // it makes every rung 0.
@@ -123,10 +138,41 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         </ul>
       )}
 
-      {/* ⚠ Absent rungs are NOT drawn at zero. Under the strict-era setting there is no widened
-          rung, and a 0 there reads as a catalog gap to go fix rather than a setting the
-          operator chose — so the list simply omits it, and this line says why the total is
-          what it is. */}
+      {/* Per-setting breakdown (§10 V51f) — WHICH setting is costing the clips.
+          ⚠ Shown only when there is something to diagnose (the same `isThin` condition as the
+          CTA below). On a channel resolving at `exact` it would be six rows restating that
+          everything is fine, which is how an operator learns to stop reading this panel.
+          ⚠ Each count is measured INDEPENDENTLY by the server, so a zero here names a culprit
+          rather than reporting whichever predicate happened to run first. A cumulative funnel
+          could not answer the question this list exists to answer. */}
+      {isThin && emptyCriteria.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-border/60 border-t pt-3">
+          <Caption>
+            {emptyCriteria.length === 1
+              ? "One setting is ruling out every commercial:"
+              : "These settings are ruling out every commercial:"}
+          </Caption>
+          <ul className="flex flex-col gap-1">
+            {criteria.map((c) => (
+              <li key={c.criterion} className="flex items-center gap-2 text-xs">
+                <span className="w-44 shrink-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
+                <Caption
+                  className={cn(
+                    "shrink-0 tabular-nums",
+                    // ⚠ `onair` is this palette's "a human is needed" red; a zero here IS the
+                    // thing to act on. The non-zero rows stay muted so the eye lands on the
+                    // one row that matters rather than scanning six equal-weight numbers.
+                    c.clips === 0 && "font-medium text-onair-300",
+                  )}
+                >
+                  {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
+                </Caption>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Caption>
           {widest === 0
