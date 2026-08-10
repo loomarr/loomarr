@@ -100,6 +100,50 @@ func TestFileFillerClips_AsSuggestedConfirmsEachClipsOwnEra(t *testing.T) {
 	}
 }
 
+// ⚠ **The same claim as the test above, made with identity and location as DIFFERENT strings.**
+//
+// `putClip` defaults `Hash = Path` so fixtures can name clips readably, which means every other
+// test in this package is blind to a route confusing the two — and this one did. `asSuggested`
+// looked each clip up with `GetClip(ctx, path)`, but `GetClip` is `WHERE hash = ?` (V38c split
+// identity from location and added `GetClipByPath` for exactly this). In production the lookup
+// missed, hit the `continue`, and **every suggested era was silently dropped**: "File all as
+// suggested" filed the clips and applied none of the suggestions it is named after.
+//
+// The fixture is the whole point of the test. Give a clip a content-hash-shaped id that is not
+// its path and the bug is visible; equate them and it is not.
+func TestFileFillerClips_AsSuggestedResolvesByPathNotIdentity(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	const (
+		hash = "sha256:9f2c1e" // a content hash, as V38c made it
+		path = "2026/03/promo.mp4"
+	)
+	putClip(t, st, filler.Clip{
+		Hash: hash, Path: path, Name: "promo.mp4", Kind: filler.Commercial, DurationMs: 30_000,
+		Audience: filler.Kids, Category: "toys", SuggestedEra: 1985, Held: true,
+	})
+
+	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/file",
+		`{"paths":["`+path+`"],"asSuggested":true}`, adminToken); res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+
+	c, err := st.GetClip(ctx, hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Era != 1985 {
+		t.Errorf("era = %d, want 1985 — asSuggested filed the clip but dropped its suggestion", c.Era)
+	}
+	if c.SuggestedEra != 0 {
+		t.Errorf("still carries suggestedEra %d after confirmation", c.SuggestedEra)
+	}
+	// The other two tags survive: UpdateClipTags writes all three columns.
+	if c.Audience == "" || c.Category == "" {
+		t.Errorf("lost its other tags: audience=%q category=%q", c.Audience, c.Category)
+	}
+}
+
 // The undo for auto-filing: back to the queue, and OUT of pod matching.
 func TestHoldFillerClips_SendsAnAutoFiledClipBackAndOutOfMatching(t *testing.T) {
 	srv, st, _ := newFillerServer(t)

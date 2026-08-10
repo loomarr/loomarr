@@ -41,8 +41,15 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const [busyClip, setBusyClip] = useState<string>();
   const settle = () => setBusyClip(undefined);
 
+  // Filing — plain, and as-suggested. ⚠ It carries the error toast that used to sit on the
+  // era-confirm mutation: "Looks right" now files through this hook (§10 V54), and without one a
+  // failed decision would be silent, leaving the operator to conclude the row simply did not move.
   const fileClips = fillerApi.useFileFillerClips({
-    mutation: { onSettled: settle, onSuccess: invalidateLifecycle },
+    mutation: {
+      onSettled: settle,
+      onSuccess: invalidateLifecycle,
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't file those clips"),
+    },
   });
   const holdClips = fillerApi.useHoldFillerClips({
     mutation: {
@@ -60,19 +67,12 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't remove those clips"),
     },
   });
-  // Era-suggestion confirm (§10 V34). ⚠ The PATCH body must carry the clip's CURRENT
-  // audience: UpdateClipTags writes era and audience unconditionally, so a bare `{era}`
-  // would wipe audience. Setting era confirms and clears the suggestion in the same write
-  // (the BE's rule). `tags` is omitted — this interaction never touches the taxonomy tags.
-  const confirmEra = fillerApi.useTagFillerClip({
-    mutation: {
-      onSettled: settle,
-      onSuccess: invalidateLifecycle,
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the era"),
-    },
-  });
-
-  const busy = confirmEra.isPending || removeClips.isPending || fileClips.isPending || holdClips.isPending;
+  // ⚠ The era-confirm PATCH mutation that used to live here is GONE, not merely unused (§10 V54).
+  // "Looks right" files through `fileClips` with `asSuggested`, so the single-clip tag route has no
+  // caller on this tab — and a mutation left wired to nothing is how a later reader concludes there
+  // are two ways to confirm an era and picks the one that no longer files. The route still exists
+  // and is still the Catalog's tag dialog's writer; what is deleted is this tab's second path to it.
+  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending;
 
   return (
     <div id="panel-incoming" role="tabpanel" aria-labelledby="tab-incoming" className="flex flex-col gap-4">
@@ -98,27 +98,28 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
           setBusyClip(clip.hash);
           removeClips.mutate({ data: { hashes: [clip.hash], restore: true } });
         }}
-        // ⚠ Carries the clip's CURRENT audience, not just the era. The BE's UpdateClipTags
-        // writes era and audience unconditionally, so a bare `{era}` would silently wipe
-        // audience — the hazard the comment above `confirmEra` records, and one this call
-        // site reproduced on its first draft. `tags` is omitted deliberately (§10 V45a):
-        // confirming a suggested era doesn't touch the clip's taxonomy tags, and omitting
-        // `tags` leaves them alone — the derived `category` shadow rides along unchanged.
+        // "Looks right" CONFIRMS the guess and FILES, in one request (§10 V54).
+        //
+        // ⚠ It used to PATCH the era and stop there, which meant it did not file — and for a
+        // clip with a guessed era it is the only affirmative control on the row, because the
+        // panel offers "Use it" only when there is no guess. So the one button that was
+        // supposed to clear a guessed clip out of the queue left it exactly where it was.
+        //
+        // ⚠ Routed through the EXISTING `asSuggested` flag rather than chaining a PATCH and a
+        // file from here. The server confirms each clip's own `suggestedEra` — the store clears
+        // `suggested_era` in the same statement, so the question cannot outlive its answer — and
+        // then files, in one round trip. Two client-side mutations would put the halves in
+        // different requests, where a failure between them leaves a clip filed with an
+        // unconfirmed guess. It is also exactly what "File all as suggested" below sends, for a
+        // selection of one, so the single and bulk paths cannot drift.
         onConfirmEra={(ask) => {
           setBusyClip(ask.path);
-          confirmEra.mutate({
-            data: {
-              // The clip is identified by `hash` in the body (§10 V45a) — this PATCH goes
-              // through the single-clip tag route, which is hash-keyed. `busyClip`/`busyPath`
-              // above stay on `ask.path`: that's a local UI key only, and IncomingClipDTO still
-              // carries `path` for the array-keyed hold/file/remove ops below.
-              hash: ask.hash,
-              era: ask.suggestedEra ?? 0,
-              ...(ask.audience ? { audience: ask.audience as never } : {}),
-            },
-          });
+          fileClips.mutate({ data: { paths: [ask.path], asSuggested: true } });
         }}
-        onEditTags={(ask) => onEditTags(ask.path)}
+        // ⚠ The clip's IDENTITY, not its path. The shell's dialog resolves a clip by hash — it
+        // is shared with the Catalog tab, whose rows are keyed that way — and handing it a path
+        // meant the lookup matched nothing and no dialog ever opened.
+        onEditTags={(ask) => onEditTags(ask.hash)}
         // "Don't use it" removes the clip from the CATALOG. The file stays where the operator
         // put it — the server's action is a tombstone, never a delete.
         onDismiss={(ask) => {

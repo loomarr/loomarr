@@ -82,6 +82,20 @@ const (
 	DispositionReview   Disposition = "review"
 	DispositionFiled    Disposition = "filed"
 	DispositionRejected Disposition = "rejected"
+	// DispositionDismissed — the OPERATOR said no (§10 V54). Distinct from `rejected`, which is
+	// the quality gate refusing.
+	//
+	// ⚠ The two are not the same fact and must not share a value. `rejected` carries a stable
+	// `RejectReason` code plus the measured detail behind it, and whether it may be undone is
+	// decided per reason by `Soft()`. A dismissal has no code — the reason is "a person said so" —
+	// no measurement, and is always reversible. Folding it into `rejected` would need a reason
+	// meaning "no reason" and a `Soft()` case that is unconditionally true: two exceptions so one
+	// enumeration could carry two subjects. `reject.go` makes the same argument for keeping
+	// `RejectReason` and `AutoSplitReject` apart.
+	//
+	// ⚠ It is deliberately absent from the refusals list ("Loomarr didn't use N clips"), which is
+	// the audit of what the appliance decided WITHOUT the operator.
+	DispositionDismissed Disposition = "dismissed"
 )
 
 // Terminal reports whether the pipeline is finished with this clip. A terminal clip is not picked
@@ -92,7 +106,8 @@ const (
 // would mean re-running the whole ladder against a clip whose only missing input is a human
 // decision.
 func (d Disposition) Terminal() bool {
-	return d == DispositionFiled || d == DispositionRejected || d == DispositionReview
+	return d == DispositionFiled || d == DispositionRejected || d == DispositionReview ||
+		d == DispositionDismissed
 }
 
 // StageRecord is one finished rung on a clip's ladder — what the Incoming tab renders as history.

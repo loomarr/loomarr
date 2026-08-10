@@ -1,4 +1,4 @@
-import type { ClipDTO, FillerWatchOutputBody, MeBody } from "@loomarr/api";
+import type { ClipDTO, FillerIncomingOutputBody, FillerWatchOutputBody, MeBody } from "@loomarr/api";
 import {
   getBulkRemoveFillerMockHandler,
   getBulkTagFillerMockHandler,
@@ -57,6 +57,12 @@ type Opts = {
   // states worth testing in the header are the ones where the catalog and the review queue
   // disagree — a fresh auto-fetch has zero of one and a dozen of the other.
   watch?: FillerWatchOutputBody;
+  // Clips that exist but are HELD, so `GET /v1/filler` returns them only when the caller asks for
+  // them (§10 V38). Kept separate from `clips` rather than flagged inside it, because the
+  // distinction the stub has to honour is which LIST a clip appears in, not a field on the row.
+  held?: ClipDTO[];
+  // The review queue's payload. Defaults to empty — most tests here are about the catalog.
+  incoming?: Partial<FillerIncomingOutputBody>;
 };
 
 // The SSE stream, captured so a test can fire frames at the app: the split job's terminal
@@ -99,6 +105,8 @@ const stubFiller = ({
   clips = [clip()],
   me: who = ADMIN,
   watch,
+  held = [],
+  incoming,
 }: Opts = {}) => {
   CaptureEventSource.listeners = new Map();
   const tagPatches: unknown[] = [];
@@ -141,6 +149,7 @@ const stubFiller = ({
       rejected: [],
       stageOrder: [],
       total: 0,
+      ...incoming,
     }),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
     // the SERVER — counts and health verdict both — rather than deriving them from the sources
@@ -160,7 +169,15 @@ const stubFiller = ({
       // Honor the query string so a filter test proves the SERVER did the filtering.
       const params = new URL(request.url).searchParams;
       listQueries.push(params.toString());
-      let out = clips;
+      // ⚠ **The held predicate is enforced here, and the `hashes` filter ANDs with it** — exactly
+      // as the store does (`clipWhere`), where held clips are excluded at one chokepoint and every
+      // other filter narrows what survives it. A stub that handed back a held clip for a bare
+      // `hashes` query could not fail when a caller forgot `includeHeld`, which is precisely the
+      // defect this models: the shared tag dialog resolves a clip by identity, and on the Incoming
+      // tab every clip it can be asked about is held.
+      let out = params.get("includeHeld") === "true" ? [...clips, ...held] : clips;
+      const hashes = params.getAll("hashes");
+      if (hashes.length > 0) out = out.filter((c) => hashes.includes(c.hash));
       const q = params.get("q");
       if (q) out = out.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
       const kind = params.get("kind");
@@ -497,6 +514,45 @@ describe("Filler page", () => {
 
     // §10 V45a: bulk edit is hash-keyed (see the bulk-remove test above).
     await expect.poll(() => bulkTags).toEqual([{ hashes: ["c1-hash"], audience: "family" }]);
+  });
+
+  // ⚠ **The Incoming tab's "Add tags" took a click and did nothing** (§10 V54). `ClipTagDialog`
+  // was mounted only inside the catalog-tab branch, and the identifier handed up was the clip's
+  // PATH where the shell resolves by hash — two independent reasons for the same silence, either
+  // of which alone would have been enough.
+  //
+  // This drives the app the way an operator does — Incoming, click, look — rather than asserting
+  // a callback fired. The tab's own test already asserts the callback, and it was green the whole
+  // time the button did nothing; only rendering the whole page can tell the difference.
+  it("opens the tag editor from the Incoming queue, on the clip's real record", async () => {
+    stubFiller({
+      incoming: {
+        clips: [
+          {
+            hash: "held-hash",
+            path: "a3/f9/held.mp4",
+            name: "Held promo",
+            kind: "commercial",
+            durationMs: 30_000,
+            reason: "untagged",
+            needsDecision: true,
+          },
+        ],
+        total: 1,
+      },
+      // ⚠ Held, so it is NOT in the catalog list — which is the whole reason the shell needs a
+      // second read with `includeHeld` to resolve it, and the reason `tags` must come from the
+      // server rather than from the Incoming row (that DTO carries no tag array at all, so a
+      // synthesised clip would offer to save an empty tag set over a tagged clip).
+      held: [clip({ hash: "held-hash", name: "Held promo", category: "cereal", era: 1985 })],
+    });
+    renderAt("/filler/incoming");
+
+    await userEvent.click(await screen.findByRole("button", { name: /add tags/i }));
+
+    // The dialog labels its region with the clip's name, so finding it by name proves BOTH that
+    // it opened and that it opened on the right record.
+    expect(await screen.findByRole("region", { name: "Edit tags: Held promo" })).toBeInTheDocument();
   });
 
   // A member cannot bulk-edit, so the control that would 403 is simply absent rather than
