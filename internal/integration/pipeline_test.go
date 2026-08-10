@@ -109,7 +109,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	engine := channels.New(st, tun, avail, nil, channels.Config{
 		Policy: schedule.PodFill, ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 	}, clock, testkit.Logger())
-	engine.WithPods(filler.NewPodAdapter(clipCatalog{st}, filler.Policy{}, testkit.Logger()))
+	engine.WithPods(filler.NewPodAdapter(clipCatalog{st}, nil, testkit.Logger()))
 
 	// Run the worker pool for the life of the test (real async path).
 	ctx, cancel := context.WithCancel(context.Background())
