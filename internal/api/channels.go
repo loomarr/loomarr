@@ -59,25 +59,15 @@ func (s *Server) registerChannels(api huma.API) {
 		Tags:        []string{"channels"},
 	}, RoleMember), s.channelIconSuggestions)
 
-	// ⚠ **RolePublic, and it has to be said out loud.** Tunarr and the media server fetch this
-	// with no credentials, machine-to-machine, exactly as they would a TMDB poster URL — the
-	// bytes are a non-secret channel icon. roleForOperation defaults an unmarked operation to
-	// ADMIN (routeauth.go, fail-closed), so omitting this line does not leave the route open,
-	// it silently breaks every channel logo in Tunarr. The upload half is admin and lives in
-	// channelicon.go.
-	rawOp[channelIDInput](api, bytesResponse(huma.Operation{
-		OperationID: "channel-icon", Method: http.MethodGet, Path: "/v1/channels/{id}/icon",
-		Summary: "A channel's uploaded icon",
-		Description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine " +
-			"while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. " +
-			"LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at " +
-			"/v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, " +
-			"and it retires with the channel_icons table in phase 8.",
-		Tags: []string{"channels"},
-	}, "The stored icon bytes.", "image/png", "image/jpeg", "image/webp", "image/gif"),
-		RolePublic, s.serveChannelIcon)
+	// ⚠ **`channel-icon` (GET /v1/channels/{id}/icon) was RETIRED in V52 phase 8**, with the
+	// `channel_icons` table behind it. A channel's logo is a /v1/images URL now, which Tunarr and retired-ok
+	// the media server fetch unauthenticated exactly as they fetched this — the public-with-no-
+	// credential property moved to the image serve route, where §22 makes visibility a property of
+	// the IMAGE rather than of the route.
+	//
+	// The upload half below survives; only the serving moved.
 
-	// The upload half — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
+	// The upload — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
 	// edge, before the handler's own read limit; the handler still checks, because the multipart
 	// header's declared size is a claim, not a measurement.
 	huma.Register(api, withRole(huma.Operation{

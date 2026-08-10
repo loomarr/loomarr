@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -155,45 +154,32 @@ func (s *sqlStore) DeleteChannel(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	// Best-effort: drop any uploaded icon so a deleted channel leaves no orphaned blob.
+	// Best-effort: drop the channel's image refs so its icon becomes collectable.
+	//
+	// ⚠ **This replaced `DELETE FROM channel_icons` in V52 phase 8, and the swap fixed a LEAK retired-ok
+	// rather than merely renaming a cleanup.** Phase 5 moved icon bytes to the image service but
+	// left this line deleting the old blob table, so a deleted channel's `image_refs` row survived
+	// it — and a ref is exactly what tells the GC an image is still in use (§22). The icon was
+	// therefore never orphaned and never collected: bytes on disk, referenced by a channel that no
+	// longer exists, for the life of the install. `DeleteImageRefs` had no caller at all until now.
+	//
 	// A failure here shouldn't fail the delete (the channel row is already gone), so it is
-	// logged by the caller path, not surfaced — mirror the delete's fire-and-forget shape.
-	_, _ = s.db.ExecContext(ctx, s.ph(`DELETE FROM channel_icons WHERE channel_id = ?`), id)
+	// logged by the caller path, not surfaced — mirror the delete's fire-and-forget shape. The
+	// cost of a miss is a retained image, which the GC's orphan sweep collects on a later pass
+	// once the ref does go; the cost of failing the delete would be a channel that cannot be
+	// removed.
+	//
+	// The literal "channel" matches api.ownerKindChannel. It is spelled out rather than imported
+	// because internal/store imports no domain package — the same rule every other adapter here
+	// follows.
+	_ = s.DeleteImageRefs(ctx, "channel", id)
 	return nil
 }
 
-// PutChannelIcon upserts the channel's uploaded icon bytes. The upsert (one row per channel
-// PK) replaces on re-upload. epoch(updatedAt) stores the cache-bust stamp.
-func (s *sqlStore) PutChannelIcon(ctx context.Context, channelID, contentType string, data []byte, updatedAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO channel_icons (channel_id, content_type, bytes, updated_at)
-		 VALUES (?, ?, ?, ?)
-		 ON CONFLICT (channel_id) DO UPDATE SET content_type = excluded.content_type,
-		     bytes = excluded.bytes, updated_at = excluded.updated_at`),
-		channelID, contentType, data, epoch(updatedAt))
-	if err != nil {
-		return fmt.Errorf("put channel icon %s: %w", channelID, err)
-	}
-	return nil
-}
-
-// GetChannelIcon reads a channel's uploaded icon. sql.ErrNoRows → ok=false (no icon stored).
-func (s *sqlStore) GetChannelIcon(ctx context.Context, channelID string) (string, []byte, time.Time, bool, error) {
-	var (
-		contentType string
-		data        []byte
-		updatedAt   int64
-	)
-	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT content_type, bytes, updated_at FROM channel_icons WHERE channel_id = ?`), channelID)
-	if err := row.Scan(&contentType, &data, &updatedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil, time.Time{}, false, nil
-		}
-		return "", nil, time.Time{}, false, fmt.Errorf("get channel icon %s: %w", channelID, err)
-	}
-	return contentType, data, time.Unix(updatedAt, 0), true, nil
-}
+// ⚠ **`PutChannelIcon`/`GetChannelIcon` were DELETED in V52 phase 8, with the `channel_icons` retired-ok
+// table.** Icon bytes are image-service images (§22): content-addressed on disk, served by
+// /v1/images/{hash} under an honest immutable cache. `PutChannelIcon` had already had no caller retired-ok
+// since phase 5 moved uploads across — it was dead code the whole time the window was open.
 
 // ClaimDueChannels runs the dialect-specific channel-claim statement. Selects
 // non-detached channels whose reconcile_deadline is at/before now, up to limit,

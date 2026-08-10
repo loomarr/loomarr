@@ -49,13 +49,36 @@ describe("sentenceFor", () => {
 });
 
 describe("PreparingRow", () => {
-  // ⚠ Rendered only when the clip says one EXISTS. A clip still at `probe` has no thumbnail, and
-  // firing an <img> at the hash alone would draw broken images for exactly the newest rows.
+  // ⚠ Rendered only when the clip says one EXISTS. A clip still at `probe` has no artwork, and
+  // drawing an image on the strength of the hash alone would show broken ones for exactly the
+  // newest rows. The absent case is the COMMON one on this belt — these clips are mid-preparation,
+  // so the adoption job has usually not reached them.
+  //
+  // ⚠ Keys on `thumbImage` since V52 phase 8: `thumbnail` and the /v1/filler/thumb route it retired-ok
+  // addressed are retired (retired-ok), so "has artwork" is now "has an adopted image record".
   it("renders a thumbnail only for a clip that has one", () => {
     const { container, rerender } = render(<PreparingRow clip={clipAt()} ladder={LADDER} />);
     expect(container.querySelector("img")).toBeNull();
 
-    rerender(<PreparingRow clip={clipAt({ thumbnail: "1985/cola.jpg" })} ladder={LADDER} />);
+    rerender(
+      <PreparingRow
+        clip={clipAt({
+          thumbImage: {
+            hash: "aaaa1111",
+            role: "thumb",
+            width: 500,
+            height: 281,
+            placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+            dominantHex: "#2b4a5e",
+            animated: false,
+            srcSetWebp: "/v1/images/aaaa1111/w342.webp 342w",
+            srcSetAvif: "",
+            src: "/v1/images/aaaa1111/w500.jpg",
+          },
+        })}
+        ladder={LADDER}
+      />,
+    );
     expect(container.querySelector("img")).not.toBeNull();
   });
 

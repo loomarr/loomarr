@@ -12,7 +12,7 @@ import (
 // The image service's persistence (§22, V52). One record per logical image; the BYTES are on disk
 // under a content hash and never in this database.
 //
-// ⚠ That is the deliberate reversal of `channel_icons`, which stored upload bytes here precisely so
+// ⚠ That is the deliberate reversal of `channel_icons`, which stored upload bytes here precisely so retired-ok
 // they would ride the §16 backup. It worked, and it makes the database the wrong shape for a general
 // image service — so §22 accepts the narrower guarantee instead: an operator upload is the one thing
 // that does not survive losing /data/images, which is why `ListUnrecoverableImages` exists for the

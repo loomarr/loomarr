@@ -4,9 +4,69 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: phases 0–7 of 8.** Merged: `ca15ba1d` (#199, phases 0–4),
-`309c5dfc` (#209, phase 5), `db241852` (#217, phase 6). **Phase 7 is on `v52-phase7-tmdb`.**
-**Next: 8** retirements + `scripts/check-retired.sh` + the `docs/help/` sweep.
+**V52 — the image service: phases 0–7 MERGED, phase 8 is PR #226.** `ca15ba1d` (#199, phases 0–4),
+`309c5dfc` (#209, phase 5), `db241852` (#217, phase 6), `2db769d9` (#221, phase 7). A follow-up,
+**PR #230**, closes the two items V52 itself left open — see below.
+
+⚠ **BOTH of V52's open items are now CLOSED by #230, and this paragraph used to say otherwise.**
+It read "two things V52 does NOT close, and both need the maintainer" — true when written, false
+within the day, and left standing across two merges. That is the fourth time this header has
+outlived its work, which is the failure the warning below already describes twice. (1) §22's TMDB
+attribution is complete: the notice shipped in phase 7 and the LOGO ships in #230, vendored from
+TMDB's attribution page. (2) `channel_icons.bytes` was the schema's ONLY BLOB/BYTEA column, so
+dropping the table left `copyTable`'s binary-coercion branch reachable by nothing —
+`TestBinaryColumnsSurviveMigration` now covers it against a probe table the TEST creates, so no
+production column exists for a test's benefit and the branch is exercised rather than merely kept.
+
+**Phase 8 — the retirements (2026-08-09, branch `v52-phase8-retirements`).** `/v1/filler/thumb` and
+`/v1/filler/hover` (routes, handlers, `safeThumbPath`, three test files), `ClipDTO.thumbnail`/
+`.preview` and `IncomingAskDTO.thumbnail` on the wire, `clipThumbURL`/`clipHoverURL` on the
+frontend, and `channel_icons` entire — route, handler, both store methods, the interface entries
+and the table (`00049`, both dialects). Nine identifiers added to `scripts/check-retired.sh`.
+Gate: `make check` exit 0 + `make fe` exit 0 + `make retired-verify` clean (34 identifiers) +
+`make openapi` regenerated (**116 lines removed**).
+
+⚠ **No backfill, and that is a decision about THIS project rather than about migrations.** Loomarr
+has no production installs, so nothing has accumulated icons predating phase 5. A backfill job
+would have been code written to migrate data that does not exist — needing its own gate, its own
+tests, and a reader in five years working out whether it still mattered. The maintainer's standing
+direction is that leaving debt behind is the worse outcome; if that changes before release, the
+honest fix is to restore the window, not to keep a dead job.
+
+⚠ **The clip artwork COLUMNS survive while the routes and DTO fields go, and phase 6's plan was
+wrong about this.** Its migration says `thumbnail`/`preview` "retire in phase 8, once nothing reads
+them" — but the adoption job reads them as its permanent work list: the render pipeline writes
+files under `FILLER_DIR` and the job converts them, because `internal/filler` importing
+`internal/images` breaks the layering. A rolling background job is never "done" from a migration's
+point of view, so those columns are the current render→adopt seam, not a migration window.
+
+⚠ **A visible gap was ACCEPTED here, deliberately, and it is the maintainer's call rather than an
+oversight.** With the legacy routes gone, a clip whose artwork the adoption job has not reached yet
+renders no image until it does — hours on a large catalog, since the job runs every five minutes in
+batches. It is self-healing and loses nothing, and it degrades into the card's designed *no-frame*
+layout (the one that shipped before extracted frames existed) rather than into a broken image,
+which is what makes it tolerable.
+
+⚠ **This phase FOUND A SECOND LEAK, in phase 5's code, the same way phase 7 found phase 3b's.**
+`DeleteChannel` still ran `DELETE FROM channel_icons` after phase 5 moved icon bytes to the image
+service — so a deleted channel's `image_refs` row survived, and a ref is exactly what tells the GC
+an image is still in use (§22). The icon was never orphaned and never collected: bytes on disk owned
+by a channel that no longer exists, for the life of the install. `DeleteImageRefs` had **no caller
+anywhere in the codebase**. The replacement is covered by a new `ChannelDeleteDropsImageRefs`
+conformance subtest that also asserts the IMAGE ROW SURVIVES — two channels sharing one icon is
+ordinary when identity is a content hash, so deleting refs must never delete bytes. Verified by
+sabotage: removing the call makes it go red.
+
+⚠ **`ALLOW_PATH` gained `internal/store/migrations/`, and that exemption is forced rather than
+chosen.** A migration that CREATES a table names it, and §16 makes applied migrations immutable —
+so `00012_channel_icons.sql` will say `channel_icons` for the life of the repository and cannot be
+annotated out of the way. The migration that DROPS it must name it too. Neither is an instruction to
+an operator, which is what the ban protects.
+
+⚠ **`docs/help/` needed no sweep, which is worth recording as evidence rather than as luck.** The
+retired identifiers appear nowhere in it, and neither does prose describing the old behaviour — so
+the failure that motivated `check-retired.sh` (the deleted `/hooks/arr` webhook still documented as
+a setup step) did not recur here. The grep is what proves that, not a reading.
 
 ⚠ **The header said "Phase 6 is PR #217" for the whole time that PR was merged**, which is the
 third time this paragraph has outlived its work — the two warnings below already say so, and both

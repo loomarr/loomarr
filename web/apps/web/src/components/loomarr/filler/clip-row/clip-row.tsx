@@ -1,4 +1,4 @@
-import { clipThumbURL, formatClipDuration } from "@loomarr/core";
+import { formatClipDuration } from "@loomarr/core";
 import { Image } from "@/components/ui";
 import { cn } from "@/lib";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
@@ -45,16 +45,11 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
         thumbnail is a column: omitting the element for clips without one would ragged the
         name column against its neighbours. An empty box is the honest "no frame" here. */}
     <div className="h-[30px] w-[54px] overflow-hidden rounded-sm bg-static-800">
-      {/* ⚠ Two paths during the §22 migration window, and the fallback is not dead code: the
-          adoption job copies clip artwork into the image service in batches, so a freshly-scanned
-          clip legitimately has `thumbnail` (a file on disk) and no `thumbImage` yet. Rendering
-          nothing in that gap would blank the catalog after every import. Both retire in phase 8. */}
-      {clip.thumbImage ? (
+      {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
+          its route. A clip whose artwork the adoption job has not reached yet renders the empty
+          box above, which is the same honest "no frame" state as a clip that never had one. */}
+      {clip.thumbImage && (
         <Image image={clip.thumbImage} alt="" sizes="54px" className="size-full object-cover" />
-      ) : (
-        clip.thumbnail && (
-          <img src={clipThumbURL(clip.hash)} alt="" className="size-full object-cover" loading="lazy" />
-        )
       )}
     </div>
 

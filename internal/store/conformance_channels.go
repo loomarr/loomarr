@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -152,48 +151,52 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-// testChannelIconRoundTrip covers the upload-icon blob store: put → get, replace-on-reput,
-// missing → ok=false, and delete-channel cleans up the icon (no orphaned blob).
-func testChannelIconRoundTrip(t *testing.T, newStore NewStoreFunc) {
+// Deleting a channel must drop its IMAGE REFS — the cascade that replaced the `channel_icons` retired-ok
+// cleanup when the table went (V52 phase 8).
+//
+// ⚠ **This is a regression test for a real leak, not a rename of the old icon round-trip.** Phase 5
+// moved icon bytes into the image service but left DeleteChannel deleting the old blob table, so a
+// deleted channel's `image_refs` row survived it. A ref is precisely what tells the GC an image is
+// still in use (§22), so the icon was never orphaned and never collected — bytes on disk owned by a
+// channel that no longer exists, forever. `DeleteImageRefs` had no caller at all until phase 8.
+func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	_ = s.UpsertChannel(ctx, sampleChannel("ch-ico", 7, time.Time{}))
 
-	// Missing → ok=false.
-	if _, _, _, ok, err := s.GetChannelIcon(ctx, "ch-ico"); err != nil || ok {
-		t.Fatalf("no icon yet: ok=%v err=%v, want ok=false/nil", ok, err)
-	}
-
-	// Put → get round-trips bytes + content type.
-	png := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3}
-	at := time.Unix(1_700_000_000, 0)
-	if err := s.PutChannelIcon(ctx, "ch-ico", "image/png", png, at); err != nil {
+	img := imageAt("channel-icon", time.Unix(1_700_000_000, 0))
+	if err := s.PutImage(ctx, img); err != nil {
 		t.Fatal(err)
 	}
-	ct, data, gotAt, ok, err := s.GetChannelIcon(ctx, "ch-ico")
-	if err != nil || !ok {
-		t.Fatalf("get after put: ok=%v err=%v", ok, err)
-	}
-	if ct != "image/png" || !bytes.Equal(data, png) || gotAt.Unix() != at.Unix() {
-		t.Errorf("round-trip mismatch: ct=%q len=%d at=%d", ct, len(data), gotAt.Unix())
-	}
-
-	// Replace on re-put (one row per channel PK).
-	jpg := []byte{0xFF, 0xD8, 0xFF, 9, 9}
-	if err := s.PutChannelIcon(ctx, "ch-ico", "image/jpeg", jpg, at.Add(time.Hour)); err != nil {
+	if err := s.PutImageRef(ctx, ImageRef{
+		ImageHash: img.Hash, OwnerKind: "channel", OwnerID: "ch-ico", Role: "icon",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	ct2, data2, _, _, _ := s.GetChannelIcon(ctx, "ch-ico")
-	if ct2 != "image/jpeg" || !bytes.Equal(data2, jpg) {
-		t.Errorf("replace didn't take: ct=%q len=%d", ct2, len(data2))
+
+	owned, err := s.ImagesForOwner(ctx, "channel", "ch-ico")
+	if err != nil || len(owned) != 1 {
+		t.Fatalf("before delete: %d images for the channel (err=%v), want 1", len(owned), err)
 	}
 
-	// Deleting the channel drops the icon (no orphan).
 	if err := s.DeleteChannel(ctx, "ch-ico"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, ok, _ := s.GetChannelIcon(ctx, "ch-ico"); ok {
-		t.Error("icon survived channel delete (orphaned blob)")
+
+	owned, err = s.ImagesForOwner(ctx, "channel", "ch-ico")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(owned) != 0 {
+		t.Errorf("the channel's image ref survived the delete — its icon can never be collected as an orphan")
+	}
+
+	// ⚠ The IMAGE ITSELF must survive, and this half is not incidental. The ref is a usage record;
+	// the GC's orphan sweep is what deletes bytes. Deleting the image here would destroy artwork
+	// that a second channel may still point at — two channels sharing one icon is ordinary, since
+	// identity is the content hash.
+	if _, err := s.GetImage(ctx, img.Hash); err != nil {
+		t.Errorf("the image row was deleted along with the channel: %v — refs are a usage record, not ownership", err)
 	}
 }
 
