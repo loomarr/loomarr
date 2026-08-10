@@ -1,4 +1,5 @@
 export * from "./channel-auto-curate";
+export * from "./channel-breaks";
 export * from "./channel-card";
 export * from "./channel-collections-scope";
 export * from "./channel-cycle-preview";

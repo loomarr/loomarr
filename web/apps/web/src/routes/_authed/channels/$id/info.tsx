@@ -1,6 +1,12 @@
 import { channelNumber, pluralize } from "@loomarr/core";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChannelIconField, ChannelUpcoming, CollapsibleSection, OnAirIndicator } from "@/components/loomarr";
+import {
+  ChannelBreaks,
+  ChannelIconField,
+  ChannelUpcoming,
+  CollapsibleSection,
+  OnAirIndicator,
+} from "@/components/loomarr";
 import { ChannelAdvanced } from "./-channel-advanced";
 import { useChannelDetail } from "./-channel-detail-context";
 
@@ -29,6 +35,16 @@ const InfoScreen = () => {
             everyone; refreshes on the `channel` SSE frame via the layout's invalidate. */}
         <div className="border-border border-t pt-3">
           <ChannelUpcoming channelId={id} live={air.dot === "live"} />
+        </div>
+
+        {/* What plays BETWEEN those shows. Read-only and shown to everyone, which is the whole
+            point: `GET /v1/channels/{id}/pods` is member-readable where the Filler tab's draft
+            sandbox is admin-only, so this is the only route by which a viewer can see why a
+            channel sounds the way it does. It renders nothing when the channel has no break pool
+            (or the install has no filler), so a channel without commercials is simply quiet here
+            rather than showing an empty panel. */}
+        <div className="border-border border-t pt-3 empty:hidden">
+          <ChannelBreaks channelId={id} />
         </div>
 
         <p className="border-border border-t pt-3 text-sm">

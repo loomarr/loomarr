@@ -956,13 +956,34 @@ frontend workarounds" (H) did not apply: the two sites that spread `{...policy, 
 `use-channel-rules-draft`, safe only by accident — its draft is seeded `policy ?? {}`, so applying
 before the channel resolved sent a policy with no filler at all.
 
-**Not done, and deliberately left for a follow-up:** three of G's smaller honesty fixes — the
-`PodMax` clamp warning with its count, rendering a removed pinned clip as "no longer in the
-catalog" rather than a bare hash, and wiring the member-readable `GET /v1/channels/{id}/pods` into
-the channel Info tab (an endpoint with no UI, which is what `/surface-audit` exists to find).
+**The three G items V51f left out shipped immediately after it**, as #237/#238/#239 → PR #240: the
+`PodMax` clamp warning with its count, a removed pinned clip rendering as "no longer in your
+catalog" instead of a bare hash, and the member-readable `GET /v1/channels/{id}/pods` finally
+wired into the channel Info tab.
 
-**Next up: nothing in the V51 plan** — V51f was its last phase. The follow-ups above are issues,
-not a phase; see CLAUDE.md's issue-tracker note before writing a row for them here.
+⚠ **This paragraph said they were "deliberately left for a follow-up" for about a day after the
+follow-up merged** — a pointer outliving its work, which is the failure the top of this file
+describes and then committed here. Recorded rather than quietly reworded: the two PRs were split
+on purpose (one moved `openapi.yaml`, the other could not), and a split like that is exactly when
+the doc half goes stale, because the branch that finishes the work is not the branch holding the
+sentence about it.
+
+**Two things the V51 line does NOT close, both known:**
+
+- ⚠ **A clip that cannot fit a single pass still never completes.** #225 made a deferral yield, so
+  one unfinishable reel stops starving the other 84 — but it never finishes either. WAGA-5 was
+  never evidence against this: it is 16m47s and completed in three seconds once the belt stopped
+  lying about it (#229). The 2.4-hour recording that prompted V51g is still unsplittable.
+- ⚠ **No orphaned-baseline guard.** Deleting a story leaves its PNGs behind — `--update-snapshots`
+  only ever writes — referenced by nothing and green forever. Found by hand when V51f's `EraStrict`
+  story went; the same hand-maintained-list class as `scripts/check-retired.sh`.
+
+**Next up: nothing in the V51 plan** — V51f was its last phase. The items above are issues, not
+phases; see CLAUDE.md's issue-tracker note before writing a row for them here.
+
+⚠ **None of V51f has been verified on the live stack.** It is green in CI and unseen in a browser:
+the era range, the untagged-audience admission, the per-criterion meter and the per-channel break
+density have never run against the maintainer's Emby/Tunarr. Green is not the same as works.
 
 **V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09,
 PRs #223, #225 and #229).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).

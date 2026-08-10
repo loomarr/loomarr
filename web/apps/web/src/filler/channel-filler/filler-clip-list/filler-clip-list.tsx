@@ -21,6 +21,8 @@ const FillerClipList = ({
   ids,
   onChange,
   resolve,
+  resolving,
+  cap,
   disabled,
   excludeIds,
 }: {
@@ -30,6 +32,13 @@ const FillerClipList = ({
   onChange: (next: string[] | undefined) => void;
   // Look up a clip's display fields by id (from a shared catalog fetch in the parent).
   resolve: (id: string) => ClipDTO | undefined;
+  // Whether that lookup is still in flight. ⚠ Required to tell "not loaded yet" from "not in the
+  // catalog any more" — `resolve` returns undefined for both, and rendering the second message
+  // during the first state would accuse a perfectly good clip of having been deleted.
+  resolving?: boolean;
+  // cap is the most clips a single break can play (`filler.pod_max`). Passed only for the PIN
+  // list, where exceeding it is the operator's decision to see; omitted elsewhere.
+  cap?: number;
   disabled?: boolean;
   // Ids to leave OUT of the add-search results — the counterpart list's ids, so a clip
   // can't be pinned and excluded at once from the UI (the backend resolves the conflict as
@@ -66,22 +75,57 @@ const FillerClipList = ({
         <p className="text-muted-foreground text-xs">{hint}</p>
       </div>
 
+      {/* ⚠ **The clamp said nothing at all before this.** `filler.pod_max` caps how many clips one
+          break plays; pin more than that and the extras are saved, honoured, and simply cannot all
+          fit — with no count anywhere on the page. That is the same shape as the other V51f
+          defects: a control that accepts input and quietly does less than it says.
+          ⚠ Worded as "not all in ONE break" rather than "N will be dropped", because that is what
+          actually happens: the pins are a priority pool the assembler draws from per break, so
+          which ones appear varies by break rather than the list being truncated. */}
+      {cap !== undefined && cap > 0 && ids.length > cap && (
+        <p className="text-signal text-xs" data-testid="pod-max-clamp">
+          A break plays at most {cap} {cap === 1 ? "clip" : "clips"}, so only some of these {ids.length}{" "}
+          appear in any one break. Raise the limit in Filler settings to fit more.
+        </p>
+      )}
+
       {ids.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {ids.map((id) => {
             const clip = resolve(id);
+            // ⚠ **A resolved-and-missing id is a DEAD override, not a clip with a long name.**
+            // It used to render the raw 64-character content hash, and this file's own comment
+            // called that "the honest signal that the override points at something no longer
+            // airable" — honest to someone who already knew, unreadable to everyone else. The
+            // assembler silently skips it, so nothing else says the pin does nothing.
+            const gone = !clip && !resolving;
             return (
               <li
                 key={id}
                 className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="truncate font-medium text-sm">{clip?.name ?? id}</span>
-                  {clip ? (
-                    <span className="ml-2 font-mono text-static-400 text-xs">
-                      {formatClipDuration(clip.durationMs)}
-                    </span>
-                  ) : null}
+                  {gone ? (
+                    <>
+                      <span className="truncate font-medium text-onair-300 text-sm">
+                        This clip is no longer in your catalog
+                      </span>
+                      {/* The hash still shown, small and secondary: it is the only handle an
+                          operator has if they want to work out WHICH clip this was. */}
+                      <span className="ml-2 truncate font-mono text-static-400 text-xs">
+                        {id.slice(0, 12)}…
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="truncate font-medium text-sm">{clip?.name ?? id}</span>
+                      {clip ? (
+                        <span className="ml-2 font-mono text-static-400 text-xs">
+                          {formatClipDuration(clip.durationMs)}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
                 </div>
                 <Tooltip>
                   <TooltipTrigger
@@ -91,7 +135,11 @@ const FillerClipList = ({
                         size="icon"
                         className="size-7 shrink-0"
                         disabled={disabled}
-                        aria-label={`Remove ${clip?.name ?? id}`}
+                        aria-label={
+                          gone
+                            ? "Remove this clip, which is no longer in your catalog"
+                            : `Remove ${clip?.name ?? id}`
+                        }
                         onClick={() => remove(id)}
                       />
                     }
