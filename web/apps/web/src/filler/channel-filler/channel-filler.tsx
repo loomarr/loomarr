@@ -1,4 +1,4 @@
-import { channelsApi, unwrap } from "@loomarr/api";
+import { channelsApi, settingsApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { Link } from "@tanstack/react-router";
 import { CollapsibleSection, CoverageMeter, PodTimeline } from "@/components/loomarr";
@@ -30,7 +30,18 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
   // ⚠ It asks for exactly THESE ids (§10 V51d), not the catalog. Reading the catalog and mapping
   // it client-side worked only while the listing was unbounded; against a 100-row page it would
   // resolve whichever pins happened to land on page one and render the rest as bare hashes.
-  const { resolve } = useFillerCatalog([...pinned, ...excluded]);
+  const { resolve, isLoading: resolving } = useFillerCatalog([...pinned, ...excluded]);
+
+  // `filler.pod_max` — the cap on clips per break, so the pin list can say when it exceeds it
+  // (#237). Read from the settings list the sibling filler panels already use rather than added
+  // to a DTO: it is a global knob, not a property of this channel, and the section is admin-only.
+  // ⚠ `retry: false` for the same reason the coverage query uses it — a filler-less install
+  // answers 501 and three retries is console noise for a state that simply renders nothing.
+  const settings = settingsApi.useSettingsList({ query: { enabled: open, retry: false } });
+  const podMaxEntry = (unwrap(settings.data, (b) => b.settings) ?? []).find(
+    (e) => e.key === "filler.pod_max",
+  );
+  const podMax = podMaxEntry ? Number(podMaxEntry.value) : undefined;
 
   // Coverage for the channel's SAVED selection (V29b). `enabled: open` because the section
   // starts collapsed and this is one more request per channel page otherwise; retry: false
@@ -87,6 +98,10 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
             ids={pinned}
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}
+            resolving={resolving}
+            // Only the PIN list is capped by pod_max — an exclusion list of any length costs
+            // nothing, because excluding is a filter rather than a thing to fit in a break.
+            cap={podMax}
             disabled={isApplying}
             excludeIds={excluded}
           />
@@ -96,6 +111,7 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
             ids={excluded}
             onChange={(next) => setDraft({ ...draft, excluded: next })}
             resolve={resolve}
+            resolving={resolving}
             disabled={isApplying}
             excludeIds={pinned}
           />

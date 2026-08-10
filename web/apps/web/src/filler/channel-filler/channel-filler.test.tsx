@@ -4,6 +4,7 @@ import {
   getListFillerMockHandler,
   getListTaxonomyMockHandler,
   getPreviewDraftChannelPodsMockHandler,
+  getSettingsListMockHandler,
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { channel } from "@/test/fixtures/channels";
+import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { ChannelFiller } from "./channel-filler";
@@ -111,6 +113,14 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
       catalogQueries.push(request.url);
       const clips = opts.clips ?? [];
       return { clips, total: clips.length };
+    }),
+    // ⚠ ALSO FOUND BY THE GUARD, a second time. The pin list reads `filler.pod_max` so it can say
+    // when a channel has more pins than one break can play (#237) — and the unhandled-request
+    // assertion turned that new fetch into five red tests the moment it landed, rather than a
+    // silent 404 the component would have rendered around.
+    getSettingsListMockHandler({
+      features: {},
+      settings: [setting({ key: "filler.pod_max", value: "4", kind: "int", group: "filler" })],
     }),
     // ⚠ FOUND BY THE GUARD. The coverage meter reads this on mount and the old catch-all served
     // it a CLIP LIST — `{ clips: [...] }` where the component wants `{ level, total, rungs }`. It
@@ -251,6 +261,9 @@ describe("ChannelFiller", () => {
       getListFillerMockHandler({ clips: [], total: 0 }),
       getListTaxonomyMockHandler({ taxa: [] }),
       getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [], criteria: HEALTHY }),
+      // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
+      // the settings read too — the pin list asks for `filler.pod_max` (#237).
+      getSettingsListMockHandler({ features: {}, settings: [] }),
     );
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
