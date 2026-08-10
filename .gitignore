@@ -55,6 +55,11 @@ web/apps/web/dist/
 .playwright-mcp/
 .claude/settings.json
 .claude/scheduled_tasks.lock
+
+# Claude Code's worktree directory. Contents are whole checkouts — never committable — and
+# the `--worktree` docs recommend ignoring it so they don't show up as untracked files in
+# the main checkout.
+.claude/worktrees/
 .filler-drop/
 .cmp-review/
 scratch-*.png
