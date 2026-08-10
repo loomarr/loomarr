@@ -1,0 +1,21 @@
+# Gitignored files copied into every worktree Claude Code creates (`--worktree`, subagent
+# `isolation: worktree`, desktop parallel sessions). `.gitignore` syntax; only files that
+# match AND are gitignored are copied, so tracked files are never duplicated.
+#
+# ⚠ WITHOUT THIS, A WORKTREE HAS NO CREDENTIALS. `.env` is gitignored, so a fresh checkout
+# never carries it, and everything touching the live stack fails there in a way that reads
+# as a code bug rather than missing config. `loomarr-msw` has been in exactly that state.
+#
+# ⚠ Deliberately NOT listing `*.db`. `DATABASE_URL` is a RELATIVE sqlite path, so each
+# worktree gets its own database from its own `.env` — which is the isolation you want.
+# Copying the dev databases would give two worktrees the same starting state and, worse,
+# invite someone to point them at one file (see the WAL-corruption warnings elsewhere).
+#
+# ⚠ THIS FILE IS IGNORED IF A `WorktreeCreate` HOOK IS EVER ADDED. A hook replaces the
+# default git behaviour wholesale, and `.worktreeinclude` is not processed in that case —
+# the hook would have to copy these files itself. That is a real trap: the hook works, the
+# worktree appears, and the credentials are silently absent. Prefer this file; if a hook
+# ever becomes necessary, move the copying into it and delete this, rather than leaving
+# both and assuming they cooperate.
+.env
+.phase0.env
