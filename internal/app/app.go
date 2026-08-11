@@ -886,37 +886,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		syncer = syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 
-		// ⚠ Hoisted out of the `if` because the ingest pipeline's tag rung needs the SAME provider
-		// (§10 V51b). Nil is the honest un-opted-in state and both readers treat it that way: the
-		// manual sweep is a no-op, and the rung reports "no language model is configured" on every
-		// clip's ladder rather than silently doing nothing.
-		var taggerProvider llm.Provider
-		var tagger *filler.Tagger
-		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
-			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-			taggerProvider = provider
-			// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars
-			// ingest writes beside each clip (§10). An unset FILLER_DIR yields a nil FS
-			// and tagging falls back to filenames — the same result as a drop-folder
-			// clip that never had a sidecar.
-			var drop fs.FS
-			if dir := set.str("filler.dir"); dir != "" {
-				drop = os.DirFS(dir)
-			}
-			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log).
-				// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the
-				// threshold is filed without a human. Closures, not captured values, so a
-				// changed threshold applies on the next run rather than the next restart.
-				//
-				// ⚠ `boolv`, NOT `boolOn`. The two differ only when the settings service cannot
-				// answer, and here that difference is the whole safety property: `boolOn` fails
-				// OPEN (returns true), which would publish unreviewed clips to live channels
-				// exactly when the install is degraded. Holding is the safe failure.
-				WithAutoFile(filler.AutoFilePolicy{
-					Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
-					MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
-				})
-		}
+		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
+		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
+		taggerProvider, tagger := buildTagger(st, set, log)
 		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no longer
 		// exists. Absent paths are
 		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
