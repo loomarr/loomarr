@@ -77,9 +77,6 @@ type PlayoutEncoder func(ctx context.Context, args []string, onProgress func(pla
 // the channel. A handler that looped, or that held the connection open after the program ended,
 // would pin the channel to one program forever.
 func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	if s.playoutResolver == nil || s.playoutEncoder == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
