@@ -50,7 +50,7 @@ func TestFileFillerClips_ClearsTheAutoFiledMarkerBecauseAHumanLooked(t *testing.
 		`{"paths":["auto.mp4"]}`, adminToken); res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
-	c, err := st.GetClip(ctx, "auto.mp4")
+	c, err := st.GetClip(ctx, clipHashFor("auto.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,11 @@ func TestFileFillerClips_AsSuggestedConfirmsEachClipsOwnEra(t *testing.T) {
 	}
 
 	for path, wantEra := range map[string]int{"a.mp4": 1985, "b.mp4": 1992} {
-		c, err := st.GetClip(ctx, path)
+		// ⚠ By HASH. The request above sends PATHS (that is the route's contract), but the store
+		// is keyed by hash — the exact split this test's own sibling at line 107 records as a
+		// shipped bug. Passing `path` here read as correct only because the fixture used to set
+		// hash = path.
+		c, err := st.GetClip(ctx, clipHashFor(path))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +171,7 @@ func TestHoldFillerClips_SendsAnAutoFiledClipBackAndOutOfMatching(t *testing.T) 
 		t.Errorf("a held-back clip is still in the catalog (%+v) — it would keep airing", catalog)
 	}
 	// ...but NOT deleted. Holding is not removing: the file and the row both stay.
-	c, err := st.GetClip(ctx, "auto.mp4")
+	c, err := st.GetClip(ctx, clipHashFor("auto.mp4"))
 	if err != nil {
 		t.Fatalf("holding DELETED the clip: %v — that is 'Remove from catalog', a different promise", err)
 	}
