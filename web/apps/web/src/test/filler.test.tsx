@@ -398,7 +398,14 @@ describe("Filler page", () => {
   // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
   // (§19), and the UI gate is the courtesy that keeps the console clean.
   it("shows a member the era question without the confirm action", async () => {
-    stubFiller({ me: MEMBER, clips: [clip({ era: 0, suggestedEra: 1985, tagged: false })] });
+    // ⚠ `isComposite` is deliberate. Since V54 A8 the split action renders only on a compilation,
+    // so a member test using the DEFAULT 30s commercial would assert the absence of a button that
+    // is absent for everyone — passing whether or not the admin gate exists. The clip must be one
+    // an ADMIN would see the button on, or this line tests nothing.
+    stubFiller({
+      me: MEMBER,
+      clips: [clip({ era: 0, suggestedEra: 1985, tagged: false, isComposite: true, durationMs: 900_000 })],
+    });
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     expect(screen.getByText("1985s?")).toBeInTheDocument();
@@ -406,14 +413,49 @@ describe("Filler page", () => {
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
   });
 
+  // ⚠ Splitting a 30-second commercial is a full-decode search for adverts inside one advert:
+  // minutes of GPU, contending with playout, to find nothing. The action was offered on every
+  // card in the catalog (§10 V54 A8).
+  it("does not offer splitting on a clip that is not a compilation", async () => {
+    stubFiller({ clips: [clip()] }); // the default: a 30s commercial
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
+  });
+
+  // The confirmation itself: the first click must ask, not act.
+  it("asks before starting a split, and starts nothing if the operator backs out", async () => {
+    const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+
+    // The dialog is up and it names the cost — an operator deciding needs to know it is minutes
+    // of decoding, and that nothing is destroyed either way.
+    expect(await screen.findByRole("heading", { name: /split .*into clips\?/i })).toBeInTheDocument();
+    expect(screen.getByText(/several minutes/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing enters the catalog yet/i)).toBeInTheDocument();
+
+    // ⚠ THE assertion. Opening the dialog must not have fired the job — the whole defect was that
+    // the first click already had.
+    expect(splitCount()).toBe(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(splitCount()).toBe(0);
+  });
+
   // The V34 handoff: POST returns a job id, the terminal filler_split frame carries the
   // proposal id, and the app navigates to the review gate, which reads the proposal back.
   it("starts split detection and navigates to the review on the success frame", async () => {
-    const { splitCount } = stubFiller();
+    // ⚠ A COMPILATION now, because the action is offered only on one (§10 V54 A8) — and the split
+    // is confirmed rather than fired on the first click.
+    const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
     const router = renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
     // ⚠ `u.endsWith("/split")` was one trailing character away from `/v1/filler/splits/:id`, the
     // read that follows it. Two endpoints, one predicate.
     await expect.poll(splitCount, { message: "the action should POST the split job" }).toBe(1);
@@ -439,10 +481,11 @@ describe("Filler page", () => {
   });
 
   it("surfaces the split job's terminal error instead of navigating", async () => {
-    stubFiller();
+    stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
 
     act(() => {
       fireFrame("filler_split", {
