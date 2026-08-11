@@ -37,19 +37,44 @@ const toDraft = (seg: SplitSegment): DraftSegment => ({
   endText: formatMmSs(seg.endMs),
 });
 
+// resolveMs turns one edited time field back into milliseconds WITHOUT quantizing an untouched
+// boundary to a whole second.
+//
+// ⚠ The detector proposes sub-second cuts (a black frame lands at 12_345ms, not 12_000ms), but the
+// editor renders mm:ss and `formatMmSs` FLOORS. Parsing that text back unconditionally — which is
+// what this did — moved EVERY boundary by up to 999ms the moment a proposal was opened, whether or
+// not the operator touched it. Merely looking at a reel rewrote its cuts.
+//
+// The test is "does the text still say what we rendered from this value": if so it is untouched
+// and the original precision stands. If the operator typed something else they meant it, and
+// mm:ss is the precision they were given to express it in.
+const resolveMs = (text: string, originalMs: number): number => {
+  if (text === formatMmSs(originalMs)) return originalMs;
+  // ⚠ Falls back to the ORIGINAL, not to 0. This used to be `?? 0`, so a half-typed or invalid
+  // field ("1:") committed that segment as starting at zero — silently, since `isValid` blocks
+  // the Confirm button only while the row is on screen. The filmstrip twenty lines below already
+  // fell back to `d.startMs`; the two disagreed about the same input.
+  return parseMmSs(text) ?? originalMs;
+};
+
 // toWire renumbers: drops and merges change the ORDER, and the body the operator commits
 // is indexed by the draft they see, not by the detector's original numbering.
 const toWire = (draft: DraftSegment[]): SplitSegment[] =>
   draft.map((d, i) => {
     const { key: _k, startText: _s, endText: _e, ...seg } = d;
-    return { ...seg, index: i, startMs: parseMmSs(d.startText) ?? 0, endMs: parseMmSs(d.endText) ?? 0 };
+    return {
+      ...seg,
+      index: i,
+      startMs: resolveMs(d.startText, d.startMs),
+      endMs: resolveMs(d.endText, d.endMs),
+    };
   });
 
 const spanMs = (d: DraftSegment): number | undefined => {
-  const start = parseMmSs(d.startText);
-  const end = parseMmSs(d.endText);
-  if (start === undefined || end === undefined) return undefined;
-  return end - start;
+  // Validation reads the same resolved values the wire body will carry, so a segment cannot pass
+  // the min-duration check at one precision and be committed at another.
+  if (parseMmSs(d.startText) === undefined || parseMmSs(d.endText) === undefined) return undefined;
+  return resolveMs(d.endText, d.endMs) - resolveMs(d.startText, d.startMs);
 };
 
 const isValid = (d: DraftSegment): boolean => {
@@ -120,8 +145,10 @@ const SplitReviewEditor = ({
   // keystroke collapse a block to zero would make the strip flicker on every character.
   const stripSegments = draft.map((d) => ({
     key: d.key,
-    startMs: parseMmSs(d.startText) ?? d.startMs,
-    endMs: parseMmSs(d.endText) ?? d.endMs,
+    // Same resolution the wire body uses, so the picture and the commit cannot disagree about
+    // where a block starts — an untouched boundary keeps its sub-second position in both.
+    startMs: resolveMs(d.startText, d.startMs),
+    endMs: resolveMs(d.endText, d.endMs),
     ...(d.name ? { name: d.name } : {}),
     ...(d.unsplittable ? { unsplittable: d.unsplittable } : {}),
   }));
