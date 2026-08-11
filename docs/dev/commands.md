@@ -7,6 +7,10 @@ Both columns are read from source — the descriptions from the Makefile's own `
 comments, the CI column from `make` invocations in the workflows — so this page
 cannot drift from either. `make dev-docs-verify` fails the build if it does.
 
+**✅ means a workflow invokes that target by name.** A blank cell is not
+"never runs in CI" — `fmt`, `vet`, `lint` and `test` all run as prerequisites
+of `make check`. The *runs:* note on a row lists what it pulls in.
+
 **The default gate is `make check`.** Run it before every push.
 
 ## General
@@ -19,11 +23,11 @@ cannot drift from either. `make dev-docs-verify` fails the build if it does.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | fmt + vet (incl. tagged) + lint + unit tests (the default gate) <br>*runs:* `fmt` `vet` `vet-tags` `lint` `test` |
+| `make check` | ✅ | fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate) <br>*runs:* `fmt` `vet` `tags-verify` `vet-tags` `lint` `test` |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
 | `make vet` |  | go vet |
 | `make vet-tags` |  | go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS) |
-| `make tags-verify` |  | the Makefile's TAGS list still covers every //go:build tag in the tree |
+| `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` |  | unit tests only (never touch the network — §19) |
 | `make go-shard-verify` | ✅ | the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift) |

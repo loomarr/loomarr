@@ -29,23 +29,48 @@ tree_tags="$(
 declared_tags="$(printf '%s\n' ${TAGS:-} | grep -vE '^$' | sort -u)"
 
 # ---------------------------------------------------------------------------
-# TODO(maintainer): the comparison policy — see the note in the session, this is
-# the one genuine judgment call in this script.
+# THE COMPARISON POLICY: both directions fail.
 #
-# `comm -23` gives tags in the TREE but not DECLARED (undisputed: must fail — that is
-# the drift that recreates the bug). `comm -13` gives tags DECLARED but not in the tree.
+# `comm -23` = in the TREE, not DECLARED. Undisputed — those files are invisible to
+# `make vet-tags` and `make lint`, which is the drift that let
+# `TestLiveChain_RealFfmpegAdvancesThroughPrograms` sit uncompiled for months.
 #
-# The open question is what the second case should do:
-#   - fail  → the list can never claim coverage it does not have, but deleting the last
-#             `//go:build eval` file turns CI red on an otherwise-unrelated PR
-#   - warn  → honest and non-blocking, but a warning in a green job is one nobody reads
-#   - ignore→ a stale tag costs nothing at vet time; the list just slowly stops meaning
-#             what it says, which is how the retired-identifier list rotted
-#
-# Fill in below. Exit non-zero with a message naming the offending tag(s) and what to do
-# about it — check-retired.sh's failure text is the model: it says which file, which
-# identifier, and what to use instead.
+# `comm -13` = DECLARED, not in the tree. This was the script's one open question, and the
+# answer is the same, for a reason the alternatives argue for themselves:
+#   - warn   → a warning printed by a job that exits 0 is one nobody reads
+#   - ignore → a stale entry costs nothing at vet time, and the list quietly stops meaning
+#              what it says. That is precisely how the retired-identifier list rotted.
+# The objection to failing is that deleting the last `//go:build eval` file reddens an
+# otherwise-unrelated PR. It does — and that PR is exactly where the tag should be dropped,
+# the same same-PR discipline `check-retired.sh` already demands. A list that may overstate
+# its coverage is not a guard; it is a claim.
 # ---------------------------------------------------------------------------
 
-echo "tree tags:     $(echo "$tree_tags" | tr '\n' ' ')"
-echo "declared TAGS: $(echo "$declared_tags" | tr '\n' ' ')"
+fail=0
+
+while IFS= read -r tag; do
+  [[ -z "$tag" ]] && continue
+  fail=1
+  printf '\nUNDECLARED BUILD TAG: %s\n' "$tag"
+  printf '  These files are skipped by "make vet-tags" and "make lint" — nothing compiles them.\n'
+  printf '  Fix: add %s to TAGS in the Makefile.\n\n' "$tag"
+  grep -rlE "^//go:build .*\b${tag}\b" --include='*.go' . 2>/dev/null | sed 's|^\./|    |'
+done < <(comm -23 <(printf '%s\n' "$tree_tags") <(printf '%s\n' "$declared_tags"))
+
+while IFS= read -r tag; do
+  [[ -z "$tag" ]] && continue
+  fail=1
+  printf '\nDECLARED BUILD TAG NOT IN THE TREE: %s\n' "$tag"
+  printf '  TAGS claims coverage for a tag no //go:build line uses, so the list overstates\n'
+  printf '  what the gate actually sees.\n'
+  printf '  Fix: remove %s from TAGS in the Makefile, in the PR that removed its last file.\n' "$tag"
+done < <(comm -13 <(printf '%s\n' "$tree_tags") <(printf '%s\n' "$declared_tags"))
+
+if [[ "$fail" -ne 0 ]]; then
+  printf '\ntree tags:     %s\ndeclared TAGS: %s\n' \
+    "$(echo "$tree_tags" | tr '\n' ' ')" "$(echo "$declared_tags" | tr '\n' ' ')"
+  exit 1
+fi
+
+printf 'tags-verify: clean (%d tags: %s)\n' \
+  "$(echo "$declared_tags" | grep -c .)" "$(echo "$declared_tags" | tr '\n' ' ')"

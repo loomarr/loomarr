@@ -74,14 +74,25 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
   `cache-cleanup.yml` deletes them on close.
 
-## Known gap: `tags-verify` is not a gate
+## Hand-maintained lists, and what guards them
 
-Two separate things are true:
+Two lists in this repo are written by hand and would rot silently. Each has a script that fails
+when it drifts, and both run in CI:
 
-1. No CI job runs it — `make tags-verify` appears in `ci.yml` only inside a comment.
-2. It couldn't fail if one did. `scripts/check-tags.sh` prints the tags found in the tree and the
-   tags the Makefile declares, then exits 0; its comparison policy is an unfilled
-   `TODO(maintainer)` listing three options.
+| List | Guard | Runs via |
+| --- | --- | --- |
+| `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of `make check` |
+| Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, its own CI step |
 
-So the hand-maintained `TAGS` list has no guard. Fixing it means picking the policy first — adding
-a step that always passes would make the gap harder to see.
+`tags-verify` compares the tags in `//go:build` lines against `TAGS` and fails **both ways**:
+
+- **In the tree, not in `TAGS`** — those files are invisible to `vet-tags` and `lint`. Nothing
+  compiles them, which is how a live ffmpeg test sat uncompiled for months.
+- **In `TAGS`, not in the tree** — the list claims coverage it doesn't have. Drop the tag in the
+  PR that removed its last file.
+
+Downgrading the second direction to a warning is the obvious-looking fix when it's inconvenient.
+Don't — a warning printed by a job that exits 0 is one nobody reads.
+
+The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
+executes it.

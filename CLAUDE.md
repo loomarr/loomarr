@@ -73,10 +73,12 @@ redundant, why `ci-lint` needs `shellcheck`, the ways a gate can exit 0 while pr
 is in [`docs/dev/testing.md`](docs/dev/testing.md) and [`docs/dev/ci.md`](docs/dev/ci.md). Read
 those before trusting a green.
 
-⚠ **`make tags-verify` is not a gate — on two counts.** No CI job runs it (it appears in
-`ci.yml` only inside a comment), and `scripts/check-tags.sh` could not fail if one did: it
-prints its two lists and exits 0, with an unfilled `TODO(maintainer)` for the comparison
-policy. The hand-maintained `TAGS` list therefore has no guard. See
+⚠ **The hand-maintained `TAGS` list is guarded — keep it that way.** `make tags-verify` runs
+inside `make check` and fails in BOTH directions: a `//go:build` tag the tree uses but `TAGS`
+omits (those files compile nowhere), and a tag `TAGS` declares that no build constraint uses
+(the list overstating its coverage). Adding a build tag means adding it to `TAGS` in the same
+PR. This was an unguarded list with an unfilled `TODO(maintainer)` until the policy landed;
+warn and ignore were both rejected, for reasons recorded in
 [`docs/dev/ci.md`](docs/dev/ci.md).
 
 CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a command doesn't exist yet for the active phase, creating it is part of the phase.

@@ -50,11 +50,10 @@ GO_SHARD ?=
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.
 #
-# ⚠ HAND-MAINTAINED LIST, CURRENTLY UNGUARDED. A new `//go:build` tag is covered only if it is
-# added here — the same drift class as `scripts/check-retired.sh`. `make tags-verify` is the
-# INTENDED guard and does not guard anything yet: it extracts both lists and prints them, but
-# its comparison policy is an unfilled TODO, which is why it is not in `check`. Until that
-# lands, adding a tag here is a manual step nothing enforces.
+# ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
+# here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
+# BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
+# and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 TAGS      := ffmpeg eval integration
 comma     := ,
 space     := $(subst ,, )
@@ -70,7 +69,7 @@ help: ## List targets
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt vet vet-tags lint test ## fmt + vet (incl. tagged) + lint + unit tests (the default gate)
+check: fmt vet tags-verify vet-tags lint test ## fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate)
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -86,10 +85,9 @@ vet-tags: ## go vet over the build-tagged sources (invisible to plain `go vet` �
 	$(GO) vet -tags '$(TAGS)' $(PKG)
 
 .PHONY: tags-verify
-# ⚠ NOT in `check` yet — the comparison policy is an unfilled TODO in the script, so wiring it
-# into the gate today would add a step that exits 0 while proving nothing. Add it to `check`
-# in the same change that fills it in.
-tags-verify: ## the Makefile's TAGS list still covers every //go:build tag in the tree
+# Runs BEFORE vet-tags in `check`: it is ~0.1s and it validates the very list vet-tags consumes,
+# so a missing tag is named before anything is compiled with an incomplete one.
+tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tree, both ways
 	@TAGS='$(TAGS)' ./scripts/check-tags.sh
 
 .PHONY: lint

@@ -174,6 +174,12 @@ func render(targets []target) []byte {
 	b.WriteString("Both columns are read from source — the descriptions from the Makefile's own `##`\n")
 	b.WriteString("comments, the CI column from `make` invocations in the workflows — so this page\n")
 	b.WriteString("cannot drift from either. `make dev-docs-verify` fails the build if it does.\n\n")
+	// The CI column is derived from workflow invocations BY NAME, so `test` and `lint` are
+	// blank despite running on every PR. Without this line a reader concludes CI does not run
+	// the unit tests — a false claim, generated, and therefore trusted.
+	b.WriteString("**✅ means a workflow invokes that target by name.** A blank cell is not\n")
+	b.WriteString("\"never runs in CI\" — `fmt`, `vet`, `lint` and `test` all run as prerequisites\n")
+	b.WriteString("of `make check`. The *runs:* note on a row lists what it pulls in.\n\n")
 	b.WriteString("**The default gate is `make check`.** Run it before every push.\n\n")
 
 	// Preserve Makefile order for sections; a stable order keeps the diff readable when
