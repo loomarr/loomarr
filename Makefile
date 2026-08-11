@@ -1,10 +1,31 @@
-# Loomarr harness contract (CLAUDE.md "Commands"). Targets are created as their
-# phase needs them; unimplemented ones fail loudly rather than pretend to pass.
-# CI mirrors: check + openapi-verify + test-pg + fe + e2e.
+# Loomarr harness contract. Targets are created as their phase needs them;
+# unimplemented ones fail loudly rather than pretend to pass.
+#
+# ⚠ DO NOT restate the target list or the CI set in prose — here or anywhere else.
+# This header used to end "CI mirrors: check + openapi-verify + test-pg + fe + e2e",
+# which omitted six gates CI actually runs, and four other files carried their own
+# disagreeing copies. `docs/dev/commands.md` is GENERATED from the `## ` comments below
+# plus the `make` invocations in .github/workflows, and `make dev-docs-verify` fails the
+# build on drift. Describe a target once, in its `## ` comment, and let the page follow.
 
 GO      ?= go
 PKG     := ./...
 BIN_DIR := bin
+
+# STYLE is checked only on what ships to a reader. design.md, PROGRESS.md and
+# docs/engineering/ are long-form internal records whose house style predates any linter, and
+# whose volume would bury every real finding.
+DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
+
+# LINKS are checked far wider, and the difference is deliberate: a broken link is objectively
+# wrong everywhere, while a style rule is a preference that only earns its place in prose
+# someone reads cover to cover.
+#
+# ⚠ This list is wider because the narrow one MISSED A REAL BREAK. Moving six superseded plans
+# into docs/engineering/archive/ left nine dangling references — in PROGRESS.md, in two
+# .claude/commands/, in design/, and in two Go doc comments — none of which the style set
+# covers. Anything that can hold a relative link to a doc belongs here.
+LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .claude
 
 # CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
 # default — see the note on the `test` target, and PW_SHARD for the same contract on the
@@ -29,11 +50,10 @@ GO_SHARD ?=
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.
 #
-# ⚠ HAND-MAINTAINED LIST, CURRENTLY UNGUARDED. A new `//go:build` tag is covered only if it is
-# added here — the same drift class as `scripts/check-retired.sh`. `make tags-verify` is the
-# INTENDED guard and does not guard anything yet: it extracts both lists and prints them, but
-# its comparison policy is an unfilled TODO, which is why it is not in `check`. Until that
-# lands, adding a tag here is a manual step nothing enforces.
+# ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
+# here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
+# BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
+# and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 TAGS      := ffmpeg eval integration
 comma     := ,
 space     := $(subst ,, )
@@ -49,7 +69,7 @@ help: ## List targets
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt vet vet-tags lint test ## fmt + vet (incl. tagged) + lint + unit tests (the default gate)
+check: fmt vet tags-verify vet-tags lint test ## fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate)
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -65,10 +85,9 @@ vet-tags: ## go vet over the build-tagged sources (invisible to plain `go vet` �
 	$(GO) vet -tags '$(TAGS)' $(PKG)
 
 .PHONY: tags-verify
-# ⚠ NOT in `check` yet — the comparison policy is an unfilled TODO in the script, so wiring it
-# into the gate today would add a step that exits 0 while proving nothing. Add it to `check`
-# in the same change that fills it in.
-tags-verify: ## the Makefile's TAGS list still covers every //go:build tag in the tree
+# Runs BEFORE vet-tags in `check`: it is ~0.1s and it validates the very list vet-tags consumes,
+# so a missing tag is named before anything is compiled with an incomplete one.
+tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tree, both ways
 	@TAGS='$(TAGS)' ./scripts/check-tags.sh
 
 .PHONY: lint
@@ -228,6 +247,50 @@ arch-docs: ## regenerate the §2 package map in docs/design.md from the code
 .PHONY: arch-docs-verify
 arch-docs-verify: arch-docs ## regenerated package map must match committed (CI red on drift)
 	@git diff --exit-code docs/design.md
+
+## ---- dev docs (the command contract) ------------------------------------
+
+.PHONY: dev-docs
+dev-docs: ## generate docs/dev/commands.md from this Makefile + the CI workflows
+	$(GO) run ./cmd/dev-docs docs/dev/commands.md
+
+.PHONY: dev-docs-verify
+dev-docs-verify: dev-docs ## regenerated command reference must match committed (CI red on drift)
+	@git diff --exit-code docs/dev/commands.md
+
+## ---- documentation lint --------------------------------------------------
+
+# Three checks over the prose. Nothing needs a global install: markdownlint comes from npx,
+# and the two Rust/Go tools run from pinned Docker images — the same approach as PW_IMAGE,
+# and the reason a contributor can run the doc gate without a toolchain of its own.
+#
+# ⚠ lychee runs OFFLINE deliberately. Checking external URLs on every PR imports the whole
+# internet's link rot as CI flake, and a red build nobody can fix stops being a gate.
+# Relative links are the class that has actually broken here — twice. See lychee.toml.
+#
+# ⚠ markdownlint reads .markdownlint-cli2.jsonc for BOTH its globs and its rules, so it takes
+# no path arguments here. Passing DOC_GLOBS as well would silently override the ignores and
+# lint the generated command reference.
+# ⚠ lychee publishes no semver tags on Docker Hub — only `sha-*`, `nightly` and `master`. The
+# sha tag is the pin; `latest` does not exist for this image and `master` is a moving target.
+LYCHEE_IMAGE ?= lycheeverse/lychee:sha-c36b9aa-alpine
+VALE_IMAGE   ?= jdkato/vale:v3.17.1
+DOCKER_DOC   := docker run --rm -v "$(CURDIR)":/work -w /work
+
+.PHONY: docs-lint
+docs-lint: docs-lint-md docs-lint-links docs-lint-prose ## markdownlint + lychee (offline) + Vale over the prose set
+
+.PHONY: docs-lint-md
+docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.jsonc)
+	npx --yes markdownlint-cli2@0.20.0
+
+.PHONY: docs-lint-links
+docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.toml for why)
+	$(DOCKER_DOC) $(LYCHEE_IMAGE) --offline --no-progress $(LINK_GLOBS)
+
+.PHONY: docs-lint-prose
+docs-lint-prose: ## repo vocabulary + proper-noun casing (.vale.ini — no stock style package)
+	$(DOCKER_DOC) $(VALE_IMAGE) $(DOC_GLOBS)
 
 ## ---- frontend (Phase 13) -------------------------------------------------
 

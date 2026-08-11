@@ -1,0 +1,70 @@
+# Link checking for the documentation set.
+#
+# ⚠ THE PR GATE RUNS `--offline` (see the Makefile and ci.yml). That is not a limitation being
+# worked around, it is the design: checking external URLs on every pull request imports the
+# whole internet's link rot into this repo's CI, and a gate that goes red for reasons no
+# contributor can fix is a gate people learn to ignore.
+#
+# Relative links are the class that has actually broken here, twice:
+#   - docs/frontend-design.md pointed at `loomarr-design.md` for months after the rename
+#   - docs/engineering/phase-0-findings.md linked a FINDINGS file that never existed
+# Both were invisible to every other check in the repo, and both are exactly what --offline
+# catches.
+
+# Directories that are not ours to police.
+exclude_path = [
+  "node_modules",
+  "web/node_modules",
+  "docs-site/node_modules",
+  "docs-site/dist",
+  "internal/web/dist",
+  ".agents/skills",   # vendored third-party skills, pinned by hash — not our prose
+  # ⚠ NOT the whole design/ directory. Its *.md deltas carry real links into docs/ — one of
+  # them broke in the archive move and was caught here — so the Makefile feeds `design/*.md`
+  # as an input and only the design-tool artifacts are skipped. Excluding the directory
+  # instead silently produced "No files found for this input source", which reads as
+  # "nothing to check" rather than "you excluded it".
+  "design/support.js",
+  "design/image-slot.js",
+  "design/composites-data.js",
+]
+
+exclude = [
+  # ⚠ BARE SLUG LINKS — the in-app help convention, and NOT a broken link.
+  #
+  # docs/help/*.md cross-link each other as `[Filler guide](filler)`, with no extension. That
+  # is required by the primary consumer: those pages ship inside the binary, and the in-app
+  # viewer routes any relative href through `parseDocHref`, which splits on `#` and treats the
+  # whole first segment as a page slug. `filler.md` would therefore look for a page named
+  # "filler.md" and land nowhere — so the extensionless form is correct, not sloppy.
+  #
+  # It also resolves correctly on the Starlight site (`/help/filler`). GitHub's raw markdown
+  # view is the one renderer where it does not, which is the accepted cost of the three-way
+  # split; docs/README.md sends readers to the app or the site for this set.
+  #
+  # ⚠ Matched against the RESOLVED target (file:///…/docs/help/filler), not the raw href —
+  # lychee expands relative links before applying these patterns, so anchoring on the bare
+  # slug silently matches nothing. Deliberately narrow: only extensionless paths inside
+  # docs/help/, which is the only directory using this convention.
+  'docs/help/[a-z0-9-]+$',
+
+  # Hosts that reject or rate-limit automated requests. Only consulted on a non-offline run.
+  # Requires a signed-in session; always 403s a bot.
+  "^https://www\\.themoviedb\\.org/settings/api",
+  # Local and example addresses that appear throughout the install docs by design.
+  "^https?://localhost",
+  "^https?://127\\.0\\.0\\.1",
+  "^https?://192\\.168\\.",
+  "^https?://<host>",
+  "^https?://emby:",
+  "^https?://tunarr:",
+  "^https?://ollama:",
+]
+
+# Fragment checking stays OFF (lychee's default; do not pass --include-fragments). Not an
+# oversight: `docs/embed_test.go` already proves the anchors that MATTER — every docHref the API
+# emits — and it does so against the same slug transform the frontend uses, which a generic
+# checker has no way to know about.
+
+max_concurrency = 8
+no_progress = true

@@ -5,9 +5,14 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 ## ⚠ `PROGRESS.md` is the phase record, and issues do not replace it
 
 This repo tracked its first fifteen phases entirely through `PROGRESS.md` and pull
-requests — there were zero issues when this file was written. CLAUDE.md makes
-`PROGRESS.md` the authority on **phase status and gate evidence**, and nothing here
-changes that.
+requests, and issues came later — the tracker is now in regular use. CLAUDE.md still
+makes `PROGRESS.md` the authority on **phase status and gate evidence**, and nothing
+here changes that.
+
+⚠ This paragraph used to say "there were zero issues when this file was written",
+which stopped being true almost immediately and then sat here as a statement about
+the present. A doc that describes the moment it was authored will always drift; state
+the *rule* instead, which is the sentence above it.
 
 So the split is:
 

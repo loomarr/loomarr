@@ -1,0 +1,23 @@
+extends: existence
+message: "The artifact is a **Proposal**, not a '%s' — see CONTEXT.md."
+# error, not warning: vale-action's `fail_on_error` fails the build on ERRORS only, so a
+# warning-level rule is a gate that reports and never blocks — which is how a check quietly
+# stops mattering. If a term is worth automating, it is worth failing on.
+level: error
+ignorecase: true
+# CONTEXT.md defines the artifact as a Proposal and bans "suggestion" for it. The rename was
+# real and went all the way through the API: /v1/suggestions became /v1/proposals (V41), and
+# scripts/check-retired.sh already guards the old ROUTE. This guards the WORD, in the prose an
+# operator reads — a help page calling it a "suggestion" sends them looking for a noun the UI
+# does not use.
+#
+# ⚠ Scoped to the artifact, not the verb. "Loomarr suggests a lineup" is correct and common;
+# only the noun phrases naming the artifact are wrong. Hence the specific patterns rather than
+# a bare ban on the word, which would fire on every legitimate use.
+tokens:
+  - 'the suggestion'
+  - 'a suggestion'
+  - 'suggestions list'
+  - 'suggestion list'
+  - 'pending suggestions'
+  - 'approve the suggestion'

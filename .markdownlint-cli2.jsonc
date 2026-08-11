@@ -1,0 +1,50 @@
+// Structural markdown rules for the prose that ships to a reader.
+//
+// SCOPE is deliberate. design.md, PROGRESS.md and docs/engineering/ are long-form internal
+// records — thousands of lines written over months, in a house style that predates any linter.
+// Running these rules over them produces findings in the hundreds and buries the handful that
+// matter, which is how a gate stops being read. What a user or contributor actually opens is
+// linted; the build team's own notes are not.
+{
+  "globs": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/help/**/*.md",
+    "docs/install/**/*.md",
+    "docs/dev/**/*.md"
+  ],
+  "ignores": [
+    // GENERATED — `make dev-docs` owns its formatting, and a lint rule the generator does not
+    // know about would make `make dev-docs-verify` unfixable: regenerating would reintroduce
+    // the finding every time.
+    "docs/dev/commands.md",
+    "**/node_modules/**"
+  ],
+  "config": {
+    "default": true,
+
+    // OFF: line length. These files carry long tables, URLs and mermaid blocks that cannot
+    // wrap, and reflowing prose to satisfy a column count is churn that shows up in every diff.
+    "MD013": false,
+
+    // OFF: inline HTML. The generated command reference uses <br> inside table cells, and
+    // mermaid labels use it for line breaks — there is no markdown equivalent.
+    "MD033": false,
+
+    // OFF: first line must be a heading. Every page here does start with one; the rule also
+    // fires on the HTML comment that marks generated files.
+    "MD041": false,
+
+    // Fenced code blocks must declare a language, so the site and GitHub both highlight them.
+    // `text` is the escape hatch for directory trees.
+    "MD040": true,
+
+    // ON, and worth keeping: two blockquotes separated by a blank line silently MERGE into one.
+    // This already bit the Quickstart, where a note and a warning rendered as a single block.
+    "MD028": true,
+
+    // Duplicate headings are fine when nested under different parents — the install and dev
+    // sets both have a "Next" and a "Troubleshooting".
+    "MD024": { "siblings_only": true }
+  }
+}

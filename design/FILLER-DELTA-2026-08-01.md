@@ -5,7 +5,7 @@ The maintainer updated `Loomarr Prototype v2.dc.html` in the Claude Design proje
 screen's** new structure, because the committed prototype in this directory still shows the old
 one and the new markup could not be merged into it — see *Why the .dc.html is stale* below.
 
-Read it alongside `docs/engineering/v2-build-plan.md` §6.5 (V35), which is what gets built from it.
+Read it alongside `docs/engineering/archive/v2-build-plan.md` §6.5 (V35), which is what gets built from it.
 
 > Precedence is unchanged (`design/README.md`): this describes **look and structure**.
 > `docs/design.md` wins on behaviour, and the illustrative strings below are mock sample data, not

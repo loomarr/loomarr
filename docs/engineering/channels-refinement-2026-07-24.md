@@ -23,7 +23,7 @@ A channel accumulated eight independently-designed features (manual lineup, AI r
 
 5. **Ordering has one operator knob.** Precedence: per-rule `How.Ordering` > `policy.ordering` > `Channel.Strategy` (stored default, not separately editable).
 
-6. **Artifact precedence.** The `design/` prototypes are authoritative for palette/typography/idiom, **not** structure. Where a prototype's structure disagrees with design.md §12 (the prototypes depict a rejected operator console with a "Reconcile now" button), §12 wins. `frontend-build-plan.md` corrected to drop the "reconcile now" button.
+6. **Artifact precedence.** The `design/` prototypes are authoritative for palette/typography/idiom, **not** structure. Where a prototype's structure disagrees with design.md §12 (the prototypes depict a rejected operator console with a "Reconcile now" button), §12 wins. `archive/frontend-build-plan.md` corrected to drop the "reconcile now" button.
 
 ## Consequences
 

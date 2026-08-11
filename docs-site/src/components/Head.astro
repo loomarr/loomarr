@@ -1,0 +1,55 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro";
+---
+
+<Default><slot /></Default>
+
+{/*
+  Mermaid, rendered in the browser. Starlight ships no mermaid support, and the build-time
+  option (rehype-mermaid) renders through a headless browser — a Playwright download inside
+  the docs build, for a diagram (design §14).
+
+  Client-side keeps CI light and renders the SAME fenced ```mermaid blocks that GitHub renders
+  natively, so a diagram is reviewable in a pull-request diff and needs no separate artifact.
+  Only pages that actually contain a diagram pay for the script, because the import is guarded.
+*/}
+<script>
+  const blocks = document.querySelectorAll<HTMLElement>(
+    'pre[data-language="mermaid"], code.language-mermaid',
+  );
+  if (blocks.length > 0) {
+    const { default: mermaid } = await import("mermaid");
+    const dark = document.documentElement.dataset.theme !== "light";
+
+    blocks.forEach((block, i) => {
+      const host = block.closest("pre") ?? block;
+      const source = block.textContent ?? "";
+      const target = document.createElement("div");
+      target.className = "mermaid-diagram";
+      host.replaceWith(target);
+
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? "dark" : "default",
+        securityLevel: "strict",
+      });
+      mermaid
+        .render(`mermaid-${i}`, source)
+        .then(({ svg }) => {
+          // innerHTML is correct here and the reasoning should not have to be re-derived:
+          // `svg` is mermaid's own output, generated from markdown that lives in this repo and
+          // goes through pull-request review — there is no user-supplied input anywhere in this
+          // path. `securityLevel: "strict"` (above) additionally makes mermaid sanitise HTML in
+          // diagram labels, which is the upstream-recommended setting for exactly this.
+          target.innerHTML = svg;
+        })
+        .catch(() => {
+          // A diagram that fails to parse must not take the page with it — show the source,
+          // which is still readable, rather than an empty box.
+          const fallback = document.createElement("pre");
+          fallback.textContent = source;
+          target.replaceWith(fallback);
+        });
+    });
+  }
+</script>

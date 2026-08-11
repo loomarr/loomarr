@@ -3407,11 +3407,26 @@ The checklist is backed by `GET /v1/setup/status` (runs all checks, returns stru
 - In-app status only for v1; notification agents (email/Discord on approval or channel-live) are future work (§20).
 
 ### Documentation set
-Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule). A public MkDocs site can be generated from the same files later.
+Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule).
+
+**One file, three renderers.** The same markdown is read by GitHub, by the binary's `embed.FS`, and by the published Starlight site (§14) — which loads `docs/**` **in place**, via a content-collection loader pointed at the existing tree. ⚠ **No page is ever copied into the site.** A generator with its own content directory invites a sync step, and a sync step that is occasionally forgotten produces two versions of one page — which is the drift this section exists to prevent, reintroduced by the tool meant to present it. The site is a renderer, not a second copy.
+
+Two consequences worth stating, because both are load-bearing:
+- **`docs/help/*.md` carry no frontmatter.** `docs/embed.go` derives a page's title from its first H1, and the in-app viewer renders raw markdown — a YAML block would print as literal text to an operator. Starlight requires a `title`, so the site's loader **lifts the H1 into `data.title`** and strips it from the body rather than the pages growing frontmatter for one consumer's benefit.
+- **No mermaid in `docs/help/`.** Those pages render through the SPA's `react-markdown`, which has no mermaid support, so a diagram would show an end user its own source. Diagrams belong in the GitHub/site-rendered pages (README, `docs/install/`, `docs/dev/`, this document). The in-app set uses prose and tables.
 
 **Mechanics.** The user-facing pages live in **`docs/help/`** and are embedded by `docs/embed.go`. Only that subdirectory ships: the design docs sit beside it and are internal, so embedding `docs/` wholesale would put the project's own architecture notes and open questions in front of every operator. (A Go file lives in `docs/` because `//go:embed` cannot reference paths outside its own package directory — moving the pages under `internal/` would contradict this section's "docs live in `docs/`".) `GET /v1/docs` lists them; `GET /v1/docs/{slug}` returns raw markdown, since the frontend both renders and *searches* it client-side (§7.2).
 
 **The `docHref` anchors are a contract.** Every setup check carries a deep-link like `troubleshooting#tunarr-library`, and §13's promise that "every red check deep-links to its section" is only true if the target exists. A dangling deep-link is worse than none — it promises help and delivers a blank page at the exact moment the operator is already stuck. A test asserts every anchor the API emits resolves to a real heading in an embedded page, so renaming a heading fails the build rather than silently breaking a link.
+
+**The help pages' CLAIMS are a contract too, and this is the harder half.** The anchor test proves a link *lands*; nothing proved the sentence at the other end was still true. It was not. For months after §9.1 made internal playout the default, three embedded pages told every operator that *"Loomarr doesn't stream or transcode — Tunarr does that"* — a design doc that was correct, and derived documentation that had rotted away from it with no gate in between. The pages ship inside the binary and are read as instructions, so this is the same failure mode `scripts/check-retired.sh` exists for, one directory over.
+
+`docs/claims_test.go` therefore asserts a small set of facts the help set may not contradict, derived from code rather than restated:
+- **No page may contradict the resolved default of `playout.backend`.** While it resolves to `internal`, a page asserting Tunarr does the streaming fails the build.
+- **Every `UPPER_SNAKE_CASE` env var named in the help set must exist** in the settings registry or `internal/config`. Mechanical, and it catches every future rename.
+- **Every `docker compose -f <path>` shown must name a file that exists**, so a copy-pasted command from the Quickstart cannot fail on a path that moved.
+
+The rule this encodes: **a claim about behaviour belongs next to a test, or it belongs in prose that does not assert.** Adding a fourth claim is cheaper than discovering a fourth wrong page.
 - **Quickstart** — compose up → wizard → first channel (the 10-minute path).
 - **Integrations** — one page per dependency (media server, Tunarr, Seerr, Sonarr/Radarr webhooks, LLM: Ollama or a hosted OpenAI-compatible provider, TMDB) with exact setup steps.
 - **Concepts** — the mental model: proposals, approval, provisioning states, backfill, pods, and the **programming heuristics** extract/enforce principle (`programming-design.md` §1). (Aimed at both personas.)
@@ -3420,7 +3435,11 @@ Docs live as markdown in `docs/` in the repo and are **embedded and rendered as 
 - **Filler guide** — drop-folder, MeTube, the in-core ingest job, tagging, pod policy.
 - **Troubleshooting** — organized by checklist item: every red check in the wizard deep-links to its section here. The checklist is executable documentation; this page is its narrative twin.
 
-**Companion design docs** (incorporated in Phase 14; authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
+**Two repo-facing sets sit beside the embedded one** — rendered by GitHub and the site, never embedded, because they answer questions you have *before* you have a running instance to open Help in:
+- **`docs/install/`** — the operator path: choosing a playout backend, the compose walkthrough, hardware acceleration (`/dev/dri` passthrough, NVENC via the container toolkit), and upgrading against forward-only migrations. The configuration **reference** is not written here: `docs/configuration.md` is generated from the settings registry (§15) and is cited, never restated.
+- **`docs/dev/`** — the contributor path: toolchain floors, the dev loop, the test layers, CI, and what is generated versus committed. ⚠ **This is the single home for those facts.** They were previously restated in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` and `AGENTS.md`, which disagreed with each other and with the tree; those files now link here rather than carrying a fifth copy.
+
+**Companion design docs** (authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
 
 ---
 
@@ -3428,7 +3447,7 @@ Docs live as markdown in `docs/` in the repo and are **embedded and rendered as 
 
 Every "pick one" in this doc is now picked. The agent builds with this stack; deviations require a doc update first.
 
-### Backend (Go 1.22+)
+### Backend (Go 1.26+)
 | Concern | Decision | Why |
 | --- | --- | --- |
 | HTTP router | **stdlib `net/http` ServeMux** (Go 1.22 method+path patterns) via Huma's `humago` adapter | No third-party router; the embedded same-origin SPA also means **no CORS layer at all** |
@@ -3455,7 +3474,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Image placeholder (LQIP) | **`github.com/galdor/go-thumbhash`** | The ~25-byte blur preview stored on every image row (§22). **BlurHash rejected** despite being the more widely deployed format: ThumbHash is smaller, higher quality per byte, faster to decode, and — the decider — **carries alpha**, where BlurHash renders transparency as **black**. Channel logos are routinely transparent PNGs, so BlurHash would have needed a composite-onto-dominant-colour step purely to avoid shipping black placeholder boxes. BlurHash's one remaining advantage is ecosystem breadth, which buys nothing in an app that owns both ends of the wire. *(Watching, not adopting: `google/wuffs`' **Handsum**, better again per byte, but published 2026-07 with no client-side decoder ecosystem yet.)* |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
 
-### Frontend (Node 20+, Vite + React 18 + TypeScript)
+### Frontend (Node 22.5+, Vite + React 19 + TypeScript)
 | Concern | Decision | Why |
 | --- | --- | --- |
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
@@ -3481,6 +3500,19 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
+
+### Documentation tooling
+
+Build-time only — none of this ships in the binary or the image, and none of it is application code (§14's language policy is unaffected: this is tooling, in the same category as Storybook, Biome and Playwright).
+
+| Concern | Decision | Why |
+| --- | --- | --- |
+| Docs site | **Astro + Starlight**, in `docs-site/` at the repo root | The in-app Help set only helps people who already installed. Install and contributor docs need a rendered home for people who have not. Starlight ships minimal JS, generates nav from the tree, and includes offline **Pagefind** search — consistent with §7.1's no-CDN posture. ⚠ **It renders `docs/**` in place** via a `glob()` loader whose `base` points at the existing tree; nothing is copied (see §13). ⚠ **Deliberately NOT a member of the `web/` pnpm workspace** — CI's frontend and Playwright jobs gate on `^web/`, so a workspace member would make a markdown typo trigger the sharded visual suite. A sibling directory keeps the path filter honest. **MkDocs superseded** (this row previously anticipated it): Python, against §14's language policy, for a set already rendered by a JS toolchain the repo runs anyway. **Docusaurus rejected** — heavier runtime for no gain here. **Mintlify rejected** — hosted SaaS, same objection as Chromatic. |
+| Diagrams | **Mermaid**, in fenced blocks | Renders natively on GitHub *and* in Starlight, so a diagram is reviewable in a PR diff with no build step. **D2 rejected** despite better layout: it compiles to committed SVGs needing light/dark variants, which is a generated binary artifact to keep in sync — the exact cost this row avoids. ⚠ The Starlight integration must be **client-side**; `rehype-mermaid` renders through Playwright, and a browser download in the docs build is not worth a diagram. |
+| Link checking | **`lychee`** (Rust), `--offline` in the PR gate | Catches dangling relative links, a class this repo has shipped twice — `frontend-design.md` pointed at `loomarr-design.md` for months after the rename, and `phase-0-findings.md` linked a findings file that never existed. **`--offline` is deliberate:** checking external URLs on every PR imports the whole internet's link rot as CI flake, and a red build nobody trusts is worse than no check. |
+| Markdown structure | **`markdownlint-cli2`**, lean config | Heading levels, list style, fenced-code languages. Line-length and inline-HTML rules are **off** — `design.md` uses both heavily by design, and a linter that fights the source of truth loses. Scoped to the user-facing and contributor sets. |
+| Prose + terminology | **`Vale`**, custom style only | Machine-enforces this repo's vocabulary, which until now lived only in `CONTEXT.md` and reviewers' heads: **Proposal** (not "suggestion" — §7's rename), and the proper-noun casing that drifts most (Tunarr, Jellyseerr, Emby, TMDB, `ffmpeg`, `yt-dlp`, SQLite, Postgres). ⚠ **The Microsoft and Google packages are deliberately NOT enabled.** Across ~270k words they produce findings in the hundreds, and a gate whose output is skimmed is a gate that has stopped working. |
+| Command reference | **generated** from the Makefile's `## ` comments (`cmd/dev-docs` → `docs/dev/commands.md`) | The same drift-by-copying that `config-docs-verify` solved for settings. The command contract was restated in four files that disagreed — on the Go version, the Node version, what `make fe` runs, and the visual-suite size (stated three ways, none correct). Generation makes the Makefile the one source and `dev-docs-verify` makes CI enforce it. |
 
 ### 14.1 Backend structure — the rules, and what they are not
 

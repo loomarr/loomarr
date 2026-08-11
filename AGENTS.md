@@ -6,22 +6,19 @@ must deviate, amend the doc in the same PR *before* implementing. **`PROGRESS.md
 phase record — read it at session start to find what's active and what's already shipped.
 This file is only the quick-ramp distillation; the two above win on any conflict.
 
-## Commands (the harness contract)
+## Commands
 
-```bash
-make check            # THE gate: gofmt + vet + golangci-lint + go test -race ./...
-go test -race -run TestName ./internal/<pkg>/   # one test
-make test-pg          # store conformance vs Postgres — needs Docker (testcontainers)
-make openapi          # regenerate api/openapi.yaml (never hand-edit it)
-make config-docs      # regenerate docs/configuration.md from the settings registry
-make fe               # Biome + orval codegen + tsc + vitest + SPA + Storybook builds
-make fe-visual        # Playwright visual/a11y in a pinned Docker image (deterministic)
-make e2e              # wizard e2e vs mocked backend, same Docker image
-make ci-lint          # actionlint — a workflow can be valid YAML and still be rejected
-```
+**`make check` is THE gate.** One test: `go test -race -run TestName ./internal/<pkg>/`.
 
-Prereqs: Go 1.26+, Node 22.5+, pnpm, Docker (test-pg, fe-visual, e2e). Lint/lint tools run
-via `go run <tool>@<pin>` — nothing needs a global install.
+⚠ **The target list is not copied here.** It is generated into
+[`docs/dev/commands.md`](docs/dev/commands.md) from the Makefile and the CI workflows, and
+gated by `make dev-docs-verify`. This block used to hold a hand-written copy that omitted
+`vet-tags` from `make check` — precisely the step the rest of the repo spends the most words
+explaining. Fix the Makefile's `##` doc comment and regenerate; never re-add a copy.
+
+Prereqs: Go 1.26+, Node 22.5+, pnpm, Docker (test-pg, fe-visual, e2e). Lint tools run via
+`go run <tool>@<pin>` — nothing needs a global install. Setup detail:
+[`docs/dev/setup.md`](docs/dev/setup.md).
 
 **Never run `make smoke*` from an agent session** — it drives the maintainer's live stack.
 

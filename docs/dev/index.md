@@ -1,0 +1,56 @@
+# Developing Loomarr
+
+This directory is the single source for how to build, run and test Loomarr. `README.md`,
+`CONTRIBUTING.md`, `CLAUDE.md` and `AGENTS.md` link here instead of keeping their own copies.
+
+| Page | Answers |
+| --- | --- |
+| [Setup](setup.md) | Toolchain versions, getting a clean clone green |
+| [Dev loop](dev-loop.md) | Running both halves with live reload |
+| [Testing](testing.md) | The test layers and which are gates |
+| [CI](ci.md) | The jobs, path filters, and what's required |
+| [Codegen](codegen.md) | What's generated and what's committed |
+| [Commands](commands.md) | Every `make` target — generated, don't hand-edit |
+| [AI in this project](ai.md) | Built with coding agents, and what that expects of a PR |
+
+## The rules that matter
+
+1. **`docs/design.md` is the source of truth.** If code must deviate, update the doc in the same
+   PR, first.
+2. **Gates are hard.** `make check` must be green. Never weaken a test to pass one.
+3. **Generated files are never hand-edited** — `api/openapi.yaml`, `docs/configuration.md`,
+   `docs/dev/commands.md`, the orval client, token artifacts. Migrations are forward-only.
+4. **Tests never touch the network.** Mock through `internal/testkit`; extend it rather than
+   writing a private mock.
+5. **Application code is Go.** Exceptions: the frontend, the vendored binaries invoked via
+   `exec`, and build tooling like Storybook and the docs site.
+
+New dependencies are fine when they earn their place — add a row to `docs/design.md` §14 in the
+same PR.
+
+## Where the code lives
+
+```text
+cmd/loomarr/      the binary
+cmd/openapi/      exports api/openapi.yaml
+cmd/config-docs/  generates docs/configuration.md
+cmd/dev-docs/     generates docs/dev/commands.md
+cmd/arch-docs/    generates the §2 package map
+cmd/seed/         populates a dev store
+
+internal/app/       wires every subsystem from an open store
+internal/api/       inbound HTTP — ServeMux + Huma v2
+internal/store/     one interface, SQLite and Postgres behind it
+internal/settings/  the typed registry: env > database > default
+internal/playout/   the streaming engine
+internal/suggest/   intent → grounded proposal
+internal/schedule/  the scheduler domain
+internal/filler/    clip catalog and pod assembly
+internal/testkit/   shared doubles and pinned fixtures
+
+web/apps/web/       the SPA, built into internal/web/dist and embedded
+web/packages/       tokens · api (orval) · core · fixtures
+docs-site/          the docs site — renders docs/ in place
+```
+
+`docs/design.md` §14.2 has the full package map.

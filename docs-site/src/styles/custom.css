@@ -1,0 +1,36 @@
+/* Loomarr docs — the broadcast-console palette, borrowed from the app's own tokens
+   (docs/frontend-design.md) so the docs and the product read as one thing. */
+:root {
+  --sl-color-accent-low: #10291d;
+  --sl-color-accent: #1f6f4a;
+  --sl-color-accent-high: #8fd9b4;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d7efe2;
+  --sl-color-accent: #1f6f4a;
+  --sl-color-accent-high: #10291d;
+}
+
+/* Diagrams are rendered client-side into this container (see components/Head.astro).
+   Centred, and allowed to scroll horizontally on their own rather than making the PAGE
+   scroll — a wide architecture diagram on a phone otherwise breaks the whole layout. */
+.mermaid-diagram {
+  display: block;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Wide reference tables — the configuration reference and the generated command list — get
+   their own scroll container for the same reason. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}

@@ -1,6 +1,6 @@
 // Command config-docs generates docs/configuration.md from the settings registry
 // (config-design §2: the same committed-artifact discipline as OpenAPI). `make
-// config-docs` runs this; `make config-docs` in CI diffs the result so the tree
+// config-docs` runs this; `make config-docs-verify` diffs the result so the tree
 // goes red when the registry and the doc drift. The registry is the contract;
 // this file is its generated reference.
 package main

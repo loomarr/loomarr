@@ -12,10 +12,17 @@ truth"). This page is the index and the summary of what changed our understandin
 | Service | Version | Findings | Fixtures / spec |
 | --- | --- | --- | --- |
 | Tunarr | 1.3.8 | [`fixtures/tunarr/FINDINGS.md`](../../internal/testkit/fixtures/tunarr/FINDINGS.md) | [`api/vendor/tunarr-openapi.json`](../../api/vendor/tunarr-openapi.json), `fixtures/tunarr/*.json` |
-| Radarr | 6.2.1.10461 | [`fixtures/FINDINGS-arr-webhooks.md`](../../internal/testkit/fixtures/FINDINGS-arr-webhooks.md) | `fixtures/radarr/{test,grab,import}_webhook.json` |
-| Sonarr | 4.0.19.2979 | ↑ same | `fixtures/sonarr/test_webhook.json` |
+| Radarr | 6.2.1.10461 | *(none — see note below)* | `fixtures/radarr/import_webhook.json` |
+| Sonarr | 4.0.19.2979 | *(none — see note below)* | *(none retained)* |
 | Emby | 4.10.0.17 | [`fixtures/emby/FINDINGS.md`](../../internal/testkit/fixtures/emby/FINDINGS.md) | `fixtures/emby/*.json` |
 | Seerr | 3.2.0 | [`fixtures/seerr/FINDINGS.md`](../../internal/testkit/fixtures/seerr/FINDINGS.md), [`fixtures/REFERENCE-seerr.md`](../../internal/testkit/fixtures/REFERENCE-seerr.md) | `fixtures/seerr/*.json` |
+
+> **Note on the `*arr` rows.** This table linked a `FINDINGS-arr-webhooks.md` that **never
+> existed**, alongside two fixture paths that don't either — corrected 2026-08-10 rather than
+> left as three dangling links. The reason there is little to point at: the inbound `*arr`
+> webhook was **retired**, and state now comes from polling (`scripts/check-retired.sh`
+> guards the old identifiers). `radarr/import_webhook.json` is retained as the one captured
+> payload; the Sonarr capture was deferred and never taken.
 
 ## Contract surprises that would have been silent bugs (found by testing vs. memory)
 
