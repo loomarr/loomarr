@@ -4,59 +4,44 @@ Get a channel playing in about ten minutes.
 
 ## Before you start
 
-You need one thing running and reachable from Loomarr:
+You need **Emby or Jellyfin** running and reachable. That's the only connection the wizard
+insists on.
 
-- **Emby or Jellyfin** — your library. This is the only connection the wizard insists on.
+Add these when you're ready — the wizard shows what each one unlocks:
 
-Everything else can wait, and the wizard will tell you what each one buys you:
-
-- **TMDB API key** — [get one here](https://www.themoviedb.org/settings/api). Needed before
-  Loomarr can suggest anything.
-- **An LLM** — local Ollama (the default) or any OpenAI-compatible provider. Also needed for
-  suggestions.
-- **Seerr**, or Sonarr/Radarr directly — only if you want Loomarr to download what you're missing.
-- **A filler folder** — only if you want commercials between programs.
-- **Tunarr** — only if you want *it* to stream your channels instead of Loomarr. See step 2.
+- **TMDB API key** — [get one here](https://www.themoviedb.org/settings/api). Needed to suggest.
+- **An LLM** — local Ollama or any OpenAI-compatible provider. Also needed to suggest.
+- **Seerr**, or Sonarr and Radarr — to download what you're missing.
+- **A filler folder** — for commercials between programmes.
+- **Tunarr** — only if you want it to stream your channels instead of Loomarr.
 
 ## 1. Start it
-
-From a clone of the repository:
 
 ```bash
 docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-Use `--profile postgres` instead of `sqlite` for Postgres, and add `--profile ai` to either to
-run a local Ollama alongside it. Omit `ai` if you're using a hosted provider or an Ollama you
-already run.
-
-The first start builds the image locally and takes a while — it downloads a speech model used
-for filler. Subsequent starts are fast.
+Use `--profile postgres` for Postgres, and add `--profile ai` to run a local Ollama alongside it.
 
 > Inside Docker, `localhost` means the container. Reach other services by name
 > (`http://emby:8096`) or your host's LAN IP.
 >
-> **One setting has no default and matters:** `SERVER_PUBLIC_URL` must be the address your media
-> server can reach Loomarr on. Every stream URL is built from it, and nothing warns you at boot
-> if it's wrong — channels appear in the guide and then fail to play.
+> Set `SERVER_PUBLIC_URL` to the address your media server can reach Loomarr on. Stream URLs are
+> built from it, and a wrong value only shows up when a channel fails to play.
 
 ## 2. Run the wizard
 
 Open `http://<host>:8080`. A fresh install goes straight to setup:
 
-1. **Admin** — create the account that owns this instance. Runs once.
-2. **Playout** — *who streams your channels?* **Loomarr** (default) or **Tunarr**. This answer
-   changes the rest of the wizard, so it comes early. Choosing Tunarr reveals its connection
-   form here and adds a Library step later; choosing Loomarr skips both.
-3. **Connections** — Loomarr live-tests each one. **Only the media server has to be green**;
-   Requester, TMDB and AI show their status but never block you. Red checks link to a fix.
-4. **Library** *(Tunarr only)* — one click to point Tunarr at your media server and scan it, so
-   channels have real programs to play.
-5. **Users** *(optional, skippable)* — pick which media-server accounts can sign in.
-6. **First channel** — described below.
+1. **Admin** — create the account that owns this instance.
+2. **Playout** — who streams your channels: **Loomarr** (default) or **Tunarr**. This changes
+   the rest of the wizard, so it comes early.
+3. **Connections** — Loomarr tests each one. Only the media server has to be green.
+4. **Library** *(Tunarr only)* — one click to point Tunarr at your media server.
+5. **Users** *(optional)* — pick who else can sign in.
+6. **First channel**.
 
-You can leave and come back; the wizard reads its position from the server, so a refresh
-loses nothing.
+You can leave and come back. The wizard reads its position from the server.
 
 ## 3. Make a channel
 
@@ -64,13 +49,11 @@ On the **Suggest** page, describe one:
 
 > 90s Saturday morning cartoons for the kids
 
-Loomarr proposes a lineup from your library, plus anything missing. Click **Approve** — that
-is the only step that spends anything: it creates the channel and starts any downloads. It's
-live within a minute and fills itself in as missing titles arrive.
-
-That's it. Repeat for more channels.
+Loomarr proposes a lineup from your library plus anything missing. Click **Approve** — that's
+the step that starts downloads and creates the channel. It's live within a minute and fills in
+as titles arrive.
 
 ## Upgrading
 
-Migrations are one-way, so the ritual is **back up, then pull.** SQLite backups come from
-`GET /v1/backup`; for Postgres, use `pg_dump`. Backups hold secrets — keep them safe.
+Migrations only run forward, so back up first. SQLite backups come from `GET /v1/backup`; for
+Postgres use `pg_dump`. Backups hold secrets.

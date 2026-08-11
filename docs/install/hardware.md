@@ -1,59 +1,54 @@
 # Hardware acceleration
 
-Only relevant on the default (`internal`) playout backend, where Loomarr does the encoding.
-On the Tunarr backend, Tunarr's own transcode settings apply instead.
+This only applies when Loomarr does the streaming (the default). On the Tunarr backend, Tunarr's
+own transcode settings apply.
 
-**It is optional.** With no GPU passed through, Loomarr encodes in software and everything
-works — you simply run fewer channels at once. Nothing fails to start.
+It's optional. Without a GPU, Loomarr encodes in software — everything works, you just run fewer
+channels at once.
 
 ## How Loomarr picks an encoder
 
-It **measures**, rather than detecting. At boot it enumerates the encoders your ffmpeg reports
-and *trial-encodes with each one*, keeping only those that actually produce output. The result
-sets both the chosen encoder and how many channels may stream concurrently.
+At boot it trial-encodes with every encoder your ffmpeg reports and keeps the ones that actually
+produce output. That result sets both the encoder and how many channels can stream at once.
 
-This matters because the obvious shortcut is wrong: the presence of `/dev/dri/renderD128` does
-not mean VAAPI works. On a box where that node belongs to an NVIDIA card, a file-existence check
-picks a broken encoder and every channel fails at tune time.
+Leave `PLAYOUT_ENCODER` empty so this measurement stands. Checking for a device file isn't
+enough: on a box where `/dev/dri/renderD128` belongs to an NVIDIA card, that check picks a
+VAAPI encoder that fails at tune time.
 
-So **leave `PLAYOUT_ENCODER` empty.** Setting it replaces a measurement with a guess. The boot
-log names every family that passed, which is how you answer "did my GPU get picked up?"
+The boot log names every encoder family that passed.
 
-## Intel and AMD — VAAPI, QSV, Vulkan
+## Intel and AMD
 
-All reach the GPU through `/dev/dri`. Pass it through:
+VAAPI, QSV and Vulkan all reach the GPU through `/dev/dri`:
 
 ```bash
 PLAYOUT_RENDER_DEVICE=/dev/dri docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-The compose file guards this behind an env default, so leaving it unset starts fine on a host
-with no GPU rather than failing the whole stack.
+Leaving it unset is fine — the container starts normally on a host with no GPU.
 
-The driver libraries ship in the image. One arch caveat: `intel-media-va-driver` has **no arm64
-build**, so QSV is amd64-only. VAAPI and Vulkan work on both.
+Driver libraries ship in the image. QSV is amd64-only, because `intel-media-va-driver` has no
+arm64 build. VAAPI and Vulkan work on both.
 
-## NVIDIA — NVENC
+## NVIDIA
 
-NVENC needs **nothing from the image** — the NVIDIA container toolkit injects the driver and
-devices. Use the overlay:
+NVENC needs nothing from the image — the NVIDIA container toolkit provides the driver:
 
 ```bash
 docker compose -f docker/compose.yaml -f docker/compose.nvidia.yaml --profile sqlite up -d
 ```
 
-> ⚠ **The `video` capability is not optional.** The overlay requests
-> `capabilities: [gpu, video]`. Omitting `video` is the reason a GPU that `nvidia-smi` can see
-> still fails every `h264_nvenc` trial — the container gets compute access but not the encoder.
+The overlay requests `capabilities: [gpu, video]`. **Both are needed** — with only `gpu`, the
+container sees the card but every NVENC trial fails.
 
-## How many channels
+## Concurrent channels
 
-`PLAYOUT_MAX_CHANNELS` (default 4) caps concurrent streams. Loomarr also computes a per-encoder
-capacity at boot from what the trials measured, and admission is cost-aware — a channel that
-needs a full transcode counts for more than one that can be copied through directly.
+`PLAYOUT_MAX_CHANNELS` (default 4) caps how many stream at once. Loomarr also computes a
+per-encoder capacity from the boot trials, and a channel needing a full transcode counts for
+more than one that can be copied through.
 
-Raise the cap only as far as your hardware sustained in the probe. Setting it high does not
-create capacity; it creates stuttering.
+Raise the cap only as far as your hardware measured. Setting it higher causes stuttering, not
+capacity.
 
 ## Checking what happened
 
@@ -61,5 +56,5 @@ create capacity; it creates stuttering.
 docker logs loomarr 2>&1 | grep -i 'encoder\|capability'
 ```
 
-`scripts/playout-diag.sh` gives a fuller read-only snapshot of live playout — the ffmpeg
-processes per channel, GPU state, and whether each airing is direct-playing or transcoding.
+`scripts/playout-diag.sh` gives a fuller read-only snapshot: ffmpeg processes per channel, GPU
+state, and whether each airing is direct-playing or transcoding.

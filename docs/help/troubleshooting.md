@@ -40,12 +40,11 @@ fill gaps.
 
 **Check name:** `tunarr` · **Settings:** Connections → Tunarr
 
-**This whole section applies only if you chose Tunarr as your playout backend.** On a default
-install Loomarr streams its own channels and this check does not block anything — if you are
-here after a red `tunarr` check on an internal install, the answer is that you don't need it.
+This section only applies if you chose Tunarr as your playout backend. On a default install,
+Loomarr streams its own channels and a red `tunarr` check blocks nothing — you don't need it.
 
-On the Tunarr backend, Tunarr builds the streams, the guide, and the tuner surface your media
-server consumes; Loomarr owns *what plays and when* and pushes that to Tunarr.
+On the Tunarr backend, Tunarr builds the streams and the guide; Loomarr decides what plays and
+when, and pushes that to Tunarr.
 
 - **Cannot reach Tunarr** — same container-networking rule as the media server. Tunarr's
   default port is 8000.

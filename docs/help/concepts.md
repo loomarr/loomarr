@@ -4,18 +4,16 @@ The short version of how Loomarr thinks.
 
 ## Who does what
 
-Your **media server** (Emby or Jellyfin) owns the library — Loomarr only reads it.
+Your **media server** (Emby or Jellyfin) owns the library. Loomarr only reads it.
 
-Loomarr decides **what plays and in what order**, and by default it also **plays it**:
-it encodes the stream and serves a tuner your media server picks up as Live TV. That is
-the `internal` playout backend, and it is what a new install gets.
+Loomarr decides **what plays and in what order**, and by default it also plays it: it encodes
+the stream and serves a tuner your media server picks up as Live TV.
 
-**Tunarr is the alternative**, chosen on the Playout step of the wizard and re-decidable
-per channel. Pick it when your hardware can't transcode, or when you already have Tunarr
-working. Loomarr then decides what plays and hands the schedule to Tunarr, which streams it.
+**Tunarr** is the alternative, chosen in the wizard. Pick it if your hardware can't transcode,
+or if you already run it. Loomarr still decides what plays, and hands the schedule to Tunarr.
 
-The difference that matters day to day: on the default backend, **Loomarr must be running
-for channels to play**. On the Tunarr backend, they keep playing without it.
+The practical difference: on the default backend, Loomarr must be running for channels to play.
+On Tunarr, they keep playing without it.
 
 ## Intent → proposal → channel
 
@@ -24,36 +22,33 @@ You describe a channel; the suggester returns a **proposal**:
 - a **lineup** of titles you already have, and
 - an **acquisition list** of titles you don't.
 
-Every pick is **grounded** — a real title from your library or TMDB. The model can't invent
-one. If nothing grounds, the run fails clearly instead of making something up.
+Every pick is a real title from your library or TMDB. The model can't invent one. If nothing
+matches, the run fails clearly instead of making something up.
 
 ## Approval — the one gate
 
-A proposal does nothing until an **admin approves** it. Approval is the only place
-resources get spent: it starts the downloads and **creates the channel**. Members can
-suggest and review; only admins approve.
+A proposal does nothing until an **admin approves** it. Approval is the only place resources get
+spent: it starts the downloads and creates the channel. Members can suggest and review; only
+admins approve.
 
 ## Filling in
 
-Titles move **wanted → downloading → available**. A channel is built from what's available
-*now*; anything missing becomes a **pending** slot filled with commercials, and is swapped
-for the real program **the moment it lands**. The channel improves itself as content
-arrives — Loomarr calls this *filling in*.
+Titles move **wanted → downloading → available**. A channel is built from what's available now;
+anything missing becomes a **pending** slot filled with commercials, and swaps to the real
+programme the moment it lands.
 
 ## Series
 
-A movie is one program. A **series** expands into one program per episode you actually
-have, in the channel's order. New episodes join on the next refresh.
+A movie is one programme. A **series** expands into one programme per episode you actually have,
+in the channel's order. New episodes join on the next refresh.
 
-## Filler & pods
+## Filler and pods
 
-Between programs, Loomarr leaves gaps and fills them with **pods** — short runs of
-bumpers/commercials from your [filler](filler) folder, matched to the channel. No filler
-just means no commercials; the channel still plays.
+Between programmes, Loomarr inserts **pods** — short runs of bumpers and commercials from your
+[filler](filler) folder, matched to the channel. No filler just means no commercials.
 
-## Policy — a kids channel stays a kids channel
+## Policy
 
-A themed channel carries a **policy**: which content, an audience rating cap, no repeats,
-ordering. The model *extracts* it from your intent ("for the kids" → a `TV-Y7` cap); the
-scheduler *enforces* it, the same way every time. Anything over the cap (or unrated) is
-dropped — fail-closed, so a kids channel never leaks something it shouldn't.
+A channel carries a **policy**: which content, a rating cap, no repeats, ordering. The model
+suggests it from your intent ("for the kids" → a `TV-Y7` cap); the scheduler enforces it the
+same way every time. See the [programming guide](programming).
