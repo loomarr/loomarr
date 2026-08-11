@@ -148,3 +148,55 @@ describe("SplitReviewEditor", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });
+
+// --- SUB-SECOND PRECISION (V54 A5) -----------------------------------------------------------
+//
+// The detector proposes cuts where the black frame actually is (12_345ms), but the editor renders
+// mm:ss and `formatMmSs` FLOORS. Parsing that text back unconditionally moved EVERY boundary by up
+// to 999ms the moment a proposal was opened — so merely LOOKING at a reel rewrote its cuts, and
+// confirming committed the damage. These pin that an untouched boundary survives the round trip.
+describe("SplitReviewEditor — sub-second cuts", () => {
+  const subSecond: SplitProposal = {
+    id: "sp-sub",
+    clipHash: "comp-hash",
+    createdAt: "2026-07-25T20:00:00Z",
+    segments: [
+      seg({ index: 0, startMs: 1_500, endMs: 30_499, name: "First ad" }),
+      seg({ index: 1, startMs: 30_499, endMs: 61_750, name: "Second ad" }),
+    ],
+  };
+
+  it("confirms the ORIGINAL milliseconds when no boundary was edited", () => {
+    const onConfirm = vi.fn();
+    render(<SplitReviewEditor proposal={subSecond} onConfirm={onConfirm} onBack={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /cut into|confirm/i }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const wire = onConfirm.mock.calls[0]?.[0] as SplitSegment[];
+    // ⚠ Exact values, not "roughly". Flooring is what this test exists to catch, and 1_500 -> 1_000
+    // is exactly the kind of drift that reads as harmless until every cut in a 235-segment reel
+    // has moved.
+    expect(wire[0]?.startMs).toBe(1_500);
+    expect(wire[0]?.endMs).toBe(30_499);
+    expect(wire[1]?.startMs).toBe(30_499);
+    expect(wire[1]?.endMs).toBe(61_750);
+  });
+
+  it("takes the typed value when a boundary IS edited", () => {
+    const onConfirm = vi.fn();
+    render(<SplitReviewEditor proposal={subSecond} onConfirm={onConfirm} onBack={vi.fn()} />);
+
+    // The operator retypes the first segment's end. mm:ss is the precision they were offered, so
+    // whole seconds is what they meant — the fix must not "helpfully" keep the old milliseconds.
+    const end = screen.getAllByLabelText(/end/i)[0];
+    if (!end) throw new Error("no end-time input rendered");
+    fireEvent.change(end, { target: { value: "00:25" } });
+    fireEvent.click(screen.getByRole("button", { name: /cut into|confirm/i }));
+
+    const wire = onConfirm.mock.calls[0]?.[0] as SplitSegment[];
+    expect(wire[0]?.endMs).toBe(25_000);
+    // …and the boundary they did NOT touch still keeps its sub-second value.
+    expect(wire[0]?.startMs).toBe(1_500);
+  });
+});

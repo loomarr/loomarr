@@ -1,5 +1,8 @@
 # Design-mock review — build vs. `design/` prototypes (2026-07-20)
 
+> **ARCHIVED — a dated snapshot, not a to-do list.** Superseded by the v2 prototypes; see
+> [`design/README.md`](../../../design/README.md).
+
 A screen-by-screen comparison of the **running app** (Vite dev server + Go backend,
 SQLite, no external deps) against the authoritative Claude Design prototypes
 (`design/loomarr-prototype-desktop.dc.html`, rendered dark at 1280×800).

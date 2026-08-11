@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // lineupFromIntent resolves the approved proposal identified by intentRef (the
@@ -37,4 +39,52 @@ func (s *Server) policyFromIntent(ctx context.Context, intentRef string) (schedu
 		return schedule.ChannelPolicy{}, nil
 	}
 	return s.binder.PolicyFromIntent(ctx, intentRef)
+}
+
+// numberConflict returns a 409 when a channel number is already taken, and nil when it is free.
+// Same rationale as the two helpers above: ONE answer, shared with the approve path.
+//
+// ⚠ Callers must not ask about a number the channel ALREADY holds — there is no "except me"
+// escape, because Tunarr's channel list carries no identity to exclude by (see
+// binder.NumberInUse). `updateChannel` only calls this when the number actually changes.
+//
+// ⚠ **The number must be free in TUNARR too** (design §2: "a channel number must be free in
+// TUNARR too, and a collision moves LOOMARR'S channel"). `binder.nextFreeChannelNumber` has
+// unioned both sources since #258, but the handlers an operator actually TYPES a number into
+// checked `GetChannelByNumber` alone. The two disagreed in a way a user could see: a clash with
+// a Loomarr channel was refused up front with this exact message, while a clash with a channel
+// that exists only in Tunarr was accepted with a 201 and then renumbered underneath them by the
+// reconcile (§9 V54). The renumber is the safety net working — but it should not be reachable
+// by typing a number the server could have refused.
+//
+// ⚠ Falls back to the STORE-ONLY check when no binder is wired, rather than skipping the check.
+// A store-only install still gets the Loomarr half of the answer; returning "free" there would
+// trade a narrow inconsistency for a duplicate-number regression.
+func (s *Server) numberConflict(ctx context.Context, number int) error {
+	if s.binder == nil {
+		return s.numberConflictFromStore(ctx, number)
+	}
+	inUse, err := s.binder.NumberInUse(ctx, number)
+	if err != nil {
+		return err
+	}
+	if inUse {
+		return errConflict("Channel number in use",
+			"Another channel already uses that number. Pick a different one.")
+	}
+	return nil
+}
+
+// numberConflictFromStore is the Loomarr-only half, for an install with no binder.
+func (s *Server) numberConflictFromStore(ctx context.Context, number int) error {
+	_, err := s.store.GetChannelByNumber(ctx, number)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	default:
+		return errConflict("Channel number in use",
+			"Another channel already uses that number. Pick a different one.")
+	}
 }

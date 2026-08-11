@@ -3663,6 +3663,10 @@ components:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
           type: string
+        refused:
+          items:
+            $ref: "#/components/schemas/RefusedPick"
+          type: array
         retired:
           items:
             type: string
@@ -3939,6 +3943,17 @@ components:
           type: string
       required:
         - jobId
+      type: object
+    RefusedPick:
+      additionalProperties: false
+      properties:
+        item:
+          $ref: "#/components/schemas/ProposalItem"
+        reason:
+          type: string
+      required:
+        - item
+        - reason
       type: object
     RemoteSourceDTO:
       additionalProperties: false

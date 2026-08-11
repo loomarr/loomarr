@@ -1,0 +1,26 @@
+---
+// The site root.
+//
+// Starlight builds `/` from an `index` entry in the docs collection, and this collection is
+// loaded from the repository's docs/ tree — which deliberately has no top-level index page,
+// because docs/README.md is a map written for people browsing the repo on GitHub, not a
+// landing page. Rather than invent a file in docs/ purely to satisfy the site (the same
+// content-shaped-by-its-renderer problem the in-place loader exists to avoid), the root
+// redirects to where a first-time reader should actually start.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const target = `${base}/install/`;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <link rel="canonical" href={target} />
+    <!-- Not a content page: keep it out of the search index. -->
+    <meta name="robots" content="noindex" />
+    <title>Loomarr documentation</title>
+  </head>
+  <body data-pagefind-ignore>
+    <p>Redirecting to the <a href={target}>Loomarr installation guide</a>.</p>
+  </body>
+</html>

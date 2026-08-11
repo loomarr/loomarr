@@ -35,6 +35,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
       image: ${{ steps.filter.outputs.image }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -77,10 +78,22 @@ jobs:
           # break the §14.2 gate while skipping the only job that runs it. Same class as the
           # `scripts/` omission above: the guard was covered against its code input but not
           # against the document it reads.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          #
+          # ⚠ `docs/dev/commands.md` is here for the same reason, one generator over:
+          # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
+          # the Makefile and this workflow — already trigger the job, but a hand-edit to the
+          # generated file itself would otherwise sail past the only check that reads it.
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Prose. Cheap and fast, so it gates on the whole documentation set rather than
+          # trying to be clever about which page changed.
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
           if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
@@ -304,6 +317,12 @@ jobs:
       - name: The §2 package map is committed and current
         if: matrix.shard == 1
         run: make arch-docs-verify
+      # The command reference is generated from this Makefile and these workflows, so it drifts
+      # whenever either moves. It lives in the Go job because the generator is Go, and because
+      # the `changes` filter already routes Makefile/workflow edits here.
+      - name: Command reference is committed and current
+        if: matrix.shard == 1
+        run: make dev-docs-verify
       - name: Retired identifiers are gone from prose
         if: matrix.shard == 1
         run: make retired-verify
@@ -573,10 +592,60 @@ jobs:
           # stale essentially every time it was read.
           cache-from: type=gha,scope=image-ci
 
+  docs:
+    name: Docs — links + structure + prose
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Structure. Globs and rules both live in .markdownlint-cli2.jsonc, so no paths here.
+      - name: Markdown structure
+        run: npx --yes markdownlint-cli2@0.20.0
+
+      # ⚠ --offline is deliberate and must stay. Checking external URLs on every PR imports
+      # the whole internet's link rot as CI flake; the class that has actually broken in this
+      # repo is relative links, twice. See lychee.toml.
+      # ⚠ WIDER than the style checks above, deliberately. A broken link is objectively wrong
+      # anywhere; a style rule is a preference worth applying only to prose someone reads cover
+      # to cover. The narrow set missed a real break — archiving six plans left nine dangling
+      # references in PROGRESS.md, .claude/commands/, design/ and two Go doc comments.
+      # Keep in step with LINK_GLOBS in the Makefile.
+      - name: Links (offline)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --offline --no-progress
+            README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
+            docs 'design/*.md' .claude
+          fail: true
+
+      # Repo vocabulary only — no stock style package. See .vale.ini for why.
+      - name: Prose
+        uses: errata-ai/vale-action@v2
+        with:
+          files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
+          fail_on_error: true
+          version: 3.17.1
+
+      # The site must still build from the docs as committed. It renders docs/** IN PLACE, so
+      # a moved or deleted page breaks the build here rather than on deploy.
+      - name: Docs site builds
+        working-directory: docs-site
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, go, store-postgres, frontend, playwright, image]
+    needs: [changes, go, store-postgres, frontend, playwright, image, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

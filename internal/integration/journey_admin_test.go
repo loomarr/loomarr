@@ -129,8 +129,14 @@ func TestJourney_NewAdmin(t *testing.T) {
 		t.Fatal("submit returned no jobId")
 	}
 	propID, prop := h.awaitProposal(admin, submitted.JobID)
-	if len(prop.Lineup) != 4 {
-		t.Fatalf("expected 4 grounded in-library picks, got %d", len(prop.Lineup))
+	// Four cartoons were grounded; the TV-MA one is REFUSED against the proposal's own TV-Y7
+	// ceiling (#259), so the admin is asked to approve three. The refusal is visible on the
+	// card rather than the title silently vanishing between the model and the approval screen.
+	if len(prop.Lineup) != 3 {
+		t.Fatalf("expected 3 airable in-library picks, got %d", len(prop.Lineup))
+	}
+	if len(prop.Refused) != 1 || prop.Refused[0].Reason != "over_ceiling" {
+		t.Fatalf("expected the TV-MA toon refused as over_ceiling, got %+v", prop.Refused)
 	}
 	if prop.Policy.Audience.Ceiling != "TV-Y7" {
 		t.Fatalf("policy ceiling = %q, want TV-Y7", prop.Policy.Audience.Ceiling)

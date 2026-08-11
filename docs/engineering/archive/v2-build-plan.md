@@ -1,6 +1,10 @@
 # v2 build plan
 
-**Status:** ready to execute. All decisions taken 2026-07-24.
+> **ARCHIVED — this is a record, not an instruction.** Most of these phases have shipped;
+> `PROGRESS.md` carries their real status. Kept for the decisions and their rationale.
+> Current truth: [`docs/design.md`](../../design.md).
+
+**Status (as written):** ready to execute. All decisions taken 2026-07-24.
 **Verified against:** `55fc691`. Re-verify before acting — the repo moves.
 **Research & evidence:** `v2-mock-delta-2026-07-24.md`. Every claim here is grounded there with
 file:line. This document is the *what to do*; that one is the *why*.

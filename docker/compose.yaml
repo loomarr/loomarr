@@ -89,9 +89,19 @@ services:
       PLAYOUT_QUALITY_TIER: ${PLAYOUT_QUALITY_TIER:-}
       AUTO_MIGRATE: "true"
     ports: ["8080:8080"]
-    # Mount the filler drop-folder so the core can hand its path to
-    # Tunarr as a `local` source. Empty/unused when FILLER_DIR isn't set.
     volumes:
+      # ⚠ THE DATABASE LIVES HERE. DATABASE_URL defaults to sqlite:///data/loomarr.db,
+      # so without this mount SQLite writes into the container's own writable layer and
+      # the install — admin account, channels, settings, secrets — is destroyed by the
+      # next `up --force-recreate` or image pull. It is declared and chowned by
+      # loomarr-init below, and for a long time was attached to NOTHING: this file
+      # carried a "sqlite profile: just loomarr + a /data volume" comment with no
+      # volume under it. Named volumes are harmless on the postgres profile (loomarr
+      # simply does not write there), so this is unconditional rather than profiled —
+      # a mount that is wrong to omit should not depend on remembering a flag.
+      - loomarr-data:/data
+      # The filler drop-folder, so the core can hand its path to Tunarr as a `local`
+      # source. Empty/unused when FILLER_DIR isn't set.
       - ${FILLER_DROP_DIR:-filler-drop}:/filler
     # GPU render nodes for hardware encoding (§9.1). /dev/dri is the KMS/DRM interface
     # every Linux hardware encoder reaches through — VAAPI (Intel + AMD), QSV, and Vulkan
@@ -108,16 +118,22 @@ services:
     devices:
       - ${PLAYOUT_RENDER_DEVICE:-/dev/null}:${PLAYOUT_RENDER_DEVICE:-/dev/null}
     restart: unless-stopped
-    # HTTP liveness against /healthz (image is distroless — no in-container curl).
+    # Readiness via loomarr's own `healthcheck` subcommand, which GETs /v1/readyz on
+    # LISTEN_ADDR and exits 0/1. A subcommand rather than curl because the image ships
+    # no HTTP client (curl is purged from the debian-slim base to keep the layer lean),
+    # and the binary is already there.
+    #
+    # ⚠ This line invoked the same subcommand for a long time before one existed —
+    # main() inspected no os.Args at all. Every interval therefore launched a SECOND
+    # full Loomarr, which failed to bind :8080 and exited non-zero, so the container
+    # reported `unhealthy` permanently and anything gating on `service_healthy` waited
+    # forever. A healthcheck that cannot pass is worse than none: it inverts the signal.
     healthcheck:
-      test: ["CMD", "/loomarr", "healthcheck"] # `healthcheck` subcommand: Phase 8+
+      test: ["CMD", "/loomarr", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  # ---- sqlite profile: just loomarr + a /data volume for the DB file ----
-  # (attach the volume only under this profile)
 
   # ---- postgres profile ----
   postgres:

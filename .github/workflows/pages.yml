@@ -1,0 +1,73 @@
+name: Docs site
+
+# Publishes the Starlight site to GitHub Pages.
+#
+# ⚠ The site renders docs/** IN PLACE — nothing is copied into docs-site/ (design §13). So the
+# path filter has to include docs/ itself, not just the site directory: a change to a help page
+# must republish even though no file under docs-site/ moved.
+#
+# ci.yml's `docs` job already BUILDS the site on every pull request, so a broken build is caught
+# in review rather than here. This workflow only deploys what main already proved.
+#
+# ⚠ THE WORKFLOW-LEVEL `paths:` BELOW LOOKS LIKE A RULE VIOLATION AND IS NOT. CLAUDE.md bans
+# workflow-level path filters because a run that does not trigger reports NO CHECKS, so a
+# required check sits "expected" forever and the pull request can never merge. That reasoning is
+# specific to ci.yml, whose `ci-ok` job is the required check. Nothing here is a required check —
+# this workflow only runs on pushes to main and only deploys — so filtering at the workflow level
+# is both safe and the right place. Do not "fix" this by moving the filter into a job.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "docs-site/**"
+      - "README.md"
+      - ".github/workflows/pages.yml"
+  # Manual runs matter for a Pages site: enabling Pages on a repo for the first time, or
+  # re-deploying after a settings change, both need a run with no corresponding push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. `cancel-in-progress: false` deliberately — cancelling a half-finished
+# Pages deployment can leave the site serving a partial build.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Build
+        working-directory: docs-site
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

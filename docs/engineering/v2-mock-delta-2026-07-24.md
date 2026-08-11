@@ -1,6 +1,6 @@
 # v2 mock delta — research findings and evidence
 
-> ## ▶ Looking for what to build? Read [`v2-build-plan.md`](v2-build-plan.md)
+> ## ▶ Looking for what to build? Read [`v2-build-plan.md`](archive/v2-build-plan.md)
 >
 > **This document is the evidence base, not the plan.** It records how each conclusion was reached,
 > in the order it was discovered, with file:line grounding for every claim. Read it when you need to
@@ -1023,7 +1023,7 @@ of real bugs surfaced.
 - ~~Recover the full desktop mock~~ — **DONE** 2026-07-24 (§2).
 - ~~Answer the decisions~~ — **DONE** 2026-07-24 (§5a); the interior pass added D-F/D-G/D-H (§2d).
 
-### Gated phases — ⚠ SUPERSEDED by [`v2-build-plan.md`](v2-build-plan.md)
+### Gated phases — ⚠ SUPERSEDED by [`v2-build-plan.md`](archive/v2-build-plan.md)
 
 > This table is the working copy the phases were derived in. **The build plan is now the maintained
 > version** — it groups the same 39 phases by track and readiness rather than by discovery order.

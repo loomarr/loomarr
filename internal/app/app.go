@@ -7,12 +7,10 @@ package app
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +20,6 @@ import (
 	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -839,137 +836,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 					"dir", dir, "err", err)
 			}
 		}
-		fillerSource := filler.DirSource{
-			Dir:   func() string { return set.str("filler.dir") },
-			Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
-			// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
-			// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
-			// points that setting at a custom build (the whole reason it exists — see the
-			// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
-			// silently, and the setting appeared to do nothing here.
-			Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
-			// The quality gate's floor (§10 V40). Read live, like `Dir`, so a settings change
-			// applies on the next sync rather than needing a restart.
-			MinDuration: func() time.Duration { return set.dur("filler.min_duration") },
-			// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
-			// warning has never once been emitted. That count exists precisely because extraction
-			// is best-effort and failures are skipped — the shape that already produced one
-			// silently-empty catalog in this repo's history (see FFprobeNextTo). A generator that
-			// counts failures into a logger nobody wired is the same silence with extra steps.
-			Log: log.Warn,
-		}
-		if set.str("tunarr.url") != "" {
-			fillerSource.Tunarr = fillerSourceAdapter{fillerProg}
-		}
-		// ⚠ The switch is read on every sync, not captured here: `filler.source.folder.enabled`
-		// hot-applies (config-design §3), so an operator who switches the drop-folder off
-		// expects the next scheduled pass to stop rather than a restart to be required.
-		syncer := filler.NewSyncer(fillerSource, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
-			WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
-			// Read live for the same reason (§10 V38c). An empty value resolves to
-			// `<filler.dir>/_watch`, so the watch folder is configured on every install
-			// whether or not the operator has ever set it.
-			WithWatchDir(func() string { return set.str("filler.watch_dir") })
+		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
+		// captured — see buildSyncer for why, and for why a nil library scanner is a supported
+		// install rather than a degraded one.
+		syncer := buildSyncer(rootCtx, st, set, log, fillerProg)
 
-		// Registered folders and libraries (§10 V38c). ⚠ The library scanner is nil when no media
-		// server is configured, and that is a supported install rather than a degraded one:
-		// folder rows still drain and library rows simply do no work. Wiring a non-nil scanner
-		// over an absent media server would turn an optional service back into a precondition —
-		// the dependency §9.1 removed.
-		var libScanner *filler.LibraryScanner
-		if set.str("library.url") != "" {
-			libScanner = filler.NewLibraryScanner(
-				fillerLibraryAdapter{library.NewDynamic(
-					flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))},
-				func(msg string, args ...any) { log.Warn(msg, args...) },
-			)
-		}
-		syncer = syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
-
-		// ⚠ Hoisted out of the `if` because the ingest pipeline's tag rung needs the SAME provider
-		// (§10 V51b). Nil is the honest un-opted-in state and both readers treat it that way: the
-		// manual sweep is a no-op, and the rung reports "no language model is configured" on every
-		// clip's ladder rather than silently doing nothing.
-		var taggerProvider llm.Provider
-		var tagger *filler.Tagger
-		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
-			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-			taggerProvider = provider
-			// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars
-			// ingest writes beside each clip (§10). An unset FILLER_DIR yields a nil FS
-			// and tagging falls back to filenames — the same result as a drop-folder
-			// clip that never had a sidecar.
-			var drop fs.FS
-			if dir := set.str("filler.dir"); dir != "" {
-				drop = os.DirFS(dir)
-			}
-			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log).
-				// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the
-				// threshold is filed without a human. Closures, not captured values, so a
-				// changed threshold applies on the next run rather than the next restart.
-				//
-				// ⚠ `boolv`, NOT `boolOn`. The two differ only when the settings service cannot
-				// answer, and here that difference is the whole safety property: `boolOn` fails
-				// OPEN (returns true), which would publish unreviewed clips to live channels
-				// exactly when the install is degraded. Holding is the safe failure.
-				WithAutoFile(filler.AutoFilePolicy{
-					Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
-					MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
-				})
-		}
-		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no longer
-		// exists. Absent paths are
-		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
-		// — the `ingest` feature gate reports it and the UI explains the image variant.
-		// ⚠ **TWO downloaders, resolved INDEPENDENTLY** (§10 V38b, wiring fixed V38c.8). archive.org
-		// is fetched over plain HTTP and needs only ffmpeg; yt-dlp is for YouTube and shells out to
-		// ffmpeg itself.
-		//
-		// This required BOTH paths to be set, which was the V38b defect surviving in the wiring
-		// after the feature GATE was split. The result was worse than the original bug: `features
-		// .ingest` reported true (correctly — ffmpeg is present), the Sources rows offered
-		// "Fetch now", and then every archive fetch failed at the point of use with "ingest
-		// tooling not present in this image". Two claims that cannot both be true, which is the
-		// exact shape that started V38b.
-		//
-		// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has
-		// always described these as defaulting to the vendored binaries, and only the Docker image
-		// set them, so a source build had ingest off with the tools installed.
-		ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
-		ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
-		var fetcher *clipfetch.Ingestor
-		if ffPath != "" {
-			// ⚠ A nil YouTube downloader is FINE — `downloaderFor` returns nil per kind and the
-			// Ingestor counts that source as failed rather than dying. So a box with ffmpeg and no
-			// yt-dlp fetches archive collections (the seeded ones) and reports honestly on
-			// playlists, instead of refusing everything.
-			var ytDL clipfetch.Downloader
-			if ytPath != "" {
-				ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
-			}
-			fetcher = clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), set.str("filler.dir"), log)
-			log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-		}
-		// Compilation splitting (§10, V34). Needs the drop-folder (clip paths are
-		// relative to it, so without one there is nothing to cut). ffmpeg/ffprobe
-		// come from playout.ffmpeg_path — a core runtime dep on the single image —
-		// NOT the ingest pair, because splitting works on files already on disk and
-		// must not die just because yt-dlp is absent. whisper is optional: without
-		// it, over-long segments come back Unsplittable rather than guessed (§15).
-		// The LLM provider wires whenever one is configured — splitting's rescue and
-		// classification are operator-invoked, not the batch job filler.ai_tagging
-		// gates.
-		var splitter *filler.Splitter
-		if dir := set.str("filler.dir"); dir != "" {
-			var splitProvider llm.Provider
-			if set.str("llm.url") != "" {
-				splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-			}
-			ffmpegPath := set.str("playout.ffmpeg_path")
-			tools := filler.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
-				set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
-			splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
-		}
+		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
+		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
+		taggerProvider, tagger := buildTagger(st, set, log)
+		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
+		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
+		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
+		fetcher := buildFetcher(set, log)
+		splitter := buildSplitter(st, set, log)
 		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
 		// below. The pipeline needs the vision provider and the splitter, which are wired further
 		// down, while this adapter is needed further up — so one of the two has to be completed
@@ -986,33 +865,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// build a matched filler-list per channel (attached to Tunarr on reconcile).
 		// The SAME adapter instance backs the §12 preview endpoint, so preview and
 		// reconcile share one assembler and one policy — they cannot drift.
-		// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
-		// This was a value built here at boot, so every reader took a snapshot: writing
-		// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
-		// `filler.max_clip_duration` changed the stored setting, the API read the new value
-		// back, and the assembler went on using the old one until the process restarted.
-		//
-		// Caught on the live stack, not by a test: `filler.max_clip_duration=45s` left
-		// `PoolReport.Eligible` at 20 with a 64s clip in the catalog; it dropped to 19 only
-		// after a re-exec. Every unit test builds a `filler.Policy` literal and calls the domain
-		// functions directly, so the setting→policy edge is the one segment they cannot reach.
-		//
-		// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
-		// resolves per call and says so. This is that contract, honoured by the pod path too.
-		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, func() filler.Policy {
-			return filler.Policy{
-				PodMax: set.intv("filler.pod_max"),
-				// V17c: 0 (the default) leaves selection exactly as it was before the floor
-				// existed — see the warning on Policy.MinQualityHeight.
-				MinQualityHeight: set.intv("filler.min_quality"),
-				// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
-				// default to 0s = off, so `durationEligible` keeps returning true on an untouched
-				// install — the difference is that it CAN now return false, which is what lets
-				// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
-				MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
-				MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
-			}
-		}, log)
+		podAdapter := buildPodAdapter(st, set, log)
 		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
 		// Commercial breaks for internal playout (§10): the SAME pod assembler the API preview
 		// and the reconciler use, so the ad that plays is the one the channel page promised.
@@ -1031,183 +884,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobReg.Add(fillerSyncJob(syncer))
 		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 
-		// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
-		// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
-		// exists to be seen and paused.
-		//
-		// ⚠ The DETECTOR is chosen at construction, not per run, because the two backends need
-		// entirely different collaborators — one a local binary and a model file, the other an
-		// HTTP client with a key. `filler.language` and the reject rule still hot-apply; changing
-		// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
-		var langDetect filler.LanguageDetector
-		if set.str("filler.language_provider") == "hosted" {
-			// ⚠ Its OWN client rather than the tagger's. The tagging provider is built inside
-			// `if filler.ai_tagging && llm.url != ""`, so reusing it would silently tie the
-			// language gate to a setting that has nothing to do with it — switch AI tagging off
-			// and clips would stop being checked, with nothing saying why.
-			//
-			// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
-			// That is the honest state for an install that selected `hosted` without configuring
-			// a key: inert, not broken, and not silently deleting things.
-			// ⚠ **CLOSURES, not resolved values.** The first cut called `set.str(...)` here and
-			// baked the URL, model and key into a client at boot — so changing `llm.model` in
-			// Settings did nothing, the detector kept calling whatever was configured at startup,
-			// and every clip failed with a real 404 ("No endpoints found that support input
-			// audio") about a request the operator thought they had already fixed. Cost a live
-			// debugging session to find, because the error was accurate and the config looked right.
-			//
-			// Everything else in this feature reads live; the one setting that decides whether the
-			// backend can work at all must too.
-			langDetect = filler.NewHostedLanguage(
-				func() filler.AudioAsker {
-					url := set.str("llm.url")
-					if url == "" {
-						return nil // not configured ⇒ the gate keeps every clip
-					}
-					return audioAskerAdapter{llm.NewOpenAI(url, set.str("llm.model"), set.str("llm.api_key"))}
-				},
-				func() string { return set.str("llm.model") },
-				set.str("playout.ffmpeg_path"), "")
-		} else {
-			// ⚠ `filler.language_model`, NOT `ingest.whisper_model`. The latter is
-			// `ggml-small.en.bin` — an ENGLISH-ONLY build that does not identify languages at all,
-			// so pointing this at it would answer "en" for every clip on earth and the gate would
-			// silently never reject anything.
-			langDetect = filler.NewWhisperLanguage(
-				set.str("ingest.whisper_path"), set.str("filler.language_model"),
-				set.str("playout.ffmpeg_path"), "")
-		}
-		// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
-		// they run on files already on disk regardless of whether yt-dlp is present).
-		fillerTools := filler.NewFFmpegTools(
-			set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
-			set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
-
-		// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
-		// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
-		// MORE work, never wrongly skips).
-		var fillerDrop fs.FS
-		if dir := set.str("filler.dir"); dir != "" {
-			fillerDrop = os.DirFS(dir)
-		}
-
-		// Vision: keyframes → a multimodal model. The provider is nil unless a vision model is
-		// configured AND the wired LLM actually implements llm.VisionProvider — the same type
-		// assertion the model Warmer uses (§8.2). A nil provider makes the job a no-op, so an
-		// install without a vision model never touches ffmpeg or spends a token.
-		var visionProvider llm.VisionProvider
-		if set.boolv("filler.vision.enabled") && set.str("llm.url") != "" {
-			// ⚠ `filler.vision.model` when set, ELSE `llm.model` — vision needs an images-capable
-			// model, which the tagging model often is not (a text model like qwen3). The dedicated
-			// knob lets an operator point vision at a vision model without switching their whole LLM;
-			// empty reuses the main model for installs whose model already sees images. Same
-			// separation `filler.language_model` makes for the audio gate.
-			visionModel := set.str("filler.vision.model")
-			if visionModel == "" {
-				visionModel = set.str("llm.model")
-			}
-			p := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), visionModel, set.str("llm.api_key"))
-			if vp, ok := p.(llm.VisionProvider); ok {
-				visionProvider = vp
-			} else {
-				log.Warn("filler vision enabled but the configured LLM provider has no vision path; job will no-op",
-					"provider", set.str("llm.provider"))
-			}
-			log.Info("filler vision provider wired", "model", visionModel)
-		}
-		// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
-		//
-		// One driver over eight rungs, replacing `filler-language`, `filler-split`,
-		// `filler-transcribe` and `filler-vision`.
-		//
-		// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
-		// A stage missing from this slice is reported as "not available on this install" on every
-		// clip's ladder, while one that is present says WHY it skipped in the operator's own terms
-		// ("vision tagging is off", "no language backend is configured"). Registering all of them
-		// and letting `Applies` answer is what makes the ladder explain an install rather than
-		// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
-		clipDir := set.str("filler.dir")
-		pipelineStages := []filler.Stage{
-			filler.NewProbeStage(
-				filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
-				func() int64 { return set.dur("filler.min_duration").Milliseconds() },
-				fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
-			filler.NewTranscodeStage(
-				fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
-				clipDir, filler.DefaultMezzanine(),
-				func() string { return set.str("playout.ffmpeg_path") },
-				// ⚠ The loudness target is applied only when the operator opted in. This is the
-				// FIRST production caller of on-file loudness normalisation: V42 built the pass,
-				// and `filler.autofile.normalize_loudness` gated a function nothing called, so the
-				// setting has been inert since it shipped. Folding it into the encode that is
-				// happening anyway is what finally wires it.
-				func() float64 {
-					if !set.boolv("filler.autofile.normalize_loudness") {
-						return 0
-					}
-					// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
-					// normalisation at all", which no numeric kind can express), so it is parsed
-					// here. An unparseable value yields 0 — the same as off, which is the safe
-					// direction: the alternative is applying a garbage target to the operator's
-					// audio.
-					lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
-					if err != nil {
-						return 0
-					}
-					return lufs
-				}, time.Now),
-			filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
-				func() string { return set.str("filler.language") }, time.Now),
-			filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
-				func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
-			filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st}, fillerDrop, time.Now),
-			filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
-				func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
-			filler.NewScoreStage(fillerTagStoreAdapter{st}, &filler.AutoFilePolicy{
-				// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
-				// settings service cannot answer, and here that difference is the safety property:
-				// failing OPEN would publish unreviewed clips to live channels exactly when the
-				// install is degraded.
-				Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
-				MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
-			}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
-		}
-		if splitter != nil {
-			// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
-			// and `StageOrder` is the ONE definition of the sequence, so the order here is
-			// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
-			// invites someone to "fix" its order.
-			pipelineStages = append(pipelineStages,
-				filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st}).
-					WithAutoConfirm(filler.AutoSplitPolicy{
-						Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
-						MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
-						MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
-					}, func() time.Duration { return set.dur("filler.min_duration") }))
-		}
-		fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
-			filler.Budget{
-				MaxClips: func() int { return set.intv("filler.pipeline.max_clips") },
-				// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
-				// different state from a nil closure meaning "use the default". That three-state
-				// encoding is the only way an operator can turn the most expensive rung off.
-				MaxTranscodes: func() int { return set.intv("filler.transcode.max_per_run") },
-				MaxWhisper:    func() int { return set.intv("filler.pipeline.max_whisper") },
-				MaxVision:     func() int { return set.intv("filler.pipeline.max_vision") },
-				MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
-			},
-			emitter.FillerClipStage, time.Now, log).
-			WithRewind(fillerRewindAdapter{st}, clipDir)
+		fillerPipeline := buildPipeline(st, set, log, emitter, splitter, taggerProvider)
 		jobReg.Add(fillerPipelineJob(fillerPipeline))
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
 		fillerAdapter.pipeline = fillerPipeline
 		fillerSvc = fillerAdapter
-		log.Info("filler ingest pipeline registered",
-			"stages", len(pipelineStages), "language", set.str("filler.language"),
-			"transcribe", set.boolv("filler.transcribe.enabled"),
-			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
-			"autosplit", set.boolv("filler.autosplit.enabled"))
 
 		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
 		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/

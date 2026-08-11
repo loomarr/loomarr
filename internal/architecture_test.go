@@ -2,7 +2,6 @@ package internal_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,20 +17,44 @@ import (
 // `BuildHandler` (630 lines) and `api.Server` (33 fields) from metrics alone, and reading the
 // code showed both were correct as they stood. A threshold test on either would fire forever on
 // something nobody should change.
+//
+// ⚠ **These gates USED TO SERVE A STALE PASS (GH #282, fixed 2026-08-10) — do not undo it by
+// reaching for `exec.Command("go", "list", ...)`.** They learned about the tree by shelling out,
+// and subprocess output is not an input Go's test cache tracks: moving a file in `internal/store`
+// did not change package `internal`'s test binary, so nothing invalidated the cached result and
+// the gate reported `ok (cached)` over a tree it never examined. CI restores a warm cache, so a
+// violating PR could go green on it.
+//
+// They now read the tree from SOURCE (importgraph_test.go), which the cache DOES track. The
+// difference is directly observable, and worth repeating if you touch this:
+//
+//	git mv internal/store/conformance_titles_test.go internal/store/conformance_titles.go
+//	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
+//
+// Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
+// (1.0s → 0.02s), because nothing spawns a subprocess per package any more.
 
 // The dependency direction is one-way: domain packages must not import the API layer. A domain
 // package that needs an API type is telling you the type belongs in the domain.
 func TestDomainPackagesDoNotImportAPI(t *testing.T) {
-	// `go list` over the domain packages, asking which of them depend on internal/api.
-	out, err := exec.Command("go", "list", "-deps", "./playout/...", "./schedule/...", "./store/...",
-		"./filler/...", "./channels/...", "./suggest/...", "./library/...", "./provision/...").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasSuffix(line, "loomarr/internal/api") {
-			t.Errorf("a domain package imports internal/api — the dependency direction is one-way "+
-				"(§14.1); found %q in the transitive set", line)
+	pkgs := loomarrPackages(t)
+	const api = modulePath + "/internal/api"
+
+	for _, domain := range []string{
+		"playout", "schedule", "store", "filler", "channels", "suggest", "library", "provision",
+	} {
+		root := modulePath + "/internal/" + domain
+		if _, ok := pkgs[root]; !ok {
+			// ⚠ A domain package that vanished from the graph must FAIL, not silently pass.
+			// A renamed package would otherwise remove itself from its own gate.
+			t.Errorf("%s is not in the import graph — renamed or moved? Update this list, "+
+				"because a domain package missing from it is a domain package nobody checks", root)
+			continue
+		}
+		if reachable := reachableFrom(pkgs, root); reachable[api] {
+			t.Errorf("%s transitively imports internal/api — the dependency direction is one-way "+
+				"(§14.1). A domain package that needs an API type is telling you the type belongs "+
+				"in the domain.", root)
 		}
 	}
 }
@@ -39,58 +62,48 @@ func TestDomainPackagesDoNotImportAPI(t *testing.T) {
 // Test doubles must never reach the shipped binary. testkit exists so unit tests never touch
 // the network; compiling it into production is a seam that only ever gets wider.
 func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	if strings.Contains(string(out), "loomarr/internal/testkit") {
-		t.Error("cmd/loomarr links internal/testkit — test doubles must not ship (§14.1)")
+	pkgs := loomarrPackages(t)
+	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
+
+	if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
+		t.Errorf("cmd/loomarr links internal/testkit through %v — test doubles must not ship (§14.1)",
+			importers)
 	}
 }
 
-// `testing` DOES reach the shipped binary, through exactly one package, and this pins it there.
+// NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
-// `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package)
-// lives in ordinary .go files rather than _test.go ones, and that is deliberate: BOTH backend
-// drivers must import `RunConformance` — SQLite in-package, Postgres behind a build tag — so the
-// assertions have to be importable package code. The consequence is that `go list -deps
-// ./cmd/loomarr` contains `testing`, and `flag` behind it.
+// ⚠ **There used to be one, for `internal/store`, and the reason it lasted was a mis-estimate
+// rather than a constraint.** The conformance suite (7 files, ~4,450 lines — 42% of the non-test
+// package) sat in ordinary .go files because BOTH backend drivers must reach `RunConformance` —
+// SQLite in-package, Postgres behind the `integration` tag — so the assertions "had to be
+// importable package code". The exit was written down as a ~4,450-line mechanical rename into a
+// sibling package, and sequenced for later on that basis.
 //
-// That sits awkwardly beside the rule above, whose stated principle is that test code in the
-// binary "is a seam that only ever gets wider". The principle is right; the answer is not to
-// delete a working two-backend suite, it is to stop the seam widening. So: one package may do
-// this, it is named here, and a second one fails.
+// The estimate assumed the wrong move. A sibling package would indeed have meant qualifying
+// every `Store`, `Channel`, `ErrNotFound` … reference across 4,450 lines. But both drivers are
+// ALREADY `_test.go` files in `package store`, and a test file is visible to every other test
+// file in its package — so renaming `conformance*.go` to `conformance*_test.go` keeps them
+// exactly where they are, keeps both drivers working, and takes them out of the production build
+// with **zero content changes**. Done 2026-08-10; the diff is seven renames.
 //
-// ⚠ The exit is known and NOT blocked on design — verified 2026-08-10 that the conformance files
-// reference ZERO unexported store identifiers, so they can move to a sibling package that only
-// the two drivers import, and `testing` leaves the binary entirely. That move is a ~4,450-line
-// mechanical rename across the tree's highest-churn files, so it is sequenced rather than done
-// opportunistically. Until then, this test is the thing standing between "one documented
-// exemption" and "test code is normal in production packages now".
-func TestOnlyStoreLinksTestingIntoTheBinary(t *testing.T) {
-	const allowed = "github.com/mantonx/loomarr/internal/store"
+// The lesson is worth more than the fix: the blocker was never the code, it was a cost estimate
+// nobody re-checked. It had been quoted twice, in this comment and in the plan that scheduled it.
+//
+// ⚠ `go list -deps ./cmd/loomarr` STILL reports `testing` and `flag`, and that is not ours —
+// `riverqueue/river/rivershared/testsignal` imports `riversharedtest`, in the job-queue
+// dependency. This gate deliberately scopes to `github.com/mantonx/loomarr/internal`: a rule we
+// cannot act on is not a gate, it is noise. If River ever drops it, the raw `go list` becomes
+// clean on its own; nothing here needs to change.
+func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
 
-	deps, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
-	if err != nil {
-		t.Fatalf("go list -deps: %v", err)
-	}
-	for _, pkg := range strings.Split(strings.TrimSpace(string(deps)), "\n") {
-		if !strings.HasPrefix(pkg, "github.com/mantonx/loomarr/internal") {
-			continue
-		}
-		imports, err := exec.Command("go", "list", "-f", "{{join .Imports \" \"}}", pkg).Output()
-		if err != nil {
-			t.Fatalf("go list %s: %v", pkg, err)
-		}
-		for _, imp := range strings.Fields(string(imports)) {
-			if imp != "testing" || pkg == allowed {
-				continue
-			}
-			t.Errorf("%s imports `testing` and is linked into cmd/loomarr — only %s may do that, "+
-				"and only because both store conformance drivers must import the suite (§14.1). "+
-				"Put the assertions in a _test.go file, or in a package the binary does not reach.",
-				pkg, allowed)
-		}
+	for _, pkg := range importersOf(pkgs, linked, "testing") {
+		t.Errorf("%s imports `testing` and is linked into cmd/loomarr (§14.1). Put the "+
+			"assertions in a _test.go file — a test file is visible to every other test file "+
+			"in its own package, so shared helpers do NOT need to be ordinary package code.",
+			pkg)
 	}
 }
 
@@ -123,20 +136,11 @@ func TestPackageMapListsEveryPackage(t *testing.T) {
 // are not visible from their types; internal/playout is the clearest case, and was the one
 // package missing one when §14.1 was written.
 func TestEveryPackageHasAPackageDoc(t *testing.T) {
-	// GoFiles counts NON-test files: a package that is only tests (this one, and
-	// internal/integration) has no production code to document, and demanding a doc there
-	// would be documenting the test harness rather than a subsystem.
-	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}}\t{{len .GoFiles}}\t{{.Doc}}", "./...").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		path, rest, ok := strings.Cut(line, "\t")
-		if !ok {
-			continue
-		}
-		goFiles, doc, _ := strings.Cut(rest, "\t")
-		if goFiles == "0" || strings.TrimSpace(doc) != "" {
+	for path, pkg := range loomarrPackages(t) {
+		// GoFiles counts NON-test files: a package that is only tests (this one, and
+		// internal/integration) has no production code to document, and demanding a doc there
+		// would be documenting the test harness rather than a subsystem.
+		if len(pkg.GoFiles) == 0 || strings.TrimSpace(pkg.Doc) != "" {
 			continue
 		}
 		t.Errorf("%s has no package doc (§14.1) — write one where the subsystem's invariants live", path)

@@ -62,4 +62,46 @@ describe("ApprovalQueueItem", () => {
     expect(screen.getByText("Over the acquisition cap.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
   });
+
+  // --- §4 PROPOSAL HONESTY (#259) -------------------------------------------------------------
+
+  // A refusal changes what the Approve button MEANS, so it renders on the card itself rather than
+  // behind the "Show picks" toggle. Before this, an admin approved seven titles, got five, and
+  // nothing on the card said which two or why.
+  it("names refused titles and their rating WITHOUT expanding the picks toggle", () => {
+    render(
+      <ApprovalQueueItem
+        title="90s Saturday morning cartoons"
+        lineup={[
+          { mediaType: "movie", name: "Sunny Toons", tmdbId: 5001, officialRating: "TV-Y7", inLibrary: true },
+        ]}
+        refused={[
+          {
+            item: {
+              mediaType: "movie",
+              name: "Midnight Toons",
+              tmdbId: 5004,
+              officialRating: "TV-MA",
+              inLibrary: true,
+            },
+            reason: "over_ceiling",
+          },
+        ]}
+      />,
+    );
+
+    // ⚠ No click first. The whole point is that this is visible before any interaction.
+    expect(screen.getByText(/1 title won't be included/i)).toBeInTheDocument();
+    expect(screen.getByText("Midnight Toons")).toBeInTheDocument();
+    expect(screen.getByText(/rated TV-MA, above this channel's audience limit/i)).toBeInTheDocument();
+    // The picks list is still collapsed, so the refusal is not merely leaking out of it.
+    expect(screen.queryByText("Sunny Toons")).not.toBeInTheDocument();
+  });
+
+  // Nothing refused ⇒ nothing rendered. A permanent "0 titles won't be included" would train an
+  // admin to skip the notice on exactly the rows where it matters.
+  it("renders no refusal notice when nothing was refused", () => {
+    render(<ApprovalQueueItem title="80s action heroes" refused={[]} />);
+    expect(screen.queryByText(/won't be included/i)).not.toBeInTheDocument();
+  });
 });

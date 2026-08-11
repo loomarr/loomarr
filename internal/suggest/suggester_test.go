@@ -413,3 +413,119 @@ func TestProgress_ReasoningIsReportedBeforeTheModelTurn(t *testing.T) {
 		}
 	}
 }
+
+// --- §4 PROPOSAL HONESTY (#259) -------------------------------------------------------------
+//
+// The ceiling is extracted at proposal time and enforced at scheduling time, and for a long
+// while nothing connected the two: the model could ground a TV-MA pick under a TV-PG ceiling,
+// the operator approved it, and the §4 gate dropped it downstream with no explanation. Approval
+// is the authorization gate (§7/§11) — a gate offering choices that are silently discarded
+// teaches the operator the list is approximate, which is the property approving exists to deny.
+
+// A pick whose KNOWN rating is above the extracted ceiling is moved to Refused, not offered.
+// It must not be deleted either: the operator's usual fix is to raise the ceiling.
+func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Midnight Toons", Type: "Movie", Year: 1994, TMDBID: 5004, Genres: []string{"Animation"}, OfficialRating: "TV-MA"},
+	)
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "cartoon"}),
+		testkit.FinalResponse(`{"rationale":"cartoons","picks":[
+			{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toons"},
+			{"mediaType":"movie","tmdbId":5004,"name":"Midnight Toons"}
+		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
+	)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "90s cartoons for kids"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 5001 {
+		t.Fatalf("lineup = %+v, want only the TV-Y7 pick", prop.Lineup)
+	}
+	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5004 || prop.Refused[0].Reason != "over_ceiling" {
+		t.Fatalf("refused = %+v, want the TV-MA pick as over_ceiling", prop.Refused)
+	}
+}
+
+// ⚠ An UNRATED pick is NOT refused, even though the §4 gate fails closed on unrated under a kids
+// ceiling. At proposal time "unrated" overwhelmingly means "not looked up yet": the reconcile
+// heal (§389) exists to fill an empty rating once the title is in the library, and TMDB
+// enrichment for an acquisition is best-effort. Refusing here would reject titles that go on to
+// air perfectly well — and nothing is ADMITTED by the leniency, because the enforcer still fails
+// closed at airtime.
+func TestProposal_DoesNotRefuseAnUnratedPick(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
+		// No OfficialRating at all — the media server simply has none for it.
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Mystery Toons", Type: "Movie", Year: 1993, TMDBID: 5005, Genres: []string{"Animation"}},
+	)
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "cartoon"}),
+		testkit.FinalResponse(`{"rationale":"cartoons","picks":[
+			{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toons"},
+			{"mediaType":"movie","tmdbId":5005,"name":"Mystery Toons"}
+		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
+	)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "90s cartoons for kids"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Refused) != 0 {
+		t.Fatalf("an unrated pick must not be refused at proposal time, got %+v", prop.Refused)
+	}
+	// ⚠ Asserted positively too: "not refused" would also be true if the pick had been dropped
+	// by grounding, which would make this test pass for entirely the wrong reason.
+	var found bool
+	for _, it := range prop.Lineup {
+		if it.TMDBID == 5005 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the unrated pick should still be offered, lineup = %+v", prop.Lineup)
+	}
+}
+
+// An ADULT/general channel has no ceiling, so nothing is refused — the §4 asymmetry says a
+// missing ceiling admits everything, and refusing on an unset ceiling would strip an "80s action
+// heroes" channel of the R-rated films it is about.
+func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-1", Name: "Hard Die", Type: "Movie", Year: 1988, TMDBID: 5010, Genres: []string{"Action"}, OfficialRating: "R"},
+	)
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action"}),
+		testkit.FinalResponse(`{"rationale":"80s action","picks":[
+			{"mediaType":"movie","tmdbId":5010,"name":"Hard Die"}
+		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
+	)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
+
+	// No kids signal in the intent ⇒ groundPolicy DROPS the model's reflexive ceiling entirely,
+	// so the R-rated pick is admitted. This is the safety asymmetry working in the loosening
+	// direction, and it must not be undone by the refusal pass.
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "80s action heroes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Audience.Ceiling != "" {
+		t.Fatalf("an adult intent must carry no ceiling, got %q", prop.Policy.Audience.Ceiling)
+	}
+	if len(prop.Refused) != 0 {
+		t.Fatalf("nothing may be refused with no ceiling, got %+v", prop.Refused)
+	}
+}

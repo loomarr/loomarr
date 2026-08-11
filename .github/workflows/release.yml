@@ -18,20 +18,19 @@ env:
   IMAGE: ghcr.io/${{ github.repository }} # ghcr.io/mantonx/loomarr
 
 jobs:
+  # ONE image, deliberately — there is no variant matrix any more.
+  #
+  # ⚠ This job could never have succeeded as written. It carried a second matrix leg
+  # building `--target filler`, and the Dockerfile has no `filler` stage (`grep '^FROM'`
+  # yields fe, build, runtime). The ingest tooling — yt-dlp, ffmpeg, deno, whisper — all
+  # ships in the single runtime image (§14/§16), so the variant it targeted stopped
+  # existing without this file being told. It went unnoticed because release.yml runs
+  # only on a `v*` tag and no such tag had ever been cut: the first real release would
+  # have published the core image and then gone red, which is the worst moment to find
+  # out. Whatever else changes here, do not reintroduce a target the Dockerfile lacks.
   images:
-    name: Build & publish images
+    name: Build & publish image
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          # The default runtime image → :latest / :X.Y.Z
-          - variant: core
-            target: runtime
-            suffix: ""
-          # The ingest-tooling image → :filler / :X.Y.Z-filler
-          - variant: filler
-            target: filler
-            suffix: "-filler"
     steps:
       - uses: actions/checkout@v7
 
@@ -52,20 +51,17 @@ jobs:
           images: ${{ env.IMAGE }}
           flavor: |
             latest=false
-            suffix=${{ matrix.suffix }},onlatest=true
-          # Only cut moving/latest tags for the core variant's semver tags.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ matrix.variant == 'core' }}
-            type=raw,value=filler,enable=${{ matrix.variant == 'filler' }}
+            type=raw,value=latest
 
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: ${{ matrix.target }}
+          target: runtime
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -75,8 +71,8 @@ jobs:
             COMMIT=${{ github.sha }}
           provenance: true
           sbom: true
-          cache-from: type=gha,scope=${{ matrix.variant }}
-          cache-to: type=gha,scope=${{ matrix.variant }},mode=max
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,scope=release,mode=max
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3

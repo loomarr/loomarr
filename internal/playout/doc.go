@@ -8,7 +8,7 @@
 // and it is a tar pit — timestamps, keyframes, and stream parameters all have to be reconciled
 // across the join.
 //
-// This package does not splice. Following Tunarr's design (docs/engineering/playout-prior-art.md
+// This package does not splice. Following Tunarr's design (docs/engineering/archive/playout-prior-art.md
 // §1), ONE long-lived parent ffmpeg runs `-c copy` over a two-line HTTP ffconcat playlist whose
 // entries BOTH resolve to "what is on now". Each time the concat demuxer opens an entry it asks
 // the server that question, receives one finite programme, plays it to EOF, and advances to the

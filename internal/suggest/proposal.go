@@ -170,6 +170,22 @@ type Proposal struct {
 	// first would put every retired title straight back. One writer (the binder), one
 	// primitive (schedule.ApplyLineup), and the retirement is now an INPUT to it.
 	Retired []provision.Key `json:"retired,omitempty"`
+	// Refused are picks the model grounded that this proposal's OWN extracted policy cannot
+	// air (§4). They are moved out of Lineup/Acquisitions and kept here with a reason, so the
+	// approval card shows what will not play instead of offering it.
+	//
+	// ⚠ Kept rather than deleted, deliberately. The operator's fix is usually to raise the
+	// ceiling, not to lose the title — and a pick that silently vanished between the model's
+	// answer and the approval screen is indistinguishable from one the model never made.
+	Refused []RefusedPick `json:"refused,omitempty"`
+}
+
+// RefusedPick is one grounded pick the extracted policy will not air, with the exclusion
+// vocabulary §4 already uses (`over_ceiling`) so the approval card and the channel's exclusion
+// report say the same words about the same event.
+type RefusedPick struct {
+	Item   ProposalItem `json:"item"`
+	Reason string       `json:"reason"` // "over_ceiling"
 }
 
 // Scores is the deterministic post-scoring layered on the LLM output (§8) so
