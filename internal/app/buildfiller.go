@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -8,11 +9,13 @@ import (
 
 	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// This file is the first of BuildHandler's per-subsystem builders (§14.1).
+// This file holds BuildHandler's per-subsystem builders (§14.1).
 //
 // ⚠ **The shape matters, and it is NOT the one §14.1 rejected.** That rejection was for methods
 // on a shared builder struct, which would convert ~70 of BuildHandler's locals into fields on a
@@ -61,6 +64,58 @@ func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, 
 		})
 
 	return provider, tagger
+}
+
+// buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
+//
+// ⚠ Every switch here is read LIVE rather than captured, because these settings hot-apply
+// (config-design §3): an operator who turns the drop-folder off expects the next scheduled pass
+// to stop, not a restart to be required. `Dir`, `MinDuration`, `WithEnabled` and `WithWatchDir`
+// are all closures for that reason.
+//
+// ⚠ The library scanner is nil when no media server is configured, and that is a SUPPORTED
+// install rather than a degraded one: folder rows still drain and library rows simply do no
+// work. Wiring a non-nil scanner over an absent media server would turn an optional service back
+// into a precondition — the dependency §9.1 removed.
+func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slog.Logger,
+	fillerProg *programmer.Tunarr) *filler.Syncer {
+	src := filler.DirSource{
+		Dir:   func() string { return set.str("filler.dir") },
+		Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
+		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
+		// points that setting at a custom build (the whole reason it exists — see the
+		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
+		// silently, and the setting appeared to do nothing here.
+		Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
+		// The quality gate's floor (§10 V40).
+		MinDuration: func() time.Duration { return set.dur("filler.min_duration") },
+		// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
+		// warning has never once been emitted. That count exists precisely because extraction is
+		// best-effort and failures are skipped — the shape that already produced one
+		// silently-empty catalog in this repo's history (see FFprobeNextTo). A generator that
+		// counts failures into a logger nobody wired is the same silence with extra steps.
+		Log: log.Warn,
+	}
+	if set.str("tunarr.url") != "" {
+		src.Tunarr = fillerSourceAdapter{fillerProg}
+	}
+
+	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
+		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
+		// An empty value resolves to `<filler.dir>/_watch`, so the watch folder is configured on
+		// every install whether or not the operator has ever set it.
+		WithWatchDir(func() string { return set.str("filler.watch_dir") })
+
+	var libScanner *filler.LibraryScanner
+	if set.str("library.url") != "" {
+		libScanner = filler.NewLibraryScanner(
+			fillerLibraryAdapter{library.NewDynamic(
+				flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))},
+			func(msg string, args ...any) { log.Warn(msg, args...) },
+		)
+	}
+	return syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 }
 
 // buildFetcher constructs the clip downloader (§10, §16). Nil when ffmpeg is absent, which is a
