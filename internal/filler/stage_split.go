@@ -2,8 +2,13 @@ package filler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.
@@ -37,6 +42,9 @@ type SplitStage struct {
 	autoConfirm *AutoSplitPolicy
 	// minClipDuration is `filler.min_duration`, the SAME floor the scan boundary rejects on.
 	minClipDuration func() time.Duration
+	// vision grounds proposed segments from their own frames so the gate has data (§10 V54).
+	// nil ⇒ propose only.
+	vision *SegmentVision
 }
 
 // NewSplitStage builds the stage. Without `WithAutoConfirm` it PROPOSES ONLY, which is the safe
@@ -51,6 +59,105 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 	s.autoConfirm = &pol
 	s.minClipDuration = minClipDuration
 	return s
+}
+
+// WithSegmentVision attaches the split-time grounder that answers the auto-confirm gate (§10 V54).
+//
+// ⚠ **Without this, `filler.autosplit.enabled` is default-ON and cannot fire.** `AutoConfirmable`
+// refuses any segment with neither `Audience` nor `Category`; the text `classify` that used to fill
+// those fields was removed in V51g (it cost 3× the pass budget AND classified nothing but a
+// generated name), and nothing replaced it — so the gate has had no data source at all. Measured on
+// the maintainer's catalog: 45 compilations parked at `split`, none ever auto-confirmed.
+//
+// ⚠ **It grounds from PIXELS, not from the segment's name, and that is the whole difference.** The
+// removed classifier read `"… part 7"` and grounded nothing, which is why speeding it up would not
+// have helped. Frames from the segment's own span exist at split time and carry a real signal — the
+// same signal the `vision` rung reads, through the same prompt and the same `groundVisionTags`, so
+// the gate is fed by the vocabulary that judges it.
+//
+// nil ⇒ propose only, exactly as a nil `autoConfirm` does. A missing grounder must never mean
+// "confirm without one".
+func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
+	s.vision = v
+	return s
+}
+
+// SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
+// something to judge.
+type SegmentVision struct {
+	Tools    MediaTools
+	Provider llm.VisionProvider
+	Taxa     TaxaLister
+	ClipDir  string
+	// Budget caps how many segments ONE pass will look at (`filler.pipeline.max_split_vision`).
+	//
+	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
+	// stay inside its pass budget. A reel with more segments than the budget simply does not
+	// auto-confirm — the gate is all-or-nothing by design ("the whole reel qualifies or none of
+	// it does"), so an ungrounded tail sends the reel to review, which is the honest outcome and
+	// exactly where an un-judgeable reel belongs.
+	Budget func() int
+}
+
+// TaxaLister reads the taxonomy the grounder resolves categories against — the SAME read the
+// `vision` and `tag` rungs make, so all three ground against one vocabulary.
+type TaxaLister interface {
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+}
+
+// ground stamps Category/Era onto each segment it can see, in place.
+//
+// Best-effort throughout: a frame-extraction or model failure leaves that segment ungrounded,
+// which the gate then refuses — a reel that could not be judged goes to review rather than being
+// confirmed on missing data. That direction is the safety property, so every error path here
+// degrades toward review and never toward confirm.
+func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) {
+	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
+		return
+	}
+	budget := len(segs)
+	if s.vision.Budget != nil {
+		if b := s.vision.Budget(); b >= 0 && b < budget {
+			budget = b
+		}
+	}
+	if budget == 0 {
+		return
+	}
+	var forest *taxonomy.Forest
+	if s.vision.Taxa != nil {
+		taxa, err := s.vision.Taxa.ListTaxa(ctx)
+		if err != nil {
+			return // no vocabulary to ground against ⇒ ground nothing, and the gate refuses
+		}
+		forest = taxonomy.New(taxa)
+	}
+	file := filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
+	for i := range segs {
+		if i >= budget {
+			return
+		}
+		frames, err := s.vision.Tools.KeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
+		if err != nil || len(frames) == 0 {
+			continue
+		}
+		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt, frames)
+		if err != nil {
+			return // a provider that is failing will fail for every remaining segment too
+		}
+		var out visionOutput
+		if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
+			continue
+		}
+		v := groundVisionTags(out, forest)
+		segs[i].Category = v.Category
+		segs[i].Era = v.Era
+		// ⚠ `SuggestedEra` is deliberately NOT stamped here, though the vision RUNG does stamp it.
+		// The gate treats a suggested era as an automatic refusal at every threshold — "an era
+		// Loomarr GUESSED is exactly the case a human should see" — so writing one would make this
+		// grounder guarantee the rejection it exists to lift. The child clip's own vision pass
+		// still raises the suggestion afterwards, where an operator can act on it.
+	}
 }
 
 func (s *SplitStage) ID() StageID     { return StageSplit }
@@ -91,6 +198,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if err != nil {
 		return StageResult{}, err
 	}
+
+	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54). Nothing
+	// here writes to the store or the proposal — the stamps live on the in-memory segments the
+	// gate is about to judge and, when it passes, on the clips Confirm spawns from them.
+	s.ground(ctx, c, p.Segments)
 
 	// ⚠ Auto-confirm is decided HERE, not inside `Propose`. The manual path runs the same Propose
 	// from a button an operator just pressed — a human is already present and about to review, so

@@ -353,7 +353,26 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 					Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
 					MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
 					MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
-				}, func() time.Duration { return set.dur("filler.min_duration") }))
+				}, func() time.Duration { return set.dur("filler.min_duration") }).
+				// The split-time grounder (§10 V54). Without it the auto-confirm gate has no data
+				// and `filler.autosplit.enabled` — default ON — can never fire.
+				//
+				// ⚠ Gated on the SAME `filler.vision.enabled` the vision rung uses, via a zero
+				// budget rather than a nil grounder: an operator who turned vision off did not
+				// ask for it back on a different rung, and one switch governing both is what
+				// keeps "is Loomarr sending my frames to a model" answerable in one place.
+				WithSegmentVision(&filler.SegmentVision{
+					Tools:    fillerTools,
+					Provider: visionProvider,
+					Taxa:     fillerVisionStoreAdapter{st},
+					ClipDir:  clipDir,
+					Budget: func() int {
+						if !set.boolv("filler.vision.enabled") {
+							return 0
+						}
+						return set.intv("filler.pipeline.max_split_vision")
+					},
+				}))
 	}
 	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
 		filler.Budget{

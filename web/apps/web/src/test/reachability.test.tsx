@@ -190,6 +190,11 @@ const stubReachable = () => {
           name: "80s compilation",
           kind: "commercial",
           durationMs: 900000,
+          // ⚠ The fixture was named "80s compilation" and ran 15 minutes but never set this, so
+          // the DATA did not claim to be what the name said. Since §10 V54 A8 the split action
+          // renders only on a compilation, and without the flag this row asserts the entry point
+          // mounts on a clip it is deliberately not offered for.
+          isComposite: true,
           tagged: false,
           aiTagged: false,
           playCount: 0,
@@ -224,6 +229,7 @@ const stubReachable = () => {
       windowMs: 3_600_000,
       slots: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
+      excluded: { overCeiling: 0, unrated: 0, items: [] },
     }),
     getChannelFillerCoverageMockHandler({
       level: "exact",

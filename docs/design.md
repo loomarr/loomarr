@@ -2437,7 +2437,7 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 
    **`filler-split` is a scheduled job** (on by default). It proposes splits for over-long catalog clips rather than waiting for a click, so proposals are ready when the operator looks instead of costing minutes of waiting once they do.
 
-   **Auto-confirm is a separate opt-in** (`filler.autosplit.enabled`, default **off**), gated on `filler.autosplit.min_confidence` — deliberately NOT reusing the auto-file threshold. The failure modes differ in kind: a mis-*tagged* clip plays in the wrong break, a mis-*cut* clip plays half an advert. One dial would force the stricter case to govern both.
+   **Auto-confirm is a separate switch** (`filler.autosplit.enabled`, default **ON** — maintainer decision, V51b: the gate exists to admit *confident* reels, and off-by-default meant every compilation waited for a click the design says should be unnecessary), gated on `filler.autosplit.min_confidence` — deliberately NOT reusing the auto-file threshold. The failure modes differ in kind: a mis-*tagged* clip plays in the wrong break, a mis-*cut* clip plays half an advert. One dial would force the stricter case to govern both.
 
    ⚠ **The gate is ALL-OR-NOTHING over the reel, not per segment.** A proposal auto-confirms only when *every* segment is advert-shaped (within `filler.autosplit.max_duration`, and above the existing `filler.min_duration` floor), *none* is flagged `unsplittable`, *none* is flagged a duplicate, and *every* one classified above the threshold. One doubtful segment sends the whole reel to review.
 
@@ -2577,9 +2577,27 @@ stage with no measurement shows no bar**, for the same reason a confidence of 0 
 absence of measurement and a measurement of zero are different claims.
 
 Intra-stage progress is throttled in the emitter (≥1s and ≥5 points since the last frame for that
-clip) and in the database (≥2s / ≥10 points); status *transitions* always publish and always
-write. The percentage is decoration — what has to survive a reload is which stage, and whether it
-is running.
+clip) and in the database; status *transitions* always publish and always write. The percentage is
+decoration — what has to survive a reload is which stage, and whether it is running.
+
+⚠ **The database throttle is `percent >= lastWritten + 10` OR `>= 2s since the last write`, and
+`lastWritten` is the last value actually PERSISTED (V54).** Both halves of that sentence are load-
+bearing, because the obvious reading of "≥2s / ≥10 points" produced a throttle that could never
+fire:
+
+- **OR, not AND.** A stage that crawls needs the time half to ever reach disk; a stage that jumps
+  needs the points half. Requiring both means a slow stage writes nothing for minutes.
+- **The baseline is the persisted value, not the last reported one.** If the skip branch advances
+  the baseline, it moves with every sample — ffmpeg emits about once a second, so `percent` is
+  perpetually `lastWritten + 1` and the `+ 10` test is never satisfied. A long transcode then
+  persists **nothing at all** between 0 and 100, which is precisely the case the write exists for.
+  The skip branch must publish and leave the baseline where it is.
+
+⚠ **`NoMeasurement` (-1) is a state, not a percentage, so it always writes and is never throttled.**
+It fires once when a stage that cannot measure itself starts, and it is what makes "a running stage
+with no measurement shows no bar" true across a reload — dropping it leaves the row at the 0 the
+stage was initialised with, which renders as a bar frozen at zero, i.e. the exact fabricated claim
+this section forbids.
 
 #### Three outcomes, not two
 
@@ -2940,6 +2958,61 @@ Failure and deferral both persist through a detached context.
 per-pass SEGMENT budget with resume by `(ParentHash, index)`; the lineage column already exists
 (§10 V45, migration 00039). Not built because the measured corpus does not reach it, and a resume
 rule interacts with proposal editing in ways that need their own design.
+
+#### The rule V51g established, restated as its principle (V54)
+
+V51g's rule was written as *"what a rung may not do is spend a model call per segment"*. That
+sentence is the **letter** of a measurement taken on one provider; the **principle** it protects is
+narrower and is what actually binds:
+
+> ⚠ **A rung's cost must stay inside its pass budget, and must not scale unboundedly with a clip's
+> content.** A per-segment model call is forbidden *when it cannot satisfy that*.
+
+The distinction matters because V51g's 377s was **51 × 7.4s of SERIAL inference on one local GPU**.
+That is a property of `qwen3:8b` on a single 3080 Ti, not of the algorithm: a hosted provider
+answers concurrently, and the same 51 calls complete inside the pass. Restating the rule as an
+absolute would forbid a shape that no longer costs what it cost when it was measured.
+
+**What does NOT change, and is not reopened:**
+
+- ⚠ **The text `classify` inside `Propose` stays deleted.** Its second defect was never about
+  speed: `SplitSegment.Transcript` is empty at split time (`StageTranscribe` runs *after*
+  `StageSplit`), so all 51 calls classified nothing but a generated name — `"… part 7"`, identical
+  across segments but for the number — and grounding correctly refused to invent tags from that.
+  **A faster model classifying `"part 7"` grounds exactly as much as a slow one.** The tripwire in
+  `splitjob.go` stands: it must not come back to that file.
+- The atomic confirm stays atomic. Deferral-not-failure stays. The per-pass segment budget for
+  ~500-segment captures is still an unbuilt gap.
+
+**What a per-segment model call must satisfy to be permitted:**
+
+1. **An explicit budget setting**, sized per pass, in the same family as `filler.pipeline.max_whisper`
+   and `…max_vision`. No budget ⇒ not permitted, whatever the provider.
+2. **Data the rung genuinely needs and cannot obtain later.** The bar V51g set: the classifier it
+   removed produced results the `tag` rung recomputed downstream anyway — *"the pipeline paid twice
+   and kept the worse answer's cost."* A rung may not buy a second, earlier, worse copy of something
+   the ladder already produces.
+3. **A signal that actually exists at that point in the ladder.** This is what disqualified the text
+   classifier and is the test any replacement must pass.
+
+**The worked example: grounding a segment from PIXELS, not from its name.** The auto-confirm gate
+(§10 V34) refuses a segment with neither `Audience` nor `Category`, because such a clip can only
+ever be a fallback-ladder pick and is not something to create unattended. `classify` used to supply
+those fields; removing it left the gate with **no data source at all**, so `filler.autosplit.enabled`
+has been default-ON and structurally unable to fire ever since — measured on the maintainer's
+catalog as **45 compilations parked at `split`, none auto-confirmed**. A default-ON feature that
+cannot fire is worse than one that is off, because the operator believes it works.
+
+A keyframe drawn from the segment's own span satisfies all three conditions where the transcript
+could not: the frames exist at split time (`MediaTools` already extracts keyframes, and already
+takes a span for `Transcribe`), a category grounded from what is on screen is a real answer rather
+than a re-reading of `"part 7"`, and the vision tier's grounding (`groundVisionTags`) is the same
+one the `vision` rung uses — so the gate is fed by the same vocabulary that judges it.
+
+⚠ **This does not make the gate's data authoritative for the CLIP.** Each spawned segment still runs
+the whole ladder for itself and is tagged downstream with its own transcript; the split-time
+grounding exists to answer the gate, not to replace `tag`. Where the two disagree, the child's own
+pass wins — it is later, better-informed, and per-clip.
 
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:

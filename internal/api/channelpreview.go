@@ -238,6 +238,7 @@ type previewCycleOutput struct {
 		ActiveRule ActiveRuleDTO  `json:"activeRule"`
 		WindowMs   int64          `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
 		Slots      []CycleSlotDTO `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
+		Excluded   ExcludedDTO    `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
 	}
 }
 
@@ -262,7 +263,15 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 		at = t
 	}
 
-	resolvedAt, slots, active, window, err := s.channels.CyclePreview(ctx, in.ID, at)
+	// ⚠ CyclePreviewDraft with nil drafts, NOT CyclePreview — identical work (CyclePreview is
+	// literally this call, unpacked), but it also carries the §4 exclusion report. This is the
+	// SAVED preview, the one an operator sees without editing anything, so it is where "why
+	// isn't X on my channel" actually gets asked; leaving the report to the draft-only endpoint
+	// would answer the question only for someone already mid-edit.
+	//
+	// No cache is bypassed by this: the arranged-cycle cache lives in the playout adapter
+	// (app/cyclecache.go), which reaches the engine directly and never comes through here.
+	cycle, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, nil, nil)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
@@ -270,10 +279,13 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	}
 
 	out := &previewCycleOutput{}
-	out.Body.At = resolvedAt.UTC().Format(time.RFC3339)
-	out.Body.ActiveRule = ActiveRuleDTO{ID: active.ID, Label: active.Label, Priority: active.Priority, Matched: active.Matched}
-	out.Body.WindowMs = window.Milliseconds()
-	out.Body.Slots = cycleSlotsToDTO(slots, cyclePreviewSlotCap)
+	out.Body.At = cycle.At.UTC().Format(time.RFC3339)
+	out.Body.ActiveRule = ActiveRuleDTO{
+		ID: cycle.Active.ID, Label: cycle.Active.Label, Priority: cycle.Active.Priority, Matched: cycle.Active.Matched,
+	}
+	out.Body.WindowMs = cycle.Window.Milliseconds()
+	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
+	out.Body.Excluded = excludedToDTO(cycle.Excluded)
 	return out, nil
 }
 
