@@ -1,11 +1,22 @@
 // Package llm is the LLM provider abstraction (design §8): one provider-neutral
-// Chat primitive with tool-use, implemented by Ollama (homelab default) and
-// Anthropic (opt-in). The provider only translates messages/tools to/from its
-// wire format and normalizes provider quirks (Ollama tool-call arguments are a
-// parsed object; Anthropic's are a JSON string + require tool_use_id echo — see
-// testkit/fixtures/llm/FINDINGS.md). The *grounding loop* lives in the suggester
-// (internal/suggest), which owns the catalog tool — this package is a dumb pipe,
-// so grounding logic isn't smeared across providers.
+// Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama
+// (the homelab default) and OpenAI-compatible. `NewProvider` builds one or the
+// other and nothing else.
+//
+// ⚠ **`llm.provider` names a WIRE KIND, not a brand**, and this doc said otherwise
+// until 2026-08-10: it claimed an "Anthropic (opt-in)" provider, which does not
+// exist — there is no anthropic.go, and no case for it. Claude is reached over the
+// OpenAI-compatible wire through OpenRouter, which `llm.hosted_provider` selects as
+// a BRAND on top of the same transport (see hosted.go). Conflating the two sends a
+// reader looking for an implementation that was never written, and an operator
+// looking for a provider value that nothing accepts.
+//
+// The provider only translates messages/tools to/from its wire format and
+// normalizes quirks (Ollama tool-call arguments arrive as a parsed object, the
+// OpenAI shape as a JSON string — see testkit/fixtures/llm/FINDINGS.md). The
+// *grounding loop* lives in the suggester (internal/suggest), which owns the
+// catalog tool — this package is a dumb pipe, so grounding logic isn't smeared
+// across providers.
 package llm
 
 import (
