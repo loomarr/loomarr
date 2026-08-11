@@ -31,6 +31,7 @@ import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
+import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesTab } from "../sources-tab";
@@ -153,6 +154,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
+  // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
+  // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
+  const [splitting, setSplitting] = useState<string>();
   // The clip open in the player (V39), by path. A path rather than the DTO so the dialog always
   // renders the CURRENT row — retagging a clip while it plays would otherwise leave the player
   // showing a stale copy.
@@ -823,14 +827,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                         ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
                         : {})}
                       {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                      {...(isAdmin
-                        ? {
-                            onSplit: () => {
-                              pendingSplitName.current = clip.name;
-                              split.mutate({ data: { hash: clip.hash } });
-                            },
-                          }
-                        : {})}
+                      // ⚠ **Offered only on a COMPILATION, and only behind a confirmation (§10
+                      // V54 A8).** It used to render on every card and fire on the first click —
+                      // including on a 15-second commercial, where a full-decode search for
+                      // adverts inside one advert is minutes of GPU spent to find nothing.
+                      //
+                      // `isComposite` is the pipeline's OWN answer to "is this a recording of
+                      // several adverts", set by the probe rung at measurement time (§10 V45), so
+                      // gating on it invents no threshold and duplicates no setting.
+                      //
+                      // ⚠ Known gap, deliberately accepted: `looksComposite` swallows a
+                      // BlackSilence failure and returns false, so a genuine compilation whose
+                      // scan errored is unmarked and loses its manual split here. The BE still
+                      // accepts the call, so nothing is permanently lost — but re-probing is the
+                      // only route back to the button. Worth revisiting if it is ever seen.
+                      {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
                       splitPending={
                         Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"
                       }
@@ -881,6 +892,23 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             <PinClipDialog
               clip={rows.find((c) => c.hash === pinning)}
               onClose={() => setPinning(undefined)}
+            />
+          )}
+
+          {/* The split confirmation (§10 V54 A8). Resolved from the CURRENT page like its
+              siblings, so a clip that vanishes under a filter closes the dialog rather than
+              confirming a hash that is no longer on screen. */}
+          {splitting && rows && (
+            <ConfirmSplitDialog
+              clip={rows.find((c) => c.hash === splitting)}
+              onConfirm={() => {
+                const clip = rows.find((c) => c.hash === splitting);
+                setSplitting(undefined);
+                if (!clip) return;
+                pendingSplitName.current = clip.name;
+                split.mutate({ data: { hash: clip.hash } });
+              }}
+              onClose={() => setSplitting(undefined)}
             />
           )}
 
