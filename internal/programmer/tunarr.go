@@ -258,6 +258,32 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 	}, true, nil
 }
 
+// ListChannels implements Programmer: every channel Tunarr currently has, Loomarr-owned or not.
+//
+// ⚠ **It exists so Loomarr can pick a channel number that is free on BOTH sides** (§9 V54).
+// `nextFreeChannelNumber` consulted only Loomarr's own store, which knows nothing about channels
+// created by an earlier install, a reset database, or the operator by hand. Picking a number Tunarr
+// already uses makes the create fail — and Tunarr reports that collision as `500` with an EMPTY
+// BODY, so the symptom was an opaque, permanent failure rather than "that number is taken".
+func (t *Tunarr) ListChannels(ctx context.Context) ([]ActualChannel, error) {
+	var raw []tunarrChannel
+	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels", nil, &raw)
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, statusErr("list channels", status, snippet)
+	}
+	out := make([]ActualChannel, 0, len(raw))
+	for _, ch := range raw {
+		out = append(out, ActualChannel{
+			TunarrID: ch.ID, Number: ch.Number, Name: ch.Name, Group: ch.GroupTitle,
+			Logo: ch.Icon.Path, ProgramCount: ch.ProgramCount, StartTime: ch.StartTime,
+		})
+	}
+	return out, nil
+}
+
 // DeleteChannel implements Programmer; a 404 is treated as already-gone (idempotent).
 func (t *Tunarr) DeleteChannel(ctx context.Context, tunarrID string) error {
 	status, snippet, err := t.doStatus(ctx, t.http, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)

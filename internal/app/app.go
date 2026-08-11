@@ -298,6 +298,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// where the LLM residency getter is built, yet READ by the budget closure inside the block. A no-op
 	// (nil) until assigned, which the budget treats as "no contention".
 	var residentVRAM func(context.Context) (gib float64, model string)
+	// Which channel numbers Tunarr already uses (§9 V54). Function scope for the same reason as
+	// `residentVRAM` above: it is SET where the programmer is built, and READ far below where the
+	// binder is assembled. Nil until assigned, which numbering treats as "Loomarr's store only".
+	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
@@ -350,6 +354,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.Programmer != nil {
 			pusher = ov.Programmer
 		}
+		// ⚠ Taken from `pusher`, NOT `prog`: tests inject an in-process Tunarr double here, and
+		// numbering that consulted the real client while the reconcile used the double would
+		// disagree about which numbers exist. Both must read the same Tunarr.
+		chanNumbers = tunarrNumbers{pusher}
 		engine := channels.New(st, pusher, avail, connector, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
@@ -370,6 +378,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		engine.WithNotifier(emitter)
+		// A reconcile that has to MOVE a channel because Tunarr already occupies its number is an
+		// operator-facing fact that must outlive a log line (§9 V54) — the number is what a viewer
+		// tunes to, and the log that recorded the original strand had already scrolled away by the
+		// time anyone asked what happened.
+		if activityRec != nil {
+			engine.WithActivity(activityRec)
+		}
 		channelSvc = engine
 
 		// Now that the scheduler engine exists, give the emitter its backfill
@@ -648,6 +663,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// restart and surfaces on the Dashboard. Typed-nil guard, exactly as `codec` above needs.
 		if activityRec != nil {
 			chBinder = chBinder.WithActivity(activityRec)
+		}
+		// Numbering must see the numbers TUNARR already uses, not just Loomarr's own (§9 V54):
+		// Tunarr accumulates channels from earlier installs and reset databases, and picking one
+		// of those numbers makes the create fail forever.
+		if chanNumbers != nil {
+			chBinder = chBinder.WithChannelNumbers(chanNumbers)
 		}
 	}
 

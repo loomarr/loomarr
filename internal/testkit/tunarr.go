@@ -3,6 +3,7 @@ package testkit
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/mantonx/loomarr/internal/programmer"
@@ -77,6 +78,16 @@ func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if spec.TunarrID == "" {
+		// ⚠ **A DUPLICATE NUMBER IS REFUSED, because the real Tunarr refuses it** (§9 V54). This
+		// fake used to accept any number on create, so every test passed while production failed:
+		// Tunarr answers `POST /api/channels` with `500` and an EMPTY BODY when the number is
+		// taken, which stranded a channel permanently. A double that cannot say no cannot catch
+		// the bug — the same lesson as the context-ignoring doubles in filler and the scheduler.
+		for _, existing := range m.channels {
+			if existing.spec.Number == spec.Number {
+				return "", fmt.Errorf("create channel %d: status 500: {}", spec.Number)
+			}
+		}
 		// Create: assign a fresh server id, IGNORING any client-supplied id
 		// (Phase-0 finding 1). Stamp the loop anchor NOW (mirrors the real adapter's
 		// StartTime = now().UnixMilli()), so a later update can be checked for preserving it.
@@ -97,6 +108,36 @@ func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (
 	ch.spec = spec
 	m.Updates++
 	return spec.TunarrID, nil
+}
+
+// ListChannels reports every channel this Tunarr holds — including ones Loomarr didn't create, so
+// a test can seed a foreign occupant on a number and prove Loomarr moves around it (§9 V54).
+func (m *Tunarr) ListChannels(_ context.Context) ([]programmer.ActualChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]programmer.ActualChannel, 0, len(m.channels))
+	for id, ch := range m.channels {
+		out = append(out, programmer.ActualChannel{
+			TunarrID: id, Number: ch.spec.Number, Name: ch.spec.Name,
+			Group: ch.spec.Group, Logo: ch.spec.Logo, StartTime: ch.startTime,
+		})
+	}
+	// Sorted so a test's assertions don't depend on Go's map iteration order.
+	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	return out, nil
+}
+
+// SeedForeignChannel plants a channel Loomarr did NOT create, on a given number — the state a
+// reset database or an earlier install leaves behind, and the one that made a create fail forever.
+func (m *Tunarr) SeedForeignChannel(number int, name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seq++
+	id := fmt.Sprintf("foreign-%d", m.seq)
+	m.channels[id] = &tunarrChan{
+		spec:      programmer.ChannelSpec{TunarrID: id, Number: number, Name: name},
+		startTime: m.nowMs(),
+	}
 }
 
 func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.ActualChannel, bool, error) {
