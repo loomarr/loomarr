@@ -97,7 +97,10 @@ type Engine struct {
 	// (unit tests, no-events path). A local interface so this package needn't import
 	// internal/events — same accept-interfaces style as GuidePoker/RatingResolver.
 	notify ChannelNotifier
-	log    *slog.Logger
+	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
+	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
+	acts ActivityRecorder
+	log  *slog.Logger
 
 	policy        schedule.PendingPolicy
 	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
@@ -225,6 +228,19 @@ type ChannelNotifier interface {
 // updates the UI live (the "no manual rebuild" model, §9). Optional; nil ⇒ no emit.
 func (e *Engine) WithNotifier(n ChannelNotifier) *Engine {
 	e.notify = n
+	return e
+}
+
+// ActivityRecorder is the durable operator-facing feed (§12). A local interface so this package
+// needn't import internal/activity — the same accept-interfaces style as ChannelNotifier above.
+type ActivityRecorder interface {
+	Warn(ctx context.Context, kind, subjectID, text string)
+}
+
+// WithActivity wires the durable feed. Optional; nil ⇒ the log line is the only record, which is
+// exactly the gap that made a stranded channel take source-reading to diagnose (§9 V54).
+func (e *Engine) WithActivity(a ActivityRecorder) *Engine {
+	e.acts = a
 	return e
 }
 
