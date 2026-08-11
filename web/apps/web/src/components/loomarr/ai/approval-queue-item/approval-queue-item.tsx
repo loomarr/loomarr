@@ -1,5 +1,5 @@
 import type { ProposalItem } from "@loomarr/api";
-import { Check, ChevronDown, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Badge, Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib";
@@ -46,6 +46,7 @@ const ApprovalQueueItem = ({
   denyReason,
   lineup,
   acquisitionItems,
+  refused,
   onEdit,
   onApprove,
   onDeny,
@@ -129,6 +130,39 @@ const ApprovalQueueItem = ({
               Deny
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* ⚠ OUTSIDE the picks disclosure, and above it. What a reviewer is approving changed:
+          these titles were proposed and will not play. Before this, the card offered them
+          silently and the §4 gate dropped them after approval — so an admin authorised seven
+          titles, got five, and nothing anywhere said which two or why (#259). A fact that
+          changes the meaning of the button is not detail behind a toggle. */}
+      {refused && refused.length > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-md border border-signal/40 bg-signal/5 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-sm">
+            <ShieldAlert className="size-4 shrink-0 text-signal" aria-hidden />
+            <span className="font-medium">
+              {refused.length} {refused.length === 1 ? "title" : "titles"} won't be included
+            </span>
+          </p>
+          <ul className="flex flex-col gap-0.5">
+            {refused.map((r) => (
+              <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`} className="text-sm">
+                <span>{r.item.name}</span>{" "}
+                <span className="text-muted-foreground">
+                  {/* The reason is spelled out rather than shown as a code: the reviewer's
+                      next action (raise the ceiling, or accept the shorter lineup) depends on
+                      knowing it was the audience rule and not a missing file. */}
+                  — rated {r.item.officialRating || "unknown"}, above this channel's audience limit
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-muted-foreground text-xs">
+            Approving adds everything else. To include these, raise the channel's audience limit after it's
+            created.
+          </p>
         </div>
       )}
 

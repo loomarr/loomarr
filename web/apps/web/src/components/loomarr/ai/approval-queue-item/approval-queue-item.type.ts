@@ -1,4 +1,4 @@
-import type { ApprovalEditDTO, ProposalItem } from "@loomarr/api";
+import type { ApprovalEditDTO, ProposalItem, RefusedPick } from "@loomarr/api";
 
 type ApprovalStatus = "pending" | "approving" | "denied";
 
@@ -15,6 +15,12 @@ interface ApprovalQueueItemProps {
   // the queue stays scannable; omit to keep the compact row.
   lineup?: ProposalItem[];
   acquisitionItems?: ProposalItem[];
+  // Picks the model grounded that this proposal's OWN audience ceiling cannot air (§4, #259).
+  //
+  // ⚠ Rendered OUTSIDE the "Show picks" disclosure, unlike the picks themselves. The picks are
+  // detail you open when you want them; a refusal changes what approving MEANS — before this,
+  // an admin approved seven titles and got five, with nothing on the card saying so.
+  refused?: RefusedPick[];
   // Edit-before-approve (V25b). When supplied, the "Show picks" disclosure becomes the EDIT
   // surface — drop a title, add one via search, leave the requester a note — and this fires with
   // the resulting delta, or `undefined` when nothing has been modified. Omit it and the
