@@ -22,7 +22,6 @@ import (
 	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
-	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -889,59 +888,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
 		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
 		taggerProvider, tagger := buildTagger(st, set, log)
-		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no longer
-		// exists. Absent paths are
-		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
-		// — the `ingest` feature gate reports it and the UI explains the image variant.
-		// ⚠ **TWO downloaders, resolved INDEPENDENTLY** (§10 V38b, wiring fixed V38c.8). archive.org
-		// is fetched over plain HTTP and needs only ffmpeg; yt-dlp is for YouTube and shells out to
-		// ffmpeg itself.
-		//
-		// This required BOTH paths to be set, which was the V38b defect surviving in the wiring
-		// after the feature GATE was split. The result was worse than the original bug: `features
-		// .ingest` reported true (correctly — ffmpeg is present), the Sources rows offered
-		// "Fetch now", and then every archive fetch failed at the point of use with "ingest
-		// tooling not present in this image". Two claims that cannot both be true, which is the
-		// exact shape that started V38b.
-		//
-		// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has
-		// always described these as defaulting to the vendored binaries, and only the Docker image
-		// set them, so a source build had ingest off with the tools installed.
-		ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
-		ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
-		var fetcher *clipfetch.Ingestor
-		if ffPath != "" {
-			// ⚠ A nil YouTube downloader is FINE — `downloaderFor` returns nil per kind and the
-			// Ingestor counts that source as failed rather than dying. So a box with ffmpeg and no
-			// yt-dlp fetches archive collections (the seeded ones) and reports honestly on
-			// playlists, instead of refusing everything.
-			var ytDL clipfetch.Downloader
-			if ytPath != "" {
-				ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
-			}
-			fetcher = clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), set.str("filler.dir"), log)
-			log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-		}
-		// Compilation splitting (§10, V34). Needs the drop-folder (clip paths are
-		// relative to it, so without one there is nothing to cut). ffmpeg/ffprobe
-		// come from playout.ffmpeg_path — a core runtime dep on the single image —
-		// NOT the ingest pair, because splitting works on files already on disk and
-		// must not die just because yt-dlp is absent. whisper is optional: without
-		// it, over-long segments come back Unsplittable rather than guessed (§15).
-		// The LLM provider wires whenever one is configured — splitting's rescue and
-		// classification are operator-invoked, not the batch job filler.ai_tagging
-		// gates.
-		var splitter *filler.Splitter
-		if dir := set.str("filler.dir"); dir != "" {
-			var splitProvider llm.Provider
-			if set.str("llm.url") != "" {
-				splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-			}
-			ffmpegPath := set.str("playout.ffmpeg_path")
-			tools := filler.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
-				set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
-			splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
-		}
+		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
+		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
+		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
+		fetcher := buildFetcher(set, log)
+		splitter := buildSplitter(st, set, log)
 		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
 		// below. The pipeline needs the vision provider and the splitter, which are wired further
 		// down, while this adapter is needed further up — so one of the two has to be completed
