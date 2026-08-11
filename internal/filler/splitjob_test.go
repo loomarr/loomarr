@@ -57,6 +57,10 @@ func (f *fakeTools) GrayFrames(_ context.Context, path string, start, end int64)
 	return frames, nil
 }
 
+func (f *fakeTools) KeyframesIn(ctx context.Context, path string, _, _ int64, n int) ([][]byte, error) {
+	return f.Keyframes(ctx, path, n)
+}
+
 func (f *fakeTools) Keyframes(_ context.Context, path string, _ int) ([][]byte, error) {
 	// Scripted per basename (the vision/heuristic tiers pass drop-dir-joined paths),
 	// so a unit test never shells ffmpeg for real JPEGs.

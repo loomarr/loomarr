@@ -226,3 +226,154 @@ describe("FillerSources switches", () => {
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 });
+
+// The PROVIDER ROLL-UP (§10 V51c), rendered for the first time in V54 phase B.
+//
+// ⚠ **`GET /v1/filler/sources` has returned `group`/`parentId` since PR #201 and NOTHING rendered
+// them** — the tab drew one flat list, so three archive collections read as three unrelated
+// services. Every test in this file was green over the flat V37 shape the whole time, because no
+// fixture anywhere carried a group row. These exist so that cannot happen twice.
+describe("FillerSources provider roll-up", () => {
+  // Pre-ordered exactly as the server sends it: each group node immediately followed by its own
+  // children. The nesting is the component's; the wire is flat.
+  const grouped = (over: Partial<FillerSourceDTO> = {}): FillerSourceDTO[] => [
+    source({ kind: "folder", id: "folder", target: "Drop folder", count: 9 }),
+    {
+      ...source({ kind: "archive", id: "provider:archive", target: "Archive.org" }),
+      group: true,
+      switchable: false,
+      removable: false,
+      fetchable: false,
+      searchable: false,
+      count: 179,
+      lastFetchedAt: "2026-07-30T09:14:00Z",
+      ...over,
+    },
+    source({
+      kind: "archive",
+      id: "archive:classic",
+      parentId: "provider:archive",
+      target: "Classic TV Commercials",
+      count: 137,
+      searchable: true,
+    }),
+    source({
+      kind: "archive",
+      id: "archive:psas",
+      parentId: "provider:archive",
+      target: "Vintage PSAs",
+      count: 42,
+      enabled: false,
+      searchable: true,
+    }),
+  ];
+
+  it("nests a provider's sources under it, in their own list", () => {
+    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+
+    // ⚠ The children are in a list OF THEIR OWN, not loose among the top-level rows. A screen
+    // reader then announces "list, 2 items" for what is under this service instead of walking one
+    // flat list of unrelated peers.
+    const nested = screen.getByRole("list", { name: /sources under Archive\.org/i });
+    expect(nested).toBeInTheDocument();
+    expect(screen.getByText("Classic TV Commercials")).toBeInTheDocument();
+    expect(screen.getByText("Vintage PSAs")).toBeInTheDocument();
+  });
+
+  // Open by default: every row is visible on the flat list today, so defaulting shut would HIDE
+  // rows an operator can currently see.
+  it("twirls its sources away and back", async () => {
+    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+
+    expect(screen.getByText("Classic TV Commercials")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: /show the sources under Archive\.org/i }));
+    expect(screen.getByText("Classic TV Commercials")).not.toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: /show the sources under Archive\.org/i }));
+    expect(screen.getByText("Classic TV Commercials")).toBeVisible();
+  });
+
+  // ⚠ THE denominator bug (§10 V54 B2). The derived node is a summary of rows already in this
+  // list, so counting it showed "3 of 4 on" beside a page-header pill saying "2 of 3" — two
+  // summaries of one list disagreeing on screen.
+  it("counts sources, not the provider rows that summarise them", () => {
+    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+    // folder (on) + classic (on) + psas (off) = 2 of 3. NOT 3 of 4.
+    expect(screen.getByText(/2 of 3 on/)).toBeInTheDocument();
+  });
+
+  // The roll-up stat is over the CHILDREN, because a half-running provider is exactly what a
+  // single boolean cannot say — and why the group carries no switch of its own.
+  it("summarises its children rather than reporting one state for the service", () => {
+    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+    expect(screen.getByText(/1 of 2 on/)).toBeInTheDocument();
+  });
+
+  // ⚠ A group is `switchable: false` BY DESIGN — a cascade switch would destroy each child's own
+  // choice — and every off-state was gated on `switchable && !enabled`. So a provider whose every
+  // collection was switched off rendered as if it were running.
+  it("reads as dormant when nothing beneath it is running", () => {
+    const sources = grouped({ enabled: false }).map((s) => (s.parentId ? { ...s, enabled: false } : s));
+    render(<FillerSources sources={sources} onFetch={vi.fn()} />);
+
+    expect(screen.getByText(/every one of these is switched off/i)).toBeInTheDocument();
+  });
+
+  // ⚠ The container used to inherit the leaf chip, so the YouTube CONTAINER was labelled PLAYLIST
+  // — same word, colour and width as the playlist one line below it, with only the indent to tell
+  // them apart.
+  it("labels the container as a service, not as one of the things inside it", () => {
+    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+    expect(screen.getByText("SERVICE")).toBeInTheDocument();
+    // Its children still carry the kind chip they always did.
+    expect(screen.getAllByText("ARCHIVE")).toHaveLength(2);
+  });
+
+  // ⚠ A provider with nothing under it is an INVITATION (§10, store/fillersources.go), and it
+  // rendered the same red `not configured` caution Badge a broken drop-folder gets — telling an
+  // operator something is wrong when nothing is.
+  it("invites rather than faults an empty provider", () => {
+    render(
+      <FillerSources
+        sources={[
+          source({ kind: "folder", id: "folder", target: "Drop folder" }),
+          {
+            ...source({ kind: "archive", id: "provider:archive", target: "Archive.org" }),
+            group: true,
+            configured: false,
+            enabled: false,
+            switchable: false,
+            removable: false,
+            fetchable: false,
+            searchable: false,
+            count: 0,
+          },
+        ]}
+        onFetch={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/nothing added yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing added/)).toBeInTheDocument();
+    // The caution Badge belongs to a source that is genuinely misconfigured, never to a service
+    // nobody has added anything to yet.
+    expect(screen.queryByText(/^not configured$/i)).not.toBeInTheDocument();
+  });
+
+  // A group has no URI, so it offers none of the leaf controls — the server sends all four flags
+  // false and the row must honour every one.
+  it("offers no switch, fetch or remove on the provider itself", () => {
+    render(
+      <FillerSources sources={grouped()} onFetch={vi.fn()} onToggleEnabled={vi.fn()} onRemove={vi.fn()} />,
+    );
+
+    // ⚠ Named, not counted. An earlier version asserted a switch COUNT and failed on the folder
+    // row's own switch — a count cannot say WHICH row is missing a control, which is the whole
+    // claim here.
+    expect(screen.queryByRole("switch", { name: /use Archive\.org/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /use Classic TV Commercials/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /fetch now from Archive\.org/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove Archive\.org/i })).not.toBeInTheDocument();
+  });
+});

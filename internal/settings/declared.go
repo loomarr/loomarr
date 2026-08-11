@@ -723,6 +723,19 @@ func declared() []Setting {
 			Doc: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
 		},
 		{
+			// ⚠ Counted in SEGMENTS, not clips — the only budget here that is, and §10 V51g is
+			// why it must exist. A rung's cost may not scale unboundedly with a clip's content:
+			// the live catalog holds proposals of 235, 222, 142 and 133 segments, so an unbounded
+			// per-segment pass is exactly the shape that burned 377s against a 120s budget.
+			//
+			// A reel with more segments than this does not auto-confirm — the gate is
+			// all-or-nothing, so an ungrounded tail sends it to review, which is where a reel
+			// nobody could judge belongs.
+			Key: "filler.pipeline.max_split_vision", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
+			Kind: KindInt, Default: 60, Advanced: true,
+			Doc: "How many segments of one recording Loomarr looks at before deciding whether it can cut it automatically. Recordings with more segments than this always wait for you.",
+		},
+		{
 			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
 			Kind: KindInt, Default: 3, Advanced: true,
 			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",

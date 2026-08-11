@@ -65,6 +65,10 @@ type scriptedVision struct {
 	calls  int
 }
 
+func (s *scriptedVision) KeyframesIn(ctx context.Context, f string, _, _ int64, n int) ([][]byte, error) {
+	return s.Keyframes(ctx, f, n)
+}
+
 func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte, error) {
 	s.calls++
 	return s.frames, s.err

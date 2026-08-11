@@ -78,7 +78,17 @@ const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFi
       </ul>
       <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
         <span>{formatMmSs(0)}</span>
-        <span>every block is one detected clip — click to preview</span>
+        {/* ⚠ **"jump to its row", NOT "preview" (V54 A7).** This read "click to preview" for as
+            long as the strip has existed, and clicking has never previewed anything: `onFocus`
+            sets the editor's `focusedKey`, which scrolls that segment's row into view and rings
+            it. Confirmed live — the page contains zero `<video>`, `<canvas>` and `<img>`
+            elements. A caption is a promise about behaviour, and an operator who clicks expecting
+            to see the clip concludes the feature is broken rather than absent.
+
+            The preview itself is Phase C. When it lands, this wording changes WITH it — the
+            "does not promise a preview it cannot deliver" test below is what ties the two
+            together, and it relaxes on its own once a media element is rendered. */}
+        <span>every block is one detected clip — click to jump to its row</span>
         <span>{formatMmSs(reelEnd)}</span>
       </div>
     </div>
