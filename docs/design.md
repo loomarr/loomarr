@@ -2577,9 +2577,27 @@ stage with no measurement shows no bar**, for the same reason a confidence of 0 
 absence of measurement and a measurement of zero are different claims.
 
 Intra-stage progress is throttled in the emitter (≥1s and ≥5 points since the last frame for that
-clip) and in the database (≥2s / ≥10 points); status *transitions* always publish and always
-write. The percentage is decoration — what has to survive a reload is which stage, and whether it
-is running.
+clip) and in the database; status *transitions* always publish and always write. The percentage is
+decoration — what has to survive a reload is which stage, and whether it is running.
+
+⚠ **The database throttle is `percent >= lastWritten + 10` OR `>= 2s since the last write`, and
+`lastWritten` is the last value actually PERSISTED (V54).** Both halves of that sentence are load-
+bearing, because the obvious reading of "≥2s / ≥10 points" produced a throttle that could never
+fire:
+
+- **OR, not AND.** A stage that crawls needs the time half to ever reach disk; a stage that jumps
+  needs the points half. Requiring both means a slow stage writes nothing for minutes.
+- **The baseline is the persisted value, not the last reported one.** If the skip branch advances
+  the baseline, it moves with every sample — ffmpeg emits about once a second, so `percent` is
+  perpetually `lastWritten + 1` and the `+ 10` test is never satisfied. A long transcode then
+  persists **nothing at all** between 0 and 100, which is precisely the case the write exists for.
+  The skip branch must publish and leave the baseline where it is.
+
+⚠ **`NoMeasurement` (-1) is a state, not a percentage, so it always writes and is never throttled.**
+It fires once when a stage that cannot measure itself starts, and it is what makes "a running stage
+with no measurement shows no bar" true across a reload — dropping it leaves the row at the 0 the
+stage was initialised with, which renders as a bar frozen at zero, i.e. the exact fabricated claim
+this section forbids.
 
 #### Three outcomes, not two
 
