@@ -446,11 +446,7 @@ func (s *sqlStore) queryImages(ctx context.Context, query string, args ...any) (
 	return out, rows.Err()
 }
 
-// scanner is what both *sql.Row and *sql.Rows satisfy, so one scan body serves the single-row and
-// multi-row paths.
-type scanner interface{ Scan(dest ...any) error }
-
-func scanImage(sc scanner) (Image, error) {
+func scanImage(sc scannable) (Image, error) {
 	var (
 		img                             Image
 		fetched, created, updated, used int64

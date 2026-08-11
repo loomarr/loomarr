@@ -93,13 +93,24 @@ func flavorOrDefault(set resolved) library.Flavor {
 //
 // # Why this is one long function
 //
-// It is ~630 lines and stays that way deliberately. Decomposing it into methods on a shared
-// builder struct was tried on paper and rejected: the sections are sequential and genuinely
-// interdependent (three back-patches — emitter.setEngine, playoutRes.activeChannels,
-// playoutRes.pods), so splitting them would convert ~70 locals into fields on a mutable
-// carrier. That WIDENS their scope rather than narrowing it, and trades compile-time
-// use-before-assignment errors for runtime nils. A composition root is allowed to be long; it
-// is not allowed to be unnavigable, which is what the section map below is for.
+// Decomposing it into methods on a shared builder struct was tried on paper and rejected: the
+// sections are sequential and genuinely interdependent (three back-patches — emitter.setEngine,
+// playoutRes.activeChannels, playoutRes.pods), so splitting them would convert ~70 locals into
+// fields on a mutable carrier. That WIDENS their scope rather than narrowing it, and trades
+// compile-time use-before-assignment errors for runtime nils.
+//
+// ⚠ **It said "~630 lines and stays that way". Measured 2026-08-10 it is 1,457** — 94 branches,
+// 15 separate `if st != nil` blocks, and the same library.NewDynamic client built 5 times
+// because the sections cannot see each other's locals. "A composition root is allowed to be
+// long; it is not allowed to be unnavigable" was the right test and it now fails: the section
+// map below makes it possible to FIND a heading, not to hold the whole.
+//
+// The sanctioned decomposition (§14.1) is per-subsystem FUNCTIONS returning values —
+// `buildFiller(deps) (…, error)` — each owning its own `if st != nil` guard. That is a
+// different shape from the rejected builder: nothing widens to a mutable field, and the
+// use-before-assignment errors stay. The three back-patches stay explicit here in the root.
+// Measured coupling, which is what makes this tractable: the 434-line filler section reads
+// only EIGHT locals from earlier sections. Section size does not predict extraction cost.
 //
 // # The nil-store path is deliberate
 //
@@ -773,11 +784,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb", tmdbClient != nil)
 	}
 
-	// Filler & commercials (§10, Phase 12; redesign — Loomarr-owned via Tunarr).
-	// Filler is a pure Loomarr↔Tunarr concern now: the catalog syncs from a Tunarr
-	// `local` source over the FILLER_DIR drop-folder (the media server is out of the
-	// filler path), plus the AI-tagging job and the pod assembler wired into the
-	// scheduler. Wired when a store, Tunarr, and FILLER_DIR are configured.
+	// Filler & commercials (§10, Phase 12). Loomarr scans and probes the drop-folder
+	// ITSELF; Tunarr is consulted only to annotate clips with program uuids for
+	// Tunarr-backed filler-lists. Plus the AI-tagging job and the pod assembler wired
+	// into the scheduler.
+	//
+	// ⚠ This comment said filler "is a pure Loomarr↔Tunarr concern" and that "the media
+	// server is out of the filler path" until 2026-08-10. Neither has been true since
+	// sources became pluggable: `library` is a filler source kind alongside `folder`,
+	// `youtube` and `archive`. The same stale claim was in filler/clip.go and design.md §2.
 	var fillerSvc api.FillerService
 	var podPreview api.PodPreviewer
 	if st != nil {

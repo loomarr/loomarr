@@ -33,6 +33,14 @@ interface ConnectionBlockProps {
   // The action row below the fields — the "Test connection" button. Rendered beside the
   // verdict line so diagnosis and its re-test sit together (the wizard's arrangement).
   action?: ReactNode;
+  // A note pinned to the BOTTOM of the block body, below the action row — for something that is
+  // about this service rather than about its settings. TMDB's licence attribution is the case it
+  // exists for (§22).
+  //
+  // ⚠ It is INSIDE the collapsible panel, so it is hidden while the block is collapsed — and
+  // blocks collapse when their check passes. Anything that must be visible unconditionally does
+  // not belong here.
+  footer?: ReactNode;
 }
 
 export type { ConnectionBlockProps, ConnectionVerdict };

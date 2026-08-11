@@ -1,10 +1,18 @@
 // Package filler is the commercials & filler domain (design §10): the clip
 // catalog model and pod assembly. Filler is a PARALLEL universe to provisioning
 // (§3–§7) — clips are not titles (not in TMDB, no acquisition loop). Their
-// identity is the clip's PATH under FILLER_DIR and their duration comes from
-// Loomarr's own ffprobe scan (§9.1 moved both; see Clip for why). The media
-// server is not in the filler path, and neither is Tunarr any more — an install
-// running internal playout with no Tunarr still has a full catalog.
+// identity is the clip's sparse content HASH (§10 V38c; see Clip.Hash) and their
+// duration comes from Loomarr's own ffprobe scan.
+//
+// ⚠ **Loomarr discovers its own clips.** Tunarr does not: it is optional, and when
+// present it only supplies program uuids for clips it already knows (see
+// TunarrClipSource) — an install running internal playout with no Tunarr has a full
+// catalog. The MEDIA SERVER, however, IS one of the scan sources: `library` is a
+// source kind alongside `folder`, `youtube` and `archive`, read via
+// library.ListFillerClips. This comment claimed "the media server is not in the
+// filler path" until 2026-08-10, which had not been true since sources became
+// pluggable.
+//
 // Pod assembly is pure and
 // SEEDED-DETERMINISTIC (seed = channel + window start) so tests reproduce
 // exactly and the same break rebuilds identically across reconciles (§10/§19) —
@@ -46,16 +54,21 @@ const (
 
 // Clip is one filler item in the catalog (§10), scanned from FILLER_DIR.
 //
-// IDENTITY IS `Path` — the clip's location relative to FILLER_DIR. It was previously the
-// Tunarr program uuid, and §9.1 forced the change for two reasons:
+// IDENTITY IS `Hash` (see the field below). This has moved three times, and the reasons
+// are worth keeping because each move was forced by a real failure:
 //
-//  1. Internal playout needs a playable INPUT, and a Tunarr uuid is not one. Loomarr's own
-//     encoder takes a path; under the old identity a channel could assemble a pod and then
-//     have nothing to hand ffmpeg.
-//  2. The dependency ran the wrong way. Clips were DISCOVERED by asking Tunarr to scan
-//     FILLER_DIR, so an install running internal playout with no Tunarr had an empty catalog
-//     and no commercials — a hard requirement on a service §9.1 makes optional. The files
-//     were on Loomarr's own disk the whole time.
+//  1. It was the Tunarr program uuid. §9.1 killed that for two reasons: internal playout
+//     needs a playable INPUT and a uuid is not one (a channel could assemble a pod and then
+//     have nothing to hand ffmpeg); and the dependency ran the wrong way — clips were
+//     DISCOVERED by asking Tunarr to scan FILLER_DIR, so an install running internal playout
+//     with no Tunarr had an empty catalog. The files were on Loomarr's own disk the whole time.
+//  2. It became `Path`, relative to FILLER_DIR.
+//  3. V38c moved it to the content hash: a path is unique only WITHIN a folder, so once many
+//     watched folders were allowed, two clips at `ads/coke.mp4` collided and silently
+//     overwrote one another.
+//
+// ⚠ This comment read "IDENTITY IS `Path`" until 2026-08-10 — one architecture behind the
+// field it introduces, which is the failure mode a long doc comment is most prone to.
 type Clip struct {
 	// Hash is the identity: the clip's sparse content hash (§10 V38c) — 64 hex characters.
 	// Read it through `ID()` rather than directly; see that method.

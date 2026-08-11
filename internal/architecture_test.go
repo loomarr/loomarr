@@ -48,6 +48,52 @@ func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
 	}
 }
 
+// `testing` DOES reach the shipped binary, through exactly one package, and this pins it there.
+//
+// `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package)
+// lives in ordinary .go files rather than _test.go ones, and that is deliberate: BOTH backend
+// drivers must import `RunConformance` — SQLite in-package, Postgres behind a build tag — so the
+// assertions have to be importable package code. The consequence is that `go list -deps
+// ./cmd/loomarr` contains `testing`, and `flag` behind it.
+//
+// That sits awkwardly beside the rule above, whose stated principle is that test code in the
+// binary "is a seam that only ever gets wider". The principle is right; the answer is not to
+// delete a working two-backend suite, it is to stop the seam widening. So: one package may do
+// this, it is named here, and a second one fails.
+//
+// ⚠ The exit is known and NOT blocked on design — verified 2026-08-10 that the conformance files
+// reference ZERO unexported store identifiers, so they can move to a sibling package that only
+// the two drivers import, and `testing` leaves the binary entirely. That move is a ~4,450-line
+// mechanical rename across the tree's highest-churn files, so it is sequenced rather than done
+// opportunistically. Until then, this test is the thing standing between "one documented
+// exemption" and "test code is normal in production packages now".
+func TestOnlyStoreLinksTestingIntoTheBinary(t *testing.T) {
+	const allowed = "github.com/mantonx/loomarr/internal/store"
+
+	deps, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
+	if err != nil {
+		t.Fatalf("go list -deps: %v", err)
+	}
+	for _, pkg := range strings.Split(strings.TrimSpace(string(deps)), "\n") {
+		if !strings.HasPrefix(pkg, "github.com/mantonx/loomarr/internal") {
+			continue
+		}
+		imports, err := exec.Command("go", "list", "-f", "{{join .Imports \" \"}}", pkg).Output()
+		if err != nil {
+			t.Fatalf("go list %s: %v", pkg, err)
+		}
+		for _, imp := range strings.Fields(string(imports)) {
+			if imp != "testing" || pkg == allowed {
+				continue
+			}
+			t.Errorf("%s imports `testing` and is linked into cmd/loomarr — only %s may do that, "+
+				"and only because both store conformance drivers must import the suite (§14.1). "+
+				"Put the assertions in a _test.go file, or in a package the binary does not reach.",
+				pkg, allowed)
+		}
+	}
+}
+
 // The §14.2 package map lists every package. A map that silently goes stale is worse than no
 // map: it reads as authoritative while quietly omitting whatever was added last.
 //

@@ -62,6 +62,9 @@ flowchart LR
   LLM[LLM: Ollama / OpenAI-compatible]
   Tunarr[Tunarr]
   DB[(Postgres / SQLite)]
+  FILL[Filler: catalog + pod assembly]
+  PLAY[Playout: Loomarr's own streams]
+  Clips[/Clip sources: folder, yt-dlp, Archive.org/]
 
   User --> Web
   Web -->|intent| SUG
@@ -79,27 +82,213 @@ flowchart LR
   Web -->|monitor via SSE| PROV
   PROV <--> DB
   SCH <--> DB
+  SCH -->|breaks to fill| FILL
+  FILL -->|scan + probe + ingest pipeline| Clips
+  FILL <-->|optional: program uuids| Tunarr
+  MS -->|filler library source| FILL
+  SCH -->|lineup| PLAY
+  PLAY -->|MPEG-TS / HLS| MS
+  FILL <--> DB
 ```
+
+⚠ **`filler` and `playout` were absent from this diagram until 2026-08-10** — the former excluded on purpose ("to keep the diagram legible"), the latter because it arrived later as §9.1. They are the 2nd and 5th largest packages in the tree, so the one picture a newcomer reads first was missing roughly a quarter of the system. Legibility is a real constraint, but the fix for a crowded diagram is a second diagram, not a silent omission.
 
 The subsystems are internally decoupled (clean interfaces) but ship in one binary/container by default. The **provisioner's availability events are now an internal feed to the scheduler** — that's what drives backfill. An *optional* outbound webhook/SSE remains for external consumers, but the primary consumer is `loomarr`'s own scheduler.
 
-**Filler flow (not drawn above to keep the diagram legible):** clips land in a drop-folder (manually, via MeTube, or via loomarr's own **ingest job** on a `filler`-variant image) → Tunarr scans that folder as a **`local` media source** → loomarr **syncs its clip catalog from Tunarr** (§10). The media server is not in the filler path at all, and the core never *probes* media — Tunarr assigns duration and program ids.
+**Filler flow (§10).** Every clip arrives through a **filler source**, of which there are four kinds: `folder` (a watched directory), `youtube` (yt-dlp), `archive` (Archive.org), and `library` (a dedicated filler library on the media server). Loomarr **scans and probes the files itself** — `ffprobe` for duration, a sparse content hash for identity — and each clip then travels the **ingest pipeline** (V51b), whose rungs transcode, detect language, transcribe, tag, and split compilations. Tunarr is **optional**: when present it registers the folder as a `local` media source and hands back program uuids for filler-lists, and when absent an install running internal playout still has a complete catalog.
+
+⚠ **This paragraph described the reverse of all three of those facts until 2026-08-10** — it said Tunarr scanned the drop-folder and Loomarr synced its catalog *from* Tunarr, that "the media server is not in the filler path at all", and that ingest ran on a separate image variant (retired-ok). The first was the dependency-runs-the-wrong-way bug `filler.Clip` records as fixed; the second stopped being true when sources became pluggable; the third names something that no longer exists. It is kept here, corrected rather than deleted, because §10 notes this area "keeps being re-decided" and a silent edit loses that.
 
 ### Boundaries (ports)
 Core logic depends only on interfaces; concrete adapters live at the edges.
 
-| Boundary | Interface | Adapters |
+⚠ **Three of the eight below are Go `struct`s, not interfaces** (2026-08-10): `suggest.Suggester`, `catalog.Catalog` and `events.Bus`. That is not a defect — each has exactly one implementation and inverts its *own* dependencies through narrow interfaces it declares — but the column header said "Interface" for all eight, which sent a reader looking for a seam that is not there. The **Shape** column now says which is which.
+
+| Boundary | Shape | Adapters |
 | --- | --- | --- |
-| Library | `Library.Lookup(title) → (itemID, present)` | Emby, Jellyfin (shared impl, flavor-specific auth) |
-| Requester | `Requester.Request/Cancel(title)` | Seerr (default), Sonarr+Radarr (alt) |
-| **Programmer** | `Programmer.Reconcile(channel, lineup)` | **Tunarr** (only impl; abstracted for future ErsatzTV) |
-| Suggester | `Suggester.Propose(intent) → Proposal` | LLM: Ollama (local) or an OpenAI-compatible endpoint (hosted — OpenRouter, or a user-supplied Custom base URL; Claude via OpenRouter) |
-| Catalog | `Catalog.Search(query) → []Candidate` | Library + TMDB/TVDB — grounds the LLM **and** backs `GET /v1/search` (§7.2) |
-| FillerSource | catalog sync + optional ingest | Tunarr `local`-source catalog sync (core); `Ingester`: yt-dlp / Archive.org → drop-folder, in-core on a `filler`-variant image (§10) |
-| Store | `Store` (see §5) | Postgres, SQLite |
-| Events | `EventBus` | internal (→ scheduler) + optional outbound webhook |
+| Library | **interface** `Library.Lookup(title) → (itemID, present)` | Emby, Jellyfin (shared impl, flavor-specific auth) |
+| Requester | **interface** `Requester.Request/Cancel(title)` | Seerr (default), Sonarr+Radarr (alt) |
+| **Programmer** | **interface** `Programmer.Reconcile(channel, lineup)` | **Tunarr** (only impl; abstracted for future ErsatzTV) |
+| Suggester | *struct* `suggest.Suggester` | LLM: Ollama (local) or an OpenAI-compatible endpoint (hosted — OpenRouter, or a user-supplied Custom base URL; Claude via OpenRouter) |
+| Catalog | *struct* `catalog.Catalog` | Library + TMDB/TVDB — grounds the LLM **and** backs `GET /v1/search` (§7.2) |
+| FillerSource | **interface** `filler.FillerSource` | Four source kinds — `folder`, `youtube` (yt-dlp), `archive` (Archive.org), `library` (the media server's filler library). Loomarr scans and probes them itself; Tunarr is optional (§10) |
+| Store | **interface** `Store` (see §5) | Postgres, SQLite |
+| Events | *struct* `events.Bus` | internal (→ scheduler) + optional outbound webhook |
+
+### Names that do not separate themselves
+
+The subsystem names above map **many-to-many** onto package names, and four packages share two verbs. This is the single most common way to get lost in this tree, so it is written down rather than left to be re-derived. (Renaming them is a live question — see §14.1's rule that a metric is a prompt to read, not a finding — but a rename touches every import and thousands of §-refs, so the table comes first.)
+
+| If you are looking for… | It is in | Not in |
+| --- | --- | --- |
+| Channel identity, `DesiredLineup`, `ChannelPolicy`, the ordering/relaxation/seasonal math — **pure, no I/O** | `internal/schedule` | `internal/scheduler` |
+| The cron/job runner — named jobs, tunable intervals, leases, "Run now". **Nothing to do with TV** | `internal/scheduler` | `internal/schedule` |
+| Making a channel real in Tunarr: diff desired-vs-actual, apply minimal calls, own the per-channel mutex | `internal/channels` | `internal/reconcile` |
+| The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/reconcile` | `internal/channels` |
+| Turning an **approved proposal** into a channel (create or patch, preserving operator edits) | `internal/binder` | `internal/channels` |
+| Periodically re-evaluating a channel's intent and evolving its lineup, through the approval gate | `internal/recurate` | `internal/suggest` |
+| The Title/Key identity model and acquisition **state machine** — pure, zero internal deps | `internal/provision` | `internal/reconcile` |
+| Operator **connection** flows (Live TV wiring, setup checklist) | `internal/setup` | `internal/config`, `internal/app` |
+| Federated **search** over library + TMDB + clips | `internal/catalog` | — |
+
+Two further traps worth naming: **`internal/programmer`** is the port for pushing a channel to Tunarr, and is unrelated to **`docs/programming-design.md`**, which is about `ChannelPolicy` heuristics. And §2's **"Provisioner"** is not one package — it is `provision` + `reconcile` + `requester` + `store`; §9's **"Scheduler"** is `schedule` + `channels` + `programmer`, and does *not* include `scheduler`.
 
 ---
+
+<!-- BEGIN GENERATED: package-map — `make arch-docs`. DO NOT EDIT BY HAND. -->
+
+#### Package map
+
+Generated from each package's own doc comment and its imports, so it cannot drift from the code the way a hand-maintained list does. **Layer** is derived: the longest path from that package to one with no internal dependencies. It is the measured layering, not an aspirational one.
+
+Sizes are deliberately absent — they change on nearly every commit, which would make the drift check red by default and train everyone to regenerate without reading.
+
+##### The spine
+
+Packages imported by 5 or more others, and how they sit against each other. Everything else in the tree sits on top of this.
+
+```mermaid
+flowchart TD
+  p_catalog["catalog<br/><small>5 importers</small>"]
+  p_filler["filler<br/><small>6 importers</small>"]
+  p_httpx["httpx<br/><small>5 importers</small>"]
+  p_library["library<br/><small>6 importers</small>"]
+  p_llm["llm<br/><small>5 importers</small>"]
+  p_metrics["metrics<br/><small>6 importers</small>"]
+  p_provision["provision<br/><small>16 importers</small>"]
+  p_schedule["schedule<br/><small>12 importers</small>"]
+  p_scheduler["scheduler<br/><small>7 importers</small>"]
+  p_store["store<br/><small>11 importers</small>"]
+  p_suggest["suggest<br/><small>5 importers</small>"]
+  p_catalog --> p_library
+  p_catalog --> p_provision
+  p_filler --> p_llm
+  p_filler --> p_metrics
+  p_httpx --> p_metrics
+  p_library --> p_filler
+  p_library --> p_httpx
+  p_llm --> p_httpx
+  p_llm --> p_metrics
+  p_metrics --> p_provision
+  p_schedule --> p_provision
+  p_scheduler --> p_store
+  p_store --> p_filler
+  p_store --> p_provision
+  p_store --> p_schedule
+  p_suggest --> p_catalog
+  p_suggest --> p_llm
+  p_suggest --> p_provision
+  p_suggest --> p_schedule
+  p_suggest --> p_store
+```
+
+##### Every package, by layer
+
+**Layer 0** — no internal dependencies. These are the vocabulary the rest agrees on.
+
+- **`buildinfo`** · 1 importer
+  Carries the version stamped into the binary at build time.
+- **`config`** · 1 importer
+  Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
+- **`events`** · 2 importers
+  In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`provision`** · 16 importers
+  Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`settings`** · 1 importer
+  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
+- **`taxonomy`** · 4 importers
+  Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+- **`web`** · 1 importer
+  Embeds the built SPA and serves it same-origin at / (main doc §12).
+
+**Layer 1**
+
+- **`metrics`** · 6 importers · → `provision`
+  Loomarr's Prometheus surface (design §7 /metrics, §18).
+- **`schedule`** · 12 importers · → `provision`
+  Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
+
+**Layer 2**
+
+- **`httpx`** · 5 importers · → `metrics`
+  Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`playout`** · 3 importers · → `provision`, `schedule`
+  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
+
+**Layer 3**
+
+- **`llm`** · 5 importers · → `httpx`, `metrics`
+  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by Ollama (homelab default) and Anthropic (opt-in).
+- **`programmer`** · 3 importers · → `httpx`, `schedule`
+  Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
+- **`requester`** · 2 importers · → `httpx`, `provision`
+  Requester port (design §2, §6): it asks a downstream service to acquire a title.
+
+**Layer 4**
+
+- **`filler`** · 6 importers · → `llm`, `metrics`, `playout`, `taxonomy`
+  Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`
+  The shared test doubles and pinned fixtures every test uses (CLAUDE.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+
+**Layer 5**
+
+- **`clipfetch`** · 1 importer · → `filler`
+  Downloads filler clips into the drop-folder (design §10, §16).
+- **`library`** · 6 importers · → `filler`, `httpx`
+  Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
+- **`store`** · 11 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+
+**Layer 6**
+
+- **`activity`** · 3 importers · → `store`
+  Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
+- **`catalog`** · 5 importers · → `library`, `provision`
+  Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`scheduler`** · 7 importers · → `store`
+  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
+- **`setup`** · 1 importer · → `library`
+  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
+
+**Layer 7**
+
+- **`auth`** · 2 importers · → `library`, `scheduler`, `store`
+  Issues and validates Loomarr sessions (design §11).
+- **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
+- **`images`** · 2 importers · → `scheduler`
+  One pipeline every image in Loomarr travels (§22).
+- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
+  Provisioning backstop (design §4, §7, §18).
+- **`retention`** · 1 importer · → `scheduler`, `store`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`suggest`** · 5 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
+  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
+  TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
+
+**Layer 8**
+
+- **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
+  Materializes an APPROVED proposal onto a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
+- **`eval`** · → `catalog`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
+  Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
+- **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
+  Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
+
+**Layer 9**
+
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+  Wires Loomarr's inbound HTTP surface (§7).
+
+**Layer 10**
+
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+  Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
+
+
+<!-- END GENERATED: package-map -->
 
 ## 3. Provisioner domain model
 
@@ -3296,18 +3485,30 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 
 Recorded after a full sweep of `internal/`, because two of the rules below exist to stop a *plausible-sounding* refactor rather than to prescribe one.
 
+⚠ **Every number in this section carries the date it was taken, and that is not decoration.** The first version of §14.1 stated its figures undated, and by the next re-measurement all three were wrong — `BuildHandler` had gone 630 → 1,457 lines, `api.Server` 33 → 51 fields, and the ~600-line rule was being broken by 18 files. The *arguments* below survived; the numbers anchoring them did not, and an undated number reads as current forever. Figures below re-measured **2026-08-10**.
+
 **What holds, and is worth keeping:**
 
 - **The dependency direction is one-way.** No domain package imports `internal/api`; `internal/app` is the only composition root. Verified, not assumed — a domain package that needs an API type is a sign the type belongs in the domain.
 - **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
+
+  ⚠ **`testing` itself DOES reach the binary, through exactly one package, and that is now pinned rather than merely true.** `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package) is ordinary package code on purpose: both backend drivers must import `RunConformance`, SQLite in-package and Postgres behind a build tag, so the assertions cannot live in `_test.go`. `flag` follows `testing` in. The principle above is right, so `TestOnlyStoreLinksTestingIntoTheBinary` names the one permitted package and fails on a second — the exemption cannot spread by precedent. The exit is known and unblocked: verified 2026-08-10 that the suite references **zero** unexported store identifiers, so it can move to a sibling package the binary never reaches. That is a ~4,450-line mechanical move across the tree's highest-churn files, so it is sequenced, not taken opportunistically.
 - **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the ffconcat mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
 - **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
 - **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
 
+  ⚠ **This rule is currently not being applied: 18 non-test files exceed 600 lines (2026-08-10).** That is a statement of fact, not a licence — but nor is it 18 findings. Three of the largest are *deliberately* long and must not be "fixed": `settings/declared.go` (1,218) and `api/filler.go`'s `registerFiller` are **declaration tables**, and `store/conformance_filler.go` (2,193) is the shared two-backend conformance suite. The seam test above is what distinguishes them: a file is over-long when it holds things that were never the same subject, not when it holds a long list of one.
+
 **Two things that look like problems and are not.** Both were flagged from metrics during the sweep and both survived contact with the code:
 
-- **`BuildHandler` is ~630 lines and stays that way.** Decomposing it into methods on a shared builder would convert ~70 locals into fields on a mutable carrier — *widening* their scope, and trading compile-time use-before-assignment errors for runtime nils. The sections are sequential and genuinely interdependent (three deliberate back-patches). A composition root may be long; it may not be unnavigable, so it carries a section map instead. Its heavy `if st != nil` nesting is likewise deliberate: a container started without `DATABASE_URL` must answer `/readyz` with the reason rather than crash-loop past the probe that would explain it.
-- **`api.Server`'s 33 fields are not a service locator.** Every field is a narrow, purpose-named interface (`LoginService`, `PodPreviewer`, `ChannelBinder`) with a doc comment stating what it wires and what `nil` means, and the nil-means-501 convention is uniform — 33 optional capabilities, 33 `errNotImplemented` guards. That is what lets an unconfigured install boot and explain itself. Grouping them into sub-structs would add indirection at every call site and bury the one thing the comments make plain.
+- **`BuildHandler` must not become methods on a shared builder.** That decomposition would convert ~70 locals into fields on a mutable carrier — *widening* their scope, and trading compile-time use-before-assignment errors for runtime nils. The sections are sequential and genuinely interdependent (three deliberate back-patches). Its heavy `if st != nil` nesting is likewise deliberate: a container started without `DATABASE_URL` must answer `/readyz` with the reason rather than crash-loop past the probe that would explain it.
+
+  ⚠ **What has NOT survived is the claim that it "stays ~630 lines".** Measured 2026-08-10 it is **1,457 lines** (`app.go:131`→`:1587`, the only substantive function in the file): 94 branches, 46 top-level assignments, **15** separate `if st != nil` blocks, and the same `library.NewDynamic(...)` client constructed **5 times** because the sections cannot see each other's locals. "A composition root may be long; it may not be unnavigable" was the right test and it now fails — a section map makes 1,457 lines navigable in the sense that you can find a heading, not in the sense that you can hold it.
+
+  **The sanctioned decomposition is per-subsystem functions, not a builder.** `buildFiller(deps) (…, error)`, `buildPlayout(deps) (…, error)` and so on: each takes what it needs, owns its own `if st != nil` guard, and *returns values* — so nothing widens to a mutable field and the use-before-assignment errors stay. That is a different shape from the one rejected above, which is why the rejection does not cover it. The three back-patches stay explicit in the root, where they are already named.
+- **`api.Server`'s fields are not a service locator.** Every field is a narrow, purpose-named interface (`LoginService`, `PodPreviewer`, `ChannelBinder`) with a doc comment stating what it wires and what `nil` means, and the nil-means-501 convention is uniform — one optional capability, one `errNotImplemented` guard. That is what lets an unconfigured install boot and explain itself. Grouping them into sub-structs would add indirection at every call site and bury the one thing the comments make plain.
+
+  ⚠ **The count was 33 and is 51 (2026-08-10)**, with `api.Options` at 50 — and `Options`→`Server` is a hand-written copy of all 50 pairs in `api.go`, ~400 lines from where either struct is declared. The argument above still holds field-by-field; what the growth costs is the copy, and that is already guarded rather than trusted: `optionsparity_test.go` parses `api.go`'s AST to catch an omitted line, because a missed pair is silent.
 
 **The general rule the two exceptions illustrate:** a line count or a field count is a prompt to go and read something, never a finding on its own. Both of the above were "obvious" refactors until the code was read, and both would have made the system worse.
 

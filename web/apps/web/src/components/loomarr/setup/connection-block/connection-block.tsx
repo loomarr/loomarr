@@ -41,6 +41,7 @@ const ConnectionBlock = ({
   onToggle,
   children,
   action,
+  footer,
 }: ConnectionBlockProps) => {
   const failing = verdict !== undefined && !verdict.ok;
   // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
@@ -140,6 +141,9 @@ const ConnectionBlock = ({
                 )}
               </div>
             )}
+            {/* Below the fields AND below the Test row — a statement about the service, read
+                after its settings rather than competing with them. */}
+            {footer}
           </div>
         </div>
       </Collapsible.Panel>
