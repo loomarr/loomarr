@@ -68,7 +68,7 @@ Go 1.26+, Node 22.5+, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres 
 test suites.
 
 ```bash
-make check          # the gate: fmt + vet + lint + unit tests
+make check          # the gate — run before every push
 make fe-install     # pnpm install
 make dev-be         # backend on :8080 with live reload
 ```

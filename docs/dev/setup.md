@@ -29,7 +29,7 @@ sudo pacman -S ffmpeg        # Arch
 
 ```bash
 git clone https://github.com/mantonx/loomarr && cd loomarr
-make check          # fmt + vet + vet-tags + lint + unit tests
+make check          # the gate — run before every push
 make fe-install     # pnpm install
 make fe             # biome + codegen + typecheck + tests + SPA + storybook
 ```

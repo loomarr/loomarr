@@ -6,10 +6,14 @@ extend it rather than writing a private mock.
 ## The gate
 
 ```bash
-make check    # fmt + vet + vet-tags + lint + test
+make check    # the gate
 ```
 
 Green here should mean green in CI.
+
+The steps it runs are listed in the [command reference](commands.md), which is generated from the
+Makefile — so it can't drift from what `check` actually does. Enumerating them here could, and
+did.
 
 ### `make vet-tags` isn't redundant
 
