@@ -294,7 +294,16 @@ const renderAt = (path: string) => {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  // Returned so a test can assert WHERE the router settled — a redirect (the bare channel route
+  // lands on Watch, §9.1 V54) is otherwise invisible to a content-only assertion. Additive: every
+  // existing caller ignores it.
+  return router;
 };
+
+// ⚠ `href`, never pathname + search. `location.search` is a PARSED OBJECT here, so concatenating
+// it throws "Cannot convert object to primitive value" — a failure that reads like an app bug and
+// was once blamed on one for five tests running (see app-router.test.tsx).
+const at = (router: ReturnType<typeof renderAt>) => router.state.location.href;
 
 // Turn a generated route id into a navigable path: strip pathless layout segments
 // (`_authed`), drop the trailing index marker, and fill params with a value the stub
@@ -486,9 +495,22 @@ describe("feature-gated panels mount when their flag is on", () => {
   // exactly the blind spot this suite exists for.
   it("/channels/ch-1 reaches the channel icon field on the info panel", async () => {
     stubReachable();
-    renderAt("/channels/ch-1");
-    // Info is the default panel (and the viewer's only one), so no tab click is needed.
+    // ⚠ The INFO path explicitly. The bare `/channels/ch-1` used to land here; since §9.1 V54 it
+    // redirects to Watch, so pointing this at the bare route would silently stop testing the icon
+    // field — it would assert against a player instead, which is how a reachability test quietly
+    // stops covering the thing it is named for. The bare route's own landing is asserted below.
+    renderAt("/channels/ch-1/info");
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
+  });
+
+  // ⚠ Opening a channel lands on WATCH (§9.1 V54) — the redirect the bare route performs. Asserted
+  // because the default landing section is a routing DECISION: without this, flipping it back (or
+  // to any other section) breaks nothing, and the guide's channel rows all go through this hop.
+  it("/channels/ch-1 lands on Watch", async () => {
+    stubReachable();
+    const router = renderAt("/channels/ch-1");
+    await screen.findByRole("heading", { name: /Watch/i });
+    await waitFor(() => expect(at(router)).toContain("/channels/ch-1/watch"));
   });
 
   // The ninth instance, and the one this suite failed to prevent: V7 shipped
