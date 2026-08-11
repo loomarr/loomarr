@@ -216,7 +216,10 @@ func TestHelpComposeCommandsResolve(t *testing.T) {
 // Settings page to contradict it, and the symptom is a container that starts and misbehaves.
 //
 // Not embedded, so there is no docs.Pages() to walk; these are read from disk.
-func installPages(t *testing.T) map[string]string {
+//
+// README.md is included: it is the most-read file in the repo and its Quickstart carries the
+// first `docker compose` command anyone runs. A wrong path there is the worst placed of all.
+func operatorEntryPages(t *testing.T) map[string]string {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join("install", "*.md"))
 	if err != nil {
@@ -235,13 +238,20 @@ func installPages(t *testing.T) map[string]string {
 	if len(out) == 0 {
 		t.Fatal("no pages found under docs/install/ — this guard would pass against nothing")
 	}
+
+	readme, err := os.ReadFile(filepath.Join("..", "README.md")) //nolint:gosec // repo-relative
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	out["README.md"] = string(readme)
+
 	return out
 }
 
 func TestInstallEnvVarsExist(t *testing.T) {
 	valid := knownEnvVars(t)
 	var checked int
-	for label, body := range installPages(t) {
+	for label, body := range operatorEntryPages(t) {
 		checked += scanEnvVars(t, label, body, valid)
 	}
 	// Lower than the help set's floor: these pages deliberately push the full list to
@@ -258,7 +268,7 @@ func TestInstallComposeCommandsResolve(t *testing.T) {
 		t.Fatalf("resolve repo root: %v", err)
 	}
 	var checked int
-	for label, body := range installPages(t) {
+	for label, body := range operatorEntryPages(t) {
 		for _, m := range composeFileFlag.FindAllStringSubmatch(body, -1) {
 			path := m[1]
 			checked++
