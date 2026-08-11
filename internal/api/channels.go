@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -314,6 +315,11 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 		}}
 	}
 	ch.Lineup = lineup
+	// Due NOW, so the sweep owns this channel from the moment it exists (§9 V54) — the same
+	// stamp `binder.BindApprovedChannel` applies, for the same reason: the immediate reconcile
+	// below is best-effort, and without a deadline the retry that is supposed to cover it never
+	// comes. A hand-made channel and an approved one must not differ in their recovery story.
+	ch.ReconcileDeadline = time.Now().UTC()
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
@@ -338,7 +344,14 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	// channel in `building` for the sweep to pick up, it doesn't fail creation.
 	if s.channels != nil && !s.unconfigured("tunarr.url") {
 		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			s.log.Warn("initial channel reconcile failed (sweep will retry)", "channel", ch.ID, "err", err)
+			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists and
+			// shows a schedule in the guide but has never reached Tunarr.
+			s.log.Error("initial channel reconcile FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
+			if s.activity != nil {
+				s.activity.Error(ctx, "channel.reconcile", ch.ID,
+					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
+			}
 		}
 	}
 	fresh, err := s.store.GetChannel(ctx, ch.ID)

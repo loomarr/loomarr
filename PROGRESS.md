@@ -56,6 +56,38 @@ looks for the dialog can tell the difference, so that is what was added.
 `dismissed` row and returns it to `review`, but **no surface lists dismissed clips**, so that undo
 is unreachable from the UI. §10 says so in those words.
 
+**A channel whose FIRST reconcile failed was stranded forever (2026-08-10, branch
+`fix/stuck-building-channel`).** Not a phase — a live bug found by driving the app: an approved
+channel sat at `building` with a fully-built 19-airing schedule that had never reached Tunarr.
+
+⚠ **A three-part deadlock, and the middle part is the lesson.** `ClaimDueChannels` carried
+`AND reconcile_deadline > 0`; the deadline's ONLY writer is the *last* step of a *successful*
+reconcile (`reconcile.go:177`); the initial reconcile is best-effort. So a first reconcile that
+failed left `deadline=0` → invisible to the sweep → never retried → never pushed. **The binder's
+own comment said "best-effort, the sweep retries."** The sweep retried every channel except the
+one case the comment invoked it for. Confirmed on the maintainer's install: `building`,
+`tunarr_id=''`, `reconcile_deadline=0`, beside a healthy channel with both set.
+
+Fix: **remove the guard** — `0` means DUE NOW, which also heals already-stranded rows with no
+migration — and stamp new channels due-now in both creation paths (binder + `POST /v1/channels`).
+The guard removal is the load-bearing half; the stamp is belt-and-braces so a future writer
+re-adding `> 0` breaks one defence, not both.
+
+⚠ **The `> 0` guard was never a contract.** Nothing tested a zero deadline: the conformance suite
+covered past/future/detached and nothing else, and the guard lived in two hand-written dialect
+statements no test compared. The new conformance case asserts a zero-deadline channel IS claimed —
+sabotage-checked by re-adding the guard (red: "1 row, want ch-due AND ch-never-reconciled").
+
+⚠ **Logging was the reason this took source-reading to diagnose.** The failure was a `log.Warn`
+that had scrolled out of the terminal, so *why* the first reconcile failed is permanently
+unknowable for this incident. Now ERROR, naming the consequence, plus a durable `activity` row
+(the mechanism that already survives a restart and surfaces on the Dashboard) — via a nil-safe
+`Binder.WithActivity`, matching the existing `rec`/`codec` idiom.
+
+⚠ **Still open, filed separately:** nothing in the frontend calls `useReconcileChannel`, so
+`POST /v1/channels/{id}/reconcile` has no UI caller — an operator has no manual way out of this
+state. The actions menu offers only Watch / Edit / Pause / Delete. A surface-audit finding.
+
 **A1 — the open redirect, and a restart that read as a logout (2026-08-10).** Gate: `make fe`
 exit 0 (**1348** app + 49 core + 19 api + 5 tokens, biome clean on 972 files) + `make check`
 exit 0 + `make openapi-verify` exit 0 + `make retired-verify` exit 0. Each run without a pipe —
