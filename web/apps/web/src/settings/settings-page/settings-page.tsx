@@ -147,6 +147,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                   <ConnectionBlock
                     key={block.group}
                     title={block.title}
+                    {...(block.footer ? { footer: block.footer } : {})}
                     verdict={verdict}
                     docHref={standing?.docHref}
                     open={openBlocks?.[block.group] ?? false}

@@ -8,6 +8,13 @@ interface SettingsBlock {
   title: string;
   // The named connection check this block can run, when it has one (§8 per-block Test).
   check?: string;
+  // A note pinned to the bottom of this block's body, below its fields and its Test row — for
+  // something about the SERVICE rather than about its settings. TMDB's attribution (§22).
+  //
+  // ⚠ Inside the collapsible panel, so it is hidden while the block is collapsed, and connection
+  // blocks collapse when their check passes. Maintainer's call: the notice reads as belonging to
+  // TMDB, which a page-level footer under four unrelated blocks did not.
+  footer?: ReactNode;
 }
 
 interface SettingsPageProps {
