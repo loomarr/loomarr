@@ -188,6 +188,17 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	}
 	if in.Body.Restore {
 		s.clearPipelineRejects(ctx, in.Body.Hashes)
+	} else {
+		// ⚠ **"Don't use it" has to move the pipeline row, not just the tombstone** (§10 V54).
+		// `SetClipsRemoved` writes `removed_at` and `GetClip` carries no `removed_at` predicate, so
+		// the Incoming belt's fallback loop re-resolved a dismissed clip and put it straight back on
+		// the queue. Settling the row is what actually takes it off the belt: `dismissed` is not in
+		// `ConveyorOnly`'s `running|review` set, so the row is never fetched to be re-resolved.
+		//
+		// From `review` OR `filed`: this route also serves the Catalog tab's bulk bar, where the
+		// clip being removed was filed long ago.
+		s.settlePipeline(ctx, in.Body.Hashes, filler.DispositionDismissed,
+			filler.DispositionReview, filler.DispositionFiled)
 	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = n
@@ -216,10 +227,17 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 // airability is what matters), so failing the request over the bookkeeping half would report a
 // failure for an undo that mostly worked. A stale `rejected` row shows a wrong reason on the audit
 // list until the next write — visible and harmless, unlike a clip that is silently still hidden.
+// ⚠ It clears an operator DISMISSAL too (§10 V54), not only a machine rejection. Both are terminal
+// refusals with the same undo, and restore is one endpoint by the argument above — a restore that
+// un-removed a dismissed clip from the catalog while leaving Incoming calling it dismissed would be
+// the exact disagreement that argument exists to prevent.
 func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
-		if err != nil || !found || row.Disposition != filler.DispositionRejected {
+		if err != nil || !found {
+			continue
+		}
+		if row.Disposition != filler.DispositionRejected && row.Disposition != filler.DispositionDismissed {
 			continue
 		}
 		row.Disposition = filler.DispositionReview
@@ -227,6 +245,51 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 		row.UpdatedAt = time.Now().UTC()
 		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
 			s.log.Warn("could not clear a restored clip's rejection", "clip", hash, "err", err)
+		}
+	}
+}
+
+// settlePipeline moves each clip's pipeline row to the terminal disposition the OPERATOR chose
+// (§10 V54) — the writer `review → filed | dismissed` never had.
+//
+// ⚠ **The whole class of defect this fixes:** `filed` and `rejected` were only ever written by
+// `filler.Pipeline` itself, so every operator path moved `clips` and left the pipeline row alone.
+// The row kept saying `review`, so the clip kept saying it needed a decision. Three of the four
+// decision buttons therefore did not stick.
+//
+// ⚠ **Guarded on the row's CURRENT disposition, with the allowed origins passed explicitly.** A
+// clip the pipeline is still working (`running`) is not settled by an operator verb: it finishes
+// its ladder and settles itself, which is what keeps "the operator filed it early" from abandoning
+// the transcribe and tag rungs. An unlisted origin is skipped, never coerced.
+//
+// Best-effort, matching `clearPipelineRejects`: the catalog half has already landed by the time
+// this runs and `removed_at`/`held` are what decide airability, so failing the request over the
+// bookkeeping half would report a failure for a decision that took effect.
+func (s *Server) settlePipeline(ctx context.Context, hashes []string, to filler.Disposition, from ...filler.Disposition) {
+	for _, hash := range hashes {
+		row, found, err := s.store.GetClipPipeline(ctx, hash)
+		if err != nil || !found {
+			continue
+		}
+		allowed := false
+		for _, d := range from {
+			if row.Disposition == d {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			continue
+		}
+		row.Disposition = to
+		if to.Terminal() {
+			// Zero the schedule so the work list cannot re-pick a settled row on a clock skew —
+			// the same rule `Pipeline.save` applies to the rows it settles itself.
+			row.NextRun = time.Time{}
+		}
+		row.UpdatedAt = time.Now().UTC()
+		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
+			s.log.Warn("could not record the operator's decision", "clip", hash, "to", string(to), "err", err)
 		}
 	}
 }

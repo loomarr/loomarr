@@ -1,9 +1,16 @@
 // Package reconcile is the provisioning backstop (design §4, §7, §18). A ticker
 // claims due in-flight titles and, per title: retries `wanted` submissions,
-// re-checks the library for missed webhooks, and enforces deadlines (past
-// deadline → unavailable + downstream Cancel). This is why writes never
-// client-retry (§6) — recovery lives here. The janitor (janitor.go) piggybacks
-// the same ticker for retention (§5).
+// re-checks the library for arrivals, and enforces deadlines (past deadline →
+// unavailable + downstream Cancel). This is why writes never client-retry (§6) —
+// recovery lives here.
+//
+// ⚠ Two corrections, both made 2026-08-10 after this doc had outlived its facts.
+// The library re-check is not a safety net for a missed inbound hook: the inbound
+// arr hook was deleted and polling is now the ONLY way acquisition state arrives,
+// so this loop is the mechanism, not the backstop for one. And retention no longer
+// rides this ticker — the janitor was removed and became internal/retention, a
+// scheduler job (§18.1). There is no janitor.go here; there has not been for some
+// time, and a reader who went looking for one found nothing.
 package reconcile
 
 import (

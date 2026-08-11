@@ -16,6 +16,46 @@ claiming something was not built when it was.** A pod duration budget, cross-cat
 a frame-at-timestamp capability, and the missing-bytes operator warning were all reported absent
 and all exist. Treat "X does not exist" in that plan as a claim to re-grep, never a fact.
 
+**A2/A3 — the decisions that did not stick, and a control that confirmed nothing (2026-08-10).**
+Gate: `make check` exit 0 + `make fe` exit 0 + `make retired-verify` exit 0 (41 identifiers) +
+`make openapi-verify` exit 0 after commit. Each run unpiped, exit code read directly.
+
+⚠ **`review → terminal` had NO operator-side writer.** `filed`/`rejected` were only ever written
+by `filler.Pipeline`, so every operator verb moved `clips` and left the pipeline row alone: file
+cleared `held`, dismiss wrote `removed_at`, and "Looks right" PATCHed an era. The row kept saying
+`review`, so `ConveyorOnly` kept returning it and `needsDecision` stayed true — **a filed clip came
+back on the next refetch and `total` never reached zero.** Fixed with `settlePipeline`, guarded on
+the row's current disposition (a `running` clip finishes its ladder; an operator verb never settles
+it early) and best-effort like its sibling `clearPipelineRejects`.
+
+**`dismissed` is a fourth disposition** (maintainer's call, via AskUserQuestion). A person saying no
+and the quality gate refusing are different facts: `rejected` carries a stable reason code, measured
+detail, and a per-reason `Soft()` undo rule, none of which an operator dismissal has. It is off the
+conveyor and off the refusals list — that list is what Loomarr decided WITHOUT the operator.
+
+⚠ **A defect the plan did not have, found by re-grepping rather than by looking for it:**
+`asSuggested` looked each clip up with `GetClip(ctx, path)`, and `GetClip` is `WHERE hash = ?`
+(V38c split identity from location and added `GetClipByPath` for exactly this). The miss hit a
+`continue`, so **"File all as suggested" filed the clips and confirmed NOTHING** — a fifth control
+in the #236/#240/#241 class. It was invisible because `putClip` defaults `Hash = Path`, so every
+test in the package equates identity and location. The regression test gives the clip a
+content-hash-shaped id that is not its path, and was RED on unmodified code before the fix.
+
+⚠ **Every fix was sabotage-checked, and one round proved the check itself was vacuous.** Neutering
+`settlePipeline` reddened three tests but left the running-guard test green — it asserts a row
+STAYS `running`, which a no-op also satisfies — so the guard needed its own round (widen the
+allowed origins → red). Restore-widening and both FE fixes reddened on their own rounds.
+
+⚠ A2 was TWO independent causes for one silence: `ClipTagDialog` was mounted only under the
+catalog branch, *and* the identifier handed up was the clip's path where the shell resolves by
+hash. Either alone was sufficient. The tab's own test asserted `toHaveBeenCalledWith(ASK.path)` and
+was green the whole time the button did nothing — only a route-level test that renders the page and
+looks for the dialog can tell the difference, so that is what was added.
+
+⚠ **Known gap, recorded rather than described as a feature:** the restore endpoint accepts a
+`dismissed` row and returns it to `review`, but **no surface lists dismissed clips**, so that undo
+is unreachable from the UI. §10 says so in those words.
+
 **A1 — the open redirect, and a restart that read as a logout (2026-08-10).** Gate: `make fe`
 exit 0 (**1348** app + 49 core + 19 api + 5 tokens, biome clean on 972 files) + `make check`
 exit 0 + `make openapi-verify` exit 0 + `make retired-verify` exit 0. Each run without a pipe —

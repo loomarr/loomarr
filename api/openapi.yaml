@@ -1640,6 +1640,7 @@ components:
             - review
             - filed
             - rejected
+            - dismissed
           type: string
         hash:
           type: string

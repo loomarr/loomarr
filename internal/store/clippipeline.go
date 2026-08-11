@@ -28,7 +28,7 @@ const clipPipelineSelect = `SELECT clip_hash, stage, status, progress, dispositi
 // ⚠ A corrupt ladder is REPORTED, never silently emptied. An empty ladder renders as "this clip
 // has done nothing", which is a specific and false claim about a clip that may have been through
 // every stage — the same call `ListSplitProposals` makes about corrupt segments.
-func scanClipPipeline(sc interface{ Scan(...any) error }) (filler.ClipPipeline, error) {
+func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 	var (
 		p          filler.ClipPipeline
 		stage      string

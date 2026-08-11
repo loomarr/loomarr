@@ -133,7 +133,7 @@ type FillerClipEvent struct {
 	Progress int `json:"progress"`
 	// Disposition is the CLIP-level outcome. `review` is terminal for the pipeline even though it
 	// is not terminal for the operator.
-	Disposition string `json:"disposition" enum:"running,review,filed,rejected"`
+	Disposition string `json:"disposition" enum:"running,review,filed,rejected,dismissed"`
 	// Reason is a stable CODE, never prose — the frontend owns the wording, the §11 refusal-code
 	// precedent. Empty unless disposition is `rejected`.
 	Reason string `json:"reason,omitempty"`

@@ -14,6 +14,9 @@ import (
 type incomingBody struct {
 	// The conveyor: being-prepared and needs-a-decision in ONE list (§10 V51e).
 	Clips []struct {
+		// Hash is the clip's IDENTITY, and it is decoded here rather than matched by path because
+		// V54's decision tests deliberately give a clip a hash that is not its path (§10 V54).
+		Hash          string `json:"hash"`
 		Path          string `json:"path"`
 		Name          string `json:"name"`
 		SuggestedEra  int    `json:"suggestedEra"`
@@ -39,6 +42,13 @@ type incomingBody struct {
 		Segments       int    `json:"segments"`
 		NeedsAttention int    `json:"needsAttention"`
 	} `json:"reels"`
+	// Rejected is the refusals audit — what Loomarr decided WITHOUT the operator. An operator's own
+	// dismissal must not appear here (§10 V54).
+	Rejected []struct {
+		Hash       string `json:"hash"`
+		Reason     string `json:"reason"`
+		Restorable bool   `json:"restorable"`
+	} `json:"rejected"`
 	StageOrder []string `json:"stageOrder"`
 	Total      int      `json:"total"`
 }

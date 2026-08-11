@@ -265,6 +265,15 @@ func OnClose(st Store, fn func()) {
 
 // --- scanning helpers ---
 
+// scannable is satisfied by both *sql.Row and *sql.Rows, so the single-row and list reads
+// decode identically — a second decoder is how one path grows a field the other forgets.
+//
+// ⚠ THE ONE NAME FOR THIS SHAPE. The package had four — `scannable`, `rowScanner`
+// (fillerpulls.go), `scanner` (images.go) and an anonymous `interface{ Scan(...any) error }`
+// inline in clippipeline.go — all structurally identical, so every one of them was already
+// satisfied by every other's arguments. Four names for one idea is a tax on reading, not a
+// distinction: a reader meeting the third has to prove to themselves it is not subtly
+// different. Consolidated 2026-08-10; put new scan helpers on this one.
 type scannable interface {
 	Scan(dest ...any) error
 }
