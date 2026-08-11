@@ -1,5 +1,6 @@
 import type { ClipDTO, FillerIncomingOutputBody, IncomingClipDTO } from "@loomarr/api";
 import {
+  getFileFillerClipsMockHandler,
   getFillerIncomingMockHandler,
   getSettingsListMockHandler,
   getTagFillerClipMockHandler,
@@ -76,6 +77,7 @@ const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
     ...incoming,
   };
   const patches: unknown[] = [];
+  const files: unknown[] = [];
   server.use(
     getFillerIncomingMockHandler(body),
     // ⚠ The tab also reads /v1/settings, which the OLD catch-all answered with `{}` — so this
@@ -85,8 +87,14 @@ const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
       patches.push(await request.json());
       return TAGGED;
     }),
+    // Bound to the FILE route so the confirm test can assert which endpoint took the decision,
+    // not merely that a request went somewhere (§10 V54).
+    getFileFillerClipsMockHandler(async ({ request }) => {
+      files.push(await request.json());
+      return { updated: 1, missing: 0 };
+    }),
   );
-  return { patches };
+  return { patches, files };
 };
 
 const makeWrapper = () => {
@@ -114,12 +122,18 @@ describe("IncomingTab", () => {
     expect(await screen.findByText("Toy ad")).toBeInTheDocument();
   });
 
-  // ⚠ THE regression this file exists for. A bare `{era}` blanks audience on the server, so the
-  // confirm must carry the clip's current audience alongside the era. `category` must NOT be in
-  // the body — it's a derived shadow (§10 V45a), and `PatchClipInputBody` has no such field any
-  // more; sending it would be a stale field the server ignores at best.
-  it("confirming an era sends audience too, never era alone, and never category", async () => {
-    const { patches } = stubIncoming();
+  // ⚠ **"Looks right" has to FILE, and it did not** (§10 V54). It PATCHed the era and stopped, so
+  // the clip stayed held and stayed in the queue — and for a clip with a guessed era this is the
+  // ONLY affirmative control on the row, because the panel offers "Use it" only when there is no
+  // guess. The one button that should have cleared the row left it exactly where it was.
+  //
+  // It goes through the existing `asSuggested` flag rather than a PATCH chained to a file: the
+  // server confirms each clip's own suggestion and files in one request, so there is no window
+  // where a clip is filed carrying an unconfirmed guess. The tag-preservation worry this test
+  // used to carry lives on the server now — `UpdateClipTags` writes all three columns and
+  // `asSuggested` passes audience and category through, asserted in `fillerfile_test.go`.
+  it("confirming a guessed era files the clip as suggested, in one request", async () => {
+    const { patches, files } = stubIncoming();
     renderTab();
     await screen.findByText("Toy ad");
 
@@ -127,12 +141,13 @@ describe("IncomingTab", () => {
     await userEvent.click(await screen.findByRole("button", { name: /looks right/i }));
 
     await waitFor(() => {
-      // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment) — this
-      // PATCH goes through the single-clip tag route, which is hash-keyed. `ask.path` stays
-      // the local UI key for `onEditTags`/`busyClip` (see the test below and the mixed-model
-      // note in incoming-tab.tsx itself).
-      expect(patches).toEqual([{ hash: "hash-abc", era: 1993, audience: "kids" }]);
+      // ⚠ PATHS, not the hash: the file/hold routes stay path-keyed (the V38 store methods are),
+      // while the single-clip tag route is hash-keyed. IncomingClipDTO carries both, and this
+      // fixture keeps them DIFFERENT strings so a route using the wrong one cannot pass.
+      expect(files).toEqual([{ paths: ["a3/f9/abc.mp4"], asSuggested: true }]);
     });
+    // And no tag PATCH: two writes would put the confirm and the file in different requests.
+    expect(patches).toEqual([]);
   });
 
   it("hands tag editing up to the shell, which owns the one dialog", async () => {
@@ -144,7 +159,11 @@ describe("IncomingTab", () => {
     // "Add tags" only when there is no guess to reject.
     await userEvent.click(await screen.findByRole("button", { name: /not right/i }));
 
-    expect(onEditTags).toHaveBeenCalledWith(ASK.path);
+    // ⚠ The HASH (§10 V54). This asserted `ASK.path` and was green while the button did nothing:
+    // the shell resolves the clip by identity, so a path matched no row and no dialog opened. The
+    // fixture's path and hash are deliberately different strings — equate them and this test
+    // cannot tell the two apart, which is the same trap `putClip` sets on the Go side.
+    expect(onEditTags).toHaveBeenCalledWith(ASK.hash);
   });
 
   it("renders an empty queue without erroring", async () => {

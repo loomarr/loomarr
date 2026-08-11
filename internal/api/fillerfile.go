@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // Filing decisions — the Incoming tab's verbs (§10 V38).
@@ -67,17 +69,31 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 	}
 	now := time.Now().UTC()
 
+	// ⚠ **This route is PATH-keyed and the two stores below are not**, so identity is resolved once
+	// here rather than per call site. `GetClipByPath` is the lookup — `GetClip` matches on the HASH
+	// (V38c split identity from location), and calling it with a path returns an ordinary
+	// not-found. That is precisely what this loop used to do: the miss hit the `continue`, so
+	// `asSuggested` filed the clips and confirmed NOTHING. Every test in the package was blind to
+	// it because `putClip` defaults `Hash = Path`.
+	//
+	// A stale selection races a re-scan; skipping one row beats failing the batch, the same call
+	// bulk/tag makes.
+	hashes := make([]string, 0, len(in.Body.Paths))
+	clips := make([]store.Clip, 0, len(in.Body.Paths))
+	for _, path := range in.Body.Paths {
+		c, err := s.store.GetClipByPath(ctx, path)
+		if err != nil {
+			continue
+		}
+		hashes = append(hashes, c.Hash)
+		clips = append(clips, c)
+	}
+
 	// Confirming the suggestions happens BEFORE filing, so a failure leaves the clips held with
 	// their guesses intact rather than filed with unconfirmed tags. The safe half-state is "still
 	// waiting", never "in the catalog claiming something nobody agreed to".
 	if in.Body.AsSuggested {
-		for _, path := range in.Body.Paths {
-			c, err := s.store.GetClip(ctx, path)
-			if err != nil {
-				// A stale selection races a re-scan; skipping one row beats failing the batch,
-				// the same call bulk/tag makes.
-				continue
-			}
+		for _, c := range clips {
 			if c.SuggestedEra == 0 {
 				continue
 			}
@@ -85,7 +101,9 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 			// statement (see UpdateClipTags), so the question cannot outlive its answer. The other
 			// two tags are passed through unchanged because that write sets all three columns —
 			// sending only the era would blank audience and category.
-			if err := s.store.UpdateClipTags(ctx, path, c.SuggestedEra, string(c.Audience), c.Category, 0, c.AITagged, now); err != nil {
+			//
+			// ⚠ Keyed by HASH: UpdateClipTags is `WHERE hash = ?`, unlike SetClipsHeld below.
+			if err := s.store.UpdateClipTags(ctx, c.Hash, c.SuggestedEra, string(c.Audience), c.Category, 0, c.AITagged, now); err != nil {
 				return nil, huma.Error500InternalServerError("confirm suggested era", err)
 			}
 		}
@@ -98,6 +116,12 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 	if err != nil {
 		return nil, huma.Error500InternalServerError("file clips", err)
 	}
+	// ⚠ **The pipeline row has to move too, or the decision does not stick** (§10 V54). Clearing
+	// `held` admits the clip to the catalog; it does not tell the pipeline a human decided. The row
+	// stays `review`, `ListClipPipelines(ConveyorOnly)` keeps returning it and `needsDecision` stays
+	// true — so the clip the operator just filed reappears on the next refetch and the tab's count
+	// never reaches zero.
+	s.settlePipeline(ctx, hashes, filler.DispositionFiled, filler.DispositionReview)
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
 	out.Body.Missing = len(in.Body.Paths) - updated
@@ -118,6 +142,18 @@ func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bul
 	if err != nil {
 		return nil, huma.Error500InternalServerError("hold clips", err)
 	}
+	// The mirror of filing: a clip sent back is waiting on a person again, which is what `review`
+	// means (§10 V54). Guarded on `filed`, so sending back a clip the pipeline is still working
+	// leaves it running rather than declaring it decided.
+	hashes := make([]string, 0, len(in.Body.Paths))
+	for _, path := range in.Body.Paths {
+		c, err := s.store.GetClipByPath(ctx, path)
+		if err != nil {
+			continue
+		}
+		hashes = append(hashes, c.Hash)
+	}
+	s.settlePipeline(ctx, hashes, filler.DispositionReview, filler.DispositionFiled)
 	out := &bulkResultOutput{}
 	out.Body.Updated = updated
 	out.Body.Missing = len(in.Body.Paths) - updated

@@ -2406,6 +2406,58 @@ gets to make.**
 ⚠ `clips.removed_at` stays the *airability* gate and pod assembly is untouched. Two places, one
 truth: `removed_at` is **whether**, the pipeline row is **why**.
 
+#### The operator's decision is the fourth outcome (V54)
+
+⚠ **`review → terminal` had no operator-side writer, so three of the four decision buttons did
+not stick.** `filed` and `rejected` were only ever written by `filler.Pipeline` itself. The
+operator paths moved `clips` and left the pipeline row exactly where it was: `POST /v1/filler/file`
+cleared `held` and nothing else, `bulk/remove` wrote `removed_at` and nothing else, and confirming
+a guessed era did not file at all. The row still read `disposition=review`, so
+`ListClipPipelines(ConveyorOnly)` still returned it and `needsDecision` was still true — **a clip
+the operator had just filed came back on the next refetch, and `total` never reached zero.** The
+state machine was right; nothing outside the machine was permitted to advance it.
+
+**`dismissed` is a fourth disposition, not a reuse of `rejected`.** A person saying *no* and the
+quality gate refusing are different facts, and `rejected`'s shape is built for the second: it
+carries a stable `RejectReason` CODE plus the measured detail behind it, and whether it may be
+undone is decided per reason by `Soft()`. An operator dismissal has no code — the reason is *a
+person said so* — no measurement, and is always reversible. Folding it in would mean inventing a
+reason that means "no reason" and a `Soft()` case that is unconditionally true: two exceptions so
+one enumeration can carry two subjects. That is the argument `reject.go` already makes for keeping
+`RejectReason` and `AutoSplitReject` apart, applied one level up.
+
+**The transitions, every operator path:**
+
+| Operator action | Route | Pipeline row |
+| --- | --- | --- |
+| *Use it* | `POST /v1/filler/file` | `review → filed` |
+| *Looks right* | `POST /v1/filler/file` with `asSuggested` | `review → filed`, era confirmed in the same call |
+| *Don't use it* | `POST /v1/filler/bulk/remove` | `review → dismissed` |
+| *Send it back* | `POST /v1/filler/hold` | `filed → review` |
+| Restore | `bulk/remove` with `restore: true` | `dismissed`/`rejected` `→ review` |
+
+⚠ **"Looks right" files through the EXISTING `asSuggested` flag rather than a second mutation.**
+That flag already confirms the suggested era — the store clears `suggested_era` in the same
+statement, so the question cannot outlive its answer — and then files, in one request. Chaining a
+PATCH and a file from the client would split the two halves across two requests, where a failure
+between them leaves a clip filed with an unconfirmed guess. It is also the *only* affirmative
+control a guessed clip has: the panel offers "Use it" only when there is no guess, so a "Looks
+right" that does not file leaves that clip with no way out of the queue at all.
+
+⚠ **The pipeline write is best-effort and guarded on the row's current disposition**, matching
+`clearPipelineRejects` rather than inventing a second convention. The catalog half has already
+landed by then and `removed_at` is what decides airability, so failing the request over the
+bookkeeping half would report a failure for a decision that took effect. A stale row shows a
+settled clip as still-deciding until the next write — visible and harmless, unlike the inverse.
+
+⚠ **`dismissed` is off the conveyor AND off the refusals list, and the second is not an
+oversight.** *"Loomarr didn't use N clips"* is the audit of what the appliance decided **without**
+the operator. A dismissal is what the operator decided themselves, so listing it there would
+re-merge the two questions that section exists to hold apart. The restore endpoint already accepts
+a dismissed row and returns it to `review` — but **no surface lists dismissed clips today, so that
+undo is currently unreachable from the UI.** Recorded as a known gap rather than described as a
+feature: the endpoint is right, the affordance is missing.
+
 ### Sources roll up by provider (V51c)
 
 Three archive.org collections sat as three sibling rows with no indication they are one service,

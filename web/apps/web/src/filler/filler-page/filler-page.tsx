@@ -174,10 +174,36 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
   });
 
+  // Resolving the clip the tag dialog is about (§10 V54). The dialog is SHARED with the Incoming
+  // tab — one clip, one editor, wherever you reached it from — and Incoming's rows are held, so
+  // they are not in the catalog page above: the listing excludes held clips by design (§10 V38).
+  //
+  // ⚠ `includeHeld` is not optional here. The `hashes` filter ANDs with the held predicate in the
+  // store, so asking for a held clip by identity WITHOUT it returns an empty list and the dialog
+  // never opens — which, with the dialog mounted only under the catalog branch, is exactly how
+  // Incoming's "Add tags" / "Not right" buttons came to take a click and do nothing.
+  //
+  // ⚠ It must be a REAL read, never a clip synthesised from the Incoming row. `IncomingClipDTO`
+  // carries no `tags` array — only the derived `category` shadow — and this dialog SAVES the tag
+  // set, so a synthesised clip would seed `tags: []` and wipe every tag on the clip the moment
+  // Save was pressed. The same hazard `onConfirmEra` carries for `audience`, one axis over.
+  const taggingRow =
+    clips.data?.status === 200 ? clips.data.data.clips?.find((c) => c.hash === tagging) : undefined;
+  const taggingQuery = fillerApi.useListFiller(
+    { hashes: tagging ? [tagging] : [], includeHeld: true, limit: 1 },
+    { query: { enabled: Boolean(tagging) && !taggingRow } },
+  );
+  const taggingClip =
+    taggingRow ?? (taggingQuery.data?.status === 200 ? taggingQuery.data.data.clips?.[0] : undefined);
+
   // ⚠ `invalidateLifecycle` invalidates the clip list AND the two queue views (Incoming, pool).
   // The trio was written out by hand at four call sites here, which is three chances to forget
   // the third key and leave an operator looking at a queue that has already moved on.
-  const { invalidateCatalog: invalidate, invalidateLifecycle } = useFillerInvalidate();
+  // ⚠ `invalidateCatalog` no longer has a caller here (§10 V54): the tag dialog's save was its
+  // last one, and that moved to `invalidateLifecycle` because the Incoming rows render the very
+  // badges the dialog edits. Destructuring it "just in case" is how a page keeps a second, weaker
+  // invalidation vocabulary alive for the next writer to reach for by accident.
+  const { invalidateLifecycle } = useFillerInvalidate();
 
   // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
   // source is moving onto the Sources tab, where it belongs — a search is something you do to a
@@ -851,17 +877,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             </>
           )}
 
-          {tagging && rows && (
-            <ClipTagDialog
-              clip={rows.find((c) => c.hash === tagging)}
-              onClose={() => setTagging(undefined)}
-              onSaved={() => {
-                setTagging(undefined);
-                void invalidate();
-              }}
-            />
-          )}
-
           {pinning && rows && (
             <PinClipDialog
               clip={rows.find((c) => c.hash === pinning)}
@@ -879,6 +894,33 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             onClose={() => setPlaying(undefined)}
           />
         </div>
+      )}
+
+      {/* The tag editor sits OUTSIDE the tab branches (§10 V54), because both Catalog and Incoming
+          open it and it used to be mounted only under Catalog — so on Incoming the buttons took a
+          click and nothing appeared.
+
+          ⚠ Rendered only once `taggingClip` has RESOLVED, not merely once `tagging` is set. The
+          dialog seeds its form from the clip in `useState` initialisers and returns null below
+          them, so mounting it empty and letting the clip arrive afterwards leaves every field on
+          its default — an editor that silently offers to blank the clip it claims to be editing.
+
+          ⚠ `key` on the hash for the same reason from the other direction: switching to a second
+          clip while the dialog is open would otherwise reuse the instance and keep the first
+          clip's form state. */}
+      {taggingClip && (
+        <ClipTagDialog
+          key={taggingClip.hash}
+          clip={taggingClip}
+          onClose={() => setTagging(undefined)}
+          // ⚠ `invalidateLifecycle`, not `invalidateCatalog` alone: the Incoming rows render the
+          // audience and category badges this dialog edits, so a catalog-only invalidation leaves
+          // the queue showing the tags the operator just changed. It already includes the catalog.
+          onSaved={() => {
+            setTagging(undefined);
+            invalidateLifecycle();
+          }}
+        />
       )}
     </div>
   );
