@@ -2,6 +2,8 @@ package api_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -65,14 +67,31 @@ func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody)
 	return res, b
 }
 
+// clipHashFor derives a clip's test identity from its path — DISTINCT from the path, never
+// equal to it.
+//
+// ⚠ **This used to be `c.Hash = c.Path`, and that one line made every test in this package
+// blind to hash/path confusion.** Identity has been the content HASH since V38c (§10), so a
+// double that indexes by path stands in for a store that indexes by hash and cannot see the
+// difference — every lookup that passed a path where a hash was wanted still hit. It shipped:
+// `asSuggested` called `GetClip(ctx, path)` against a hash-keyed reader and silently confirmed
+// nothing (fixed in #248). The comment above this helper explained why the shortcut was
+// convenient and never asked what it stopped the tests from catching.
+//
+// sha256 of the path: deterministic (same fixture, same id, every run), 64 hex characters like
+// the real thing, and provably not the path. Deliberately NOT the `hash-of-<path>` literal used
+// elsewhere in this file — that spelling is reserved for a hash NO clip matches, which is how
+// the missing-compilation fallback is tested. A test that needs a specific id still sets `Hash`
+// explicitly; only the default is derived.
+func clipHashFor(path string) string {
+	sum := sha256.Sum256([]byte(path))
+	return hex.EncodeToString(sum[:])
+}
+
 func putClip(t *testing.T, st store.Store, c filler.Clip) {
 	t.Helper()
-	// ⚠ Identity is the HASH since V38c (§10). Fixtures across these tests name clips by a
-	// readable path, so default the id from it rather than making every literal carry both —
-	// a `filler.Clip{Path: …}` with no Hash has an EMPTY id, which makes every lookup miss and
-	// every pin silently fail to match.
 	if c.Hash == "" {
-		c.Hash = c.Path
+		c.Hash = clipHashFor(c.Path)
 	}
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
