@@ -224,6 +224,7 @@ const stubReachable = () => {
       windowMs: 3_600_000,
       slots: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
+      excluded: { overCeiling: 0, unrated: 0, items: [] },
     }),
     getChannelFillerCoverageMockHandler({
       level: "exact",

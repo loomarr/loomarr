@@ -21,8 +21,20 @@ import (
 //	  → slotByPolicy (ordering §5 + separation-with-wrap §3)
 //	  → interleaveBreaks (unchanged, downstream)
 
-// ExclusionReport summarizes what the audience filter dropped (§4), surfaced at
-// proposal review and reconcile so a metadata gap is visible before approval.
+// ExclusionReport summarizes what the audience + scope filters dropped (§4).
+//
+// ⚠ This comment used to claim it was "surfaced at proposal review and reconcile". It was
+// surfaced NOWHERE: `ComputeDesiredAt` filled it on every reconcile and every caller discarded
+// it, so "why isn't X on my channel" had no answer anywhere in the product for as long as the
+// type existed. Diagnosing a single over-ceiling episode meant querying the media server by
+// hand (#263).
+//
+// It now reaches exactly one reader: both channel-preview endpoints, via
+// `channels.CycleResult.Excluded`. **Reconcile still throws its copy away** — it has nowhere to
+// put one (no column, no event), and the preview recomputes the identical report from the same
+// pure builder, so the operator-facing answer is the same one reconcile made.
+//
+// Proposal review does NOT show it yet, despite programming-design §9 listing it there.
 type ExclusionReport struct {
 	OverCeiling int            `json:"overCeiling"` // items above the rating ceiling
 	Unrated     int            `json:"unrated"`     // items excluded because unrated under a kids ceiling
@@ -30,6 +42,10 @@ type ExclusionReport struct {
 }
 
 // ExcludedItem is one dropped entry, for the UI ("why isn't X on my channel").
+//
+// ⚠ Key is NOT unique within a report. An episode refused by the per-episode ceiling carries
+// its SERIES key, so one series can contribute many items — Title is what distinguishes them
+// (it carries the SxxEyy), and it is the label to render.
 type ExcludedItem struct {
 	Key    provision.Key `json:"key"`
 	Title  string        `json:"title"`
