@@ -198,9 +198,6 @@ func withPlan(rawURL string, t playout.EncodePlan) string {
 //   - The request context IS the disconnect signal. Nothing else reports it: the tuner path
 //     never re-requests, so there is no next request whose absence we could notice.
 func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	if s.playoutSessions == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
@@ -279,9 +276,6 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 // `-stream_loop -1` cycles between them forever; each open of the program URL asks "what is
 // airing now?" and gets whatever is current.
 func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	programURL := s.playoutURL("program", r.PathValue("id"))
 	if programURL == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
@@ -313,9 +307,6 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 // listings. That is the most common Live TV wiring failure and it is SILENT — the channel
 // plays, the guide is just empty.
 func (s *Server) tunerHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	if s.playoutBaseURL() == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
 			"Set Loomarr's public address in Settings → Server so your media server can reach the streams.")
@@ -414,9 +405,6 @@ func (s *Server) playsInternally(ch store.Channel) bool {
 // grace window after the last fetch (the remux's own idle timer), and the refcount is taken-and-
 // released per fetch: each poll re-arms the grace timer, and when the polls stop, the timer fires.
 func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	if s.playoutHLS == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
@@ -533,9 +521,6 @@ func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 // Same dual auth as the master playlist. The asset path (captured as a trailing wildcard) is
 // validated against traversal here AND again in AssetPath (defence in depth).
 func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizePlayout(w, r) {
-		return
-	}
 	if s.playoutHLS == nil {
 		http.NotFound(w, r)
 		return
