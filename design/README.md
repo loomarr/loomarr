@@ -1,4 +1,4 @@
-# Loomarr design prototypes — Phase-13 visual reference
+# Loomarr design prototypes — the visual reference
 
 These are the **authoritative reference for palette, typography, and idiom** — the
 "transmitted test card" look (CLAUDE.md "Seed docs"; `docs/frontend-design.md` §7). They

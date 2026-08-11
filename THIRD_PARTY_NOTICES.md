@@ -33,9 +33,11 @@ reproduced in the release SBOM.
 
 **Revised (design §9.1/§16): there is now ONE image.** Loomarr previously published a
 distroless `loomarr:latest` bundling none of the following, plus an opt-in
-`loomarr:filler` variant that added them for clip ingest. Internal playout made
-`ffmpeg` load-bearing for streaming, not just ingest, so the variant collapsed into the
-single published `loomarr:latest`.
+`loomarr:filler` variant that added them for clip ingest (retired-ok — named to record
+what was retired). Internal playout made `ffmpeg` load-bearing for streaming, not just
+ingest, so the variant collapsed into the single published `loomarr:latest`, which is no
+longer distroless: it is `debian:stable-slim`, because the vendored binaries below are
+glibc builds.
 
 **This changes the scope of what follows.** These binaries used to ship only if an
 operator opted into a variant; they now ship in **everything we publish**, so the
@@ -57,16 +59,23 @@ a whole must honor each component's license, disclosed here.
 
 ### GPL source offer (ffmpeg)
 
-The `ffmpeg` binary in `loomarr:filler` is a **GPL-3.0** build produced by the
-[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) project from the
+The `ffmpeg` binary in the published `loomarr` image is a **GPL-3.0** build produced by
+the [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) project from the
 published [FFmpeg](https://ffmpeg.org/) source. In accordance with the GPL, the
 corresponding source is available from FFmpeg (<https://ffmpeg.org/download.html>,
-tag `n7.1`) and the BtbN build scripts (<https://github.com/BtbN/FFmpeg-Builds>).
-The exact version is pinned by `FFMPEG_TAG` in the [`Dockerfile`](Dockerfile).
+series `n8.1`) and the BtbN build scripts (<https://github.com/BtbN/FFmpeg-Builds>).
+The exact version is pinned by `FFMPEG_TAG` in the [`Dockerfile`](Dockerfile) and is
+the authority if this paragraph and that line ever disagree.
 
-If you redistribute the `loomarr:filler` image, you carry the same GPL obligation
-to make that ffmpeg source available to your recipients. Redistributing only the
-default `loomarr:latest` image carries no such obligation — it contains no ffmpeg.
+**If you redistribute the Loomarr image, you carry the GPL obligation** to make that
+ffmpeg source available to your recipients. There is one image and it contains ffmpeg.
+
+⚠ This section previously said the opposite — that redistributing the default image
+"carries no such obligation — it contains no ffmpeg", which was true only while ffmpeg
+shipped in a separate opt-in variant. Internal playout (§9.1) made ffmpeg load-bearing
+for streaming, the variant collapsed into the one image, and this paragraph did not
+follow. A stale licensing statement is worse than a stale feature description, which is
+why it is corrected in place rather than quietly rewritten.
 
 ## Reference specs (not redistributed as code)
 
