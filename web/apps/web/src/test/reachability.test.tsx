@@ -445,7 +445,12 @@ describe("feature-gated panels mount when their flag is on", () => {
   it("/filler/sources opens the archive row's search onto its downloads-nothing promise", async () => {
     stubReachable();
     renderAt("/filler/sources");
-    await userEvent.click(await screen.findByRole("button", { name: /search it/i }));
+    // ⚠ By the SOURCE's name, not the button's visible "Search it" (§10 V54 B6). The accessible
+    // name now carries the target, because the provider roll-up puts several collections on
+    // screen at once and five buttons all reading "Search it" are indistinguishable to anyone
+    // not looking at the row they sit in. The row-level assertion above still matches the visible
+    // text, which is deliberately unchanged.
+    await userEvent.click(await screen.findByRole("button", { name: /^search Classic TV Commercials$/i }));
     const found = await screen.findAllByText(/nothing downloads until you queue it/i, undefined, {
       timeout: 3000,
     });
