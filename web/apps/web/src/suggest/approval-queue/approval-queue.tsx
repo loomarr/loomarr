@@ -180,6 +180,9 @@ const ApprovalQueue = () => {
               acquisitions={p.proposal.acquisitions?.length ?? 0}
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
+              // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
+              // itself, because it changes what approving this row gets you.
+              refused={p.proposal.refused ?? []}
               status={busy ? "approving" : "pending"}
               onEdit={(edit) => setEdit(p.id, edit)}
               // The edit rides the SAME approve call — there is no separate "save edit" step,
