@@ -38,6 +38,13 @@ type MediaTools interface {
 	// returns real ~320px JPEGs, the same asset FFmpegArtwork produces, but N of
 	// them across the duration rather than one still. Order is start→end of clip.
 	Keyframes(ctx context.Context, file string, n int) ([][]byte, error)
+	// KeyframesIn is Keyframes scoped to [startMs,endMs) — the frames of ONE segment inside a
+	// compilation, before that segment exists as a file. endMs <= startMs means "to the end".
+	//
+	// ⚠ This is what lets the auto-confirm gate be answered from a segment's own pixels rather
+	// than from its generated name (§10 V54). `Transcribe` has always taken a span for the same
+	// reason; vision only ever needed one because the vision RUNG runs on whole clips.
+	KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
@@ -145,7 +152,18 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 	return frames, nil
 }
 
+// Keyframes samples the WHOLE clip — the span-less form every existing caller wants.
 func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]byte, error) {
+	return t.KeyframesIn(ctx, file, 0, 0, n)
+}
+
+// KeyframesIn is Keyframes scoped to [startMs,endMs). endMs <= startMs means "to the end".
+//
+// ⚠ `-ss` before `-i` is an INPUT seek and is the only form fast enough here: it jumps the
+// demuxer to the span instead of decoding everything before it. On a 16-minute compilation the
+// difference between input- and output-seeking is the difference between per-segment framing
+// being viable at all and costing a full decode per segment (§10 V51g's budget rule).
+func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
 	// n frames spread ACROSS the clip, decoded to real JPEGs — mirrors the
 	// FFmpegArtwork still (scale ~320px wide, JPEG at -q:v) but produces several
 	// samples rather than one. A commercial's brand card, its B&W transfer, its
@@ -173,10 +191,21 @@ func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]by
 	// clip sampled sparsely gets padded with repeats, and the heuristics would then
 	// score the same frame n times.
 	var stdout bytes.Buffer
-	cmd := exec.CommandContext(ctx, t.FFmpegPath,
-		"-nostdin",
-		"-i", file,
-		"-an",
+	args := []string{"-nostdin"}
+	// Input seek (before -i). Skipped entirely when no span is asked for, so the whole-clip
+	// path emits byte-identical arguments to what it always did.
+	if startMs > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", float64(startMs)/1000))
+	}
+	args = append(args, "-i", file)
+	if endMs > startMs {
+		// `-t` (duration), not `-to`: after an input seek `-to` is interpreted against the
+		// ORIGINAL timeline on some builds and the seeked one on others, so a duration is the
+		// portable way to say "this much of it".
+		args = append(args, "-t", fmt.Sprintf("%.3f", float64(endMs-startMs)/1000))
+	}
+	args = append(args, "-an")
+	cmd := exec.CommandContext(ctx, t.FFmpegPath, append(args,
 		// thumbnail=n groups the decode into n buckets and emits the single most
 		// representative frame of each — exactly n frames for a clip long enough to
 		// fill the buckets, fewer for a very short one, which is fine (the caller
@@ -188,7 +217,7 @@ func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]by
 		// archival frames, and a B&W/aspect check needs even less.
 		"-q:v", "6",
 		"-f", "image2pipe", "-c:v", "mjpeg", "-",
-	)
+	)...)
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("ffmpeg keyframes %s: %w", file, err)
