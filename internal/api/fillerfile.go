@@ -61,9 +61,6 @@ func (s *Server) registerFillerFile(api huma.API) {
 }
 
 func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bulkResultOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -129,9 +126,6 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 }
 
 func (s *Server) holdFillerClips(ctx context.Context, in *holdFillerInput) (*bulkResultOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}

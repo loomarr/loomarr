@@ -182,9 +182,6 @@ func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 		SourceOK bool                `json:"sourceOk" doc:"False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state"`
 	}
 }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.systemLLM == nil {
 		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
@@ -211,9 +208,6 @@ func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
 	Body SystemLLMStatus
 }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.systemLLM == nil {
 		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
@@ -236,9 +230,6 @@ type systemLLMSelectInput struct {
 func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) (*struct {
 	Body SystemLLMStatus
 }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.systemLLM == nil {
 		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
@@ -283,9 +274,6 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 		Error string `json:"error,omitempty"`
 	}
 }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.systemLLM == nil {
 		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
@@ -326,9 +314,6 @@ func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*st
 		JobID string `json:"jobId" doc:"Poll progress on /v1/events (type=llm_pull)"`
 	}
 }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.systemLLM == nil {
 		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}

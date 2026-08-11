@@ -49,9 +49,6 @@ type syncOutput struct {
 }
 
 func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	n, err := s.userSync.Sync(ctx)
 	if err != nil {
 		return nil, err
@@ -97,9 +94,6 @@ type listUsersOutput struct {
 }
 
 func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	users, err := s.store.ListUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -142,9 +136,6 @@ type patchUserInput struct {
 type patchUserOutput struct{ Body userBody }
 
 func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	u, err := s.store.GetUser(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("User not found", "That user doesn't exist — it may have been removed.")
@@ -202,9 +193,6 @@ type listUserSessionsOutput struct {
 }
 
 func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput) (*listUserSessionsOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.sessions == nil {
 		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so live sessions can't be listed right now.")
 	}
@@ -247,9 +235,6 @@ type revokeSessionInput struct {
 }
 
 func (s *Server) revokeSession(ctx context.Context, in *revokeSessionInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.sessions == nil {
 		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so this session can't be revoked right now.")
 	}

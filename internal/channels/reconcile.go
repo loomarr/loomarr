@@ -125,9 +125,16 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		Logo:     ch.Logo,
 	}
 	wasNew := ch.TunarrID == ""
-	tunarrID, err := e.ensureChannel(ctx, spec)
+	tunarrID, usedNumber, err := e.ensureChannel(ctx, spec)
 	if err != nil {
 		return err
+	}
+	// A create can land on a different number than requested when Tunarr already occupied it
+	// (§9 V54). Take it: leaving `ch.Number` at the wanted value would make Loomarr's guide, the
+	// XMLTV it publishes, and Tunarr disagree about where the channel is.
+	if usedNumber != ch.Number {
+		ch.Number = usedNumber
+		channelAffecting = true
 	}
 	channelListChanged := false // a NEW channel needs a tuner re-scan, not just a guide refresh (§9)
 	if wasNew || tunarrID != ch.TunarrID {
@@ -414,11 +421,14 @@ func PodSeedAt(channelID string, breakStartMs int64) int64 {
 // the id (Phase-0 finding 1) — EnsureChannel returns it; we must persist it.
 // Handles out-of-band deletion: if we hold a TunarrID but the channel is gone,
 // recreate it.
-func (e *Engine) ensureChannel(ctx context.Context, spec programmer.ChannelSpec) (string, error) {
+// Returns the Tunarr id AND the number actually used — which may differ from the requested one
+// when Tunarr already had a channel there (see below). The caller must persist both, or Loomarr's
+// row and Tunarr disagree about what number the channel is on.
+func (e *Engine) ensureChannel(ctx context.Context, spec programmer.ChannelSpec) (string, int, error) {
 	if spec.TunarrID != "" {
 		actual, ok, err := e.prog.GetChannel(ctx, spec.TunarrID)
 		if err != nil {
-			return "", fmt.Errorf("check channel %s: %w", spec.TunarrID, err)
+			return "", spec.Number, fmt.Errorf("check channel %s: %w", spec.TunarrID, err)
 		}
 		if !ok {
 			// The channel was deleted in Tunarr out of band; recreate it.
@@ -430,11 +440,63 @@ func (e *Engine) ensureChannel(ctx context.Context, spec programmer.ChannelSpec)
 			spec.StartTime = actual.StartTime
 		}
 	}
+	// ⚠ **A CREATE onto a number Tunarr already uses can never succeed, so move rather than retry
+	// it forever** (§9 V54). Tunarr reports the collision as `500` with an EMPTY BODY — there is
+	// nothing in the response to match on — so the occupancy is checked BEFORE the create instead
+	// of interpreting the failure afterwards.
+	//
+	// ⚠ It renumbers LOOMARR'S channel and never touches the occupant. §9's "channels Loomarr
+	// didn't create are never touched" is the rule this design is shaped around: after a database
+	// reset Loomarr genuinely cannot tell its own orphan from a stranger's channel, so it must
+	// assume stranger. Moving ourselves is the only self-healing option that cannot damage
+	// somebody else's channel.
+	//
+	// The renumber is REPORTED, not silent: the number is what a viewer tunes to, so a channel
+	// that quietly moved would be a worse surprise than the failure it replaces.
+	if spec.TunarrID == "" {
+		moved, err := e.freeNumberFor(ctx, spec.Number)
+		if err != nil {
+			return "", spec.Number, err
+		}
+		if moved != spec.Number {
+			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
+				"channel", spec.Name, "wanted", spec.Number, "using", moved)
+			if e.acts != nil {
+				e.acts.Warn(ctx, "channel.renumbered", spec.Name, fmt.Sprintf(
+					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
+					spec.Name, moved, spec.Number))
+			}
+			spec.Number = moved
+		}
+	}
 	id, err := e.prog.EnsureChannel(ctx, spec)
 	if err != nil {
-		return "", fmt.Errorf("ensure channel: %w", err)
+		return "", spec.Number, fmt.Errorf("ensure channel: %w", err)
 	}
-	return id, nil
+	return id, spec.Number, nil
+}
+
+// freeNumberFor returns `want` when Tunarr has nothing on it, else the lowest number free in
+// Tunarr. Best-effort: if Tunarr's channel list can't be read the caller keeps its number and the
+// create either succeeds or fails as before — a transient list failure must not renumber anything.
+func (e *Engine) freeNumberFor(ctx context.Context, want int) (int, error) {
+	existing, err := e.prog.ListChannels(ctx)
+	if err != nil {
+		e.log.Warn("couldn't read Tunarr's channels to check the number; keeping it", "number", want, "err", err)
+		return want, nil //nolint:nilerr // deliberate: a list failure must not renumber a channel
+	}
+	used := make(map[int]bool, len(existing))
+	for _, c := range existing {
+		used[c.Number] = true
+	}
+	if !used[want] {
+		return want, nil
+	}
+	for n := 1; ; n++ {
+		if !used[n] {
+			return n, nil
+		}
+	}
 }
 
 // statusFor derives the channel's Loomarr-side status from its desired lineup.

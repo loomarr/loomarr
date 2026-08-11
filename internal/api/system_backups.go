@@ -120,9 +120,6 @@ type systemBackupsListOutput struct {
 }
 
 func (s *Server) systemBackupsList(ctx context.Context, _ *struct{}) (*systemBackupsListOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.backups == nil {
 		return nil, huma.Error501NotImplemented("in-app backup is not available on this build")
 	}
@@ -143,9 +140,6 @@ type systemBackupsRunOutput struct {
 }
 
 func (s *Server) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBackupsRunOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.backups == nil {
 		return nil, huma.Error501NotImplemented("in-app backup is not available on this build")
 	}

@@ -65,7 +65,6 @@ func roleFrom(ctx context.Context) Role {
 	return RoleAnonymous
 }
 
-// roleFromHuma reads the role a Huma handler's context carries. Huma threads the
-// middleware's context value into the standard context.Context passed to
-// handlers, so this is the same lookup as roleFrom.
-func roleFromHuma(ctx context.Context) Role { return roleFrom(ctx) }
+// (`roleFromHuma` lived here until 2026-08-10. It was a one-line alias for `roleFrom`, and its
+// only caller was `requireAdmin` — the per-handler admin check the middleware made redundant.
+// `roleFrom` itself is still live; a handler that needs the caller's role reads it directly.)

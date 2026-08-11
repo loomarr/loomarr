@@ -89,9 +89,6 @@ type uploadIconOutput struct {
 // mean two implementations of one rule to keep in step — which is how backupHandler and
 // eventsHandler ended up disagreeing about nil authorizers.
 func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if err != nil {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
