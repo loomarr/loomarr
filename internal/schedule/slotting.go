@@ -148,6 +148,28 @@ func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict 
 	return verdictKeep
 }
 
+// Admits reports whether a title carrying rating `raw` may air under this audience policy, and
+// when it may not, which exclusion reason applies ("over_ceiling" / "unrated"). A policy with no
+// ceiling admits everything — the adult/general default (§4).
+//
+// ⚠ Exported so the SUGGESTER can ask the enforcement question at PROPOSAL time rather than
+// re-deriving it. A proposal that offers titles the §4 gate will later drop makes the approval
+// screen dishonest: the operator authorises seven and gets five (#259). But the cure for that
+// must not be a second reading of the ladder — #260 is what a second reading costs, where two
+// places agreed about ratings for months and then quietly didn't. One function, both callers.
+func (a AudiencePolicy) Admits(raw Rating) (bool, string) {
+	if a.Ceiling == "" {
+		return true, ""
+	}
+	switch audienceVerdict(raw, a.Ceiling, resolveUnrated(a)) {
+	case verdictOverCeiling:
+		return false, "over_ceiling"
+	case verdictUnratedExcluded:
+		return false, "unrated"
+	}
+	return true, ""
+}
+
 // episodeVerdict decides ONE expanded episode against the ceiling (§4). It exists because
 // filterEntries can only see a SERIES ENTRY, whose rating is a lossy summary of its episodes:
 // King of the Hill is a TV-PG series holding two TV-14 episodes, and until this ran, both

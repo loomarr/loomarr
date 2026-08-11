@@ -384,8 +384,62 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
 	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent)
 
+	// §4 honesty pass (#259). The ceiling is now FINAL — groundPolicy has already dropped an
+	// unjustified one and applied ceilingAdmittingPicks — so this is the first moment the
+	// question "will this pick actually air?" has a settled answer. Ask it here, and move the
+	// certain no's out of what the operator is being asked to approve.
+	//
+	// ⚠ This runs AFTER groundPolicy and cannot be folded into it. The raise reads the picks to
+	// decide the ceiling; the refusal reads the ceiling to decide the picks. Reversed, a pick
+	// would be refused by a ceiling that the pick itself was about to lift.
+	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(prop.Policy.Audience, prop.Lineup, prop.Acquisitions)
+
+	// ⚠ Scored on what SURVIVED. Scoring the refused picks too would report an availability
+	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
+	// something was wrong on the live smoke (theme fit 43%) and that ambiguity is what a refusal
+	// list replaces with a statement.
 	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
 	return prop, nil
+}
+
+// refuseUnairable partitions grounded picks against the channel's own final audience policy
+// (§4), returning the survivors plus what was refused and why.
+//
+// ⚠ It refuses only what is CERTAINLY unairable — a pick whose known rating is above the
+// ceiling. An UNRATED pick is left in, even though the §4 gate fails closed on unrated under a
+// kids ceiling, because at proposal time "unrated" overwhelmingly means "not looked up yet"
+// rather than "unknown content":
+//
+//   - The reconcile heal (§389 `RatingResolver`) exists precisely to fill an empty rating once
+//     the title is in the library, and an acquisition cannot be rated by a library that does not
+//     have it yet. Refusing it here would fight that heal and reject titles that will air fine.
+//   - TMDB enrichment for acquisitions is best-effort; a sparse record or a lookup error leaves
+//     the field empty, which is a fact about the network, not about the content.
+//
+// Nothing is admitted by this leniency that was not already admitted: the §4 enforcer still
+// fails closed at airtime. The difference is only whether the approval screen makes a promise it
+// can keep, and "this WILL be dropped" is the only claim worth making with certainty.
+func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalItem) (
+	keptLineup, keptAcquisitions []ProposalItem, refused []RefusedPick,
+) {
+	if a.Ceiling == "" {
+		return lineup, acquisitions, nil // adult/general channel — nothing to refuse
+	}
+	sift := func(items []ProposalItem) []ProposalItem {
+		kept := make([]ProposalItem, 0, len(items))
+		for _, it := range items {
+			rating := schedule.NormalizeRating(it.OfficialRating)
+			// Only a KNOWN rating can produce a certain refusal, so the unrated verdict is
+			// deliberately ignored here (see the doc comment).
+			if ok, reason := a.Admits(rating); !ok && reason == "over_ceiling" {
+				refused = append(refused, RefusedPick{Item: it, Reason: reason})
+				continue
+			}
+			kept = append(kept, it)
+		}
+		return kept
+	}
+	return sift(lineup), sift(acquisitions), refused
 }
 
 // groundPolicy converts the model's untrusted pickPolicy into a validated

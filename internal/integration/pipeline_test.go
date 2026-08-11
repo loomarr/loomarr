@@ -287,10 +287,32 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// 2. The worker generated a GROUNDED proposal (the real grounding loop ran).
 	propID, prop := r.awaitProposal(t, jobID)
 
-	// The suggester grounded all four real cartoons into the lineup (they're all
-	// in-library) — grounding surfaced them; the model didn't invent them.
-	if len(prop.Lineup) != 4 {
-		t.Fatalf("expected 4 grounded in-library picks, got %d: %+v", len(prop.Lineup), prop.Lineup)
+	// The suggester grounded all four real cartoons (grounding surfaced them; the model didn't
+	// invent them) and then REFUSED the one its own extracted ceiling cannot air (#259), so the
+	// operator is asked to approve three, not four.
+	//
+	// ⚠ This assertion used to be `len(prop.Lineup) != 4`, and it passing was the bug: the
+	// approval screen offered a TV-MA title that the §4 gate would silently drop downstream, so
+	// the operator authorised four titles and got three. The refusal is now visible BEFORE
+	// approval — but the enforcement assertions further down are deliberately kept, because
+	// "the proposal no longer offers it" must not become the only thing standing between a
+	// kids channel and a TV-MA title.
+	if len(prop.Lineup) != 3 {
+		t.Fatalf("expected 3 airable in-library picks, got %d: %+v", len(prop.Lineup), prop.Lineup)
+	}
+	if len(prop.Refused) != 1 {
+		t.Fatalf("expected the TV-MA toon to be refused at proposal time, got %+v", prop.Refused)
+	}
+	if prop.Refused[0].Item.Name != "Midnight Mayhem Toons" || prop.Refused[0].Reason != "over_ceiling" {
+		t.Errorf("refused = %+v, want Midnight Mayhem Toons / over_ceiling", prop.Refused[0])
+	}
+	// ⚠ Refused, NOT deleted. The operator's likely fix is to raise the ceiling, and a pick
+	// that vanished between the model's answer and the approval card is indistinguishable from
+	// one the model never made.
+	for _, it := range prop.Lineup {
+		if it.TMDBID == 5004 {
+			t.Fatal("the TV-MA toon is still in the lineup — it must move to Refused, not stay")
+		}
 	}
 	// The suggester EXTRACTED + grounded the policy (TV-Y7 ceiling from the intent).
 	if prop.Policy.Audience.Ceiling != "TV-Y7" {
@@ -301,10 +323,16 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	if resp := r.do(t, http.MethodPost, "/v1/proposals/"+propID+"/approve", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
-	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003", "movie:tmdb:5004"} {
+	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {
 		if rec, err := r.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
 			t.Fatalf("approve should mark %s available, got %v/%v", key, rec.State, err)
 		}
+	}
+	// ⚠ The REFUSED pick is not provisioned at all. Approval acts on what was offered, and
+	// offering was the thing #259 fixed — provisioning a title the ceiling will drop spends an
+	// acquisition (on the out-of-library path, a real download) for something that can never air.
+	if _, err := r.store.GetTitle(context.Background(), provision.Key("movie:tmdb:5004")); err == nil {
+		t.Error("the refused TV-MA toon was provisioned — approval must act only on what it offered")
 	}
 
 	// 4. CREATE the channel from the approved intent → binds lineup AND policy, kicks
@@ -379,5 +407,45 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	}
 	if r.tun.FillerWrites != fillerBefore {
 		t.Errorf("second reconcile re-wrote the filler list: %d → %d", fillerBefore, r.tun.FillerWrites)
+	}
+
+	// 8. THE ENFORCER, STILL EXERCISED END TO END.
+	//
+	// ⚠ This step exists because #259 took coverage away from step 5. The TV-MA toon is now
+	// refused at PROPOSAL time, so it never reaches the channel — which means step 5 no longer
+	// proves the §4 gate would have dropped it, only that nothing offered it. Two independent
+	// defences must both be provable, or the one that stays silent is the one that rots.
+	//
+	// So: tighten the LIVE channel's ceiling to TV-Y, which puts the two already-approved,
+	// already-airing TV-Y7 cartoons above it. Nothing here bypasses the approval gate — the
+	// titles are legitimately available, and lowering a ceiling is an ordinary operator edit.
+	// ⚠ The full policy, not just the ceiling: a policy PATCH REPLACES wholesale, so era/genres
+	// are restated or the tightening would also quietly widen the scope. And era/genres live
+	// under `scope` — the flat shape is the LLM's, which groundPolicy converts.
+	if resp := r.do(t, http.MethodPatch, "/v1/channels/cartoons",
+		`{"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`+
+			`"audience":{"ceiling":"TV-Y"},"ordering":"syndication"}}`,
+	); resp.StatusCode != http.StatusOK {
+		t.Fatalf("tighten ceiling → %d, want 200", resp.StatusCode)
+	}
+
+	tightened, err := r.tun.GetLineup(context.Background(), ch.TunarrID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	airing := map[string]bool{}
+	for _, s := range tightened {
+		if s.Kind == schedule.SlotProgram {
+			airing[s.LibraryItemID] = true
+		}
+	}
+	// lib-3 is TV-Y and survives; lib-1 and lib-2 are TV-Y7 and must now be dropped by the
+	// enforcer alone — no proposal, no approval, just the fail-closed gate on a live channel.
+	if !airing["lib-3"] {
+		t.Errorf("the TV-Y cartoon should still air under a TV-Y ceiling, got %v", airing)
+	}
+	if airing["lib-1"] || airing["lib-2"] {
+		t.Fatalf("a TV-Y7 title survived a TV-Y ceiling — the §4 enforcer did not run on the "+
+			"tightened policy, got %v", airing)
 	}
 }
