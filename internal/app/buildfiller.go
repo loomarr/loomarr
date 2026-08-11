@@ -375,3 +375,42 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		"autosplit", set.boolv("filler.autosplit.enabled"))
 	return fillerPipeline
 }
+
+// buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a
+// break, shared by the §12 preview endpoint, the reconciler and internal playout (§10).
+//
+// ⚠ Construction ONLY. The three lines that wire this into the channel engine, the preview
+// adapter and the playout resolver stay at the call site deliberately — they are cross-subsystem
+// back-patches (the resolver is built with the channel engine, the adapter needs the filler
+// catalog), and pulling them in here would mean handing a builder the two services it exists to
+// stay independent of.
+func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.PodAdapter {
+	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
+	// This was a value built here at boot, so every reader took a snapshot: writing
+	// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
+	// `filler.max_clip_duration` changed the stored setting, the API read the new value
+	// back, and the assembler went on using the old one until the process restarted.
+	//
+	// Caught on the live stack, not by a test: `filler.max_clip_duration=45s` left
+	// `PoolReport.Eligible` at 20 with a 64s clip in the catalog; it dropped to 19 only
+	// after a re-exec. Every unit test builds a `filler.Policy` literal and calls the domain
+	// functions directly, so the setting→policy edge is the one segment they cannot reach.
+	//
+	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
+	// resolves per call and says so. This is that contract, honoured by the pod path too.
+	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, func() filler.Policy {
+		return filler.Policy{
+			PodMax: set.intv("filler.pod_max"),
+			// V17c: 0 (the default) leaves selection exactly as it was before the floor
+			// existed — see the warning on Policy.MinQualityHeight.
+			MinQualityHeight: set.intv("filler.min_quality"),
+			// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
+			// default to 0s = off, so `durationEligible` keeps returning true on an untouched
+			// install — the difference is that it CAN now return false, which is what lets
+			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
+			MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
+			MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
+		}
+	}, log)
+	return podAdapter
+}
