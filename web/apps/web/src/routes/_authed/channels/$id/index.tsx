@@ -6,8 +6,9 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 // validateSearch gave it.
 const SECTION_IDS = ["info", "watch", "programming", "filler", "danger"] as const;
 
-// /channels/$id opens on Channel info — the default section, and the only one a viewer can
-// reach (the layout hides the tab bar entirely for a non-admin).
+// /channels/$id opens on WATCH (§9.1 V54) — the first tab, and a viewer surface, so the default
+// stays reachable for a non-admin (the layout hides the tab bar entirely for them). Opening a
+// channel now shows what is ON it; Channel info is one tab over.
 //
 // ⚠ Also the landing spot for an old `?section=` bookmark/shared link: the query is read here
 // and turned into the matching path, so a link from before the move still lands on the right
@@ -17,7 +18,7 @@ const SECTION_IDS = ["info", "watch", "programming", "filler", "danger"] as cons
 const Route = createFileRoute("/_authed/channels/$id/")({
   beforeLoad: ({ params, location }) => {
     const section = (location.search as { section?: unknown }).section;
-    const target = SECTION_IDS.includes(section as (typeof SECTION_IDS)[number]) ? section : "info";
+    const target = SECTION_IDS.includes(section as (typeof SECTION_IDS)[number]) ? section : "watch";
     throw redirect({ to: `/channels/$id/${target}` as "/channels/$id/info", params });
   },
 });
