@@ -18,6 +18,24 @@ import (
 // `BuildHandler` (630 lines) and `api.Server` (33 fields) from metrics alone, and reading the
 // code showed both were correct as they stood. A threshold test on either would fire forever on
 // something nobody should change.
+//
+// ⚠ **THESE GATES CAN SERVE A STALE PASS, AND THAT IS NOT FIXED — see GH #282.** Most of them
+// learn about the tree by shelling out to `go list`, and subprocess output is not an input Go's
+// test cache tracks. So moving a file in `internal/store` does not change package `internal`'s
+// test binary, nothing invalidates the cached result, and the gate reports `ok (cached)` over a
+// tree it never examined. Observed 2026-08-10: a deliberate sabotage that SHOULD have failed
+// `TestNoLoomarrPackageLinksTestingIntoTheBinary` came back green, and only re-running with
+// `-count=1` showed the real red.
+//
+// Two consequences, both live:
+//   - **Verifying one of these by sabotage REQUIRES `-count=1`.** Without it you are reading a
+//     result from before your change, which is the exact false-green this repo keeps being bitten
+//     by (a gate that exits 0 having executed nothing).
+//   - **CI restores a warm build cache**, so a PR that violates one of these rules can go green
+//     on it. That is a real hole in a real guard, not a theoretical one.
+//
+// The durable fix is to have them read the tree with `os.ReadDir`/`os.ReadFile` — reads the cache
+// DOES track — instead of parsing `go list` output. Two of the five already do.
 
 // The dependency direction is one-way: domain packages must not import the API layer. A domain
 // package that needs an API type is telling you the type belongs in the domain.
@@ -48,28 +66,31 @@ func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
 	}
 }
 
-// `testing` DOES reach the shipped binary, through exactly one package, and this pins it there.
+// NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
-// `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package)
-// lives in ordinary .go files rather than _test.go ones, and that is deliberate: BOTH backend
-// drivers must import `RunConformance` — SQLite in-package, Postgres behind a build tag — so the
-// assertions have to be importable package code. The consequence is that `go list -deps
-// ./cmd/loomarr` contains `testing`, and `flag` behind it.
+// ⚠ **There used to be one, for `internal/store`, and the reason it lasted was a mis-estimate
+// rather than a constraint.** The conformance suite (7 files, ~4,450 lines — 42% of the non-test
+// package) sat in ordinary .go files because BOTH backend drivers must reach `RunConformance` —
+// SQLite in-package, Postgres behind the `integration` tag — so the assertions "had to be
+// importable package code". The exit was written down as a ~4,450-line mechanical rename into a
+// sibling package, and sequenced for later on that basis.
 //
-// That sits awkwardly beside the rule above, whose stated principle is that test code in the
-// binary "is a seam that only ever gets wider". The principle is right; the answer is not to
-// delete a working two-backend suite, it is to stop the seam widening. So: one package may do
-// this, it is named here, and a second one fails.
+// The estimate assumed the wrong move. A sibling package would indeed have meant qualifying
+// every `Store`, `Channel`, `ErrNotFound` … reference across 4,450 lines. But both drivers are
+// ALREADY `_test.go` files in `package store`, and a test file is visible to every other test
+// file in its package — so renaming `conformance*.go` to `conformance*_test.go` keeps them
+// exactly where they are, keeps both drivers working, and takes them out of the production build
+// with **zero content changes**. Done 2026-08-10; the diff is seven renames.
 //
-// ⚠ The exit is known and NOT blocked on design — verified 2026-08-10 that the conformance files
-// reference ZERO unexported store identifiers, so they can move to a sibling package that only
-// the two drivers import, and `testing` leaves the binary entirely. That move is a ~4,450-line
-// mechanical rename across the tree's highest-churn files, so it is sequenced rather than done
-// opportunistically. Until then, this test is the thing standing between "one documented
-// exemption" and "test code is normal in production packages now".
-func TestOnlyStoreLinksTestingIntoTheBinary(t *testing.T) {
-	const allowed = "github.com/mantonx/loomarr/internal/store"
-
+// The lesson is worth more than the fix: the blocker was never the code, it was a cost estimate
+// nobody re-checked. It had been quoted twice, in this comment and in the plan that scheduled it.
+//
+// ⚠ `go list -deps ./cmd/loomarr` STILL reports `testing` and `flag`, and that is not ours —
+// `riverqueue/river/rivershared/testsignal` imports `riversharedtest`, in the job-queue
+// dependency. This gate deliberately scopes to `github.com/mantonx/loomarr/internal`: a rule we
+// cannot act on is not a gate, it is noise. If River ever drops it, the raw `go list` becomes
+// clean on its own; nothing here needs to change.
+func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {
 	deps, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
 	if err != nil {
 		t.Fatalf("go list -deps: %v", err)
@@ -83,13 +104,13 @@ func TestOnlyStoreLinksTestingIntoTheBinary(t *testing.T) {
 			t.Fatalf("go list %s: %v", pkg, err)
 		}
 		for _, imp := range strings.Fields(string(imports)) {
-			if imp != "testing" || pkg == allowed {
+			if imp != "testing" {
 				continue
 			}
-			t.Errorf("%s imports `testing` and is linked into cmd/loomarr — only %s may do that, "+
-				"and only because both store conformance drivers must import the suite (§14.1). "+
-				"Put the assertions in a _test.go file, or in a package the binary does not reach.",
-				pkg, allowed)
+			t.Errorf("%s imports `testing` and is linked into cmd/loomarr (§14.1). Put the "+
+				"assertions in a _test.go file — a test file is visible to every other test file "+
+				"in its own package, so shared helpers do NOT need to be ordinary package code.",
+				pkg)
 		}
 	}
 }
