@@ -86,13 +86,7 @@ func (s *sqlStore) UpsertPull(ctx context.Context, p filler.Pull) error {
 	return nil
 }
 
-// rowScanner is satisfied by both *sql.Row and *sql.Rows, so the single and list reads decode
-// identically — a second decoder is how one path grows a field the other forgets.
-type rowScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanPull(sc rowScanner) (filler.Pull, error) {
+func scanPull(sc scannable) (filler.Pull, error) {
 	var (
 		p                    filler.Pull
 		status, plan         string

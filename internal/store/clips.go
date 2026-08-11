@@ -13,9 +13,13 @@ import (
 
 // Clip is the persisted form of a filler clip (§10). It embeds the domain
 // filler.Clip; the store owns the persistence concerns (UpdatedAt). Identity is
-// the clip's PATH relative to FILLER_DIR (§9.1 — internal playout needs a playable
-// input, and must not need Tunarr to discover Loomarr's own files). The Tunarr
+// the clip's sparse content HASH (§10 V38c) — see filler.Clip.Hash for why the
+// path could not stay the key once many watched folders were allowed. The Tunarr
 // program uuid rides alongside, nullable, for Tunarr-backed filler-lists.
+//
+// ⚠ This comment said PATH until 2026-08-10, two identity changes after the fact.
+// Several methods below are still path-keyed on purpose (a scan job carries a path,
+// not a hash); read each one's doc rather than assuming a single key.
 type Clip struct {
 	filler.Clip
 	UpdatedAt time.Time
