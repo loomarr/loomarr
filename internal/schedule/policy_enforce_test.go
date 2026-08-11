@@ -1,6 +1,7 @@
 package schedule_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,139 @@ func TestEnforce_AudienceFailsClosed(t *testing.T) {
 	// The exclusion report explains the drops (for proposal review / UI).
 	if d.Excluded.OverCeiling != 1 || d.Excluded.Unrated != 1 {
 		t.Errorf("exclusion report = over:%d unrated:%d, want over:1 unrated:1", d.Excluded.OverCeiling, d.Excluded.Unrated)
+	}
+}
+
+// --- §4 PER-EPISODE AUDIENCE ----------------------------------------------------
+//
+// A series entry's rating is a SUMMARY of its episodes, and enforcing against it alone let
+// above-ceiling episodes air. King of the Hill, from the maintainer's live library: a TV-PG
+// series whose 275 episodes are 253 × TV-PG, 20 × unrated, and 2 × TV-14. The entry gate
+// admitted the show — correctly, it IS a TV-PG show — and both TV-14 episodes then aired on a
+// TV-PG channel because nothing below the entry was ever asked. These pin the episode gate.
+
+// programItemIDs returns the library item ids of the program slots, so a per-EPISODE assertion
+// is possible: every episode of a series shares the series Key, so programKeys cannot tell them
+// apart — a test written against it would pass while the wrong episodes aired.
+func programItemIDs(d schedule.DesiredLineup) []string {
+	var out []string
+	for _, s := range d.Slots {
+		if s.IsProgram() {
+			out = append(out, s.LibraryItemID)
+		}
+	}
+	return out
+}
+
+func hasID(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+// The three cases must be distinguishable in ONE fixture, or a green result proves nothing:
+// "rated and under the ceiling", "rated ABOVE it", and "not rated at all" have to reach three
+// different outcomes, and the unrated one has to be shown airing rather than merely not-crashing.
+func TestEnforce_EpisodeRatingBeatsTheSeriesSummary(t *testing.T) {
+	// A TV-PG series — it clears the entry gate, exactly as King of the Hill does.
+	koth := ratedEntry("series:tmdb:2122", "King of the Hill", "TV-PG", 1997)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
+		"series:tmdb:2122": {
+			{LibraryItemID: "ep-pg", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1,
+				OfficialRating: "TV-PG"},
+			{LibraryItemID: "ep-14", Title: "Wings of the Dope", DurationMs: 1_320_000, Season: 4, Episode: 6,
+				OfficialRating: "TV-14"},
+			{LibraryItemID: "ep-none", Title: "Unrated Episode", DurationMs: 1_320_000, Season: 5, Episode: 2},
+		},
+	})
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Audience: schedule.AudiencePolicy{Ceiling: "TV-PG"},
+	}}
+
+	d := computeWithPolicy([]schedule.LineupEntry{koth}, avail, p)
+	ids := programItemIDs(d)
+
+	if !hasID(ids, "ep-pg") {
+		t.Error("a TV-PG episode must air under a TV-PG ceiling")
+	}
+	if hasID(ids, "ep-14") {
+		t.Error("a TV-14 EPISODE must not air under a TV-PG ceiling, even from a TV-PG series")
+	}
+	// The decision recorded on #260: an episode the media server left unrated INHERITS its
+	// parent's rating rather than failing closed. The parent already cleared the ceiling, and
+	// 20 of King of the Hill's 275 episodes carry no rating — dropping them would silently
+	// remove 7% of an approved show over a metadata gap.
+	if !hasID(ids, "ep-none") {
+		t.Error("an unrated episode of a below-ceiling series must inherit its parent's rating and air")
+	}
+
+	// The drop is COUNTED, not silent — the exclusion report is the only structured record of it.
+	if d.Excluded.OverCeiling != 1 || d.Excluded.Unrated != 0 {
+		t.Errorf("exclusion report = over:%d unrated:%d, want over:1 unrated:0",
+			d.Excluded.OverCeiling, d.Excluded.Unrated)
+	}
+	// …and names the EPISODE. Keyed by the series key, N drops would otherwise be N identical
+	// rows saying only that something in the show was refused.
+	if len(d.Excluded.Items) != 1 || !strings.Contains(d.Excluded.Items[0].Title, "S04E06") {
+		t.Errorf("excluded item = %+v, want one naming the episode (S04E06)", d.Excluded.Items)
+	}
+}
+
+// Inheritance must be one-directional: a permissive PARENT can never lift an episode that
+// carries its own above-ceiling rating. This is the half that keeps §4's asymmetry intact —
+// without it, "inherit when unrated" would decay into "trust the series summary".
+func TestEnforce_EpisodeRating_ParentCannotLiftARatedEpisode(t *testing.T) {
+	// An unrated series on an ADULT channel (no kids ceiling ⇒ the entry gate admits it).
+	show := ratedEntry("series:tmdb:1", "Mixed Bag", "", 1997)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
+		"series:tmdb:1": {
+			{LibraryItemID: "ep-ok", Title: "Fine", DurationMs: 1_320_000, Season: 1, Episode: 1,
+				OfficialRating: "TV-14"},
+			{LibraryItemID: "ep-ma", Title: "Not Fine", DurationMs: 1_320_000, Season: 1, Episode: 2,
+				OfficialRating: "TV-MA"},
+		},
+	})
+	// TV-14 ceiling: NOT a kids ceiling, so unrated resolves to allow — the parent is admitted
+	// and its unrated-ness is permissive. The TV-MA episode must still be refused on its own.
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Audience: schedule.AudiencePolicy{Ceiling: "TV-14"},
+	}}
+
+	ids := programItemIDs(computeWithPolicy([]schedule.LineupEntry{show}, avail, p))
+	if !hasID(ids, "ep-ok") {
+		t.Error("a TV-14 episode must air under a TV-14 ceiling")
+	}
+	if hasID(ids, "ep-ma") {
+		t.Fatal("a TV-MA episode aired because its PARENT was permissive — inheritance must be one-way")
+	}
+}
+
+// A series the audience gate empties resolves to NOTHING — never a pending slot. A pending slot
+// means "approved, still acquiring": it advertises the title as coming and, under PodFill, holds
+// airtime for it. A show refused by the ceiling is not late, and promising it is the same leak.
+func TestEnforce_EpisodeRating_FullyRefusedSeriesIsNotPending(t *testing.T) {
+	show := ratedEntry("series:tmdb:2", "All Too Adult", "TV-PG", 1997)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
+		"series:tmdb:2": {
+			{LibraryItemID: "e1", Title: "One", DurationMs: 1_320_000, Season: 1, Episode: 1, OfficialRating: "TV-MA"},
+			{LibraryItemID: "e2", Title: "Two", DurationMs: 1_320_000, Season: 1, Episode: 2, OfficialRating: "TV-MA"},
+		},
+	})
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Audience: schedule.AudiencePolicy{Ceiling: "TV-PG"},
+	}}
+
+	d := computeWithPolicy([]schedule.LineupEntry{show}, avail, p)
+	for _, s := range d.Slots {
+		if s.Kind == schedule.SlotPending {
+			t.Fatal("a ceiling-refused series became a PENDING slot — it is excluded, not acquiring")
+		}
+	}
+	if d.Excluded.OverCeiling != 2 {
+		t.Errorf("exclusion report over-ceiling = %d, want 2 (both episodes)", d.Excluded.OverCeiling)
 	}
 }
 
