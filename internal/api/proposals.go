@@ -300,9 +300,6 @@ type approveOutput struct {
 // only path from a proposal to /v1/titles. Members cannot reach this (403), so
 // nothing unapproved ever acquires.
 func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approveOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
@@ -412,9 +409,6 @@ type bulkApproveOutput struct {
 // Sequential, not concurrent: approvals write titles and channels, and household-scale batches
 // are small. Concurrency here would buy milliseconds and risk interleaving writes.
 func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput) (*bulkApproveOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	out := &bulkApproveOutput{}
 	out.Body.Results = make([]bulkApproveResult, 0, len(in.Body.IDs))
 	for _, id := range in.Body.IDs {
@@ -458,9 +452,6 @@ type denyOutput struct {
 }
 
 func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")

@@ -288,9 +288,6 @@ type uploadImageInput struct {
 type uploadImageOutput struct{ Body ImageDTO }
 
 func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*uploadImageOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.images == nil {
 		return nil, apiErr(http.StatusNotImplemented, "Images aren't configured",
 			"The image service isn't wired on this instance.")

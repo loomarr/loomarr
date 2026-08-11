@@ -52,9 +52,12 @@ func errBadRequest(title, detail string, doc ...string) huma.StatusError {
 func errUnauthorized(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusUnauthorized, title, detail, doc...)
 }
-func errForbidden(title, detail string, doc ...string) huma.StatusError {
-	return apiErr(http.StatusForbidden, title, detail, doc...)
-}
+
+// (`errForbidden` lived here until 2026-08-10, breaking this family's symmetry on purpose. Its
+// only caller was `requireAdmin`; 403s now come from the authorization middleware, which writes
+// them via huma.WriteErr so the request-id stamping applies. A helper whose only caller is gone
+// is dead weight that reads as a capability — the same reason `normalizeForMatch` went from
+// internal/filler. Restore it the moment a handler genuinely needs to refuse mid-body.)
 func errNotFound(title, detail string, doc ...string) huma.StatusError {
 	return apiErr(http.StatusNotFound, title, detail, doc...)
 }

@@ -149,9 +149,6 @@ type databaseStatusOutput struct {
 }
 
 func (s *Server) databaseStatus(ctx context.Context, _ *struct{}) (*databaseStatusOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -176,9 +173,6 @@ type databasePreflightOutput struct {
 }
 
 func (s *Server) databasePreflight(ctx context.Context, in *databaseTargetInput) (*databasePreflightOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -202,9 +196,6 @@ type databaseBackupOutput struct {
 }
 
 func (s *Server) databaseBackup(ctx context.Context, _ *struct{}) (*databaseBackupOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -223,9 +214,6 @@ type databaseMigrateOutput struct {
 }
 
 func (s *Server) databaseMigrate(ctx context.Context, in *databaseTargetInput) (*databaseMigrateOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -262,9 +250,6 @@ type databaseSwitchoverOutput struct {
 }
 
 func (s *Server) databaseSwitchover(ctx context.Context, in *databaseTargetInput) (*databaseSwitchoverOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}

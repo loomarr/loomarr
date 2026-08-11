@@ -102,9 +102,6 @@ type createTaxonInput struct {
 }
 
 func (s *Server) createTaxon(ctx context.Context, in *createTaxonInput) (*struct{ Body TaxonDTO }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if in.Body.Slug == "" || in.Body.Label == "" || in.Body.Axis == "" {
 		return nil, errUnprocessable("Incomplete taxon", "A taxon needs a slug, a label, and an axis.")
 	}
@@ -134,9 +131,6 @@ type updateTaxonInput struct {
 }
 
 func (s *Server) updateTaxon(ctx context.Context, in *updateTaxonInput) (*struct{ Body TaxonDTO }, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	// The path slug is authoritative: the body's slug is ignored so a client cannot rename via PUT
 	// (a rename is a delete + create, which would need the retired-alias handling). Keep them aligned.
 	in.Body.Slug = in.Slug
@@ -156,9 +150,6 @@ type deleteTaxonInput struct {
 }
 
 func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	err := s.editTaxonAndReindex(ctx, func(_ time.Time) error {
 		return s.store.DeleteTaxon(ctx, in.Slug)
 	})

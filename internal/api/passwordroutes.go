@@ -96,9 +96,6 @@ type createLocalUserOutput struct {
 }
 
 func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) (*createLocalUserOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.passwords == nil {
 		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
@@ -130,9 +127,6 @@ type resetPasswordInput struct {
 }
 
 func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.passwords == nil {
 		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
 	}

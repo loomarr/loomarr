@@ -332,9 +332,6 @@ type addFillerSourceOutput struct {
 
 // addFillerSource registers a remote collection. Downloading is a separate, gated act.
 func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) (*addFillerSourceOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -426,9 +423,6 @@ type setFillerSourceEnabledOutput struct {
 // SETTING, while a collection is a row so its switch is a COLUMN. A UI that had to know which
 // is which would encode a persistence decision in a button handler.
 func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSourceEnabledInput) (*setFillerSourceEnabledOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	// ⚠ A derived GROUP node carries no state, so there is nothing here to write (§10 V51c). One
 	// prefix test rather than a case per provider: the ids are namespaced precisely so a single
 	// guard covers every group that exists now and every one added later.
@@ -503,9 +497,6 @@ type deleteFillerSourceInput struct {
 
 // deleteFillerSource forgets a registered remote. Its clips stay.
 func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -539,9 +530,6 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 }
 
 func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSourcesOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -830,9 +818,6 @@ type fetchFillerSourceOutput struct {
 }
 
 func (s *Server) fetchFillerSource(ctx context.Context, _ *struct{}) (*fetchFillerSourceOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, huma.Error501NotImplemented("filler sync is not available on this instance")
 	}

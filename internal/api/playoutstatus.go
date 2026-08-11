@@ -108,9 +108,6 @@ func (s *Server) registerPlayoutStatus(api huma.API) {
 }
 
 func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutStatusOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	return &playoutStatusOutput{Body: s.playoutStatus(ctx, time.Now())}, nil
 }
 

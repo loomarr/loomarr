@@ -135,9 +135,6 @@ type enqueueInput struct {
 type titleOutput struct{ Body TitleDTO }
 
 func (s *Server) enqueueTitle(ctx context.Context, in *enqueueInput) (*titleOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	t := provision.Title{
 		MediaType: provision.MediaType(in.Body.MediaType),
 		TMDBID:    in.Body.TMDBID, TVDBID: in.Body.TVDBID,
@@ -204,9 +201,6 @@ func (s *Server) listTitles(ctx context.Context, in *listInput) (*listOutput, er
 type deleteOutput struct{}
 
 func (s *Server) deleteTitle(ctx context.Context, in *keyInput) (*deleteOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	rec, err := s.store.GetTitle(ctx, provision.Key(in.Key))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Title not found", "That title doesn't exist — it may have been removed.")
@@ -234,10 +228,10 @@ func isMutating(method string) bool {
 	}
 }
 
-// requireAdmin returns a 403 unless the caller resolved to admin (§7).
-func requireAdmin(ctx context.Context) error {
-	if roleFromHuma(ctx) != RoleAdmin {
-		return errForbidden("Not allowed", "This action needs an admin account.")
-	}
-	return nil
-}
+// (`requireAdmin` lived here until 2026-08-10. It returned a 403 unless the caller resolved to
+// admin, and 80 handler bodies opened by calling it — every one of them inside an operation that
+// ALREADY declared RoleAdmin, which `registerMiddleware` above enforces for every route at once.
+// Deleting the function rather than leaving it unused is the point: while it exists, the next
+// handler can call it and re-create the two-places-nothing-connects shape routeauth.go documents,
+// where intent lived in a Description and enforcement 250 lines away. The role now rides the
+// operation, and an operation that declares nothing fails CLOSED.)
