@@ -31,8 +31,10 @@ sudo pacman -S ffmpeg        # Arch
 git clone https://github.com/mantonx/loomarr && cd loomarr
 make check          # the gate — run before every push
 make fe-install     # pnpm install
-make fe             # biome + codegen + typecheck + tests + SPA + storybook
+make fe             # the frontend gate
 ```
+
+What each target does is in the [command reference](commands.md), generated from the Makefile.
 
 `make fe-install` isn't implied by `make fe` — on a fresh clone, running `make fe` first fails
 on missing dependencies.
