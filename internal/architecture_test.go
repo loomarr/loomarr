@@ -2,7 +2,6 @@ package internal_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,37 +18,43 @@ import (
 // code showed both were correct as they stood. A threshold test on either would fire forever on
 // something nobody should change.
 //
-// ⚠ **THESE GATES CAN SERVE A STALE PASS, AND THAT IS NOT FIXED — see GH #282.** Most of them
-// learn about the tree by shelling out to `go list`, and subprocess output is not an input Go's
-// test cache tracks. So moving a file in `internal/store` does not change package `internal`'s
-// test binary, nothing invalidates the cached result, and the gate reports `ok (cached)` over a
-// tree it never examined. Observed 2026-08-10: a deliberate sabotage that SHOULD have failed
-// `TestNoLoomarrPackageLinksTestingIntoTheBinary` came back green, and only re-running with
-// `-count=1` showed the real red.
+// ⚠ **These gates USED TO SERVE A STALE PASS (GH #282, fixed 2026-08-10) — do not undo it by
+// reaching for `exec.Command("go", "list", ...)`.** They learned about the tree by shelling out,
+// and subprocess output is not an input Go's test cache tracks: moving a file in `internal/store`
+// did not change package `internal`'s test binary, so nothing invalidated the cached result and
+// the gate reported `ok (cached)` over a tree it never examined. CI restores a warm cache, so a
+// violating PR could go green on it.
 //
-// Two consequences, both live:
-//   - **Verifying one of these by sabotage REQUIRES `-count=1`.** Without it you are reading a
-//     result from before your change, which is the exact false-green this repo keeps being bitten
-//     by (a gate that exits 0 having executed nothing).
-//   - **CI restores a warm build cache**, so a PR that violates one of these rules can go green
-//     on it. That is a real hole in a real guard, not a theoretical one.
+// They now read the tree from SOURCE (importgraph_test.go), which the cache DOES track. The
+// difference is directly observable, and worth repeating if you touch this:
 //
-// The durable fix is to have them read the tree with `os.ReadDir`/`os.ReadFile` — reads the cache
-// DOES track — instead of parsing `go list` output. Two of the five already do.
+//	git mv internal/store/conformance_titles_test.go internal/store/conformance_titles.go
+//	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
+//
+// Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
+// (1.0s → 0.02s), because nothing spawns a subprocess per package any more.
 
 // The dependency direction is one-way: domain packages must not import the API layer. A domain
 // package that needs an API type is telling you the type belongs in the domain.
 func TestDomainPackagesDoNotImportAPI(t *testing.T) {
-	// `go list` over the domain packages, asking which of them depend on internal/api.
-	out, err := exec.Command("go", "list", "-deps", "./playout/...", "./schedule/...", "./store/...",
-		"./filler/...", "./channels/...", "./suggest/...", "./library/...", "./provision/...").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasSuffix(line, "loomarr/internal/api") {
-			t.Errorf("a domain package imports internal/api — the dependency direction is one-way "+
-				"(§14.1); found %q in the transitive set", line)
+	pkgs := loomarrPackages(t)
+	const api = modulePath + "/internal/api"
+
+	for _, domain := range []string{
+		"playout", "schedule", "store", "filler", "channels", "suggest", "library", "provision",
+	} {
+		root := modulePath + "/internal/" + domain
+		if _, ok := pkgs[root]; !ok {
+			// ⚠ A domain package that vanished from the graph must FAIL, not silently pass.
+			// A renamed package would otherwise remove itself from its own gate.
+			t.Errorf("%s is not in the import graph — renamed or moved? Update this list, "+
+				"because a domain package missing from it is a domain package nobody checks", root)
+			continue
+		}
+		if reachable := reachableFrom(pkgs, root); reachable[api] {
+			t.Errorf("%s transitively imports internal/api — the dependency direction is one-way "+
+				"(§14.1). A domain package that needs an API type is telling you the type belongs "+
+				"in the domain.", root)
 		}
 	}
 }
@@ -57,12 +62,12 @@ func TestDomainPackagesDoNotImportAPI(t *testing.T) {
 // Test doubles must never reach the shipped binary. testkit exists so unit tests never touch
 // the network; compiling it into production is a seam that only ever gets wider.
 func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	if strings.Contains(string(out), "loomarr/internal/testkit") {
-		t.Error("cmd/loomarr links internal/testkit — test doubles must not ship (§14.1)")
+	pkgs := loomarrPackages(t)
+	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
+
+	if importers := importersOf(pkgs, linked, modulePath+"/internal/testkit"); len(importers) > 0 {
+		t.Errorf("cmd/loomarr links internal/testkit through %v — test doubles must not ship (§14.1)",
+			importers)
 	}
 }
 
@@ -91,27 +96,14 @@ func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
 // cannot act on is not a gate, it is noise. If River ever drops it, the raw `go list` becomes
 // clean on its own; nothing here needs to change.
 func TestNoLoomarrPackageLinksTestingIntoTheBinary(t *testing.T) {
-	deps, err := exec.Command("go", "list", "-deps", "../cmd/loomarr").Output()
-	if err != nil {
-		t.Fatalf("go list -deps: %v", err)
-	}
-	for _, pkg := range strings.Split(strings.TrimSpace(string(deps)), "\n") {
-		if !strings.HasPrefix(pkg, "github.com/mantonx/loomarr/internal") {
-			continue
-		}
-		imports, err := exec.Command("go", "list", "-f", "{{join .Imports \" \"}}", pkg).Output()
-		if err != nil {
-			t.Fatalf("go list %s: %v", pkg, err)
-		}
-		for _, imp := range strings.Fields(string(imports)) {
-			if imp != "testing" {
-				continue
-			}
-			t.Errorf("%s imports `testing` and is linked into cmd/loomarr (§14.1). Put the "+
-				"assertions in a _test.go file — a test file is visible to every other test file "+
-				"in its own package, so shared helpers do NOT need to be ordinary package code.",
-				pkg)
-		}
+	pkgs := loomarrPackages(t)
+	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
+
+	for _, pkg := range importersOf(pkgs, linked, "testing") {
+		t.Errorf("%s imports `testing` and is linked into cmd/loomarr (§14.1). Put the "+
+			"assertions in a _test.go file — a test file is visible to every other test file "+
+			"in its own package, so shared helpers do NOT need to be ordinary package code.",
+			pkg)
 	}
 }
 
@@ -144,20 +136,11 @@ func TestPackageMapListsEveryPackage(t *testing.T) {
 // are not visible from their types; internal/playout is the clearest case, and was the one
 // package missing one when §14.1 was written.
 func TestEveryPackageHasAPackageDoc(t *testing.T) {
-	// GoFiles counts NON-test files: a package that is only tests (this one, and
-	// internal/integration) has no production code to document, and demanding a doc there
-	// would be documenting the test harness rather than a subsystem.
-	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}}\t{{len .GoFiles}}\t{{.Doc}}", "./...").Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		path, rest, ok := strings.Cut(line, "\t")
-		if !ok {
-			continue
-		}
-		goFiles, doc, _ := strings.Cut(rest, "\t")
-		if goFiles == "0" || strings.TrimSpace(doc) != "" {
+	for path, pkg := range loomarrPackages(t) {
+		// GoFiles counts NON-test files: a package that is only tests (this one, and
+		// internal/integration) has no production code to document, and demanding a doc there
+		// would be documenting the test harness rather than a subsystem.
+		if len(pkg.GoFiles) == 0 || strings.TrimSpace(pkg.Doc) != "" {
 			continue
 		}
 		t.Errorf("%s has no package doc (§14.1) — write one where the subsystem's invariants live", path)
