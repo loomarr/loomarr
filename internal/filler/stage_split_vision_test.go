@@ -1,0 +1,185 @@
+package filler
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
+)
+
+// The auto-confirm gate has had NO data source since V51g removed the text classifier, so
+// `filler.autosplit.enabled` has been default-ON and structurally unable to fire — measured on the
+// maintainer's catalog as 45 compilations parked at `split`, none ever auto-confirmed. These tests
+// pin the property that matters: grounding a segment from its own frames makes the REAL gate pass.
+//
+// ⚠ Deliberately asserted through `AutoConfirmable` rather than by inspecting the stamped fields.
+// "ground() set Category" is a claim about a function; "the gate now accepts the reel" is the claim
+// the feature makes to an operator, and only the second one can fail if the gate changes.
+
+// spanTools records the spans it was asked to frame, so a test can prove the grounder scoped its
+// extraction to each SEGMENT rather than re-framing the whole compilation N times.
+type spanTools struct {
+	spans  [][2]int64
+	frames [][]byte
+	err    error
+}
+
+func (s *spanTools) KeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
+	s.spans = append(s.spans, [2]int64{startMs, endMs})
+	return s.frames, s.err
+}
+func (s *spanTools) Keyframes(context.Context, string, int) ([][]byte, error) { return s.frames, s.err }
+func (s *spanTools) Chapters(context.Context, string) ([]Chapter, error)      { return nil, nil }
+func (s *spanTools) BlackSilence(context.Context, string) ([]Interval, []Interval, error) {
+	return nil, nil, nil
+}
+func (s *spanTools) Transcribe(context.Context, string, int64, int64) ([]TranscriptSegment, error) {
+	return nil, nil
+}
+func (s *spanTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
+	return nil, nil
+}
+func (s *spanTools) Cut(context.Context, string, int64, int64, string) error { return nil }
+
+type fixedVision struct {
+	answer string
+	err    error
+	calls  int
+}
+
+func (f *fixedVision) AskAboutImages(context.Context, string, [][]byte) (llm.Response, error) {
+	f.calls++
+	if f.err != nil {
+		return llm.Response{}, f.err
+	}
+	return llm.Response{Content: f.answer}, nil
+}
+
+type seedTaxa struct{}
+
+func (seedTaxa) ListTaxa(context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
+}
+
+// gatePolicy is auto-confirm ON at a mid threshold — below MaxAutoFileConfidence, so a grounded
+// era is not additionally required and Category alone decides.
+func gatePolicy() *AutoSplitPolicy {
+	return &AutoSplitPolicy{
+		Enabled:       func() bool { return true },
+		MinConfidence: func() int { return 70 },
+		MaxDuration:   func() time.Duration { return 10 * time.Minute },
+	}
+}
+
+func twoSegments() []SplitSegment {
+	return []SplitSegment{
+		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "reel part 1"},
+		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "reel part 2"},
+	}
+}
+
+// The baseline this feature exists to change: ungrounded segments are refused, every time.
+func TestSegmentVision_WithoutGrounding_TheGateRefuses(t *testing.T) {
+	segs := twoSegments()
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+		t.Fatalf("ungrounded segments = %q, want %q — this is the state 45 live reels are in",
+			got, RejectUntagged)
+	}
+}
+
+func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
+	// A grounded product category the seed forest resolves. Era is left absent on purpose: below
+	// the confidence ceiling the gate asks only for tags, and an era this model did not read must
+	// not be invented.
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 10 },
+	})
+
+	segs := twoSegments()
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+
+	// THE assertion: the same gate that refused above now accepts.
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != AutoSplitOK {
+		t.Fatalf("grounded segments = %q, want AutoSplitOK", got)
+	}
+	// ⚠ Each segment framed over ITS OWN span. Without this the grounder would re-frame the whole
+	// compilation per segment — the exact unbounded-per-segment cost §10 V51g forbids — and every
+	// segment would be classified from the same frames.
+	want := [][2]int64{{0, 30_000}, {30_000, 61_000}}
+	if len(tools.spans) != 2 || tools.spans[0] != want[0] || tools.spans[1] != want[1] {
+		t.Errorf("framed spans = %v, want %v", tools.spans, want)
+	}
+	// ⚠ SuggestedEra must stay empty. The gate refuses a guessed era at EVERY threshold, so a
+	// grounder that emitted one would guarantee the rejection it exists to lift.
+	for _, sg := range segs {
+		if sg.SuggestedEra != 0 {
+			t.Errorf("segment %d carries SuggestedEra %d — that is an automatic gate refusal",
+				sg.Index, sg.SuggestedEra)
+		}
+	}
+}
+
+// The budget is a cost bound, and exceeding it must fail SAFE: an ungrounded tail leaves the reel
+// in review rather than confirming a reel only partly looked at.
+func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 1 }, // one segment only
+	})
+
+	segs := twoSegments()
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+
+	if model.calls != 1 {
+		t.Errorf("model called %d times, want 1 — the budget is not bounding the pass", model.calls)
+	}
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+		t.Fatalf("partly-grounded reel = %q, want %q — a reel nobody finished judging must wait",
+			got, RejectUntagged)
+	}
+}
+
+// A model failure must not confirm anything. Every error path degrades toward review.
+func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
+	model := &fixedVision{err: context.DeadlineExceeded}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 10 },
+	})
+
+	segs := twoSegments()
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+		t.Fatalf("after a model failure = %q, want %q", got, RejectUntagged)
+	}
+}
+
+// Vision switched off ⇒ budget 0 ⇒ the model is never asked, and nothing auto-confirms. An
+// operator who turned vision off did not ask for it back on a different rung.
+func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 0 },
+	})
+
+	segs := twoSegments()
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+
+	if model.calls != 0 {
+		t.Errorf("model called %d times with vision off, want 0", model.calls)
+	}
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+		t.Fatalf("with vision off = %q, want %q", got, RejectUntagged)
+	}
+}
