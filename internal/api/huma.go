@@ -634,6 +634,11 @@ type ChannelBinder interface {
 	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
+	// NumberInUse answers the SAME question the approve path's numbering asks — is this
+	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
+	// number gets the same answer the server gives itself when it picks one. Best-effort:
+	// an unreachable Tunarr reports not-in-use rather than blocking a create.
+	NumberInUse(ctx context.Context, number int) (bool, error)
 }
 
 // UserSyncer refreshes already-imported users from the media server (§11).
