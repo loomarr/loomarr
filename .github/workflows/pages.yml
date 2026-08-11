@@ -57,7 +57,7 @@ jobs:
           pnpm build
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/dist
 
