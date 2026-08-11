@@ -60,6 +60,9 @@ func (s *scriptedTools) BlackSilence(context.Context, string) ([]filler.Interval
 func (s *scriptedTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
 	return nil, nil
 }
+func (s *scriptedTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, nil
+}
 func (s *scriptedTools) Keyframes(context.Context, string, int) ([][]byte, error) { return nil, nil }
 func (s *scriptedTools) Cut(context.Context, string, int64, int64, string) error  { return nil }
 
