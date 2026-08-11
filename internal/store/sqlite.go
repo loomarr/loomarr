@@ -30,11 +30,19 @@ RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, 
 // off the sweep (detached = unmanaged; paused = deliberately off-air). RETURNs the
 // full channel column set (channelSelect order) so scanChannel serves it.
 // Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
+//
+// ⚠ **There is deliberately NO `reconcile_deadline > 0` guard. A zero deadline means DUE NOW**
+// (§9 V54), and re-adding that guard reintroduces a permanent strand. The deadline's only writer
+// is the LAST step of a SUCCESSFUL reconcile, so a channel whose first reconcile failed keeps 0 —
+// with the guard it was invisible to the sweep forever, stuck in `building`, never pushed to
+// Tunarr, while the binder's comment promised "the sweep retries". The sweep retried everything
+// except the one case it existed for. Channels that opt out of reconciliation say so in `status`;
+// that is the only exclusion, and a magic deadline value must never become a second one.
 const sqliteChannelClaimSQL = `
 UPDATE channels SET reconcile_deadline = ?1
 WHERE id IN (
     SELECT id FROM channels
-    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2 AND reconcile_deadline > 0
+    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2
     ORDER BY reconcile_deadline LIMIT ?3
 )
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,

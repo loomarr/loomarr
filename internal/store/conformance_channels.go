@@ -212,13 +212,31 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 	detached := sampleChannel("ch-detached", 3, now.Add(-time.Hour))
 	detached.Status = schedule.StatusDetached
 	_ = s.UpsertChannel(ctx, detached)
+	// ⚠ **DUE: a ZERO deadline means due NOW** (§9 V54), and this case was never covered.
+	//
+	// The claim carried `AND reconcile_deadline > 0`, and the deadline's only writer is the LAST
+	// step of a SUCCESSFUL reconcile — so a channel whose first reconcile failed kept 0 and was
+	// invisible to the sweep FOREVER: stranded in `building`, never pushed to Tunarr, while the
+	// binder's comment promised "the sweep retries". Found in the wild on a real install.
+	//
+	// It is asserted here, in the conformance suite, because the guard lived in two hand-written
+	// dialect statements that no test compared — exactly the drift class one suite / two backends
+	// exists to catch.
+	zero := sampleChannel("ch-never-reconciled", 4, time.Time{})
+	zero.Status = schedule.StatusBuilding
+	_ = s.UpsertChannel(ctx, zero)
 
 	claimed, err := s.ClaimDueChannels(ctx, now, time.Minute, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(claimed) != 1 || claimed[0].ID != "ch-due" {
-		t.Fatalf("ClaimDueChannels = %d rows, want just ch-due: %+v", len(claimed), claimed)
+	ids := map[string]bool{}
+	for _, c := range claimed {
+		ids[c.ID] = true
+	}
+	if len(claimed) != 2 || !ids["ch-due"] || !ids["ch-never-reconciled"] {
+		t.Fatalf("ClaimDueChannels = %d rows (%v), want ch-due AND ch-never-reconciled — a channel "+
+			"whose first reconcile never ran must not be stranded", len(claimed), ids)
 	}
 	// Leased: a second claim at the same now returns nothing.
 	again, _ := s.ClaimDueChannels(ctx, now, time.Minute, 10)

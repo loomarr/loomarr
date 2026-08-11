@@ -642,6 +642,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			codec = playoutRes
 		}
 		chBinder = binder.New(st, rec, codec, log)
+		// A failed FIRST reconcile leaves a channel that exists, has a lineup, and shows a full
+		// schedule in the guide but has never reached Tunarr (§9 V54). Give that failure a durable
+		// home rather than one log line: the recorder is the mechanism that already survives a
+		// restart and surfaces on the Dashboard. Typed-nil guard, exactly as `codec` above needs.
+		if activityRec != nil {
+			chBinder = chBinder.WithActivity(activityRec)
+		}
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),

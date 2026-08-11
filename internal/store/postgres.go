@@ -32,10 +32,13 @@ RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline
 // the same channel (§18 single-leader-per-channel). Keyed on reconcile_deadline,
 // excludes detached + paused channels (both off the sweep). Placeholders:
 // $1=leaseUntil, $2=now, $3=limit.
+//
+// ⚠ No `reconcile_deadline > 0` guard, for the reason spelled out on the SQLite statement:
+// a zero deadline means DUE NOW (§9 V54). One suite, two backends — the predicates must match.
 const postgresChannelClaimSQL = `
 WITH due AS (
     SELECT id FROM channels
-    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= $2 AND reconcile_deadline > 0
+    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= $2
     ORDER BY reconcile_deadline
     LIMIT $3
     FOR UPDATE SKIP LOCKED
