@@ -154,10 +154,49 @@ const SettingField = ({
               // The visible text is the STATE; the action belongs in the accessible name, or
               // a screen-reader user hears "set via environment, button" and has to guess.
               aria-label={`Unlock ${humanizeSettingKey(entry.key)} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
-              className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
+              className="group/unlock cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-2"
             >
-              <Badge className="gap-1">
-                <Lock className="size-3" aria-hidden />
+              {/* The hover/focus tell: the chip warms from inert grey to `signal`, and the
+                  padlock springs open. `opacity-80` (what this was) says only "something is
+                  here"; it never said the lock could be OPENED, which is the one thing an
+                  operator needs to know before they can edit an env-pinned field.
+
+                  ⚠ `signal`, NOT `lock`. `lock` is the GREEN success token — "checklist pass,
+                  signal locked" (frontend-design §palette) — so colouring an *unlock*
+                  affordance with it would claim success for an action not yet taken. `signal`
+                  is the primary/interactive alias, which is what this is.
+
+                  ⚠ The ICON SWAP is not decoration, it is the accessible half. A hover state
+                  carried by colour alone excludes anyone who cannot distinguish the two, so
+                  the shape has to change too — the same reason the connection dot pairs its
+                  colour with a check/cross glyph.
+
+                  ⚠ Driven by `group-focus-visible` as well as `group-hover`: a keyboard user
+                  arrives here by Tab and would otherwise get a chip that never reacts.
+
+                  ⚠ A NAMED group (`group/unlock`), and it has to be. The field wrapper is already
+                  `.group` — it reveals the "changed by …" audit line on hover — and Tailwind's
+                  bare `group-hover:` compiles to `:is(:where(.group):hover *)`, which matches ANY
+                  hovered `.group` ancestor. Unnamed, the chip therefore lit up amber whenever the
+                  pointer was anywhere in the field, promising that the label and the input were
+                  clickable too. Naming the group scopes the tell to the chip itself.
+
+                  200ms is the house duration for this kind of moment (frontend-design §7's
+                  "lock in"). No reduced-motion guard needed — styles.css already zeroes every
+                  transition under `prefers-reduced-motion`, globally. */}
+              <Badge className="gap-1 transition-colors duration-200 group-hover/unlock:bg-signal-tint-15 group-hover/unlock:text-signal group-focus-visible/unlock:bg-signal-tint-15 group-focus-visible/unlock:text-signal">
+                {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the chip's
+                    text — a swap that changes width would make the label twitch on hover. */}
+                <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
+                  <Lock
+                    className="absolute size-3 transition-all duration-200 group-hover/unlock:scale-90 group-hover/unlock:opacity-0 group-focus-visible/unlock:scale-90 group-focus-visible/unlock:opacity-0"
+                    aria-hidden
+                  />
+                  <LockOpen
+                    className="absolute size-3 scale-90 opacity-0 transition-all duration-200 group-hover/unlock:scale-100 group-hover/unlock:opacity-100 group-focus-visible/unlock:scale-100 group-focus-visible/unlock:opacity-100"
+                    aria-hidden
+                  />
+                </span>
                 set via environment
               </Badge>
             </button>

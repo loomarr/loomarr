@@ -63,12 +63,23 @@ type CodecComputer interface {
 	ComputeChannelCodec(ctx context.Context, channelID string) (string, error)
 }
 
+// ActivityRecorder gives a failed first reconcile a DURABLE home (§9 V54).
+//
+// ⚠ It exists because a `log.Warn` was the only record, and terminal scrollback is not a record.
+// A channel stranded pre-Tunarr is exactly the kind of thing an operator finds hours later, and
+// "why" is unanswerable once the line has scrolled. Optional and nil-safe: an install with no
+// recorder wired behaves as before.
+type ActivityRecorder interface {
+	Error(ctx context.Context, kind, subjectID, text string)
+}
+
 // Binder materializes approved proposals onto channels (§7). Holds the store + an
 // optional Reconciler + a logger.
 type Binder struct {
 	store Store
 	rec   Reconciler
 	codec CodecComputer
+	acts  ActivityRecorder
 	log   *slog.Logger
 }
 
@@ -79,6 +90,10 @@ type Binder struct {
 func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
 	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
+
+// WithActivity attaches the durable recorder. Chained rather than added to New's signature so
+// every existing caller and test keeps compiling — the same nil-means-skip idiom `rec`/`codec` use.
+func (b *Binder) WithActivity(a ActivityRecorder) *Binder { b.acts = a; return b }
 
 // newChannelID mints the id for a channel created by approving an intent. The
 // `ch_` prefix matches the ids the API documents and that callers assign by hand
@@ -174,6 +189,12 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 		ch.Policy.Filler = &schedule.FillerSelection{Era: ch.Policy.Scope.Era}
 	}
 	ch.Status = schedule.StatusBuilding
+	// ⚠ **Due NOW, so the sweep owns this channel from the moment it exists** (§9 V54). The
+	// immediate reconcile below is best-effort; this is what makes the "the sweep retries"
+	// promise true rather than aspirational. Belt-and-braces with the claim predicate (a zero
+	// deadline is also due now) — but stamping it here means the row never depends on that
+	// reading, and a future writer that re-adds a `> 0` guard breaks one defence, not both.
+	ch.ReconcileDeadline = time.Now().UTC()
 
 	if err := ch.Validate(); err != nil {
 		return "", fmt.Errorf("invalid channel: %w", err)
@@ -194,11 +215,21 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 		}
 	}
 
-	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries.
+	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries — which is true
+	// only because the channel was stamped due-now above. See the ⚠ on `sqliteChannelClaimSQL`.
 	if b.rec != nil {
 		if err := b.rec.Reconcile(ctx, ch.ID); err != nil {
-			b.log.Warn("initial reconcile of an approved channel failed (sweep will retry)",
-				"channel", ch.ID, "err", err)
+			// ⚠ ERROR, not Warn, and it names the CONSEQUENCE. This leaves a channel that exists,
+			// has a lineup and shows a full schedule in the guide, but has never been pushed to
+			// Tunarr — an operator reading "warning" would reasonably scroll past the one line
+			// explaining why their new channel is stuck on "Creating".
+			b.log.Error("initial reconcile of an approved channel FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
+			// And durably, because the log line above is gone the moment the terminal scrolls.
+			if b.acts != nil {
+				b.acts.Error(ctx, "channel.reconcile", ch.ID,
+					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
+			}
 		}
 	}
 	return ch.ID, nil
