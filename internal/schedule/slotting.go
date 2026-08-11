@@ -148,6 +148,37 @@ func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict 
 	return verdictKeep
 }
 
+// episodeVerdict decides ONE expanded episode against the ceiling (§4). It exists because
+// filterEntries can only see a SERIES ENTRY, whose rating is a lossy summary of its episodes:
+// King of the Hill is a TV-PG series holding two TV-14 episodes, and until this ran, both
+// aired on a TV-PG channel. The entry gate was never wrong — it was asked the wrong question.
+//
+// seriesRating is the parent entry's rating. When a ceiling is set, filterEntries has already
+// admitted the parent, so seriesRating is known to be at-or-below it (or unrated under an
+// UnratedAllow policy, which is the adult/general case where none of this binds anyway).
+//
+// ⚠ An episode with NO rating INHERITS the parent's rather than failing closed, which is the
+// one place §4's "never guess" is deliberately not applied, so the reasoning matters:
+//
+//   - A blank episode rating is overwhelmingly a metadata gap, not a signal. Of the 275 King of
+//     the Hill episodes, 20 carry no rating — a fail-closed reading would silently drop 7% of a
+//     show whose parent the operator explicitly approved.
+//   - The parent has ALREADY cleared the ceiling as a whole title. Inheriting is not guessing at
+//     unknown content; it is falling back to the very check filterEntries just performed.
+//   - It is what keeps the persisted episode cache safe. store.SeriesEpisodes rows written
+//     before OfficialRating existed decode as "", so fail-closed would have emptied every kids
+//     channel on deploy until the refresh sweep repopulated it — trading a content leak for
+//     dead air, which §9 forbids just as firmly.
+//
+// The asymmetry still holds where it counts: an episode that IS rated is judged on its own
+// rating and can never be lifted by a permissive parent.
+func episodeVerdict(epRating, seriesRating, ceiling Rating, unrated UnratedPolicy) verdict {
+	if epRating.mapped() {
+		return audienceVerdict(epRating, ceiling, unrated)
+	}
+	return audienceVerdict(seriesRating, ceiling, unrated)
+}
+
 // seriesAllowSet builds a lookup of the explicit series allowlist, or nil when
 // there is no allowlist (⇒ no series restriction).
 func seriesAllowSet(series []provision.Key) map[provision.Key]struct{} {
