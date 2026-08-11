@@ -126,9 +126,6 @@ type pullOutput struct {
 
 // proposeFillerPull composes a plan and writes it to the queue. It downloads nothing.
 func (s *Server) proposeFillerPull(ctx context.Context, in *proposeFillerPullInput) (*pullOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -197,9 +194,6 @@ type listFillerPullsOutput struct {
 }
 
 func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) (*listFillerPullsOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -228,9 +222,6 @@ type approveFillerPullInput struct {
 
 // approveFillerPull is THE commit point — the only path on which a pull downloads anything.
 func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInput) (*pullOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -322,9 +313,6 @@ type dismissFillerPullInput struct {
 }
 
 func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInput) (*pullOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}

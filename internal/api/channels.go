@@ -264,9 +264,6 @@ type createChannelInput struct {
 }
 
 func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	ch := store.Channel{}
 	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
 	// id, or omit it and let the server mint one — same `ch_…` scheme binder.BindApprovedChannel
@@ -394,9 +391,6 @@ type updateChannelInput struct {
 // pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
 func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -518,9 +512,6 @@ type refineChannelOutput struct {
 // Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
 // grounded.
 func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
 		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to refine channels.")
 	}
@@ -571,9 +562,6 @@ func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.channels == nil || s.unconfigured("tunarr.url") {
 		return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before reconciling a channel.")
 	}
@@ -600,9 +588,6 @@ type deleteChannelInput struct {
 type deleteChannelOutput struct{}
 
 func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*deleteChannelOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
