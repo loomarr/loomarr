@@ -118,9 +118,20 @@ const ChannelWatch = ({
   mediaServerName = "your media server",
 }: ChannelWatchProps) => {
   const player = useHlsPlayer(channel.id);
-  // `active` gates the idle poster vs the live player. Starting on a click (not on mount) matches
-  // the mock's "▶ Watch live" affordance AND satisfies autoplay policies, which need a gesture.
-  const [active, setActive] = useState(false);
+  // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
+  // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
+  // second click makes "open the channel" a two-step act to do the obvious thing.
+  //
+  // ⚠ **This does NOT guarantee the video starts, and that is a browser rule, not a bug.** Autoplay
+  // with sound requires user activation. Reaching here by CLICKING a channel keeps the document's
+  // sticky activation, so it plays; arriving by a pasted link or a reload has no activation and the
+  // browser will hold the first frame with the controls showing. Mounting the player either way is
+  // still the right call — a paused player with a play button is one click from playing, which is
+  // exactly where the old poster left you, and every other visit skips the click entirely.
+  //
+  // The poster is kept for the paused/off-air case below, which is a different claim: nothing to
+  // play at all, rather than something waiting for permission to start.
+  const [active, setActive] = useState(true);
 
   const paused = channel.status === "paused" || channel.status === "detached";
 

@@ -59,10 +59,16 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
 const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: "live" });
 
 describe("ChannelWatch pickers", () => {
-  // The audio/subtitle controls live IN the player's bar now (V47), so the player must be started
-  // ("Watch live") before they render — that click is also what enables the /tracks probe.
+  // The audio/subtitle controls live IN the player's bar (V47), so the player must be running
+  // before they render.
+  //
+  // ⚠ **No click any more: Watch tunes in on mount (§9.1 V54).** This used to press the
+  // "Watch live" poster, which no longer exists for a playing channel — the poster is now reserved
+  // for paused/off-air, where there genuinely is nothing to play. Asserting the player is present
+  // instead of clicking to summon it keeps the test on the behaviour rather than on the affordance
+  // that used to precede it.
   const startWatching = async () => {
-    await userEvent.click(await screen.findByRole("button", { name: /Watch .* live/ }));
+    expect(await screen.findByRole("button", { name: "Audio" })).toBeInTheDocument();
   };
 
   it("builds the Audio menu from the AIRING media's tracks, not a hardcoded list", async () => {

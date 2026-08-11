@@ -472,13 +472,21 @@ const GuideGrid = ({
                   // a rail at z-10 let a block scrolled underneath it show its label through
                   // the rail (a stray "PM" floating beside the channel names). The rail must
                   // out-rank the sibling it is covering, not merely its own children.
-                  className="sticky left-0 z-20 flex shrink-0 items-center gap-2.25 border-border border-r bg-background pr-1 pl-3"
+                  // The whole first column lights on hover, not just the name (§9.1 V54). The cell
+                  // IS the channel — ident, number, name, status — so lighting only the text would
+                  // leave the row's own boundary as the one part that doesn't respond, and the
+                  // name was a button that never looked like one.
+                  //
+                  // ⚠ The hover colour must stay OPAQUE. This cell is `sticky` and the programme
+                  // blocks scroll underneath it; a translucent hover would let them show through —
+                  // the same class of bug the z-20 note above exists for.
+                  className="sticky left-0 z-20 flex shrink-0 items-center gap-2.25 border-border border-r bg-background pr-1 pl-3 transition-colors hover:bg-static-800"
                 >
                   <ChannelIdent name={ch.name} number={ch.number} logo={ch.logo} size={30} />
                   <button
                     type="button"
                     onClick={() => onSelectChannel?.(ch.channelId)}
-                    className="flex min-w-0 flex-1 items-center gap-2.25 text-left"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.25 text-left"
                   >
                     <span className="shrink-0 font-mono font-semibold text-[19px] text-signal tabular-nums leading-none">
                       {ch.number}
