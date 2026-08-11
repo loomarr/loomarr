@@ -267,6 +267,13 @@ func TestFillerIncoming_PipelineRowCarriesTheClipItDescribes(t *testing.T) {
 		ClipHash: "hash-cola", Stage: filler.StageTag, Status: filler.StatusRunning,
 		// -1 is the "this rung cannot measure itself" sentinel, and it must survive the wire as
 		// -1 rather than being flattened to 0 by an `omitempty` someone adds later.
+		//
+		// ⚠ Seeded here because this test is about SERIALIZATION, and that is all it proves. It was
+		// for a long time the only artefact mentioning -1, and it stayed green throughout the period
+		// production could not emit one at all: `onProgress` dropped the sentinel on a blanket
+		// `percent < 0` guard, so `tag` and `vision` rendered a bar frozen at zero on every run.
+		// That the runner actually PRODUCES -1 is pinned in
+		// internal/filler/pipelineprogress_test.go, which drives the real pipeline (V54 A6).
 		Progress: -1, Disposition: filler.DispositionRunning,
 		Stages: []filler.StageRecord{
 			{Stage: filler.StageProbe, Status: filler.StatusDone, At: time.Now().UTC()},

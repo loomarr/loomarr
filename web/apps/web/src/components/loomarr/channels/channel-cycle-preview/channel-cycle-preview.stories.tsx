@@ -1,3 +1,4 @@
+import { ExcludedItemDTOReason, type PreviewCycleOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -6,13 +7,28 @@ import { ChannelCyclePreview } from "./channel-cycle-preview";
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
+// `nothingExcluded` — the report a healthy channel returns. Required by the contract, so it is
+// spelled out rather than omitted; `ExcludedPanel` renders nothing for it.
+const nothingExcluded: PreviewCycleOutputBody["excluded"] = {
+  items: [],
+  overCeiling: 0,
+  unrated: 0,
+};
+
 // ChannelCyclePreview owns the live generated hook (channelsApi.usePreviewChannelCycle)
 // rather than taking injectable state — same shape as ChannelLineupEditor elsewhere in
 // this package. Stubs `fetch` deterministically (no backend, no new dependency):
 // GET /v1/channels/{id}/cycle answers with a fixed preview body regardless of `at`, since
 // the gallery only snapshots the initial render (no play()).
+//
+// ⚠ **`body` is typed `PreviewCycleOutputBody`, NOT `unknown`, and that is load-bearing.** It was
+// `unknown` when the response gained a required `excluded` field, so every stub here silently kept
+// answering the OLD shape — `tsc` had nothing to compare against and stayed green while all five
+// stories crashed reading `.items` off `undefined`. A hand-written response body that the compiler
+// cannot check against its DTO is a fixture that can only ever drift. See #281: eight further story
+// files still stub `window.fetch` with untyped bodies and carry the identical latent break.
 const withStubbedPreview =
-  (body: unknown): Decorator =>
+  (body: PreviewCycleOutputBody): Decorator =>
   (Story) => {
     window.fetch = (() => Promise.resolve(jsonResponse(body))) as typeof fetch;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,6 +56,7 @@ const Matched: Story = {
       at: "2026-12-25T09:00:00Z",
       activeRule: { id: "r1", label: "Christmas · Marathon", priority: 60, matched: true },
       windowMs: 0,
+      excluded: nothingExcluded,
       slots: [
         { kind: "program", title: "Die Hard", key: "movie:tmdb:562", part: 0 },
         { kind: "break" },
@@ -69,6 +86,7 @@ const SeriesEpisodes: Story = {
       at: "2026-07-25T09:00:00Z",
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 24 * 60 * 60 * 1000,
+      excluded: nothingExcluded,
       slots: [
         { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
         { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
@@ -87,6 +105,7 @@ const BasePolicy: Story = {
       at: "2026-07-24T14:00:00Z",
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 24 * 60 * 60 * 1000,
+      excluded: nothingExcluded,
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },
@@ -107,6 +126,7 @@ const LongList: Story = {
       at: "2026-12-25T09:00:00Z",
       activeRule: { id: "r1", label: "Weekend · TNG Marathon", priority: 60, matched: true },
       windowMs: 0,
+      excluded: nothingExcluded,
       slots: [
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
@@ -135,10 +155,73 @@ const Empty: Story = {
       at: "2026-07-24T14:00:00Z",
       activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
       windowMs: 0,
+      excluded: nothingExcluded,
       slots: [],
     }),
   ],
 };
 
+// The exclusion report, refused by a SAFETY gate (#263). `ShieldAlert` takes `text-signal` and the
+// summary names the ceiling, because the operator's next action here is about a rating — not about
+// loosening a filter they chose.
+//
+// ⚠ Collapsed, which is all the pixel suite can see: the gallery snapshots the initial render and
+// `ExcludedPanel` hardcodes the disclosure shut. The ROW CONTENT (per-reason labels, the
+// safety-vs-taste colour split on each `li`) is covered in channel-cycle-preview.test.tsx instead.
+// Do not add a `defaultOpen` prop to the component to make this snapshottable — that is production
+// API surface existing only for a screenshot.
+const ExcludedBySafety: Story = {
+  decorators: [
+    withStubbedPreview({
+      at: "2026-07-24T14:00:00Z",
+      activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+      windowMs: 24 * 60 * 60 * 1000,
+      excluded: {
+        overCeiling: 2,
+        unrated: 1,
+        items: [
+          {
+            key: "series:tmdb:1434",
+            title: "Futurama S2E4 — Xmas Story",
+            reason: ExcludedItemDTOReason.over_ceiling,
+          },
+          { key: "movie:tmdb:680", title: "Pulp Fiction", reason: ExcludedItemDTOReason.over_ceiling },
+          { key: "movie:tmdb:99999", title: "Home Movie Reel", reason: ExcludedItemDTOReason.unrated },
+        ],
+      },
+      slots: [
+        { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
+        { kind: "break" },
+        { kind: "program", title: "Dexter's Laboratory", key: "series:tmdb:1958", season: 1, episode: 1 },
+      ],
+    }),
+  ],
+};
+
+// The same panel when nothing tripped a safety gate — the icon drops to muted and the summary says
+// "filtered out by this channel's rules". A curation choice the operator made is not an alarm.
+const ExcludedByRules: Story = {
+  decorators: [
+    withStubbedPreview({
+      at: "2026-07-24T14:00:00Z",
+      activeRule: { id: "r2", label: "Weeknights · 80s only", priority: 40, matched: true },
+      windowMs: 0,
+      excluded: {
+        overCeiling: 0,
+        unrated: 0,
+        items: [
+          { key: "movie:tmdb:105", title: "Back to the Future", reason: ExcludedItemDTOReason.out_of_scope },
+          { key: "movie:tmdb:771", title: "Home Alone", reason: ExcludedItemDTOReason.out_of_season },
+        ],
+      },
+      slots: [
+        { kind: "program", title: "Predator", key: "movie:tmdb:106" },
+        { kind: "break" },
+        { kind: "program", title: "The Goonies", key: "movie:tmdb:9340" },
+      ],
+    }),
+  ],
+};
+
 export default meta;
-export { BasePolicy, Empty, LongList, Matched, SeriesEpisodes };
+export { BasePolicy, Empty, ExcludedByRules, ExcludedBySafety, LongList, Matched, SeriesEpisodes };
