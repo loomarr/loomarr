@@ -94,36 +94,46 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"MEDIA_SERVER_IP":       "compose-only — dev Tunarr's extra_hosts entry",
 }
 
+// scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many
+// it examined. Shared by the help and install families so the two cannot drift apart on what
+// counts as a pin — a token this accepts on one page must be accepted on the other.
+func scanEnvVars(t *testing.T, label, markdown string, valid map[string]struct{}) int {
+	t.Helper()
+	var checked int
+	for _, m := range backtickSpan.FindAllStringSubmatch(markdown, -1) {
+		// Split on "=" so `LLM_PROVIDER=ollama` is checked as a variable, matching how
+		// the pages actually write examples.
+		token := m[1]
+		if i := strings.IndexByte(token, '='); i >= 0 {
+			token = token[:i]
+		}
+		token = strings.TrimSpace(token)
+		if !envVarPattern.MatchString(token) {
+			continue
+		}
+		checked++
+		if _, ok := valid[token]; ok {
+			continue
+		}
+		if why, ok := envVarsOutsideTheRegistry[token]; ok {
+			t.Logf("%s names %s (%s)", label, token, why)
+			continue
+		}
+		t.Errorf("%s documents %s, which is not a declared setting, "+
+			"a bootstrap config key, or a recorded exception.\n"+
+			"  An operator following this page would set a variable nothing reads.\n"+
+			"  Fix the page, or add %s to envVarsOutsideTheRegistry WITH a reason.",
+			label, token, token)
+	}
+	return checked
+}
+
 func TestHelpEnvVarsExist(t *testing.T) {
 	valid := knownEnvVars(t)
 	var checked int
 
 	for _, page := range docs.Pages() {
-		for _, m := range backtickSpan.FindAllStringSubmatch(page.Markdown, -1) {
-			// Split on "=" so `LLM_PROVIDER=ollama` is checked as a variable, matching how
-			// the pages actually write examples.
-			token := m[1]
-			if i := strings.IndexByte(token, '='); i >= 0 {
-				token = token[:i]
-			}
-			token = strings.TrimSpace(token)
-			if !envVarPattern.MatchString(token) {
-				continue
-			}
-			checked++
-			if _, ok := valid[token]; ok {
-				continue
-			}
-			if why, ok := envVarsOutsideTheRegistry[token]; ok {
-				t.Logf("docs/help/%s.md names %s (%s)", page.Slug, token, why)
-				continue
-			}
-			t.Errorf("docs/help/%s.md documents %s, which is not a declared setting, "+
-				"a bootstrap config key, or a recorded exception.\n"+
-				"  An operator following this page would set a variable nothing reads.\n"+
-				"  Fix the page, or add %s to envVarsOutsideTheRegistry WITH a reason.",
-				page.Slug, token, token)
-		}
+		checked += scanEnvVars(t, "docs/help/"+page.Slug+".md", page.Markdown, valid)
 	}
 
 	// Without this, a broken regex scans nothing and reports success — the failure mode that
@@ -193,6 +203,75 @@ func TestHelpComposeCommandsResolve(t *testing.T) {
 	if checked == 0 {
 		t.Error("no `docker compose -f …` command found in the help set — the Quickstart " +
 			"should show one, and this guard is inert without it")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Claim 4: the install set, which is read BEFORE the binary is running
+// ---------------------------------------------------------------------------
+
+// The help set had a guard because it ships inside the binary. docs/install/ does not ship, and
+// was therefore unguarded — but it is what an operator follows to get a container up, before any
+// of the in-app help is reachable. A pin that does not exist costs MORE here: there is no running
+// Settings page to contradict it, and the symptom is a container that starts and misbehaves.
+//
+// Not embedded, so there is no docs.Pages() to walk; these are read from disk.
+func installPages(t *testing.T) map[string]string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join("install", "*.md"))
+	if err != nil {
+		t.Fatalf("glob docs/install: %v", err)
+	}
+	out := map[string]string{}
+	for _, path := range matches {
+		body, err := os.ReadFile(path) //nolint:gosec // repo-relative test fixture
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		out[filepath.ToSlash(filepath.Join("docs", path))] = string(body)
+	}
+	// The install directory is the whole point of the branch that added it; an empty glob means
+	// the path moved and every assertion below silently stopped running.
+	if len(out) == 0 {
+		t.Fatal("no pages found under docs/install/ — this guard would pass against nothing")
+	}
+	return out
+}
+
+func TestInstallEnvVarsExist(t *testing.T) {
+	valid := knownEnvVars(t)
+	var checked int
+	for label, body := range installPages(t) {
+		checked += scanEnvVars(t, label, body, valid)
+	}
+	// Lower than the help set's floor: these pages deliberately push the full list to
+	// configuration.md and name only the handful worth setting up front.
+	if checked < 4 {
+		t.Errorf("only %d env-var token(s) examined across docs/install/; the install pages "+
+			"name several. The scanner is probably broken, not the docs.", checked)
+	}
+}
+
+func TestInstallComposeCommandsResolve(t *testing.T) {
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatalf("resolve repo root: %v", err)
+	}
+	var checked int
+	for label, body := range installPages(t) {
+		for _, m := range composeFileFlag.FindAllStringSubmatch(body, -1) {
+			path := m[1]
+			checked++
+			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
+				t.Errorf("%s runs `docker compose -f %s`, which does not exist.\n"+
+					"  This is the first command an operator runs; it would fail on line one.",
+					label, path)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("no `docker compose -f …` command found under docs/install/ — the Docker " +
+			"walkthrough should show one, and this guard is inert without it")
 	}
 }
 
