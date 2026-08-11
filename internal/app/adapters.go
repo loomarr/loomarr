@@ -11,6 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -156,6 +157,27 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 		})
 	}
 	return out, nil
+}
+
+// tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers
+// does Tunarr already use?" and nothing else (§9 V54).
+//
+// ⚠ The narrowing is the point, and it lives HERE rather than in the binder. The binder needs one
+// question answered — is this integer free? — and taking a whole Programmer to answer it would
+// couple channel NUMBERING to the Tunarr adapter's entire surface. Wiring is the composition
+// root's job; this is the seam where a `[]ActualChannel` becomes a set of ints.
+type tunarrNumbers struct{ prog programmer.Programmer }
+
+func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, error) {
+	chans, err := a.prog.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	used := make(map[int]bool, len(chans))
+	for _, c := range chans {
+		used[c.Number] = true
+	}
+	return used, nil
 }
 
 // libraryRatings adapts library.Client to channels.RatingResolver: it resolves an
