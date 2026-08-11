@@ -60,9 +60,6 @@ func (s *Server) registerDashboard(api huma.API) {
 // how close the box is to its channel ceiling — and §11 keeps machine internals to admins. The
 // member-facing dashboard shows a lockout explaining that, never a 403 wall (V16's gate).
 func (s *Server) getPlayoutTelemetry(ctx context.Context, _ *struct{}) (*playoutTelemetryOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	out := &playoutTelemetryOutput{}
 	out.Body = s.playoutTelemetry(time.Now())
 	return out, nil

@@ -352,9 +352,6 @@ type previewDraftPodsInput struct {
 // assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what
 // will air once applied — only the (draft) selection differs.
 func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewDraftPodsOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.pods == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}

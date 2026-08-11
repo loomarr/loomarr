@@ -50,6 +50,14 @@ type Programmer interface {
 	// desired-vs-actual and detect out-of-band deletion.
 	GetChannel(ctx context.Context, tunarrID string) (ActualChannel, bool, error)
 
+	// ListChannels returns EVERY channel Tunarr has — including ones Loomarr did not create.
+	//
+	// ⚠ Read-only, and it must stay that way: §9's "channels Loomarr didn't create are never
+	// touched" is unchanged. This exists so channel NUMBERING can see the whole space rather than
+	// only Loomarr's own store, which is how a number Tunarr already used got assigned and made
+	// the create fail forever (§9 V54).
+	ListChannels(ctx context.Context) ([]ActualChannel, error)
+
 	// SetLineup replaces the channel's programming with the desired slots
 	// (§9). The adapter translates []schedule.Slot into Tunarr's manual-lineup
 	// envelope. Idempotent: pushing the same slots twice yields the same

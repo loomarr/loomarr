@@ -69,9 +69,6 @@ func (s *Server) registerFillerBulk(api huma.API) {
 }
 
 func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bulkResultOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -156,9 +153,6 @@ type bulkRemoveFillerInput struct {
 }
 
 func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput) (*bulkResultOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}

@@ -73,14 +73,27 @@ type ActivityRecorder interface {
 	Error(ctx context.Context, kind, subjectID, text string)
 }
 
+// NumberSource reports the channel numbers TUNARR already uses, so numbering can avoid them
+// (§9 V54).
+//
+// ⚠ A SET of numbers, not a list of channels, and deliberately not `programmer.Programmer`. The
+// binder wants to answer "is 1 taken?" — handing it a programmer would couple this package to the
+// Tunarr adapter for a question that is one integer wide, and would import a package this one has
+// stayed clear of. The composition root adapts. Optional and nil-safe: without it, numbering sees
+// Loomarr's store only, exactly as before.
+type NumberSource interface {
+	TakenChannelNumbers(ctx context.Context) (map[int]bool, error)
+}
+
 // Binder materializes approved proposals onto channels (§7). Holds the store + an
 // optional Reconciler + a logger.
 type Binder struct {
-	store Store
-	rec   Reconciler
-	codec CodecComputer
-	acts  ActivityRecorder
-	log   *slog.Logger
+	store   Store
+	rec     Reconciler
+	codec   CodecComputer
+	acts    ActivityRecorder
+	numbers NumberSource
+	log     *slog.Logger
 }
 
 // New builds a Binder. rec may be nil (no Tunarr wired yet); the bind still
@@ -94,6 +107,9 @@ func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) 
 // WithActivity attaches the durable recorder. Chained rather than added to New's signature so
 // every existing caller and test keeps compiling — the same nil-means-skip idiom `rec`/`codec` use.
 func (b *Binder) WithActivity(a ActivityRecorder) *Binder { b.acts = a; return b }
+
+// WithChannelNumbers lets numbering see Tunarr's occupied numbers as well as Loomarr's own.
+func (b *Binder) WithChannelNumbers(n NumberSource) *Binder { b.numbers = n; return b }
 
 // newChannelID mints the id for a channel created by approving an intent. The
 // `ch_` prefix matches the ids the API documents and that callers assign by hand
@@ -256,6 +272,15 @@ func (b *Binder) channelByIntent(ctx context.Context, intentRef string) (store.C
 // nextFreeChannelNumber returns the lowest unused positive channel number, so an
 // operator never has to pick one to get on air (§7). Channel counts here are
 // household-scale, so a scan is cheaper and clearer than tracking a counter.
+// ⚠ **"Free" means free on BOTH sides — Loomarr's store AND Tunarr** (§9 V54). Consulting only the
+// store is how an approved channel got number 1 while Tunarr already had a channel there: the
+// create then failed with `500` and an empty body, permanently, and the operator saw nothing but
+// "Creating". Tunarr accumulates channels an earlier install or a reset database left behind, so
+// "my store has no channel 1" says nothing about whether 1 is usable.
+//
+// ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
+// store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
+// renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
 func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	all, err := b.store.ListChannels(ctx)
 	if err != nil {
@@ -264,6 +289,16 @@ func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	used := make(map[int]bool, len(all))
 	for _, c := range all {
 		used[c.Number] = true
+	}
+	if b.numbers != nil {
+		taken, terr := b.numbers.TakenChannelNumbers(ctx)
+		if terr != nil {
+			b.log.Warn("couldn't read Tunarr's channel numbers; numbering from Loomarr's store alone",
+				"err", terr)
+		}
+		for n := range taken {
+			used[n] = true
+		}
 	}
 	for n := 1; ; n++ {
 		if !used[n] {

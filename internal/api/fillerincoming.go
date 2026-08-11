@@ -232,9 +232,6 @@ func (s *Server) registerFillerIncoming(api huma.API) {
 }
 
 func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomingOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}

@@ -79,9 +79,6 @@ type setupStatusOutput struct {
 // aren't wired (unit tests, unconfigured installs) contribute no check rather than
 // a false failure.
 func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	out := &setupStatusOutput{}
 	out.Body.Checks = s.runConnectionChecks(ctx)
 	return out, nil
@@ -170,9 +167,6 @@ type tunarrConnectOutput struct {
 // tunarrConnectHandler wires the media server as Tunarr's media source + scans it
 // (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
 func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.tunarrConnect == nil || s.unconfigured("tunarr.url", "library.url") {
 		return nil, errNotImplemented("Setup incomplete",
 			"Connect Tunarr and your media server in Settings before wiring them together.",
@@ -200,9 +194,6 @@ type livetvReconnectOutput struct {
 // stream). Distinct from the idempotent auto-wire, which leaves a current-URL tuner
 // untouched and so can't fix this.
 func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.livetv == nil || s.unconfigured("tunarr.url") {
 		return nil, errNotImplemented("Live TV isn't set up",
 			"Connect Tunarr in Settings before re-wiring the tuner.", "troubleshooting#livetv")

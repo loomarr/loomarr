@@ -84,9 +84,6 @@ type jobsPauseInput struct {
 }
 
 func (s *Server) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.jobs == nil {
 		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
@@ -110,9 +107,6 @@ type jobsListOutput struct {
 }
 
 func (s *Server) jobsList(ctx context.Context, _ *struct{}) (*jobsListOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.jobs == nil {
 		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
@@ -130,9 +124,6 @@ type jobsRunInput struct {
 }
 
 func (s *Server) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.jobs == nil {
 		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}

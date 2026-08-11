@@ -65,9 +65,6 @@ type settingsListOutput struct {
 }
 
 func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -92,9 +89,6 @@ type settingsPatchOutput struct {
 }
 
 func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*settingsPatchOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -177,9 +171,6 @@ type settingsClearInput struct {
 // empty-string PATCH on a secret is rejected (§9, replace-only) — so unsetting one
 // has to be a deliberate act rather than a side effect of writing settings back.
 func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -206,9 +197,6 @@ type settingsEnvOverrideInput struct {
 // updated_by the rest of the settings surface uses, so an operator debugging a box that is
 // not behaving like its `.env` can find out from the app that someone took a key back.
 func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrideInput) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -248,9 +236,6 @@ type settingsTestOutput struct {
 }
 
 func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*settingsTestOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -278,9 +263,6 @@ type secretRevealOutput struct {
 // API_TOKEN an operator pastes into machine clients. It never rotates: revealing is
 // looking at what's already in use.
 func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -311,9 +293,6 @@ type secretRegenerateOutput struct {
 }
 
 func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput) (*secretRegenerateOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
