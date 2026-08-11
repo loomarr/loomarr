@@ -60,7 +60,40 @@ type previewProgrammingOutput struct {
 		WindowMs   int64          `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
 		Slots      []CycleSlotDTO `json:"slots" doc:"Leading slots of the resolved cycle, in play order (capped)"`
 		Pods       PodPoolDTO     `json:"pods" doc:"The assembled break pool for the draft filler selection (§10)"`
+		Excluded   ExcludedDTO    `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
 	}
+}
+
+// ExcludedDTO renders schedule.ExclusionReport (§4). ⚠ The domain type has carried JSON tags
+// since it was written and could be returned directly — it is restated here because the API
+// owns its wire shape (a domain rename must not silently rewrite the contract), and because
+// `reason` is a closed set the FE switches on, so it is declared as an enum for the generated
+// client rather than an open string.
+type ExcludedDTO struct {
+	OverCeiling int               `json:"overCeiling" doc:"Titles refused for being rated above the channel's audience ceiling"`
+	Unrated     int               `json:"unrated" doc:"Titles refused for carrying no usable rating under a kids ceiling (§4 fails closed)"`
+	Items       []ExcludedItemDTO `json:"items" doc:"The refused items themselves, each with its reason"`
+}
+
+// ExcludedItemDTO is one refused item. ⚠ `key` is the PROVISIONING key, which for an episode
+// refused by the per-episode ceiling is its SERIES key — several items can share one. `title`
+// is what distinguishes them (it carries the SxxEyy for an episode), so it is the label to
+// render, never the key.
+type ExcludedItemDTO struct {
+	Key    string `json:"key" doc:"Provisioning key of the refused title (a series key for a refused episode)"`
+	Title  string `json:"title" doc:"Display label — for a refused episode this carries its season/episode"`
+	Reason string `json:"reason" enum:"over_ceiling,unrated,out_of_scope,out_of_season" doc:"Which hard filter refused it"`
+}
+
+// excludedToDTO renders the report. It never returns a nil Items slice: the FE distinguishes
+// "nothing was refused" from "the field is missing" by length, and a JSON `null` reads as
+// neither.
+func excludedToDTO(r schedule.ExclusionReport) ExcludedDTO {
+	items := make([]ExcludedItemDTO, 0, len(r.Items))
+	for _, it := range r.Items {
+		items = append(items, ExcludedItemDTO{Key: string(it.Key), Title: it.Title, Reason: it.Reason})
+	}
+	return ExcludedDTO{OverCeiling: r.OverCeiling, Unrated: r.Unrated, Items: items}
 }
 
 // previewChannelProgramming is the whole-definition draft preview (P6): cycle slots + break
@@ -98,7 +131,7 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 		}
 	}
 
-	resolvedAt, slots, active, window, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, draftLineup, draftPolicy)
+	cycle, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, draftLineup, draftPolicy)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
@@ -128,10 +161,16 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 	}
 
 	out := &previewProgrammingOutput{}
-	out.Body.At = resolvedAt.UTC().Format(time.RFC3339)
-	out.Body.ActiveRule = ActiveRuleDTO{ID: active.ID, Label: active.Label, Priority: active.Priority, Matched: active.Matched}
-	out.Body.WindowMs = window.Milliseconds()
-	out.Body.Slots = cycleSlotsToDTO(slots, cyclePreviewSlotCap)
+	out.Body.At = cycle.At.UTC().Format(time.RFC3339)
+	out.Body.ActiveRule = ActiveRuleDTO{
+		ID: cycle.Active.ID, Label: cycle.Active.Label, Priority: cycle.Active.Priority, Matched: cycle.Active.Matched,
+	}
+	out.Body.WindowMs = cycle.Window.Milliseconds()
+	// ⚠ Slots are CAPPED (cyclePreviewSlotCap) and the exclusion report is NOT: they answer
+	// different questions. A truncated "what airs" is still useful; a truncated "what was
+	// refused" would understate a safety filter, which is the one thing this must not do.
+	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
 	out.Body.Pods = pool
+	out.Body.Excluded = excludedToDTO(cycle.Excluded)
 	return out, nil
 }

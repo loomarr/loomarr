@@ -8,6 +8,29 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
+// CycleResult is everything one preview computation answers. It exists because the draft
+// preview grew a fifth thing to report (the exclusion report) and a six-value return is not a
+// signature anyone can read — but ALSO because CyclePreview's tuple is consumed by the cached
+// playout path (app/cyclecache.go → playoutResolver.AiringNow), which must not churn every time
+// the authoring surface learns to show one more fact. So the struct is returned by the DRAFT
+// variant only, and CyclePreview keeps its tuple by unpacking it.
+type CycleResult struct {
+	// At is the resolved wall-clock this preview was computed for (a zero `at` means "now").
+	At time.Time
+	// Slots is the resolved cycle in play order (program / pending / break).
+	Slots []schedule.Slot
+	// Active is the curation rule that wins at At, or the base-policy attribution.
+	Active schedule.ActiveRuleAttribution
+	// Window is the resolved rolling-window horizon at At (0 = the whole run).
+	Window time.Duration
+	// Excluded is what the §4 audience ceiling and the scope filters REFUSED, with a reason
+	// per item. ⚠ ComputeDesiredAt has always produced this and, until now, every caller threw
+	// it away — so "why isn't X on my channel" had no answer anywhere in the product, despite
+	// being the documented purpose of the type. It is the same report reconcile computes,
+	// because it comes from the same call.
+	Excluded schedule.ExclusionReport
+}
+
 // CyclePreview computes the channel's desired cycle at a chosen wall-clock `at` for the
 // time-travel preview (§8.1). It is PURE and read-only: it loads the channel, rebuilds the
 // EXACT schedule.ComputeDesiredAt inputs the reconciler uses (settings-driven window + break
@@ -30,7 +53,8 @@ import (
 func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Time) (
 	resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error,
 ) {
-	return e.CyclePreviewDraft(ctx, channelID, at, nil, nil)
+	r, err := e.CyclePreviewDraft(ctx, channelID, at, nil, nil)
+	return r.At, r.Slots, r.Active, r.Window, err
 }
 
 // CyclePreviewDraft is CyclePreview over an UNSAVED draft (§8.1 / P6 programming/preview):
@@ -42,10 +66,10 @@ func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Tim
 func (e *Engine) CyclePreviewDraft(
 	ctx context.Context, channelID string, at time.Time,
 	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy,
-) (resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error) {
+) (CycleResult, error) {
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return time.Time{}, nil, schedule.ActiveRuleAttribution{}, 0, fmt.Errorf("load channel %s: %w", channelID, err)
+		return CycleResult{}, fmt.Errorf("load channel %s: %w", channelID, err)
 	}
 	if at.IsZero() {
 		at = e.now()
@@ -105,7 +129,14 @@ func (e *Engine) CyclePreviewDraft(
 	}
 
 	desired := schedule.ComputeDesiredAt(chDomain, lineup, e.avail, e.policy, ch.Policy, at)
-	active = schedule.ActiveRuleAt(ch.Policy.Rules, at)
-	window = schedule.ResolveWindow(chDomain, ch.Policy, at)
-	return at, desired.Slots, active, window, nil
+	return CycleResult{
+		At:     at,
+		Slots:  desired.Slots,
+		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at),
+		Window: schedule.ResolveWindow(chDomain, ch.Policy, at),
+		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
+		// a caller: reconcile computes the identical report and discards it, so a title refused
+		// by the ceiling or the scope filters was invisible everywhere in the product.
+		Excluded: desired.Excluded,
+	}, nil
 }

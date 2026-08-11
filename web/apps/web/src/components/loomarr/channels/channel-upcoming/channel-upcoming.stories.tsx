@@ -1,3 +1,4 @@
+import type { NowNextEntry, UpcomingOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -11,10 +12,16 @@ const jsonResponse = (body: unknown) =>
 // approach ChannelCyclePreview's story uses). Airtimes are fixed epoch-ms so the render is
 // deterministic; the "Now" highlight is driven by the `live` prop + start ≤ Date.now(), so a
 // live story seeds the first entry's start in the past.
+// ⚠ `NowNextEntry[]`, NOT `unknown` (GH #281). An untyped stub body is invisible to `tsc`, so a
+// response type gaining a required field leaves the hand-written body stale with nothing to
+// compare it against — the component then reads fields off `undefined` and the first sign is a
+// Playwright baseline failure that reads like a rendering regression. The `satisfies` below pins
+// the envelope too, so the stub cannot drift from the shape the hook actually unwraps.
 const withStubbedUpcoming =
-  (upcoming: unknown): Decorator =>
+  (upcoming: NowNextEntry[]): Decorator =>
   (Story) => {
-    window.fetch = (() => Promise.resolve(jsonResponse({ upcoming }))) as typeof fetch;
+    const body = { upcoming } satisfies Omit<UpcomingOutputBody, "$schema">;
+    window.fetch = (() => Promise.resolve(jsonResponse(body))) as typeof fetch;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return (
       <QueryClientProvider client={client}>
