@@ -59,6 +59,48 @@ func TestDomainPackagesDoNotImportAPI(t *testing.T) {
 	}
 }
 
+// The domain must not import the HTTP FRAMEWORK either, which is the same rule one level down.
+//
+// ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/schedule` — 4,000-odd
+// lines of I/O-free scheduling logic, the purest package in the tree — imported `huma/v2` to
+// describe one field's JSON encoding (`func (Duration) Schema(huma.Registry) *huma.Schema`). It
+// passed every gate: it does not import `internal/api`, so the dependency-direction test was
+// satisfied while the pure domain depended on the transport's framework.
+//
+// The wire description now lives in `internal/api/durationwire.go` and is attached with
+// `Registry.RegisterTypeAlias`. This test is what stops the next one — a rule about a specific
+// package name could not have caught it, so the rule is about the LAYER.
+func TestDomainPackagesDoNotImportTheHTTPFramework(t *testing.T) {
+	pkgs := loomarrPackages(t)
+
+	// Transport-shaped dependencies a pure domain package has no business holding. `net/http` is
+	// deliberately NOT here: several domain packages are legitimate HTTP CLIENTS (library, tmdb,
+	// programmer talk to real services). The rule is about SERVING, not about the protocol.
+	frameworks := []string{
+		"github.com/danielgtaylor/huma/v2",
+		"github.com/danielgtaylor/huma/v2/adapters/humago",
+	}
+
+	for _, domain := range []string{
+		"playout", "schedule", "store", "filler", "channels", "suggest", "library", "provision",
+	} {
+		root := modulePath + "/internal/" + domain
+		if _, ok := pkgs[root]; !ok {
+			t.Errorf("%s is not in the import graph — renamed or moved? Update this list", root)
+			continue
+		}
+		reachable := reachableFrom(pkgs, root)
+		for _, fw := range frameworks {
+			if importers := importersOf(pkgs, reachable, fw); len(importers) > 0 {
+				t.Errorf("%s reaches the HTTP framework %s through %v (§14.1). A domain type that "+
+					"needs a wire format should get one in internal/api — see durationwire.go, "+
+					"which attaches a schema with Registry.RegisterTypeAlias instead of putting a "+
+					"huma method on the domain type.", root, fw, importers)
+			}
+		}
+	}
+}
+
 // Test doubles must never reach the shipped binary. testkit exists so unit tests never touch
 // the network; compiling it into production is a seam that only ever gets wider.
 func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
