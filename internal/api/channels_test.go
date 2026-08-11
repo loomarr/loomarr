@@ -13,6 +13,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/binder"
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -31,6 +32,9 @@ type fakeChannelSvc struct {
 	cycleActive schedule.ActiveRuleAttribution // returned attribution
 	cycleWindow time.Duration                  // returned window
 	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
+	// cycleExcluded is the §4 exclusion report the draft preview reports back — what the
+	// audience ceiling / scope filters refused.
+	cycleExcluded schedule.ExclusionReport
 
 	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
 	draftLineup []schedule.LineupEntry
@@ -67,12 +71,20 @@ func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Ti
 // CyclePreviewDraft records the draft it was handed (so a test can assert the handler passed
 // the draft lineup/policy through) and otherwise mirrors CyclePreview's echo.
 func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at time.Time,
-	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
-	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
-) {
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error) {
 	f.draftLineup = draftLineup
 	f.draftPolicy = draftPolicy
-	return f.CyclePreview(ctx, id, at)
+	resolved, slots, active, window, err := f.CyclePreview(ctx, id, at)
+	if err != nil {
+		return channels.CycleResult{}, err
+	}
+	return channels.CycleResult{
+		At: resolved, Slots: slots, Active: active, Window: window,
+		// ⚠ Served from a field, not left zero. The report is the whole point of the endpoint
+		// for a channel that refused something, and a double that can only ever answer "nothing
+		// was excluded" cannot fail the test that asserts the handler renders it.
+		Excluded: f.cycleExcluded,
+	}, nil
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
@@ -402,6 +414,82 @@ func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
 	}
 	if out.Pods.Entries == nil {
 		t.Error("pods.entries must be a slice, never null (an empty pool is a normal state)")
+	}
+}
+
+// The preview answers "why isn't X on my channel" (#263). The §4 exclusion report is computed
+// on every reconcile and, until this endpoint carried it, was discarded by every caller — so a
+// title the audience ceiling refused was invisible everywhere in the product, and diagnosing one
+// meant querying the media server by hand.
+func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Cartoons", 6)
+	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
+	chSvc.cycleExcluded = schedule.ExclusionReport{
+		OverCeiling: 2, Unrated: 1,
+		Items: []schedule.ExcludedItem{
+			{Key: "series:tmdb:2190", Title: "South Park", Reason: "over_ceiling"},
+			// A per-episode refusal: same series key as its parent would carry, distinguished
+			// only by the title. This is why `title` is the label to render and `key` is not.
+			{Key: "series:tmdb:2122", Title: "King of the Hill S04E06 — Wings of the Dope", Reason: "over_ceiling"},
+			{Key: "movie:tmdb:9", Title: "Unrated Short", Reason: "unrated"},
+		},
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Excluded struct {
+			OverCeiling int `json:"overCeiling"`
+			Unrated     int `json:"unrated"`
+			Items       []struct {
+				Key, Title, Reason string
+			} `json:"items"`
+		} `json:"excluded"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Excluded.OverCeiling != 2 || out.Excluded.Unrated != 1 {
+		t.Errorf("counts = over:%d unrated:%d, want over:2 unrated:1",
+			out.Excluded.OverCeiling, out.Excluded.Unrated)
+	}
+	if len(out.Excluded.Items) != 3 {
+		t.Fatalf("items = %d, want 3 — the report must not be truncated; a short list of what a "+
+			"SAFETY filter refused is worse than none", len(out.Excluded.Items))
+	}
+	// The reason has to survive per item: "2 over ceiling" is a count, and the operator's actual
+	// question is WHICH ones, so an items array that lost its reasons answers nothing.
+	if out.Excluded.Items[0].Title != "South Park" || out.Excluded.Items[0].Reason != "over_ceiling" {
+		t.Errorf("item[0] = %+v, want South Park/over_ceiling", out.Excluded.Items[0])
+	}
+	if !strings.Contains(out.Excluded.Items[1].Title, "S04E06") {
+		t.Errorf("item[1] = %+v, want the refused EPISODE named", out.Excluded.Items[1])
+	}
+	if out.Excluded.Items[2].Reason != "unrated" {
+		t.Errorf("item[2] reason = %q, want unrated", out.Excluded.Items[2].Reason)
+	}
+}
+
+// A channel that refused nothing still gets an ITEMS ARRAY, never a JSON null: the FE reads
+// "nothing was excluded" off the length, and null reads as neither empty nor present.
+func TestProgrammingPreview_EmptyExclusionReportIsAnArray(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Clean", 7)
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{}`)
+	var out struct {
+		Excluded struct {
+			Items []struct{ Key string } `json:"items"`
+		} `json:"excluded"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Excluded.Items == nil {
+		t.Error("excluded.items must be [] when nothing was refused, never null")
 	}
 }
 

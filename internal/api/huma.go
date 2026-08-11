@@ -11,6 +11,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -586,20 +587,19 @@ type ChannelService interface {
 	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
 	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
 	Purge(ctx context.Context, channelID string) error
-	// CyclePreview computes "what would air at `at`" for one channel WITHOUT touching
-	// Tunarr or the store beyond the read — the §8.1 time-travel preview (GET
-	// /v1/channels/{id}/cycle?at=). Returns the resolved cycle's slots, which curation
-	// rule is active at that moment, and the resolved rolling-window horizon. A zero
-	// `at` means "now". Read-only; safe for any authenticated caller.
-	CyclePreview(ctx context.Context, channelID string, at time.Time) (
-		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
-	// CyclePreviewDraft is CyclePreview over an UNSAVED draft (P6 programming/preview): a
-	// draftLineup / draftPolicy (nil = use the saved value) stand in for the channel's own,
-	// so the editor previews what an edit WOULD air before applying it. Same purity as
-	// CyclePreview — read-only, nothing persists.
+	// CyclePreviewDraft computes "what would air at `at`" for one channel WITHOUT touching
+	// Tunarr or the store beyond the read — the §8.1 time-travel preview. A draftLineup /
+	// draftPolicy (nil = use the saved value) stand in for the channel's own, so the editor
+	// previews what an edit WOULD air before applying it. A zero `at` means "now". Read-only;
+	// nothing persists.
+	//
+	// ⚠ Both preview endpoints go through this ONE method — GET …/cycle passes nil drafts.
+	// `Engine.CyclePreview` still exists for the playout adapter (which wants only the slots
+	// and a cache around them), but the API does not declare it: it was the saved-preview path
+	// until #263, and routing that through here is what lets the SAVED preview report what the
+	// §4 filters refused, not just the mid-edit one.
 	CyclePreviewDraft(ctx context.Context, channelID string, at time.Time,
-		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
-		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
+		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
 }
 
 // LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and

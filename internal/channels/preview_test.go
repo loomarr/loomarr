@@ -85,3 +85,50 @@ func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 		t.Errorf("zero at resolved to %v, want the engine clock %v", at, want)
 	}
 }
+
+// The exclusion report reaches the caller (#263). ComputeDesiredAt has always produced it and
+// every caller discarded it — reconcile still does — so this is the ONE path by which "why isn't
+// X on my channel" is answerable at all. The API-level test drives a fake engine, so only this
+// one proves the real engine carries the report rather than a zero value.
+func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	e := newEngine(st, tun, avail, nil)
+
+	// One admissible title and one the ceiling must refuse.
+	ch := store.Channel{Lineup: []schedule.LineupEntry{
+		{Key: provision.Key("movie:tmdb:1"), Title: "Kids Film", OfficialRating: "TV-Y7", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:2"), Title: "Adult Film", OfficialRating: "TV-MA", DurationMs: 3600000},
+	}}
+	ch.ID = "c1"
+	ch.Name = "Kids"
+	ch.Number = 5
+	ch.Strategy = schedule.Sequential
+	ch.Status = schedule.StatusBuilding
+	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
+	}}
+	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := e.CyclePreviewDraft(context.Background(), "c1", time.Time{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Excluded.OverCeiling != 1 {
+		t.Errorf("overCeiling = %d, want 1 — the TV-MA title must be reported as refused, not "+
+			"merely absent from the slots", got.Excluded.OverCeiling)
+	}
+	// Absent-from-slots is NOT the same claim: a title can vanish for a dozen reasons (window,
+	// rule narrowing, seasonal bench). The report is what says WHY, so it must name the item.
+	if len(got.Excluded.Items) != 1 || got.Excluded.Items[0].Title != "Adult Film" ||
+		got.Excluded.Items[0].Reason != "over_ceiling" {
+		t.Errorf("items = %+v, want one over_ceiling item naming Adult Film", got.Excluded.Items)
+	}
+	// …and the admissible one still airs, or "nothing was excluded" would be trivially true.
+	if len(got.Slots) == 0 {
+		t.Fatal("expected the below-ceiling title to still air")
+	}
+}
