@@ -1,3 +1,4 @@
+import type { CollectionsOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui";
@@ -6,15 +7,20 @@ import { ChannelCollectionsScope } from "./channel-collections-scope";
 
 const noop = () => {};
 
-const jsonResponse = (status: number, body: unknown) =>
+const jsonResponse = <T,>(status: number, body: T) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // Like ChannelSeriesScope's story, this component owns a live generated-API hook rather than
 // taking injectable state, so `fetch` is stubbed deterministically — no backend, no new
 // dependency (§14). Each story picks the response it needs, because the interesting states
 // here ARE the responses (populated / none made yet / no library at all).
+// ⚠ `CollectionsOutputBody`, not `unknown` (GH #281). I expected this one to need a
+// `CollectionsOutputBody | ErrorModel` union, because the doc comment above describes error
+// states — but every call site passes 200, so the error shape is never actually served here and
+// a union would only have widened the type until it checked nothing. The `status` parameter
+// stays: it is the seam an error story would use, and it should keep working when one is added.
 const withStubbedCollections =
-  (status: number, body: unknown): Decorator =>
+  (status: number, body: CollectionsOutputBody): Decorator =>
   (Story) => {
     window.fetch = ((url: string) => {
       if (typeof url === "string" && url.includes("/v1/library/collections")) {

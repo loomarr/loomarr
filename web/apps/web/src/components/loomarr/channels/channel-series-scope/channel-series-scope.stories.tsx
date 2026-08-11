@@ -1,3 +1,4 @@
+import type { SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui";
@@ -6,7 +7,12 @@ import { ChannelSeriesScope } from "./channel-series-scope";
 
 const noop = () => {};
 
-const jsonResponse = (body: unknown) =>
+// ⚠ Generic, and every MEANINGFUL call site passes its type argument explicitly (GH #281). The
+// parameter itself stays open because this helper only serialises — it is the call sites that
+// must be checked against a DTO. An unchecked body is invisible to `tsc`, so a response type
+// gaining a required field leaves the stub stale, the component reads fields off `undefined`, and
+// the first sign is a Playwright baseline failure that reads like a rendering regression.
+const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 // Like ChannelLineupEditor's story, this component owns a live generated-API hook
@@ -17,7 +23,7 @@ const withStubbedSearch = (): Decorator => (Story) => {
   window.fetch = ((url: string) => {
     if (typeof url === "string" && url.includes("/v1/search")) {
       return Promise.resolve(
-        jsonResponse({
+        jsonResponse<SearchOutputBody>({
           candidates: [
             { mediaType: "series", tvdbId: 71663, name: "The Simpsons", year: 1989, inLibrary: true },
           ],

@@ -1,3 +1,4 @@
+import type { IconSuggestionsOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -5,7 +6,12 @@ import { ChannelIconField } from "./channel-icon-field";
 
 const noop = async () => {};
 
-const jsonResponse = (body: unknown, status = 200) =>
+// ⚠ Generic, with the success call site passing its type argument explicitly (GH #281). The
+// parameter stays open because this helper serialises both success bodies AND the RFC 7807
+// problem body the non-200 story returns — one DTO could not describe both. An unchecked success
+// body is invisible to `tsc`, so a response gaining a required field leaves the stub stale and
+// the failure surfaces as a Playwright baseline diff that reads like a rendering regression.
+const jsonResponse = <T,>(body: T, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // ChannelIconField owns the live `useChannelIconSuggestions` hook itself (same shape as
@@ -59,8 +65,11 @@ const withSuggestions =
   (Story) => {
     window.fetch = ((url: string) => {
       if (typeof url === "string" && url.includes("/icon-suggestions")) {
+        // ⚠ Only the SUCCESS branch is typed. The non-200 branch returns an RFC 7807 problem
+        // document, not the success DTO, so annotating it `IconSuggestionsOutputBody` would be
+        // wrong rather than safer.
         return status === 200
-          ? Promise.resolve(jsonResponse({ suggestions }))
+          ? Promise.resolve(jsonResponse<IconSuggestionsOutputBody>({ suggestions }))
           : Promise.resolve(jsonResponse({ title: "TMDB isn't configured" }, status));
       }
       return Promise.resolve(jsonResponse({}));
