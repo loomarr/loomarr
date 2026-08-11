@@ -328,9 +328,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
-	if _, err := s.store.GetChannelByNumber(ctx, ch.Number); err == nil {
-		return nil, errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
-	} else if !errors.Is(err, store.ErrNotFound) {
+	if err := s.numberConflict(ctx, ch.Number); err != nil {
 		return nil, err
 	}
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
@@ -417,12 +415,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	// number must not 409). The store's unique index would also reject, but a clean
 	// 409 beats a 500 (matches createChannel's rationale).
 	if in.Body.Number != nil && *in.Body.Number != ch.Number {
-		if other, gerr := s.store.GetChannelByNumber(ctx, *in.Body.Number); gerr == nil {
-			if other.ID != ch.ID {
-				return nil, errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
-			}
-		} else if !errors.Is(gerr, store.ErrNotFound) {
-			return nil, gerr
+		if cerr := s.numberConflict(ctx, *in.Body.Number); cerr != nil {
+			return nil, cerr
 		}
 		ch.Number = *in.Body.Number
 	}

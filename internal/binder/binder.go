@@ -281,6 +281,50 @@ func (b *Binder) channelByIntent(ctx context.Context, intentRef string) (store.C
 // ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
 // store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
 // renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
+// NumberInUse reports whether a channel number is already taken — by one of Loomarr's own
+// channels, or by a channel that exists only in TUNARR.
+//
+// ⚠ **There is deliberately no `exceptChannelID` escape.** The first cut had one, so a no-op
+// renumber onto a channel's own number would not self-conflict. It cannot work: Tunarr's channel
+// list is a bare `map[int]bool` with no identity, so excluding a Loomarr row does nothing about
+// the same number appearing on the Tunarr side — which it always does for a live channel,
+// because Loomarr pushed it there. The parameter answered correctly for the store and wrongly
+// for Tunarr, which is worse than not offering it. Callers must not ask about a number a channel
+// already holds; `updateChannel` only runs this check when the number actually changes.
+//
+// ⚠ **This exists because §258 fixed numbering in ONE of the two places that assign a number.**
+// `nextFreeChannelNumber` (the approve path) unions both sources; `api.createChannel` — where an
+// operator TYPES a number — checked only `GetChannelByNumber`, so a number Tunarr already held
+// was accepted with a 201 and then renumbered underneath the operator by the reconcile (§9 V54).
+// A conflict with a Loomarr channel got a clean 409 from the same handler; the two answers
+// disagreed for no reason a user could see.
+//
+// ⚠ Best-effort on the Tunarr side, matching `nextFreeChannelNumber`: an unreachable Tunarr
+// reports NOT-in-use rather than propagating an error. Refusing to create a channel because
+// Tunarr is briefly down would be a worse failure than the collision this prevents — and the
+// collision is recoverable, since the reconcile re-checks occupancy at push time.
+func (b *Binder) NumberInUse(ctx context.Context, number int) (bool, error) {
+	all, err := b.store.ListChannels(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, c := range all {
+		if c.Number == number {
+			return true, nil
+		}
+	}
+	if b.numbers == nil {
+		return false, nil
+	}
+	taken, terr := b.numbers.TakenChannelNumbers(ctx)
+	if terr != nil {
+		b.log.Warn("couldn't read Tunarr's channel numbers; checking the number against Loomarr's store alone",
+			"number", number, "err", terr)
+		return false, nil
+	}
+	return taken[number], nil
+}
+
 func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	all, err := b.store.ListChannels(ctx)
 	if err != nil {
