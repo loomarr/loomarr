@@ -29,8 +29,11 @@ import { ChannelDetailProvider } from "./-channel-detail-context";
 // `viewer: true` marks a section a member can reach too — the tab bar shows exactly those for a
 // non-admin (Overview + Watch, both viewer surfaces per §12), and the full set for an admin.
 const SECTIONS = [
-  { id: "info", label: "Channel info", to: "/channels/$id/info", viewer: true },
+  // ⚠ WATCH IS FIRST (§9.1 V54). Opening a channel to a settings panel answered the question
+  // nobody asked first — the overwhelmingly common reason to open a channel is to see what is on
+  // it. Info keeps everything it had, one tab over.
   { id: "watch", label: "Watch", to: "/channels/$id/watch", viewer: true },
+  { id: "info", label: "Channel info", to: "/channels/$id/info", viewer: true },
   { id: "programming", label: "Programming", to: "/channels/$id/programming", viewer: false },
   { id: "filler", label: "Filler", to: "/channels/$id/filler", viewer: false },
   { id: "danger", label: "Danger zone", to: "/channels/$id/danger", viewer: false },
