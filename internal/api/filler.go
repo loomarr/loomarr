@@ -506,9 +506,6 @@ type patchClipInput struct {
 type clipOutput struct{ Body ClipDTO }
 
 func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	now := time.Now()
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
@@ -596,9 +593,6 @@ type syncFillerOutput struct {
 }
 
 func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil || s.featureOff(ctx, "filler") {
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
@@ -628,9 +622,6 @@ type tagFillerOutput struct {
 }
 
 func (s *Server) tagFiller(ctx context.Context, _ *struct{}) (*tagFillerOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil || s.featureOff(ctx, "filler") {
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
@@ -662,9 +653,6 @@ type ingestFillerOutput struct {
 // to hours, so the response carries a job id and progress arrives on the SSE bus — the
 // same contract as the §8.1 model pull.
 func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*ingestFillerOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
@@ -724,9 +712,6 @@ type discoverFillerOutput struct {
 
 // discoverFiller searches for clips the operator could add, downloading nothing.
 func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*discoverFillerOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
@@ -804,9 +789,6 @@ type discoverStatsOutput struct {
 // concurrent both measured 25s against 6's 15.6s), so archive.org is throttling and the latency
 // is not ours to tune away. Asking only for rows a person is looking at is the fix.
 func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput) (*discoverStatsOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
@@ -930,9 +912,6 @@ type splitFillerOutput struct {
 // a full-decode detection pass takes minutes, so the job id's progress rides
 // the SSE bus and the proposal is read back when the terminal frame lands.
 func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitFillerOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before splitting a compilation.")
@@ -966,9 +945,6 @@ type getFillerSplitOutput struct {
 // getFillerSplit reads one proposal — the review surface's source of truth.
 // Read straight from the store, like list/patch: no service indirection needed.
 func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*getFillerSplitOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	p, err := s.store.GetSplitProposal(ctx, in.ProposalID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Split proposal not found",
@@ -1001,9 +977,6 @@ type confirmFillerSplitOutput struct {
 // cuts seek rather than decode, so even twenty segments are seconds — the
 // minutes belong to detection, which already ran.
 func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitInput) (*confirmFillerSplitOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before confirming a split.")

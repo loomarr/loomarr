@@ -84,9 +84,6 @@ type systemRestartCostOutput struct {
 }
 
 func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRestartCostOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	out := &systemRestartCostOutput{}
 	out.Body.Available = s.restart != nil
 
@@ -109,9 +106,6 @@ func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRes
 }
 
 func (s *Server) systemRestart(ctx context.Context, _ *struct{}) (*struct{}, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.restart == nil {
 		return nil, errNotImplemented("Restart unavailable",
 			"This build can't restart itself. Restart the container or service the way you started it.")
@@ -130,9 +124,6 @@ type systemReloadOutput struct {
 }
 
 func (s *Server) systemReload(ctx context.Context, _ *struct{}) (*systemReloadOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	// ⚠ The SAME probe the wizard's checklist runs, not a second implementation — a
 	// reload that disagreed with it would send an operator chasing a discrepancy that
 	// exists only in our code.

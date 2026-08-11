@@ -77,9 +77,6 @@ type systemServicesOutput struct {
 }
 
 func (s *Server) systemServices(ctx context.Context, _ *struct{}) (*systemServicesOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	info := buildinfo.Get()
 	out := &systemServicesOutput{}
 
@@ -138,9 +135,6 @@ type listActivityOutput struct {
 }
 
 func (s *Server) listActivity(ctx context.Context, in *listActivityInput) (*listActivityOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
 	if s.store == nil {
 		return nil, errNotImplemented("Activity unavailable", "There's no store configured yet.")
 	}
