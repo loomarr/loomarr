@@ -59,7 +59,8 @@ Statuses are `submitted`, `approved`, `denied` (§7, §8).
 Lives at `/v1/proposals*`; every operationId is `*-proposal(s)`.
 _Avoid_: suggestion, recommendation, plan
 
-⚠ The routes said `/v1/suggestions` until V41, and one operationId (`submit-suggestion`) sat
+⚠ The routes said `/v1/suggestions` until V41 (retired-ok — named here to record the rename),
+and one operationId (`submit-suggestion`) sat
 among five `*-proposal` siblings in the same file — so one resource was submitted as a
 "suggestion" and read, approved and denied as a "proposal". A glossary nothing follows is not a
 glossary. `scripts/check-retired.sh` now guards the old path.
@@ -121,8 +122,27 @@ _Avoid_: placeholder, gap, empty slot
 ### Commercials
 
 **Clip**:
-One piece of filler content. Identity is its path relative to `FILLER_DIR` (§10).
+One piece of filler content. Identity is its **sparse content hash** — 64 hex characters, not
+its path (§10 V38c). A file that moves within `FILLER_DIR` is the same Clip; two copies at
+different paths are one Clip.
 _Avoid_: commercial, ad, asset
+
+**Composite**:
+A Clip that is a *container* of other clips — "KCPQ/Fox commercials, 5/28/1996" — kept as the
+parent after splitting. A Composite is **not airable**: it is excluded from selection, and its
+Segments are what play (§10 V45).
+_Avoid_: compilation, reel, source clip
+
+**Segment**:
+A Clip produced by splitting a Composite, carrying lineage back to its parent (§10 V45).
+_Avoid_: cut, chunk, part
+
+**Taxon** (and **Tag**):
+The clip vocabulary is a **forest of taxa on independent axes** — product, format, seasonal,
+audience-cue — where a leaf tag like `beer` rolls up to `alcohol` and `drinks`. A Clip carries
+a **set** of tags, not one category, so a curation rule can ask "is `cereal` a kind of food?"
+A model's output is resolved against the vocabulary or dropped (§10 V45a).
+_Avoid_: category (the flat 12-value string this replaced), genre, label
 
 **Pod**:
 An assembled commercial break — an ordered set of Clips inserted between programs (§10).
@@ -143,6 +163,13 @@ _Avoid_: streaming, transcoding (transcoding is one step within playout)
 Bringing an external system to match Loomarr's desired state — the Channel into Tunarr, the
 Library into Records. Always best-effort and repeatable; there is no manual "rebuild" (§7, §9).
 _Avoid_: sync, push, publish
+
+**Image** (and **Rendition**):
+Every picture in Loomarr — channel icon, clip still, TMDB poster — is one **Image** travelling
+one pipeline; a **Rendition** is a particular size and format of it (§22). Callers hand bytes
+or a URL and receive an Image; they ask for a Rendition and receive a file. Nothing outside
+that package knows the disk layout, the hash, the format ladder, or which encoder ran.
+_Avoid_: thumbnail, asset, poster (all are Renditions of an Image)
 
 ### People and access
 

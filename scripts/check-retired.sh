@@ -153,7 +153,20 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # one directory the ban could not see, so the sweep silently measured a 404 as if it were an
 # endpoint. This file excludes itself via ALLOW_PATH, so the RETIRED array above does not
 # self-trip.
-SEARCH=(docs internal docker scripts web/apps/web/src README.md CLAUDE.md .env.example)
+#
+# ⚠ CHANGELOG.md, CONTRIBUTING.md, AGENTS.md and CONTEXT.md were added for the third instance
+# of the same pattern, and this one was the most visible: CHANGELOG.md advertised
+# "First-class Docker images (distroless `loomarr:latest`; `loomarr:filler` …)" — a tag that
+# does not exist, on a base that is no longer distroless — while `loomarr:filler` sat in the
+# RETIRED array above and `make retired-verify` reported clean. The changelog is the most
+# product-facing document in the repo and the guard could not see it.
+#
+# The rule this keeps re-teaching: a hand-maintained list of WHERE to look drifts exactly like
+# a hand-maintained list of WHAT to look for. Anything a human reads as a statement about the
+# product belongs here. docs-site/ is deliberately absent — it renders docs/ and holds no prose
+# of its own (design §13).
+SEARCH=(docs internal docker scripts web/apps/web/src README.md CLAUDE.md AGENTS.md
+        CONTRIBUTING.md CONTEXT.md CHANGELOG.md THIRD_PARTY_NOTICES.md .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do
   id="${row%%|*}"; why="${row#*|}"
