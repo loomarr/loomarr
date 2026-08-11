@@ -1,3 +1,4 @@
+import type { PodPoolDTO } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -15,8 +16,13 @@ const jsonResponse = (body: unknown) =>
 // rendered `null`, and the visual harness hung waiting for `#storybook-root > *` to become
 // visible. It failed even under `--update-snapshots`, which is the useful part: a story that
 // renders nothing cannot be "fixed" by accepting a new baseline.
+// ⚠ `PodPoolDTO`, NOT `unknown` (GH #281). An untyped stub body is invisible to `tsc`: when the
+// response gained a required field, nine story files' hand-written bodies went stale with nothing
+// to compare them against, the components read fields off `undefined`, and the first sign was a
+// Playwright baseline failure that read like a rendering regression. Typing the body is the whole
+// fix — a DTO change now fails typecheck in the commit that makes it.
 const withStubbedPods =
-  (pod: unknown): Decorator =>
+  (pod: PodPoolDTO): Decorator =>
   (Story) => {
     window.fetch = (() => Promise.resolve(jsonResponse(pod))) as typeof fetch;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
