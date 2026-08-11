@@ -59,7 +59,9 @@ func (f *fixedVision) AskAboutImages(context.Context, string, [][]byte) (llm.Res
 
 type seedTaxa struct{}
 
-func (seedTaxa) ListTaxa(context.Context) ([]taxonomy.Taxon, error) { return taxonomy.SeedForest(), nil }
+func (seedTaxa) ListTaxa(context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
+}
 
 // gatePolicy is auto-confirm ON at a mid threshold — below MaxAutoFileConfidence, so a grounded
 // era is not additionally required and Category alone decides.
