@@ -24,6 +24,15 @@ type Episode struct {
 	// double-episode). 0 when unset (a normal single episode). Used with the title-
 	// suffix heuristic to keep two-parters together (§5 multi-part adjacency floor).
 	EpisodeEnd int
+	// OfficialRating is THIS EPISODE's content rating, which is not always the show's
+	// (§4 audience ceiling). "" when the media server has none for the episode.
+	//
+	// ⚠ The series-level rating is a lossy SUMMARY, and enforcing against it alone let
+	// above-ceiling episodes air. Measured on the maintainer's library: King of the Hill
+	// is a TV-PG series whose 275 episodes are 253 × TV-PG, 20 × unrated — and 2 × TV-14.
+	// Those two aired on a TV-PG channel because nothing below the series entry was ever
+	// asked. TMDB agrees the summary is lossy: it lists BOTH TV-PG and TV-14 for the show.
+	OfficialRating string
 }
 
 // episodeItem mirrors the /Items slice fields we need. RunTimeTicks is the
@@ -35,6 +44,9 @@ type episodeItem struct {
 	SeasonNumber *int   `json:"ParentIndexNumber"`
 	EpisodeNum   *int   `json:"IndexNumber"`
 	EpisodeEnd   *int   `json:"IndexNumberEnd"` // set on a single-file multi-part episode
+	// Absent on most episodes even when the SHOW is rated — hence a plain string with ""
+	// meaning "the server has none", not "unrated content".
+	OfficialRating string `json:"OfficialRating"`
 }
 
 type episodesResponse struct {
@@ -55,7 +67,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", "Episode")
-	q.Set("Fields", "RunTimeTicks,IndexNumberEnd")
+	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating")
 	q.Set("SortBy", "ParentIndexNumber,IndexNumber")
 	q.Set("SortOrder", "Ascending")
 
@@ -75,7 +87,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 		if dur <= 0 {
 			continue // unplayable as a program slot (Tunarr requires duration > 0)
 		}
-		e := Episode{LibraryItemID: it.ID, Name: it.Name, DurationMs: dur}
+		e := Episode{LibraryItemID: it.ID, Name: it.Name, DurationMs: dur, OfficialRating: it.OfficialRating}
 		if it.SeasonNumber != nil {
 			e.Season = *it.SeasonNumber
 		}

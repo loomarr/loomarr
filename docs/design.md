@@ -218,7 +218,7 @@ flowchart TD
 **Layer 3**
 
 - **`llm`** · 5 importers · → `httpx`, `metrics`
-  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by Ollama (homelab default) and Anthropic (opt-in).
+  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`requester`** · 2 importers · → `httpx`, `provision`

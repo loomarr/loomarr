@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -113,6 +114,15 @@ type ResolvedProgram struct {
 	// resolveEntry copies these onto the program Slot so the deck keeps a group atomic.
 	PartGroup string
 	PartIndex int
+	// OfficialRating is THIS episode's own rating, checked against the ceiling at expansion
+	// (§4). "" = the media server has none for the episode, which INHERITS the parent series'
+	// rating rather than failing closed — see episodeVerdict for why.
+	//
+	// ⚠ It is persisted: store.SeriesEpisodes caches []ResolvedProgram, so rows written before
+	// this field existed decode as "". That is precisely the case inheritance makes safe — a
+	// fail-closed reading would have emptied every kids channel on deploy until the refresh
+	// sweep repopulated the cache.
+	OfficialRating Rating
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -265,7 +275,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
 	for _, e := range eligible {
-		slots = append(slots, resolveEntry(e, avail, pending, franchiseGroups)...)
+		slots = append(slots, resolveEntry(e, avail, pending, franchiseGroups, rp, &report)...)
 	}
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
@@ -280,7 +290,13 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	for _, e := range channelEligible {
 		// Franchise grouping is irrelevant to key eligibility (we only collect keys here), so
 		// pass nil — grouping only shapes the aired ORDER, not which titles are supplied.
-		for _, s := range resolveEntry(e, avail, pending, nil) {
+		//
+		// ⚠ The audience gate still RUNS (rp), but records nothing (nil report): this pass
+		// re-resolves the same entries, so a shared report would double-count every episode
+		// drop. It must not be skipped either — a series whose every episode is over-ceiling
+		// supplies nothing, and calling it eligible would read as drift the moment it stops
+		// appearing in Slots.
+		for _, s := range resolveEntry(e, avail, pending, nil, rp, nil) {
 			if s.IsProgram() {
 				eligibleKeys[s.Key] = true
 			}
@@ -507,21 +523,74 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 	return out
 }
 
+// episodeLabel names one excluded episode for the exclusion report. The report is keyed by the
+// SERIES key (an episode has none of its own), so without the season/episode the operator would
+// see N identical rows saying only that something in the show was dropped.
+func episodeLabel(e LineupEntry, ep ResolvedProgram) string {
+	label := e.Title
+	if label == "" {
+		label = string(e.Key)
+	}
+	if ep.Season > 0 || ep.Episode > 0 {
+		label = fmt.Sprintf("%s S%02dE%02d", label, ep.Season, ep.Episode)
+	}
+	if ep.Title != "" {
+		label += " — " + ep.Title
+	}
+	return label
+}
+
 // resolveEntry turns one approved lineup entry into its desired slot(s). franchise carries
 // the movie-franchise group tags (§5) computed across the eligible set; a movie whose Key is
 // in it gets a PartGroup so its franchise stays together. Nil/absent ⇒ no franchise grouping.
-func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag) []Slot {
+//
+// rp supplies the audience ceiling for the PER-EPISODE gate (§4): filterEntries can only judge
+// a series entry by its summary rating, so the episode-level check has to happen here, where the
+// episodes exist. report accumulates those drops; pass nil to run the gate without recording
+// (the EligibleKeys pass does, so a drop is not counted twice).
+func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
 			// Keep only the in-range episodes (in season/episode order), then tag multi-part
 			// groups over that ordered set (§5) so consecutive-episode detection sees the
 			// real neighbors. inRange preserves order, so parts stay contiguous for detection.
+			//
+			// ⚠ The audience gate runs HERE, before assignPartGroups, not after: dropping one
+			// half of a two-parter from an already-tagged group would leave a PartGroup whose
+			// missing member the deck still treats as atomic.
 			inRange := eps[:0:0]
+			audienceDropped := 0
 			for _, ep := range eps {
-				if e.inSeasonRange(ep.Season) { // outside the entry's season range → drop
-					inRange = append(inRange, ep)
+				if !e.inSeasonRange(ep.Season) { // outside the entry's season range → drop
+					continue
 				}
+				// §4 per-episode ceiling. A series entry reached this far because its SUMMARY
+				// rating cleared the gate; an individual episode rated above the ceiling must
+				// still not air (King of the Hill: a TV-PG show holding two TV-14 episodes).
+				if rp.Ceiling != "" {
+					switch episodeVerdict(ep.OfficialRating, e.OfficialRating, rp.Ceiling, rp.Unrated) {
+					case verdictOverCeiling:
+						audienceDropped++
+						if report != nil {
+							report.OverCeiling++
+							report.Items = append(report.Items, ExcludedItem{
+								Key: e.Key, Title: episodeLabel(e, ep), Reason: "over_ceiling",
+							})
+						}
+						continue
+					case verdictUnratedExcluded:
+						audienceDropped++
+						if report != nil {
+							report.Unrated++
+							report.Items = append(report.Items, ExcludedItem{
+								Key: e.Key, Title: episodeLabel(e, ep), Reason: "unrated",
+							})
+						}
+						continue
+					}
+				}
+				inRange = append(inRange, ep)
 			}
 			assignPartGroups(string(e.Key), inRange)
 			out := make([]Slot, 0, len(inRange))
@@ -545,6 +614,14 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 			}
 			if len(out) > 0 {
 				return out
+			}
+			// ⚠ A series the AUDIENCE GATE emptied resolves to NOTHING, not a pending slot.
+			// A pending slot means "approved, still acquiring" — it advertises the title as
+			// coming, and under PodFill it holds airtime open for it. Neither is true of a
+			// show whose every episode the ceiling refused: it is not late, it is excluded,
+			// and promising it on a kids channel is the leak wearing a different hat.
+			if audienceDropped > 0 {
+				return nil
 			}
 			// The range matched no in-library episodes yet → pending (like an
 			// unavailable series), not an empty channel.
