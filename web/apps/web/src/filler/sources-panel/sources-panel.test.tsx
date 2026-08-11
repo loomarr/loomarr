@@ -128,14 +128,20 @@ describe("SourcesPanel", () => {
   // ⚠ Only `archive` can be searched in place, and the panel reads the server's `searchable`
   // flag rather than testing the kind itself. A YouTube playlist can only be ENUMERATED by
   // yt-dlp, so a search box there would return nothing forever.
+  // ⚠ Queried by the SOURCE's name, not the button's visible "Search it" (§10 V54 B6). Several
+  // collections now appear together under one provider, and five buttons all reading "Search it"
+  // are indistinguishable to anyone not looking at the row they sit in — so the accessible name
+  // carries the target, and that is what a test must ask for.
   it("offers search only on a searchable source", () => {
     stubSources();
-    const { unmount } = renderPanel([source({ kind: "archive", id: "a", searchable: true })]);
-    expect(screen.getByRole("button", { name: /search it/i })).toBeInTheDocument();
+    const { unmount } = renderPanel([
+      source({ kind: "archive", id: "a", target: "classic_tv", searchable: true }),
+    ]);
+    expect(screen.getByRole("button", { name: /^search classic_tv$/i })).toBeInTheDocument();
     unmount();
 
-    renderPanel([source({ kind: "youtube", id: "y", searchable: false })]);
-    expect(screen.queryByRole("button", { name: /search it/i })).not.toBeInTheDocument();
+    renderPanel([source({ kind: "youtube", id: "y", target: "vintage_ads", searchable: false })]);
+    expect(screen.queryByRole("button", { name: /^search vintage_ads$/i })).not.toBeInTheDocument();
   });
 
   // Registering records that a source EXISTS and is allowed. Downloading is the pull's approval
@@ -145,5 +151,61 @@ describe("SourcesPanel", () => {
     stubSources();
     renderPanel();
     expect(await screen.findByText(/downloads nothing/i)).toBeInTheDocument();
+  });
+});
+
+// The per-source search expander (§10 V54 B6).
+//
+// ⚠ **`searchOpen` was ONE boolean for the whole panel**, and `renderSearch` is called once per
+// source — so pressing "Search it" on one collection expanded the panel on EVERY searchable row,
+// each showing the same query and the same results. It looked correct with a single collection
+// registered, which is every fixture in this file before now. The provider roll-up is exactly what
+// puts several collections on screen at once.
+describe("SourcesPanel per-source search", () => {
+  const twoCollections = [
+    source({ kind: "archive", id: "archive:classic", target: "Classic TV Commercials", searchable: true }),
+    source({ kind: "archive", id: "archive:psas", target: "Vintage PSAs", searchable: true }),
+  ];
+
+  it("opens the search on the row that was clicked, and only that row", async () => {
+    stubSources();
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+
+    // The clicked row is open…
+    expect(
+      screen.getByRole("button", { name: /close the search of Classic TV Commercials/i }),
+    ).toBeInTheDocument();
+    // …and the other row is still offering to open, rather than already showing this row's panel.
+    expect(screen.getByRole("button", { name: /^search Vintage PSAs$/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /close the search of Vintage PSAs/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  // One panel at a time is what lets the query state stay single — and switching rows must not
+  // leave the previous row's answers sitting under this row's name.
+  it("moves the panel when a different source is searched", async () => {
+    stubSources();
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^search Vintage PSAs$/i }));
+
+    expect(screen.getByRole("button", { name: /close the search of Vintage PSAs/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^search Classic TV Commercials$/i })).toBeInTheDocument();
+  });
+
+  it("closes the panel when its own button is pressed again", async () => {
+    stubSources();
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /close the search of Classic TV Commercials/i }),
+    );
+
+    expect(screen.getByRole("button", { name: /^search Classic TV Commercials$/i })).toBeInTheDocument();
   });
 });

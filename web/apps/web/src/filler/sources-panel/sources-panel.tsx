@@ -44,7 +44,14 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
 
   // The per-source search expander (V35b). Local rather than in the URL: an open panel with an
   // empty query is not a view worth sharing, and the search TERM is already transient here.
-  const [searchOpen, setSearchOpen] = useState(false);
+  //
+  // ⚠ **Which source's panel is open, not WHETHER one is (§10 V54 B6).** This was a single
+  // boolean shared by every row, and `renderSearch` is called once per source — so pressing
+  // "Search it" on one archive collection expanded the panel on EVERY searchable row at once,
+  // each showing the same query, the same results and the same "Close" button. With one
+  // collection registered it looked correct; the roll-up this phase renders is precisely what
+  // puts several of them on screen together.
+  const [searchOpenFor, setSearchOpenFor] = useState<string>();
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
 
@@ -141,6 +148,24 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   );
   const discoveredStats = unwrap(statsQuery.data, (b) => b.stats) ?? {};
 
+  // Opening a DIFFERENT source's search is a new search, so the query and the result set start
+  // clean rather than showing the previous row's answers under this row's name.
+  //
+  // ⚠ One panel open at a time, which is what lets the query state below stay single. Several
+  // open panels would each need their own query, submitted term and `statIds` — and `statIds`
+  // spends a real ~1.8s archive.org call per id, so two result sets on screen would quietly
+  // double that.
+  const toggleSearch = (id: string) => {
+    if (searchOpenFor === id) {
+      setSearchOpenFor(undefined);
+      return;
+    }
+    setSourceQuery("");
+    setSubmittedQuery("");
+    setStatIds([]);
+    setSearchOpenFor(id);
+  };
+
   // Which results have been queued this session. ⚠ Session state, deliberately NOT derived from
   // the catalog: a queued download has not landed yet, so the clip it becomes is not in the
   // catalog to compare against, and the row must still report that the operator already asked.
@@ -209,12 +234,20 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSearchOpen((open) => !open)}
-                aria-expanded={searchOpen}
+                onClick={() => toggleSearch(source.id)}
+                aria-expanded={searchOpenFor === source.id}
+                // ⚠ The accessible name carries the SOURCE. With several collections on screen
+                // under one provider, five buttons all reading "Search it" are indistinguishable
+                // to anyone not looking at the row they sit in.
+                aria-label={
+                  searchOpenFor === source.id
+                    ? `Close the search of ${source.target}`
+                    : `Search ${source.target}`
+                }
               >
-                {searchOpen ? "Close" : "Search it"}
+                {searchOpenFor === source.id ? "Close" : "Search it"}
               </Button>
-              {searchOpen && (
+              {searchOpenFor === source.id && (
                 <div className="mt-3">
                   <SourceSearch
                     results={discoveredResults}
