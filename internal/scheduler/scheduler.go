@@ -38,6 +38,28 @@ type Job struct {
 	ScheduleKey string // settings key, e.g. "job.reconcile.schedule"; "" ⇒ always DefaultCron
 	Run         func(ctx context.Context) error
 
+	// Timeout is how long this job may run before its context is cancelled. Zero ⇒ River's
+	// `JobTimeoutDefault`, which is **one minute**.
+	//
+	// ⚠ **A media job MUST set this, and the default being one minute is why.** Nothing here
+	// ever configured `river.Config.JobTimeout`, and `riverWorker` did not override
+	// `Timeout()`, so every job on the install ran under a 60-second deadline inherited from a
+	// dependency — a number nobody chose and nothing recorded. `exec.CommandContext` SIGKILLs
+	// its child when that fires, so the symptom was never "timed out": it was
+	//
+	//	ffmpeg black/silence detect …: signal: killed
+	//	whisper-cli: signal: killed
+	//	ffmpeg wav extract: context deadline exceeded
+	//
+	// on the maintainer's catalog, which reads as a broken file or a broken binary. Measured
+	// 2026-08-11: that same boundary scan completes in **40s** run by hand, so the file was
+	// fine and the ceiling was the fault.
+	//
+	// ⚠ It also silently halved a budget the design doc reasons about. §10 V51g compares a
+	// rung's cost "against a budget of 120", taking 120s from the two-minute CRON INTERVAL —
+	// how often the job STARTS, not how long it may run. The real ceiling was 60s.
+	Timeout time.Duration
+
 	// DisabledReason, when non-empty, means this build/backend CANNOT run this job. It is
 	// listed on the Tasks page carrying this reason, is never scheduled or claimed, and
 	// refuses Trigger.
@@ -103,6 +125,15 @@ const (
 	// leaseHorizon must comfortably exceed the longest job runtime so a still-running job
 	// isn't re-claimed by the next tick before it reschedules itself.
 	leaseHorizon = 30 * time.Minute
+
+	// LongJobTimeout is the ceiling for a job that runs real media work — ffmpeg, whisper,
+	// yt-dlp, an image encode.
+	//
+	// ⚠ Deliberately EQUAL to `leaseHorizon`, so the two ceilings cannot disagree. A job allowed
+	// to outlive its own claim would keep working after the row it holds became re-claimable,
+	// and a second worker could start the same job beside it. Tying them means "you may run
+	// until your claim would expire, and not one second further" is stated once.
+	LongJobTimeout = leaseHorizon
 )
 
 // Scheduler ticks a heartbeat, claims due jobs, runs them in bounded goroutines, records

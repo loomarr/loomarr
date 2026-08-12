@@ -2906,12 +2906,30 @@ though it were making progress.
 **Measured, on the real file** (the numbers are the point — the first three diagnoses were wrong
 without them):
 
-| Step of the `split` rung | Cost | Fits a 120s pass? |
+| Step of the `split` rung | Cost | Fits the pass? |
 | --- | --- | --- |
 | `blackdetect` + `silencedetect` | **4s** (319× realtime; 44 + 53 hits) | ✅ |
 | `dedup` — `GrayFrames` × 51 | **33s** (662ms/segment) | ✅ |
 | cut — ffmpeg stream copy × 51 | **3s** (59ms/segment) | ✅ |
-| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **3× the whole budget** |
+| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **6× the whole budget** |
+
+⚠ **The "120s pass" this table originally compared against was WRONG, and the real ceiling was
+half of it (V54).** 120s is the CRON INTERVAL (`0 */2 * * * *`) — how often the job *starts*, not
+how long it may run. The actual ceiling was River's `JobTimeoutDefault`, **60 seconds**, because
+`river.Config.JobTimeout` was never set and `riverWorker` did not implement `Timeout()`. So every
+job on every install ran under a deadline inherited from a dependency, which nothing here chose
+and nothing recorded.
+
+⚠ **It does not surface as a timeout, which is why it survived.** `exec.CommandContext` SIGKILLs
+its child, so the operator sees `ffmpeg …: signal: killed` / `whisper-cli: signal: killed` — a
+corrupt file or a broken binary, not a clock. Measured on the maintainer's catalog 2026-08-11: a
+`blackdetect` pass reported as "killed" inside the job completed in **40s** run by hand, and the
+20-minute reel it belonged to was left `Unsplittable` for want of time it should have had.
+
+The row above still holds — 377s does not fit a 60s pass either, and the rule below is unchanged —
+but the margin was 6×, not 3×, and the numbers under it were being judged against a budget twice
+the real one. Jobs now declare their own ceiling (`scheduler.Job.Timeout`); media jobs take
+`scheduler.LongJobTimeout`, tied to the lease horizon so a job cannot outlive its own claim.
 
 ⚠ **The rule this establishes.** The scheduler's unit of work is a CLIP: `Cost()`, the per-run
 budgets (`FILLER_PIPELINE_MAX_CLIPS`, `…MAX_WHISPER`) and the retry policy are all sized per clip.

@@ -51,6 +51,28 @@ type riverWorker struct {
 	s *Scheduler
 }
 
+// Timeout is how long THIS job may run before River cancels its context.
+//
+// ⚠ **Without this override every job ran under River's `JobTimeoutDefault`, which is ONE
+// MINUTE** — `river.Config.JobTimeout` was never set, and zero means the default. That ceiling
+// was inherited from a dependency rather than chosen, and it is far below what the media jobs
+// need: measured 2026-08-11, one `blackdetect`/`silencedetect` pass over a 20-minute recording
+// takes **40s on its own**, before the dedup and whisper work that follows it in the same pass.
+//
+// ⚠ The failure it produced never said "timeout". `exec.CommandContext` SIGKILLs its child when
+// the deadline fires, so the operator-visible symptom was `signal: killed` from ffmpeg and
+// whisper — which reads as a corrupt file or a broken binary, and sent this session chasing
+// both. A job that is out of time should say so; see `Job.Timeout` for the rest of that note.
+//
+// Returning 0 keeps River's default, which is right for the cheap jobs: a sweep that has not
+// finished in a minute is stuck, not slow.
+func (w *riverWorker) Timeout(rj *river.Job[jobArgs]) time.Duration {
+	if j, ok := w.s.jobs[rj.Args.Name]; ok {
+		return j.Timeout
+	}
+	return 0
+}
+
 func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	j, ok := w.s.jobs[rj.Args.Name]
 	if !ok {
