@@ -89,6 +89,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 		}}
 		n := 0
 		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, t.TempDir(),
+			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
 	return a, st
@@ -224,7 +225,8 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	sp := filler.NewSplitter(fillerSplitStoreAdapter{st}, splitFakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
-	}}, nil, drop, func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
+	}}, nil, drop, func() time.Duration { return 10 * time.Second },
+		func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 
 	prop, err := sp.Propose(ctx, compHash)
 	if err != nil {

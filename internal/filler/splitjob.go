@@ -61,17 +61,33 @@ type Splitter struct {
 	tools    MediaTools
 	provider llm.Provider
 	dropDir  string // FILLER_DIR — clip paths are relative to it (§10)
-	now      func() time.Time
-	newID    func() string
-	log      *slog.Logger
+	// minClipDuration is `filler.min_duration`, read live so it hot-applies. Composed with
+	// MinSegmentMs into the detection floor — see segmentFloor for why that composition exists.
+	minClipDuration func() time.Duration
+	now             func() time.Time
+	newID           func() string
+	log             *slog.Logger
 }
 
-// NewSplitter builds the splitter. dropDir is the filler drop-folder root.
-func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, dropDir string, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
+// NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
+// nil, which leaves MinSegmentMs as the only floor.
+func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Splitter{store: store, tools: tools, provider: provider, dropDir: dropDir, newID: newID, now: now, log: log}
+	return &Splitter{store: store, tools: tools, provider: provider, dropDir: dropDir, minClipDuration: minClipDuration, newID: newID, now: now, log: log}
+}
+
+// floor resolves the detection floor ONCE for a call.
+//
+// ⚠ Resolve it into a local and thread the VALUE, never the closure. `filler.min_duration`
+// hot-applies, and a floor that changed between `triage` and `rescue` would produce a cut list
+// that is internally inconsistent — some spans admitted under the old number, some under the new.
+func (sp *Splitter) floor() segmentFloor {
+	if sp.minClipDuration == nil {
+		return newSegmentFloor(0)
+	}
+	return newSegmentFloor(sp.minClipDuration())
 }
 
 // Propose detects cuts in one compilation clip and persists the resulting
@@ -96,11 +112,17 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	// the same string before V38c, which is why one variable used to serve both.
 	file := filepath.Join(sp.dropDir, clip.Path)
 
+	// ⚠ Resolved ONCE for the whole call, then threaded as a value — see `Splitter.floor`.
+	floor := sp.floor()
+
 	// 1. Triage → coarse split. Chapters split for free; a chapter read failure
 	// is not fatal (the common case is NO chapters anyway — 6 of 8 measured).
-	segs := sp.triage(ctx, file, clip.DurationMs)
+	segs, dropped := sp.triage(ctx, file, clip.DurationMs, floor)
 	if len(segs) == 0 {
-		return nil, fmt.Errorf("no usable segments detected in %s (everything was under %dms)", clipHash, MinSegmentMs)
+		// ⚠ Quotes the COMPOSED floor and names the setting. At the 10s default this is now a
+		// reachable outcome for a real recording (a reel of nothing but short bumpers), not just
+		// for a broken file, so the message has to say which number refused it.
+		return nil, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
 	}
 
 	// 2. Names for the unnamed (chapters bring their own).
@@ -114,7 +136,7 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	// 3. Rescue: over-long segments go to transcript + LLM — the only signal
 	// that sees a boundary with no black frame and no silence. Failure modes all
 	// land on Unsplittable, never on a guessed cut.
-	segs = sp.rescue(ctx, file, base, segs)
+	segs = sp.rescue(ctx, file, base, segs, floor)
 
 	// 4. RETIRED (§10 V51g): classify no longer runs here.
 	//
@@ -154,7 +176,15 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
 	// that lookup never matched and no split could ever be committed. The file location Confirm
 	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
-	p := &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Segments: segs}
+	p := &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Segments: segs, Dropped: dropped}
+	if dropped.Count > 0 && sp.log != nil {
+		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is
+		// logged because it costs recording time the operator can otherwise only infer from
+		// arithmetic (§10 V45).
+		sp.log.Info("split: fragments under the clip floor discarded",
+			"clip", clipHash, "dropped", dropped.Count, "droppedMs", dropped.Ms,
+			"floorMs", floor.ms(), "segments", len(segs))
+	}
 	if err := sp.store.UpsertSplitProposal(ctx, *p); err != nil {
 		return nil, err
 	}
@@ -162,13 +192,13 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 }
 
 // triage runs chapters-first, then the black/silence coarse split.
-func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64) []SplitSegment {
+func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64, floor segmentFloor) ([]SplitSegment, dropTally) {
 	chapters, err := sp.tools.Chapters(ctx, file)
 	if err != nil && sp.log != nil {
 		sp.log.Warn("chapter triage failed, falling back to coarse split", "file", file, "err", err)
 	}
-	if segs := segmentsFromChapters(chapters); len(segs) > 0 {
-		return segs
+	if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
+		return segs, dropped
 	}
 	blacks, silences, err := sp.tools.BlackSilence(ctx, file)
 	if err != nil {
@@ -178,14 +208,14 @@ func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64) [
 		// A detector failure is not "no boundaries": the whole file is one segment,
 		// which (being a compilation) is over-long and goes to rescue — or comes
 		// back Unsplittable. Guessing cuts would be worse.
-		return segmentsFromBoundaries(durationMs, nil)
+		return segmentsFromBoundaries(durationMs, nil, floor)
 	}
-	return segmentsFromBoundaries(durationMs, append(blacks, silences...))
+	return segmentsFromBoundaries(durationMs, append(blacks, silences...), floor)
 }
 
 // rescue replaces over-long segments with their transcript-derived sub-segments
 // where the rescue succeeds, and marks them Unsplittable where it cannot run.
-func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitSegment) []SplitSegment {
+func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitSegment, floor segmentFloor) []SplitSegment {
 	var out []SplitSegment
 	for _, seg := range segs {
 		if !seg.overlong() {
@@ -207,7 +237,7 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 			continue
 		}
 		seg.Transcript = TranscriptText(transcript)
-		spans, err := findAdBreaks(ctx, sp.provider, transcript, seg.EndMs-seg.StartMs)
+		spans, err := findAdBreaks(ctx, sp.provider, transcript, seg.EndMs-seg.StartMs, floor)
 		if err != nil {
 			if sp.log != nil {
 				sp.log.Warn("boundary rescue found nothing usable; segment left unsplittable", "file", file, "startMs", seg.StartMs, "err", err)
@@ -317,7 +347,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	if len(segments) == 0 {
 		return nil, fmt.Errorf("%w: zero segments — reject the proposal instead of gutting the compilation", ErrSplitValidation)
 	}
-	if err := validateConfirmedSegments(segments, clip.DurationMs); err != nil {
+	if err := validateConfirmedSegments(segments, clip.DurationMs, sp.floor()); err != nil {
 		return nil, err
 	}
 
@@ -443,12 +473,17 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 
 // validateConfirmedSegments enforces the invariants the write path needs:
 // inside the clip, start<end, ordered and non-overlapping.
-func validateConfirmedSegments(segs []SplitSegment, durationMs int64) error {
+//
+// ⚠ The floor here is the COMPOSED one, so the manual path refuses what the scan boundary would
+// refuse. It used to be bare `MinSegmentMs` (3s), which let a hand-drawn 8s cut be written,
+// spawned, and then rejected `too_short` by the probe rung — a silent downstream loss the operator
+// never connected to their edit. Refusing it upfront is arguable; losing it quietly is not.
+func validateConfirmedSegments(segs []SplitSegment, durationMs int64, floor segmentFloor) error {
 	sorted := append([]SplitSegment(nil), segs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartMs < sorted[j].StartMs })
 	for i, s := range sorted {
-		if s.StartMs < 0 || s.EndMs > durationMs || s.EndMs-s.StartMs < MinSegmentMs {
-			return fmt.Errorf("%w: segment %d [%d,%d) outside the clip or under %dms", ErrSplitValidation, i, s.StartMs, s.EndMs, MinSegmentMs)
+		if s.StartMs < 0 || s.EndMs > durationMs || !floor.admits(s.StartMs, s.EndMs) {
+			return fmt.Errorf("%w: segment %d [%d,%d) outside the clip or under %dms (filler.min_duration)", ErrSplitValidation, i, s.StartMs, s.EndMs, floor.ms())
 		}
 		if i > 0 && s.StartMs < sorted[i-1].EndMs {
 			return fmt.Errorf("%w: segments %d and %d overlap — two clips cannot share seconds", ErrSplitValidation, i-1, i)

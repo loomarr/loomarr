@@ -36,6 +36,51 @@ const (
 	OverlongSegmentMs int64 = 120_000
 )
 
+// segmentFloor is the shortest span that may become a segment: the sliver floor and the CATALOG
+// floor (`filler.min_duration`), whichever binds.
+//
+// ⚠ **`max()`, never replacement.** `filler.min_duration` is settable to `0s` ("accept anything
+// with a readable duration"), and a 400ms fade artefact must still be dropped there — that is what
+// `MinSegmentMs` is for, and it does not become configurable.
+//
+// ⚠ **Why the catalog floor belongs at DETECTION and not only in the gate (§10 V34, V54).** It was
+// only in `AutoConfirmable`, which returns on the first failing segment — so one sub-floor fragment
+// sank the whole reel. A real commercial compilation is *made of* such fragments: measured
+// 2026-08-11 on an 82-segment archive.org reel, **39 were under the 10s floor**, shortest 3.1s
+// (station IDs, inter-ad bumpers). Auto-split had therefore never fired on any real reel, and the
+// V54 grounder below the floor check in that same loop could never be reached. Dropping them here
+// costs nothing that was not already lost: `filler.min_duration` is a hard reject at the scan
+// boundary, so such a segment would be cut, written, spawned and then thrown away.
+type segmentFloor int64 // milliseconds
+
+// newSegmentFloor composes the two floors. A zero or negative `minClip` means the operator turned
+// the catalog floor off, which leaves `MinSegmentMs` holding the line.
+func newSegmentFloor(minClip time.Duration) segmentFloor {
+	return segmentFloor(max(MinSegmentMs, minClip.Milliseconds()))
+}
+
+// admits reports whether [startMs,endMs) is long enough to be a segment.
+func (f segmentFloor) admits(startMs, endMs int64) bool { return endMs-startMs >= int64(f) }
+
+// ms is the floor in milliseconds, for the error messages that quote the number.
+func (f segmentFloor) ms() int64 { return int64(f) }
+
+// dropTally is what the detection floor discarded, so `Propose` can say so on the ladder.
+//
+// ⚠ It exists because dropping is not free: the discarded span is NOT merged into a neighbour, so
+// the recording goes with it (measured: 39 fragments ≈ 3 minutes on one 82-segment reel). A silent
+// drop would leave an operator comparing a 20-minute source against 17 minutes of cuts with
+// nothing to read.
+type dropTally struct {
+	Count int
+	Ms    int64
+}
+
+func (d *dropTally) add(startMs, endMs int64) {
+	d.Count++
+	d.Ms += endMs - startMs
+}
+
 // SplitSegment is one proposed clip inside a compilation (§10 V34). The detector
 // authors it; the reviewer edits it; only confirm writes it to the catalog.
 type SplitSegment struct {
@@ -76,6 +121,14 @@ type SplitSegment struct {
 // pod matching, and the only way segments become clips is Confirm.
 type SplitProposal struct {
 	ID string `json:"id"`
+	// Dropped is what the detection floor discarded on the pass that PRODUCED this proposal.
+	//
+	// ⚠ **In-memory only** (`json:"-"`): the row persists `segments_json` and nothing else, so a
+	// proposal read back from the store reports a zero tally. That is honest rather than lossy —
+	// the number describes a detection pass, and re-reading a stored proposal did not run one.
+	// Persisting it would mean a schema change to carry a figure only the pass that produced it
+	// can vouch for.
+	Dropped dropTally `json:"-"`
 	// ClipHash is the compilation's IDENTITY — its content hash (§10 V38c), the value
 	// `GetClip` is keyed on.
 	//
@@ -103,20 +156,29 @@ type SplitProposal struct {
 //
 // Boundaries are taken at the gap's MIDPOINT: blackdetect reports the whole
 // fade interval, and cutting at its start would shave the advert's tail frame.
-func segmentsFromBoundaries(durationMs int64, gaps []Interval) []SplitSegment {
+func segmentsFromBoundaries(durationMs int64, gaps []Interval, floor segmentFloor) ([]SplitSegment, dropTally) {
 	cuts := boundaryCuts(gaps, durationMs)
 	var out []SplitSegment
+	var dropped dropTally
 	start := int64(0)
 	for _, cut := range cuts {
-		if seg, ok := makeSegment(len(out), start, cut); ok {
+		if seg, ok := makeSegment(len(out), start, cut, floor); ok {
 			out = append(out, seg)
+		} else {
+			dropped.add(start, cut)
 		}
+		// ⚠ `start` advances even when the span was DROPPED, so the dropped time is discarded
+		// rather than absorbed into either neighbour. Deliberate — merging a stinger into the
+		// advert beside it would put someone else's audio in that clip's tail — but it means a
+		// drop costs real recording, which is why the tally is reported (§10 V45).
 		start = cut
 	}
-	if seg, ok := makeSegment(len(out), start, durationMs); ok {
+	if seg, ok := makeSegment(len(out), start, durationMs, floor); ok {
 		out = append(out, seg)
+	} else {
+		dropped.add(start, durationMs)
 	}
-	return out
+	return out, dropped
 }
 
 // boundaryCuts merges overlapping/adjacent gaps and returns their midpoints as
@@ -160,8 +222,8 @@ func midpoint(g Interval, durationMs int64) int64 {
 	return m
 }
 
-func makeSegment(index int, start, end int64) (SplitSegment, bool) {
-	if end-start < MinSegmentMs {
+func makeSegment(index int, start, end int64, floor segmentFloor) (SplitSegment, bool) {
+	if !floor.admits(start, end) {
 		return SplitSegment{}, false
 	}
 	return SplitSegment{Index: index, StartMs: start, EndMs: end}, true
@@ -171,17 +233,19 @@ func makeSegment(index int, start, end int64) (SplitSegment, bool) {
 // a pre-chaptered source splits for free). Chapters that abut produce no gaps;
 // slivers are dropped as usual. Chapters carry their own titles, which beat any
 // generated name.
-func segmentsFromChapters(chapters []Chapter) []SplitSegment {
+func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]SplitSegment, dropTally) {
 	var out []SplitSegment
+	var dropped dropTally
 	for _, ch := range chapters {
-		seg, ok := makeSegment(len(out), ch.StartMs, ch.EndMs)
+		seg, ok := makeSegment(len(out), ch.StartMs, ch.EndMs, floor)
 		if !ok {
+			dropped.add(ch.StartMs, ch.EndMs)
 			continue
 		}
 		seg.Name = strings.TrimSpace(ch.Title)
 		out = append(out, seg)
 	}
-	return out
+	return out, dropped
 }
 
 // overlong reports whether a segment is far longer than a plausible advert and

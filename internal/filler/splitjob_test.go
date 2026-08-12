@@ -186,7 +186,11 @@ func newSplitter(st *splitMemStore, tools filler.MediaTools, provider *testkit.L
 		p = provider
 	}
 	n := 0
+	// ⚠ The REAL default (10s), not 0. The suite should exercise the number production runs with:
+	// a splitter built with no floor would pass tests that the live 10s floor then fails, which is
+	// exactly how the sub-floor problem stayed invisible until it was measured on a real reel.
 	return filler.NewSplitter(st, tools, p, dropDir,
+		func() time.Duration { return 10 * time.Second },
 		func() string { n++; return fmt.Sprintf("sp_%d", n) },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, nil)
 }
