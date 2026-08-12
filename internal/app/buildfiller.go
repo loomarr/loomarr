@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -174,7 +175,7 @@ func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Split
 	}
 
 	ffmpegPath := set.str("playout.ffmpeg_path")
-	tools := filler.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 
 	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
@@ -249,7 +250,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	}
 	// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
 	// they run on files already on disk regardless of whether yt-dlp is present).
-	fillerTools := filler.NewFFmpegTools(
+	fillerTools := mediatools.NewFFmpegTools(
 		set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 
@@ -304,7 +305,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 			fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
 		filler.NewTranscodeStage(
 			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
-			clipDir, filler.DefaultMezzanine(),
+			clipDir, mediatools.DefaultMezzanine(),
 			func() string { return set.str("playout.ffmpeg_path") },
 			// ⚠ The loudness target is applied only when the operator opted in. This is the
 			// FIRST production caller of on-file loudness normalisation: V42 built the pass,

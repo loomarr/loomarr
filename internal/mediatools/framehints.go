@@ -1,4 +1,4 @@
-package filler
+package mediatools
 
 import (
 	"bytes"
@@ -182,32 +182,6 @@ func isFourThree(ar float64) bool {
 	return ar < fourThreeToSixteenNineMidpoint
 }
 
-// SuggestedEraFrom turns a FrameHint into a SuggestedEra sentinel, or 0 for no hint.
-//
-// ⚠ **This is the ONLY place the measurements become a suggestion, and it produces
-// ONLY a suggestion — never a grounded Era.** The caller writes the result to
-// Clip.SuggestedEra (the operator-confirms field), exactly as validateTags demotes
-// an ungrounded LLM year. Matching never reads it. Conservative by construction: it
-// fires only on the strongest combination (B&W AND 4:3) and returns a decade
-// sentinel, so the worst case is an easily-dismissed "pre-1970s?" prompt on a clip
-// that had no era signal at all — never a wrong fact in the catalog.
-//
-// The caller is responsible for the "no other era signal" precondition (§10 V44):
-// this must seed a suggestion only for a clip with no grounded Era and no other
-// SuggestedEra, so a frame hint never overwrites a stronger one.
-func SuggestedEraFrom(hint FrameHint) int {
-	if hint.Frames == 0 {
-		return 0
-	}
-	// Both signals required. B&W alone can be an artistic choice in any decade, and
-	// 4:3 alone is far too common (every SD upload) to date a clip. Together they are
-	// the one combination that reliably means "old broadcast".
-	if hint.BlackAndWhite && isFourThree(hint.AspectRatio) {
-		return hintPre1970s
-	}
-	return 0
-}
-
 // splitJPEGs splits a stream of concatenated JPEGs (ffmpeg's image2pipe output)
 // into individual frames on the SOI marker (0xFF 0xD8). Each element is one
 // decodable JPEG; a stream with no marker (no video decoded) yields nothing.
@@ -236,4 +210,30 @@ func splitJPEGs(stream []byte) [][]byte {
 		stream = stream[end:]
 	}
 	return frames
+}
+
+// SuggestedEraFrom turns a FrameHint into a SuggestedEra sentinel, or 0 for no hint.
+//
+// ⚠ **This is the ONLY place the measurements become a suggestion, and it produces
+// ONLY a suggestion — never a grounded Era.** The caller writes the result to
+// Clip.SuggestedEra (the operator-confirms field), exactly as validateTags demotes
+// an ungrounded LLM year. Matching never reads it. Conservative by construction: it
+// fires only on the strongest combination (B&W AND 4:3) and returns a decade
+// sentinel, so the worst case is an easily-dismissed "pre-1970s?" prompt on a clip
+// that had no era signal at all — never a wrong fact in the catalog.
+//
+// The caller is responsible for the "no other era signal" precondition (§10 V44):
+// this must seed a suggestion only for a clip with no grounded Era and no other
+// SuggestedEra, so a frame hint never overwrites a stronger one.
+func SuggestedEraFrom(hint FrameHint) int {
+	if hint.Frames == 0 {
+		return 0
+	}
+	// Both signals required. B&W alone can be an artistic choice in any decade, and
+	// 4:3 alone is far too common (every SD upload) to date a clip. Together they are
+	// the one combination that reliably means "old broadcast".
+	if hint.BlackAndWhite && isFourThree(hint.AspectRatio) {
+		return hintPre1970s
+	}
+	return 0
 }

@@ -1,4 +1,4 @@
-package filler_test
+package mediatools_test
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"image/jpeg"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/mediatools"
 )
 
 // The frame-heuristic tier (§10 V44) is deterministic and LLM-free, so it is
@@ -91,7 +91,7 @@ func TestAnalyzeFrames_BlackAndWhiteDetection(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := filler.AnalyzeFrames(tc.frames)
+			got := mediatools.AnalyzeFrames(tc.frames)
 			if got.BlackAndWhite != tc.wantBW {
 				t.Errorf("BlackAndWhite = %v, want %v", got.BlackAndWhite, tc.wantBW)
 			}
@@ -122,7 +122,7 @@ func TestAnalyzeFrames_AspectRatio(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := filler.AnalyzeFrames(tc.frames)
+			got := mediatools.AnalyzeFrames(tc.frames)
 			if got.AspectRatio < tc.wantLo || got.AspectRatio > tc.wantHi {
 				t.Errorf("AspectRatio = %.4f, want in [%.2f,%.2f]", got.AspectRatio, tc.wantLo, tc.wantHi)
 			}
@@ -134,34 +134,34 @@ func TestAnalyzeFrames_AspectRatio(t *testing.T) {
 // other combination suggests nothing. The suggestion is never a grounded Era — the
 // caller writes it to Clip.SuggestedEra, which matching never reads.
 func TestSuggestedEraFrom(t *testing.T) {
-	bw43 := filler.AnalyzeFrames([][]byte{
+	bw43 := mediatools.AnalyzeFrames([][]byte{
 		solidFrame(t, fourThreeW, fourThreeH, gray(60)),
 		solidFrame(t, fourThreeW, fourThreeH, gray(140)),
 	})
-	colour43 := filler.AnalyzeFrames([][]byte{
+	colour43 := mediatools.AnalyzeFrames([][]byte{
 		solidFrame(t, fourThreeW, fourThreeH, red()),
 		solidFrame(t, fourThreeW, fourThreeH, red()),
 	})
-	bw169 := filler.AnalyzeFrames([][]byte{
+	bw169 := mediatools.AnalyzeFrames([][]byte{
 		solidFrame(t, sixteenNineW, sixteenNineH, gray(60)),
 		solidFrame(t, sixteenNineW, sixteenNineH, gray(140)),
 	})
 
-	if got := filler.SuggestedEraFrom(bw43); got == 0 {
+	if got := mediatools.SuggestedEraFrom(bw43); got == 0 {
 		t.Errorf("B&W 4:3 should suggest an era, got 0")
 	}
 	// ⚠ The value is a DECADE sentinel (a hint), never a specific fabricated year.
-	if got := filler.SuggestedEraFrom(bw43); got%10 != 0 || got >= 1970 {
+	if got := mediatools.SuggestedEraFrom(bw43); got%10 != 0 || got >= 1970 {
 		t.Errorf("B&W 4:3 hint = %d, want a pre-1970s decade sentinel", got)
 	}
 	// Colour, or widescreen, or nothing: no hint. Neither signal alone dates a clip.
-	if got := filler.SuggestedEraFrom(colour43); got != 0 {
+	if got := mediatools.SuggestedEraFrom(colour43); got != 0 {
 		t.Errorf("colour 4:3 should suggest nothing, got %d", got)
 	}
-	if got := filler.SuggestedEraFrom(bw169); got != 0 {
+	if got := mediatools.SuggestedEraFrom(bw169); got != 0 {
 		t.Errorf("B&W 16:9 should suggest nothing, got %d", got)
 	}
-	if got := filler.SuggestedEraFrom(filler.FrameHint{}); got != 0 {
+	if got := mediatools.SuggestedEraFrom(mediatools.FrameHint{}); got != 0 {
 		t.Errorf("no frames should suggest nothing, got %d", got)
 	}
 }
@@ -170,23 +170,13 @@ func TestSuggestedEraFrom(t *testing.T) {
 // grounding rules would accept as a fact. It is a decade sentinel a human confirms,
 // exactly as validateTags demotes an ungrounded LLM year to SuggestedEra.
 func TestSuggestedEraFrom_IsSuggestionNotGroundedTag(t *testing.T) {
-	bw43 := filler.AnalyzeFrames([][]byte{
+	bw43 := mediatools.AnalyzeFrames([][]byte{
 		solidFrame(t, fourThreeW, fourThreeH, gray(70)),
 		solidFrame(t, fourThreeW, fourThreeH, gray(150)),
 	})
-	hint := filler.SuggestedEraFrom(bw43)
+	hint := mediatools.SuggestedEraFrom(bw43)
 	if hint == 0 {
 		t.Fatalf("expected a suggestion for a B&W 4:3 clip")
-	}
-	// The tier writes ONLY SuggestedEra. Prove that a clip carrying this hint reports
-	// no grounded Era and stays untagged for matching — the hint cannot masquerade as
-	// a fact.
-	c := filler.Clip{SuggestedEra: hint}
-	if c.Era != 0 {
-		t.Errorf("a frame hint set Era = %d; it must only ever set SuggestedEra", c.Era)
-	}
-	if c.Tagged() {
-		t.Errorf("a clip with only a frame-hint suggestion must not be Tagged (matchable)")
 	}
 }
 

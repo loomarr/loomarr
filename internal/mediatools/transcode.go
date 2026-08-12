@@ -1,4 +1,4 @@
-package filler
+package mediatools
 
 import (
 	"context"
@@ -145,7 +145,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	// reading to the end of the file.
 	args = append(args, "-movflags", "+faststart", "-y", tmp)
 
-	cmd := exec.CommandContext(ctx, ffmpegOr(req.FFmpegPath), args...)
+	cmd := exec.CommandContext(ctx, FFmpegOr(req.FFmpegPath), args...)
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		return fmt.Errorf("transcode %s: progress pipe: %w", filepath.Base(req.In), err)
@@ -264,11 +264,11 @@ func MezzanineOutputPath(clipPath string) string {
 // file to its hash — and §8 grounds an era only where the year appears literally in a text signal.
 // Leaving the sidecar behind at the old extension would therefore silently demote every
 // filename-grounded era in the catalog to ungrounded, with no error anywhere.
-func moveSidecar(oldPath, newPath string) error {
+func MoveSidecar(oldPath, newPath string) error {
 	if oldPath == newPath {
 		return nil
 	}
-	from, to := sidecarPathFor(oldPath), sidecarPathFor(newPath)
+	from, to := SidecarPathFor(oldPath), SidecarPathFor(newPath)
 	if from == to {
 		return nil
 	}

@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"os"
 	"strings"
 )
@@ -108,8 +109,8 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 
 	// Shared with the local whisper backend (`extractSpanWAV`): both feed a model that requires
 	// 16 kHz mono, so the extraction is the same job whoever runs the inference.
-	wav := spanWAVPath(dir)
-	if err := extractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := mediatools.SpanWAVPath(dir)
+	if err := mediatools.ExtractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 	audio, err := os.ReadFile(wav)

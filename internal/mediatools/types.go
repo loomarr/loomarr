@@ -1,0 +1,79 @@
+package mediatools
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+)
+
+// The shapes the media tools return. They lived in internal/filler/split.go, which is where the
+// compilation splitter first needed them — but every one of them describes TOOL OUTPUT rather
+// than a scheduling concept, and their own doc comments always said so: a Chapter is "one
+// embedded chapter from ffprobe", a TranscriptSegment is "one whisper utterance". They belong
+// with the code that produces them.
+
+// Interval is a [StartMs, EndMs) span inside a media file.
+type Interval struct {
+	StartMs int64 `json:"startMs"`
+	EndMs   int64 `json:"endMs"`
+}
+
+// Chapter is one embedded chapter from ffprobe (triage, §10 V34).
+type Chapter struct {
+	StartMs int64
+	EndMs   int64
+	Title   string
+}
+
+// TranscriptSegment is one whisper utterance with its offset INSIDE the probed
+// span (milliseconds relative to the span start, so rescue math is local).
+type TranscriptSegment struct {
+	StartMs int64  `json:"startMs"`
+	EndMs   int64  `json:"endMs"`
+	Text    string `json:"text"`
+}
+
+// Probed is what one ffprobe pass learns about a clip.
+//
+// A STRUCT rather than a second probe call: ffprobe returns duration and stream height in one
+// invocation, so splitting them would double the exec cost per file for no benefit — and would
+// create a state where a clip has a duration but silently lost its quality, which is exactly
+// the kind of half-populated row that is painful to notice later.
+type Probed struct {
+	DurationMs int64
+	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
+	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
+	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders
+	// actually write.
+	Height int
+	// Silent reports that the file carries NO audio stream at all (§10 V40).
+	//
+	// ⚠ Presence, not loudness — a clip CAN be legitimately quiet, and that is normalisation's
+	// problem at playout, not grounds for a reject. This is the harder failure: a video-only file
+	// plays as dead air in the middle of a break, which reads as the stream having dropped.
+	//
+	// ⚠ **Phrased NEGATIVELY on purpose, so the zero value is permissive.** The first cut was
+	// `HasAudio bool`, which made `false` mean "reject" — and retroactively changed the meaning
+	// of every `Probed{...}` literal written before this field existed. Nine test doubles that
+	// were correct when written started rejecting every clip, and the suite panicked on an empty
+	// catalog. A gate whose zero value denies is a gate that breaks its own callers.
+	//
+	// Costs nothing extra to fill: the probe already asks for `codec_type` per stream so it can
+	// find the VIDEO height, and this reads the same answer.
+	Silent bool
+}
+
+// Prober reads a media file's duration and dimensions. Satisfied by FFprobe; injected so the
+// scanner is testable without executing a binary.
+type Prober func(ctx context.Context, path string) (Probed, error)
+
+// SidecarPathFor is where a media file's info-JSON sidecar lives — `<name>.info.json`, the
+// convention yt-dlp writes and the transcode path must carry across a rename.
+func SidecarPathFor(mediaPath string) string {
+	return strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
+}
+
+// PreviewWidth is the pixel width of every generated still and hover preview. One constant
+// because the two must match: the still is the poster frame the animation replaces on hover, and
+// a size change between them shows as a jump.
+const PreviewWidth = 320
