@@ -637,6 +637,25 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 			a.publishSplit(jobID, clipID, "error", "", 0, err.Error())
 			return
 		}
+		// ⚠ Un-park the reel, for the same reason ConfirmSplit enrols its cuts (§10 V54a): the
+		// operator-triggered path must leave the clip where the unattended one would. A reel parked
+		// at `split`/`review` is claimed by nothing — `ListPipelineWork` takes `running` only — so
+		// without this a re-detect writes a freshly scored proposal that no rung will ever read,
+		// and the remedy §10 names for a stale proposal silently does half its job.
+		//
+		// ⚠ STRICTLY AFTER `Propose`. Un-parking first makes the row claimable while detection is
+		// still running, and the rung would then ground the outgoing segment list or re-`Propose`
+		// the same reel concurrently. A failed detection (above) returns before reaching here, so
+		// the row keeps its original state.
+		//
+		// ⚠ The error is DROPPED, per this adapter's convention (see `registerSources` below): it
+		// has no logger and reports through the event bus, whose `filler_split` frames describe
+		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
+		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
+		// state the reel was already in: parked, reviewable by hand, nothing lost.
+		if a.pipeline != nil {
+			_, _ = a.pipeline.Requeue(bg, clipID)
+		}
 		a.publishSplit(jobID, clipID, "success", p.ID, len(p.Segments), "")
 	}()
 	return jobID, nil

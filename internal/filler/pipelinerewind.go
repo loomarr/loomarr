@@ -8,15 +8,28 @@ import (
 	"time"
 )
 
-// Rewind (§10 V51b) — the ONE sanctioned way to make a clip run part of the pipeline again.
+// Rewind (§10 V51b) — the sanctioned way to make a clip re-run part of the pipeline, INCLUDING the
+// invalidation that makes re-running mean anything.
 //
-// ⚠ **One implementation, deliberately, because the invalidation rules are the hard part.** The
-// operator-facing routes (`/reprocess`, `/retag`, `/resplit`, and the existing `/split` and `/tag`)
-// are thin wrappers over this. Each rung's `Applies` short-circuits on its OWN output — `transcribe`
-// skips a clip that already has a transcript, `vision` skips one already stamped — so "run it
-// again" means nothing unless the derived data is cleared with it. Three call sites deciding that
-// separately is three chances to rewind a stage that then immediately skips itself, which looks
-// exactly like the button doing nothing.
+// ⚠ **One implementation, deliberately, because the invalidation rules are the hard part.** Each
+// rung's `Applies` short-circuits on its OWN output — `transcribe` skips a clip that already has a
+// transcript, `vision` skips one already stamped — so "run it again" means nothing unless the
+// derived data is cleared with it. Several call sites deciding that separately is several chances
+// to rewind a stage that then immediately skips itself, which looks exactly like the button doing
+// nothing.
+//
+// ⚠ **NOTHING CALLS THIS YET, and this comment used to claim otherwise.** It described
+// `/reprocess`, `/retag` and `/resplit` as "operator-facing routes ... thin wrappers over this".
+// None of the three exists — not in the router, not in `api/openapi.yaml`, not anywhere in the
+// tree — and `Rewind` has no callers and no tests. The claim cost real time: with 17 compilations
+// stuck at `split`/`review` and `ListPipelineWork` claiming `running` only, this paragraph named
+// the exact escape hatch that would free them, and it was fiction. **Wiring the routes is real
+// work, not a formality** (each needs its `from` stage, the `force` rule for transcode, and an
+// authorization decision), so the honest state is recorded here rather than implied by a comment.
+//
+// ⚠ `Requeue` below is NOT that work. It is the one narrow transition that IS wired — un-park a
+// reel after an operator re-detect — and it deliberately invalidates nothing, because the caller
+// has just replaced the proposal itself.
 
 // RewindStore is the slice of the store `Rewind` invalidates through.
 //
@@ -118,6 +131,53 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	}
 	p.publish(row, clip)
 	return nil
+}
+
+// Requeue returns a reel parked at the split rung to the belt (§10 V54a). It reports whether it
+// moved anything, so a caller can tell "put back" from "was never stuck".
+//
+// ⚠ **`Rewind`-lite, and deliberately not `Rewind`.** Rewind exists to clear derived data so a rung
+// cannot skip itself. This runs immediately AFTER `Propose` has written a fresh cut list, so there
+// is nothing to invalidate — and Rewind's own `RewindStore` would `DeleteSplitProposal`, destroying
+// the very proposal the re-detect just produced. Same disposition flip, none of the invalidation.
+//
+// ⚠ **Scope is migration 00050's `WHERE` clause**, for the migration's reason: `split`/`review` is
+// the unreachable state — `ListPipelineWork` claims `running` only, so nothing else visits it. A
+// `rejected` row keeps its own restore path (`Soft()`), because a re-detect must not quietly
+// overturn a refusal the operator can see and argue with; a `running` row has nothing to un-park.
+//
+// ⚠ The caller must not call this BEFORE detection finishes — see `Propose`'s call site. An
+// un-parked row is claimable, and a rung claiming it mid-detection grounds the outgoing segment
+// list or re-`Propose`s the same reel concurrently.
+func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
+	row, found, err := p.store.GetClipPipeline(ctx, hash)
+	if err != nil {
+		return false, err
+	}
+	if !found || row.Stage != StageSplit || row.Disposition != DispositionReview {
+		return false, nil
+	}
+	// The four columns migration 00050 set. Attempts are given back for its reason too: the
+	// retries these rows spent were spent losing to a gate that could not be won, and carrying
+	// them would exhaust the budget on the way to succeeding.
+	now := p.now().UTC()
+	row.Disposition, row.Status, row.Attempts = DispositionRunning, StatusQueued, 0
+	row.NextRun = time.Time{} // zero is "due now" — ListPipelineWork's `next_run <= ?`
+	row.UpdatedAt = now
+	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
+		return false, err
+	}
+	// Best-effort: the clip is only needed to decorate the event. A missing row must not fail an
+	// un-park that already succeeded.
+	clip, _, _ := p.clips.GetClip(ctx, hash)
+	p.publish(row, clip)
+	if p.log != nil {
+		// ⚠ Logged HERE, not at the call site: the operator-facing adapter has no logger by
+		// design, and this is the line that distinguishes "the re-detect worked and the reel is
+		// moving" from "the reel is stuck" — the one fact that was unobservable before V54a.
+		p.log.Info("split: re-detected reel returned to the belt", "clip", hash)
+	}
+	return true, nil
 }
 
 // invalidate clears the derived data owned by every rung at or after `idx`.

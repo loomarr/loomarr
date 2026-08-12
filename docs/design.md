@@ -3189,6 +3189,33 @@ permanently ungroundable. Re-detection stays the operator's call (`POST /v1/fill
 a rung must not redraw a cut list a human may have open; grounding is additive and touches no
 boundary.
 
+⚠ **…and a re-detect returns the reel to the belt (V54a).** The paragraph above was only half a
+remedy. `POST /v1/filler/split` does replace the proposal — `filler_split_proposals.clip_hash` is
+UNIQUE and the upsert conflicts on it, so a fresh scored cut list lands in place of the stale one —
+but detection writes no pipeline row. A reel parked at `split`/`review` therefore stayed parked,
+now holding a proposal nothing would ever read, and the documented remedy could not work. The
+operator path un-parks the row itself: `disposition='running'`, `status='queued'`, `attempts=0`,
+`next_run=0` — the same four columns migration 00050 set, for the same reasons, including giving
+back attempts spent losing to a gate that could not be won.
+
+⚠ **After detection, never before.** An un-parked row is claimable, and claiming it mid-detection
+would let the split rung ground the OLD segment list — or call `Propose` a second time on the same
+reel — while the new list is still being written. So the un-park is the last step of a successful
+detection, and a detection that fails leaves the row exactly as it found it: parked, with its
+original proposal, which is the honest state.
+
+⚠ **Scope is migration 00050's `WHERE` clause**, for the migration's reason: `stage='split'` AND
+`disposition='review'` is the unreachable state. A `rejected` row keeps its own restore path
+(`Soft()`) — a re-detect must not quietly overturn a refusal an operator can see and argue with —
+and a row already `running` has nothing to un-park.
+
+⚠ **Why this cannot be a migration.** 00050 performed exactly this un-park, once, and it is the
+worked example of why the mechanism was wrong: it ran at 07:37 on 2026-08-12 under the binary that
+preceded per-segment confirm, the old all-or-nothing gate re-parked all 17 reels within nine
+minutes, and goose recorded it applied forever. A data migration cannot be re-run and cannot know
+which binary it is firing under. **A state transition whose correctness depends on the running code
+belongs on an operator path or a job, never in goose.**
+
 ⚠ **Side effect worth having: the gate's inputs became observable.** `GET
 /v1/filler/splits/{proposalId}` returned only `endMs/index/name/startMs`, so a grounded and an
 ungrounded proposal read identically and the only way to tell whether the grounder had run was to
