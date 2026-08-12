@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -447,6 +449,18 @@ func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string
 }
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
+}
+
+// ⚠ Translates the store's ErrNotFound into the DOMAIN's ErrProposalGone. `internal/filler` does
+// not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
+// the split rung must tell "the proposal was confirmed under me" apart from a real write failure,
+// because the first is a normal outcome and the second must fail the pass.
+func (a fillerSplitStoreAdapter) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
+	err := a.st.UpdateSplitProposalSegments(ctx, id, segs)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+	}
+	return err
 }
 
 // ListSplitProposals is the split RUNG's "is one already waiting?" read (§10 V51b) — one read of

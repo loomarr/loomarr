@@ -2618,6 +2618,17 @@ different jobs with no shared vocabulary: the language job tombstoned, the tagge
 scan silently skipped. A single `Verdict` — **continue / review / reject** — is now what every
 rule answers, so adding a criterion means adding a rule rather than editing three jobs.
 
+⚠ **V54 adds a fourth, `defer`, and it is not a terminal state — that is the point.** The three
+above all END a rung's involvement with a clip. `defer` says *the rung made progress and is not
+finished*: no attempt is spent, the clip stays `running`, and it resumes next pass. It exists
+because a per-pass budget over a per-reel job had no way to say "60 of 142 done, ask me again", so
+a budget meant to bound COST silently behaved as a ceiling on capability. A rung may only return it
+having actually advanced something; deferring on a pass that achieved nothing is an infinite loop.
+
+⚠ Do not confuse this with **"The operator's decision is the fourth outcome (V54)"** below. That
+one is a fourth *disposition* — where a clip sits. This is a fourth *verdict* — what a rung
+concluded. Two different enumerations, both of which gained a fourth member in V54.
+
 ⚠ **A reject is visible and reversible.** It carries a stable reason CODE (never generated prose)
 plus the measured detail behind it — `"8.2s; floor is 10s"` — and appears in Incoming under *"we
 didn't use N clips"* with a one-click restore for the soft cases. A hard reject (no audio, no
@@ -3043,6 +3054,54 @@ one the `vision` rung uses — so the gate is fed by the same vocabulary that ju
 the whole ladder for itself and is tagged downstream with its own transcript; the split-time
 grounding exists to answer the gate, not to replace `tag`. Where the two disagree, the child's own
 pass wins — it is later, better-informed, and per-clip.
+
+#### The budget is a RATE, not a ceiling (V54)
+
+⚠ **`filler.pipeline.max_split_vision` bounded one pass but was read as a limit on the reel, and
+that made the grounder above unable to finish on any real compilation.** `ground` indexed the
+budget absolutely, so a reel with more segments than the budget ground its first N on every pass
+and never advanced past them; the tail stayed ungrounded and `AutoConfirmable` returned
+`RejectUntagged` forever. Measured on the maintainer's catalog against a default budget of **60**,
+live proposals hold **82, 133, 142, 222, 235 and 303 segments** — so the budget silently meant
+"reels this size can never auto-confirm", which is the same class of default-ON-but-cannot-fire
+failure V54 exists to end.
+
+Three changes make the budget behave as the per-pass cost bound it was always described as:
+
+1. **Grounding PERSISTS on the proposal.** `SplitSegment` already carried `Category`/`Era` and
+   `segments_json` is a plain JSON blob, so this is additive — no migration. One new field,
+   `Looked`, records that the grounder examined a segment *whether or not it came back with
+   anything*. ⚠ Inference cannot replace it: `Category != ""` conflates *never looked at* with
+   *looked at and grounded nothing*, and treating those alike is exactly what makes a resumable
+   budget never converge.
+2. **A partly-grounded reel DEFERS** (the fourth verdict, above) rather than being judged. It
+   returns to the belt with its progress recorded — *"looked at 60 of 142 cuts"* — and the next
+   pass resumes at segment 61. A 303-segment reel completes in six passes.
+3. **Termination is progress, not a counter.** A defer requires that the pass looked at something,
+   and every look marks a segment, so the pending count strictly decreases. A pass that achieves
+   nothing (vision off, no vocabulary, the provider down at the first segment) does not defer: it
+   falls to the gate and the reel parks with a real reason. No new column, no timestamp, no
+   retry budget.
+
+⚠ **The write must never insert.** Grounding is a read-modify-write spanning minutes of vision
+calls, so it races `Confirm`. `UpdateSplitProposalSegments` is an `UPDATE` returning `ErrNotFound`
+on zero rows, deliberately NOT the `INSERT … ON CONFLICT` upsert — a grounding write landing after
+a confirm would otherwise **resurrect** the proposal: a pending review for a reel already cut,
+pointing at a composite whose segments are in the catalog. It also leaves `created_at` alone, since
+the Incoming queue orders by it and a reel must not jump the queue for having been grounded.
+
+⚠ **An existing proposal is RE-GROUNDED, never re-detected.** The split rung used to return
+immediately when a proposal existed, which read as "leave the operator's cut list alone" and was in
+fact a dead end: the row went to `review`, `ListPipelineWork` only claims `running`, and nothing
+reached that reel again. Every compilation detected before the grounder existed was therefore
+permanently ungroundable. Re-detection stays the operator's call (`POST /v1/filler/split`) because
+a rung must not redraw a cut list a human may have open; grounding is additive and touches no
+boundary.
+
+⚠ **Side effect worth having: the gate's inputs became observable.** `GET
+/v1/filler/splits/{proposalId}` returned only `endMs/index/name/startMs`, so a grounded and an
+ungrounded proposal read identically and the only way to tell whether the grounder had run was to
+watch for an `ffmpeg … thumbnail=n=` process. That is why V54's own shipping went unverified.
 
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:

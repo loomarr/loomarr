@@ -60,6 +60,37 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	return p, nil
 }
 
+// UpdateSplitProposalSegments replaces the segments of an EXISTING proposal (§10 V54 — split-time
+// grounding accumulates across passes, so a pass writes back what it learned).
+//
+// ⚠ **Deliberately NOT `UpsertSplitProposal`.** That one is `INSERT … ON CONFLICT(clip_hash)`, so
+// a grounding write landing after `Confirm` consumed the proposal would RESURRECT it: a pending
+// review for a reel that has already been cut, pointing at a composite whose segments are in the
+// catalog. The read-modify-write here spans minutes of vision calls, which is ample time for that
+// race. `ErrNotFound` when the row is gone is the entire point.
+//
+// ⚠ It does not touch `created_at`. `ListSplitProposals` orders by it, so writing it would let a
+// reel jump the review queue merely for having been grounded.
+func (s *sqlStore) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
+	raw, err := json.Marshal(segs)
+	if err != nil {
+		return fmt.Errorf("marshal split segments: %w", err)
+	}
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), id)
+	if err != nil {
+		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DeleteSplitProposal removes a proposal — after confirm, and on reject.
 // ErrNotFound for an unknown id, so a caller cannot believe it recorded something.
 func (s *sqlStore) DeleteSplitProposal(ctx context.Context, id string) error {

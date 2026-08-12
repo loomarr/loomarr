@@ -20,6 +20,14 @@ import (
 // the operator's edit was wrong, not the server.
 var ErrSplitValidation = errors.New("invalid split segments")
 
+// ErrProposalGone means the proposal was confirmed or rejected while a rung was working on it.
+//
+// ⚠ A DOMAIN sentinel, translated from the store's ErrNotFound by the adapter, because
+// `internal/filler` is the pure domain and does not import `internal/store` (Tier 3). It exists
+// for one race: split-time grounding is a read-modify-write spanning minutes of vision calls, and
+// a `Confirm` landing inside that window must not be undone by the write that follows.
+var ErrProposalGone = errors.New("filler: the split proposal was resolved while it was being grounded")
+
 // The splitter (§10, V34): turns a compilation clip into a REVIEWED set of
 // clips. Propose runs detection and persists a SplitProposal; Confirm writes
 // the operator's edited cut list to the catalog and removes the compilation.
@@ -50,6 +58,9 @@ type SplitStore interface {
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
+	// UpdateSplitProposalSegments writes grounding back onto an existing proposal without
+	// re-detecting. Must NOT insert — a write landing after Confirm would resurrect the proposal.
+	UpdateSplitProposalSegments(ctx context.Context, id string, segs []SplitSegment) error
 }
 
 // Splitter runs compilation splitting. provider may be nil: rescue and
@@ -76,6 +87,57 @@ func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, drop
 		now = time.Now
 	}
 	return &Splitter{store: store, tools: tools, provider: provider, dropDir: dropDir, minClipDuration: minClipDuration, newID: newID, now: now, log: log}
+}
+
+// Reground writes a grounding pass back onto an existing proposal WITHOUT re-detecting (§10 V54).
+//
+// ⚠ Re-detection is the operator's call, never a rung's: `Propose` replaces the whole cut list, and
+// a scheduled job redrawing cuts a human may be looking at is the hazard the split stage's
+// pending-proposal check exists to prevent. This writes only what the grounder learned.
+//
+// The store update refuses to insert, so a proposal confirmed or rejected while this pass was
+// grounding surfaces as ErrNotFound rather than being resurrected — the caller treats that as
+// "resolved under us", which it is.
+func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []SplitSegment) (SplitProposal, error) {
+	current, err := sp.store.GetSplitProposal(ctx, proposalID)
+	if err != nil {
+		return SplitProposal{}, err
+	}
+	current.Segments = mergeGrounding(current.Segments, grounded)
+	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, current.Segments); err != nil {
+		return SplitProposal{}, err
+	}
+	return current, nil
+}
+
+// mergeGrounding copies the grounding fields from `from` onto the segments of `onto` that still
+// describe the SAME span.
+//
+// ⚠ Matched on the span, not the index. Today nothing can reorder a proposal between the read and
+// the write (there is no PATCH route), so this is belt-and-braces — but it is the invariant that
+// keeps the merge correct if one is ever added, and index-matching would silently stamp the wrong
+// segment the day it is.
+func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
+	type span struct{ start, end int64 }
+	stamps := make(map[span]SplitSegment, len(from))
+	for _, s := range from {
+		stamps[span{s.StartMs, s.EndMs}] = s
+	}
+	out := append([]SplitSegment(nil), onto...)
+	for i := range out {
+		g, ok := stamps[span{out[i].StartMs, out[i].EndMs}]
+		if !ok {
+			continue
+		}
+		out[i].Looked = out[i].Looked || g.Looked
+		if g.Category != "" {
+			out[i].Category = g.Category
+		}
+		if g.Era > 0 {
+			out[i].Era = g.Era
+		}
+	}
+	return out
 }
 
 // floor resolves the detection floor ONCE for a call.

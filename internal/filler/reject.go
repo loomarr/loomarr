@@ -25,6 +25,18 @@ const (
 	VerdictReject
 	// VerdictReview — we could not decide. A human sees it.
 	VerdictReview
+	// VerdictDefer — the stage MADE PROGRESS and is not finished. Not a refusal and not a
+	// failure: no attempt is spent, the clip stays `running`, and it resumes next pass.
+	//
+	// ⚠ This is the deadline-deferral rule (see `deferYield`) made available to a rung that KNOWS
+	// it is unfinished, rather than only to one the clock interrupted. It exists because a
+	// per-pass budget over a per-reel job had no way to say "60 of 142 done, ask me again" — so a
+	// budget that was meant to bound COST behaved as a ceiling on capability, and any reel larger
+	// than the budget could never be completed at all (§10 V54).
+	//
+	// ⚠ A rung must only return this when it actually advanced something. Deferring on a pass that
+	// achieved nothing is an infinite loop; the caller's own guard is `Looked > 0`.
+	VerdictDefer
 )
 
 // RejectReason is a STABLE CODE for why a clip was refused.

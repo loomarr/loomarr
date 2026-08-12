@@ -523,6 +523,21 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.Disposition = DispositionReview
 			return row.Disposition, p.persist(ctx, row, clip)
+		case VerdictDefer:
+			// ⚠ `StatusQueued`, not `StatusDone` — the rung is coming back to this clip. Recording
+			// the note is the one thing the DEADLINE deferral above does not do, and it is what
+			// makes the ladder say "looked at 60 of 142 cuts" instead of going quiet for the
+			// several passes a large reel needs.
+			row.Record(row.Stage, StatusQueued, out.Note, row.Attempts, p.now().UTC())
+			// No attempt is spent: progress is not failure, and a reel needing six passes must not
+			// exhaust its retries on the way to succeeding.
+			row.NextRun = p.now().UTC().Add(deferYield)
+			if err := p.persist(ctx, row, clip); err != nil {
+				return row.Disposition, err
+			}
+			// ErrDeferred so `RunOnce` counts this as deferred rather than logging it as a failure
+			// — the same machinery the deadline path already uses.
+			return row.Disposition, ErrDeferred
 		}
 
 		row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
