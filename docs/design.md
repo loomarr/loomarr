@@ -2906,12 +2906,30 @@ though it were making progress.
 **Measured, on the real file** (the numbers are the point — the first three diagnoses were wrong
 without them):
 
-| Step of the `split` rung | Cost | Fits a 120s pass? |
+| Step of the `split` rung | Cost | Fits the pass? |
 | --- | --- | --- |
 | `blackdetect` + `silencedetect` | **4s** (319× realtime; 44 + 53 hits) | ✅ |
 | `dedup` — `GrayFrames` × 51 | **33s** (662ms/segment) | ✅ |
 | cut — ffmpeg stream copy × 51 | **3s** (59ms/segment) | ✅ |
-| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **3× the whole budget** |
+| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **6× the whole budget** |
+
+⚠ **The "120s pass" this table originally compared against was WRONG, and the real ceiling was
+half of it (V54).** 120s is the CRON INTERVAL (`0 */2 * * * *`) — how often the job *starts*, not
+how long it may run. The actual ceiling was River's `JobTimeoutDefault`, **60 seconds**, because
+`river.Config.JobTimeout` was never set and `riverWorker` did not implement `Timeout()`. So every
+job on every install ran under a deadline inherited from a dependency, which nothing here chose
+and nothing recorded.
+
+⚠ **It does not surface as a timeout, which is why it survived.** `exec.CommandContext` SIGKILLs
+its child, so the operator sees `ffmpeg …: signal: killed` / `whisper-cli: signal: killed` — a
+corrupt file or a broken binary, not a clock. Measured on the maintainer's catalog 2026-08-11: a
+`blackdetect` pass reported as "killed" inside the job completed in **40s** run by hand, and the
+20-minute reel it belonged to was left `Unsplittable` for want of time it should have had.
+
+The row above still holds — 377s does not fit a 60s pass either, and the rule below is unchanged —
+but the margin was 6×, not 3×, and the numbers under it were being judged against a budget twice
+the real one. Jobs now declare their own ceiling (`scheduler.Job.Timeout`); media jobs take
+`scheduler.LongJobTimeout`, tied to the lease horizon so a job cannot outlive its own claim.
 
 ⚠ **The rule this establishes.** The scheduler's unit of work is a CLIP: `Cost()`, the per-run
 budgets (`FILLER_PIPELINE_MAX_CLIPS`, `…MAX_WHISPER`) and the retry policy are all sized per clip.
@@ -3959,6 +3977,18 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 
 - **Errors open up.** `last_error` is rendered as an expandable panel with the full message, not a truncated single line. The Tasks page is where an operator diagnoses a failing integration, and a clipped error is the one piece of information they came for.
 - **River is the engine.** Each registry job becomes a River **periodic job** whose worker calls the same `Run` func; River owns due-selection, leadership (so only one replica runs a tick), retries with backoff, and the durable job records behind run history. **Run now** = inserting the job's args immediately — the same worker, no separate code path. The `scheduled_jobs` table remains the read model the Tasks page renders (last run, last result, paused), because River's own tables are keyed by *job execution*, not by "the operator's view of this named task".
+
+- ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — declared ceiling ⇒ `long`, none ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently and forever. Deriving the queue *set* and the *routing* from one function makes that state unreachable.
+
+  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — `channel-sweep`, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
+
+  ⚠ **`MaxWorkers 1` on SQLite is about the DEFAULT queue's WIDTH, not a ban on a second producer.** The pool holds `MaxOpenConns(1)`, so a second worker blocks *at the pool* — it cannot corrupt anything — and a long media job spends its time inside `exec.Command` holding no connection at all. It starved the others by holding a worker SLOT, not a connection. `long` is nevertheless 1 on Postgres too, for an unrelated reason already recorded in §10: ffmpeg competes with playout for the GPU, so a media worker *pool* would turn a catalog import into a live-channel outage.
+
+  ⚠ **Run-now must take the same queue the schedule would.** Forgetting `InsertOpts` on the trigger path reproduces the exact symptom above for manual runs, and nothing else in the suite covers it.
+
+  ⚠ Known and deliberately not fixed: River's periodic enqueuer inserts on schedule regardless of worker availability, so a long pass accumulates queued rows that drain back-to-back afterwards. After the split this is confined to `long` and self-limiting (each pass is budget-bounded and mostly a no-op). `UniqueOpts` is **not** the answer — Run-now inserts the same args, so deduplication would silently swallow an operator's click.
+
+- **An overdue job says so.** A job past its next run and waiting on a worker is marked `overdue` by the scheduler and rendered as such. ⚠ Before this the Tasks page ran the past timestamp through a duration formatter that answers **"expired"** for any past instant — a word written for session expiry — so a starved job reported itself in another subsystem's vocabulary. Deliberately NOT "which job is holding the worker": that is per-process, and on a multi-replica Postgres install it would confidently name the wrong one.
 
   ⚠ **Build the cron parser explicitly; never use `cron.ParseStandard`.** River's docs point at it, and it is **5-field** — it rejects *every* schedule Loomarr has, all of which are 6-field seconds-leading (`0 */5 * * * *`). Since `job.*.schedule` values are operator-editable settings already persisted in the database, the documented example would have failed every saved schedule at boot on installs that were working fine. `cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)` accepts them all (verified in `docs/engineering/FINDINGS-river-spike-2026-07-30.md`). `gronx` stays as the settings **validator**, so `KindCron` keeps one definition of a valid expression.
 

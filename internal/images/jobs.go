@@ -26,7 +26,10 @@ import (
 // guide. A pass costs one indexed SELECT on an idle install.
 func FetchJob(f *Fetcher) scheduler.Job {
 	return scheduler.Job{
-		Name: "images-fetch", Title: "Download artwork",
+		// Network downloads, N per pass. One slow upstream is enough to pass River's 1m default,
+		// and a SIGKILL mid-fetch leaves a half-written file rather than a recorded miss.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "images-fetch", Title: "Download artwork",
 		Description: "Downloads the posters and artwork Loomarr has noted but not yet fetched. Until this runs those images show as blurred placeholders.",
 		DefaultCron: "0 * * * * *", ScheduleKey: "job.images_fetch.schedule",
 		Run: func(ctx context.Context) error { _, err := f.FetchPending(ctx); return err },
@@ -41,7 +44,11 @@ func FetchJob(f *Fetcher) scheduler.Job {
 // runs fine and has never failed, which is the ambiguity §18.1 added DisabledReason to remove.
 func AVIFJobSpec(j *AVIFJob, disabledReason string) scheduler.Job {
 	return scheduler.Job{
-		Name: "images-avif", Title: "Make smaller copies of images (AVIF)",
+		// ⚠ The description calls this "the expensive one" and it is: AVIF encoding measured 5.3×
+		// the WebP cost, run over a batch. It is the clearest case in the tree of a job that must
+		// not inherit a one-minute ceiling.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "images-avif", Title: "Make smaller copies of images (AVIF)",
 		Description: "Re-encodes artwork into AVIF, the smallest format, so pages load faster on slow connections. It runs in the background because it is the expensive one; until a copy exists, browsers take the WebP version.",
 		DefaultCron: "0 20 * * * *", ScheduleKey: "job.images_avif.schedule",
 		DisabledReason: disabledReason,

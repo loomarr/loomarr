@@ -19,7 +19,10 @@ import (
 // `filler`, this belongs in `internal/filler/jobs.go` beside the rest.
 func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-sync", Title: "Sync filler catalog",
+		// A folder walk that hashes every file it finds, so it scales with the catalog rather
+		// than with what changed — minutes on a large drop folder, well past River's 1m default.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-sync", Title: "Sync filler catalog",
 		Description: "Re-reads your filler folder so new commercials and bumpers become available to the ad breaks between programmes.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
@@ -38,7 +41,10 @@ func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 // which is what an operator asking "why is nothing arriving?" actually needs to see.
 func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-fetch", Title: "Fetch new filler clips",
+		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
+		// its own, and this walks every registered source.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-fetch", Title: "Fetch new filler clips",
 		Description: "Checks the sources you've added for new commercials and downloads them. Everything fetched waits under Filler → Incoming until it's checked.",
 		DefaultCron: "0 0 */6 * * *", ScheduleKey: "job.filler_fetch.schedule",
 		Run: func(ctx context.Context) error { _, err := f.Run(ctx); return err },
@@ -66,7 +72,14 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 // each one re-read the entire catalog.
 func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-pipeline", Title: "Prepare new filler clips",
+		// ⚠ **`Timeout` is not optional on this job.** It runs ffmpeg and whisper, and River's
+		// default ceiling is ONE MINUTE — under which a single `blackdetect`/`silencedetect`
+		// pass over a 20-minute recording (measured at 40s alone) is SIGKILLed part-way, and
+		// the operator sees `signal: killed` rather than anything about time. Matched to
+		// `scheduler.LongJobTimeout`, which is the lease horizon: a job may run right up to the
+		// point its claim would expire, and no further.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-pipeline", Title: "Prepare new filler clips",
 		Description: "Takes each new clip through the same steps in order — measuring it, re-encoding it, cutting up long recordings, listening to it, and working out what it advertises — so it's ready to air. Watch a clip move under Filler → Incoming.",
 		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
 		Run: func(ctx context.Context) error { _, err := p.RunOnce(ctx); return err },

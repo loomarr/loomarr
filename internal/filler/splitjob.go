@@ -118,9 +118,13 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 
 	// 4. RETIRED (§10 V51g): classify no longer runs here.
 	//
-	// ⚠ **It was one LLM turn per segment, inside a two-minute pass.** Measured on a 16m47s reel:
-	// 51 segments × 7.4s ≈ 377s, against a budget of 120 — so the rung could never finish, threw
-	// its work away, and started over every two minutes. Everything else in `Propose` totals ~40s
+	// ⚠ **It was one LLM turn per segment, inside a bounded pass.** Measured on a 16m47s reel:
+	// 51 segments × 7.4s ≈ 377s — so the rung could never finish, threw its work away, and
+	// started over on the next tick.
+	//
+	// ⚠ The "budget of 120" this note used to cite was the CRON INTERVAL, not the ceiling. The
+	// real ceiling was River's inherited `JobTimeoutDefault` of **60s** until V54 gave jobs their
+	// own `Timeout` (§10, §18.1); the margin here was 6×, not 3×. Everything else in `Propose` totals ~40s
 	// (detect 4s, dedup 33s, cut 3s); this one step was the entire overrun.
 	//
 	// ⚠ And it was strictly WORSE duplicate work. It called the same `Classify` the `tag` rung
