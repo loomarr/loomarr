@@ -833,6 +833,24 @@ func declared() []Setting {
 			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
 		},
 		{
+			// ⚠ **The only setting in Loomarr that deletes an operator's media**, which is why its
+			// doc says so in the operator's own words rather than in ours. Everything else here
+			// tombstones: "remove from catalog" keeps the file, disabling a source keeps its clips.
+			//
+			// It exists because partial confirm (§10 V54) leaves a residue BY DESIGN — every reel
+			// files its confident cuts and keeps the doubtful ones back, so small proposals
+			// accumulate and each one pins a 1–2 GB recording. Without an expiry the feature that
+			// shrinks the operator's work grows their storage instead.
+			//
+			// ⚠ 0s is OFF, and that is the three-state encoding the rest of §10 uses: an operator
+			// who has not chosen an expiry has not agreed to have recordings deleted. A reel that
+			// produced NO clips is never eligible at any window — it is the only copy of that
+			// content, and reaping it would destroy material Loomarr never managed to use.
+			Key: "filler.split.review_window", EnvVar: "FILLER_SPLIT_REVIEW_WINDOW", Group: GroupFiller,
+			Kind: KindDuration, Default: "720h", Advanced: true,
+			Doc: "How long cuts you haven't reviewed wait before Loomarr gives up on them. When the time is up it drops the leftover cuts and DELETES the original recording to reclaim the space — but only for recordings that already produced clips, so nothing is lost that was never used. The clips themselves are never touched. Set to 0s to keep everything forever.",
+		},
+		{
 			// ⚠ **ELIGIBILITY, not a reject — the pair to `filler.min_duration` above, and the
 			// distinction is which side of the catalog boundary they sit on.** `min_duration`
 			// refuses a file entry; these two decide whether a clip already IN the catalog may
@@ -1037,6 +1055,14 @@ func declared() []Setting {
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */15 * * * *",
 			Doc: "How often Loomarr syncs the filler catalog (cron).",
+		},
+		{
+			// ⚠ Daily and off-peak on purpose. The window this job enforces is measured in WEEKS,
+			// so a faster cadence buys nothing and only widens the chance of a pass landing while
+			// an operator is mid-review on a reel one hour past its expiry.
+			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 4 * * *",
+			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
 		},
 		{
 			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an

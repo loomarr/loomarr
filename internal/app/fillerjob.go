@@ -103,3 +103,23 @@ func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }
+
+// The split-review sweep (§10 V54): expired proposals are retired and their recordings reclaimed.
+//
+// ⚠ **This job needs `Timeout: scheduler.LongJobTimeout` and the `long` queue, and cannot declare
+// them yet.** Both land in #304, which is a sibling stack rather than a parent of this one — so
+// until it merges this runs under River's inherited one-minute default. A sweep over a large
+// backlog does real file I/O and will exceed that. Add the field in the merge commit; the tracking
+// note is here rather than in a TODO because the fix is someone else's already-written PR.
+//
+// ⚠ Daily, deliberately off-peak, and NOT more often. The window is measured in weeks, so a faster
+// cadence buys nothing and only widens the chance of a pass landing while an operator is mid-review
+// on a reel that is one hour past its expiry.
+func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-split-sweep", Title: "Give up on unreviewed cuts",
+		Description: "Drops split suggestions you haven't reviewed within the window you set, and deletes the original recordings they came from to reclaim space. Only recordings that already produced clips are removed, and the clips themselves are never touched.",
+		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
+		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
+	}
+}

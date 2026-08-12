@@ -664,7 +664,10 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	defer func() { _ = s.pruneOrphanSplitProposals(ctx) }()
 
 	if len(keepIDs) == 0 {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM clips`)
+		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
+		// empty or unreadable, which is exactly when a swept reel looks most like a deleted one —
+		// and taking the tombstones here would dangle their children just as surely.
+		res, err := s.db.ExecContext(ctx, `DELETE FROM clips WHERE reaped_at IS NULL`)
 		if err != nil {
 			return 0, err
 		}
@@ -685,7 +688,12 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// reported "1 added, 1 pruned" forever and the catalog stayed empty — filler silently never
 	// worked. Found by running the real binary; the conformance suite passed throughout because
 	// its fixtures set `path` and `hash` to the same string.
-	q := s.ph(`DELETE FROM clips WHERE hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
+	// ⚠ **A REAPED composite is exempt** (§10 V54). The split sweep deletes a spent compilation's
+	// recording on purpose, so its absence from the scan is expected rather than news. Without this
+	// the very next sync would prune the row — and every clip cut out of that reel carries
+	// `parent_hash` pointing at it, so one sweep would dangle all 47 children and take V45's
+	// lineage with it. The row is a tombstone; only the bytes are gone.
+	q := s.ph(`DELETE FROM clips WHERE reaped_at IS NULL AND hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
 	res, err := s.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("prune clips: %w", err)

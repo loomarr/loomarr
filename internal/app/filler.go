@@ -144,6 +144,36 @@ func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string)
 	return a.st.DeleteSplitProposal(ctx, id)
 }
 
+// fillerSweepStoreAdapter bridges the store → filler.SweepStore (§10 V54).
+//
+// ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
+// domain must not import the store (Tier 3), and the store's row type is a query result rather
+// than a domain concept, so the two are deliberately separate structs with the same shape.
+type fillerSweepStoreAdapter struct{ st store.Store }
+
+func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]filler.SweepableProposal, error) {
+	rows, err := a.st.ListSweepableSplitProposals(ctx, before)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.SweepableProposal, len(rows))
+	for i, r := range rows {
+		out[i] = filler.SweepableProposal{
+			ProposalID: r.ProposalID, ClipHash: r.ClipHash, ClipPath: r.ClipPath, Segments: r.Segments,
+		}
+	}
+	return out, nil
+}
+func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkClipReaped(ctx, hash, at)
+}
+func (a fillerSweepStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineFiled(ctx, hash, at)
+}
+
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
 //
 // ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the
