@@ -374,6 +374,81 @@ func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
 	}
 }
 
+// ⚠ **A compilation appears ONCE, as a reel — never also as a taggable ask** (§10 V51e, V54).
+//
+// It appeared twice: as a "needs a decision" card carrying "Loomarr couldn't work out what this
+// is", and as a reel below. Both halves were individually correct — the pipeline deliberately
+// skips tag/vision for a composite ("a compilation is cut up rather than filed"), so `askReasonFor`
+// truthfully reported it as unidentified — which is exactly why no existing test caught it. The
+// tab was asking an operator to tag a container of adverts it never intended to file.
+func TestFillerIncoming_ACompilationIsAReelNotAnAsk(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	putClip(t, st, filler.Clip{
+		Hash: "hash-reel", Path: "comps/reel.mp4", Name: "WTTV-4 Commercial Breaks(5/18/1987)",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	// ⚠ Parked at split/review — the state ~50 live reels were in.
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: "hash-reel", Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionReview, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp_reel", ClipHash: "hash-reel", CreatedAt: time.Now().UTC(),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 0 {
+		t.Errorf("clips = %d, want 0 — the reel below IS the handoff; %+v", len(body.Clips), body.Clips)
+	}
+	if len(body.Reels) != 1 {
+		t.Fatalf("reels = %d, want 1", len(body.Reels))
+	}
+	if body.Reels[0].ClipName != "WTTV-4 Commercial Breaks(5/18/1987)" {
+		t.Errorf("reel name = %q, want the compilation's name", body.Reels[0].ClipName)
+	}
+	// The badge counted the same reel twice, once per half.
+	if body.Total != 1 {
+		t.Errorf("total = %d, want 1 — a reel must not be counted as both an ask and a reel", body.Total)
+	}
+}
+
+// ⚠ The other half, and the one a blunt "exclude every composite from the belt" fix would break:
+// a compilation still BEING DETECTED has no proposal yet, and detection runs minutes per file. It
+// must show as a preparing row — V51e exists so that "nothing is happening" is never the answer —
+// but still not as a decision.
+func TestFillerIncoming_ACompilationBeingDetectedStillShows(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Hash: "hash-detecting", Path: "comps/detecting.mp4", Name: "TBS Commercial Breaks(12/15/1989)",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "hash-detecting", Stage: filler.StageSplit, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want 1 — a compilation mid-detection must stay visible", len(body.Clips))
+	}
+	if body.Clips[0].NeedsDecision {
+		t.Error("a compilation mid-detection is asking for nothing; it is being worked on")
+	}
+	if body.Total != 0 {
+		t.Errorf("total = %d, want 0 — nothing here needs a human yet", body.Total)
+	}
+}
+
 // ⚠ A clip catalogued BEFORE V51b has no pipeline row at all. Treating "no row" as "still being
 // prepared" would strand it in a section that says nothing needs the operator, permanently.
 func TestFillerIncoming_AClipWithNoPipelineRowStillAsks(t *testing.T) {

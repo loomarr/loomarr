@@ -2122,7 +2122,7 @@ A removed clip is excluded from the catalog listing and from pod assembly **by d
 
 Between "a file arrived" and "a clip the scheduler can place" there is work only a person can finish. `GET /v1/filler/incoming` is that queue, in one read:
 
-- **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing.
+- **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing. ⚠ **Nor does a COMPILATION** (V54): it is `kind=commercial` and permanently untagged — the pipeline deliberately skips tag and vision for a composite, "a compilation is cut up rather than filed" — so read literally it satisfies the second bullet above, and for a while it did. It is not an advert with missing tags; it is a container of adverts, and its handoff to a human is the reel below. Asking an operator to "Add tags" to it would tag twenty unrelated products as one clip.
 - **Compilations mid-split** — the persisted split proposals, with a count of the segments an operator cannot simply accept (unsplittable, or flagged as a duplicate).
 
 ⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
@@ -2846,6 +2846,18 @@ previous one true.
 **Incoming is ONE conveyor, not a queue beside a progress list.** A clip is somewhere on a single
 belt: the machine is still working on it, or the machine has finished and wants a person. One row
 per clip, and the row says which.
+
+⚠ **"One row per clip" covers the REELS half too, and that half was missed (V54).** The rule was
+written against the asks-vs-pipeline duplication (the 84-of-85 incident below) and left implicit
+for compilations, so the same reel rendered twice: once as a taggable ask, once as a reel. Stated
+explicitly: **a compilation with a pending proposal is represented by its reel and is off the belt;
+while it is still being DETECTED it is on the belt as a preparing row, and never as a decision.**
+
+The reason no test caught it is worth keeping. Neither rule was wrong. `conveyorDTO` read
+`disposition == review`, which is correct — review IS the handoff. `askReasonFor` reported an
+untagged commercial as unidentified, which is also correct, because the pipeline deliberately never
+tags a composite. The defect existed only in their intersection, which is a shape a per-rule test
+cannot reach and only a fixture holding a composite could produce.
 
 - **Still being prepared** — thumbnail, name, duration, an eight-pip strip, and the active-voice
   sentence for the rung it is on ("Working out what it is"). Expanding gives the named ladder with

@@ -1683,6 +1683,49 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpdateSplitProposalSegments(ctx, "sp_never_existed", grounded); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update of an unknown id = %v, want ErrNotFound", err)
 	}
+
+	// --- The other side of the no-foreign-key independence: the PRUNE takes proposals too ---
+	//
+	// ⚠ `filler_split_proposals` is a sibling of `clips` with no FK, so nothing cleaned it up.
+	// Measured 2026-08-11: deleting every clip file and running filler-sync pruned `clips` to 0
+	// and left **48** proposals behind, which Incoming rendered as 48 "compilations to review"
+	// titled with raw content hashes, each opening a review of a file that was gone.
+	keeper := clipAt("comps/keeper.mp4", "Keeper", filler.Commercial, 149_000)
+	orphan := clipAt("comps/orphan.mp4", "Orphan", filler.Commercial, 149_000)
+	for _, c := range []filler.Clip{keeper, orphan} {
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seg := []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}}
+	for id, hash := range map[string]string{"sp_keep": keeper.Hash, "sp_orphan": orphan.Hash} {
+		if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+			ID: id, ClipHash: hash, CreatedAt: now, Segments: seg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// ⚠ A KEEPER is enrolled first on purpose, so the assertion distinguishes "pruned the orphan"
+	// from "emptied the table" — a prune with a broken predicate passes the orphan check alone.
+	if _, err := s.DeleteClipsNotIn(ctx, []string{keeper.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_orphan"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("orphan proposal survived the prune = %v; Incoming would render it as a "+
+			"hash-titled reel pointing at a deleted compilation", err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_keep"); err != nil {
+		t.Errorf("the prune took a LIVE proposal with it: %v", err)
+	}
+	// ⚠ Asserted on the LIST too, because that is the surface the defect was seen on.
+	remaining, err := s.ListSplitProposals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].ID != "sp_keep" {
+		t.Errorf("ListSplitProposals = %+v, want only sp_keep", remaining)
+	}
 }
 
 // testClipPipeline covers the per-clip ingest pipeline's state (§10 V51b) on BOTH backends: the

@@ -655,6 +655,14 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// branches below and cannot disagree with whichever DELETE ran.
 	defer func() { _ = s.pruneOrphanPipelines(ctx) }()
 
+	// ⚠ **And the proposals, for the same reason** (§10 V54). `filler_split_proposals` is the other
+	// no-foreign-key sibling of `clips`, and it had the same hole: a wipe left 48 proposals behind,
+	// which Incoming rendered as 48 "compilations to review" titled with raw content hashes, each
+	// opening a review of a deleted file. Two separate defers rather than one combined closure, so
+	// each table's rationale sits beside its own call; the tables are independent, so LIFO order
+	// between them does not matter.
+	defer func() { _ = s.pruneOrphanSplitProposals(ctx) }()
+
 	if len(keepIDs) == 0 {
 		res, err := s.db.ExecContext(ctx, `DELETE FROM clips`)
 		if err != nil {

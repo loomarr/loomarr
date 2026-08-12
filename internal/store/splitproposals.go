@@ -60,6 +60,32 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	return p, nil
 }
 
+// pruneOrphanSplitProposals deletes proposals whose compilation is gone.
+//
+// ⚠ The same rule, and the same reason, as `pruneOrphanPipelines`: `filler_split_proposals` is a
+// sibling of `clips` with NO foreign key — deliberately, so it survives a `clips` rebuild — and
+// the price of that independence is that nothing else will ever clean it up.
+//
+// ⚠ **An orphan proposal is not inert.** Incoming renders one as a "compilation to review" titled
+// with a raw 64-character hash (the name falls back to the clip identity when `GetClip` misses),
+// carrying a Review-cuts button that opens a review of a file that no longer exists. Measured
+// 2026-08-11: deleting every clip file and running filler-sync pruned `clips` to 0 and left **48**
+// such rows, which then dominated the tab.
+//
+// Written as "no matching clip" rather than "not in the keep set" so it stays correct whichever
+// branch of the prune ran, and so a clip deleted by any other route is covered too. Errors are
+// swallowed by the caller for the same reason as the pipeline prune: the clips ARE gone by then,
+// and failing the sync over leftover bookkeeping turns a tidy-up into an outage.
+func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM filler_split_proposals WHERE NOT EXISTS (
+			SELECT 1 FROM clips c WHERE c.hash = filler_split_proposals.clip_hash)`)
+	if err != nil {
+		return fmt.Errorf("prune orphan split proposals: %w", err)
+	}
+	return nil
+}
+
 // UpdateSplitProposalSegments replaces the segments of an EXISTING proposal (§10 V54 — split-time
 // grounding accumulates across passes, so a pass writes back what it learned).
 //

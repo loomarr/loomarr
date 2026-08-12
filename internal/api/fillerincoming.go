@@ -269,17 +269,44 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		clip store.Clip
 		row  filler.ClipPipeline
 	}
+	// ⚠ **Read BEFORE the belt, because a reel claims its clip off it** (§10 V51e, V54). Incoming
+	// showed the same compilation twice: once as a "needs a decision" ask carrying "Loomarr
+	// couldn't work out what this is", and again as a reel below. Two individually-correct rules
+	// collided — `pipeline.go` deliberately skips tag/vision for a composite ("a compilation is cut
+	// up rather than filed"), so `askReasonFor` correctly reports it as unidentified — and the
+	// result asked the operator to tag a container of adverts it never intends to file. It also
+	// double-counted the badge, and `onFileAllAsSuggested` would have tried to FILE the reels.
+	//
+	// A read failure degrades honestly: `reeled` stays empty, so a composite appears as a belt row
+	// with no reel rather than vanishing from both halves.
+	proposals, proposalsErr := s.store.ListSplitProposals(ctx)
+	if proposalsErr != nil {
+		s.log.Warn("list split proposals for incoming", "err", proposalsErr)
+	}
+	reeled := make(map[string]bool, len(proposals))
+	for _, p := range proposals {
+		reeled[p.ClipHash] = true
+	}
+
 	belt := make([]beltEntry, 0, len(held))
 	seen := make(map[string]bool, len(held))
 	for _, c := range held {
+		// ⚠ `seen` is marked BEFORE the skip, or the second loop re-adds what this one dropped.
 		seen[c.Hash] = true
+		if reeled[c.Hash] {
+			continue
+		}
 		belt = append(belt, beltEntry{clip: c, row: pipeByHash[c.Hash]})
 	}
 	// ⚠ A clip on the belt that is NOT held still belongs here. Holding and enrolment are set by
 	// different writers, so "enrolled but not held" is reachable — and a clip the machine is
 	// visibly working on must not vanish from the one surface that reports on it.
+	//
+	// ⚠ This is also the loop a composite actually arrives through: the held query excludes them at
+	// the composite chokepoint (`ClipFilter.IncludeComposites` defaults false), but `GetClip` below
+	// has no such predicate, so the pipeline rows reintroduce what that filter kept out.
 	for hash, row := range pipeByHash {
-		if seen[hash] {
+		if seen[hash] || reeled[hash] {
 			continue
 		}
 		clip, cerr := s.store.GetClip(ctx, hash)
@@ -326,9 +353,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// an operator can always act on, and losing the page because a secondary list did not load
 	// would be a poor trade — the same call the sources read-model makes about its remotes.
 	out.Body.Reels = make([]IncomingReelDTO, 0)
-	if proposals, err := s.store.ListSplitProposals(ctx); err != nil {
-		s.log.Warn("list split proposals for incoming", "err", err)
-	} else {
+	if proposalsErr == nil {
 		for _, p := range proposals {
 			// One read per pending reel to resolve a display name. ⚠ Bounded by design: a
 			// proposal exists only while a compilation is waiting on a human, so this list is
@@ -433,13 +458,20 @@ const (
 // prepared" would strand them in a section that says nothing needs the operator, forever.
 func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageDTO) IncomingClipDTO {
 	dto := incomingDTO(c, askReasonFor(c), img)
+	// ⚠ **A compilation is never a decision.** Its handoff to a human is the REEL, and the ask
+	// row's controls are meaningless on a container of adverts: "Add tags" would tag twenty
+	// unrelated products as one clip, and "Use it" would file a 20-minute recording into a
+	// 30-second break. The reel-claims-its-clip rule above normally keeps composites off the belt
+	// entirely; this is the branch that catches one whose proposal was deleted mid-flight (a
+	// rewind, or a failed auto-confirm cleanup), which would otherwise reappear here as an
+	// untaggable ask.
 	if row.ClipHash == "" {
-		dto.NeedsDecision = true
+		dto.NeedsDecision = !c.IsComposite
 		return dto
 	}
 	p := pipelineDTO(row)
 	dto.Pipeline = &p
-	dto.NeedsDecision = row.Disposition == filler.DispositionReview
+	dto.NeedsDecision = !c.IsComposite && row.Disposition == filler.DispositionReview
 	return dto
 }
 
