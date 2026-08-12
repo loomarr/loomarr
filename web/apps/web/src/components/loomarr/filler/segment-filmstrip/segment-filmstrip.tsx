@@ -85,9 +85,16 @@ const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFi
             elements. A caption is a promise about behaviour, and an operator who clicks expecting
             to see the clip concludes the feature is broken rather than absent.
 
-            The preview itself is Phase C. When it lands, this wording changes WITH it — the
-            "does not promise a preview it cannot deliver" test below is what ties the two
-            together, and it relaxes on its own once a media element is rendered. */}
+            ⚠ **The preview has since landed, and this caption still stands** (§10 V54). It lives
+            on the ROW — a ▶ tile per segment that expands into a player — not on the strip, and
+            clicking a BLOCK still only jumps. So the wording is right for what it describes, and
+            restoring "preview" would make it newly false in the other direction: it would
+            advertise the strip as the preview control, which it is not.
+
+            The "does not promise a preview it cannot deliver" test below therefore stays ARMED
+            rather than relaxing. Its escape hatch exists for the day the strip itself grows media
+            (per-block thumbnails, say); rendering a `<video>` here purely to unlock the word
+            would be gaming the guard, not satisfying it. */}
         <span>every block is one detected clip — click to jump to its row</span>
         <span>{formatMmSs(reelEnd)}</span>
       </div>

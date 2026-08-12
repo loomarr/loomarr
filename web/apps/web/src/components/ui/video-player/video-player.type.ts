@@ -10,6 +10,20 @@ interface VideoPlayerProps {
   // browsers reject autoplay otherwise, which this handles rather than assuming (see the
   // component's play() rejection path).
   autoPlay?: boolean;
+  // Play only a WINDOW of the source (§10 V54), in SECONDS of media time — the unit the element
+  // and `current`/`duration`/`seekTo` already speak, so a caller holding milliseconds converts.
+  //
+  // Built for the split-review gate: a proposed cut has no bytes of its own until it is confirmed,
+  // so previewing one means playing a slice of the 20-minute composite it was detected in.
+  //
+  // ⚠ **With a window set, `duration` is the WINDOW's length and `current` is measured from
+  // `startAt`** — a 30-second cut of a 22-minute reel reads "0:04 / 0:30". That is the entire
+  // point: handing the readout the reel's numbers would present the whole recording as if it were
+  // the clip, which is what makes a preview useless for judging one cut.
+  //
+  // ⚠ Ignored in `live` mode — a live duration is Infinity and there is nothing to clamp.
+  startAt?: number;
+  endAt?: number;
   // Rendered in the frame's top-LEFT, opposite the title. The player itself has no opinion about
   // dismissal; a dialog passes its close button through here so the control sits over the video
   // rather than above it.

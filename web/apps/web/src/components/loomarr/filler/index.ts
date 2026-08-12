@@ -18,6 +18,7 @@ export * from "./pod-timeline";
 export * from "./pool-health";
 export * from "./pull-card";
 export * from "./segment-filmstrip";
+export * from "./segment-preview";
 export * from "./source-search";
 export * from "./split-review-editor";
 export * from "./watch-pill";
