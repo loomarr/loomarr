@@ -575,9 +575,30 @@ func askReasonFor(c store.Clip) string {
 func segmentsNeedingAttention(p filler.SplitProposal) int {
 	n := 0
 	for _, seg := range p.Segments {
-		if seg.Unsplittable || seg.DupOf != "" {
+		if seg.Unsplittable || seg.DupOf != "" || doubtfulBoundary(seg) {
 			n++
 		}
 	}
 	return n
+}
+
+// BoundaryReviewFloor is the score below which a cut is worth an operator's eye (§10 V34).
+//
+// ⚠ **60, not 70.** At 70 a single-detector boundary (ceiling 65) counts as doubtful, and on a
+// clean reel that is a third of the segments — a flag that flags everything tells an operator
+// nothing. 60 sits between the single-detector ceiling and the transcript-only one, so what
+// surfaces is the genuinely thin evidence.
+//
+// A constant rather than a setting: it feeds no unattended decision, only what the review
+// highlights. `filler.autosplit.min_confidence` is the knob that decides anything.
+const BoundaryReviewFloor = 60
+
+// doubtfulBoundary reports whether a cut's own evidence is thin enough to be worth a look.
+//
+// ⚠ **The `> 0` guard is load-bearing.** Every proposal detected before V54 deserialises at zero,
+// and without it the entire existing backlog would flip to "needs attention" the moment this
+// deploys — a review queue that suddenly claims every cut of every reel is suspect. Unscored means
+// "no opinion", never "doubtful".
+func doubtfulBoundary(seg filler.SplitSegment) bool {
+	return seg.BoundaryConfidence > 0 && seg.BoundaryConfidence < BoundaryReviewFloor
 }

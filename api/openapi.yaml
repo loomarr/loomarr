@@ -4753,9 +4753,14 @@ components:
       properties:
         audience:
           type: string
+        boundaryConfidence:
+          format: int64
+          type: integer
         category:
           type: string
         dupOf:
+          type: string
+        endEvidence:
           type: string
         endMs:
           format: int64
@@ -4763,12 +4768,16 @@ components:
         era:
           format: int64
           type: integer
+        holdReason:
+          type: string
         index:
           format: int64
           type: integer
         looked:
           type: boolean
         name:
+          type: string
+        startEvidence:
           type: string
         startMs:
           format: int64

@@ -7,12 +7,23 @@ import (
 	"time"
 )
 
+// blackGaps tags plain intervals as black-detected — the shape most of these tests want, since
+// they are about CUT POSITIONS rather than about which detector found them. The provenance-aware
+// cases below build `detectedGap` values directly.
+func blackGaps(in ...Interval) []detectedGap {
+	out := make([]detectedGap, 0, len(in))
+	for _, g := range in {
+		out = append(out, detectedGap{Interval: g, Src: srcBlack})
+	}
+	return out
+}
+
 // --- segmentsFromBoundaries -------------------------------------------------
 
 func TestSegmentsFromBoundaries_CutsAtGapMidpoints(t *testing.T) {
 	// Two black gaps at 30s and 60s (each ~0.5s wide) in a 90s compilation.
 	gaps := []Interval{{StartMs: 29800, EndMs: 30200}, {StartMs: 59900, EndMs: 60100}}
-	segs, _ := segmentsFromBoundaries(90_000, gaps, newSegmentFloor(0))
+	segs, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0))
 	if len(segs) != 3 {
 		t.Fatalf("segments = %+v, want 3", segs)
 	}
@@ -32,7 +43,7 @@ func TestSegmentsFromBoundaries_MergesBlackAndSilenceOnOneBoundary(t *testing.T)
 		{StartMs: 29800, EndMs: 30200}, // black
 		{StartMs: 29900, EndMs: 31000}, // silence overlapping the black
 	}
-	segs, _ := segmentsFromBoundaries(90_000, gaps, newSegmentFloor(0))
+	segs, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0))
 	if len(segs) != 2 {
 		t.Fatalf("overlapping black+silence gave %d segments, want 2: %+v", len(segs), segs)
 	}
@@ -41,7 +52,7 @@ func TestSegmentsFromBoundaries_MergesBlackAndSilenceOnOneBoundary(t *testing.T)
 func TestSegmentsFromBoundaries_DropsSlivers(t *testing.T) {
 	// A gap 1s in — the "segment" before it is a fade-in artefact, not an advert.
 	gaps := []Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 45000, EndMs: 45500}}
-	segs, _ := segmentsFromBoundaries(90_000, gaps, newSegmentFloor(0))
+	segs, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0))
 	if len(segs) != 2 {
 		t.Fatalf("segments = %+v, want the 1s sliver dropped", segs)
 	}
@@ -89,7 +100,7 @@ func TestSegmentsFromBoundaries_DropsUnderTheCatalogFloor(t *testing.T) {
 	// A 5s span between two boundaries — comfortably over MinSegmentMs, under a 10s catalog floor.
 	gaps := []Interval{{StartMs: 19_900, EndMs: 20_100}, {StartMs: 24_900, EndMs: 25_100}}
 
-	segs, dropped := segmentsFromBoundaries(90_000, gaps, newSegmentFloor(10*time.Second))
+	segs, dropped := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(10*time.Second))
 	if len(segs) != 2 {
 		t.Fatalf("segments = %+v, want the 5s span dropped at a 10s floor", segs)
 	}
@@ -100,7 +111,7 @@ func TestSegmentsFromBoundaries_DropsUnderTheCatalogFloor(t *testing.T) {
 
 	// ⚠ The floor is the ONLY difference: the identical input keeps all three at the sliver floor.
 	// Without this half the test would also pass if the span were dropped for some other reason.
-	if kept, _ := segmentsFromBoundaries(90_000, gaps, newSegmentFloor(0)); len(kept) != 3 {
+	if kept, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0)); len(kept) != 3 {
 		t.Errorf("at a 3s floor the 5s span must survive; got %d segments", len(kept))
 	}
 }
