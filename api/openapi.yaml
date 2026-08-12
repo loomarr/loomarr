@@ -2674,6 +2674,9 @@ components:
           description: When the job is next due
           format: date-time
           type: string
+        overdue:
+          description: True when the job is past due and waiting on a worker rather than on its schedule
+          type: boolean
         paused:
           description: True when the operator paused the schedule; the job stays listed but never runs when due
           type: boolean

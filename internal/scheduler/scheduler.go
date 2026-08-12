@@ -97,6 +97,18 @@ type JobStatus struct {
 	// DisabledReason is non-empty when this job cannot run in this environment. The UI
 	// renders it in place of the schedule and offers neither Run-now nor Modify.
 	DisabledReason string `json:"disabledReason,omitempty"`
+	// Overdue means this job's next run is in the PAST and it still has not run — it is waiting
+	// on a worker, not on its schedule (§18.1).
+	//
+	// ⚠ It exists because the alternative was worse than silence: the Tasks page ran the past
+	// timestamp through a duration formatter that answers "expired" for any past instant — a word
+	// written for SESSION expiry — so a starved job reported itself in vocabulary from a different
+	// subsystem. One honest boolean beats a borrowed noun.
+	//
+	// ⚠ Deliberately NOT "which job is holding the worker". `s.running` could supply it for free,
+	// but it is per-process: on a multi-replica Postgres install it would confidently name the
+	// wrong job. A fact that is sometimes a lie is worse than a fact that is merely coarse.
+	Overdue bool `json:"overdue,omitempty"`
 }
 
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
@@ -443,6 +455,11 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		if j.Disabled() {
 			status.NextRun = time.Time{}
 		}
+		// ⚠ Computed AFTER the two zeroing rules above, so a paused or disabled job — whose next
+		// run has just been cleared precisely because it will not fire — is never called overdue.
+		// Overdue means "due and waiting on a worker", which is a different sentence from "not
+		// scheduled to run".
+		status.Overdue = !status.NextRun.IsZero() && status.NextRun.Before(s.now())
 		out = append(out, status)
 	}
 	return out, nil

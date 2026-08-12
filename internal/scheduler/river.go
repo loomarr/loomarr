@@ -160,7 +160,12 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 		// MaxOpenConns(1) because modernc serializes writes, so concurrent workers would spend
 		// their time contending for the one connection. These are a dozen cron jobs, not a
 		// throughput workload.
-		Queues:       map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkersFor(st)}},
+		//
+		// ⚠ **That reasoning is about the DEFAULT queue's WIDTH, and it is not a prohibition on a
+		// second producer** — see `riverQueues`. A long media job spends its time inside
+		// `exec.Command` holding no connection at all, so a second worker running beside it
+		// contends for nothing.
+		Queues:       s.riverQueues(st),
 		Workers:      workers,
 		PeriodicJobs: periodic,
 		Logger:       log,
@@ -212,6 +217,55 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 	}, nil
 }
 
+// longQueue holds the jobs that do real media or network work.
+const longQueue = "long"
+
+// queueFor decides which queue a job runs on, DERIVED from its declared ceiling.
+//
+// ⚠ **A queue is a group of jobs that agree to wait for each other, and the group's identity is
+// its ceiling.** A job with no declared `Timeout` runs under River's one-minute default and shares
+// the `default` queue; a job that declared one gets `long`. A job can therefore never wait longer
+// than the ceiling of its own queue.
+//
+// ⚠ Deliberately DERIVED rather than a hand-set `Job.Queue` field. A typo in a hand-set name would
+// insert onto a queue with no producer, and the job would then never run — silently, forever, with
+// no error anywhere. Deriving it means the queue SET and the queue ROUTING come from one function,
+// so a producer exists for every queue any job can name. `TestRiverQueues_EveryJobHasAProducer`
+// pins that.
+func queueFor(j Job) string {
+	if j.Timeout > 0 {
+		return longQueue
+	}
+	return river.QueueDefault
+}
+
+// riverQueues builds the queue set from the registry.
+//
+// ⚠ **This is the companion the 30-minute ceiling had to arrive with.** `Job.Timeout` fixed jobs
+// being SIGKILLed at 60s, and by doing so let one job hold the single SQLite worker for half an
+// hour. Measured 2026-08-12: a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other
+// job was starved for its whole duration — `channel-sweep`, `images-fetch` and `seerr-queue-poll`
+// all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered
+// `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage
+// for everything that shares it.
+//
+// ⚠ `long` is MaxWorkers 1 on BOTH backends, and the reason is not the SQLite pool — it is that
+// ffmpeg competes with playout for the GPU, so a media worker POOL would turn a catalog import
+// into a live-channel outage (the argument `filler.Pipeline` already records). Total concurrency
+// goes 1→2 on SQLite and 4→5 on Postgres: one more slot, reserved for work that spends its time
+// in `exec.Command` rather than on the database connection.
+func (s *Scheduler) riverQueues(st store.Store) map[string]river.QueueConfig {
+	out := map[string]river.QueueConfig{
+		river.QueueDefault: {MaxWorkers: maxWorkersFor(st)},
+	}
+	for _, j := range s.jobs {
+		if q := queueFor(j); q != river.QueueDefault {
+			out[q] = river.QueueConfig{MaxWorkers: 1}
+		}
+	}
+	return out
+}
+
 // maxWorkersFor keeps SQLite single-threaded (one connection in the pool) and lets Postgres
 // run a few jobs at once.
 func maxWorkersFor(st store.Store) int {
@@ -240,9 +294,16 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 			return nil, fmt.Errorf("scheduler: job %q has an invalid default cron %q: %w", j.Name, j.DefaultCron, err)
 		}
 		name := name // captured by the constructor below
+		// ⚠ Resolved HERE, not inside the closure: the constructor is called on every tick, and
+		// `j` is the loop variable.
+		queue := queueFor(j)
 		out = append(out, river.NewPeriodicJob(
 			sched,
-			func() (river.JobArgs, *river.InsertOpts) { return jobArgs{Name: name}, nil },
+			// ⚠ Routed onto the job's own queue, so a media job cannot occupy the slot the cheap
+			// sweeps share. Derived from the Job, never hand-set — see `queueFor`.
+			func() (river.JobArgs, *river.InsertOpts) {
+				return jobArgs{Name: name}, &river.InsertOpts{Queue: queue}
+			},
 			// ⚠ RunOnStart is deliberately OFF. It fires on every leadership election, so a
 			// restart loop would re-run every job each time — and these include a full library
 			// sweep and a channel rebuild. The old scheduler ran due-on-start jobs because it
@@ -269,6 +330,13 @@ func (s *Scheduler) TriggerRiver(ctx context.Context, name string) error {
 	// consistently — a click that reads as broken, and enough to make the poll-availability
 	// safety proof (TestScanAvailability_NoWebhook) flaky. The 10ms bought nothing: River
 	// deduplicates nothing here, and two inserts of the same kind are simply two jobs.
-	_, err := s.river.Insert(ctx, jobArgs{Name: name}, nil)
+	// ⚠ **Run-now must take the same queue the schedule would**, and forgetting it here is the easy
+	// miss: nothing else in the suite covers this path, and the symptom is one already observed
+	// live — a manually triggered `filler-sync` waiting out a 30-minute pipeline pass because it
+	// landed on `default` behind the very job it was meant to run beside.
+	//
+	// An unregistered name resolves to the zero Job and therefore `default`; it has no worker
+	// either way, so the queue it lands on is immaterial.
+	_, err := s.river.Insert(ctx, jobArgs{Name: name}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
 	return err
 }

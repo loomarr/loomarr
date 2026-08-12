@@ -232,7 +232,15 @@ const TasksPage = () => {
                             ? "running…"
                             : isZero(job.nextRun)
                               ? "—"
-                              : formatUntil(job.nextRun ?? zero)}
+                              : // ⚠ "overdue", not what formatUntil would say. It answers
+                                // "expired" for any past instant — a word written for SESSION
+                                // expiry — so a job merely waiting on a busy worker reported
+                                // itself in vocabulary from an unrelated subsystem. The BE
+                                // decides this (§18.1); the FE renders the flag verbatim, like
+                                // every other value in this table.
+                                job.overdue
+                                ? "overdue"
+                                : formatUntil(job.nextRun ?? zero)}
                     </td>
                     <td className="px-4 py-3">
                       {/* ⚠ ABSENT, not disabled. A greyed-out "Run now" invites the operator
