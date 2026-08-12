@@ -307,8 +307,14 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if err != nil {
 		// The proposal survives, so the operator can still review it by hand — a failed
 		// auto-confirm degrades to the manual path rather than losing the detection work. Returned
-		// as an error so the runner retries with backoff; `split` is not fatal, so exhausting the
-		// retries leaves the reel in review, which is where a failed cut belongs.
+		// as an error so the runner retries with backoff.
+		//
+		// ⚠ This used to claim that "exhausting the retries leaves the reel in review". It does
+		// not: `split` is not in `fatalStages`, so `onFailure` resolves and the row STEPS ONWARD,
+		// through rungs the composite guard skips, landing at `filed`. The reel is still reviewable
+		// — its proposal is intact and Incoming lists it — but the pipeline row says finished, not
+		// waiting. Corrected rather than deleted because the wrong version is the kind of comment
+		// someone reasons from when deciding whether a reel can be recovered.
 		return StageResult{}, err
 	}
 	reportProgress(ctx, StageSplit, 100)
