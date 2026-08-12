@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"os"
 	"path/filepath"
 	"time"
@@ -44,7 +45,7 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 		now = time.Now
 	}
 	if profile.VideoCodec == "" {
-		profile = DefaultMezzanine()
+		profile = mediatools.DefaultMezzanine()
 	}
 	return &TranscodeStage{
 		store: store, probe: probe, clipDir: clipDir, profile: profile,
@@ -79,7 +80,7 @@ func (s *TranscodeStage) Applies(_ context.Context, c StoreClip) (bool, string) 
 // Run re-encodes the clip, moves its sidecar if the extension changed, and updates its row.
 func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 	oldRel := c.Path
-	newRel := MezzanineOutputPath(oldRel)
+	newRel := mediatools.MezzanineOutputPath(oldRel)
 	oldFull := filepath.Join(s.clipDir, filepath.FromSlash(oldRel))
 	newFull := filepath.Join(s.clipDir, filepath.FromSlash(newRel))
 
@@ -101,20 +102,20 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 
 	// ⚠ Same extension is a temp-then-rename over the SAME path, which `Transcode` already does —
 	// it writes `<out>.mezz.tmp<ext>` and renames. ffmpeg is never pointed at its own input.
-	req := TranscodeRequest{
+	req := mediatools.TranscodeRequest{
 		In: oldFull, Out: newFull,
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
 		TargetLUFS: lufs, Profile: s.profile,
 		FFmpegPath: ffmpeg, Probe: s.probe,
 	}
-	if err := Transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) }); err != nil {
+	if err := mediatools.Transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) }); err != nil {
 		return StageResult{}, err
 	}
 
 	// ⚠ Move the sidecar BEFORE deleting the old media file and before the row moves. It carries
 	// `originalName`, the only surviving copy of the clip's arrival filename and therefore the
 	// only thing keeping filename-grounded eras alive.
-	if err := moveSidecar(oldFull, newFull); err != nil {
+	if err := mediatools.MoveSidecar(oldFull, newFull); err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: the sidecar could not be moved: %w", oldRel, err)
 	}
 

@@ -1,4 +1,4 @@
-package filler
+package mediatools
 
 import (
 	"context"
@@ -77,9 +77,9 @@ func TestExtractSpanWAV_ProducesWhatWhisperRequires(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := srcWithTone(t, dir)
-	dst := spanWAVPath(dir)
+	dst := SpanWAVPath(dir)
 
-	if err := extractSpanWAV(context.Background(), "", src, 500, 1500, dst); err != nil {
+	if err := ExtractSpanWAV(context.Background(), "", src, 500, 1500, dst); err != nil {
 		t.Fatalf("extract: %v", err)
 	}
 
@@ -114,9 +114,9 @@ func TestExtractSpanWAV_CutsOnlyTheRequestedSpan(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := srcWithTone(t, dir) // 3 seconds
-	dst := spanWAVPath(dir)
+	dst := SpanWAVPath(dir)
 
-	if err := extractSpanWAV(context.Background(), "", src, 0, 1000, dst); err != nil {
+	if err := ExtractSpanWAV(context.Background(), "", src, 0, 1000, dst); err != nil {
 		t.Fatalf("extract: %v", err)
 	}
 	info, err := os.Stat(dst)
@@ -140,8 +140,8 @@ func TestExtractSpanWAV_ClampsAnInvertedSpan(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg unavailable")
 	}
-	if got := msToFFmpegTime(-500); got != "0.000" {
-		t.Errorf("msToFFmpegTime(-500) = %q, want 0.000 — a negative -t makes ffmpeg emit nothing", got)
+	if got := MsToFFmpegTime(-500); got != "0.000" {
+		t.Errorf("MsToFFmpegTime(-500) = %q, want 0.000 — a negative -t makes ffmpeg emit nothing", got)
 	}
 	// And the shared alias must clamp too: it used to be a second, unclamped implementation.
 	if got := msToSeconds(-500); got != "0.000" {
@@ -150,10 +150,10 @@ func TestExtractSpanWAV_ClampsAnInvertedSpan(t *testing.T) {
 }
 
 func TestFFmpegOr_FallsBackToPathLookup(t *testing.T) {
-	if got := ffmpegOr(""); got != "ffmpeg" {
-		t.Errorf(`ffmpegOr("") = %q, want "ffmpeg" so the OS resolves it from PATH`, got)
+	if got := FFmpegOr(""); got != "ffmpeg" {
+		t.Errorf(`FFmpegOr("") = %q, want "ffmpeg" so the OS resolves it from PATH`, got)
 	}
-	if got := ffmpegOr("/opt/ffmpeg/bin/ffmpeg"); got != "/opt/ffmpeg/bin/ffmpeg" {
+	if got := FFmpegOr("/opt/ffmpeg/bin/ffmpeg"); got != "/opt/ffmpeg/bin/ffmpeg" {
 		t.Errorf("ffmpegOr overrode a configured path: %q", got)
 	}
 }

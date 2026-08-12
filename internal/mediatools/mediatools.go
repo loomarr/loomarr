@@ -1,4 +1,4 @@
-package filler
+package mediatools
 
 import (
 	"bytes"
@@ -210,7 +210,7 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 		// representative frame of each — exactly n frames for a clip long enough to
 		// fill the buckets, fewer for a very short one, which is fine (the caller
 		// tolerates <n).
-		"-vf", fmt.Sprintf("thumbnail=n=%d,scale=%d:-1", n, previewWidth),
+		"-vf", fmt.Sprintf("thumbnail=n=%d,scale=%d:-1", n, PreviewWidth),
 		"-frames:v", fmt.Sprintf("%d", n),
 		// mjpeg over image2pipe streams the JPEGs back to us concatenated; -q:v 6
 		// matches the still's quality (artwork.go) — a vision model does not need
@@ -246,4 +246,4 @@ func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64
 // format string, same arithmetic — differing only in that it did NOT clamp negatives. Keeping
 // the clamping one is strictly safer for both callers: the extraction helper passes a
 // SUBTRACTION (`endMs-startMs`), and a negative `-t` makes ffmpeg emit nothing at all, silently.
-func msToSeconds(ms int64) string { return msToFFmpegTime(ms) }
+func msToSeconds(ms int64) string { return MsToFFmpegTime(ms) }

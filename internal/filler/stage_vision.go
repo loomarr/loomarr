@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -123,7 +124,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	// signal at all, never a fact.
 	suggestedEra := 0
 	if v.Era == 0 {
-		suggestedEra = SuggestedEraFrom(AnalyzeFrames(frames))
+		suggestedEra = mediatools.SuggestedEraFrom(mediatools.AnalyzeFrames(frames))
 	}
 
 	if s.store != nil && c.Path != "" {

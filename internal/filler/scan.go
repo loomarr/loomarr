@@ -36,40 +36,6 @@ var clipExtensions = map[string]bool{
 	".m4v": true, ".webm": true, ".ts": true, ".mpg": true, ".mpeg": true,
 }
 
-// Probed is what one ffprobe pass learns about a clip.
-//
-// A STRUCT rather than a second probe call: ffprobe returns duration and stream height in one
-// invocation, so splitting them would double the exec cost per file for no benefit — and would
-// create a state where a clip has a duration but silently lost its quality, which is exactly
-// the kind of half-populated row that is painful to notice later.
-type Probed struct {
-	DurationMs int64
-	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
-	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
-	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders
-	// actually write.
-	Height int
-	// Silent reports that the file carries NO audio stream at all (§10 V40).
-	//
-	// ⚠ Presence, not loudness — a clip CAN be legitimately quiet, and that is normalisation's
-	// problem at playout, not grounds for a reject. This is the harder failure: a video-only file
-	// plays as dead air in the middle of a break, which reads as the stream having dropped.
-	//
-	// ⚠ **Phrased NEGATIVELY on purpose, so the zero value is permissive.** The first cut was
-	// `HasAudio bool`, which made `false` mean "reject" — and retroactively changed the meaning
-	// of every `Probed{...}` literal written before this field existed. Nine test doubles that
-	// were correct when written started rejecting every clip, and the suite panicked on an empty
-	// catalog. A gate whose zero value denies is a gate that breaks its own callers.
-	//
-	// Costs nothing extra to fill: the probe already asks for `codec_type` per stream so it can
-	// find the VIDEO height, and this reads the same answer.
-	Silent bool
-}
-
-// Prober reads a media file's duration and dimensions. Satisfied by FFprobe; injected so the
-// scanner is testable without executing a binary.
-type Prober func(ctx context.Context, path string) (Probed, error)
-
 // QualityFromHeight buckets a pixel height into the label the guide shows.
 //
 // Bucketed by NEAREST standard rather than by exact match: real files are 1088, 1082, 718 —

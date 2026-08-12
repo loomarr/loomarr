@@ -36,12 +36,6 @@ const (
 	OverlongSegmentMs int64 = 120_000
 )
 
-// Interval is a [StartMs, EndMs) span inside a media file.
-type Interval struct {
-	StartMs int64 `json:"startMs"`
-	EndMs   int64 `json:"endMs"`
-}
-
 // SplitSegment is one proposed clip inside a compilation (§10 V34). The detector
 // authors it; the reviewer edits it; only confirm writes it to the catalog.
 type SplitSegment struct {
@@ -194,21 +188,6 @@ func segmentsFromChapters(chapters []Chapter) []SplitSegment {
 // therefore needs the transcript rescue (§10 — boundaries that exist only in
 // language).
 func (s SplitSegment) overlong() bool { return s.EndMs-s.StartMs > OverlongSegmentMs }
-
-// Chapter is one embedded chapter from ffprobe (triage, §10 V34).
-type Chapter struct {
-	StartMs int64
-	EndMs   int64
-	Title   string
-}
-
-// TranscriptSegment is one whisper utterance with its offset INSIDE the probed
-// span (milliseconds relative to the span start, so rescue math is local).
-type TranscriptSegment struct {
-	StartMs int64  `json:"startMs"`
-	EndMs   int64  `json:"endMs"`
-	Text    string `json:"text"`
-}
 
 // TranscriptText renders a transcript as timestamped lines for the LLM prompt
 // ("[01:23] …"). mm:ss is what the model reads most reliably, and it is what the

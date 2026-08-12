@@ -1,4 +1,4 @@
-package filler
+package mediatools
 
 import (
 	"context"
@@ -20,21 +20,21 @@ import (
 // What IS shared here is the pair that was duplicated character-for-character, and the
 // path fallback every caller repeated.
 
-// ffmpegOr returns the configured ffmpeg path, or the bare binary name so the OS resolves it
+// FFmpegOr returns the configured ffmpeg path, or the bare binary name so the OS resolves it
 // from PATH.
 //
 // ⚠ The empty string is the ORDINARY case, not a misconfiguration: `ffmpeg.path` is unset on
 // every install that uses the bundled binary, which is most of them. Four call sites wrote this
 // three-line fallback out by hand, which is four chances to write `ffmpeg` as a path and get an
 // exec error instead of a PATH lookup.
-func ffmpegOr(path string) string {
+func FFmpegOr(path string) string {
 	if path == "" {
 		return "ffmpeg"
 	}
 	return path
 }
 
-// extractSpanWAV cuts [startMs, endMs) out of `file` into a 16 kHz mono WAV at `dst`.
+// ExtractSpanWAV cuts [startMs, endMs) out of `file` into a 16 kHz mono WAV at `dst`.
 //
 // ⚠ 16 kHz mono is whisper's required input shape, not a preference — both language backends
 // feed this to a model that expects it, which is why they share the extraction even though one
@@ -45,10 +45,10 @@ func ffmpegOr(path string) string {
 // ⚠ `-ss` and `-t` BEFORE `-i`, so ffmpeg seeks by keyframe rather than decoding up to the span.
 // On the ~10s spans the language gate uses that is the difference between milliseconds and a
 // full decode of the clip.
-func extractSpanWAV(ctx context.Context, ffmpegPath, file string, startMs, endMs int64, dst string) error {
-	cut := exec.CommandContext(ctx, ffmpegOr(ffmpegPath),
+func ExtractSpanWAV(ctx context.Context, ffmpegPath, file string, startMs, endMs int64, dst string) error {
+	cut := exec.CommandContext(ctx, FFmpegOr(ffmpegPath),
 		"-nostdin", "-v", "error",
-		"-ss", msToFFmpegTime(startMs), "-t", msToFFmpegTime(endMs-startMs),
+		"-ss", MsToFFmpegTime(startMs), "-t", MsToFFmpegTime(endMs-startMs),
 		"-i", file, "-vn", "-ac", "1", "-ar", "16000", "-y", dst)
 	if out, err := cut.CombinedOutput(); err != nil {
 		return fmt.Errorf("extract audio for language: %w: %s", err, truncate(string(out), 200))
@@ -56,7 +56,25 @@ func extractSpanWAV(ctx context.Context, ffmpegPath, file string, startMs, endMs
 	return nil
 }
 
-// spanWAVPath is where a backend stages its extracted span. Shared so the two backends cannot
+// SpanWAVPath is where a backend stages its extracted span. Shared so the two backends cannot
 // disagree about the filename inside their own temp dirs — harmless today, confusing the first
 // time someone debugs one by listing the other's directory.
-func spanWAVPath(dir string) string { return filepath.Join(dir, "span.wav") }
+func SpanWAVPath(dir string) string { return filepath.Join(dir, "span.wav") }
+
+// MsToFFmpegTime renders milliseconds as ffmpeg's seconds-with-decimals.
+func MsToFFmpegTime(ms int64) string {
+	if ms < 0 {
+		ms = 0
+	}
+	return fmt.Sprintf("%d.%03d", ms/1000, ms%1000)
+}
+
+// truncate shortens a string for a log line. A private copy rather than an import: filler has
+// its own, and a shared five-line string helper is not worth a dependency edge in either
+// direction.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

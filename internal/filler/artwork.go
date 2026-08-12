@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,10 +61,9 @@ const previewSeconds = 6
 const previewFPS = 12
 const previewQuality = 55
 
-// previewWidth is shared by both outputs. The card renders the still and the animation in the
+// mediatools.PreviewWidth is shared by both outputs. The card renders the still and the animation in the
 // same box and swaps between them on hover, so differing widths would visibly jump at the moment
 // of the swap — the one frame where the two are compared directly.
-const previewWidth = 320
 
 // thumbAtSeconds is the seek used when a clip's duration is UNKNOWN.
 //
@@ -240,7 +240,7 @@ func removeIfEmpty(path string) {
 //     elements the browser must decode and keep alive; an <img> is a decode the browser already
 //     manages, and it swaps with the still without a second element.
 func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
-	bin := ffmpegOr(ffmpegPath)
+	bin := mediatools.FFmpegOr(ffmpegPath)
 	return func(ctx context.Context, src, stillDst, animDst string, startSeconds float64) error {
 		// ⚠ **`-ss` BEFORE `-i`** seeks by keyframe without decoding everything up to that point,
 		// which on a 30s clip is the difference between milliseconds and a full decode pass.
@@ -260,7 +260,7 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 			"-an",
 			"-filter_complex", fmt.Sprintf(
 				"[0:v]split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];[anim]fps=%d,scale=%d:-2:flags=lanczos[a]",
-				previewWidth, previewFPS, previewWidth),
+				mediatools.PreviewWidth, previewFPS, mediatools.PreviewWidth),
 			"-map", "[s]", "-frames:v", "1", "-q:v", "6", "-update", "1", "-y", stillDst,
 			// ⚠ `-loop 0` makes the WebP loop FOREVER, which is what makes it a hover preview
 			// rather than a six-second animation that stops and leaves a still.

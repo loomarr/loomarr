@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,8 +226,8 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 
 	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
 	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
-	wav := spanWAVPath(dir)
-	if err := extractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := mediatools.SpanWAVPath(dir)
+	if err := mediatools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 
@@ -291,7 +292,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	out, err := exec.CommandContext(ctx, ffmpegOr(ffmpegPath),
+	out, err := exec.CommandContext(ctx, mediatools.FFmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err
@@ -313,12 +314,4 @@ func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("no integrated loudness value in ffmpeg output")
-}
-
-// msToFFmpegTime renders milliseconds as ffmpeg's seconds-with-decimals.
-func msToFFmpegTime(ms int64) string {
-	if ms < 0 {
-		ms = 0
-	}
-	return fmt.Sprintf("%d.%03d", ms/1000, ms%1000)
 }

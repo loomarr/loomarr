@@ -219,6 +219,8 @@ flowchart TD
 
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`mediatools`** · 2 importers · → `playout`
+  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`requester`** · 2 importers · → `httpx`, `provision`
@@ -226,7 +228,7 @@ flowchart TD
 
 **Layer 4**
 
-- **`filler`** · 6 importers · → `llm`, `metrics`, `playout`, `taxonomy`
+- **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`
   The shared test doubles and pinned fixtures every test uses (CLAUDE.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
@@ -284,7 +286,7 @@ flowchart TD
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -3640,6 +3642,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
 
