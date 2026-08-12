@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -111,10 +112,22 @@ type TaxaLister interface {
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) {
-	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
-		return
+func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) groundPass {
+	pending := func() int {
+		n := 0
+		for i := range segs {
+			if !segs[i].Looked {
+				n++
+			}
+		}
+		return n
 	}
+	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
+		return groundPass{Pending: pending()}
+	}
+	// ⚠ The budget bounds ATTEMPTS THIS PASS, not an index into the segment list. It was
+	// `if i >= budget { return }`, which is absolute — with resume that stops at the same segment
+	// on every pass forever, so a 142-segment reel would ground its first 60 and then loop.
 	budget := len(segs)
 	if s.vision.Budget != nil {
 		if b := s.vision.Budget(); b >= 0 && b < budget {
@@ -122,29 +135,40 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		}
 	}
 	if budget == 0 {
-		return
+		return groundPass{Pending: pending()}
 	}
 	var forest *taxonomy.Forest
 	if s.vision.Taxa != nil {
 		taxa, err := s.vision.Taxa.ListTaxa(ctx)
 		if err != nil {
-			return // no vocabulary to ground against ⇒ ground nothing, and the gate refuses
+			// No vocabulary to ground against ⇒ ground nothing, and the gate refuses. Reported as
+			// zero looked, which is what stops the caller deferring on a pass that achieved nothing.
+			return groundPass{Pending: pending()}
 		}
 		forest = taxonomy.New(taxa)
 	}
 	file := filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
+	looked := 0
 	for i := range segs {
-		if i >= budget {
-			return
+		if looked >= budget {
+			break
+		}
+		if segs[i].Looked {
+			continue // ⚠ THE RESUME: an earlier pass already spent a look on this one.
 		}
 		frames, err := s.vision.Tools.KeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
 		if err != nil || len(frames) == 0 {
+			segs[i].Looked, looked = true, looked+1
 			continue
 		}
 		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt, frames)
 		if err != nil {
-			return // a provider that is failing will fail for every remaining segment too
+			// ⚠ NOT marked, and the loop STOPS: a provider that is failing will fail for every
+			// remaining segment too, so marking would burn the whole reel on one outage. Next pass
+			// retries exactly the segments this one could not reach.
+			break
 		}
+		segs[i].Looked, looked = true, looked+1
 		var out visionOutput
 		if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
 			continue
@@ -158,6 +182,47 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		// grounder guarantee the rejection it exists to lift. The child clip's own vision pass
 		// still raises the suggestion afterwards, where an operator can act on it.
 	}
+	return groundPass{Looked: looked, Pending: pending()}
+}
+
+// pendingFor returns the proposal already waiting for this clip, or nil.
+//
+// ⚠ One read of the whole pending list rather than a per-clip lookup, unchanged from V51b: the
+// queue is a review backlog a human is expected to clear, so it is small by construction.
+func (s *SplitStage) pendingFor(ctx context.Context, hash string) (*SplitProposal, error) {
+	pending, err := s.store.ListSplitProposals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range pending {
+		if pending[i].ClipHash == hash {
+			return &pending[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// countPending counts segments the grounder has never looked at.
+func countPending(segs []SplitSegment) int {
+	n := 0
+	for i := range segs {
+		if !segs[i].Looked {
+			n++
+		}
+	}
+	return n
+}
+
+// groundPass is what ONE grounding pass achieved: how many segments it looked at, and how many
+// have still never been looked at.
+//
+// ⚠ `Looked == 0 && Pending > 0` is the termination signal, and the difference matters: it means
+// the pass could not make progress (vision off, no vocabulary, the provider down at the first
+// segment), so the caller must NOT defer — it falls through to the gate and the reel parks with a
+// reason. Deferring on a pass that achieved nothing is an infinite loop.
+type groundPass struct {
+	Looked  int
+	Pending int
 }
 
 func (s *SplitStage) ID() StageID     { return StageSplit }
@@ -184,25 +249,50 @@ func (s *SplitStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 	// Already review-pending: re-detecting would replace a proposal an operator may be halfway
 	// through editing. ⚠ Keyed by HASH on both sides — the identity `Propose` takes.
-	pending, err := s.store.ListSplitProposals(ctx)
+	// ⚠ An existing proposal is RE-GROUNDED, never re-detected. Until V54 this returned outright,
+	// which looked like "leave the operator's cut list alone" and was in fact a dead end: the row
+	// went to `review`, `ListPipelineWork` only claims `running`, and nothing ever reached that
+	// reel again. Every compilation detected before the grounder existed was therefore permanently
+	// ungroundable — measured as ~50 reels parked at `split`, none auto-confirmed, ever.
+	//
+	// Re-detection stays the operator's call (`POST /v1/filler/split`): a rung must not redraw a
+	// cut list a human may have open. Grounding is additive and touches no boundary.
+	p, err := s.pendingFor(ctx, c.Hash)
 	if err != nil {
 		return StageResult{}, err
 	}
-	for _, p := range pending {
-		if p.ClipHash == c.Hash {
-			return StageResult{Verdict: VerdictReview, Note: "its cuts are waiting for you to review"}, nil
+	if p == nil {
+		if p, err = s.splitter.Propose(ctx, c.Hash); err != nil {
+			return StageResult{}, err
 		}
 	}
 
-	p, err := s.splitter.Propose(ctx, c.Hash)
-	if err != nil {
-		return StageResult{}, err
+	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54).
+	pass := s.ground(ctx, c, p.Segments)
+
+	// Persist what this pass learned, so the next one resumes instead of starting over.
+	if pass.Looked > 0 {
+		merged, rerr := s.splitter.Reground(ctx, p.ID, p.Segments)
+		switch {
+		case errors.Is(rerr, ErrProposalGone):
+			// Confirmed or rejected under us while we were grounding. Nothing to write and nothing
+			// to decide — the clip's disposition is already someone else's answer.
+			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+		case rerr != nil:
+			return StageResult{}, rerr
+		}
+		p = &merged
+		pass = groundPass{Looked: pass.Looked, Pending: countPending(p.Segments)}
 	}
 
-	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54). Nothing
-	// here writes to the store or the proposal — the stamps live on the in-memory segments the
-	// gate is about to judge and, when it passes, on the clips Confirm spawns from them.
-	s.ground(ctx, c, p.Segments)
+	// ⚠ Partly grounded is UNFINISHED WORK, not a refusal. `filler.pipeline.max_split_vision`
+	// bounds ONE PASS; a 142-segment reel is judged over several. Deferring requires that this
+	// pass achieved something (`Looked > 0`), which is what guarantees termination: every look
+	// marks a segment, so `Pending` strictly decreases and the reel reaches a verdict.
+	if pass.Pending > 0 && pass.Looked > 0 {
+		return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+			"looked at %d of %d cuts so far", len(p.Segments)-pass.Pending, len(p.Segments))}, nil
+	}
 
 	// ⚠ Auto-confirm is decided HERE, not inside `Propose`. The manual path runs the same Propose
 	// from a button an operator just pressed — a human is already present and about to review, so
