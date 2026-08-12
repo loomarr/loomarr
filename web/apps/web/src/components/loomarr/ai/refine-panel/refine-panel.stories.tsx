@@ -1,10 +1,16 @@
+import type { ApproveOutputBody, ListProposalsOutputBody, RefineChannelOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LoomarrEventsProvider } from "@/events";
 import { widthFrame } from "@/test/story-utils";
 import { RefinePanel } from "./refine-panel";
 
-const jsonResponse = (body: unknown) =>
+// ⚠ Generic, with each dispatched endpoint's body passing its type argument explicitly (GH #281).
+// The parameter stays open because this helper only serialises — it is the call sites that must
+// be checked against a DTO. An unchecked body is invisible to `tsc`, so a response gaining a
+// required field leaves the stub stale and the failure surfaces as a Playwright baseline diff
+// that reads like a rendering regression.
+const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 // An EventSource stand-in that records the latest instance so a play() can push a frame.
@@ -34,13 +40,19 @@ class StoryEventSource {
 const withStubbedRefine = (): Decorator => (Story) => {
   window.fetch = ((url: string, init?: RequestInit) => {
     if (typeof url === "string" && url.includes("/refine")) {
-      return Promise.resolve(jsonResponse({ jobId: "job-1" }));
+      return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
     }
     if (init?.method === "POST" && typeof url === "string" && url.includes("/approve")) {
-      return Promise.resolve(jsonResponse({ channelId: "ch-1", enqueued: 0 }));
+      // ⚠ `status` was MISSING here until the body was typed — a live example of exactly what
+      // #281 is about. The stub predates the field, `tsc` had nothing to compare it against, and
+      // the story kept passing because this particular response is never read by an assertion.
+      // It would have gone on lying until something did read it.
+      return Promise.resolve(
+        jsonResponse<ApproveOutputBody>({ channelId: "ch-1", enqueued: 0, status: "approved" }),
+      );
     }
     return Promise.resolve(
-      jsonResponse({
+      jsonResponse<ListProposalsOutputBody>({
         proposals: [
           {
             id: "p1",
@@ -76,9 +88,9 @@ const withStubbedRefine = (): Decorator => (Story) => {
 const withFailingRefine = (): Decorator => (Story) => {
   window.fetch = ((url: string) => {
     if (typeof url === "string" && url.includes("/refine")) {
-      return Promise.resolve(jsonResponse({ jobId: "job-1" }));
+      return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
     }
-    return Promise.resolve(jsonResponse({ proposals: [] }));
+    return Promise.resolve(jsonResponse<ListProposalsOutputBody>({ proposals: [] }));
   }) as typeof fetch;
   (window as unknown as { EventSource: unknown }).EventSource = StoryEventSource;
 
