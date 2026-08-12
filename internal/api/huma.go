@@ -849,5 +849,10 @@ func humaConfig() huma.Config {
 	// (api.go) so a stale bookmark 404s instead of being handed index.html with a 200.
 	cfg.OpenAPIPath = "/v1/openapi"
 	cfg.SchemasPath = "/v1/schemas"
+	// Wire descriptions for domain types that must not import the HTTP framework
+	// (durationwire.go). ⚠ Registered HERE rather than at the two `humago.New` call sites
+	// (api.go, export.go) so the runtime API and the spec export cannot disagree about a type's
+	// wire format — the same reason DocsPath and the paths above live in this one function.
+	registerWireAliases(cfg.Components.Schemas)
 	return cfg
 }
