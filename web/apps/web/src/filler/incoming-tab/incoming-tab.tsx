@@ -137,6 +137,11 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         // ⚠ `asSuggested` is what makes this per-CLIP: the server confirms each clip's own
         // proposed era. Sending one era for the whole selection is what the bulk tag bar does,
         // and it is the wrong answer for a queue of different guesses.
+        // ⚠ This depends on the server never marking a COMPILATION as needing a decision (§10 V54).
+        // It used to, and this button would then have tried to file the reels themselves — a
+        // 20-minute recording filed as a commercial. Do not "helpfully" widen the filter here; the
+        // invariant belongs server-side, where `IncomingClipDTO` carries no composite marker for a
+        // client to re-derive it from.
         onFileAllAsSuggested={() =>
           fileClips.mutate({
             data: { paths: clips.filter((c) => c.needsDecision).map((a) => a.path), asSuggested: true },
