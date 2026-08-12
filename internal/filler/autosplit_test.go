@@ -81,6 +81,16 @@ func TestAutoConfirmable_OneBadSegmentSinksTheWholeReel(t *testing.T) {
 
 // ⚠ The floor is the SAME one the scan boundary rejects on. A segment this gate confirms and the
 // scan then throws away is work done to produce nothing — out of a file that has been consumed.
+//
+// ⚠ **This check is now DEFENCE-IN-DEPTH, not the primary enforcement, and it is not dead.** Since
+// V54 the floor is applied at DETECTION (`segmentFloor`), so a freshly-detected proposal cannot
+// reach here holding a sub-floor segment. Two things still can: a proposal detected BEFORE V54 and
+// re-gated afterwards, and a hand-edited cut list arriving through `Confirm`. Deleting this because
+// "detection already handles it" would trust an input this gate does not control.
+//
+// Why the enforcement moved: `AutoConfirmable` returns on the first failing segment, so one
+// sub-floor fragment sank the whole reel — and a real commercial compilation is made of them
+// (measured: 39 of 82 segments under 10s on one archive.org reel). Auto-split had never once fired.
 func TestAutoConfirmable_RefusesASegmentBelowTheClipFloor(t *testing.T) {
 	p := proposalOf(goodSeg(0, 0, 30_000), goodSeg(1, 30_000, 34_000)) // 4s, under a 10s floor
 

@@ -178,7 +178,11 @@ func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Split
 	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 
-	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
+	// ⚠ The SAME `filler.min_duration` closure the probe stage and the auto-confirm gate read.
+	// Passed live so it hot-applies, and composed with `MinSegmentMs` inside the splitter — one
+	// number, enforced at detection and again at the scan boundary, never two numbers (§10 V34).
+	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
+		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
 }
 
 // buildPipeline constructs the ingest pipeline: one driver over eight rungs (§10 V51b).
