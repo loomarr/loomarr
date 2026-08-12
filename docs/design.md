@@ -1744,9 +1744,16 @@ precision because they are *deliberately inserted by the broadcaster to separate
 design; scene-cuts are an *editing byproduct* — noise by design. So the fusion is:
 
 1. **Black-fade + silence PROPOSE** candidate boundaries at precise times.
-2. **Scene-cut co-location VOTES** — a strong scene-cut within ~2s of a candidate raises its
-   confidence; scene-cuts *alone* are ignored (that is where the 89% noise lives). Measured: 9 of 12
-   black-fades in the first 5 min were corroborated by silence and/or a scene-cut.
+2. ~~**Scene-cut co-location VOTES**~~ — ⚠ **NOT BUILT, and it cannot be (V54).** This proposed that
+   a strong scene-cut near a candidate raise its confidence. Scene-cut detection was subsequently
+   **measured and rejected** for this pipeline — `scdet` fires on camera cuts *inside* an advert,
+   the wrong granularity, which is a property of the signal and not a tuning problem (see V34 step 2)
+   — and `MediaTools` exposes no such call. The measurement this bullet rests on survives and is
+   still load-bearing, with the scene-cut half struck: **9 of 12 black-fades in the first 5 min were
+   corroborated by silence.** That 9-of-12 is what sets the "black + silence agreed" ceiling in V34's
+   confidence ladder; the remaining 3 are the single-detector ceiling. Left struck rather than
+   deleted, because two paragraphs describing four fusion inputs when only three exist is how the
+   contradiction with V34 survived this long.
 3. **Transcript topic-shift ADDS** the boundaries all three A/V signals missed (the soft cut) AND
    labels each segment with its product. Measured: a 105s span the A/V pass split weakly actually
    held 6 distinct ads (Fannie Mae, a car ad, US Navy, Dove, Subway, blue M&M's) — the transcript
@@ -1772,11 +1779,20 @@ and duration onto the ladder note, so the operator reads *"cut into 43 adverts; 
 discarded"* rather than wondering where the other three minutes went.
 
 **This produces a per-segment CONFIDENCE from signal agreement**, which is what makes
-confidence-gated auto-confirm principled rather than a guess: a boundary confirmed by black + silence
-+ scene-cut + a coherent single-product transcript, at a ~30s duration, auto-confirms; a 1-signal
-boundary at an odd duration goes to review. This replaces "review all 41" with "auto-confirm the ~30
-obvious spots, review the ~11 uncertain ones" — the concrete mechanism behind "automatic curation
-with high confidence".
+confidence-gated auto-confirm principled rather than a guess. It replaces "review all 41" with
+"file the obvious spots, review the uncertain ones" — the concrete mechanism behind "automatic
+curation with high confidence".
+
+⚠ **Built in V54, and NOT as sketched here — see the ladder in §10 V34, which is authoritative.**
+Two corrections this paragraph originally got wrong, both recorded there in full: **scene-cut is not
+an input** (measured and rejected, bullet 2 above), and **duration is not a confidence input**
+either. The sketch's "at a ~30s duration" reads as a corroborating prior, and a real reel refutes
+it: 39 of 82 segments on the measured archive.org compilation were sub-10s bumpers, every one
+correctly cut. Scoring a cut down for not landing on a standard slot length would flag half a good
+reel. Duration survives only as the over-long cap.
+
+⚠ It also gates **per segment**, not per reel: the confident cuts are filed and the doubtful ones
+stay behind in a shrunken proposal.
 
 ⚠ **Confirm no longer deletes the parent — this reverses V34's delete-on-confirm.** V34 removed the
 compilation's row and file on confirm ("its identity is a path that now means twenty clips");
@@ -2455,11 +2471,37 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 
    **Auto-confirm is a separate switch** (`filler.autosplit.enabled`, default **ON** — maintainer decision, V51b: the gate exists to admit *confident* reels, and off-by-default meant every compilation waited for a click the design says should be unnecessary), gated on `filler.autosplit.min_confidence` — deliberately NOT reusing the auto-file threshold. The failure modes differ in kind: a mis-*tagged* clip plays in the wrong break, a mis-*cut* clip plays half an advert. One dial would force the stricter case to govern both.
 
-   ⚠ **The gate is ALL-OR-NOTHING over the reel, not per segment.** A proposal auto-confirms only when *every* segment is advert-shaped (within `filler.autosplit.max_duration`), *none* is flagged `unsplittable`, *none* is flagged a duplicate, and *every* one classified above the threshold. One doubtful segment sends the whole reel to review. **This is unchanged, and nothing below relaxes it.**
+   ⚠ **The gate is PER SEGMENT (V54). All-or-nothing is retired.** A segment is cut and filed when it passes every refusal *and* its boundary confidence clears `filler.autosplit.min_confidence`; the rest stay behind in a shrunken proposal. A reel of 52 becomes 47 clips and 5 cuts to review, rather than 52 cuts to review.
+
+   ⚠ **Order matters, and it is the whole safety argument: REFUSALS FIRST, ABSOLUTELY — then the threshold.** A segment carrying `SuggestedEra > 0`, `unsplittable`, a duplicate flag, an over-long span or a sub-floor span is refused **at any score**. Confidence chooses only among segments that already pass every refusal: it can hold a qualifying segment back, never let a refused one through. `boundaryScore` cannot even see `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags` — a tag fact is not in its scope, so it cannot move the number. That is what keeps `autosplit.go`'s objection true: nothing here launders a refusal into a score.
+
+   ⚠ **This was ALL-OR-NOTHING until V54, and the old rationale is worth stating rather than deleting.** It ran: *"a badly-split reel is not uniformly slightly-wrong; it has obvious tells… confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture."* That was correct **while there was no per-segment evidence**. Splitting a decision arbitrarily is indeed worse than making it once. But the rule's cost was total: one doubtful segment in 52 sent all 52 back, so the operator's work never shrank and — measured 2026-08-11 — **~50 reels sat parked with none ever auto-confirmed**. With boundary evidence per cut, keeping five back is not splitting a decision arbitrarily; it is **routing by evidence**, which is what every other rung in this pipeline already does. The filmstrip still shows the whole picture, and the parent recording is still there to play (V45), so the operator judging those five has more context than the old rule assumed, not less.
+
+   ⚠ **The cost, recorded rather than discovered: a confirmed segment is AIRABLE.** `Confirm` does not set `held`, and pod assembly loads the catalog with a zero filter that excludes only held clips — so there is no second human gate after this one. A mis-cut clip plays half an advert in a real break before anyone sees it. It is recoverable (remove the clip — a tombstone, and the parent is retained), but visible, and it is precisely why the threshold defaults where it does: at 85, **both** of a segment's boundaries must be corroborated.
 
    ⚠ **The `filler.min_duration` floor is no longer one of those conditions, because it is enforced earlier (V54).** It used to be, and that is the reason auto-split could never fire: a real commercial compilation is *made of* sub-floor material. Measured 2026-08-11 on an 82-segment archive.org reel, **39 segments sat under the 10s floor**, the shortest 3.1s — station IDs and inter-ad bumpers. `AutoConfirmable` returns on the first failing segment, so `RejectTooShort` sank the reel before the grounding checks at the bottom of the loop were ever reached, and the V54 grounder below could not have changed the outcome no matter how well it worked. Those fragments are now dropped at **detection** (step 2 above), where a fragment the scan boundary would refuse anyway costs nothing to discard. `RejectTooShort` stays in the gate as defence-in-depth for hand-edited proposals and for those detected before V54; it is no longer a reason a freshly-detected reel sinks.
 
-   That shape follows how the 69% case actually fails. A badly-split reel is not uniformly slightly-wrong; it has obvious tells — one 6-minute block where the detector saw no boundary, sitting beside perfectly good 30-second cuts. Confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture. The filmstrip exists to show that whole picture, and it is what the operator sees for the reels that genuinely need them.
+   **Boundary confidence — what routes a cut (V54).** A score of 0–100 per segment, answering *did we cut in the right place?* ⚠ **Distinct from `Clip.Confidence`**, which answers *do we know what this is?* Different question, different evidence, different field; the split gate reads the first and never writes the second. `CONTEXT.md` carries both terms precisely because "confidence" unqualified is now ambiguous.
+
+   It is a **ceiling ladder**, in the shape §10's tagger already uses — the best evidence a boundary has sets its ceiling, and segment-level facts may only lower it:
+
+   | Evidence for one boundary | Ceiling | Basis |
+   | --- | --- | --- |
+   | a chapter marker, or the reel's own start/end | 100 | declared, not inferred |
+   | black **and** silence agreed on it | 90 | **measured** — 9 of 12 fades corroborated |
+   | one detector only | 65 | **measured** — the other 3 of 12 |
+   | the transcript rescue alone | 50 | **measured** — ±2–3s timing |
+   | truncated (an overlap moved this edge) | 40 | asserted |
+
+   **Within one boundary the best evidence wins. Across a segment's two boundaries the WORST wins** — a cut is only as trustworthy as its weaker end. Segment facts then cap it: over-long 50, `unsplittable` 20.
+
+   ⚠ **Black is not ranked above silence.** Nothing measures that, and ranking them would invent exactly the number this design exists to avoid. Which detector fired survives in the evidence token, so the UI can still say "silence only".
+
+   ⚠ **The duration prior is DEMOTED, and this deviates from V45's original sketch.** That sketch made "30/60s ±2s" a confidence input. Under a ceiling ladder a corroborating prior has no legal move, and capping on "not a standard slot" would flag half a good reel: measured 2026-08-11, **39 of 82 segments were sub-10s bumpers and every one was correctly cut**. Duration survives only as the over-long cap.
+
+   ⚠ **The rescue's single-span confirmation REMOVES a cap rather than adding points** — the only legal move a corroboration has here. When the LLM returns exactly one span it is saying "this is one advert" (the measured 121s infomercial), which is the fact that defeats "over-long means a missed boundary".
+
+   **Not scored, deliberately:** the dHash distance and `dupOf` (catalog membership is a different question); vision's `looked`/`category` (tag grounding — their exclusion is the clearest illustration of the boundary/tag split).
 
 ### Splitting keys on identity, not location (V51a)
 

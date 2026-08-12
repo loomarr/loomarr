@@ -234,6 +234,10 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	for i := range segs {
 		segs[i].Index = i
 	}
+	// ⚠ ONE scoring pass, ONE writer, and it runs LAST — after rescue has redrawn spans and dedup
+	// has flagged duplicates, so every fact the ladder reads is final. Scoring earlier would
+	// stamp numbers the rest of Propose then invalidates (§10 V34).
+	scoreBoundaries(segs)
 	// ⚠ The proposal carries the compilation's HASH, not its path. Confirm looks the clip back up
 	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
 	// that lookup never matched and no split could ever be committed. The file location Confirm
@@ -272,7 +276,19 @@ func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64, f
 		// back Unsplittable. Guessing cuts would be worse.
 		return segmentsFromBoundaries(durationMs, nil, floor)
 	}
-	return segmentsFromBoundaries(durationMs, append(blacks, silences...), floor)
+	// ⚠ **This is where the evidence used to die.** It was `append(blacks, silences...)` — one
+	// expression, and from there nothing downstream could tell a boundary BOTH detectors agreed on
+	// from one only a single detector saw. Corroboration is the strongest signal detection
+	// produces (9 of 12 fades on the measured reel), so tagging each gap with its origin is what
+	// gives the confidence ladder anything to read (§10 V34).
+	gaps := make([]detectedGap, 0, len(blacks)+len(silences))
+	for _, b := range blacks {
+		gaps = append(gaps, detectedGap{Interval: b, Src: srcBlack})
+	}
+	for _, s := range silences {
+		gaps = append(gaps, detectedGap{Interval: s, Src: srcSilence})
+	}
+	return segmentsFromBoundaries(durationMs, gaps, floor)
 }
 
 // rescue replaces over-long segments with their transcript-derived sub-segments
@@ -313,6 +329,12 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 			// ONE product must stay ONE segment. Without the single-advert prompt
 			// rule the model invents cuts at round timestamps, manufacturing clips
 			// that were never adverts.
+			//
+			// ⚠ It also CLEARS the over-long cap rather than adding points (§10 V34). The model
+			// saying "this is one advert" is the fact that defeats "over-long means a missed
+			// boundary" — and removing a cap is the only legal move a corroboration has in a
+			// ceiling ladder. The segment's own two boundaries keep whatever found them.
+			seg.rescueConfirmedWhole = true
 			out = append(out, seg)
 			continue
 		}
@@ -322,6 +344,12 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 				EndMs:      seg.StartMs + s.EndMs,
 				Name:       subSegmentName(s.Product, base, len(out)+1),
 				Transcript: TranscriptText(sliceTranscript(transcript, s.StartMs, s.EndMs)),
+				// ⚠ Both edges are the TRANSCRIPT's, even where a sub-segment happens to abut the
+				// parent's own boundary: the rescue redrew this span, so the parent's evidence no
+				// longer describes it. Measured at ±2–3s, which is why its ceiling is the lowest
+				// of the detected sources.
+				startSrc: srcTranscript,
+				endSrc:   srcTranscript,
 			}
 			out = append(out, sub)
 		}
@@ -394,7 +422,23 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 // It returns the HASHES of the clips it created, in cut order (§10 V51b). They are what the
 // ingest pipeline enrols, so each segment runs the full ladder for itself; a caller that does not
 // need them can ignore the slice.
+// Confirm cuts `segments` out of the compilation and files them, deleting the proposal.
+//
+// The MANUAL path: an operator has finished with this reel and their list is the whole answer.
 func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []SplitSegment) ([]string, error) {
+	return sp.confirm(ctx, proposalID, segments, nil)
+}
+
+// ConfirmSome cuts `segments` and leaves `hold` behind in a shrunken proposal (§10 V54).
+//
+// The AUTOMATIC path: the gate confirmed the cuts it was confident about and kept the rest for a
+// human. ⚠ `hold` is what SURVIVES, stated by the caller rather than diffed from the store — see
+// the reasoning at the write below.
+func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
+	return sp.confirm(ctx, proposalID, segments, hold)
+}
+
+func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
 	p, err := sp.store.GetSplitProposal(ctx, proposalID)
 	if err != nil {
 		return nil, err
@@ -527,7 +571,34 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	if err := sp.store.SetClipComposite(ctx, clip.Hash, true, now); err != nil {
 		return nil, err
 	}
-	if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
+	// ⚠ **`hold` decides whether the proposal survives, and the CALLER supplies it — it is never
+	// inferred from `segments`** (§10 V54).
+	//
+	// The two callers mean different things by the same cut list. An operator clicking Confirm is
+	// saying "this reel is finished, cut exactly this", and their list is EDITED — spans retyped,
+	// segments merged — so nothing in it need match what was stored. The gate is saying "cut these,
+	// keep the rest for a human". Diffing the stored segments against the confirmed ones would read
+	// the operator's edits as leftovers and resurrect a reel they had just finished.
+	if len(hold) == 0 {
+		if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
+			return nil, err
+		}
+		return spawned, nil
+	}
+	// Renumber so the review's "#N" runs 1..n rather than showing gaps where the confirmed cuts
+	// used to be. ⚠ NAMES are untouched: "part 7" persists from detection, so a reel confirmed over
+	// two sittings does not rename its own clips underneath the operator.
+	remaining := append([]SplitSegment(nil), hold...)
+	for i := range remaining {
+		remaining[i].Index = i
+	}
+	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, remaining); err != nil {
+		// ⚠ Already gone means the operator confirmed or rejected the whole reel while this pass
+		// was cutting. The cuts we just made are real and enrolled; there is simply no proposal
+		// left to shrink, which is the other path having finished the job.
+		if errors.Is(err, ErrProposalGone) {
+			return spawned, nil
+		}
 		return nil, err
 	}
 	return spawned, nil

@@ -20,11 +20,16 @@ import (
 // segment runs the whole ladder for itself instead of waiting for six cron jobs to notice it).
 //
 // ⚠ **`filler.autosplit.enabled` now defaults ON** (maintainer decision, V51b). The gate it turns
-// on is strict and unchanged: the whole reel qualifies or none of it does, `SuggestedEra > 0`
-// disqualifies at every threshold, and `MaxAutoFileConfidence` remains the ceiling. A reel that
-// fails the gate keeps its proposal and appears in Incoming exactly as it does today — with
+// on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoFileConfidence`
+// remains the ceiling. Segments it holds back keep their proposal and appear in Incoming with
 // `AutoSplitReject`'s reason recorded, so "why did this not auto-cut?" is answerable without
 // reading the log.
+//
+// ⚠ **The gate is PER SEGMENT since V54 — "the whole reel qualifies or none of it does" is
+// retired.** The confident cuts are filed and the doubtful ones stay behind in a shrunken
+// proposal, so a reel of 52 becomes 47 clips and 5 cuts to review. The old rule made the
+// operator's work never shrink: one doubtful segment sent all 52 back, and ~50 reels sat parked
+// with none ever confirmed.
 
 // SplitStageStore is the slice of the store the split stage reads.
 //
@@ -93,10 +98,13 @@ type SegmentVision struct {
 	// Budget caps how many segments ONE pass will look at (`filler.pipeline.max_split_vision`).
 	//
 	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
-	// stay inside its pass budget. A reel with more segments than the budget simply does not
-	// auto-confirm — the gate is all-or-nothing by design ("the whole reel qualifies or none of
-	// it does"), so an ungrounded tail sends the reel to review, which is the honest outcome and
-	// exactly where an un-judgeable reel belongs.
+	// stay inside its pass budget.
+	//
+	// ⚠ **A RATE, not a ceiling (V54).** This used to say a reel with more segments than the
+	// budget "simply does not auto-confirm" — true when the budget was indexed absolutely, and it
+	// meant reels of 82–303 segments could never be confirmed at all against a default of 60.
+	// Grounding now persists and resumes, so a large reel is judged over several passes; a segment
+	// still ungrounded when the gate runs is held back on its own rather than sinking the reel.
 	Budget func() int
 }
 
@@ -297,13 +305,25 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// ⚠ Auto-confirm is decided HERE, not inside `Propose`. The manual path runs the same Propose
 	// from a button an operator just pressed — a human is already present and about to review, so
 	// confirming under them would take the decision they came to make.
-	if reject := AutoConfirmable(*p, s.autoConfirm, s.minClipFloor()); reject != AutoSplitOK {
-		// ⚠ The reason is RECORDED on the ladder, not just logged. "It didn't auto-confirm" is
-		// unactionable for an operator deciding whether to lower a threshold.
-		return StageResult{Verdict: VerdictReview, Note: string(reject)}, nil
+	//
+	// ⚠ **PER SEGMENT since V54.** This used to be one verdict for the reel, so one doubtful cut
+	// in 52 sent all 52 back and the operator's work never shrank.
+	part := AutoConfirmable(*p, s.autoConfirm, s.minClipFloor())
+	if part.Reject != AutoSplitOK {
+		// A whole-proposal refusal — auto-split switched off, or nothing detected.
+		return StageResult{Verdict: VerdictReview, Note: string(part.Reject)}, nil
+	}
+	if len(part.Confirm) == 0 {
+		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
+		// didn't auto-confirm" is unactionable for an operator deciding whether to lower a
+		// threshold.
+		return StageResult{Verdict: VerdictReview, Note: part.Verdict().String()}, nil
 	}
 
-	spawned, err := s.splitter.Confirm(ctx, p.ID, p.Segments)
+	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the
+	// manual path here would delete the reel's remaining cuts along with the confirmed ones — the
+	// five a human still needs to see would simply vanish.
+	spawned, err := s.splitter.ConfirmSome(ctx, p.ID, part.Confirm, part.Hold)
 	if err != nil {
 		// The proposal survives, so the operator can still review it by hand — a failed
 		// auto-confirm degrades to the manual path rather than losing the detection work. Returned
@@ -325,6 +345,19 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	note := fmt.Sprintf("cut into %d adverts", len(spawned))
 	if len(spawned) == 1 {
 		note = "cut into one advert"
+	}
+
+	// ⚠ **A PARTIAL confirm keeps the reel in review, with only the doubtful cuts left.** The
+	// proposal has already been shrunk to `part.Hold` by `Confirm`; the row must follow it there,
+	// or a reel with five unresolved cuts would report itself finished and the operator would
+	// never be told the five exist.
+	if len(part.Hold) > 0 {
+		return StageResult{
+			Verdict: VerdictReview,
+			Spawned: spawned,
+			Note: fmt.Sprintf("%s; %s to review (%s)", note,
+				pluralizeCuts(len(part.Hold)), part.Verdict()),
+		}, nil
 	}
 	return StageResult{Verdict: VerdictContinue, Spawned: spawned, Note: note}, nil
 }
