@@ -286,6 +286,9 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
+	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
+	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//

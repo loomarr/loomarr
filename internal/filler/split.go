@@ -101,6 +101,20 @@ type SplitSegment struct {
 	// the same Classify the tag job uses.
 	Tags     []string `json:"tags,omitempty"`
 	Category string   `json:"category,omitempty"`
+	// Looked records that the split-time grounder ALREADY examined this segment's frames —
+	// whether or not it came back with anything (§10 V54).
+	//
+	// ⚠ **Inference cannot replace this flag.** `Category != "" || Era > 0` conflates *never
+	// looked at* with *looked at and grounded nothing*, and treating those alike is exactly what
+	// makes a resumable budget never converge: the ungroundable segments would be retried every
+	// pass, forever, and the reel would never reach a verdict.
+	//
+	// ⚠ It is set even when the frame extraction or the JSON parse FAILED. A transient ffmpeg
+	// error therefore retires that segment permanently for this proposal. That is deliberate — it
+	// is what bounds the loop — and the remedy is a re-detect, which replaces the proposal. The
+	// provider-error path does NOT set it, because a failing backend fails for every segment and
+	// should be retried next pass rather than poisoning the reel.
+	Looked bool `json:"looked,omitempty"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
 	// (dHash, measured 25× separation). ⚠ A FLAG, never a silent drop — the
 	// reviewer sees "already in the catalog" and decides.

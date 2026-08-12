@@ -148,6 +148,19 @@ func (m *splitMemStore) DeleteSplitProposal(_ context.Context, id string) error 
 	return nil
 }
 
+// ⚠ REFUSES to insert, exactly as the real store does. A fake that happily created the row would
+// hide the resurrection race this method exists to prevent — the class this repo has already been
+// bitten by twice (a double that never refuses cannot catch a write-through-a-dead-handle bug).
+func (m *splitMemStore) UpdateSplitProposalSegments(_ context.Context, id string, segs []filler.SplitSegment) error {
+	p, ok := m.proposals[id]
+	if !ok {
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+	}
+	p.Segments = segs
+	m.proposals[id] = p
+	return nil
+}
+
 // ListTaxa serves the REAL seed forest (§10 V45a), like tagMemStore — the splitter grounds each
 // segment's tags against it, so a segment tagged `toys` resolves and an off-vocabulary slug is dropped
 // exactly as a directly-tagged clip is. An empty graph would ground nothing and prove nothing.

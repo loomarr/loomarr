@@ -733,7 +733,7 @@ func declared() []Setting {
 			// nobody could judge belongs.
 			Key: "filler.pipeline.max_split_vision", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 60, Advanced: true,
-			Doc: "How many segments of one recording Loomarr looks at before deciding whether it can cut it automatically. Recordings with more segments than this always wait for you.",
+			Doc: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",
 		},
 		{
 			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,

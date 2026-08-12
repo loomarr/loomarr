@@ -4763,6 +4763,8 @@ components:
         index:
           format: int64
           type: integer
+        looked:
+          type: boolean
         name:
           type: string
         startMs:

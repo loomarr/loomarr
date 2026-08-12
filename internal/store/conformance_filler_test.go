@@ -1623,6 +1623,66 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteSplitProposal(ctx, "sp_2"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
+
+	// --- UpdateSplitProposalSegments: grounding accumulates across passes (§10 V54) ---
+	//
+	// Split-time grounding is a read-modify-write spanning MINUTES of vision calls, so the write
+	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
+	p3 := filler.SplitProposal{
+		ID: "sp_3", ClipHash: "h:comps/1991.mp4", CreatedAt: now,
+		Segments: []filler.SplitSegment{
+			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one"},
+			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two"},
+		},
+	}
+	if err := s.UpsertSplitProposal(ctx, p3); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. The grounding fields round-trip — including `Looked`, which is what distinguishes
+	// "looked at and found nothing" from "not reached yet". Inferring it from Category/Era would
+	// make a resumable budget retry the ungroundable segments forever.
+	grounded := []filler.SplitSegment{
+		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
+		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); err != nil {
+		t.Fatal(err)
+	}
+	got3, err := s.GetSplitProposal(ctx, "sp_3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got3.Segments) != 2 {
+		t.Fatalf("segments after update = %+v, want 2", got3.Segments)
+	}
+	if !got3.Segments[0].Looked || got3.Segments[0].Category != "toys" || got3.Segments[0].Era != 1991 {
+		t.Errorf("grounding lost in round-trip: %+v", got3.Segments[0])
+	}
+	if !got3.Segments[1].Looked || got3.Segments[1].Category != "" {
+		t.Errorf("segment 1 = %+v, want Looked with NO category — 'looked and found nothing'", got3.Segments[1])
+	}
+	// ⚠ `created_at` must be untouched: ListSplitProposals orders by it, so writing it would let a
+	// reel jump the review queue merely for having been grounded.
+	if !got3.CreatedAt.Equal(p3.CreatedAt) {
+		t.Errorf("created_at moved on a grounding write: %v, want %v", got3.CreatedAt, p3.CreatedAt)
+	}
+
+	// 2. ⚠ **THE safety property: the update must NEVER insert.** If it were an upsert, a grounding
+	// write landing after `Confirm` consumed the proposal would RESURRECT it — a pending review for
+	// a reel already cut, pointing at a composite whose segments are in the catalog.
+	if err := s.DeleteSplitProposal(ctx, "sp_3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update after delete = %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_3"); !errors.Is(err, ErrNotFound) {
+		t.Error("a grounding write RESURRECTED a confirmed proposal — the reel would be reviewed twice")
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_never_existed", grounded); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update of an unknown id = %v, want ErrNotFound", err)
+	}
 }
 
 // testClipPipeline covers the per-clip ingest pipeline's state (§10 V51b) on BOTH backends: the
