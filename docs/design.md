@@ -1809,6 +1809,37 @@ the load-bearing change, and it buys three things V34 threw away:
 The parent stays on disk and in the store, marked composite (not airable); its segments are the
 airable clips. `parent_hash` is nullable — a hand-dropped single advert has none.
 
+⚠ **"Stays on disk" is now "stays until the sweep retires it" (V54), and one of the three things
+above is genuinely given up.** Partial confirm leaves a residue by design — every reel files its
+confident cuts and holds the doubtful ones — so proposals accumulate and each pins a 1–2 GB
+recording. The `filler-split-sweep` job retires a reel whose leftovers nobody reviewed inside
+`filler.split.review_window` (default 30 days, `0s` = never): it drops the proposal and **deletes
+the recording**.
+
+Of the three things keeping the parent bought: **provenance survives** and **inherited broadcast
+context survives**, because the catalog ROW survives — the sweep sets `clips.reaped_at` and only
+the bytes go. **Re-splitting does not.** That is the cost, and it is the reason the sweep is bounded
+by three rules rather than one: a recording is eligible only after the window, only if it has
+ALREADY produced clips (a reel Loomarr could not use is the operator's only copy of that content),
+and never if `review_window` is `0s`.
+
+⚠ **The row must survive, and this is the cascade that makes it non-optional.** Every segment
+carries `parent_hash` pointing at the composite. Delete the file without the tombstone and the next
+`filler-sync` finds the clip gone from its source and prunes the row — dangling `parent_hash` on all
+of its children at once. `DeleteClipsNotIn` therefore skips a reaped row, and the sweep writes the
+tombstone BEFORE the unlink so no sync can land in between.
+
+⚠ **The sweep must also take the reel off the belt**, or it is worse than no sweep: the composite is
+still `is_composite`, so the split rung re-detects it next pass — propose → partly confirm →
+leftovers → sweep → re-propose, burning a boundary scan every cycle forever. Setting the pipeline
+row to `filed` is the existing one-word way to say finished, since `ListPipelineWork` claims only
+`running`.
+
+⚠ **This is the ONLY thing in Loomarr that deletes an operator's media**, reversing the blanket rule
+`fillerbulk.go` states. Everything else still tombstones: removing a clip from the catalog keeps the
+file, and so does disabling or deleting a source. `docs/help/filler.md` says so in the operator's
+own words, because that file ships inside the binary and is where they will look.
+
 #### 3. Structured broadcast context — a parser over text we already have
 
 The archive.org title/filename encodes **network, station, market, and exact air date** in plain
@@ -3926,6 +3957,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
 | `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog. ⚠ **It has a SECOND job since V54**: composed with `MinSegmentMs` as `max()`, it is also the splitter's detection floor (§10 V34 step 2). One number, two enforcement points, deliberately — the alternative is a segment the auto-confirm gate admits and the scan boundary then rejects, which is the shape `FILLER_AUTOSPLIT_MAX_DURATION` one row down also serves two jobs to avoid |
+| `FILLER_SPLIT_REVIEW_WINDOW` | **`720h`** (30 days) — how long a split proposal's leftover cuts wait for review before `filler-split-sweep` gives up on them (§10 V54). ⚠ **The ONLY setting in Loomarr that deletes an operator's media**: when it expires, the leftover cuts are dropped AND the original recording is removed to reclaim the space (reels are commonly 1–2 GB). Bounded by three rules, all enforced rather than documented: only past the window; only for a recording that has ALREADY produced clips (a reel Loomarr could not use is the operator's only copy, and is never touched); and `0s` = never, which is the same off-by-explicit-zero encoding `FILLER_MIN_CLIP_DURATION` uses. The clips cut from a reel are never affected, and the catalog ROW survives as a tombstone so `parent_hash` lineage keeps resolving — only the bytes go. Told to the operator in `docs/help/filler.md`, which ships inside the binary |
 | `FILLER_MIN_CLIP_DURATION` / `FILLER_MAX_CLIP_DURATION` | **`0s` / `0s`** — both OFF (§10 V51f). Pod-assembly *eligibility* bounds: a commercial outside them is not drawn into breaks automatically, but stays in the catalog, searchable and pinnable. ⚠ **Distinct from `FILLER_MIN_DURATION` above, on the other side of the catalog boundary**: that one refuses a file *entry*; these decide what an existing clip may fill. ⚠ **`Policy.MinClipMs`/`MaxClipMs` existed for several phases with no way to set them** — assigned in tests and nowhere else — so `durationEligible` always returned true and `PoolReport.Eligible`, which §10 headlines as "the number that surprises operators", was arithmetically identical to `Commercials` on every install ever run. The pool strip printed one number twice and presented the pair as a diagnosis. The max is the one worth setting: it is the guard against a three-minute infomercial filling a thirty-second gap |
 | `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target filler is normalised to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT by default** — the drop-folder holds the operator's own files, so Loomarr does not rewrite them unasked. ⚠ **ONE target for both stages**: `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` reuses this value rather than declaring its own, or a clip normalised on file would be corrected again at playout toward a different number. Set empty to disable |
 | `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` | `false` (V42) — when on, auto-file rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` at `FILLER_TARGET_LUFS` before it enters the catalog. ⚠ **DESTRUCTIVE and opt-in for that reason**: the original is unrecoverable. The sidecar records `normalizedLufs` so a re-scan skips a file already normalised at the current target — without that marker every pass would re-normalise, walking the loudness down each run |

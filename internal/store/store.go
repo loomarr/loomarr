@@ -289,6 +289,14 @@ type SplitProposalStore interface {
 	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
 	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
 	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
+	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
+	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
+	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
+	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
+	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
+	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
+	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
+	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//

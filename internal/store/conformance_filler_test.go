@@ -1726,6 +1726,42 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if len(remaining) != 1 || remaining[0].ID != "sp_keep" {
 		t.Errorf("ListSplitProposals = %+v, want only sp_keep", remaining)
 	}
+
+	// --- the sweep's tombstone: a REAPED composite survives the prune (§10 V54) ---
+	//
+	// ⚠ **The cascade this prevents.** The split sweep deletes a spent recording on purpose, so the
+	// next scan legitimately does not see it. Without the exemption `DeleteClipsNotIn` removes the
+	// row — and every clip cut out of that reel carries `parent_hash` pointing at it, so one sweep
+	// would dangle all of its children and take V45's lineage with it.
+	reaped := clipAt("comps/reaped.mp4", "Reaped", filler.Commercial, 149_000)
+	child := clipAt("cuts/child.mp4", "Child", filler.Commercial, 30_000)
+	child.ParentHash = reaped.Hash
+	for _, c := range []filler.Clip{reaped, child} {
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.MarkClipReaped(ctx, reaped.Hash, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// The scan now reports only the child — the reel's bytes are gone, which is the point.
+	if _, err := s.DeleteClipsNotIn(ctx, []string{child.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, reaped.Hash); err != nil {
+		t.Errorf("a reaped composite was pruned (%v) — every clip cut from it now has a dangling "+
+			"parent_hash", err)
+	}
+
+	// ⚠ …and the EMPTY-scan branch takes the same exemption. An unreadable drop folder is exactly
+	// when a swept reel looks most like a deleted one.
+	if _, err := s.DeleteClipsNotIn(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, reaped.Hash); err != nil {
+		t.Errorf("an empty scan pruned the reaped composite: %v", err)
+	}
 }
 
 // testClipPipeline covers the per-clip ingest pipeline's state (§10 V51b) on BOTH backends: the

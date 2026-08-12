@@ -60,6 +60,10 @@ func TestJobSet(t *testing.T) {
 		// catalog after a GRAPH edit, not per-clip work, and folding it in would make a taxonomy
 		// edit wait behind a whisper backlog.
 		"filler-reindex | 0 5 * * * * | job.filler_reindex.schedule",
+		// ⚠ Added in V54. Daily at 04:45 and off-peak on purpose: the window it enforces is
+		// measured in WEEKS, so a faster cadence buys nothing and only widens the chance of a pass
+		// landing while an operator is mid-review on a reel one hour past its expiry.
+		"filler-split-sweep | 0 45 4 * * * | job.filler_split_sweep.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
 		// ⚠ The image service's four (§22, V52). `images-fetch` is the SECOND job to reach out to
 		// the internet unattended — the record `filler-fetch` above carries — and it differs in a

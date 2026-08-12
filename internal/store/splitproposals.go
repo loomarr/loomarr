@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
 )
@@ -58,6 +59,75 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	}
 	p.CreatedAt = fromEpoch(createdAt)
 	return p, nil
+}
+
+// SweepableProposal is one reel the split sweep may retire (§10 V54): its remaining cuts have sat
+// unreviewed past the window, and it has already given up clips.
+type SweepableProposal struct {
+	ProposalID string
+	ClipHash   string
+	ClipPath   string
+	Segments   int
+}
+
+// ListSweepableSplitProposals finds proposals created before `before` whose compilation has ALREADY
+// PRODUCED CLIPS.
+//
+// ⚠ **The `EXISTS` clause is the safety rule, not an optimisation.** A reel that yielded nothing is
+// the operator's only copy of that content, and reaping it would destroy material Loomarr never
+// managed to use — the sweep would be deleting downloads on a timer for no gain. A reel whose cuts
+// are already in the catalog has given up what it had; its recording is spent.
+//
+// ⚠ Already-reaped rows are excluded, so the sweep is idempotent: a second run finds nothing to do
+// rather than re-deleting a file that is gone and re-stamping a timestamp.
+func (s *sqlStore) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT p.id, p.clip_hash, c.path, p.segments_json
+		   FROM filler_split_proposals p
+		   JOIN clips c ON c.hash = p.clip_hash
+		  WHERE p.created_at < ?
+		    AND c.reaped_at IS NULL
+		    AND EXISTS (SELECT 1 FROM clips k WHERE k.parent_hash = p.clip_hash)
+		  ORDER BY p.created_at, p.id`), epoch(before))
+	if err != nil {
+		return nil, fmt.Errorf("list sweepable split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []SweepableProposal
+	for rows.Next() {
+		var (
+			sp  SweepableProposal
+			raw string
+		)
+		if err := rows.Scan(&sp.ProposalID, &sp.ClipHash, &sp.ClipPath, &raw); err != nil {
+			return nil, fmt.Errorf("scan sweepable split proposal: %w", err)
+		}
+		var segs []filler.SplitSegment
+		// A corrupt blob must not stop the sweep: the count is for the log line, not the decision.
+		_ = json.Unmarshal([]byte(raw), &segs)
+		sp.Segments = len(segs)
+		out = append(out, sp)
+	}
+	return out, rows.Err()
+}
+
+// MarkClipReaped records that a composite's recording has been reclaimed (§10 V54). The row stays;
+// only the bytes are gone.
+func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET reaped_at = ?, updated_at = ? WHERE hash = ?`), epoch(at), epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // pruneOrphanSplitProposals deletes proposals whose compilation is gone.

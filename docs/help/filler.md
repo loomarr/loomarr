@@ -51,3 +51,24 @@ to just bumpers. If a channel plays no commercials, check its **pod preview**.
 
 Each channel has a **pod preview** showing exactly what plays in its breaks — the same
 computation the scheduler uses. It's the fastest way to check your tags are matching.
+
+## Recordings of several adverts
+
+A file holding twenty adverts back to back is a **recording**, not a clip — it can't play in a
+30-second break. Loomarr finds the cuts inside it and files the ones it is confident about, so most
+of a recording turns into clips with no work from you.
+
+Cuts it is **not** confident about wait under **Filler → Incoming** for you to look at. Each one has
+a ▶ so you can watch it before deciding.
+
+> ⚠ **Cuts you never review don't wait forever, and the original recording is deleted with them.**
+> After the time set by `FILLER_SPLIT_REVIEW_WINDOW` (30 days by default), Loomarr gives up on the
+> leftover cuts and **removes the original recording** to reclaim the space — these files are
+> commonly 1–2 GB each.
+>
+> **The clips already made from it are never touched**, and a recording that produced no clips at
+> all is never removed — if Loomarr could not use it, it stays where you put it.
+>
+> This is the **only** thing in Loomarr that deletes your media. Everything else keeps your files:
+> removing a clip from the catalog leaves it on disk, and so does disabling or deleting a source.
+> Set `FILLER_SPLIT_REVIEW_WINDOW` to `0s` to keep every recording forever.
