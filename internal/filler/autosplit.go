@@ -213,17 +213,61 @@ func pluralizeCuts(n int) string {
 }
 
 // Verdict reduces a partition to ONE reel-level answer: `AutoSplitOK` when every segment cleared,
-// otherwise the reason the first held-back segment gives.
+// otherwise the reason the MOST held-back segments give.
 //
 // ⚠ A summary for a ladder note or a log line, never the decision itself. Reading this instead of
 // `Confirm`/`Hold` reintroduces exactly the all-or-nothing behaviour V54 removed — one doubtful
 // segment would once again speak for 51 good ones.
+//
+// ⚠ **This returned `Hold[0].HoldReason` — the FIRST held segment's reason — and on a real reel it
+// reported the minority.** Measured 2026-08-13: 36 of 37 segments were refused as untagged and 1
+// as boundary-uncertain, but the tagged-yet-doubtful one sorted first, so the ladder told the
+// operator *"Loomarr is not sure this was cut in the right place"*. Acting on that means lowering
+// the confidence threshold, which would have changed nothing at all — the 36 die two checks
+// earlier. A summary that can name the reason for one segment out of thirty-seven is worse than no
+// summary, because it is actionable and wrong.
 func (sp SplitPartition) Verdict() AutoSplitReject {
 	if sp.Reject != AutoSplitOK {
 		return sp.Reject
 	}
+	reason, _, _ := sp.HoldSummary()
+	return reason
+}
+
+// HoldSummary reports the reason the most held-back segments share, how many share it, and how
+// many are held in total — so a caller can say "36 of 37" rather than implying unanimity.
+//
+// Ties break on the reason text, so one reel always produces one note.
+func (sp SplitPartition) HoldSummary() (reason AutoSplitReject, shared, total int) {
 	if len(sp.Hold) == 0 {
-		return AutoSplitOK
+		return AutoSplitOK, 0, 0
 	}
-	return AutoSplitReject(sp.Hold[0].HoldReason)
+	counts := map[AutoSplitReject]int{}
+	for _, seg := range sp.Hold {
+		counts[AutoSplitReject(seg.HoldReason)]++
+	}
+	for r, n := range counts {
+		if n > shared || (n == shared && r < reason) {
+			reason, shared = r, n
+		}
+	}
+	return reason, shared, len(sp.Hold)
+}
+
+// holdNote renders the ladder note for a reel where nothing cleared the gate.
+//
+// ⚠ It states the SHARE, not just the reason. "a segment could not be classified" reads as a
+// property of the reel; "36 of 37 cuts: …" tells the operator both what to fix and how much of the
+// reel it accounts for — and, when the reasons are mixed, that fixing this one will not release
+// everything.
+func holdNote(sp SplitPartition) string {
+	reason, shared, total := sp.HoldSummary()
+	switch {
+	case total == 0:
+		return string(AutoSplitOK)
+	case shared == total:
+		return fmt.Sprintf("%s: %s", pluralizeCuts(total), reason)
+	default:
+		return fmt.Sprintf("%d of %s: %s", shared, pluralizeCuts(total), reason)
+	}
 }
