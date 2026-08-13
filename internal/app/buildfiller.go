@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
-	"github.com/mantonx/loomarr/internal/mediatools"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"strconv"
+	"sync"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/mediatools"
 
 	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -266,29 +269,25 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		fillerDrop = os.DirFS(dir)
 	}
 
-	// Vision: keyframes → a multimodal model. The provider is nil unless a vision model is
-	// configured AND the wired LLM actually implements llm.VisionProvider — the same type
-	// assertion the model Warmer uses (§8.2). A nil provider makes the job a no-op, so an
-	// install without a vision model never touches ffmpeg or spends a token.
+	// Vision: keyframes → a multimodal model, resolved LIVE (§10 V54a).
+	//
+	// ⚠ **`filler.vision.enabled` is the only part still read at boot**, and only to decide whether
+	// to wire anything at all; the endpoint itself is resolved per call by `hotVisionProvider`, so
+	// changing the provider, URL, key or model in Settings applies to the next clip. This used to
+	// build the provider here, from `llm.url` and `llm.api_key`, behind an unlogged
+	// `&& set.str("llm.url") != ""` — so an install with vision enabled and no reachable endpoint
+	// was indistinguishable from one with vision switched off.
 	var visionProvider llm.VisionProvider
-	if set.boolv("filler.vision.enabled") && set.str("llm.url") != "" {
-		// ⚠ `filler.vision.model` when set, ELSE `llm.model` — vision needs an images-capable
-		// model, which the tagging model often is not (a text model like qwen3). The dedicated
-		// knob lets an operator point vision at a vision model without switching their whole LLM;
-		// empty reuses the main model for installs whose model already sees images. Same
-		// separation `filler.language_model` makes for the audio gate.
-		visionModel := set.str("filler.vision.model")
-		if visionModel == "" {
-			visionModel = set.str("llm.model")
+	if set.boolv("filler.vision.enabled") {
+		h := &hotVisionProvider{set: set, log: log}
+		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
+		// fix the setting without restarting, which is the entire point of resolving per call —
+		// but it must not be silent, because this is the diagnosis for "grounding never runs".
+		if _, err := h.resolve(); err != nil {
+			log.Warn("filler vision enabled but not currently reachable; grounding will no-op until this is fixed",
+				"err", err)
 		}
-		p := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), visionModel, set.str("llm.api_key"))
-		if vp, ok := p.(llm.VisionProvider); ok {
-			visionProvider = vp
-		} else {
-			log.Warn("filler vision enabled but the configured LLM provider has no vision path; job will no-op",
-				"provider", set.str("llm.provider"))
-		}
-		log.Info("filler vision provider wired", "model", visionModel)
+		visionProvider = h
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
@@ -437,4 +436,110 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 		}
 	}, log)
 	return podAdapter
+}
+
+// visionWiring is the resolved endpoint the frame-reader talks to (§10 V54a, §15).
+type visionWiring struct {
+	provider, url, model, key string
+	// own reports that vision was pointed at its OWN service rather than inheriting the main
+	// LLM's. It is logged, because "which endpoint is vision actually using" was previously
+	// underivable from any output the process produced.
+	own bool
+}
+
+// visionEndpoint resolves where clip frames get read, and by what.
+//
+// ⚠ **`filler.vision.model` alone was a half-separation, and the missing half failed silently.**
+// The model knob let an operator name a vision model, but the provider was built from
+// `llm.provider`/`llm.url`/`llm.api_key` — so naming a LOCAL model while the main LLM was hosted
+// sent an Ollama tag to the hosted endpoint. Measured on the maintainer's stack: `llava:7b` →
+// `https://openrouter.ai/api/v1` → 401 on every segment. `ground` reports that as zero looks, the
+// gate refuses the reel with "a segment could not be classified", and nothing anywhere says why.
+// A model name is useless without the host that serves it.
+//
+// ⚠ **The key is NEVER inherited once a vision provider is named.** Declaring a separate service
+// means declaring its own credentials: inheriting would send the operator's hosted key to whatever
+// host they just named, `localhost` included. A local Ollama needs none, so the common case sends
+// nothing.
+func visionEndpoint(set resolved) visionWiring {
+	v := visionWiring{
+		provider: set.str("llm.provider"),
+		url:      set.str("llm.url"),
+		key:      set.str("llm.api_key"),
+		model:    set.str("filler.vision.model"),
+	}
+	// Empty ⇒ reuse the main model, for an install whose model already sees images. Same
+	// separation `filler.language_model` makes for the audio gate.
+	if v.model == "" {
+		v.model = set.str("llm.model")
+	}
+	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
+	// resolves to "" and means the same thing — inherit, not "no provider".
+	if p := set.str("filler.vision.provider"); p != "" && p != "inherit" {
+		v.provider, v.url, v.key, v.own = p, set.str("filler.vision.url"), set.str("filler.vision.api_key"), true
+		// A local Ollama on the conventional port is the case worth needing no second setting —
+		// the same default `ollamaBase` applies to probes and pulls.
+		if v.url == "" && p == "ollama" {
+			v.url = defaultOllamaBase
+		}
+	}
+	return v
+}
+
+// hotVisionProvider re-resolves `visionEndpoint` on every call, so an operator changing
+// `filler.vision.*` in Settings takes effect on the next clip rather than on the next restart
+// (config-design §8 hot-apply).
+//
+// ⚠ **The alternative was a provider captured at boot, which is what this replaces.** A settings
+// subsystem whose whole point is `env > database > default` resolved live, wired to a knob that
+// silently needs a restart, produces the worst kind of control: one that looks like it worked.
+// The operator saves "Ollama", the next reel still 401s against the hosted endpoint, and nothing
+// connects the two.
+//
+// ⚠ Memoised on the RESOLVED WIRING, not built per call. Rebuilding would discard the HTTP
+// connection pool on every segment — 60 of them in one pass at the default `max_split_vision`.
+type hotVisionProvider struct {
+	set resolved
+	log *slog.Logger
+
+	mu   sync.Mutex
+	last visionWiring
+	cur  llm.VisionProvider
+}
+
+func (h *hotVisionProvider) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (llm.Response, error) {
+	p, err := h.resolve()
+	if err != nil {
+		return llm.Response{}, err
+	}
+	return p.AskAboutImages(ctx, prompt, jpegs)
+}
+
+// resolve returns the provider for the CURRENT settings, rebuilding only when they have changed.
+//
+// ⚠ The errors are the point of this method existing separately. `ground` treats a provider
+// failure as "stop, try again next pass", and every one of these used to be an unlogged nil
+// provider instead — indistinguishable from vision being switched off.
+func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
+	v := visionEndpoint(h.set)
+	if v.url == "" {
+		return nil, fmt.Errorf("no vision endpoint configured: set filler.vision.url, or llm.url for the main provider")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.cur != nil && h.last == v {
+		return h.cur, nil
+	}
+	p, ok := llm.NewProvider(v.provider, v.url, v.model, v.key).(llm.VisionProvider)
+	if !ok {
+		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
+	}
+	if h.log != nil && h.last != v {
+		// The line that answers "which endpoint is vision actually using" — underivable from any
+		// output this process produced before V54a.
+		h.log.Info("filler vision endpoint resolved",
+			"provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
+	}
+	h.last, h.cur = v, p
+	return p, nil
 }
