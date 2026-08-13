@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -51,6 +52,8 @@ type SplitStage struct {
 	// vision grounds proposed segments from their own frames so the gate has data (§10 V54).
 	// nil ⇒ propose only.
 	vision *SegmentVision
+	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
+	log *slog.Logger
 }
 
 // NewSplitStage builds the stage. Without `WithAutoConfirm` it PROPOSES ONLY, which is the safe
@@ -58,6 +61,18 @@ type SplitStage struct {
 // deciding.
 func NewSplitStage(splitter *Splitter, store SplitStageStore) *SplitStage {
 	return &SplitStage{splitter: splitter, store: store}
+}
+
+// WithLogger attaches the logger the grounding pass reports through (§10 V54b).
+//
+// ⚠ **Grounding had SEVEN distinct silent outcomes and no way to tell them apart.** Not wired,
+// zero budget, unreadable taxonomy, no keyframes, a provider that refused, an unparseable answer,
+// and — the one that actually bit — a provider that answered every time and yielded nothing
+// usable. All seven produced the same observable: segments left ungrounded, the gate refusing with
+// "a segment could not be classified", and not one line anywhere saying which.
+func (s *SplitStage) WithLogger(log *slog.Logger) *SplitStage {
+	s.log = log
+	return s
 }
 
 // WithAutoConfirm attaches the auto-confirm policy and the clip floor it must respect.
@@ -131,6 +146,7 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		return n
 	}
 	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
+		s.groundSkipped(ctx, c, "vision is not wired on this install")
 		return groundPass{Pending: pending()}
 	}
 	// ⚠ The budget bounds ATTEMPTS THIS PASS, not an index into the segment list. It was
@@ -143,6 +159,7 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		}
 	}
 	if budget == 0 {
+		s.groundSkipped(ctx, c, "the per-pass vision budget is zero (filler.pipeline.max_split_vision)")
 		return groundPass{Pending: pending()}
 	}
 	var forest *taxonomy.Forest
@@ -151,12 +168,17 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		if err != nil {
 			// No vocabulary to ground against ⇒ ground nothing, and the gate refuses. Reported as
 			// zero looked, which is what stops the caller deferring on a pass that achieved nothing.
+			s.groundSkipped(ctx, c, "the taxonomy could not be read", "err", err)
 			return groundPass{Pending: pending()}
 		}
 		forest = taxonomy.New(taxa)
 	}
 	file := filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
 	looked := 0
+	// The pass tally. Counted rather than logged per segment: 60 lines a pass is noise, and the
+	// question an operator has is about the pass, not any one cut.
+	var noFrames, unreadable, learned int
+	var providerErr error
 	for i := range segs {
 		if looked >= budget {
 			break
@@ -167,6 +189,7 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		frames, err := s.vision.Tools.KeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
 		if err != nil || len(frames) == 0 {
 			segs[i].Looked, looked = true, looked+1
+			noFrames++
 			continue
 		}
 		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt, frames)
@@ -174,14 +197,19 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 			// ⚠ NOT marked, and the loop STOPS: a provider that is failing will fail for every
 			// remaining segment too, so marking would burn the whole reel on one outage. Next pass
 			// retries exactly the segments this one could not reach.
+			providerErr = err
 			break
 		}
 		segs[i].Looked, looked = true, looked+1
 		var out visionOutput
 		if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
+			unreadable++
 			continue
 		}
 		v := groundVisionTags(out, forest)
+		if v.Category != "" || v.Era > 0 {
+			learned++
+		}
 		segs[i].Category = v.Category
 		segs[i].Era = v.Era
 		// ⚠ `SuggestedEra` is deliberately NOT stamped here, though the vision RUNG does stamp it.
@@ -190,7 +218,55 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		// grounder guarantee the rejection it exists to lift. The child clip's own vision pass
 		// still raises the suggestion afterwards, where an operator can act on it.
 	}
+	s.groundReport(ctx, c, groundTally{
+		looked: looked, pending: pending(), learned: learned,
+		noFrames: noFrames, unreadable: unreadable, providerErr: providerErr,
+	})
 	return groundPass{Looked: looked, Pending: pending()}
+}
+
+// groundTally is one pass's outcome, counted so the pass can be reported in a single line.
+type groundTally struct {
+	looked, pending, learned, noFrames, unreadable int
+	providerErr                                    error
+}
+
+// groundSkipped reports a pass that never began. Each caller passes a DIFFERENT reason, which is
+// the entire point: these were four indistinguishable early returns.
+func (s *SplitStage) groundSkipped(ctx context.Context, c StoreClip, why string, args ...any) {
+	if s.log == nil {
+		return
+	}
+	s.log.WarnContext(ctx, "split grounding did not run: "+why, append([]any{"clip", c.Hash}, args...)...)
+}
+
+// groundReport reports what a pass achieved.
+//
+// ⚠ **The `learned == 0` case is the one this exists for, and it is not an error anywhere.** A
+// model can answer every single call, parse cleanly, and still ground nothing — `llava:7b`
+// (measured 2026-08-13) echoed the prompt's own placeholder list back as its answer, so
+// `"category":"toys|cereal|cars|..."` arrived as well-formed JSON and `groundVisionTags` correctly
+// dropped every field. Thirty-seven segments, thirty-seven successful calls, one usable category,
+// and the reel refused as untagged. Every counter along that path says "fine": no provider error,
+// no parse error, `Looked` incremented 37 times. Only `learned` tells the truth, and only by being
+// compared against `looked`.
+func (s *SplitStage) groundReport(ctx context.Context, c StoreClip, t groundTally) {
+	if s.log == nil || (t.looked == 0 && t.providerErr == nil) {
+		return
+	}
+	args := []any{
+		"clip", c.Hash, "looked", t.looked, "learned", t.learned,
+		"pending", t.pending, "noFrames", t.noFrames, "unreadable", t.unreadable,
+	}
+	switch {
+	case t.providerErr != nil:
+		s.log.WarnContext(ctx, "split grounding stopped: the vision provider refused",
+			append(args, "err", t.providerErr)...)
+	case t.looked > 0 && t.learned == 0:
+		s.log.WarnContext(ctx, "split grounding read every cut and learned nothing — check filler.vision.model can follow a JSON prompt", args...)
+	default:
+		s.log.InfoContext(ctx, "split grounding pass", args...)
+	}
 }
 
 // pendingFor returns the proposal already waiting for this clip, or nil.
@@ -317,7 +393,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
 		// didn't auto-confirm" is unactionable for an operator deciding whether to lower a
 		// threshold.
-		return StageResult{Verdict: VerdictReview, Note: part.Verdict().String()}, nil
+		//
+		// ⚠ **With the COUNT, because the bare reason was actively misleading.** The note used to
+		// be one segment's reason presented as the reel's, and on a real reel that was the reason
+		// for 1 cut out of 37 — sending the operator to a threshold that was never consulted.
+		return StageResult{Verdict: VerdictReview, Note: holdNote(part)}, nil
 	}
 
 	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the

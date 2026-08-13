@@ -353,6 +353,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		// invites someone to "fix" its order.
 		pipelineStages = append(pipelineStages,
 			filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st}).
+				WithLogger(log).
 				WithAutoConfirm(filler.AutoSplitPolicy{
 					Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
 					MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
