@@ -605,6 +605,49 @@ func declared() []Setting {
 			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
 		},
 		{
+			// ⚠ **The model knob above was only half a separation, and the half it was missing is
+			// the one that fails silently.** `filler.vision.model` let an operator name a vision
+			// model, but the provider was still built from `llm.provider`/`llm.url`/`llm.api_key`
+			// — so naming a LOCAL model while the main LLM was hosted sent an Ollama tag to the
+			// hosted endpoint. Measured: `llava:7b` → `https://openrouter.ai/api/v1` → 401 on every
+			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
+			// could not be classified". The model name is useless without the host that serves it.
+			//
+			// Empty ⇒ inherit the main provider exactly as before, so no existing install changes.
+			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires
+			// every enum option to carry a value and a label, and an explicit word reads better in
+			// the picker than a blank row. The resolver treats "" the same way, so an env var set
+			// to empty means inherit rather than "no provider".
+			Key: "filler.vision.provider", EnvVar: "FILLER_VISION_PROVIDER", Group: GroupFiller,
+			Kind: KindEnum, Default: "inherit", Advanced: true,
+			Enum: []EnumOption{
+				opt("inherit", "Same as your main AI"),
+				opt("ollama", "Ollama"),
+				opt("openai", "OpenAI-compatible"),
+			},
+			Doc: "Which service reads clip frames. Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service.",
+		},
+		{
+			// Empty + `ollama` resolves to the conventional local host, the same rule `ollamaBase`
+			// already applies to probes and pulls — so the common case (hosted text, local vision)
+			// needs the provider knob alone.
+			Key: "filler.vision.url", EnvVar: "FILLER_VISION_URL", Group: GroupFiller,
+			Kind: KindURL, Default: "", Advanced: true,
+			Doc:      "Where that service lives. Leave empty for a local Ollama on this machine.",
+			ShowWhen: map[string][]string{"filler.vision.provider": {"ollama", "openai"}},
+		},
+		{
+			// ⚠ **Never falls back to `llm.api_key`, and that is the point rather than an
+			// omission.** Declaring a separate vision service means declaring its own credentials:
+			// inheriting would send the operator's hosted key to whatever host they just named,
+			// including `localhost`. A local Ollama needs no key, so the common case leaves this
+			// empty and nothing is sent.
+			Key: "filler.vision.api_key", EnvVar: "FILLER_VISION_API_KEY", Group: GroupFiller,
+			Kind: KindSecret, Default: "", Advanced: true,
+			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
+			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
+		},
+		{
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
