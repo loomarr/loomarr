@@ -98,6 +98,7 @@ start_app() {
   # nohup + a detached subshell so the server OUTLIVES this script: interrupting a run
   # must not take the stack down with it, or every ^C costs another cold start.
   # (No setsid — it is Linux-only and this is expected to run on the maintainer's Mac.)
+  # shellcheck disable=SC1091 # The generated runtime environment exists only during a smoke run.
   ( set -a && . "$WORK/env" && set +a \
       && nohup "$WORK/loomarr" > "$WORK/app.log" 2>&1 < /dev/null & ) || true
   # Record exactly what this process was started with, so the next run can tell whether
@@ -204,6 +205,7 @@ livetv_smoke() {
 
   say "starting loomarr on :$LT_PORT"
   ( cd "$ROOT" && go build -o "$LT_WORK/loomarr" ./cmd/loomarr )
+  # shellcheck disable=SC1091 # The generated runtime environment exists only during a smoke run.
   ( set -a && . "$LT_WORK/env" && set +a \
       && nohup "$LT_WORK/loomarr" > "$LT_WORK/app.log" 2>&1 < /dev/null & ) || true
   wait_for "localhost:$LT_PORT/healthz" "loomarr" 120

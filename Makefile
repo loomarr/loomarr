@@ -23,9 +23,9 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
 #
 # ⚠ This list is wider because the narrow one MISSED A REAL BREAK. Moving six superseded plans
 # into docs/engineering/archive/ left nine dangling references — in PROGRESS.md, in two
-# .claude/commands/, in design/, and in two Go doc comments — none of which the style set
+# agent workflows, design/, and two Go doc comments — none of which the style set
 # covers. Anything that can hold a relative link to a doc belongs here.
-LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .claude
+LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
 
 # CI-only shard passthrough for `make test` / `make check` (e.g. GO_SHARD=1/2). Empty by
 # default — see the note on the `test` target, and PW_SHARD for the same contract on the
@@ -55,6 +55,7 @@ GO_SHARD ?=
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 TAGS      := ffmpeg eval integration
+SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh))
 comma     := ,
 space     := $(subst ,, )
 TAGS_CSV  := $(subst $(space),$(comma),$(TAGS))
@@ -66,15 +67,58 @@ help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
+## ---- agent / worktree harness --------------------------------------------
+
+.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree bootstrap doctor agent-harness-test
+agent-start: ## register this worktree and claim shared outputs (TASK=... CLAIMS=a,b)
+	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)"
+
+agent-status: ## list tool-neutral agent sessions across every worktree
+	@./scripts/agent.sh status
+
+agent-renew: ## renew this worktree's claim lease (AGENT_LEASE_HOURS=12)
+	@./scripts/agent.sh renew
+
+agent-prune: ## remove expired entries from the shared agent registry
+	@./scripts/agent.sh prune
+
+agent-stop: ## release this worktree's task and shared-output claims
+	@./scripts/agent.sh stop
+
+agent-env: ## show this worktree's isolated ports, database, compose project, and artifact path
+	@./scripts/agent.sh env
+
+agent-baseline: ## run make check once per clean commit/toolchain and share the green result across worktrees
+	@./scripts/agent.sh baseline
+
+agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
+	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
+
+agent-worktree: ## create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in)
+	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" ./scripts/agent.sh worktree "$(TOPIC)"
+
+bootstrap: ## install frontend dependencies, run codegen, and prepare isolated local directories
+	@./scripts/agent.sh bootstrap
+
+doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
+	@./scripts/agent.sh doctor
+
+agent-harness-test: ## regression-test worktree isolation and shared-output claims
+	@./scripts/agent-harness-test.sh
+
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt vet tags-verify vet-tags lint test ## fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate)
+check: fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## fmt + shellcheck + vet (incl. tagged) + tag-list guard + lint + harness + unit tests (the default gate)
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
 	@out=$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*')); \
 	if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+
+.PHONY: shellcheck
+shellcheck: ## shellcheck every repository shell script
+	shellcheck $(SHELL_SCRIPTS)
 
 .PHONY: vet
 vet: ## go vet
@@ -148,7 +192,9 @@ build: ## build the loomarr binary (static, cgo-free — §16)
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
-	docker compose -f docker/compose.dev.yaml up -d
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev: $$COMPOSE_PROJECT_NAME — Tunarr http://localhost:$$TUNARR_DEV_PORT"; \
+	  docker compose -p "$$COMPOSE_PROJECT_NAME" -f docker/compose.dev.yaml up -d
 
 .PHONY: test-sso
 test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
@@ -172,7 +218,13 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# the :8080 bind and exited — while the stale one kept serving OLD code. That zombie cost
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
-	@sh scripts/dev-be-guard.sh
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}"; \
+	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
+	  sh scripts/dev-be-guard.sh; \
+	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
+	      sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
+	    exec $(GO) run github.com/air-verse/air@v1.67.3'
 	@# ⚠ STALE-BINARY WATCHDOG (scripts/dev-be-watchdog.sh). Even with `.air.toml`'s
 	@# stop_on_error=false + poll=true, Air can still end up ALIVE but not rebuilding (poll loop
 	@# stalled) — serving a frozen binary while your saves do nothing. Config can't detect its own
@@ -180,13 +232,17 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
 	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
 	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
-	@sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
-	    sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
-	  exec $(GO) run github.com/air-verse/air@v1.67.3'
-
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
-	docker compose -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev-gpu: $$COMPOSE_PROJECT_NAME — Tunarr http://localhost:$$TUNARR_DEV_PORT"; \
+	  docker compose -p "$$COMPOSE_PROJECT_NAME" -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d
+
+.PHONY: dev-fe
+dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its backend
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev-fe: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_FE_PORT -> $$LOOMARR_API"; \
+	  cd $(WEB) && pnpm --filter @loomarr/web dev
 
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
@@ -238,7 +294,7 @@ config-docs-verify: config-docs ## regenerated config docs must match committed 
 # that drifts. This one is derived from each package's own doc comment and its imports.
 #
 # ⚠ Writes ONE marker-delimited block inside design.md and refuses to run over a malformed
-# marker pair — the rest of the file is hand-written and authoritative (CLAUDE.md doc-first).
+# marker pair — the rest of the file is hand-written and authoritative (AGENTS.md doc-first).
 
 .PHONY: arch-docs
 arch-docs: ## regenerate the §2 package map in docs/design.md from the code
@@ -347,8 +403,10 @@ fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook galle
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: storybook
-storybook: ## Storybook dev workshop (the component gallery/contract) on :6006
-	cd $(WEB) && pnpm --filter @loomarr/web storybook
+storybook: ## Storybook dev workshop on this worktree's isolated port
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "storybook: http://localhost:$$LOOMARR_STORYBOOK_PORT"; \
+	  cd $(WEB) && pnpm --filter @loomarr/web exec storybook dev -p "$$LOOMARR_STORYBOOK_PORT" --no-open
 
 .PHONY: storybook-build
 storybook-build: ## offline storybook-static build (what fe-visual snapshots)
@@ -455,5 +513,5 @@ fe-build:
 	cd $(WEB) && pnpm codegen && pnpm --filter @loomarr/web build
 
 .PHONY: seed
-seed: ## populate a dev store via the real domain paths (approval gate honored — CLAUDE.md)
+seed: ## populate a dev store via the real domain paths (approval gate honored — AGENTS.md)
 	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed

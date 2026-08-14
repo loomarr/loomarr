@@ -51,7 +51,7 @@ func loomarrPackages(t *testing.T) map[string]*build.Package {
 		// Skip what `go list ./...` skips, plus the frontend tree and VCS metadata. A
 		// `testdata` directory is not a package even when it holds .go files.
 		switch d.Name() {
-		case ".git", "node_modules", "testdata", "web", ".claude":
+		case ".git", "node_modules", "testdata", "web", ".agents", ".claude":
 			return filepath.SkipDir
 		}
 

@@ -34,7 +34,7 @@ RETIRED=(
   # honest answer (`clips`, with `needsDecision` per row) is one word away from it.
   'IncomingAskDTO|V51e: one belt, one type — IncomingClipDTO, with needsDecision saying which end a clip is at'
   'NonTerminalOnly|V51e: PipelineFilter.ConveyorOnly returns running AND review — the two halves of one belt'
-  'body.Asks|V51e: the response carries `clips`; a clip appears exactly once, whichever end it is at'
+  'body.Asks|V51e: the response carries clips; a clip appears exactly once, whichever end it is at'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
   'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'

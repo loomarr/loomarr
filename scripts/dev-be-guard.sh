@@ -22,8 +22,12 @@
 
 set -eu
 
+REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}"
+REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd)"
+# shellcheck source=scripts/dev-processes.sh
+. "$REPO_ROOT/scripts/dev-processes.sh"
+
 PORT="${LOOMARR_DEV_PORT:-8080}"
-BIN_MATCH='tmp/loomarr-dev'
 
 # port_holder prints the PID listening on $PORT, or nothing. Tries ss, then lsof, then a
 # health probe as a last resort (some minimal containers have neither tool).
@@ -38,19 +42,13 @@ port_holder() {
 # loomarr_pids prints the PIDs of the actual dev server binary — matched by comm (`loomarr-dev`),
 # because the running binary's command name is NOT the `go run …` string pgrep -f would need.
 loomarr_pids() {
-  ps -e -o pid=,comm= 2>/dev/null | awk '$2=="loomarr-dev"{print $1}'
+  repo_pids_by_comm loomarr-dev "$REPO_ROOT"
 }
 
 # air_pids prints the PIDs of the Air processes (comm `air`) supervising this repo's dev build.
 # Matched by comm for the same reason loomarr_pids is — `pgrep -f air@` misses the exec'd child.
 air_pids() {
-  ps -e -o pid=,comm= 2>/dev/null | awk '$2=="air"{print $1}'
-}
-
-held_by_loomarr() {
-  # True when :$PORT is held AND a loomarr-dev binary is running — i.e. it's OUR zombie, safe
-  # to reclaim. A port held by something ELSE is never touched; we just report and stop.
-  [ -n "$(loomarr_pids)" ] && { curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; }
+  repo_pids_by_comm air "$REPO_ROOT"
 }
 
 if curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; then
@@ -58,6 +56,12 @@ if curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_
   HOLDER="$(port_holder || true)"
 
   if [ "${DEV_BE_REPLACE:-0}" = "1" ]; then
+    # A matching process name elsewhere is not ownership. Only this worktree's cwd may be killed.
+    # shellcheck disable=SC2086 # PIDS is intentionally a word list.
+    if [ -z "$PIDS" ] || { [ -n "$HOLDER" ] && ! pid_in_list "$HOLDER" $PIDS; }; then
+      echo "dev-be: port $PORT is not owned by this worktree; refusing to replace it." >&2
+      exit 1
+    fi
     echo "dev-be: replacing the running loomarr dev server — SIGTERM air + loomarr-dev, then restart." >&2
     # Stop the Air supervisors FIRST (by comm) so they do not respawn the binary we kill next,
     # then the loomarr-dev binaries. By comm, never `pkill -f` (which misses the exec'd children)
@@ -86,7 +90,7 @@ if curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_
     echo "    Reload happens automatically on save — you probably don't need a new one." >&2
     echo "    To force a fresh start:  DEV_BE_REPLACE=1 make dev-be" >&2
   else
-    echo "    Holder pid: ${HOLDER:-unknown} (NOT a loomarr dev binary — left untouched)." >&2
+    echo "    Holder pid: ${HOLDER:-unknown} (NOT owned by this worktree — left untouched)." >&2
     echo "    Free :$PORT or set LOOMARR_DEV_PORT to a different port." >&2
   fi
   echo "" >&2

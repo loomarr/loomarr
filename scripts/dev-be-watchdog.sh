@@ -34,7 +34,10 @@
 
 set -u
 
-REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}"
+REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd)"
+# shellcheck source=scripts/dev-processes.sh
+. "$REPO_ROOT/scripts/dev-processes.sh"
 BIN="$REPO_ROOT/tmp/loomarr-dev"
 POLL_SECONDS="${DEV_BE_WATCHDOG_POLL:-10}"
 # 3 strikes × 10s = 30s of continuous staleness before we act. Air's poll_interval (0.5s) + delay
@@ -44,12 +47,12 @@ STALE_STRIKES="${DEV_BE_WATCHDOG_STRIKES:-3}"
 
 # air_alive: is an Air supervising this repo still running? (comm match, per dev-be-guard.sh.)
 air_alive() {
-  ps -e -o comm= 2>/dev/null | grep -qx air
+  [ -n "$(repo_pids_by_comm air "$REPO_ROOT")" ]
 }
 
 # loomarr_pids: PIDs of the running dev binary, by comm (NOT `pgrep -f`, which misses the exec'd child).
 loomarr_pids() {
-  ps -e -o pid=,comm= 2>/dev/null | awk '$2=="loomarr-dev"{print $1}'
+  repo_pids_by_comm loomarr-dev "$REPO_ROOT"
 }
 
 # newest_src_after_bin: prints a nonempty string iff at least one WATCHED .go source is newer than
@@ -72,6 +75,18 @@ newest_go_file() {
 }
 
 echo "dev-be-watchdog: watching for a wedged Air (binary $BIN; ${POLL_SECONDS}s poll, ${STALE_STRIKES} strikes)." >&2
+
+# The watchdog starts immediately before the pinned `go run air@...`. A cold tool build can take a few
+# seconds, so wait for this worktree's Air instead of interpreting startup as an already-dead watcher.
+startup_wait=0
+until air_alive; do
+  startup_wait=$((startup_wait + 1))
+  if [ "$startup_wait" -ge 30 ]; then
+    echo "dev-be-watchdog: Air did not start within 30s — exiting." >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 strikes=0
 nudged=0

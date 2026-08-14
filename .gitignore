@@ -26,6 +26,10 @@
 # `^data`, so this hides nothing real.
 /data*/
 
+# Per-worktree agent runtime. Never share SQLite files or scatter diagnostic captures in the root.
+/.agent-data/
+/.artifacts/
+
 # Go
 *.test
 *.out
