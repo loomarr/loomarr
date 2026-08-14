@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -61,15 +60,15 @@ const playoutTokenParam = "token"
 // (see scripts/check-retired.sh).
 const playoutPlanParam = "plan"
 
-// PlayoutSessions is the session surface the handlers need (implemented by playout.Manager).
-// Nil ⇒ the /playout/ routes still mount but report "not running", so a misconfigured install
-// gets an explanation rather than a 404 that looks like a wiring mistake.
-type PlayoutSessions interface {
-	// Attach connects a viewer to a (channel, target) and returns its chunk channel plus a detach
-	// func (§9.1 V47). The caller MUST call detach — it decrements the refcount that keeps the
-	// encoder alive. The tuner path attaches as TargetMediaServer; only the copy plan differs.
-	Attach(ctx context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error)
+// Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
+// prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
+type Playout interface {
+	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
+	OpenAsset(channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+}
 
+// PlayoutObserver is operational observation of playout, separate from the playback interface.
+type PlayoutObserver interface {
 	// Stats snapshots every live encoder for the dashboard (§12, V16).
 	Stats(now time.Time) []playout.SessionStat
 	// Capacity is the admission bound — the denominator in "2 / 4".
@@ -81,22 +80,6 @@ type PlayoutSessions interface {
 	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
 	// and the load-aware Resolve can legitimately pick differently between programs.
 	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress)
-}
-
-// PlayoutHLS is the HLS repackaging surface the Watch handlers need (§9.1, V46), implemented by
-// playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running", so an install without
-// internal playout wired explains itself rather than 404ing.
-type PlayoutHLS interface {
-	// Playlist starts (or joins) a channel's HLS remux for `plan` and returns the on-disk MASTER
-	// playlist path plus a detach func the caller MUST invoke — it releases the viewer refcount that
-	// keeps the remux, and through it the channel's encoder, alive. The plan selects the copy plan: a
-	// baseline client (h264) and an HEVC-capable client get SEPARATE remuxes/sessions of one channel,
-	// so an HEVC channel copies its video for the capable client while transcoding for the baseline one.
-	Playlist(channelID string, plan playout.EncodePlan) (playlistPath string, detach func(), err error)
-	// AssetPath resolves an HLS asset under a channel's `plan` remux — a variant playlist or a
-	// segment, by its path relative to the channel dir (e.g. "720p/seg-3.ts") — to its on-disk path
-	// for a live channel; ok=false when no remux is running or the path would escape the dir.
-	AssetPath(channelID string, plan playout.EncodePlan, rel string) (string, bool)
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.
@@ -198,7 +181,7 @@ func withPlan(rawURL string, t playout.EncodePlan) string {
 //   - The request context IS the disconnect signal. Nothing else reports it: the tuner path
 //     never re-requests, so there is no next request whose absence we could notice.
 func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutSessions == nil {
+	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
 		return
@@ -221,7 +204,9 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin), which ingests HEVC/AC3 and
 	// adapts per-client downstream — so it attaches as TargetMediaServer and keeps HEVC as a copy
 	// (§9.1 V47). The browser's HLS remux attaches as TargetBrowser separately.
-	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID, playout.PlanFull)
+	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
+		ChannelID: channelID, Plan: playout.PlanFull, Delivery: playout.DeliveryMPEGTS,
+	})
 	if err != nil {
 		// At capacity is a real, actionable condition rather than a generic failure: the
 		// operator can raise playout.max_channels or lower the quality tier so more channels
@@ -241,7 +226,8 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// MUST run: it is what decrements the refcount, and a leaked viewer keeps a channel
 	// encoding forever (playout.Manager.Attach).
-	defer detach()
+	defer presentation.Release()
+	chunks := presentation.Stream
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	// A live stream must never be cached, by the client or anything between us.
@@ -405,7 +391,7 @@ func (s *Server) playsInternally(ch store.Channel) bool {
 // grace window after the last fetch (the remux's own idle timer), and the refcount is taken-and-
 // released per fetch: each poll re-arms the grace timer, and when the polls stop, the timer fires.
 func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutHLS == nil {
+	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
 		return
@@ -416,8 +402,15 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, detach, err := s.playoutHLS.Playlist(channelID, clientPlan(r))
+	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
+		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
+	})
 	if err != nil {
+		if errors.Is(err, playout.ErrUnsupportedDelivery) {
+			s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
+				"Internal playout isn't running on this instance.")
+			return
+		}
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
@@ -432,16 +425,10 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Release THIS fetch's refcount as it returns — the remux's grace timer keeps it alive
 	// between the client's playlist polls (see the handler doc).
-	defer detach()
-
-	body, rerr := os.ReadFile(path)
-	if rerr != nil {
-		http.NotFound(w, r) // the playlist vanished between the readiness wait and now (teardown)
-		return
-	}
+	defer presentation.Release()
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(rewritePlaylistAuth(body, r.URL.RawQuery))
+	_, _ = w.Write(rewritePlaylistAuth(presentation.Manifest, r.URL.RawQuery))
 }
 
 // clientPlan reads the EncodePlan for a Watch HLS request (a browser OR a native app) from `?plan=`.
@@ -521,7 +508,7 @@ func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 // Same dual auth as the master playlist. The asset path (captured as a trailing wildcard) is
 // validated against traversal here AND again in AssetPath (defence in depth).
 func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutHLS == nil {
+	if s.playout == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -534,11 +521,12 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := s.playoutHLS.AssetPath(channelID, clientPlan(r), rel)
-	if !ok {
+	asset, ok, err := s.playout.OpenAsset(channelID, clientPlan(r), rel)
+	if err != nil || !ok {
 		http.NotFound(w, r)
 		return
 	}
+	defer func() { _ = asset.Content.Close() }()
 	// Content type by suffix — the only discriminator the asset carries. MPEG-TS segments (.ts) are
 	// the baseline plan; fMP4 segments (.m4s) and their init segment (init.mp4) are the HEVC plans
 	// (§9.1 V48 — HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless
@@ -552,7 +540,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	http.ServeFile(w, r, path)
+	http.ServeContent(w, r, rel, asset.Modified, asset.Content)
 }
 
 // registerPlayout mounts the playout streaming routes on the Huma API (§9.1, V47).

@@ -133,9 +133,8 @@ type Server struct {
 	liveConfigBoolOn func(key string) bool
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
-	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
-	// "not running" rather than 404, so a half-configured install gets an explanation.
-	playoutSessions PlayoutSessions
+	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
+	playoutObserver PlayoutObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -147,10 +146,8 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
-	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
-	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
-	// without internal playout wired explains itself rather than 404ing.
-	playoutHLS PlayoutHLS
+	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
@@ -754,9 +751,8 @@ type Options struct {
 	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
-	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
-	// playout.Manager. Nil ⇒ the routes mount but report "not running".
-	PlayoutSessions PlayoutSessions
+	// PlayoutObserver supplies operational snapshots and program progress.
+	PlayoutObserver PlayoutObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
@@ -764,9 +760,8 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
-	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
-	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
-	PlayoutHLS PlayoutHLS
+	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
