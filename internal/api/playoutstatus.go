@@ -115,7 +115,7 @@ func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutSta
 // probe that fails degrades to an empty header, never a failed request, because the channel health
 // (the load-bearing part) does not depend on it.
 func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
-	if s.playoutSessions == nil {
+	if s.playoutObserver == nil {
 		return PlayoutStatus{Channels: []ChannelHealth{}} // Tunarr-only: not our job
 	}
 
@@ -126,7 +126,7 @@ func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus
 
 	channels := make([]ChannelHealth, 0)
 	hwTranscoding := false
-	for _, st := range s.playoutSessions.Stats(now) {
+	for _, st := range s.playoutObserver.Stats(now) {
 		h := channelHealthFrom(st)
 		if id, ok := names[h.ChannelID]; ok {
 			h.Number, h.Name = id.number, id.name
