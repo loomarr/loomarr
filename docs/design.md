@@ -192,6 +192,8 @@ flowchart TD
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`prepared`**
+  Owns immutable, reusable playout publications.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`settings`** · 1 importer
@@ -1021,6 +1023,52 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
   its already-keyframe-aligned bytes into a rolling playlist.
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
+
+### One playout module, prepared first — not a second playback stack (V55–V56)
+
+The route layer must not choose between a live session, a live HLS remux, and prepared media. That
+choice is playout behavior, and exposing each mechanism gives every caller enough knowledge to make
+them drift. The production seam is therefore one deep **Playout** module. A client asks it to tune a
+`(Channel, EncodePlan, Delivery)` and receives a presentation; immutable follow-up resources are
+opened through the same module. The interface includes the ordering and lifetime rules callers need,
+but no encoder, scratch-directory, preparation-job, or cache-layout concepts.
+
+Inside that module, one deterministic timeline maps Channel plus wall clock to Airings. The guide,
+readiness planner, prepared origin, and live fallback all consume that same answer; none may maintain
+a private schedule. A tune resolves in this order:
+
+1. Resolve the authoritative Airing window and the client's canonical EncodePlan.
+2. Look up a complete prepared publication by `(source fingerprint, rendition contract, packaging
+   version)`. A publication is visible only after all of its immutable fragments and metadata have
+   validated and been atomically committed.
+3. On a hit, render the short wall-clock manifest over those shared fragments. Starting an encoder or
+   per-Channel packager on this path is a contract violation.
+4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
+   accepted Lineup, `AiringAt`, or guide.
+
+Preparation is a separate control-plane module because it has a different caller and lifetime, not
+because it is a second playout. Its small interface accepts a source plus rendition contract and
+returns the resulting publication. It hides probing, copy-versus-transcode, staging paths, fragment
+validation, retries, and atomic rename. The readiness planner submits work from the accepted schedule;
+it cannot write that schedule. Prepared identity is transport-independent: codec/profile/level,
+pixel format/HDR, audio codec/layout, dimensions, segment cadence, and packaging version are data.
+There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
+compatible renditions and render/fetch their transport; they do not redefine preparation identity.
+
+**V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
+at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
+adapter and every HTTP caller crosses the new seam. The old route-facing `PlayoutSessions` and
+`PlayoutHLS` interfaces are deleted in that cutover, not deprecated. The disposable
+`prototype_prepared` implementation is deleted after its wall-clock, reuse, discontinuity, and
+encoder-free contracts exist at the production seam. The live adapter and its per-Channel HLS scratch
+layout are removed when representative-media coverage meets the tune-time gate and the tuner path has
+a replacement; until then their names and removal conditions stay in the phase record.
+
+The V56 gate is: existing MPEG-TS and HLS route behavior passes through the one Playout interface;
+two Channels resolving one source/rendition reuse one publication; incomplete or stale publications
+are unreachable; a failed publish leaves the previous complete publication readable; and `make check`
+plus store conformance remain green. Safari Web activation and later native-TV adapters are later
+delivery gates and do not change this module shape.
 
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
@@ -3853,7 +3901,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **36 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **37 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -3876,6 +3924,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
+| `prepared` | Immutable, reusable playout publications — source/rendition identity through atomic visibility (§9.1 V56) |
 
 **The ports** — everything that talks to something outside the process. Each is a boundary with one implementation today and a second one plausible tomorrow:
 
