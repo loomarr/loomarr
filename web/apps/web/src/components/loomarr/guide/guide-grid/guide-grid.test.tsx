@@ -228,16 +228,24 @@ describe("GuideGrid", () => {
   // Hovering a block is how the detail card gets its subject.
   it("reports the hovered airing to the caller", async () => {
     const seen: (GuideAiring | null)[] = [];
+    let inspectedAnchor: HTMLElement | undefined;
     render(
       <GuideGrid
         fromMs={FROM}
         toMs={TO}
-        onInspect={(a) => seen.push(a)}
+        onInspect={(a, _channelId, anchor) => {
+          seen.push(a);
+          inspectedAnchor = anchor;
+        }}
         channels={[row("ch1", [airing({ kind: "program", title: "Heat", startMs: at(0), stopMs: at(30) })])]}
       />,
     );
-    block(/Heat/).focus();
+    const heat = block(/Heat/);
+    heat.focus();
     expect(seen.at(-1)?.title).toBe("Heat");
+    // The floating layer needs the real block, not a row-index estimate. Its positioner can
+    // then track scrolling and flip/shift against the actual viewport bounds.
+    expect(inspectedAnchor).toBe(heat);
     block(/Heat/).blur();
     expect(seen.at(-1)).toBeNull();
   });

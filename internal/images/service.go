@@ -200,6 +200,7 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		Width:       b.Dx(),
 		Height:      b.Dy(),
 		Bytes:       int64(len(data)),
+		Animated:    isAnimatedWebP(data, mime),
 		Placeholder: Placeholder(img),
 		DominantHex: DominantHex(img),
 		Meta:        req.Meta,
@@ -323,6 +324,21 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 		// An animation has one rendition and skips the ladder entirely; resizing it per breakpoint
 		// costs far more than it saves.
 		w = rec.Width
+		if f == FormatWebP && rec.MIME == "image/webp" {
+			// The original is already the card-sized animated WebP. Passing it through Decode +
+			// Encode would preserve only frame zero, which is precisely the hover regression this
+			// branch prevents. It is the one rendition; no derivative row or duplicate file exists.
+			path, pathErr := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+			if pathErr != nil {
+				return Rendition{}, ErrNotFound
+			}
+			size, ok := s.blob.Stat(path)
+			if !ok {
+				return Rendition{}, ErrNotFound
+			}
+			_ = s.store.TouchImage(ctx, hash, s.now())
+			return Rendition{Path: path, ContentType: rec.MIME, Bytes: size, Hash: hash}, nil
+		}
 	}
 
 	dst, err := s.blob.DerivativePath(hash, w, f)
@@ -394,15 +410,24 @@ func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w in
 	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: int64(len(out)), Hash: rec.Hash}, nil
 }
 
-// URLFor builds the public URL of one rendition.
+// PathFor builds the same-origin path of one rendition for an in-app browser.
+//
+// A browser already has the right origin. Binding its image requests to server.public_url would
+// make every real rendition fail when that machine-client address is container-only or otherwise
+// unreachable from the viewer, while the inline ThumbHash misleadingly keeps painting.
+func (s *Service) PathFor(hash string, width int, f Format) string {
+	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, f.Ext())
+}
+
+// URLFor builds the public URL of one rendition for a machine/off-origin client.
 //
 // ⚠ Built from the operator-configured public base, never from a request header — see Config.
 func (s *Service) URLFor(hash string, width int, f Format) string {
 	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL()), "/")
-	return fmt.Sprintf("%s/v1/images/%s/w%d.%s", base, hash, width, f.Ext())
+	return base + s.PathFor(hash, width, f)
 }
 
-// SrcSet builds a `srcset` value for a role's whole ladder in one format.
+// SrcSet builds a same-origin `srcset` value for a role's whole ladder in one format.
 //
 // Width descriptors (`w`), not density (`2x`): the browser multiplies our `sizes` by the device's
 // DPR when choosing, so `w` already covers retina and a density list would be a second, redundant
@@ -411,7 +436,7 @@ func (s *Service) SrcSet(hash string, role Role, f Format) string {
 	widths := role.Widths()
 	parts := make([]string, 0, len(widths))
 	for _, w := range widths {
-		parts = append(parts, fmt.Sprintf("%s %dw", s.URLFor(hash, w, f), w))
+		parts = append(parts, fmt.Sprintf("%s %dw", s.PathFor(hash, w, f), w))
 	}
 	return strings.Join(parts, ", ")
 }

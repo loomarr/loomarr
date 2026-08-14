@@ -705,11 +705,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
 			tmdbClient = ov.TMDB
 		}
-		// The Watch timeline's preview images (§9.1 V47) — a series episode's still or a movie's
-		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
-		// renders with no images, which is a supported (image-less) rendering.
+		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
+		// from the provisioning key. The shared fetcher warms cold interactive artwork before the
+		// response returns; without TMDB the surfaces use their supported image-less rendering.
 		if tmdbClient != nil {
-			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc}
+			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
 		}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
