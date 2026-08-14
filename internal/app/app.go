@@ -357,7 +357,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		chanNumbers = tunarrNumbers{pusher}
 		engine := channels.New(st, pusher, avail, connector, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
-			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
+			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
 			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
 			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density

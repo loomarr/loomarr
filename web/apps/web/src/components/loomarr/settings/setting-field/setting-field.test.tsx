@@ -1,5 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
-import { render as rtlRender, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -30,6 +30,43 @@ describe("SettingField", () => {
     expect(screen.getByRole("button", { name: /about library url/i })).toBeInTheDocument();
     // … and still in the DOM (visually hidden) for the control's aria-describedby (a11y).
     expect(screen.getByText("Base URL of your Emby/Jellyfin server.")).toBeInTheDocument();
+  });
+
+  it("uses the registry-owned label instead of deriving product copy from the key", () => {
+    render(<SettingField entry={entry({ label: "Media server address" })} value="" onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Media server address")).toBeInTheDocument();
+  });
+
+  it("edits Go durations in human units while preserving seconds on the wire", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "session.ttl", kind: "duration", label: "Sign-in lifetime" })}
+        value="720h"
+        onChange={onChange}
+      />,
+    );
+    const amount = screen.getByLabelText("Sign-in lifetime");
+    expect(amount).toHaveValue(30);
+    expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveTextContent("days");
+    fireEvent.change(amount, { target: { value: "14" } });
+    expect(onChange).toHaveBeenLastCalledWith("1209600s");
+  });
+
+  it("shows byte limits as MiB and emits bytes", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "images.max_upload_bytes", kind: "int", presentation: "bytes" })}
+        value="8388608"
+        onChange={onChange}
+      />,
+    );
+    const amount = screen.getByLabelText("Images max upload bytes");
+    expect(amount).toHaveValue(8);
+    expect(screen.getByText("MiB")).toBeInTheDocument();
+    fireEvent.change(amount, { target: { value: "16" } });
+    expect(onChange).toHaveBeenLastCalledWith("16777216");
   });
 
   it("emits edits as strings", async () => {
@@ -192,13 +229,13 @@ describe("SettingField", () => {
   it("falls back to the raw value when an enum ships no labels", async () => {
     render(
       <SettingField
-        entry={entry({ key: "sched.default_strategy", kind: "enum", enum: ["sequential", "shuffle"] })}
-        value="shuffle"
+        entry={entry({ key: "playout.backend", kind: "enum", enum: ["internal", "tunarr"] })}
+        value="internal"
         onChange={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByLabelText("Sched default strategy"));
-    expect(await screen.findByRole("option", { name: "sequential" })).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Playout backend"));
+    expect(await screen.findByRole("option", { name: "tunarr" })).toBeInTheDocument();
   });
 
   it("toggles a bool as a checkbox", async () => {

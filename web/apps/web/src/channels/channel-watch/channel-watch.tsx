@@ -6,7 +6,7 @@ import {
   type TrackDTO,
   unwrap,
 } from "@loomarr/api";
-import { Captions, Play, Volume2 } from "lucide-react";
+import { Play, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
@@ -24,7 +24,7 @@ import { languageLabel } from "./language-label";
 // §9.1 V47), so the control bar shows where you are in the schedule. This component owns the
 // surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater, the channel controls.
 //
-// ⚠ Audio and Subtitles are CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
+// ⚠ Audio is CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
 // is one encoder per channel fanned to every viewer, so a per-viewer track would fork the encode —
 // the one thing that model forbids. So these pickers write `policy.playout.*` for the whole
 // channel; a member sees the current values read-only. Quality is the ONLY per-viewer control, and
@@ -33,7 +33,7 @@ import { languageLabel } from "./language-label";
 interface ChannelWatchProps {
   channel: ChannelDTO;
   isAdmin: boolean;
-  /** Save a whole policy (channel-level audio/subtitle overrides). */
+  /** Save a whole policy (channel-level audio override). */
   onSavePolicy: (policy: ChannelPolicy) => void;
   /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
   mediaServerName?: string;
@@ -63,22 +63,6 @@ const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] =>
     if (!lang || seen.has(lang)) continue;
     seen.add(lang);
     opts.push({ value: lang, label: t.title ? `${languageLabel(lang)} · ${t.title}` : languageLabel(lang) });
-  }
-  return opts;
-};
-
-// subtitleOptions builds the Subtitle picker's choices. The policy is a MODE (off | burn) — burn-in
-// uses the preferred-language subtitle track (§9.1) — so the picker offers Off always, and Burn in
-// only when the airing media actually HAS a subtitle track to burn. Offering "Burn in" for media
-// with no subtitles would be a control that does nothing.
-const subtitleOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
-  const opts = [{ value: "off", label: "Off" }];
-  if (tracks.length > 0) {
-    const langs = [...new Set(tracks.map((t) => t.language).filter(Boolean))].map((l) =>
-      languageLabel(l ?? ""),
-    );
-    const detail = langs.length > 0 ? ` (${langs.join(", ")})` : "";
-    opts.push({ value: "burn", label: `Burn in${detail}` });
   }
   return opts;
 };
@@ -149,7 +133,6 @@ const ChannelWatch = ({
   });
   const airings = unwrap(timeline.data)?.airings ?? [];
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
-  const subtitleValue = channel.policy?.playout?.subtitles || "off";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
   // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it —
@@ -157,9 +140,8 @@ const ChannelWatch = ({
   // appended to the media-derived options when absent, labelled by its raw code. (Ported from the
   // old footer PolicyPicker.)
   const audioOpts = withSaved(audioOptions(tracksBody?.audio ?? []), audioValue || AUTO_SENTINEL);
-  const subtitleOpts = withSaved(subtitleOptions(tracksBody?.subtitles ?? []), subtitleValue);
 
-  const savePlayout = (patch: { audioLanguage?: string; subtitles?: string }) => {
+  const savePlayout = (patch: { audioLanguage?: string }) => {
     const next: ChannelPolicy = {
       ...channel.policy,
       playout: { ...channel.policy?.playout, ...patch },
@@ -190,7 +172,7 @@ const ChannelWatch = ({
     </>
   );
 
-  // Audio + Subtitle controls IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
+  // Audio control IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
   // move off the old footer pickers. Same channel-wide, admin-scoped semantics: a member sees the
   // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
   const barControls = (
@@ -203,19 +185,11 @@ const ChannelWatch = ({
         onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
         readOnly={!isAdmin}
       />
-      <TrackSelectMenu
-        icon={Captions}
-        label="Subtitles"
-        options={subtitleOpts}
-        value={subtitleValue}
-        onChange={(v) => savePlayout({ subtitles: v })}
-        readOnly={!isAdmin}
-      />
     </>
   );
 
   // The player. `live` = no seek; `scrubber` = full-width mini-guide; `topBar`/`timeLeft` = the live
-  // chrome; `barControls` = audio/subtitle menus beside fullscreen; `attach` binds hls.js. Fullscreen
+  // chrome; `barControls` = the audio menu beside fullscreen; `attach` binds hls.js. Fullscreen
   // is the player's OWN control. Rendered only when active so the stream is not requested until asked.
   const playerEl = (
     <VideoPlayer
@@ -272,13 +246,13 @@ const ChannelWatch = ({
           </button>
         )}
 
-        {/* Footer: the "open in your media server" hand-off. Audio/subtitles moved INTO the player's
+        {/* Footer: the "open in your media server" hand-off. Audio lives in the player's
             control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
         <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
           {isAdmin ? (
             <p className="text-muted-foreground text-xs">
-              Audio and subtitles are set for the whole channel — everyone watching sees the same, because one
-              encoder serves them all.
+              Audio is set for the whole channel — everyone watching hears the same track, because one encoder
+              serves them all.
             </p>
           ) : (
             <span />

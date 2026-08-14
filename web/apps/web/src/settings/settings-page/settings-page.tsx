@@ -70,6 +70,15 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   const results = patch.data?.status === 200 ? (patch.data.data.results ?? []) : undefined;
   const byGroup = (group: string) => entries.filter((e) => e.group === group);
+  const entriesFor = (block: SettingsPageProps["blocks"][number]) => {
+    const grouped = byGroup(block.group);
+    if (!block.keys) return grouped;
+    const byKey = new Map(grouped.map((entry) => [entry.key, entry]));
+    return block.keys.flatMap((key) => {
+      const entry = byKey.get(key);
+      return entry ? [entry] : [];
+    });
+  };
 
   // The live value of a key, honoring an unsaved edit over the resolved value — the same
   // rule SettingsFields uses. Shared with the footer render prop so a consequence panel
@@ -130,66 +139,61 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
         {children}
 
-        {/* Connection blocks (those with a check) stack tightly as self-diagnosing cards;
-            plain field groups keep their airy titled-section spacing. */}
-        {blocks.some((b) => b.check) && (
-          <div className="flex flex-col gap-3">
-            {blocks
-              .filter((b) => b.check && byGroup(b.group).length > 0)
-              .map((block) => {
-                const blockEntries = byGroup(block.group);
-                // A just-run Test wins; otherwise fall back to the checklist's standing
-                // verdict, so a block reports its health without a click (like the wizard).
-                const live = block.check ? testResult[block.check] : undefined;
-                const standing = standingFor(block.check);
-                const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
-                return (
-                  <ConnectionBlock
-                    key={block.group}
-                    title={block.title}
-                    {...(block.footer ? { footer: block.footer } : {})}
-                    verdict={verdict}
-                    docHref={standing?.docHref}
-                    open={openBlocks?.[block.group] ?? false}
-                    onToggle={() => toggleBlock(block.group)}
-                    action={
-                      <Button
-                        variant="outline"
-                        onClick={() => test(block.check as string)}
-                        disabled={testing !== undefined}
-                      >
-                        {testing === block.check ? "Testing…" : "Test connection"}
-                      </Button>
-                    }
-                  >
-                    <SettingsFields
-                      entries={blockEntries}
-                      values={edits}
-                      onChange={setEdit}
-                      results={results}
-                      onEnvOverride={onEnvOverride}
-                    />
-                  </ConnectionBlock>
-                );
-              })}
-          </div>
-        )}
-
-        {/* Plain field groups (no check) — a flat titled section each. */}
-        {blocks
-          .filter((b) => !b.check && byGroup(b.group).length > 0)
-          .map((block) => (
-            <section key={block.group} className="flex flex-col gap-4">
+        {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
+            checked block before every ordinary one, which put the 45-field Filler operation
+            panel above Scheduling even though Defaults declared Scheduling first. */}
+        {blocks.map((block) => {
+          const blockEntries = entriesFor(block);
+          if (blockEntries.length === 0) return null;
+          if (block.check) {
+            // A just-run Test wins; otherwise fall back to the checklist's standing
+            // verdict, so a block reports its health without a click (like the wizard).
+            const live = testResult[block.check];
+            const standing = standingFor(block.check);
+            const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            return (
+              <div key={block.title} className="flex flex-col gap-3">
+                <ConnectionBlock
+                  title={block.title}
+                  {...(block.footer ? { footer: block.footer } : {})}
+                  verdict={verdict}
+                  docHref={standing?.docHref}
+                  open={openBlocks?.[block.group] ?? false}
+                  onToggle={() => toggleBlock(block.group)}
+                  action={
+                    <Button
+                      variant="outline"
+                      onClick={() => test(block.check as string)}
+                      disabled={testing !== undefined}
+                    >
+                      {testing === block.check ? "Testing…" : "Test connection"}
+                    </Button>
+                  }
+                >
+                  <SettingsFields
+                    entries={blockEntries}
+                    values={edits}
+                    onChange={setEdit}
+                    results={results}
+                    onEnvOverride={onEnvOverride}
+                  />
+                </ConnectionBlock>
+              </div>
+            );
+          }
+          return (
+            <section key={block.title} className="flex flex-col gap-4">
               <h2 className="font-semibold text-lg">{block.title}</h2>
               <SettingsFields
-                entries={byGroup(block.group)}
+                entries={blockEntries}
                 values={edits}
                 onChange={setEdit}
                 results={results}
                 onEnvOverride={onEnvOverride}
               />
             </section>
-          ))}
+          );
+        })}
 
         {typeof footer === "function" ? footer({ liveValue }) : footer}
 

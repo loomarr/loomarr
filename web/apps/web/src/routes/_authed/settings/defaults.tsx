@@ -15,11 +15,15 @@ const DefaultsSettings = () => (
     title="Defaults"
     // A paired parenthetical: swapping both em-dashes for commas made a four-comma sentence
     // where the aside and the list ran together. Split instead.
-    description="What a new channel inherits: ordering, how gaps are filled, and the programming policy. Also where your filler comes from and how densely breaks play. Browse and tag the clips themselves on the Filler page; each channel can override any of this on its own Programming section."
+    description="What a new channel inherits. Existing channels keep their own overrides; filler ingestion and processing live on the Filler page."
     entries={useSettingsEntries()}
     blocks={[
       { group: "channels", title: "Scheduling defaults" },
-      { group: "filler", title: "Filler library", check: "filler" },
+      {
+        group: "filler",
+        title: "Break defaults",
+        keys: ["filler.breaks_per_hour", "filler.pod_max"],
+      },
     ]}
   />
 );

@@ -250,26 +250,28 @@ type SettingEnumOption struct {
 }
 
 type SettingEntry struct {
-	Key         string              `json:"key"`
-	Group       string              `json:"group"`
-	Kind        string              `json:"kind"`
-	Value       string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
-	Set         bool                `json:"set" doc:"For secrets: whether a value is stored."`
-	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
-	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
-	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
-	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
-	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
-	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
-	Advanced    bool                `json:"advanced"`
-	Secret      bool                `json:"secret"`
-	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
-	EnumOptions []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
-	ShowWhen    map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
-	RequiredFor string              `json:"requiredFor,omitempty"`
-	Doc         string              `json:"doc"`
-	UpdatedBy   string              `json:"updatedBy,omitempty"`
-	UpdatedAt   string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+	Key          string              `json:"key"`
+	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
+	Group        string              `json:"group"`
+	Kind         string              `json:"kind"`
+	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance   string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution      bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable  bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride  bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar       string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
+	Advanced     bool                `json:"advanced"`
+	Secret       bool                `json:"secret"`
+	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
+	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
+	RequiredFor  string              `json:"requiredFor,omitempty"`
+	Doc          string              `json:"doc"`
+	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
 // SettingResult is one key's PATCH outcome (config-design §8).

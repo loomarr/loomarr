@@ -52,7 +52,7 @@ func (s *Server) registerSettings(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
-		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
+		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretRegenerate)
 }
@@ -247,7 +247,7 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 }
 
 type secretRevealInput struct {
-	Name string `path:"name" enum:"session_secret,api_token" doc:"Which generated secret to reveal."`
+	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to reveal."`
 }
 
 type secretRevealOutput struct {
@@ -279,7 +279,7 @@ func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secr
 }
 
 type secretRegenerateInput struct {
-	Name string `path:"name" enum:"session_secret,api_token" doc:"Which generated secret to rotate."`
+	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to rotate."`
 }
 
 type secretRegenerateOutput struct {
