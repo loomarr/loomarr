@@ -2,8 +2,9 @@
 
 set -eu
 
-SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 TMP="$(mktemp -d)"
+TMP="$(CDPATH='' cd -- "$TMP" && pwd -P)"
 pids=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
 trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third"' EXIT INT TERM

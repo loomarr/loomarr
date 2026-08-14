@@ -41,6 +41,13 @@ Before pushing, run the complete required gates for the touched areas; `make che
 gate. Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
 `make agent-prune`. When finished, run `make agent-stop`.
 
+## Delivery
+
+Completed, validated implementation work is published as a pull request and set to auto-merge by
+default. Leave it as a draft only while required gates or requested work remain. Do not publish or
+enable auto-merge when the task explicitly asks for local-only changes, a review checkpoint, or a
+different delivery path.
+
 ## Prime directives
 
 1. Gates are hard. Never stub, skip, delete, or weaken a test to make a gate green.

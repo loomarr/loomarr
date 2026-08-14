@@ -3,9 +3,9 @@
 
 set -eu
 
-SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
-ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)}"
-ROOT="$(CDPATH='' cd -- "$ROOT" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd -P)}"
+ROOT="$(CDPATH='' cd -- "$ROOT" && pwd -P)"
 
 common_dir() {
 	git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir

@@ -3,11 +3,13 @@
 
 set -eu
 
-ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}"
-ROOT="$(CDPATH='' cd -- "$ROOT" && pwd)"
+ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)}"
+ROOT="$(CDPATH='' cd -- "$ROOT" && pwd -P)"
 
 primary_worktree() {
-	git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1
+	primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
+	[ -n "$primary" ] || return 1
+	(CDPATH='' cd -- "$primary" && pwd -P)
 }
 
 slugify() {

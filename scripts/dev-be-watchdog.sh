@@ -34,8 +34,8 @@
 
 set -u
 
-REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)}"
-REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd)"
+REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)}"
+REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd -P)"
 # shellcheck source=scripts/dev-processes.sh
 . "$REPO_ROOT/scripts/dev-processes.sh"
 BIN="$REPO_ROOT/tmp/loomarr-dev"
