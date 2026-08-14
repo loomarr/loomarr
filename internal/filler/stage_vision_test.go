@@ -200,10 +200,16 @@ func TestVisionStage_DropsBrandNotInVisibleText(t *testing.T) {
 // Found running the real vision job against the dev catalog; goes RED if the unwrap is removed.
 func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	st := newFakeVisionStore()
-	// The model fenced its answer exactly as llava does in dev. "Ford" IS in the visibleText so it
-	// grounds; "cars" is NOT (a car ad rarely prints the word "cars"), so category is correctly
-	// dropped by the same grounding rule — this test is about the FENCE unwrap, and the grounding
-	// staying intact through it is the point.
+	// The model fenced its answer exactly as llava does in dev. All THREE fields must survive the
+	// unwrap: "Ford" grounds because it is in the visibleText, and "cars" grounds because it
+	// resolves in the taxonomy.
+	//
+	// ⚠ This asserted category was DROPPED until V54b, on the grounds that "a car ad rarely prints
+	// the word 'cars'". That observation was correct and was the whole problem: it made the field
+	// nearly unfillable, and `segmentVerdict` refuses an untagged segment before it ever consults
+	// boundary confidence. Category is now taxonomy-grounded rather than frame-text-grounded
+	// (§10 V54b); brand and era are unchanged and still require the frame — see
+	// TestVisionStage_DropsBrandNotInVisibleText, which must stay green.
 	prov := &scriptedProvider{answer: "```json\n{\"visibleText\":\"FORD MUSTANG\",\"brand\":\"Ford\",\"era\":0,\"category\":\"cars\"}\n```"}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
@@ -215,8 +221,24 @@ func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	if got.visibleText != "FORD MUSTANG" {
 		t.Errorf("visibleText = %q, want it recorded from inside the fence", got.visibleText)
 	}
-	if got.category != "" {
-		t.Errorf("category = %q, want it DROPPED — 'cars' is not in the visible text, so it stays ungrounded even through the fence", got.category)
+	if got.category != "cars" {
+		t.Errorf("category = %q, want 'cars' grounded through the fence — it resolves in the taxonomy", got.category)
+	}
+}
+
+// ⚠ THE replacement guarantee for category (§10 V54b). Dropping the visibleText condition did not
+// make the field open: the model still cannot invent one, because an unresolvable claim is
+// discarded. The TAXONOMY is the constraint now, and this test is what says so.
+func TestVisionStage_DropsCategoryNotInTheTaxonomy(t *testing.T) {
+	st := newFakeVisionStore()
+	// A confident, plausible-sounding category that is not a taxon. Also the shape of the measured
+	// llava:7b failure, which answered with the prompt's own option list as a single string.
+	prov := &scriptedProvider{answer: `{"visibleText":"BUY NOW","brand":"","era":0,"category":"infomercial-ish"}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
+		t.Fatal("the clip did not apply")
+	}
+	if got := st.tags["silent.mp4"].category; got != "" {
+		t.Errorf("category = %q, want it DROPPED — it is not in the taxonomy", got)
 	}
 }
 

@@ -215,15 +215,25 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	if out.Era >= 1930 && out.Era <= 2035 && strings.Contains(v.VisibleText, strconv.Itoa(out.Era)) {
 		v.Era = out.Era
 	}
-	// CATEGORY — TAXONOMY-grounded (§10 V45a) AND read off the frame.
+	// CATEGORY — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
 	//
-	// ⚠ Grounded on the RAW claim, resolved for STORAGE. The visibleText check uses what the model
-	// SAID it read, because that is the token that could actually appear on a frame — a slug like
-	// `fast_food` is a machine id, not on-screen text. Only after the raw claim is confirmed
-	// present is it canonicalised, so the anti-fabrication guarantee is unchanged while resolution
-	// still maps `burgers`→`fast_food`.
-	if raw := strings.TrimSpace(out.Category); raw != "" && forest != nil &&
-		strings.Contains(haystack, strings.ToLower(raw)) {
+	// ⚠ **It used to require the word on the frame, and V54b removed that.** The condition was
+	// `strings.Contains(haystack, strings.ToLower(raw))`, applying the brand/era rule to a field
+	// that makes a different kind of claim. A brand or a year is a specific FACT, and asserting one
+	// the frame does not show is fabrication that is wrong in a checkable way. A category is a
+	// JUDGEMENT ABOUT IMAGERY — calling a toy advert `toys` because it shows toys is the reason a
+	// vision tier exists, and demanding the genre be printed on screen does not make the judgement
+	// honest, only rare.
+	//
+	// ⚠ Measured 2026-08-13: on a 37-segment reel with a model answering correctly every time, the
+	// old condition admitted ZERO categories — `psa` was dropped against visibleText
+	// "WAGA-5/Fox Commercial Breaks (2/5/1995)", while `era` grounded from the same string because
+	// "1995" is in it. `segmentVerdict` refuses an untagged segment BEFORE it consults boundary
+	// confidence, so this one condition made split auto-confirm structurally impossible.
+	//
+	// ⚠ The TAXONOMY is what keeps this grounded rather than open: an unresolvable category is
+	// still dropped, so the vocabulary is the constraint. Resolution still maps `burgers`→`fast_food`.
+	if raw := strings.TrimSpace(out.Category); raw != "" && forest != nil {
 		if slug, ok := forest.Resolve(raw); ok {
 			v.Category = slug
 		}
