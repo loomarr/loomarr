@@ -118,7 +118,7 @@ fmt: ## gofmt -l (fails if any file needs formatting)
 
 .PHONY: shellcheck
 shellcheck: ## shellcheck every repository shell script
-	shellcheck $(SHELL_SCRIPTS)
+	shellcheck -S style $(SHELL_SCRIPTS)
 
 .PHONY: vet
 vet: ## go vet

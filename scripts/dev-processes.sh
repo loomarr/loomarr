@@ -13,7 +13,9 @@ process_cwd() {
 	elif command -v lsof >/dev/null 2>&1; then
 		raw_cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
 	fi
-	[ -n "$raw_cwd" ] && canonical_dir "$raw_cwd" || true
+	if [ -n "$raw_cwd" ]; then
+		canonical_dir "$raw_cwd"
+	fi
 }
 
 repo_pids_by_comm() {
