@@ -235,7 +235,9 @@ case "${1:-run}" in
     say "forcing a FIRST RUN (wiping the smoke database + Tunarr)"; down ;;
   run) shift || true ;;
 esac
-[ "${1:-}" = "reset" ] && shift || true
+if [ "${1:-}" = "reset" ]; then
+  shift
+fi
 
 [ -f "$ROOT/.env" ] || { echo "no .env — the smoke needs your real LIBRARY_URL/TMDB_API_KEY/LLM_URL"; exit 1; }
 

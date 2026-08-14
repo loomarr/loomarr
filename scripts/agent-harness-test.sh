@@ -8,6 +8,11 @@ pids=
 # shellcheck disable=SC2154 # pid is the loop variable inside the trap evaluated at exit.
 trap 'for pid in $pids; do kill "$pid" 2>/dev/null || true; done; rm -rf "$TMP" "$TMP-wt" "$TMP-third"' EXIT INT TERM
 
+step() {
+	echo "agent-harness-test: $*"
+}
+
+step 'environment isolation'
 git -C "$TMP" init -q
 git -C "$TMP" config user.email test@example.invalid
 git -C "$TMP" config user.name 'Harness Test'
@@ -30,6 +35,7 @@ fi
 overridden="$(LOOMARR_REPO_ROOT="$TMP-wt" LOOMARR_DEV_PORT=23456 "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
 
+step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep -q 'first.*openapi-client'
 if LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" start second openapi-client >/dev/null 2>&1; then
@@ -45,6 +51,7 @@ LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" stop >/dev/null
 
 # Leases can be extended explicitly, and abandoned entries can be pruned without touching worktrees.
+step 'lease renewal and pruning'
 AGENT_LEASE_HOURS=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start renewable agent-contract >/dev/null
 session_id="$(printf '%s' "$TMP" | cksum | awk '{print $1}')"
 session_path="$(git -C "$TMP" rev-parse --path-format=absolute --git-common-dir)/loomarr-agents/sessions/$session_id"
@@ -62,6 +69,7 @@ if LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" status | grep -q abandoned; t
 fi
 
 # One clean-commit baseline is shared through the common Git directory.
+step 'shared baseline cache'
 mkdir -p "$TMP/fake-bin"
 # shellcheck disable=SC2016 # BASELINE_LOG must expand when the generated fixture executes.
 printf '%s\n' '#!/usr/bin/env sh' 'echo run >> "$BASELINE_LOG"' > "$TMP/fake-bin/make"
@@ -74,6 +82,7 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 [ "$(wc -l < "$baseline_log" | tr -d ' ')" = 1 ]
 
 # Process ownership is the worktree cwd, not the globally shared process name.
+step 'process ownership'
 cp "$(command -v sleep)" "$TMP/loomarr-dev"
 cp "$(command -v sleep)" "$TMP-wt/loomarr-dev"
 ( cd "$TMP" && exec ./loomarr-dev 30 ) & first_pid=$!; pids="$pids $first_pid"
@@ -85,6 +94,7 @@ sleep 0.1
 [ "$(repo_pids_by_comm loomarr-dev "$TMP-wt")" = "$second_pid" ]
 
 # Worktree creation is product-neutral and does not copy credentials by default.
+step 'worktree creation'
 printf 'SECRET=fixture\n' > "$TMP/.env"
 WORKTREE_PATH="$TMP-third" AGENT_WORKTREE_SKIP_BOOTSTRAP=1 LOOMARR_REPO_ROOT="$TMP" \
 	"$SCRIPT_DIR/agent.sh" worktree third >/dev/null

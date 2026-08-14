@@ -1,18 +1,24 @@
 #!/usr/bin/env sh
 # Shared process-ownership helpers for dev-be. Source this file; do not execute it.
 
+canonical_dir() {
+	CDPATH='' cd -- "$1" 2>/dev/null && pwd -P
+}
+
 process_cwd() {
 	pid="$1"
+	raw_cwd=
 	if [ -e "/proc/$pid/cwd" ]; then
-		readlink "/proc/$pid/cwd" 2>/dev/null || true
+		raw_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
 	elif command -v lsof >/dev/null 2>&1; then
-		lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
+		raw_cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
 	fi
+	[ -n "$raw_cwd" ] && canonical_dir "$raw_cwd" || true
 }
 
 repo_pids_by_comm() {
 	wanted_comm="$1"
-	wanted_root="$2"
+	wanted_root="$(canonical_dir "$2")"
 	ps -e -o pid=,comm= 2>/dev/null | awk -v comm="$wanted_comm" '
 		{
 			pid=$1
