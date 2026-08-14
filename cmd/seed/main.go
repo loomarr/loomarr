@@ -3,9 +3,9 @@
 // live channel with a real desired lineup, and a handful of filler clips — so the
 // UI can be exercised without a live media server / Tunarr / *arr stack.
 //
-// It exists to satisfy `make seed` (CLAUDE.md harness contract). The one rule that
+// It exists to satisfy `make seed` (AGENTS.md harness contract). The one rule that
 // shapes every line below: seed goes through the SAME domain paths the app does and
-// NEVER writes raw rows that skip a gate. Concretely (CLAUDE.md do-nots):
+// NEVER writes raw rows that skip a gate. Concretely (AGENTS.md do-nots):
 //
 //   - `available` titles are produced ONLY by suggest.Approve — the single approval
 //     gate. Seed builds a submitted proposal and approves it, exactly as the admin's
@@ -234,7 +234,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		return fmt.Errorf("get proposal: %w", err)
 	}
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
-	// than writing `available` rows directly — CLAUDE.md's do-not list names that explicitly.
+	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
 	enq, err := suggest.Approve(ctx, st, stored, nil, adminID, time.Now)
 	if err != nil {
 		return fmt.Errorf("approve (the gate): %w", err)

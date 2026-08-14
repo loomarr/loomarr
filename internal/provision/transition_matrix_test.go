@@ -190,7 +190,7 @@ func randomRecord(rng *rand.Rand, base time.Time) Record {
 }
 
 // TestApplyProperties is a seeded, plain-Go property loop (no framework, no new
-// deps — CLAUDE.md testing rules). Over many random Record × Event × now draws it
+// deps — AGENTS.md testing rules). Over many random Record × Event × now draws it
 // asserts the invariants Apply promises (transition.go doc):
 //
 //   - Absorbing terminal set: once State.Terminal(), no further event changes any

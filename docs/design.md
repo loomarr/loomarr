@@ -1,7 +1,7 @@
 # Virtual Channel Builder — Design Doc
 
 **Status:** Draft for implementation
-**Audience:** Claude Code (build agent) + maintainer
+**Audience:** coding agents + maintainer
 **Working name:** `loomarr` — weaves your library into TV channels, and follows the *arr / Servarr naming convention since it lives in that stack (alongside Sonarr/Radarr, which it drives). Container image `loomarr`. Rename freely.
 
 > Supersedes the earlier "Channel Content Provisioner" framing. The app's purpose is to **build and maintain virtual TV channels end to end**: from a natural-language intent, through content acquisition, to a live Tunarr channel that stays filled. "Provisioning" is one subsystem of that, not the product.
@@ -231,7 +231,7 @@ flowchart TD
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`
-  The shared test doubles and pinned fixtures every test uses (CLAUDE.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 5**
 
@@ -3743,7 +3743,7 @@ The rule this encodes: **a claim about behaviour belongs next to a test, or it b
 
 **Two repo-facing sets sit beside the embedded one** — rendered by GitHub and the site, never embedded, because they answer questions you have *before* you have a running instance to open Help in:
 - **`docs/install/`** — the operator path: choosing a playout backend, the compose walkthrough, hardware acceleration (`/dev/dri` passthrough, NVENC via the container toolkit), and upgrading against forward-only migrations. The configuration **reference** is not written here: `docs/configuration.md` is generated from the settings registry (§15) and is cited, never restated.
-- **`docs/dev/`** — the contributor path: toolchain floors, the dev loop, the test layers, CI, and what is generated versus committed. ⚠ **This is the single home for those facts.** They were previously restated in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` and `AGENTS.md`, which disagreed with each other and with the tree; those files now link here rather than carrying a fifth copy.
+- **`docs/dev/`** — the contributor path: toolchain floors, the dev loop, the test layers, CI, and what is generated versus committed. ⚠ **This is the single home for detailed contributor facts.** `README.md`, `CONTRIBUTING.md`, and agent-specific adapters link here; `AGENTS.md` keeps only the concise, cross-harness operating contract needed at session start.
 
 **Companion design docs** (authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
 
@@ -4034,7 +4034,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
-**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (CLAUDE.md do-nots). Full mechanics: `config-design.md`.
+**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.
 
 ---
 
@@ -4250,7 +4250,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 20. Open questions & follow-ons
-Decisions formerly listed here now have v1 defaults baked into the doc (season precision → `series`, §6; pending-slot policy → pod-fill, §9; backfill placement → `stable`, §9) — all config-overridable. **Pre-publish decisions for the maintainer** (none block the build; Claude Code should use placeholders):
+Decisions formerly listed here now have v1 defaults baked into the doc (season precision → `series`, §6; pending-slot policy → pod-fill, §9; backfill placement → `stable`, §9) — all config-overridable. **Pre-publish decisions for the maintainer** (none block the build; coding agents should use placeholders):
 - **License** — pick before publishing (MIT/Apache-2.0 for permissive, GPL-3.0 if you want Jellyfin-style copyleft; Tunarr itself is Zlib).
 - **Name availability** — verify `loomarr` is free on GitHub, Docker Hub, and isn't squatted in the Servarr ecosystem before announcing.
 - **Go module path** — `github.com/<you>/loomarr`; agent builds against a placeholder until set.
@@ -4272,12 +4272,12 @@ Genuinely future work:
 
 ---
 
-## 21. Build plan for Claude Code (phased, verifiable)
+## 21. Build plan for coding agents (phased, verifiable)
 
 Each phase ends green (compiles + its tests pass) before the next.
 
 0. **Contract spikes (with the maintainer, against real services).** Before any product code: verify the risky external contracts against the maintainer's live homelab and **pin the evidence into the repo**. (a) Tunarr: exercise channel CRUD + lineup + filler-list calls against a throwaway test channel; vendor the spec to `api/vendor/tunarr-openapi.json` with the tested version recorded; settle the API-key question (§6). (b) Sonarr/Radarr: trigger real `Test`, `Grab`, and `Download/Import` webhooks; capture the JSON verbatim to `internal/testkit/fixtures/` with source-version comments — the phase-6 handler is written against these, not against memory. (c) Media server: one authenticated `AuthenticateByName` + `SearchTerm` round-trip per flavor available. **If any contract deviates from §6/§9, stop and update this doc before proceeding.** Deliverables: pinned spec, fixtures, and a short findings note in PROGRESS.md.
-1. **Scaffold + build harness.** Module, `cmd/loomarr`, env config, `slog`, `/healthz`, **shared outbound HTTP client factory with per-service timeouts (§6)**, Dockerfile (distroless, non-root), compose skeleton (all profiles). **Harness:** `Makefile` target contract (`check`, `test`, `test-pg`, `openapi`, `openapi-verify`, `fe`, `e2e`, `dev`, `seed`), `.env.example` covering every §15 var, `internal/testkit/` skeleton (shared mocks for media server ×2 flavors, Tunarr, Seerr, TMDB, LLM + the Phase-0 fixtures), `PROGRESS.md`, and `CLAUDE.md` at the repo root. Repo layout:
+1. **Scaffold + build harness.** Module, `cmd/loomarr`, env config, `slog`, `/healthz`, **shared outbound HTTP client factory with per-service timeouts (§6)**, Dockerfile (distroless, non-root), compose skeleton (all profiles). **Harness:** `Makefile` target contract (`check`, `test`, `test-pg`, `openapi`, `openapi-verify`, `fe`, `e2e`, `dev`, `seed`), `.env.example` covering every §15 var, `internal/testkit/` skeleton (shared mocks for media server ×2 flavors, Tunarr, Seerr, TMDB, LLM + the Phase-0 fixtures), `PROGRESS.md`, and `AGENTS.md` at the repo root. Repo layout:
    ```
    cmd/loomarr/            # main
    internal/provision/     # §3–§4 domain + reconciler

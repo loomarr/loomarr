@@ -5,7 +5,7 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 ## ⚠ `PROGRESS.md` is the phase record, and issues do not replace it
 
 This repo tracked its first fifteen phases entirely through `PROGRESS.md` and pull
-requests, and issues came later — the tracker is now in regular use. CLAUDE.md still
+requests, and issues came later — the tracker is now in regular use. AGENTS.md still
 makes `PROGRESS.md` the authority on **phase status and gate evidence**, and nothing
 here changes that.
 
@@ -19,7 +19,7 @@ So the split is:
 - **`PROGRESS.md`** — one row per phase: status, the commit SHA + test command that
   proves the gate, and deviations. A phase is not done until its row says so.
 - **GitHub issues** — work that is not a phase: a bug found in passing, a follow-up
-  deliberately deferred, a ticket broken out of a plan by `/to-tickets`.
+  deliberately deferred, a ticket broken out of a plan by the `to-tickets` skill.
 
 An issue that duplicates a `PROGRESS.md` row is a bug in the process, not a second
 opinion. If a skill's output belongs in the phase record, put it there instead.
@@ -37,7 +37,7 @@ Infer the repo from `git remote -v` — `gh` does this automatically when run in
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; the `triage` skill reads this flag.)_
 
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
@@ -57,7 +57,7 @@ Run `gh issue view <number> --comments`.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+Used by the `wayfinder` skill. The **map** is a single issue with **child** issues as tickets.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.

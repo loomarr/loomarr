@@ -10,7 +10,7 @@ import (
 
 // An in-memory images.FetchStore for the adapter tests in this package.
 //
-// ⚠ It lives here rather than in internal/testkit on purpose. The testkit's rule (CLAUDE.md) is one
+// ⚠ It lives here rather than in internal/testkit on purpose. The testkit's rule (AGENTS.md) is one
 // shared implementation per EXTERNAL service — a media server, Tunarr, Seerr, TMDB — so that no
 // phase invents a private mock of something the product talks to over a wire. The image store is
 // neither external nor a service: it is this codebase's own persistence interface, and the real

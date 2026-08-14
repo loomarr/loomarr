@@ -12,6 +12,7 @@ be restated here and in three other files, and the copies drifted apart. One hom
 - [Commands](docs/dev/commands.md) — every `make` target (generated)
 - [AI in this project](docs/dev/ai.md) — how it's built with coding agents, and what that
   expects of a contribution
+- [Agent development](docs/dev/agents.md) — shared sessions, claims, worktrees, and isolated runtimes
 
 ## Ground rules
 

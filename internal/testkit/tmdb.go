@@ -11,7 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
-// TMDB is the shared TMDB test double (CLAUDE.md: one mock per service). It
+// TMDB is the shared TMDB test double (AGENTS.md: one mock per service). It
 // serves a small in-memory catalog for /search/multi and answers /movie/{id} +
 // /tv/{id} exists-checks, so grounding tests can distinguish a real id from a
 // fabricated one (the id-not-in-catalog case is the LLM-hallucination path §8).

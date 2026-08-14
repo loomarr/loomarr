@@ -2,7 +2,7 @@
 // typed registry declares every app-managed setting exactly once, and resolution
 // (env > database > default), the Settings API, the wizard, feature gating, and
 // the generated docs all derive from it. A setting that isn't in the registry
-// does not exist (CLAUDE.md do-nots; config-design §2).
+// does not exist (AGENTS.md do-nots; config-design §2).
 //
 // The split (config-design §1): env-only keys — those needed before the database
 // opens, or that describe process topology (DATABASE_URL, AUTO_MIGRATE,

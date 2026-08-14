@@ -19,12 +19,30 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make help` |  | List targets |
 
+## Agent / worktree harness
+
+| Target | CI | What it does |
+| --- | --- | --- |
+| `make agent-start` |  | register this worktree and claim shared outputs (TASK=... CLAIMS=a,b) |
+| `make agent-status` |  | list tool-neutral agent sessions across every worktree |
+| `make agent-renew` |  | renew this worktree's claim lease (AGENT_LEASE_HOURS=12) |
+| `make agent-prune` |  | remove expired entries from the shared agent registry |
+| `make agent-stop` |  | release this worktree's task and shared-output claims |
+| `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
+| `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
+| `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
+| `make agent-worktree` |  | create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in) |
+| `make bootstrap` |  | install frontend dependencies, run codegen, and prepare isolated local directories |
+| `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
+| `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
+
 ## The default gate
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate) <br>*runs:* `fmt` `vet` `tags-verify` `vet-tags` `lint` `test` |
+| `make check` | ✅ | fmt + shellcheck + vet (incl. tagged) + tag-list guard + lint + harness + unit tests (the default gate) <br>*runs:* `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `test` |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
+| `make shellcheck` |  | shellcheck every repository shell script |
 | `make vet` |  | go vet |
 | `make vet-tags` |  | go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS) |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
@@ -43,6 +61,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on any Go change |
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
+| `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 
 ## Store conformance (Phase 3/4)
 
@@ -100,7 +119,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make fe-lint` |  | Biome lint + format check (web/) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
-| `make storybook` |  | Storybook dev workshop (the component gallery/contract) on :6006 |
+| `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
 | `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
 | `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` |
@@ -115,11 +134,11 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make smoke-livetv` |  | Live TV wiring vs a DISPOSABLE Jellyfin (destroyed after — never touches your media server) |
 | `make smoke-down` |  | tear down the smoke stack (container, volume, temp database) |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` |
-| `make seed` |  | populate a dev store via the real domain paths (approval gate honored — CLAUDE.md) |
+| `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
 
 ## What CI runs
 
-`arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

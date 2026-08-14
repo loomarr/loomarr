@@ -4,7 +4,7 @@
 // registry in internal/settings), resolved env > database > default at runtime —
 // NOT here. The classification rule (config-design §1): a key is env-only iff it
 // is needed before the DB opens or describes process topology. Adding an
-// app-managed knob here instead of the registry is the drift CLAUDE.md forbids.
+// app-managed knob here instead of the registry is the drift AGENTS.md forbids.
 package config
 
 import (

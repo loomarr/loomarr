@@ -14,7 +14,7 @@ import (
 // TestSearch_ParsesRealFixture pins the adapter against the LIVE-captured TMDB
 // /search/multi shape (fixtures/tmdb/search_multi_matrix.json, Phase-11 follow-up
 // capture). This is the "parsers against fixtures, not remembered field names"
-// rule (CLAUDE.md) applied to TMDB: if TMDB renames a field, this fails.
+// rule (AGENTS.md) applied to TMDB: if TMDB renames a field, this fails.
 func TestSearch_ParsesRealFixture(t *testing.T) {
 	body := testkit.Fixture(t, "tmdb/search_multi_matrix.json")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// LiveTV is the shared library.LiveTV test double (CLAUDE.md: one mock per
+// LiveTV is the shared library.LiveTV test double (AGENTS.md: one mock per
 // capability). It is an in-memory media-server Live TV surface that records
 // registered tuners/providers and guide-refresh pokes, so setup tests can assert
 // the idempotent enumerate-first behavior (§6 second-call-no-op) without the

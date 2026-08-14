@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// THE APPROVAL GATE HAS ONE IMPLEMENTATION (§7 decision D-K, CLAUDE.md prime directive 3).
+// THE APPROVAL GATE HAS ONE IMPLEMENTATION (§7 decision D-K, AGENTS.md prime directive 3).
 //
 // Edit-before-approve is the change most likely to grow a second acquisition path: the moment
 // an approver can modify a proposal, it becomes tempting to apply the edit in the handler and

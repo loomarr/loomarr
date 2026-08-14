@@ -10,7 +10,7 @@
 // settings registry.
 //
 // ⚠ It owns ONE marker-delimited block and must never write outside it. design.md is
-// hand-written and authoritative for behaviour (CLAUDE.md doc-first); this tool supplies
+// hand-written and authoritative for behaviour (AGENTS.md doc-first); this tool supplies
 // the mechanical inventory that prose should not have to restate.
 //
 // Deliberately emits no size metrics. See scan.go's Package doc for why.

@@ -4,7 +4,7 @@ import { DESKTOP, DETERMINISM } from "./playwright.shared";
 // THE MAINTAINER SMOKE (§21 Definition of Done, second half).
 //
 // This is NOT part of `make check`/`make e2e`, and must never be: those suites are
-// hermetic and mock every external service (CLAUDE.md — unit tests never touch the
+// hermetic and mock every external service (AGENTS.md — unit tests never touch the
 // network). This one is the opposite by design. It drives the REAL embedded SPA served
 // by a REAL loomarr binary against a REAL media server, TMDB, Ollama, and a purpose-built
 // throwaway Tunarr — because the per-phase gates have twice been green while the seams
