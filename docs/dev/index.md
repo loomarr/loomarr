@@ -1,7 +1,8 @@
 # Developing Loomarr
 
 This directory is the single source for how to build, run and test Loomarr. `README.md`,
-`CONTRIBUTING.md`, `CLAUDE.md` and `AGENTS.md` link here instead of keeping their own copies.
+`README.md`, `CONTRIBUTING.md`, and agent-specific adapters link here. `AGENTS.md` keeps the concise
+cross-harness contract and points here for detail.
 
 | Page | Answers |
 | --- | --- |
@@ -12,6 +13,7 @@ This directory is the single source for how to build, run and test Loomarr. `REA
 | [Codegen](codegen.md) | What's generated and what's committed |
 | [Commands](commands.md) | Every `make` target — generated, don't hand-edit |
 | [AI in this project](ai.md) | Built with coding agents, and what that expects of a PR |
+| [Agent development](agents.md) | Cross-harness sessions, claims, worktrees, and runtime isolation |
 
 ## The rules that matter
 
