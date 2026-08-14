@@ -16,7 +16,7 @@
 //
 // The orchestration here is testable with fake downloaders; the real yt-dlp exec +
 // Archive HTTP live behind the Downloader interface, so unit tests never touch the
-// network or the yt-dlp binary (CLAUDE.md testing rules).
+// network or the yt-dlp binary (AGENTS.md testing rules).
 package clipfetch
 
 import (

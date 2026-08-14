@@ -35,7 +35,7 @@ func iconPosterURL(hash string) string {
 // already-fetched rows and returning the hash each was given.
 //
 // ⚠ **The fetcher's host allowlist is EMPTY on purpose.** FetchNow is a real download path, and a
-// unit test must never touch the network (CLAUDE.md). An empty allowlist makes `checkURL` refuse
+// unit test must never touch the network (AGENTS.md). An empty allowlist makes `checkURL` refuse
 // before any dial, so the cold branch is exercised honestly — a fetch is attempted and fails —
 // without opening a socket. Anything that should appear as a suggestion is seeded as already
 // fetched instead, which is also the steady state on a real instance after the first minute.

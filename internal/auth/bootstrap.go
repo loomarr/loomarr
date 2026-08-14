@@ -26,7 +26,7 @@ var ErrInvalidBootstrap = errors.New("username and password are required")
 // ⚠ A var, not a const, ONLY so the test suite can lower it — see TestMain in this package.
 // Production never changes it, and nothing reads it from config: a cost knob an operator
 // could turn down is a way to weaken stored credentials by accident, which is exactly the
-// kind of "safety for convenience" trade §3 of CLAUDE.md forbids.
+// kind of "safety for convenience" trade §3 of AGENTS.md forbids.
 //
 // Why it is worth the seam: bcrypt is deliberately CPU-bound, and under `-race` on a CI
 // runner that cost dominates the entire Go job. Measured on this repo — `internal/api` +

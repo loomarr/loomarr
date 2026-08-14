@@ -5,7 +5,7 @@ import "fmt"
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
 // is its human mirror and `make config-docs` its generated reference. A key added
-// here without a matching §15 row (or vice versa) is the drift CLAUDE.md forbids.
+// here without a matching §15 row (or vice versa) is the drift AGENTS.md forbids.
 //
 // Env-only bootstrap keys (DATABASE_URL, AUTO_MIGRATE, LISTEN_ADDR, LOG_LEVEL, TZ)
 // are NOT here — they stay in config.Config (config-design §1 classification).

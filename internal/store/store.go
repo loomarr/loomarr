@@ -2,7 +2,7 @@
 // interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres
 // via pgx's database/sql shim). Dialect differences live only in migrations and
 // the ClaimDue* methods; everything else is shared code and one conformance
-// suite runs against both backends (CLAUDE.md: never fork the assertions).
+// suite runs against both backends (AGENTS.md: never fork the assertions).
 package store
 
 import (

@@ -1,7 +1,7 @@
 # Loomarr design prototypes — the visual reference
 
 These are the **authoritative reference for palette, typography, and idiom** — the
-"transmitted test card" look (CLAUDE.md "Seed docs"; `docs/frontend-design.md` §7). They
+"transmitted test card" look (AGENTS.md "Seed docs"; `docs/frontend-design.md` §7). They
 are Claude Design mockups in the `.dc.html` format — a self-contained prototype runtime
 (`support.js`), NOT the shippable frontend.
 

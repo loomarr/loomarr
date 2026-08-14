@@ -10,7 +10,7 @@ import (
 
 // Arg-shape tests are cheap and run everywhere. The ones that actually EXECUTE ffmpeg
 // live in ffmpeg_live_test.go behind a build tag, because unit tests must not depend on
-// a binary being present (CLAUDE.md: unit tests never touch the network, and the same
+// a binary being present (AGENTS.md: unit tests never touch the network, and the same
 // spirit applies to external executables).
 
 func argsAfter(args []string, flag string) (string, bool) {

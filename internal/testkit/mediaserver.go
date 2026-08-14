@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// MediaServer is the shared Emby/Jellyfin test double (CLAUDE.md: one shared
+// MediaServer is the shared Emby/Jellyfin test double (AGENTS.md: one shared
 // mock per service, both flavors). It serves the pinned Phase-0 fixtures so the
 // library adapter is tested against ground truth, never the network. It also
 // records the auth headers it received, so flavor-specific header construction

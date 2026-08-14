@@ -1,6 +1,6 @@
 // Package metrics is Loomarr's Prometheus surface (design §7 /metrics, §18).
 //
-// Scope note (honest, per CLAUDE.md "no silent caps"): this package currently
+// Scope note (honest, per AGENTS.md "no silent caps"): this package currently
 // exports the RED basics — HTTP request rate, errors, and duration — plus the
 // Go runtime + process collectors client_golang registers by default
 // (goroutines, GC, heap, open fds, CPU). That is the RED + USE foundation a

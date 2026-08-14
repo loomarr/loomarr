@@ -18,7 +18,7 @@ import (
 // task id drift across Emby/Jellyfin versions. These shapes are written against
 // the maintainer-supervised Phase-10 live capture pinned in
 // internal/testkit/fixtures/livetv/; if a capture contradicts these, update the
-// design doc §6 first, then this file (CLAUDE.md: fixtures are pinned truth).
+// design doc §6 first, then this file (AGENTS.md: fixtures are pinned truth).
 
 // LiveTV is the wiring capability the setup flow depends on (§6/§7). Implemented
 // by the media-server Client; abstracted so the API layer and tests don't couple

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Seerr is the shared Seerr test double (CLAUDE.md: one mock per service). It
+// Seerr is the shared Seerr test double (AGENTS.md: one mock per service). It
 // records requests and lets a test choose the status it returns, so the §6
 // idempotency contract (201 and 409 both = success) can be exercised.
 type Seerr struct {

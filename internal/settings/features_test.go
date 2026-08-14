@@ -129,7 +129,7 @@ func TestFeatures_UserSyncTracksMediaServerWiring(t *testing.T) {
 
 // Ingest is the one gate NOT derived from settings completeness (config-design §7): it
 // depends on whether the running IMAGE carries yt-dlp + ffmpeg. The probe is injected so
-// this never touches the filesystem (CLAUDE.md: unit tests stay off the disk).
+// this never touches the filesystem (AGENTS.md: unit tests stay off the disk).
 func TestFeatures_IngestGatesArchiveAndYouTubeSeparately(t *testing.T) {
 	svc := func(db map[string]string, present ...string) *Service {
 		s := featureService(t, db)

@@ -41,7 +41,7 @@ func startPostgres(t *testing.T) string {
 	return dsn
 }
 
-// TestPostgresConformance runs the SAME suite as SQLite (CLAUDE.md: one suite,
+// TestPostgresConformance runs the SAME suite as SQLite (AGENTS.md: one suite,
 // two backends — never forked). The concurrent-claim case is the point: it
 // exercises real FOR UPDATE SKIP LOCKED row locking, which SQLite can't.
 //

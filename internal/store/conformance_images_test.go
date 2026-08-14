@@ -9,7 +9,7 @@ import (
 )
 
 // Image service conformance (§22, V52). Part of the ONE suite both backends run — never forked per
-// dialect (CLAUDE.md). The dialect differences here are real (INTEGER vs BOOLEAN for `animated`,
+// dialect (AGENTS.md). The dialect differences here are real (INTEGER vs BOOLEAN for `animated`,
 // TEXT vs JSONB for `meta`, INTEGER vs BIGINT for the epochs), which is exactly why these
 // assertions must be shared: a Postgres-only surprise should fail a test, not a deployment.
 
