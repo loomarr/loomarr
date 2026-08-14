@@ -1623,6 +1623,145 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteSplitProposal(ctx, "sp_2"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
+
+	// --- UpdateSplitProposalSegments: grounding accumulates across passes (§10 V54) ---
+	//
+	// Split-time grounding is a read-modify-write spanning MINUTES of vision calls, so the write
+	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
+	p3 := filler.SplitProposal{
+		ID: "sp_3", ClipHash: "h:comps/1991.mp4", CreatedAt: now,
+		Segments: []filler.SplitSegment{
+			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one"},
+			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two"},
+		},
+	}
+	if err := s.UpsertSplitProposal(ctx, p3); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. The grounding fields round-trip — including `Looked`, which is what distinguishes
+	// "looked at and found nothing" from "not reached yet". Inferring it from Category/Era would
+	// make a resumable budget retry the ungroundable segments forever.
+	grounded := []filler.SplitSegment{
+		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
+		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); err != nil {
+		t.Fatal(err)
+	}
+	got3, err := s.GetSplitProposal(ctx, "sp_3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got3.Segments) != 2 {
+		t.Fatalf("segments after update = %+v, want 2", got3.Segments)
+	}
+	if !got3.Segments[0].Looked || got3.Segments[0].Category != "toys" || got3.Segments[0].Era != 1991 {
+		t.Errorf("grounding lost in round-trip: %+v", got3.Segments[0])
+	}
+	if !got3.Segments[1].Looked || got3.Segments[1].Category != "" {
+		t.Errorf("segment 1 = %+v, want Looked with NO category — 'looked and found nothing'", got3.Segments[1])
+	}
+	// ⚠ `created_at` must be untouched: ListSplitProposals orders by it, so writing it would let a
+	// reel jump the review queue merely for having been grounded.
+	if !got3.CreatedAt.Equal(p3.CreatedAt) {
+		t.Errorf("created_at moved on a grounding write: %v, want %v", got3.CreatedAt, p3.CreatedAt)
+	}
+
+	// 2. ⚠ **THE safety property: the update must NEVER insert.** If it were an upsert, a grounding
+	// write landing after `Confirm` consumed the proposal would RESURRECT it — a pending review for
+	// a reel already cut, pointing at a composite whose segments are in the catalog.
+	if err := s.DeleteSplitProposal(ctx, "sp_3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update after delete = %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_3"); !errors.Is(err, ErrNotFound) {
+		t.Error("a grounding write RESURRECTED a confirmed proposal — the reel would be reviewed twice")
+	}
+	if err := s.UpdateSplitProposalSegments(ctx, "sp_never_existed", grounded); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update of an unknown id = %v, want ErrNotFound", err)
+	}
+
+	// --- The other side of the no-foreign-key independence: the PRUNE takes proposals too ---
+	//
+	// ⚠ `filler_split_proposals` is a sibling of `clips` with no FK, so nothing cleaned it up.
+	// Measured 2026-08-11: deleting every clip file and running filler-sync pruned `clips` to 0
+	// and left **48** proposals behind, which Incoming rendered as 48 "compilations to review"
+	// titled with raw content hashes, each opening a review of a file that was gone.
+	keeper := clipAt("comps/keeper.mp4", "Keeper", filler.Commercial, 149_000)
+	orphan := clipAt("comps/orphan.mp4", "Orphan", filler.Commercial, 149_000)
+	for _, c := range []filler.Clip{keeper, orphan} {
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seg := []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}}
+	for id, hash := range map[string]string{"sp_keep": keeper.Hash, "sp_orphan": orphan.Hash} {
+		if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+			ID: id, ClipHash: hash, CreatedAt: now, Segments: seg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// ⚠ A KEEPER is enrolled first on purpose, so the assertion distinguishes "pruned the orphan"
+	// from "emptied the table" — a prune with a broken predicate passes the orphan check alone.
+	if _, err := s.DeleteClipsNotIn(ctx, []string{keeper.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_orphan"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("orphan proposal survived the prune = %v; Incoming would render it as a "+
+			"hash-titled reel pointing at a deleted compilation", err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_keep"); err != nil {
+		t.Errorf("the prune took a LIVE proposal with it: %v", err)
+	}
+	// ⚠ Asserted on the LIST too, because that is the surface the defect was seen on.
+	remaining, err := s.ListSplitProposals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].ID != "sp_keep" {
+		t.Errorf("ListSplitProposals = %+v, want only sp_keep", remaining)
+	}
+
+	// --- the sweep's tombstone: a REAPED composite survives the prune (§10 V54) ---
+	//
+	// ⚠ **The cascade this prevents.** The split sweep deletes a spent recording on purpose, so the
+	// next scan legitimately does not see it. Without the exemption `DeleteClipsNotIn` removes the
+	// row — and every clip cut out of that reel carries `parent_hash` pointing at it, so one sweep
+	// would dangle all of its children and take V45's lineage with it.
+	reaped := clipAt("comps/reaped.mp4", "Reaped", filler.Commercial, 149_000)
+	child := clipAt("cuts/child.mp4", "Child", filler.Commercial, 30_000)
+	child.ParentHash = reaped.Hash
+	for _, c := range []filler.Clip{reaped, child} {
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.MarkClipReaped(ctx, reaped.Hash, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// The scan now reports only the child — the reel's bytes are gone, which is the point.
+	if _, err := s.DeleteClipsNotIn(ctx, []string{child.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, reaped.Hash); err != nil {
+		t.Errorf("a reaped composite was pruned (%v) — every clip cut from it now has a dangling "+
+			"parent_hash", err)
+	}
+
+	// ⚠ …and the EMPTY-scan branch takes the same exemption. An unreadable drop folder is exactly
+	// when a swept reel looks most like a deleted one.
+	if _, err := s.DeleteClipsNotIn(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, reaped.Hash); err != nil {
+		t.Errorf("an empty scan pruned the reaped composite: %v", err)
+	}
 }
 
 // testClipPipeline covers the per-clip ingest pipeline's state (§10 V51b) on BOTH backends: the

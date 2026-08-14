@@ -168,7 +168,7 @@ func seedChannel(t *testing.T, st store.Store, id, name string, number int, back
 	}
 }
 
-// --- Device auth (§11). These are the negative cases CLAUDE.md §19 requires. ---
+// --- Device auth (§11). These are the negative cases AGENTS.md §19 requires. ---
 
 // EVERY playout route must reject a missing or wrong token. A television is the client, so
 // there is no session to fall back on — the token is the only auth these routes have.

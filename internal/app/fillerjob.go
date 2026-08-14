@@ -19,7 +19,10 @@ import (
 // `filler`, this belongs in `internal/filler/jobs.go` beside the rest.
 func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-sync", Title: "Sync filler catalog",
+		// A folder walk that hashes every file it finds, so it scales with the catalog rather
+		// than with what changed — minutes on a large drop folder, well past River's 1m default.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-sync", Title: "Sync filler catalog",
 		Description: "Re-reads your filler folder so new commercials and bumpers become available to the ad breaks between programmes.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
@@ -38,7 +41,10 @@ func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 // which is what an operator asking "why is nothing arriving?" actually needs to see.
 func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-fetch", Title: "Fetch new filler clips",
+		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
+		// its own, and this walks every registered source.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-fetch", Title: "Fetch new filler clips",
 		Description: "Checks the sources you've added for new commercials and downloads them. Everything fetched waits under Filler → Incoming until it's checked.",
 		DefaultCron: "0 0 */6 * * *", ScheduleKey: "job.filler_fetch.schedule",
 		Run: func(ctx context.Context) error { _, err := f.Run(ctx); return err },
@@ -66,7 +72,14 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 // each one re-read the entire catalog.
 func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-pipeline", Title: "Prepare new filler clips",
+		// ⚠ **`Timeout` is not optional on this job.** It runs ffmpeg and whisper, and River's
+		// default ceiling is ONE MINUTE — under which a single `blackdetect`/`silencedetect`
+		// pass over a 20-minute recording (measured at 40s alone) is SIGKILLed part-way, and
+		// the operator sees `signal: killed` rather than anything about time. Matched to
+		// `scheduler.LongJobTimeout`, which is the lease horizon: a job may run right up to the
+		// point its claim would expire, and no further.
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-pipeline", Title: "Prepare new filler clips",
 		Description: "Takes each new clip through the same steps in order — measuring it, re-encoding it, cutting up long recordings, listening to it, and working out what it advertises — so it's ready to air. Watch a clip move under Filler → Incoming.",
 		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
 		Run: func(ctx context.Context) error { _, err := p.RunOnce(ctx); return err },
@@ -88,5 +101,25 @@ func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
 		Description: "Recomputes every clip's rolled-up tags so they match the current tag categories. Runs after you edit the tag vocabulary yourself.",
 		DefaultCron: "0 5 * * * *", ScheduleKey: "job.filler_reindex.schedule",
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}
+
+// The split-review sweep (§10 V54): expired proposals are retired and their recordings reclaimed.
+//
+// ⚠ **This job needs `Timeout: scheduler.LongJobTimeout` and the `long` queue, and cannot declare
+// them yet.** Both land in #304, which is a sibling stack rather than a parent of this one — so
+// until it merges this runs under River's inherited one-minute default. A sweep over a large
+// backlog does real file I/O and will exceed that. Add the field in the merge commit; the tracking
+// note is here rather than in a TODO because the fix is someone else's already-written PR.
+//
+// ⚠ Daily, deliberately off-peak, and NOT more often. The window is measured in weeks, so a faster
+// cadence buys nothing and only widens the chance of a pass landing while an operator is mid-review
+// on a reel that is one hour past its expiry.
+func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-split-sweep", Title: "Give up on unreviewed cuts",
+		Description: "Drops split suggestions you haven't reviewed within the window you set, and deletes the original recordings they came from to reclaim space. Only recordings that already produced clips are removed, and the clips themselves are never touched.",
+		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
+		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
 	}
 }

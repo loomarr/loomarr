@@ -10,7 +10,7 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
-// Tunarr is the shared Programmer test double (CLAUDE.md: one mock per service,
+// Tunarr is the shared Programmer test double (AGENTS.md: one mock per service,
 // never private). It is an in-memory Tunarr that faithfully models the two
 // contract facts the reconcile engine depends on: the server assigns channel ids
 // (Phase-0 finding 1), and lineup pushes replace programming. It records call

@@ -9,7 +9,7 @@ import (
 	"github.com/mantonx/loomarr/internal/llm"
 )
 
-// LLM is the shared llm.Provider test double (CLAUDE.md: one mock per service).
+// LLM is the shared llm.Provider test double (AGENTS.md: one mock per service).
 // It is scriptable: a test enqueues the sequence of responses the model should
 // return across the tool-use loop. This lets the grounding gate drive the exact
 // paths §19 requires — a normal tool-call→final-JSON flow, AND the critical

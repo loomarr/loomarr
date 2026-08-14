@@ -30,7 +30,7 @@ func writeAt(t *testing.T, path, content string) {
 }
 
 // fakeArtwork writes stand-in files, recording the start offset it was asked for. No binary runs
-// — the same injection seam Prober uses (unit tests never exec, per CLAUDE.md).
+// — the same injection seam Prober uses (unit tests never exec, per AGENTS.md).
 func fakeArtwork(starts *[]float64, fail bool) filler.ArtworkRenderer {
 	return func(_ context.Context, _, stillDst, animDst string, startSeconds float64) error {
 		*starts = append(*starts, startSeconds)

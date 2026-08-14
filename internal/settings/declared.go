@@ -5,7 +5,7 @@ import "fmt"
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
 // is its human mirror and `make config-docs` its generated reference. A key added
-// here without a matching §15 row (or vice versa) is the drift CLAUDE.md forbids.
+// here without a matching §15 row (or vice versa) is the drift AGENTS.md forbids.
 //
 // Env-only bootstrap keys (DATABASE_URL, AUTO_MIGRATE, LISTEN_ADDR, LOG_LEVEL, TZ)
 // are NOT here — they stay in config.Config (config-design §1 classification).
@@ -605,6 +605,49 @@ func declared() []Setting {
 			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
 		},
 		{
+			// ⚠ **The model knob above was only half a separation, and the half it was missing is
+			// the one that fails silently.** `filler.vision.model` let an operator name a vision
+			// model, but the provider was still built from `llm.provider`/`llm.url`/`llm.api_key`
+			// — so naming a LOCAL model while the main LLM was hosted sent an Ollama tag to the
+			// hosted endpoint. Measured: `llava:7b` → `https://openrouter.ai/api/v1` → 401 on every
+			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
+			// could not be classified". The model name is useless without the host that serves it.
+			//
+			// Empty ⇒ inherit the main provider exactly as before, so no existing install changes.
+			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires
+			// every enum option to carry a value and a label, and an explicit word reads better in
+			// the picker than a blank row. The resolver treats "" the same way, so an env var set
+			// to empty means inherit rather than "no provider".
+			Key: "filler.vision.provider", EnvVar: "FILLER_VISION_PROVIDER", Group: GroupFiller,
+			Kind: KindEnum, Default: "inherit", Advanced: true,
+			Enum: []EnumOption{
+				opt("inherit", "Same as your main AI"),
+				opt("ollama", "Ollama"),
+				opt("openai", "OpenAI-compatible"),
+			},
+			Doc: "Which service reads clip frames. Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service.",
+		},
+		{
+			// Empty + `ollama` resolves to the conventional local host, the same rule `ollamaBase`
+			// already applies to probes and pulls — so the common case (hosted text, local vision)
+			// needs the provider knob alone.
+			Key: "filler.vision.url", EnvVar: "FILLER_VISION_URL", Group: GroupFiller,
+			Kind: KindURL, Default: "", Advanced: true,
+			Doc:      "Where that service lives. Leave empty for a local Ollama on this machine.",
+			ShowWhen: map[string][]string{"filler.vision.provider": {"ollama", "openai"}},
+		},
+		{
+			// ⚠ **Never falls back to `llm.api_key`, and that is the point rather than an
+			// omission.** Declaring a separate vision service means declaring its own credentials:
+			// inheriting would send the operator's hosted key to whatever host they just named,
+			// including `localhost`. A local Ollama needs no key, so the common case leaves this
+			// empty and nothing is sent.
+			Key: "filler.vision.api_key", EnvVar: "FILLER_VISION_API_KEY", Group: GroupFiller,
+			Kind: KindSecret, Default: "", Advanced: true,
+			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
+			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
+		},
+		{
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
@@ -733,7 +776,7 @@ func declared() []Setting {
 			// nobody could judge belongs.
 			Key: "filler.pipeline.max_split_vision", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 60, Advanced: true,
-			Doc: "How many segments of one recording Loomarr looks at before deciding whether it can cut it automatically. Recordings with more segments than this always wait for you.",
+			Doc: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",
 		},
 		{
 			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
@@ -831,6 +874,24 @@ func declared() []Setting {
 			Key: "filler.min_duration", EnvVar: "FILLER_MIN_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "10s", Advanced: true,
 			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
+		},
+		{
+			// ⚠ **The only setting in Loomarr that deletes an operator's media**, which is why its
+			// doc says so in the operator's own words rather than in ours. Everything else here
+			// tombstones: "remove from catalog" keeps the file, disabling a source keeps its clips.
+			//
+			// It exists because partial confirm (§10 V54) leaves a residue BY DESIGN — every reel
+			// files its confident cuts and keeps the doubtful ones back, so small proposals
+			// accumulate and each one pins a 1–2 GB recording. Without an expiry the feature that
+			// shrinks the operator's work grows their storage instead.
+			//
+			// ⚠ 0s is OFF, and that is the three-state encoding the rest of §10 uses: an operator
+			// who has not chosen an expiry has not agreed to have recordings deleted. A reel that
+			// produced NO clips is never eligible at any window — it is the only copy of that
+			// content, and reaping it would destroy material Loomarr never managed to use.
+			Key: "filler.split.review_window", EnvVar: "FILLER_SPLIT_REVIEW_WINDOW", Group: GroupFiller,
+			Kind: KindDuration, Default: "720h", Advanced: true,
+			Doc: "How long cuts you haven't reviewed wait before Loomarr gives up on them. When the time is up it drops the leftover cuts and DELETES the original recording to reclaim the space — but only for recordings that already produced clips, so nothing is lost that was never used. The clips themselves are never touched. Set to 0s to keep everything forever.",
 		},
 		{
 			// ⚠ **ELIGIBILITY, not a reject — the pair to `filler.min_duration` above, and the
@@ -1037,6 +1098,14 @@ func declared() []Setting {
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */15 * * * *",
 			Doc: "How often Loomarr syncs the filler catalog (cron).",
+		},
+		{
+			// ⚠ Daily and off-peak on purpose. The window this job enforces is measured in WEEKS,
+			// so a faster cadence buys nothing and only widens the chance of a pass landing while
+			// an operator is mid-review on a reel one hour past its expiry.
+			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 4 * * *",
+			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
 		},
 		{
 			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an

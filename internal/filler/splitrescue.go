@@ -61,7 +61,7 @@ type rescueOutput struct {
 // transcript offsets are relative to its start. Returns the spans — exactly one
 // spanning (nearly) the whole segment when the transcript is a single advert,
 // which the caller treats as "keep whole", NOT as unsplittable.
-func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []TranscriptSegment, segDurMs int64) ([]rescuedSpan, error) {
+func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []TranscriptSegment, segDurMs int64, floor segmentFloor) ([]rescuedSpan, error) {
 	text := TranscriptText(transcript)
 	if text == "" {
 		return nil, fmt.Errorf("empty transcript")
@@ -77,14 +77,14 @@ func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []Trans
 	if err := json.Unmarshal([]byte(resp.Content), &out); err != nil {
 		return nil, fmt.Errorf("rescue output not JSON: %w", err)
 	}
-	return validateRescueSpans(out, segDurMs)
+	return validateRescueSpans(out, segDurMs, floor)
 }
 
 // validateRescueSpans clamps the model's answer to what the segment can
 // contain: parseable mm:ss inside [0,segDur), start<end, ordered, no overlaps,
 // no slivers. Anything else is dropped; NOTHING VALID AT ALL is an error, so
 // the caller marks the segment Unsplittable instead of inventing a cut.
-func validateRescueSpans(out rescueOutput, segDurMs int64) ([]rescuedSpan, error) {
+func validateRescueSpans(out rescueOutput, segDurMs int64, floor segmentFloor) ([]rescuedSpan, error) {
 	var spans []rescuedSpan
 	for _, a := range out.Adverts {
 		start, err1 := parseMMS(a.Start)
@@ -98,7 +98,7 @@ func validateRescueSpans(out rescueOutput, segDurMs int64) ([]rescuedSpan, error
 		if end > segDurMs {
 			end = segDurMs
 		}
-		if end-start < MinSegmentMs {
+		if !floor.admits(start, end) {
 			continue
 		}
 		product := strings.Join(strings.Fields(a.Product), " ")
@@ -120,7 +120,10 @@ func validateRescueSpans(out rescueOutput, segDurMs int64) ([]rescuedSpan, error
 		if s.StartMs < prev.EndMs {
 			s.StartMs = prev.EndMs
 		}
-		if s.EndMs-s.StartMs < MinSegmentMs {
+		// ⚠ The SECOND floor check, and it is not redundant with the one above: truncating an
+		// overlap shortens a span that already passed, so a span admitted at its proposed length
+		// can fall under the floor here.
+		if !floor.admits(s.StartMs, s.EndMs) {
 			continue
 		}
 		kept = append(kept, s)

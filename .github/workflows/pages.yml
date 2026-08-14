@@ -9,7 +9,7 @@ name: Docs site
 # ci.yml's `docs` job already BUILDS the site on every pull request, so a broken build is caught
 # in review rather than here. This workflow only deploys what main already proved.
 #
-# ⚠ THE WORKFLOW-LEVEL `paths:` BELOW LOOKS LIKE A RULE VIOLATION AND IS NOT. CLAUDE.md bans
+# ⚠ THE WORKFLOW-LEVEL `paths:` BELOW LOOKS LIKE A RULE VIOLATION AND IS NOT. AGENTS.md bans
 # workflow-level path filters because a run that does not trigger reports NO CHECKS, so a
 # required check sits "expected" forever and the pull request can never merge. That reasoning is
 # specific to ci.yml, whose `ci-ok` job is the required check. Nothing here is a required check —

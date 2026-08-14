@@ -18,9 +18,15 @@ import (
 // synced cache of `FILLER_DIR` (migration `00013`), so deleting the row would let the next scan
 // find the file and put it straight back — the operator removes a clip, watches it reappear
 // fifteen minutes later, and concludes the button is broken. And deleting the FILE is not on the
-// table: nothing in Loomarr deletes an operator's media (disabling a source keeps its clips;
-// deleting a source keeps its clips). The action says remove from the *catalog*, and that is
-// exactly what it does.
+// table for THIS action: it says remove from the *catalog*, and that is exactly what it does.
+//
+// ⚠ **The blanket rule this used to state — "nothing in Loomarr deletes an operator's media" — has
+// ONE exception since V54, and it is worth naming here because this sentence is quoted as a
+// principle elsewhere.** The split sweep (`filler-split-sweep`) deletes the original recording of a
+// compilation, on a window the operator sets (`filler.split.review_window`, 0s = never), and only
+// when that recording has ALREADY produced clips — a reel Loomarr could not use is never removed.
+// Everything else still holds: disabling a source keeps its clips, deleting a source keeps its
+// clips, and this button keeps the file.
 
 // bulkTagFillerInput retags a selection in one request.
 type bulkTagFillerInput struct {

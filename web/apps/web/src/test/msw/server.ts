@@ -1,6 +1,6 @@
 import { setupServer } from "msw/node";
 
-// The shared MSW server — the frontend's answer to `internal/testkit` (CLAUDE.md: "Phases do not
+// The shared MSW server — the frontend's answer to `internal/testkit` (AGENTS.md: "Unit tests never
 // invent private mocks; extend the testkit"). Before V53d, 31 test files each hand-rolled a local
 // `stubFetch`, so 31 places independently encoded what the wire looks like, and each was free to
 // drift from it silently. That is the same class as `maxAcquire`/`maxAcquisitions` and the

@@ -12,10 +12,11 @@ Two different things share the word:
 
 | File | Read by | Holds |
 | --- | --- | --- |
-| `CLAUDE.md` | Claude Code | Prime directives, session ritual, stop points |
-| `AGENTS.md` | other harnesses | A shorter ramp to the same rules |
+| `AGENTS.md` | every harness | Canonical directives, session lifecycle, stop points |
+| `CLAUDE.md` | Claude Code | Thin adapter to `AGENTS.md` |
 | `docs/agents/*.md` | the installed skills | Domain vocabulary, issue tracker, triage labels |
-| `.claude/commands/` | on demand | `doc-drift`, `gate-review`, `surface-audit`, `register-check` |
+| `.agents/workflows/` | every harness | `doc-drift`, `gate-review`, `surface-audit`, `register-check` |
+| `.claude/commands/` | Claude Code | Thin adapters to `.agents/workflows/` |
 | `CONTEXT.md` | everyone | The glossary — what each word means |
 
 `docs/design.md` wins on behaviour, `CONTEXT.md` on vocabulary, `PROGRESS.md` on phase status.
@@ -58,7 +59,7 @@ Welcome, same bar as anything else. A few expectations:
   the most common defect in agent-written PRs here.
 - **Say so in the PR body.** It's useful review context, not a mark against it.
 
-For parallel sessions, use a sibling worktree — see [setup](setup.md).
+For parallel sessions, use the shared registry and worktree harness — see [Agent development](agents.md).
 
 ## As a feature
 

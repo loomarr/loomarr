@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -140,6 +142,36 @@ func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.S
 }
 func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
+}
+
+// fillerSweepStoreAdapter bridges the store → filler.SweepStore (§10 V54).
+//
+// ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
+// domain must not import the store (Tier 3), and the store's row type is a query result rather
+// than a domain concept, so the two are deliberately separate structs with the same shape.
+type fillerSweepStoreAdapter struct{ st store.Store }
+
+func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]filler.SweepableProposal, error) {
+	rows, err := a.st.ListSweepableSplitProposals(ctx, before)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.SweepableProposal, len(rows))
+	for i, r := range rows {
+		out[i] = filler.SweepableProposal{
+			ProposalID: r.ProposalID, ClipHash: r.ClipHash, ClipPath: r.ClipPath, Segments: r.Segments,
+		}
+	}
+	return out, nil
+}
+func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkClipReaped(ctx, hash, at)
+}
+func (a fillerSweepStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineFiled(ctx, hash, at)
 }
 
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
@@ -449,6 +481,18 @@ func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id str
 	return a.st.DeleteSplitProposal(ctx, id)
 }
 
+// ⚠ Translates the store's ErrNotFound into the DOMAIN's ErrProposalGone. `internal/filler` does
+// not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
+// the split rung must tell "the proposal was confirmed under me" apart from a real write failure,
+// because the first is a normal outcome and the second must fail the pass.
+func (a fillerSplitStoreAdapter) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
+	err := a.st.UpdateSplitProposalSegments(ctx, id, segs)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+	}
+	return err
+}
+
 // ListSplitProposals is the split RUNG's "is one already waiting?" read (§10 V51b) — one read of
 // the pending queue rather than an existence check per candidate. Re-detecting over a proposal an
 // operator is halfway through editing is what it prevents.
@@ -592,6 +636,25 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 		if err != nil {
 			a.publishSplit(jobID, clipID, "error", "", 0, err.Error())
 			return
+		}
+		// ⚠ Un-park the reel, for the same reason ConfirmSplit enrols its cuts (§10 V54a): the
+		// operator-triggered path must leave the clip where the unattended one would. A reel parked
+		// at `split`/`review` is claimed by nothing — `ListPipelineWork` takes `running` only — so
+		// without this a re-detect writes a freshly scored proposal that no rung will ever read,
+		// and the remedy §10 names for a stale proposal silently does half its job.
+		//
+		// ⚠ STRICTLY AFTER `Propose`. Un-parking first makes the row claimable while detection is
+		// still running, and the rung would then ground the outgoing segment list or re-`Propose`
+		// the same reel concurrently. A failed detection (above) returns before reaching here, so
+		// the row keeps its original state.
+		//
+		// ⚠ The error is DROPPED, per this adapter's convention (see `registerSources` below): it
+		// has no logger and reports through the event bus, whose `filler_split` frames describe
+		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
+		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
+		// state the reel was already in: parked, reviewable by hand, nothing lost.
+		if a.pipeline != nil {
+			_, _ = a.pipeline.Requeue(bg, clipID)
 		}
 		a.publishSplit(jobID, clipID, "success", p.ID, len(p.Segments), "")
 	}()

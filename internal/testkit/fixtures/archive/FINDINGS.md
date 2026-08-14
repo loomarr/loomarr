@@ -73,5 +73,5 @@ licence means *unknown*, never *public domain*.
 ## Not in the core gate
 
 The walk's HTTP + filesystem are injected, so it's unit-tested against a mock Archive server with NO
-live network (`archive_test.go`, CLAUDE.md rule). The live run above is a manual smoke, not committed
+live network (`archive_test.go`, AGENTS.md rule). The live run above is a manual smoke, not committed
 as a test. The bundled yt-dlp path (YouTube sources) is likewise manual-smoke only.

@@ -70,6 +70,116 @@ describe("usePlaybackState", () => {
     expect(el.currentTime).toBe(100);
   });
 
+  // --- the playback WINDOW (§10 V54) ------------------------------------------------------
+  //
+  // ⚠ The split-review preview plays a 30-second cut out of a 22-minute composite that has not
+  // been split yet. Everything below exists so the operator is shown the SEGMENT, never the reel.
+  //
+  // These fire the handlers with the real fake element as `currentTarget`, because the window path
+  // writes back to it (seeking on load, pausing and snapping at the end) — the lightweight `evt`
+  // above cannot express that.
+  describe("playback window", () => {
+    const on = (el: HTMLVideoElement) => ({ currentTarget: el }) as React.SyntheticEvent<HTMLVideoElement>;
+
+    it("seeks to the window start once metadata has loaded", () => {
+      // ⚠ In the handler, not an effect: before metadata the element has no seekable range and a
+      // currentTime write is silently dropped.
+      const el = fakeVideo({ duration: 1320, currentTime: 0 });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 720, endAt: 750 }));
+
+      act(() => result.current.mediaHandlers.onLoadedMetadata(on(el)));
+
+      expect(el.currentTime).toBe(720);
+    });
+
+    it("reports the WINDOW's length, not the reel's", () => {
+      // THE assertion. A 30s cut of a 22-minute reel must read 0:04 / 0:30 — showing 12:04 / 22:00
+      // would present the whole recording as if it were the clip.
+      const el = fakeVideo({ duration: 1320, currentTime: 724 });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 720, endAt: 750 }));
+
+      act(() => result.current.mediaHandlers.onLoadedMetadata(on(el)));
+      act(() => result.current.mediaHandlers.onTimeUpdate(on(el)));
+
+      expect(result.current.duration).toBe(30);
+      expect(result.current.current).toBe(4);
+    });
+
+    it("never reports a window longer than the file", () => {
+      // A proposal can claim a span the file does not have (a truncated download). Reporting 30s
+      // over a 2s file is the same lie in the other direction.
+      const el = fakeVideo({ duration: 2, currentTime: 0 });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 0, endAt: 30 }));
+
+      act(() => result.current.mediaHandlers.onLoadedMetadata(on(el)));
+
+      expect(result.current.duration).toBe(2);
+    });
+
+    it("pauses and snaps at the window end", () => {
+      // timeupdate fires ~4Hz, so we routinely arrive past endAt; without the snap the readout
+      // flicks to 0:31 / 0:30 on the last frame.
+      const el = fakeVideo({ duration: 1320, currentTime: 750.24 });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 720, endAt: 750 }));
+
+      act(() => result.current.mediaHandlers.onLoadedMetadata(on(el)));
+      act(() => result.current.mediaHandlers.onTimeUpdate(on(el)));
+
+      expect(el.pause).toHaveBeenCalledOnce();
+      expect(el.currentTime).toBe(750);
+      expect(result.current.current).toBe(30);
+    });
+
+    it("seeks in WINDOW time, so the ±5s keys stay inside the segment", () => {
+      // ⚠ The half-applied-window bug: relative `current` with an absolute `seekTo` sends
+      // ArrowLeft to the start of the REEL. VideoPlayer calls seekTo(current ± 5).
+      const el = fakeVideo({ duration: 1320, currentTime: 721 });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 720, endAt: 750 }));
+
+      act(() => result.current.seekTo(-4)); // one second in, back five
+      expect(el.currentTime).toBe(720);
+
+      act(() => result.current.seekTo(999)); // past the end
+      expect(el.currentTime).toBe(750);
+    });
+
+    it("replays from the window start when Play is pressed at the end", () => {
+      // Without the rewind, Play advances one frame and onTimeUpdate re-pauses — "the button is
+      // broken".
+      const el = fakeVideo({ duration: 1320, currentTime: 750, paused: true });
+      const { result } = renderHook(() => usePlaybackState({ current: el }, { startAt: 720, endAt: 750 }));
+
+      act(() => result.current.toggle());
+
+      expect(el.currentTime).toBe(720);
+      expect(el.play).toHaveBeenCalledOnce();
+    });
+
+    it("re-clamps when the window moves under a mounted player", () => {
+      // The operator retypes a cut point while the preview is open.
+      const el = fakeVideo({ duration: 1320, currentTime: 724 });
+      const { rerender } = renderHook(({ w }) => usePlaybackState({ current: el }, w), {
+        initialProps: { w: { startAt: 720, endAt: 750 } },
+      });
+
+      rerender({ w: { startAt: 900, endAt: 930 } });
+
+      expect(el.currentTime).toBe(900);
+    });
+
+    it("leaves the playhead alone when it is still inside the new window", () => {
+      // Yanking it back on every keystroke would make the mm:ss field unusable while previewing.
+      const el = fakeVideo({ duration: 1320, currentTime: 724 });
+      const { rerender } = renderHook(({ w }) => usePlaybackState({ current: el }, w), {
+        initialProps: { w: { startAt: 720, endAt: 750 } },
+      });
+
+      rerender({ w: { startAt: 720, endAt: 800 } });
+
+      expect(el.currentTime).toBe(724);
+    });
+  });
+
   it("mirrors the volume level onto the element", () => {
     const el = fakeVideo({ volume: 1 });
     const ref = { current: el };

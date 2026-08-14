@@ -35,6 +35,8 @@ const VideoPlayer = ({
   src,
   title,
   autoPlay,
+  startAt,
+  endAt,
   leading,
   live,
   scrubber,
@@ -62,7 +64,9 @@ const VideoPlayer = ({
     toggle,
     seekTo,
     mediaHandlers,
-  } = usePlaybackState(videoRef);
+    // ⚠ The window is dropped in LIVE mode: a live duration is Infinity, so there is nothing to
+    // clamp and a stray `endAt` would pause the stream at a number that means nothing.
+  } = usePlaybackState(videoRef, live ? {} : { startAt, endAt });
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);

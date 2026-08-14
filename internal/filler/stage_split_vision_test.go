@@ -73,17 +73,29 @@ func gatePolicy() *AutoSplitPolicy {
 	}
 }
 
+// twoSegments is a pair of WELL-DETECTED cuts: reel edges at the outside, a boundary both
+// detectors agreed on in the middle.
+//
+// ⚠ The provenance is not decoration. Since V54 the gate's last check is boundary confidence, so a
+// fixture with no evidence is held back on "not sure this was cut in the right place" — which is
+// correct behaviour, and would make every test here assert the wrong thing. These tests are about
+// GROUNDING (tags), so their boundaries must be beyond reproach for the tag half to be what the
+// gate is deciding on.
 func twoSegments() []SplitSegment {
-	return []SplitSegment{
-		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "reel part 1"},
-		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "reel part 2"},
+	segs := []SplitSegment{
+		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "reel part 1",
+			startSrc: srcReelEdge, endSrc: srcBlack | srcSilence},
+		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "reel part 2",
+			startSrc: srcBlack | srcSilence, endSrc: srcReelEdge},
 	}
+	scoreBoundaries(segs)
+	return segs
 }
 
 // The baseline this feature exists to change: ungrounded segments are refused, every time.
 func TestSegmentVision_WithoutGrounding_TheGateRefuses(t *testing.T) {
 	segs := twoSegments()
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
 		t.Fatalf("ungrounded segments = %q, want %q — this is the state 45 live reels are in",
 			got, RejectUntagged)
 	}
@@ -104,7 +116,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
 
 	// THE assertion: the same gate that refused above now accepts.
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != AutoSplitOK {
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
 		t.Fatalf("grounded segments = %q, want AutoSplitOK", got)
 	}
 	// ⚠ Each segment framed over ITS OWN span. Without this the grounder would re-frame the whole
@@ -124,6 +136,64 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	}
 }
 
+// ⚠ **THE resume property (§10 V54): the budget is a RATE, not a ceiling.**
+//
+// Before this, `ground` indexed the budget absolutely (`if i >= budget { return }`), so a reel
+// larger than `filler.pipeline.max_split_vision` ground its first N segments on every pass and
+// never advanced past them. Live reels run 82–303 segments against a default budget of 60, so the
+// budget silently meant "reels this big can never auto-confirm".
+func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 1 }, // one segment per pass — two passes for two segments
+	})
+	clip := StoreClip{Clip: Clip{Path: "reel.mp4"}}
+	segs := twoSegments()
+
+	first := s.ground(context.Background(), clip, segs)
+	if first.Looked != 1 || first.Pending != 1 {
+		t.Fatalf("pass 1 = %+v, want {Looked:1 Pending:1}", first)
+	}
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got == AutoSplitOK {
+		t.Fatal("a half-grounded reel must not pass the gate — all-or-nothing is unchanged")
+	}
+
+	second := s.ground(context.Background(), clip, segs)
+	if second.Looked != 1 || second.Pending != 0 {
+		t.Fatalf("pass 2 = %+v, want {Looked:1 Pending:0} — the second pass must advance, not repeat", second)
+	}
+
+	// ⚠ The load-bearing assertion: the SECOND span was framed, not the first one twice. An
+	// absolute-index budget passes every count-based check here and still fails this one.
+	want := [][2]int64{{0, 30_000}, {30_000, 61_000}}
+	if len(tools.spans) != 2 || tools.spans[0] != want[0] || tools.spans[1] != want[1] {
+		t.Fatalf("framed spans = %v, want %v — pass 2 re-framed the segment pass 1 already did",
+			tools.spans, want)
+	}
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
+		t.Errorf("fully grounded over two passes = %q, want AutoSplitOK", got)
+	}
+}
+
+// ⚠ Termination: a pass that looks at NOTHING must report `Looked == 0`, because that is the
+// signal `Run` uses to stop deferring and let the gate park the reel. Without it a reel whose
+// provider is down would defer forever, every two minutes, silently.
+func TestSegmentVision_APassThatAchievesNothingReportsNoProgress(t *testing.T) {
+	segs := twoSegments()
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools:    &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}},
+		Provider: &fixedVision{answer: `{"category":"toys"}`}, Taxa: seedTaxa{}, ClipDir: "/clips",
+		Budget: func() int { return 0 }, // vision switched off
+	})
+
+	got := s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	if got.Looked != 0 || got.Pending != 2 {
+		t.Fatalf("zero-budget pass = %+v, want {Looked:0 Pending:2} — Looked>0 would defer forever", got)
+	}
+}
+
 // The budget is a cost bound, and exceeding it must fail SAFE: an ungrounded tail leaves the reel
 // in review rather than confirming a reel only partly looked at.
 func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testing.T) {
@@ -140,7 +210,7 @@ func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testin
 	if model.calls != 1 {
 		t.Errorf("model called %d times, want 1 — the budget is not bounding the pass", model.calls)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
 		t.Fatalf("partly-grounded reel = %q, want %q — a reel nobody finished judging must wait",
 			got, RejectUntagged)
 	}
@@ -158,7 +228,7 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 	segs := twoSegments()
 	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
 
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
 		t.Fatalf("after a model failure = %q, want %q", got, RejectUntagged)
 	}
 }
@@ -179,7 +249,7 @@ func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 	if model.calls != 0 {
 		t.Errorf("model called %d times with vision off, want 0", model.calls)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0); got != RejectUntagged {
+	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
 		t.Fatalf("with vision off = %q, want %q", got, RejectUntagged)
 	}
 }

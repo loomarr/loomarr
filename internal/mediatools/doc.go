@@ -15,7 +15,7 @@
 // re-exported as aliases from internal/filler (mediatypes.go) so the domain keeps its vocabulary
 // without a second definition.
 //
-// ⚠ **Unit tests never execute the binaries** (CLAUDE.md §19). The exec paths are exercised only
+// ⚠ **Unit tests never execute the binaries** (AGENTS.md §19). The exec paths are exercised only
 // against real media, by hand; what is tested here is the PARSING — given this ffmpeg stderr,
 // these intervals — which is where the bugs have actually been. FFmpegTools is faked through the
 // MediaTools interface everywhere else.

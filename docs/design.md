@@ -1,7 +1,7 @@
 # Virtual Channel Builder — Design Doc
 
 **Status:** Draft for implementation
-**Audience:** Claude Code (build agent) + maintainer
+**Audience:** coding agents + maintainer
 **Working name:** `loomarr` — weaves your library into TV channels, and follows the *arr / Servarr naming convention since it lives in that stack (alongside Sonarr/Radarr, which it drives). Container image `loomarr`. Rename freely.
 
 > Supersedes the earlier "Channel Content Provisioner" framing. The app's purpose is to **build and maintain virtual TV channels end to end**: from a natural-language intent, through content acquisition, to a live Tunarr channel that stays filled. "Provisioning" is one subsystem of that, not the product.
@@ -231,7 +231,7 @@ flowchart TD
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`
-  The shared test doubles and pinned fixtures every test uses (CLAUDE.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 5**
 
@@ -1652,11 +1652,37 @@ signal: an on-screen logo, visible text, a black-and-white transfer that dates i
 tier that samples a few keyframes and asks a vision model for `brand`, `category`, and the
 `visibleText` it can read off the frame.
 
-⚠ **The grounding rule holds for pixels too.** A model reading `KELLOGG'S` off a box on screen is
-*grounded* — the text is literally in the frame — exactly as an era is grounded when its year is in
-the filename. A brand or category the model asserts without the frame showing it is dropped. The
-`visibleText` field is what makes this auditable: it is the on-screen text the model claims to have
-read, and a brand not supported by it does not persist.
+⚠ **The grounding rule holds for pixels too — for BRAND and ERA.** A model reading `KELLOGG'S` off
+a box on screen is *grounded* — the text is literally in the frame — exactly as an era is grounded
+when its year is in the filename. A brand or era the model asserts without the frame showing it is
+dropped. The `visibleText` field is what makes this auditable: it is the on-screen text the model
+claims to have read, and a brand not supported by it does not persist.
+
+⚠ **CATEGORY is grounded differently, and V54b corrects it (this paragraph used to include
+`category` in the rule above).** A category is checked against the TAXONOMY — the model must name a
+taxon that exists, resolved through `forest.Resolve` — but it is **not** required to appear in
+`visibleText`.
+
+The distinction is what kind of claim each field makes. A brand and a year are **specific facts**,
+and a model that emits one it did not see has fabricated a fact that will be wrong in a definite,
+checkable way — `KELLOGG'S` on a Ford advert. A category is a **judgement about imagery**:
+classifying a toy advert as `toys` by *seeing toys* is not fabrication, it is the entire reason a
+vision tier exists. Requiring the word on screen does not make that judgement more honest; it
+restricts it to adverts that happen to print their own genre.
+
+⚠ **Measured, because the old rule was close to unsatisfiable.** On a real 37-segment reel
+(2026-08-13) with a vision model answering correctly every time, the on-screen-text condition
+admitted **0 categories**. `era` grounded once — `1995`, from the visible text
+`"WAGA-5/Fox Commercial Breaks (2/5/1995)"` — while `psa`, correctly judged, was dropped for not
+being spelled out on the frame. Since `segmentVerdict` refuses any segment with no audience and no
+category (`RejectUntagged`) *before* the boundary-confidence check, the rule made split auto-confirm
+structurally impossible and the whole confidence ladder unreachable. The unit test hid it by
+choosing `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`, the rare case where the genre
+IS printed.
+
+⚠ **The taxonomy is what keeps this grounded rather than open.** The model cannot invent a
+category: an unresolvable one is still dropped, so the vocabulary — not the frame's text — is the
+constraint. Brand and era are unchanged and still require the frame.
 
 ⚠ **Keyframes come from `ffmpeg` stills, not the dHash frames.** `FFmpegArtwork` already produces a
 viewable 320px JPEG; the `GrayFrames` path is 9×8 grayscale for perceptual-hash dedup and is
@@ -1744,9 +1770,16 @@ precision because they are *deliberately inserted by the broadcaster to separate
 design; scene-cuts are an *editing byproduct* — noise by design. So the fusion is:
 
 1. **Black-fade + silence PROPOSE** candidate boundaries at precise times.
-2. **Scene-cut co-location VOTES** — a strong scene-cut within ~2s of a candidate raises its
-   confidence; scene-cuts *alone* are ignored (that is where the 89% noise lives). Measured: 9 of 12
-   black-fades in the first 5 min were corroborated by silence and/or a scene-cut.
+2. ~~**Scene-cut co-location VOTES**~~ — ⚠ **NOT BUILT, and it cannot be (V54).** This proposed that
+   a strong scene-cut near a candidate raise its confidence. Scene-cut detection was subsequently
+   **measured and rejected** for this pipeline — `scdet` fires on camera cuts *inside* an advert,
+   the wrong granularity, which is a property of the signal and not a tuning problem (see V34 step 2)
+   — and `MediaTools` exposes no such call. The measurement this bullet rests on survives and is
+   still load-bearing, with the scene-cut half struck: **9 of 12 black-fades in the first 5 min were
+   corroborated by silence.** That 9-of-12 is what sets the "black + silence agreed" ceiling in V34's
+   confidence ladder; the remaining 3 are the single-detector ceiling. Left struck rather than
+   deleted, because two paragraphs describing four fusion inputs when only three exist is how the
+   contradiction with V34 survived this long.
 3. **Transcript topic-shift ADDS** the boundaries all three A/V signals missed (the soft cut) AND
    labels each segment with its product. Measured: a 105s span the A/V pass split weakly actually
    held 6 distinct ads (Fannie Mae, a car ad, US Navy, Dove, Subway, blue M&M's) — the transcript
@@ -1759,16 +1792,33 @@ never rescued — the A/V missed the cut AND the segment was not "over-long enou
 transcript pass. A segment materially longer than one spot (~>45–60s) now gets the transcript check
 too. The prototype proved the LLM cleanly splits it (`{A&W root beer @0s, Paramount @11s}`).
 
-**The slivers are dropped, not reviewed.** A sub-`MinSegmentMs`-ish fragment whose transcript is only
-`[MUSIC]`/empty is an inter-ad stinger, never a real advert — measured on the 3–8s fragments. No
-transcript ⇒ drop.
+**The slivers are dropped, not reviewed.** A fragment under the detection floor
+(`max(MinSegmentMs, filler.min_duration)`, §10 V34 step 2) whose transcript is only `[MUSIC]`/empty
+is an inter-ad stinger, never a real advert — measured on the 3–8s fragments. No transcript ⇒ drop.
+
+⚠ **Dropping discards TIME, and on a real reel that is not a rounding error.** `segmentsFromBoundaries`
+advances past a dropped span rather than merging it into either neighbour, so the recording goes with
+it: on the measured 82-segment reel, 39 sub-10s fragments is roughly three minutes of source. That is
+the right trade — none of it could become a catalog row, since `filler.min_duration` is a hard reject
+at the scan boundary — but it must be **reported, not silent**. `Propose` carries the dropped count
+and duration onto the ladder note, so the operator reads *"cut into 43 adverts; 39 fragments under 10s
+discarded"* rather than wondering where the other three minutes went.
 
 **This produces a per-segment CONFIDENCE from signal agreement**, which is what makes
-confidence-gated auto-confirm principled rather than a guess: a boundary confirmed by black + silence
-+ scene-cut + a coherent single-product transcript, at a ~30s duration, auto-confirms; a 1-signal
-boundary at an odd duration goes to review. This replaces "review all 41" with "auto-confirm the ~30
-obvious spots, review the ~11 uncertain ones" — the concrete mechanism behind "automatic curation
-with high confidence".
+confidence-gated auto-confirm principled rather than a guess. It replaces "review all 41" with
+"file the obvious spots, review the uncertain ones" — the concrete mechanism behind "automatic
+curation with high confidence".
+
+⚠ **Built in V54, and NOT as sketched here — see the ladder in §10 V34, which is authoritative.**
+Two corrections this paragraph originally got wrong, both recorded there in full: **scene-cut is not
+an input** (measured and rejected, bullet 2 above), and **duration is not a confidence input**
+either. The sketch's "at a ~30s duration" reads as a corroborating prior, and a real reel refutes
+it: 39 of 82 segments on the measured archive.org compilation were sub-10s bumpers, every one
+correctly cut. Scoring a cut down for not landing on a standard slot length would flag half a good
+reel. Duration survives only as the over-long cap.
+
+⚠ It also gates **per segment**, not per reel: the confident cuts are filed and the doubtful ones
+stay behind in a shrunken proposal.
 
 ⚠ **Confirm no longer deletes the parent — this reverses V34's delete-on-confirm.** V34 removed the
 compilation's row and file on confirm ("its identity is a path that now means twenty clips");
@@ -1784,6 +1834,37 @@ the load-bearing change, and it buys three things V34 threw away:
 
 The parent stays on disk and in the store, marked composite (not airable); its segments are the
 airable clips. `parent_hash` is nullable — a hand-dropped single advert has none.
+
+⚠ **"Stays on disk" is now "stays until the sweep retires it" (V54), and one of the three things
+above is genuinely given up.** Partial confirm leaves a residue by design — every reel files its
+confident cuts and holds the doubtful ones — so proposals accumulate and each pins a 1–2 GB
+recording. The `filler-split-sweep` job retires a reel whose leftovers nobody reviewed inside
+`filler.split.review_window` (default 30 days, `0s` = never): it drops the proposal and **deletes
+the recording**.
+
+Of the three things keeping the parent bought: **provenance survives** and **inherited broadcast
+context survives**, because the catalog ROW survives — the sweep sets `clips.reaped_at` and only
+the bytes go. **Re-splitting does not.** That is the cost, and it is the reason the sweep is bounded
+by three rules rather than one: a recording is eligible only after the window, only if it has
+ALREADY produced clips (a reel Loomarr could not use is the operator's only copy of that content),
+and never if `review_window` is `0s`.
+
+⚠ **The row must survive, and this is the cascade that makes it non-optional.** Every segment
+carries `parent_hash` pointing at the composite. Delete the file without the tombstone and the next
+`filler-sync` finds the clip gone from its source and prunes the row — dangling `parent_hash` on all
+of its children at once. `DeleteClipsNotIn` therefore skips a reaped row, and the sweep writes the
+tombstone BEFORE the unlink so no sync can land in between.
+
+⚠ **The sweep must also take the reel off the belt**, or it is worse than no sweep: the composite is
+still `is_composite`, so the split rung re-detects it next pass — propose → partly confirm →
+leftovers → sweep → re-propose, burning a boundary scan every cycle forever. Setting the pipeline
+row to `filed` is the existing one-word way to say finished, since `ListPipelineWork` claims only
+`running`.
+
+⚠ **This is the ONLY thing in Loomarr that deletes an operator's media**, reversing the blanket rule
+`fillerbulk.go` states. Everything else still tombstones: removing a clip from the catalog keeps the
+file, and so does disabling or deleting a source. `docs/help/filler.md` says so in the operator's
+own words, because that file ships inside the binary and is where they will look.
 
 #### 3. Structured broadcast context — a parser over text we already have
 
@@ -2114,7 +2195,7 @@ A removed clip is excluded from the catalog listing and from pod assembly **by d
 
 Between "a file arrived" and "a clip the scheduler can place" there is work only a person can finish. `GET /v1/filler/incoming` is that queue, in one read:
 
-- **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing.
+- **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing. ⚠ **Nor does a COMPILATION** (V54): it is `kind=commercial` and permanently untagged — the pipeline deliberately skips tag and vision for a composite, "a compilation is cut up rather than filed" — so read literally it satisfies the second bullet above, and for a while it did. It is not an advert with missing tags; it is a container of adverts, and its handoff to a human is the reel below. Asking an operator to "Add tags" to it would tag twenty unrelated products as one clip.
 - **Compilations mid-split** — the persisted split proposals, with a count of the segments an operator cannot simply accept (unsplittable, or flagged as a duplicate).
 
 ⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
@@ -2429,11 +2510,17 @@ scheduled job — and the pill's "last scan" is what those buttons were really b
 Discovery (V33) surfaces a source; ingest downloads it. But a large share of what discovery finds is a **compilation** — one file holding twenty or more commercials back to back. Ingested whole it is a single 15-minute "clip" the pod assembler can never place (`durationEligible` rejects anything far longer than a break); split blindly it is twenty files named `compilation_seg07` with no era, audience or category, which the ladder cannot place either. **Splitting and metadata are one phase because either alone produces unplaceable clips.** The pipeline, designed from measurement on six real compilations rather than reasoning (plan §6.4 — every number below names its method there):
 
 1. **Triage.** A source with chapters splits for free (chapters are exposed without downloading the file). Rare in practice — 6 of 8 sampled sources had none — so this is an optimisation, not the mechanism.
-2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under ~3s are dropped. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
+2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under the **detection floor** are dropped. That floor is `max(MinSegmentMs, filler.min_duration)` — the 3s sliver floor and the catalog floor, whichever binds (10s on a default install). ⚠ `max()`, never replacement: `filler.min_duration` is settable to `0s`, and a 400ms fade artefact must still be dropped there. The two numbers are **one floor on purpose** — a segment the auto-confirm gate would admit and the scan boundary would then reject (§10 V40) is a clip cut out of a compilation and thrown away, work done to produce nothing and a source file consumed for it. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
 3. **Rescue.** A segment far longer than a plausible advert means boundaries the A/V pass could not see; it goes to **transcript (whisper) + LLM** for cut points. ⚠ The LLM must return **exactly one entry when the transcript is a single advert** — without that instruction it invented cuts at suspiciously round 30/61/92s marks inside one 121s infomercial. With no runnable whisper (`INGEST_WHISPER_PATH`, §15) an over-long segment is not guessed at: it surfaces in the review as **unsplittable**.
 4. **Metadata.** Each segment's transcript feeds the **existing** text-signal classifier unchanged (above) — it already knows `cereal`, `toys`, `cars`. Era follows the grounding rule above: persisted only when the year appears in the text, else carried on the proposal as an unconfirmed suggestion.
 5. **Dedup.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. Matches are **flagged on the proposal**, never silently dropped — the operator sees "already in the catalog" and decides.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.
+
+   ⚠ **The review PLAYS each proposed cut, in place (V54).** It did not, for as long as it existed: measured 2026-08-12 on a 52-segment reel, the screen offered a name field, two mm:ss fields, Merge, Drop and Confirm, and **no media element at all** — an operator was asked whether a cut at 04:17 was right with nothing to see or hear. V54 A7 had already deleted the mock's "click to preview" caption for being false; this is the other half.
+
+   A proposed segment has **no bytes of its own** until confirm writes them, so the preview is a **byte-range window of the parent composite** (`GET /v1/filler/media/{clipHash}`, range-served by `http.ServeContent`). That is the operational reason V45's keep-the-parent rule matters to an operator and not only to lineage: without the retained reel there is nothing to play. The route is `RoleMember`, the page is admin-gated, and the browser authenticates with the session cookie it already holds — **no new authorization surface**.
+
+   ⚠ **The player is clamped to `[startMs, endMs]` and reports the SEGMENT's length, never the reel's.** A 30-second cut of a 22-minute recording reads `0:04 / 0:30`. Handing the readout the reel's own numbers would present the whole recording as if it were the clip, which is precisely what makes a preview useless for judging one cut. One preview is open at a time and collapsing **unmounts** the element — otherwise every row the operator has ever clicked holds a range request open against a 20-minute file.
 
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** The same argument — quality varies by source — produced a *threshold* everywhere else in this pipeline: the tagger files a clip unattended above `filler.autofile.min_confidence` and asks below it. Splitting alone demanded a human for every reel, including the ones where every segment is plainly an advert. That asymmetry is what made compilations the most manual part of a system whose whole claim is that it maintains itself: Loomarr would decide unsupervised that a clip is a 1993 cereal advert and air it, but not accept a cut point it was certain about.
 
@@ -2441,9 +2528,37 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 
    **Auto-confirm is a separate switch** (`filler.autosplit.enabled`, default **ON** — maintainer decision, V51b: the gate exists to admit *confident* reels, and off-by-default meant every compilation waited for a click the design says should be unnecessary), gated on `filler.autosplit.min_confidence` — deliberately NOT reusing the auto-file threshold. The failure modes differ in kind: a mis-*tagged* clip plays in the wrong break, a mis-*cut* clip plays half an advert. One dial would force the stricter case to govern both.
 
-   ⚠ **The gate is ALL-OR-NOTHING over the reel, not per segment.** A proposal auto-confirms only when *every* segment is advert-shaped (within `filler.autosplit.max_duration`, and above the existing `filler.min_duration` floor), *none* is flagged `unsplittable`, *none* is flagged a duplicate, and *every* one classified above the threshold. One doubtful segment sends the whole reel to review.
+   ⚠ **The gate is PER SEGMENT (V54). All-or-nothing is retired.** A segment is cut and filed when it passes every refusal *and* its boundary confidence clears `filler.autosplit.min_confidence`; the rest stay behind in a shrunken proposal. A reel of 52 becomes 47 clips and 5 cuts to review, rather than 52 cuts to review.
 
-   That shape follows how the 69% case actually fails. A badly-split reel is not uniformly slightly-wrong; it has obvious tells — one 6-minute block where the detector saw no boundary, sitting beside perfectly good 30-second cuts. Confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture. The filmstrip exists to show that whole picture, and it is what the operator sees for the reels that genuinely need them.
+   ⚠ **Order matters, and it is the whole safety argument: REFUSALS FIRST, ABSOLUTELY — then the threshold.** A segment carrying `SuggestedEra > 0`, `unsplittable`, a duplicate flag, an over-long span or a sub-floor span is refused **at any score**. Confidence chooses only among segments that already pass every refusal: it can hold a qualifying segment back, never let a refused one through. `boundaryScore` cannot even see `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags` — a tag fact is not in its scope, so it cannot move the number. That is what keeps `autosplit.go`'s objection true: nothing here launders a refusal into a score.
+
+   ⚠ **This was ALL-OR-NOTHING until V54, and the old rationale is worth stating rather than deleting.** It ran: *"a badly-split reel is not uniformly slightly-wrong; it has obvious tells… confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture."* That was correct **while there was no per-segment evidence**. Splitting a decision arbitrarily is indeed worse than making it once. But the rule's cost was total: one doubtful segment in 52 sent all 52 back, so the operator's work never shrank and — measured 2026-08-11 — **~50 reels sat parked with none ever auto-confirmed**. With boundary evidence per cut, keeping five back is not splitting a decision arbitrarily; it is **routing by evidence**, which is what every other rung in this pipeline already does. The filmstrip still shows the whole picture, and the parent recording is still there to play (V45), so the operator judging those five has more context than the old rule assumed, not less.
+
+   ⚠ **The cost, recorded rather than discovered: a confirmed segment is AIRABLE.** `Confirm` does not set `held`, and pod assembly loads the catalog with a zero filter that excludes only held clips — so there is no second human gate after this one. A mis-cut clip plays half an advert in a real break before anyone sees it. It is recoverable (remove the clip — a tombstone, and the parent is retained), but visible, and it is precisely why the threshold defaults where it does: at 85, **both** of a segment's boundaries must be corroborated.
+
+   ⚠ **The `filler.min_duration` floor is no longer one of those conditions, because it is enforced earlier (V54).** It used to be, and that is the reason auto-split could never fire: a real commercial compilation is *made of* sub-floor material. Measured 2026-08-11 on an 82-segment archive.org reel, **39 segments sat under the 10s floor**, the shortest 3.1s — station IDs and inter-ad bumpers. `AutoConfirmable` returns on the first failing segment, so `RejectTooShort` sank the reel before the grounding checks at the bottom of the loop were ever reached, and the V54 grounder below could not have changed the outcome no matter how well it worked. Those fragments are now dropped at **detection** (step 2 above), where a fragment the scan boundary would refuse anyway costs nothing to discard. `RejectTooShort` stays in the gate as defence-in-depth for hand-edited proposals and for those detected before V54; it is no longer a reason a freshly-detected reel sinks.
+
+   **Boundary confidence — what routes a cut (V54).** A score of 0–100 per segment, answering *did we cut in the right place?* ⚠ **Distinct from `Clip.Confidence`**, which answers *do we know what this is?* Different question, different evidence, different field; the split gate reads the first and never writes the second. `CONTEXT.md` carries both terms precisely because "confidence" unqualified is now ambiguous.
+
+   It is a **ceiling ladder**, in the shape §10's tagger already uses — the best evidence a boundary has sets its ceiling, and segment-level facts may only lower it:
+
+   | Evidence for one boundary | Ceiling | Basis |
+   | --- | --- | --- |
+   | a chapter marker, or the reel's own start/end | 100 | declared, not inferred |
+   | black **and** silence agreed on it | 90 | **measured** — 9 of 12 fades corroborated |
+   | one detector only | 65 | **measured** — the other 3 of 12 |
+   | the transcript rescue alone | 50 | **measured** — ±2–3s timing |
+   | truncated (an overlap moved this edge) | 40 | asserted |
+
+   **Within one boundary the best evidence wins. Across a segment's two boundaries the WORST wins** — a cut is only as trustworthy as its weaker end. Segment facts then cap it: over-long 50, `unsplittable` 20.
+
+   ⚠ **Black is not ranked above silence.** Nothing measures that, and ranking them would invent exactly the number this design exists to avoid. Which detector fired survives in the evidence token, so the UI can still say "silence only".
+
+   ⚠ **The duration prior is DEMOTED, and this deviates from V45's original sketch.** That sketch made "30/60s ±2s" a confidence input. Under a ceiling ladder a corroborating prior has no legal move, and capping on "not a standard slot" would flag half a good reel: measured 2026-08-11, **39 of 82 segments were sub-10s bumpers and every one was correctly cut**. Duration survives only as the over-long cap.
+
+   ⚠ **The rescue's single-span confirmation REMOVES a cap rather than adding points** — the only legal move a corroboration has here. When the LLM returns exactly one span it is saying "this is one advert" (the measured 121s infomercial), which is the fact that defeats "over-long means a missed boundary".
+
+   **Not scored, deliberately:** the dHash distance and `dupOf` (catalog membership is a different question); vision's `looked`/`category` (tag grounding — their exclusion is the clearest illustration of the boundary/tag split).
 
 ### Splitting keys on identity, not location (V51a)
 
@@ -2607,6 +2722,17 @@ The lifecycle gains a third terminal state. `held` and `filed` were decided in d
 different jobs with no shared vocabulary: the language job tombstoned, the tagger filed, and the
 scan silently skipped. A single `Verdict` — **continue / review / reject** — is now what every
 rule answers, so adding a criterion means adding a rule rather than editing three jobs.
+
+⚠ **V54 adds a fourth, `defer`, and it is not a terminal state — that is the point.** The three
+above all END a rung's involvement with a clip. `defer` says *the rung made progress and is not
+finished*: no attempt is spent, the clip stays `running`, and it resumes next pass. It exists
+because a per-pass budget over a per-reel job had no way to say "60 of 142 done, ask me again", so
+a budget meant to bound COST silently behaved as a ceiling on capability. A rung may only return it
+having actually advanced something; deferring on a pass that achieved nothing is an infinite loop.
+
+⚠ Do not confuse this with **"The operator's decision is the fourth outcome (V54)"** below. That
+one is a fourth *disposition* — where a clip sits. This is a fourth *verdict* — what a rung
+concluded. Two different enumerations, both of which gained a fourth member in V54.
 
 ⚠ **A reject is visible and reversible.** It carries a stable reason CODE (never generated prose)
 plus the measured detail behind it — `"8.2s; floor is 10s"` — and appears in Incoming under *"we
@@ -2826,6 +2952,18 @@ previous one true.
 belt: the machine is still working on it, or the machine has finished and wants a person. One row
 per clip, and the row says which.
 
+⚠ **"One row per clip" covers the REELS half too, and that half was missed (V54).** The rule was
+written against the asks-vs-pipeline duplication (the 84-of-85 incident below) and left implicit
+for compilations, so the same reel rendered twice: once as a taggable ask, once as a reel. Stated
+explicitly: **a compilation with a pending proposal is represented by its reel and is off the belt;
+while it is still being DETECTED it is on the belt as a preparing row, and never as a decision.**
+
+The reason no test caught it is worth keeping. Neither rule was wrong. `conveyorDTO` read
+`disposition == review`, which is correct — review IS the handoff. `askReasonFor` reported an
+untagged commercial as unidentified, which is also correct, because the pipeline deliberately never
+tags a composite. The defect existed only in their intersection, which is a shape a per-rule test
+cannot reach and only a fixture holding a composite could produce.
+
 - **Still being prepared** — thumbnail, name, duration, an eight-pip strip, and the active-voice
   sentence for the rung it is on ("Working out what it is"). Expanding gives the named ladder with
   skip reasons and, where one exists, a percentage. Nothing here is work the operator owes.
@@ -2906,12 +3044,30 @@ though it were making progress.
 **Measured, on the real file** (the numbers are the point — the first three diagnoses were wrong
 without them):
 
-| Step of the `split` rung | Cost | Fits a 120s pass? |
+| Step of the `split` rung | Cost | Fits the pass? |
 | --- | --- | --- |
 | `blackdetect` + `silencedetect` | **4s** (319× realtime; 44 + 53 hits) | ✅ |
 | `dedup` — `GrayFrames` × 51 | **33s** (662ms/segment) | ✅ |
 | cut — ffmpeg stream copy × 51 | **3s** (59ms/segment) | ✅ |
-| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **3× the whole budget** |
+| **`classify` — one LLM turn × 51** | **≈377s** (7.4s/call, `qwen3:8b`) | ❌ **6× the whole budget** |
+
+⚠ **The "120s pass" this table originally compared against was WRONG, and the real ceiling was
+half of it (V54).** 120s is the CRON INTERVAL (`0 */2 * * * *`) — how often the job *starts*, not
+how long it may run. The actual ceiling was River's `JobTimeoutDefault`, **60 seconds**, because
+`river.Config.JobTimeout` was never set and `riverWorker` did not implement `Timeout()`. So every
+job on every install ran under a deadline inherited from a dependency, which nothing here chose
+and nothing recorded.
+
+⚠ **It does not surface as a timeout, which is why it survived.** `exec.CommandContext` SIGKILLs
+its child, so the operator sees `ffmpeg …: signal: killed` / `whisper-cli: signal: killed` — a
+corrupt file or a broken binary, not a clock. Measured on the maintainer's catalog 2026-08-11: a
+`blackdetect` pass reported as "killed" inside the job completed in **40s** run by hand, and the
+20-minute reel it belonged to was left `Unsplittable` for want of time it should have had.
+
+The row above still holds — 377s does not fit a 60s pass either, and the rule below is unchanged —
+but the margin was 6×, not 3×, and the numbers under it were being judged against a budget twice
+the real one. Jobs now declare their own ceiling (`scheduler.Job.Timeout`); media jobs take
+`scheduler.LongJobTimeout`, tied to the lease horizon so a job cannot outlive its own claim.
 
 ⚠ **The rule this establishes.** The scheduler's unit of work is a CLIP: `Cost()`, the per-run
 budgets (`FILLER_PIPELINE_MAX_CLIPS`, `…MAX_WHISPER`) and the retry policy are all sized per clip.
@@ -3015,6 +3171,81 @@ one the `vision` rung uses — so the gate is fed by the same vocabulary that ju
 the whole ladder for itself and is tagged downstream with its own transcript; the split-time
 grounding exists to answer the gate, not to replace `tag`. Where the two disagree, the child's own
 pass wins — it is later, better-informed, and per-clip.
+
+#### The budget is a RATE, not a ceiling (V54)
+
+⚠ **`filler.pipeline.max_split_vision` bounded one pass but was read as a limit on the reel, and
+that made the grounder above unable to finish on any real compilation.** `ground` indexed the
+budget absolutely, so a reel with more segments than the budget ground its first N on every pass
+and never advanced past them; the tail stayed ungrounded and `AutoConfirmable` returned
+`RejectUntagged` forever. Measured on the maintainer's catalog against a default budget of **60**,
+live proposals hold **82, 133, 142, 222, 235 and 303 segments** — so the budget silently meant
+"reels this size can never auto-confirm", which is the same class of default-ON-but-cannot-fire
+failure V54 exists to end.
+
+Three changes make the budget behave as the per-pass cost bound it was always described as:
+
+1. **Grounding PERSISTS on the proposal.** `SplitSegment` already carried `Category`/`Era` and
+   `segments_json` is a plain JSON blob, so this is additive — no migration. One new field,
+   `Looked`, records that the grounder examined a segment *whether or not it came back with
+   anything*. ⚠ Inference cannot replace it: `Category != ""` conflates *never looked at* with
+   *looked at and grounded nothing*, and treating those alike is exactly what makes a resumable
+   budget never converge.
+2. **A partly-grounded reel DEFERS** (the fourth verdict, above) rather than being judged. It
+   returns to the belt with its progress recorded — *"looked at 60 of 142 cuts"* — and the next
+   pass resumes at segment 61. A 303-segment reel completes in six passes.
+3. **Termination is progress, not a counter.** A defer requires that the pass looked at something,
+   and every look marks a segment, so the pending count strictly decreases. A pass that achieves
+   nothing (vision off, no vocabulary, the provider down at the first segment) does not defer: it
+   falls to the gate and the reel parks with a real reason. No new column, no timestamp, no
+   retry budget.
+
+⚠ **The write must never insert.** Grounding is a read-modify-write spanning minutes of vision
+calls, so it races `Confirm`. `UpdateSplitProposalSegments` is an `UPDATE` returning `ErrNotFound`
+on zero rows, deliberately NOT the `INSERT … ON CONFLICT` upsert — a grounding write landing after
+a confirm would otherwise **resurrect** the proposal: a pending review for a reel already cut,
+pointing at a composite whose segments are in the catalog. It also leaves `created_at` alone, since
+the Incoming queue orders by it and a reel must not jump the queue for having been grounded.
+
+⚠ **An existing proposal is RE-GROUNDED, never re-detected.** The split rung used to return
+immediately when a proposal existed, which read as "leave the operator's cut list alone" and was in
+fact a dead end: the row went to `review`, `ListPipelineWork` only claims `running`, and nothing
+reached that reel again. Every compilation detected before the grounder existed was therefore
+permanently ungroundable. Re-detection stays the operator's call (`POST /v1/filler/split`) because
+a rung must not redraw a cut list a human may have open; grounding is additive and touches no
+boundary.
+
+⚠ **…and a re-detect returns the reel to the belt (V54a).** The paragraph above was only half a
+remedy. `POST /v1/filler/split` does replace the proposal — `filler_split_proposals.clip_hash` is
+UNIQUE and the upsert conflicts on it, so a fresh scored cut list lands in place of the stale one —
+but detection writes no pipeline row. A reel parked at `split`/`review` therefore stayed parked,
+now holding a proposal nothing would ever read, and the documented remedy could not work. The
+operator path un-parks the row itself: `disposition='running'`, `status='queued'`, `attempts=0`,
+`next_run=0` — the same four columns migration 00050 set, for the same reasons, including giving
+back attempts spent losing to a gate that could not be won.
+
+⚠ **After detection, never before.** An un-parked row is claimable, and claiming it mid-detection
+would let the split rung ground the OLD segment list — or call `Propose` a second time on the same
+reel — while the new list is still being written. So the un-park is the last step of a successful
+detection, and a detection that fails leaves the row exactly as it found it: parked, with its
+original proposal, which is the honest state.
+
+⚠ **Scope is migration 00050's `WHERE` clause**, for the migration's reason: `stage='split'` AND
+`disposition='review'` is the unreachable state. A `rejected` row keeps its own restore path
+(`Soft()`) — a re-detect must not quietly overturn a refusal an operator can see and argue with —
+and a row already `running` has nothing to un-park.
+
+⚠ **Why this cannot be a migration.** 00050 performed exactly this un-park, once, and it is the
+worked example of why the mechanism was wrong: it ran at 07:37 on 2026-08-12 under the binary that
+preceded per-segment confirm, the old all-or-nothing gate re-parked all 17 reels within nine
+minutes, and goose recorded it applied forever. A data migration cannot be re-run and cannot know
+which binary it is firing under. **A state transition whose correctness depends on the running code
+belongs on an operator path or a job, never in goose.**
+
+⚠ **Side effect worth having: the gate's inputs became observable.** `GET
+/v1/filler/splits/{proposalId}` returned only `endMs/index/name/startMs`, so a grounded and an
+ungrounded proposal read identically and the only way to tell whether the grounder had run was to
+watch for an `ffmpeg … thumbnail=n=` process. That is why V54's own shipping went unverified.
 
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
@@ -3512,7 +3743,7 @@ The rule this encodes: **a claim about behaviour belongs next to a test, or it b
 
 **Two repo-facing sets sit beside the embedded one** — rendered by GitHub and the site, never embedded, because they answer questions you have *before* you have a running instance to open Help in:
 - **`docs/install/`** — the operator path: choosing a playout backend, the compose walkthrough, hardware acceleration (`/dev/dri` passthrough, NVENC via the container toolkit), and upgrading against forward-only migrations. The configuration **reference** is not written here: `docs/configuration.md` is generated from the settings registry (§15) and is cited, never restated.
-- **`docs/dev/`** — the contributor path: toolchain floors, the dev loop, the test layers, CI, and what is generated versus committed. ⚠ **This is the single home for those facts.** They were previously restated in `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` and `AGENTS.md`, which disagreed with each other and with the tree; those files now link here rather than carrying a fifth copy.
+- **`docs/dev/`** — the contributor path: toolchain floors, the dev loop, the test layers, CI, and what is generated versus committed. ⚠ **This is the single home for detailed contributor facts.** `README.md`, `CONTRIBUTING.md`, and agent-specific adapters link here; `AGENTS.md` keeps only the concise, cross-harness operating contract needed at session start.
 
 **Companion design docs** (authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
 
@@ -3778,10 +4009,13 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
-| `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog |
+| `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog. ⚠ **It has a SECOND job since V54**: composed with `MinSegmentMs` as `max()`, it is also the splitter's detection floor (§10 V34 step 2). One number, two enforcement points, deliberately — the alternative is a segment the auto-confirm gate admits and the scan boundary then rejects, which is the shape `FILLER_AUTOSPLIT_MAX_DURATION` one row down also serves two jobs to avoid |
+| `FILLER_SPLIT_REVIEW_WINDOW` | **`720h`** (30 days) — how long a split proposal's leftover cuts wait for review before `filler-split-sweep` gives up on them (§10 V54). ⚠ **The ONLY setting in Loomarr that deletes an operator's media**: when it expires, the leftover cuts are dropped AND the original recording is removed to reclaim the space (reels are commonly 1–2 GB). Bounded by three rules, all enforced rather than documented: only past the window; only for a recording that has ALREADY produced clips (a reel Loomarr could not use is the operator's only copy, and is never touched); and `0s` = never, which is the same off-by-explicit-zero encoding `FILLER_MIN_CLIP_DURATION` uses. The clips cut from a reel are never affected, and the catalog ROW survives as a tombstone so `parent_hash` lineage keeps resolving — only the bytes go. Told to the operator in `docs/help/filler.md`, which ships inside the binary |
 | `FILLER_MIN_CLIP_DURATION` / `FILLER_MAX_CLIP_DURATION` | **`0s` / `0s`** — both OFF (§10 V51f). Pod-assembly *eligibility* bounds: a commercial outside them is not drawn into breaks automatically, but stays in the catalog, searchable and pinnable. ⚠ **Distinct from `FILLER_MIN_DURATION` above, on the other side of the catalog boundary**: that one refuses a file *entry*; these decide what an existing clip may fill. ⚠ **`Policy.MinClipMs`/`MaxClipMs` existed for several phases with no way to set them** — assigned in tests and nowhere else — so `durationEligible` always returned true and `PoolReport.Eligible`, which §10 headlines as "the number that surprises operators", was arithmetically identical to `Commercials` on every install ever run. The pool strip printed one number twice and presented the pair as a diagnosis. The max is the one worth setting: it is the guard against a three-minute infomercial filling a thirty-second gap |
 | `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target filler is normalised to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT by default** — the drop-folder holds the operator's own files, so Loomarr does not rewrite them unasked. ⚠ **ONE target for both stages**: `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` reuses this value rather than declaring its own, or a clip normalised on file would be corrected again at playout toward a different number. Set empty to disable |
 | `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` | `false` (V42) — when on, auto-file rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` at `FILLER_TARGET_LUFS` before it enters the catalog. ⚠ **DESTRUCTIVE and opt-in for that reason**: the original is unrecoverable. The sidecar records `normalizedLufs` so a re-scan skips a file already normalised at the current target — without that marker every pass would re-normalise, walking the loudness down each run |
+| `FILLER_VISION_ENABLED` / `FILLER_VISION_MODEL` | **`true` / empty** (§10 V44) — whether a clip's own frames are read, and by which model. Empty model ⇒ reuse `LLM_MODEL`, for an install whose main model already sees images. ⚠ **Neither row existed in this table until V54a**, though both settings shipped in V44; the omission is why the gap one row below went unnoticed. |
+| `FILLER_VISION_PROVIDER` / `FILLER_VISION_URL` / `FILLER_VISION_API_KEY` | **all empty ⇒ vision uses the main LLM's provider, URL and key** — unchanged behaviour for every existing install (§10 V54a). Set them to point vision at a *different service* from the one that writes text. ⚠ **This gap was load-bearing.** `FILLER_VISION_MODEL` promised a vision model independent of `LLM_MODEL`, but the provider was built from `LLM_URL`/`LLM_API_KEY`, so the model name was the ONLY independent part: naming a local `llava:7b` while `LLM_URL` was a hosted endpoint sent an Ollama tag to that endpoint. Measured on the maintainer's stack — `llava:7b` → `https://openrouter.ai/api/v1` → **HTTP 401** on every segment, so split grounding had never once run and the gate refused every reel with *"a segment could not be classified"*. ⚠ **The key is NEVER inherited when `FILLER_VISION_PROVIDER` is set.** Declaring a separate vision service means declaring its own credentials: inheriting would send the operator's hosted key to whatever host they named, including `localhost`. ⚠ `FILLER_VISION_URL` empty with provider `ollama` resolves to the conventional `http://localhost:11434`, the same rule `ollamaBase` already applies to probes and pulls. |
 | `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely |
 | `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
@@ -3800,7 +4034,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
-**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (CLAUDE.md do-nots). Full mechanics: `config-design.md`.
+**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.
 
 ---
 
@@ -3960,6 +4194,18 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Errors open up.** `last_error` is rendered as an expandable panel with the full message, not a truncated single line. The Tasks page is where an operator diagnoses a failing integration, and a clipped error is the one piece of information they came for.
 - **River is the engine.** Each registry job becomes a River **periodic job** whose worker calls the same `Run` func; River owns due-selection, leadership (so only one replica runs a tick), retries with backoff, and the durable job records behind run history. **Run now** = inserting the job's args immediately — the same worker, no separate code path. The `scheduled_jobs` table remains the read model the Tasks page renders (last run, last result, paused), because River's own tables are keyed by *job execution*, not by "the operator's view of this named task".
 
+- ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — declared ceiling ⇒ `long`, none ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently and forever. Deriving the queue *set* and the *routing* from one function makes that state unreachable.
+
+  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — `channel-sweep`, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
+
+  ⚠ **`MaxWorkers 1` on SQLite is about the DEFAULT queue's WIDTH, not a ban on a second producer.** The pool holds `MaxOpenConns(1)`, so a second worker blocks *at the pool* — it cannot corrupt anything — and a long media job spends its time inside `exec.Command` holding no connection at all. It starved the others by holding a worker SLOT, not a connection. `long` is nevertheless 1 on Postgres too, for an unrelated reason already recorded in §10: ffmpeg competes with playout for the GPU, so a media worker *pool* would turn a catalog import into a live-channel outage.
+
+  ⚠ **Run-now must take the same queue the schedule would.** Forgetting `InsertOpts` on the trigger path reproduces the exact symptom above for manual runs, and nothing else in the suite covers it.
+
+  ⚠ Known and deliberately not fixed: River's periodic enqueuer inserts on schedule regardless of worker availability, so a long pass accumulates queued rows that drain back-to-back afterwards. After the split this is confined to `long` and self-limiting (each pass is budget-bounded and mostly a no-op). `UniqueOpts` is **not** the answer — Run-now inserts the same args, so deduplication would silently swallow an operator's click.
+
+- **An overdue job says so.** A job past its next run and waiting on a worker is marked `overdue` by the scheduler and rendered as such. ⚠ Before this the Tasks page ran the past timestamp through a duration formatter that answers **"expired"** for any past instant — a word written for session expiry — so a starved job reported itself in another subsystem's vocabulary. Deliberately NOT "which job is holding the worker": that is per-process, and on a multi-replica Postgres install it would confidently name the wrong one.
+
   ⚠ **Build the cron parser explicitly; never use `cron.ParseStandard`.** River's docs point at it, and it is **5-field** — it rejects *every* schedule Loomarr has, all of which are 6-field seconds-leading (`0 */5 * * * *`). Since `job.*.schedule` values are operator-editable settings already persisted in the database, the documented example would have failed every saved schedule at boot on installs that were working fine. `cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)` accepts them all (verified in `docs/engineering/FINDINGS-river-spike-2026-07-30.md`). `gronx` stays as the settings **validator**, so `KindCron` keeps one definition of a valid expression.
 
   ⚠ **River's schema is applied at boot via `rivermigrate`, never the `river migrate-up` CLI.** goose owns the application catalog; River owns its own. Two migration *libraries* is a stated cost — two migration *systems an operator must run* would not be shippable, and is why the programmatic path is load-bearing rather than a convenience.
@@ -4004,7 +4250,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 20. Open questions & follow-ons
-Decisions formerly listed here now have v1 defaults baked into the doc (season precision → `series`, §6; pending-slot policy → pod-fill, §9; backfill placement → `stable`, §9) — all config-overridable. **Pre-publish decisions for the maintainer** (none block the build; Claude Code should use placeholders):
+Decisions formerly listed here now have v1 defaults baked into the doc (season precision → `series`, §6; pending-slot policy → pod-fill, §9; backfill placement → `stable`, §9) — all config-overridable. **Pre-publish decisions for the maintainer** (none block the build; coding agents should use placeholders):
 - **License** — pick before publishing (MIT/Apache-2.0 for permissive, GPL-3.0 if you want Jellyfin-style copyleft; Tunarr itself is Zlib).
 - **Name availability** — verify `loomarr` is free on GitHub, Docker Hub, and isn't squatted in the Servarr ecosystem before announcing.
 - **Go module path** — `github.com/<you>/loomarr`; agent builds against a placeholder until set.
@@ -4026,12 +4272,12 @@ Genuinely future work:
 
 ---
 
-## 21. Build plan for Claude Code (phased, verifiable)
+## 21. Build plan for coding agents (phased, verifiable)
 
 Each phase ends green (compiles + its tests pass) before the next.
 
 0. **Contract spikes (with the maintainer, against real services).** Before any product code: verify the risky external contracts against the maintainer's live homelab and **pin the evidence into the repo**. (a) Tunarr: exercise channel CRUD + lineup + filler-list calls against a throwaway test channel; vendor the spec to `api/vendor/tunarr-openapi.json` with the tested version recorded; settle the API-key question (§6). (b) Sonarr/Radarr: trigger real `Test`, `Grab`, and `Download/Import` webhooks; capture the JSON verbatim to `internal/testkit/fixtures/` with source-version comments — the phase-6 handler is written against these, not against memory. (c) Media server: one authenticated `AuthenticateByName` + `SearchTerm` round-trip per flavor available. **If any contract deviates from §6/§9, stop and update this doc before proceeding.** Deliverables: pinned spec, fixtures, and a short findings note in PROGRESS.md.
-1. **Scaffold + build harness.** Module, `cmd/loomarr`, env config, `slog`, `/healthz`, **shared outbound HTTP client factory with per-service timeouts (§6)**, Dockerfile (distroless, non-root), compose skeleton (all profiles). **Harness:** `Makefile` target contract (`check`, `test`, `test-pg`, `openapi`, `openapi-verify`, `fe`, `e2e`, `dev`, `seed`), `.env.example` covering every §15 var, `internal/testkit/` skeleton (shared mocks for media server ×2 flavors, Tunarr, Seerr, TMDB, LLM + the Phase-0 fixtures), `PROGRESS.md`, and `CLAUDE.md` at the repo root. Repo layout:
+1. **Scaffold + build harness.** Module, `cmd/loomarr`, env config, `slog`, `/healthz`, **shared outbound HTTP client factory with per-service timeouts (§6)**, Dockerfile (distroless, non-root), compose skeleton (all profiles). **Harness:** `Makefile` target contract (`check`, `test`, `test-pg`, `openapi`, `openapi-verify`, `fe`, `e2e`, `dev`, `seed`), `.env.example` covering every §15 var, `internal/testkit/` skeleton (shared mocks for media server ×2 flavors, Tunarr, Seerr, TMDB, LLM + the Phase-0 fixtures), `PROGRESS.md`, and `AGENTS.md` at the repo root. Repo layout:
    ```
    cmd/loomarr/            # main
    internal/provision/     # §3–§4 domain + reconciler

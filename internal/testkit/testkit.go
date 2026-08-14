@@ -1,5 +1,5 @@
 // Package testkit holds the shared test doubles and pinned fixtures every test
-// uses (CLAUDE.md testing rules: unit tests never touch the network; phases
+// uses (AGENTS.md testing rules: unit tests never touch the network; phases
 // extend the testkit rather than inventing private mocks). The Phase-0 captures
 // live under fixtures/ with source-version comments and are the pinned truth
 // parsers are written against.

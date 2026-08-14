@@ -4,7 +4,7 @@ Phase 0 (design §21) verifies the risky external contracts against the maintain
 and pins the evidence into the repo *before* any product code. Captured **2026-07-13** via
 Tailscale (direct to container ports) + a local Tunarr dev instance.
 
-The detailed findings live next to the fixtures they explain (CLAUDE.md: "Fixtures are pinned
+The detailed findings live next to the fixtures they explain (AGENTS.md: "Fixtures are pinned
 truth"). This page is the index and the summary of what changed our understanding.
 
 ## Evidence map

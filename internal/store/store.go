@@ -2,7 +2,7 @@
 // interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres
 // via pgx's database/sql shim). Dialect differences live only in migrations and
 // the ClaimDue* methods; everything else is shared code and one conformance
-// suite runs against both backends (CLAUDE.md: never fork the assertions).
+// suite runs against both backends (AGENTS.md: never fork the assertions).
 package store
 
 import (
@@ -286,6 +286,17 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
+	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
+	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
+	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
+	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
+	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
+	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
+	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
+	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
+	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
+	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//

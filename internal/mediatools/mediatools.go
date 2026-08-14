@@ -13,7 +13,7 @@ import (
 // domain needs from ffmpeg/ffprobe/whisper-cli, nothing more. Unit tests fake
 // it; the real implementation (FFmpegTools) shells the vendored binaries and
 // is exercised only against real media (unit tests never require the binaries
-// — CLAUDE.md §19).
+// — AGENTS.md §19).
 type MediaTools interface {
 	// Chapters reads embedded chapters (triage — a pre-chaptered compilation
 	// splits for free). An empty slice means none, which is the common case

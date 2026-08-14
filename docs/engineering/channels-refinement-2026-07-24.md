@@ -27,6 +27,6 @@ A channel accumulated eight independently-designed features (manual lineup, AI r
 
 ## Consequences
 
-- A **channel surface map** (design.md §12) is the standing guardrail: every capability has one home + audience, and a PR adding a channel capability updates the map (new CLAUDE.md phase-13 gate line, P9).
+- A **channel surface map** (design.md §12) is the standing guardrail: every capability has one home + audience, and a PR adding a channel capability updates the map (new AGENTS.md phase-13 gate line, P9).
 - The BE ownership refactor (P3) is a **behavior change** (operator-dirty + provenance), not merely a neutral refactor — it fixes the live data-loss bug. Sequenced after the status-truth fix (P2) and doc alignment (P1).
 - Full phased plan: P1 docs (this) → P2 status truth → P3 ownership → P4 lineup primitive → P5 Programming surface → P6 preview+vocabulary → P7 Overview guide → P8 capability closure → P9 guardrail.

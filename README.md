@@ -64,18 +64,19 @@ transcode, or if you already run it. You choose in the wizard, and can override 
 
 ## Develop
 
-Go 1.26+, Node 22.5+, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
+Go 1.26+, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
 test suites.
 
 ```bash
-make check          # the gate — run before every push
-make fe-install     # pnpm install
-make dev-be         # backend on :8080 with live reload
+make doctor         # toolchain and local-state diagnostics
+make bootstrap      # frontend dependencies + codegen
+make dev-be         # isolated backend with live reload
+make dev-fe         # isolated frontend pointed at that backend
 ```
 
 → [Developer guide](docs/dev/index.md) · [Setup](docs/dev/setup.md) ·
 [Dev loop](docs/dev/dev-loop.md) · [Testing](docs/dev/testing.md) · [CI](docs/dev/ci.md) ·
-[Commands](docs/dev/commands.md)
+[Commands](docs/dev/commands.md) · [Agent development](docs/dev/agents.md)
 
 ## Documentation
 

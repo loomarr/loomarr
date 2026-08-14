@@ -202,5 +202,5 @@ _Avoid_: milestone, sprint, epic
 
 **Gate**:
 The set of tests that must pass for a Phase to count as done. Never stubbed, skipped, or
-weakened (CLAUDE.md prime directive #2).
+weakened (AGENTS.md prime directive #2).
 _Avoid_: check, CI (CI is where gates run, not what they are)

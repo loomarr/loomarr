@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// The store conformance suite (CLAUDE.md: ONE suite, TWO backends — never forked per dialect).
+// The store conformance suite (AGENTS.md: ONE suite, TWO backends — never forked per dialect).
 //
 // ⚠ One SUITE, not one FILE. This was a single 2,650-line file whose function order was
 // historical — clip tests scattered across four non-contiguous regions, `ScheduledJobPaused`
@@ -27,7 +27,7 @@ import (
 
 // NewStoreFunc builds a fresh, migrated, empty Store for one test. The SQLite
 // and Postgres test files each supply one; RunConformance runs the SAME
-// assertions against both (CLAUDE.md: one suite, two backends — never forked).
+// assertions against both (AGENTS.md: one suite, two backends — never forked).
 type NewStoreFunc func(t *testing.T) Store
 
 // RunConformance is the whole contract. Every backend must pass all of it.

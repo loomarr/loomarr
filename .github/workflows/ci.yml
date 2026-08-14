@@ -1,4 +1,4 @@
-# CI — mirrors the harness contract (CLAUDE.md / design §16):
+# CI — mirrors the harness contract (AGENTS.md / design §16):
 # check + openapi-verify + config-docs-verify + test-pg + fe + e2e/visual.
 # Every gate here is a `make` target so local and CI never diverge.
 name: CI
@@ -36,12 +36,13 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       image: ${{ steps.filter.outputs.image }}
       docs: ${{ steps.filter.outputs.docs }}
+      agent: ${{ steps.filter.outputs.agent }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # need the merge base to diff against
       # Plain git rather than a third-party action: this is ~15 lines of shell, and a
-      # marketplace action here would be a new dependency (CLAUDE.md §5) whose whole job is
+      # marketplace action here would be a new dependency (AGENTS.md) whose whole job is
       # `git diff --name-only`. It also fails SAFE — any error, or an unresolvable base,
       # falls through to running everything.
       - name: Which trees moved
@@ -55,7 +56,7 @@ jobs:
           if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
-            { echo "go=true"; echo "web=true"; echo "image=true"; } >> "$GITHUB_OUTPUT"
+            { echo "go=true"; echo "web=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$BASE" HEAD)
@@ -90,10 +91,18 @@ jobs:
           fi
           # Prose. Cheap and fast, so it gates on the whole documentation set rather than
           # trying to be clever about which page changed.
-          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The tool-neutral harness has a small macOS contract test below. Linux is already
+          # exercised by `make check`; this output prevents unrelated product changes from
+          # spending a macOS runner while keeping every harness input covered.
+          if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/dev/'; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "agent=false" >> "$GITHUB_OUTPUT"
           fi
           if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
@@ -123,6 +132,18 @@ jobs:
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
           fi
+
+  agent-harness-macos:
+    name: Agent harness (macOS)
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
+      # `make check`, where `/proc` is available.
+      - name: Worktree isolation, claims, leases, and process ownership
+        run: make agent-harness-test
 
   go:
     name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
@@ -622,7 +643,7 @@ jobs:
           args: >-
             --offline --no-progress
             README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
-            docs 'design/*.md' .claude
+            docs 'design/*.md' .agents .claude
           fail: true
 
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
@@ -645,7 +666,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, go, store-postgres, frontend, playwright, image, docs]
+    needs: [changes, agent-harness-macos, go, store-postgres, frontend, playwright, image, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

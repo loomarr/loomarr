@@ -14,7 +14,7 @@ import (
 )
 
 // Discovery is tested against the PINNED fixture, served by a local stub — never the live API
-// (CLAUDE.md: unit tests never touch the network). The fixture is a real capture, and it keeps
+// (AGENTS.md: unit tests never touch the network). The fixture is a real capture, and it keeps
 // all four doc shapes the live API returns; see fixtures/archive/FINDINGS.md.
 func discoverServer(t *testing.T, onQuery func(url.Values)) *httptest.Server {
 	t.Helper()

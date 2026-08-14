@@ -20,7 +20,7 @@ import (
 // actually consumes those bytes: an empty list + empty desired set is the
 // idempotent no-op (found == nil, nothing to detach), so EnsureFillerList must
 // return nil having parsed the pinned enumerate response. This is the "parsers
-// against fixtures, not remembered field names" rule (CLAUDE.md) for filler-lists —
+// against fixtures, not remembered field names" rule (AGENTS.md) for filler-lists —
 // if Tunarr changes the enumerate shape, the decode into fillerListSummary breaks
 // here.
 func TestEnsureFillerList_ConsumesPinnedEnumerateFixture(t *testing.T) {

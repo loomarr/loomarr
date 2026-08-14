@@ -104,6 +104,26 @@ func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.Cli
 	return p, true, nil
 }
 
+// MarkPipelineFiled takes a clip OFF the belt (§10 V54) — the split sweep's step 1.
+//
+// ⚠ **This is what stops the sweep becoming a churn loop.** A swept composite is still marked
+// `is_composite` and still enrolled, so leaving its row `running` means the split rung re-detects
+// it on the very next pass — propose → partly confirm → leftovers → sweep → re-propose, burning a
+// boundary scan every cycle and never converging. `ListPipelineWork` claims only `running`, so
+// `filed` is the existing, one-word way to say "this reel is finished".
+//
+// A missing row is not an error: a clip catalogued before the pipeline existed has none, and there
+// is nothing to take off a belt it was never on.
+func (s *sqlStore) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ?`),
+		string(filler.DispositionFiled), epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("mark pipeline filed %s: %w", hash, err)
+	}
+	return nil
+}
+
 // ListPipelineWork returns the non-terminal rows that are due, oldest first.
 //
 // ⚠ Ordered by `next_run` then `clip_hash`. The tie-break is not cosmetic: without a total order

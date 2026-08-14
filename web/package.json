@@ -5,7 +5,7 @@
   "description": "Loomarr frontend workspace (Test Card design system). Web now; Expo bolt-on later shares packages/{tokens,api,core}.",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.5 <23"
   },
   "packageManager": "pnpm@11.13.1",
   "scripts": {

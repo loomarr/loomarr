@@ -891,6 +891,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		fillerAdapter.pipeline = fillerPipeline
 		fillerSvc = fillerAdapter
 
+		// The split-review sweep (§10 V54): reels whose leftover cuts nobody reviewed expire, and
+		// their recordings are reclaimed. ⚠ No adapter — `SweepStore` is a pure SUBSET of
+		// `store.Store`, like the reindex job below. The clip dir is the same containment boundary
+		// the splitter uses; the window is read live so a change applies on the next run.
+		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
+			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
+			func() time.Duration { return set.dur("filler.split.review_window") },
+			time.Now, log)))
+
 		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
 		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
 		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a

@@ -61,7 +61,7 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
 			NextRun: j.NextRun, Running: j.Running, Paused: j.Paused,
-			DisabledReason: j.DisabledReason,
+			DisabledReason: j.DisabledReason, Overdue: j.Overdue,
 		})
 	}
 	return out, nil

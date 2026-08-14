@@ -24,10 +24,9 @@ services:
     # Transcoding under emulation is slow — fine for developing the adapter/API against; for
     # real playback use the Linux GPU host (compose.dev.gpu.yaml).
     platform: linux/amd64
-    container_name: tunarr-dev
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${TUNARR_DEV_PORT:-8000}:8000"
     volumes:
       - tunarr-dev-config:/config/tunarr
       # Filler drop-folder (§10): Loomarr registers this path as a Tunarr `local`

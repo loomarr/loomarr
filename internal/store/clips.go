@@ -655,8 +655,19 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// branches below and cannot disagree with whichever DELETE ran.
 	defer func() { _ = s.pruneOrphanPipelines(ctx) }()
 
+	// ⚠ **And the proposals, for the same reason** (§10 V54). `filler_split_proposals` is the other
+	// no-foreign-key sibling of `clips`, and it had the same hole: a wipe left 48 proposals behind,
+	// which Incoming rendered as 48 "compilations to review" titled with raw content hashes, each
+	// opening a review of a deleted file. Two separate defers rather than one combined closure, so
+	// each table's rationale sits beside its own call; the tables are independent, so LIFO order
+	// between them does not matter.
+	defer func() { _ = s.pruneOrphanSplitProposals(ctx) }()
+
 	if len(keepIDs) == 0 {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM clips`)
+		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
+		// empty or unreadable, which is exactly when a swept reel looks most like a deleted one —
+		// and taking the tombstones here would dangle their children just as surely.
+		res, err := s.db.ExecContext(ctx, `DELETE FROM clips WHERE reaped_at IS NULL`)
 		if err != nil {
 			return 0, err
 		}
@@ -677,7 +688,12 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// reported "1 added, 1 pruned" forever and the catalog stayed empty — filler silently never
 	// worked. Found by running the real binary; the conformance suite passed throughout because
 	// its fixtures set `path` and `hash` to the same string.
-	q := s.ph(`DELETE FROM clips WHERE hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
+	// ⚠ **A REAPED composite is exempt** (§10 V54). The split sweep deletes a spent compilation's
+	// recording on purpose, so its absence from the scan is expected rather than news. Without this
+	// the very next sync would prune the row — and every clip cut out of that reel carries
+	// `parent_hash` pointing at it, so one sweep would dangle all 47 children and take V45's
+	// lineage with it. The row is a tombstone; only the bytes are gone.
+	q := s.ph(`DELETE FROM clips WHERE reaped_at IS NULL AND hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
 	res, err := s.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("prune clips: %w", err)
