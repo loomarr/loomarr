@@ -21,9 +21,14 @@ func capture() (*slog.Logger, *bytes.Buffer) {
 // usable field, and the reel refused as untagged with no clue why.
 func TestGround_WarnsWhenItReadEveryCutAndLearnedNothing(t *testing.T) {
 	log, buf := capture()
-	// Valid JSON, plausible answer, and grounded on NOTHING: "toys" does not appear in the text
-	// the model says it read, so groundVisionTags correctly drops it.
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"CHANNEL 5 NEWS AT TEN"}`}
+	// ⚠ The MEASURED llava:7b answer, verbatim: it echoed the prompt's own option list back as the
+	// category and its placeholder as the visibleText. Valid JSON, parses cleanly, and grounds to
+	// nothing — the option list is not a taxon.
+	//
+	// This fixture used to rely on the category simply not appearing in the visibleText, which
+	// V54b stopped being a reason to drop one. Using the real failure is both faithful and immune
+	// to that: what makes it ground nothing is the taxonomy, which still refuses it.
+	model := &fixedVision{answer: `{"visibleText":"<the on-screen text you can read, verbatim; empty if none>","brand":"","era":0,"category":"toys|cereal|cars|tech|fast_food|movie_trailer|candy|games|psa|ident|bumper|general"}`}
 	s := NewSplitStage(nil, nil).WithLogger(log).WithSegmentVision(&SegmentVision{
 		Tools:    &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}},
 		Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",

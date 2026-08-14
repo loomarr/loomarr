@@ -1652,11 +1652,37 @@ signal: an on-screen logo, visible text, a black-and-white transfer that dates i
 tier that samples a few keyframes and asks a vision model for `brand`, `category`, and the
 `visibleText` it can read off the frame.
 
-⚠ **The grounding rule holds for pixels too.** A model reading `KELLOGG'S` off a box on screen is
-*grounded* — the text is literally in the frame — exactly as an era is grounded when its year is in
-the filename. A brand or category the model asserts without the frame showing it is dropped. The
-`visibleText` field is what makes this auditable: it is the on-screen text the model claims to have
-read, and a brand not supported by it does not persist.
+⚠ **The grounding rule holds for pixels too — for BRAND and ERA.** A model reading `KELLOGG'S` off
+a box on screen is *grounded* — the text is literally in the frame — exactly as an era is grounded
+when its year is in the filename. A brand or era the model asserts without the frame showing it is
+dropped. The `visibleText` field is what makes this auditable: it is the on-screen text the model
+claims to have read, and a brand not supported by it does not persist.
+
+⚠ **CATEGORY is grounded differently, and V54b corrects it (this paragraph used to include
+`category` in the rule above).** A category is checked against the TAXONOMY — the model must name a
+taxon that exists, resolved through `forest.Resolve` — but it is **not** required to appear in
+`visibleText`.
+
+The distinction is what kind of claim each field makes. A brand and a year are **specific facts**,
+and a model that emits one it did not see has fabricated a fact that will be wrong in a definite,
+checkable way — `KELLOGG'S` on a Ford advert. A category is a **judgement about imagery**:
+classifying a toy advert as `toys` by *seeing toys* is not fabrication, it is the entire reason a
+vision tier exists. Requiring the word on screen does not make that judgement more honest; it
+restricts it to adverts that happen to print their own genre.
+
+⚠ **Measured, because the old rule was close to unsatisfiable.** On a real 37-segment reel
+(2026-08-13) with a vision model answering correctly every time, the on-screen-text condition
+admitted **0 categories**. `era` grounded once — `1995`, from the visible text
+`"WAGA-5/Fox Commercial Breaks (2/5/1995)"` — while `psa`, correctly judged, was dropped for not
+being spelled out on the frame. Since `segmentVerdict` refuses any segment with no audience and no
+category (`RejectUntagged`) *before* the boundary-confidence check, the rule made split auto-confirm
+structurally impossible and the whole confidence ladder unreachable. The unit test hid it by
+choosing `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`, the rare case where the genre
+IS printed.
+
+⚠ **The taxonomy is what keeps this grounded rather than open.** The model cannot invent a
+category: an unresolvable one is still dropped, so the vocabulary — not the frame's text — is the
+constraint. Brand and era are unchanged and still require the frame.
 
 ⚠ **Keyframes come from `ffmpeg` stills, not the dHash frames.** `FFmpegArtwork` already produces a
 viewable 320px JPEG; the `GrayFrames` path is 9×8 grayscale for perceptual-hash dedup and is
