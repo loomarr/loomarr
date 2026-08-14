@@ -192,7 +192,7 @@ flowchart TD
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`prepared`**
+- **`prepared`** · 1 importer
   Owns immutable, reusable playout publications.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -214,7 +214,7 @@ flowchart TD
 
 - **`httpx`** · 5 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`playout`** · 3 importers · → `provision`, `schedule`
+- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
@@ -1045,6 +1045,12 @@ a private schedule. A tune resolves in this order:
    per-Channel packager on this path is a contract violation.
 4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
    accepted Lineup, `AiringAt`, or guide.
+
+The rendered manifest derives its media sequence from the Airing start, segment cadence, and current
+offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset.
+Every init/segment URI is namespaced by the immutable publication key. Follow-up requests therefore
+stay bound to the publication that authored the manifest even when the Channel crosses a programme
+boundary; there is no mutable per-Channel “current directory” for prepared media.
 
 Preparation is a separate control-plane module because it has a different caller and lifetime, not
 because it is a second playout. Its small interface accepts a source plus rendition contract and

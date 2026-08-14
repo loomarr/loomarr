@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const publicationMetadata = ".publication.json"
@@ -67,6 +68,13 @@ type Publication struct {
 	Files     []string
 }
 
+// Asset is one opened immutable file from a complete publication. Library keeps publication
+// metadata and paths private; delivery code receives only the opened bytes and their timestamp.
+type Asset struct {
+	Content  *os.File
+	Modified time.Time
+}
+
 type metadata struct {
 	Version       int           `json:"version"`
 	Specification Specification `json:"specification"`
@@ -78,13 +86,20 @@ type metadata struct {
 type Library struct {
 	root string
 
-	mu    sync.Mutex
-	locks map[string]*keyLock
+	mu      sync.Mutex
+	locks   map[string]*keyLock
+	catalog map[string]catalogEntry
 }
 
 type keyLock struct {
 	mu   sync.Mutex
 	refs int
+}
+
+type catalogEntry struct {
+	specification Specification
+	publication   Publication
+	files         map[string]struct{}
 }
 
 // NewLibrary creates (or opens) a prepared-media root.
@@ -100,7 +115,9 @@ func NewLibrary(root string) (*Library, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prepared: resolve library root: %w", err)
 	}
-	return &Library{root: abs, locks: make(map[string]*keyLock)}, nil
+	return &Library{
+		root: abs, locks: make(map[string]*keyLock), catalog: make(map[string]catalogEntry),
+	}, nil
 }
 
 // Publish returns an existing publication for spec or runs build exactly once per process and key.
@@ -179,7 +196,9 @@ func (l *Library) Publish(ctx context.Context, spec Specification, build Builder
 	if err := syncDir(l.root); err != nil {
 		return Publication{}, err
 	}
-	return Publication{Key: key, Directory: final, Files: append([]string(nil), files...)}, nil
+	pub := Publication{Key: key, Directory: final, Files: append([]string(nil), files...)}
+	l.remember(spec, pub)
+	return pub, nil
 }
 
 // Lookup returns only a complete publication whose metadata matches spec. Staging directories and
@@ -189,23 +208,109 @@ func (l *Library) Lookup(spec Specification) (Publication, bool, error) {
 	if err != nil {
 		return Publication{}, false, err
 	}
+	if entry, ok := l.cached(key); ok {
+		if entry.specification != spec {
+			return Publication{}, false, ErrIncomplete
+		}
+		return clonePublication(entry.publication), true, nil
+	}
+	entry, ok, err := l.load(key)
+	if err != nil || !ok {
+		return Publication{}, ok, err
+	}
+	if entry.specification != spec {
+		return Publication{}, false, ErrIncomplete
+	}
+	return clonePublication(entry.publication), true, nil
+}
+
+func (l *Library) load(key string) (catalogEntry, bool, error) {
 	dir := filepath.Join(l.root, key)
 	body, err := os.ReadFile(filepath.Join(dir, publicationMetadata))
 	if errors.Is(err, os.ErrNotExist) {
-		return Publication{}, false, nil
+		return catalogEntry{}, false, nil
 	}
 	if err != nil {
-		return Publication{}, false, fmt.Errorf("prepared: read metadata: %w", err)
+		return catalogEntry{}, false, fmt.Errorf("prepared: read metadata: %w", err)
 	}
 	var record metadata
-	if err := json.Unmarshal(body, &record); err != nil || record.Version != 1 || record.Specification != spec {
-		return Publication{}, false, ErrIncomplete
+	if err := json.Unmarshal(body, &record); err != nil || record.Version != 1 {
+		return catalogEntry{}, false, ErrIncomplete
+	}
+	recordedKey, err := keyFor(record.Specification)
+	if err != nil || recordedKey != key {
+		return catalogEntry{}, false, ErrIncomplete
 	}
 	files, err := validateOutput(dir, Output{Files: record.Files})
 	if err != nil {
-		return Publication{}, false, err
+		return catalogEntry{}, false, err
 	}
-	return Publication{Key: key, Directory: dir, Files: files}, true, nil
+	pub := Publication{Key: key, Directory: dir, Files: files}
+	l.remember(record.Specification, pub)
+	entry, _ := l.cached(key)
+	return entry, true, nil
+}
+
+// Open opens one file declared by a complete immutable publication. The publication key and asset
+// name are both untrusted URL material: malformed keys, traversal, metadata, and undeclared files
+// are reported as misses rather than exposing the library layout.
+func (l *Library) Open(key, name string) (Asset, bool, error) {
+	if len(key) != sha256.Size*2 {
+		return Asset{}, false, nil
+	}
+	if _, err := hex.DecodeString(key); err != nil {
+		return Asset{}, false, nil
+	}
+	clean := filepath.Clean(name)
+	if clean == "." || filepath.IsAbs(clean) || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == publicationMetadata {
+		return Asset{}, false, nil
+	}
+
+	entry, ok := l.cached(key)
+	if !ok {
+		var err error
+		entry, ok, err = l.load(key)
+		if err != nil || !ok {
+			return Asset{}, ok, err
+		}
+	}
+	if _, declared := entry.files[clean]; !declared {
+		return Asset{}, false, nil
+	}
+	info, err := regularFileInside(entry.publication.Directory, clean)
+	if err != nil || info.Size() == 0 {
+		return Asset{}, false, ErrIncomplete
+	}
+	f, err := os.Open(filepath.Join(entry.publication.Directory, clean))
+	if err != nil {
+		return Asset{}, false, fmt.Errorf("prepared: open asset: %w", err)
+	}
+	return Asset{Content: f, Modified: info.ModTime()}, true, nil
+}
+
+func (l *Library) cached(key string) (catalogEntry, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry, ok := l.catalog[key]
+	return entry, ok
+}
+
+func (l *Library) remember(spec Specification, pub Publication) {
+	files := make(map[string]struct{}, len(pub.Files))
+	for _, name := range pub.Files {
+		files[name] = struct{}{}
+	}
+	l.mu.Lock()
+	l.catalog[pub.Key] = catalogEntry{
+		specification: spec, publication: clonePublication(pub), files: files,
+	}
+	l.mu.Unlock()
+}
+
+func clonePublication(pub Publication) Publication {
+	pub.Files = append([]string(nil), pub.Files...)
+	return pub
 }
 
 func keyFor(spec Specification) (string, error) {

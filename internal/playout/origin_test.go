@@ -17,7 +17,7 @@ func (s *tuneSessions) Attach(_ context.Context, channel string, _ EncodePlan) (
 
 func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 	t.Parallel()
-	origin := newOrigin(&tuneSessions{}, nil)
+	origin := newOrigin(nil, &tuneSessions{}, nil)
 	_, err := origin.Tune(context.Background(), TuneRequest{
 		ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS,
 	})
@@ -49,7 +49,7 @@ func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 		t.Fatal(err)
 	}
 	hls := &tuneHLS{path: manifestPath}
-	origin := newOrigin(sessions, hls)
+	origin := newOrigin(nil, sessions, hls)
 
 	stream, err := origin.Tune(context.Background(), TuneRequest{
 		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
