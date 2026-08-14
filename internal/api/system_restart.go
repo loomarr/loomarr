@@ -91,8 +91,8 @@ func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRes
 	// filters CLOSED sessions, so a channel nobody is watching is not counted as a
 	// casualty. Zero on a Tunarr-backed install, where nothing Loomarr owns is streaming:
 	// the correct answer, not a missing one.
-	if s.playoutSessions != nil {
-		out.Body.StreamingChannels = len(s.playoutSessions.Stats(time.Now()))
+	if s.playoutObserver != nil {
+		out.Body.StreamingChannels = len(s.playoutObserver.Stats(time.Now()))
 	}
 
 	// ⚠ DERIVED, never a sticky flag. A boolean written when the operator saves is wrong

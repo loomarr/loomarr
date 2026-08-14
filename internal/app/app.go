@@ -274,10 +274,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var tunarrConnectSvc api.TunarrConnector
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
-	var playoutSessions api.PlayoutSessions
+	var playoutObserver api.PlayoutObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
-	var playoutHLS api.PlayoutHLS
+	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
 	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
 	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
@@ -541,13 +541,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
 			})
 		})
-		playoutSessions = playoutMgr
+		playoutObserver = playoutMgr
 
 		// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
 		// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
 		// failure to create its scratch root is not fatal — the media-server streams work without
 		// it — so log and leave the /playout/hls routes reporting "not running" rather than
 		// refusing to boot.
+		var liveHLS *playout.HLSManager
 		if hlsMgr, herr := playout.NewHLSManager(
 			playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
 			playout.DefaultGrace, log,
@@ -555,12 +556,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
 				"err", herr)
 		} else {
-			playoutHLS = hlsMgr
+			liveHLS = hlsMgr
 			go func() {
 				<-rootCtx.Done()
 				hlsMgr.Stop()
 			}()
 		}
+		playoutSvc = playout.NewOrigin(playoutMgr, liveHLS)
 		playoutResolverSvc = playoutRes
 
 		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
@@ -1266,9 +1268,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutSessions: playoutSessions,
+		PlayoutObserver: playoutObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
-		PlayoutHLS:      playoutHLS,
+		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
 		PlayoutGuide:   playoutGuideSvc,

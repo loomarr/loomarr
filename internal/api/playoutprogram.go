@@ -406,10 +406,10 @@ func (s *Server) startChild(
 
 	enc2 := enc // capture for the progress closure
 	onProgress := func(p playout.Progress) {
-		if s.playoutSessions != nil {
+		if s.playoutObserver != nil {
 			// `transcoding` corrects the session's admission cost to reality (§9.1 V49): a `-c copy`
 			// program frees its transcode slot, a re-encode claims one.
-			s.playoutSessions.ReportProgram(channelID, target, enc2, transcoding, p)
+			s.playoutObserver.ReportProgram(channelID, target, enc2, transcoding, p)
 		}
 	}
 	proc, err := s.playoutEncoder(cctx, args, onProgress)
