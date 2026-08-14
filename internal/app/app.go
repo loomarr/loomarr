@@ -562,7 +562,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				hlsMgr.Stop()
 			}()
 		}
-		playoutSvc = playout.NewOrigin(playoutMgr, liveHLS)
+		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+			LiveSessions: playoutMgr,
+			LiveHLS:      liveHLS,
+		})
 		playoutResolverSvc = playoutRes
 
 		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing

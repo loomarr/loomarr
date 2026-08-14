@@ -57,23 +57,47 @@ type hlsOrigin interface {
 	AssetPath(string, EncodePlan, string) (string, bool)
 }
 
+type preparedDelivery interface {
+	Tune(context.Context, TuneRequest) (Presentation, bool, error)
+	OpenAsset(string, EncodePlan, string) (Asset, bool, error)
+}
+
 // Origin is the one playout seam used by transport adapters. The current live implementations are
 // hidden behind it; prepared delivery can replace their selection without changing callers.
 type Origin struct {
+	prepared preparedDelivery
 	sessions sessionAttacher
 	hls      hlsOrigin
 }
 
-// NewOrigin places the existing live session and HLS implementations behind the production seam.
-func NewOrigin(sessions *Manager, hls *HLSManager) *Origin { return newOrigin(sessions, hls) }
+// OriginDependencies are the implementations hidden behind the one production playout seam.
+// Prepared is consulted first; the bounded live implementations remain internal fallbacks.
+type OriginDependencies struct {
+	Prepared     *PreparedOrigin
+	LiveSessions *Manager
+	LiveHLS      *HLSManager
+}
 
-func newOrigin(sessions sessionAttacher, hls hlsOrigin) *Origin {
-	return &Origin{sessions: sessions, hls: hls}
+// NewOrigin assembles prepared delivery and the current bounded live fallback behind one seam.
+func NewOrigin(deps OriginDependencies) *Origin {
+	return newOrigin(deps.Prepared, deps.LiveSessions, deps.LiveHLS)
+}
+
+func newOrigin(prepared preparedDelivery, sessions sessionAttacher, hls hlsOrigin) *Origin {
+	return &Origin{prepared: prepared, sessions: sessions, hls: hls}
 }
 
 // Tune returns the presentation for the requested delivery without exposing which implementation
 // produced it.
 func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, error) {
+	var preparedErr error
+	if request.Delivery == DeliveryHLS && o.prepared != nil {
+		presentation, hit, err := o.prepared.Tune(ctx, request)
+		if err == nil && hit {
+			return presentation, nil
+		}
+		preparedErr = err
+	}
 	switch request.Delivery {
 	case DeliveryMPEGTS:
 		if o.sessions == nil {
@@ -83,6 +107,9 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 		return Presentation{Stream: stream, Release: release}, err
 	case DeliveryHLS:
 		if o.hls == nil {
+			if preparedErr != nil {
+				return Presentation{}, preparedErr
+			}
 			return Presentation{}, ErrUnsupportedDelivery
 		}
 		path, release, err := o.hls.Playlist(request.ChannelID, request.Plan)
@@ -102,6 +129,12 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 
 // OpenAsset opens a follow-up HLS resource without exposing the live remux layout to callers.
 func (o *Origin) OpenAsset(channelID string, plan EncodePlan, rel string) (Asset, bool, error) {
+	if o.prepared != nil {
+		asset, ok, err := o.prepared.OpenAsset(channelID, plan, rel)
+		if err != nil || ok {
+			return asset, ok, err
+		}
+	}
 	if o.hls == nil {
 		return Asset{}, false, nil
 	}
