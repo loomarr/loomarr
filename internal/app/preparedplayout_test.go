@@ -220,6 +220,14 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 	if len(plan.Protected) != 1 || plan.Protected[0].SourceFingerprint != "durable" {
 		t.Fatalf("protected = %+v, want durable publication beyond cold batch", plan.Protected)
 	}
+	wantSummary := prepared.ReadinessSummary{
+		Channels: 100, ReadyChannels: 1,
+		ScheduledBindings: 100, ReadyBindings: 1, MissingBindings: 99,
+		QueuedPublications: preparedCandidateBatch,
+	}
+	if plan.Summary != wantSummary {
+		t.Fatalf("summary = %+v, want %+v", plan.Summary, wantSummary)
+	}
 }
 
 func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {

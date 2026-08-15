@@ -277,6 +277,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutObserver api.PlayoutObserver
+	// Prepared readiness is observed through the planner itself; the API only snapshots it.
+	var preparedObserver api.PreparedObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
 	var playoutSvc api.Playout
@@ -622,9 +624,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if preparedErr != nil {
 			reason := "the prepared media directory is unavailable: " + preparedErr.Error()
 			log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
-			jobReg.Add(preparedPlayoutJob(prepared.NewPlanner(prepared.PlannerDependencies{
-				Pool: encodePool, Now: time.Now, Log: log,
-			}), reason))
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Pool: encodePool, Now: time.Now, Log: log, UnavailableReason: reason,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, reason))
 		} else {
 			readiness, readinessErr := prepared.OpenReadiness(preparedLibrary)
 			if readinessErr != nil {
@@ -661,16 +665,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 					)
 				},
 			})
-			jobReg.Add(preparedPlayoutJob(
-				prepared.NewPlanner(prepared.PlannerDependencies{
-					Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
-					Retainer: preparedLibrary,
-					BudgetBytes: func() int64 {
-						return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
-					},
-					Now: time.Now, Log: log,
-				}), "",
-			))
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
+				Retainer: preparedLibrary,
+				BudgetBytes: func() int64 {
+					return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
+				},
+				Now: time.Now, Log: log,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, ""))
 			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		}
 		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
@@ -1342,7 +1346,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutObserver: playoutObserver,
+		PlayoutObserver:  playoutObserver,
+		PreparedObserver: preparedObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
