@@ -1,4 +1,4 @@
-import type { UpdateChannelInputBodyStrategy } from "@loomarr/api";
+import type { UpdateChannelInputBodyStrategy } from "@loomarr/api/models/updateChannelInputBodyStrategy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useChannelDetail } from "./-channel-detail-context";
 import { ChannelProgramming } from "./-channel-programming";

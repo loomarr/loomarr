@@ -1,7 +1,10 @@
-import { fillerApi, toProblem, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, IncomingPanel } from "@/components/loomarr";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { IncomingPanel } from "@/components/loomarr/filler/incoming-panel";
 import { TunePanel } from "../tune-panel";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { IncomingTabProps } from "./incoming-tab.type";

@@ -1,6 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { NavTabs } from "@/components/ui";
-import { SettingsEditsProvider, SettingsPage, SettingsSaveBarHost, useSettingsEntries } from "@/settings";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { SettingsPage } from "@/settings/settings-page";
+import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 const FillerOperations = () => (
   <SettingsPage

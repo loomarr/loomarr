@@ -1,6 +1,9 @@
-import { formatRelative } from "@loomarr/core";
-import { Badge, Button, Disclosure, Switch } from "@/components/ui";
-import { cn } from "@/lib";
+import { formatRelative } from "@loomarr/core/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
 // FillerSources — where the clip catalog comes from (§10, V28; the v2 mock's Filler → Sources).

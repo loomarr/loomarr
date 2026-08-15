@@ -1,8 +1,12 @@
-import { systemApi, unwrap } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ErrorState, HostedModelPicker, ModelDiscover, ModelPicker } from "@/components/loomarr";
-import { useLoomarrEventListener } from "@/events";
+import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
+import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
+import { ModelPicker } from "@/components/loomarr/ai/model-picker";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 // The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
 // which is why this sits beside the AI settings form rather than inside it: the form

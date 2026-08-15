@@ -1,5 +1,7 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import { channelsApi, type LineupEntryDTO, toProblem } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";

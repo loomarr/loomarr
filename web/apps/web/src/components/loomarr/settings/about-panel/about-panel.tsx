@@ -1,5 +1,5 @@
-import { formatUptime } from "@loomarr/core";
-import { cn } from "@/lib";
+import { formatUptime } from "@loomarr/core/format";
+import { cn } from "@/lib/utils";
 import type { AboutPanelProps } from "./about-panel.type";
 
 // AboutPanel — Settings → System → About (§16, V12; v2 mock System → About).

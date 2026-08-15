@@ -1,4 +1,4 @@
-import type { PlayoutStatus } from "@loomarr/api";
+import type { PlayoutStatus } from "@loomarr/api/models/playoutStatus";
 
 interface PlayoutPanelProps {
   // The whole live-playout picture (GET /v1/playout/status): GPU/LLM header + one row per channel.

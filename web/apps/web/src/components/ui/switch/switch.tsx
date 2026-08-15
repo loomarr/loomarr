@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // Switch — the pill toggle for "is this thing on?" (the v2 mock's source switches).
 //

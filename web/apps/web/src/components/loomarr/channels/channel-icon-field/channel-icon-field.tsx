@@ -1,9 +1,14 @@
-import { ApiError, channelsApi, toProblem, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { ApiError, toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
-import { CollapsibleSection } from "@/components/loomarr";
-import { Button, Image, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
+import { Button } from "@/components/ui/button";
+import { Image } from "@/components/ui/image";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
 // ⚠ The multipart upload used to be hand-written here, replicating the mutator's transport

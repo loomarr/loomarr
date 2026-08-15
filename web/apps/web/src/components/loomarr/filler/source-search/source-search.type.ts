@@ -1,4 +1,5 @@
-import type { DiscoveredClip, DiscoveredClipStats } from "@loomarr/api";
+import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
+import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 
 interface SourceSearchProps {
   /** The server's answer, verbatim (contract 1:1). */

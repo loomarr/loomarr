@@ -1,8 +1,12 @@
-import { channelsApi, fillerApi, toProblem, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChannelOverridePicker } from "@/components/loomarr";
-import { Button, Card } from "@/components/ui";
+import { ChannelOverridePicker } from "@/components/loomarr/filler/channel-override-picker";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { PinClipDialogProps } from "./pin-clip-dialog.type";
 
 // PinClipDialog — which channels use this clip (§10, V35 item 1.7).

@@ -1,4 +1,4 @@
-import type { Activity } from "@loomarr/api";
+import type { Activity } from "@loomarr/api/models/activity";
 
 interface ActivityFeedProps {
   /** Newest first, from GET /v1/activity. */

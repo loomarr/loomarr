@@ -1,4 +1,4 @@
-import type { ChannelDTO } from "@loomarr/api";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { beginTune, markTunePhase } from "../tuner-timing";
 import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";

@@ -1,6 +1,6 @@
-import { formatClipDuration } from "@loomarr/core";
-import { Image } from "@/components/ui";
-import { cn } from "@/lib";
+import { formatClipDuration } from "@loomarr/core/format";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 

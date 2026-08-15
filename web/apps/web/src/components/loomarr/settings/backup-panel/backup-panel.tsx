@@ -1,7 +1,7 @@
-import { formatBytes, formatRelative, pluralize } from "@loomarr/core";
+import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { AlertTriangle, Database, Download, HardDriveDownload } from "lucide-react";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
 
 // BackupPanel — Settings → System → Backup (§16, V12; v2 mock System → Backup).

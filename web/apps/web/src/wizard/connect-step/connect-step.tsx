@@ -1,7 +1,8 @@
-import { humanizeSettingKey } from "@loomarr/core";
+import { humanizeSettingKey } from "@loomarr/core/format";
 import { Loader2 } from "lucide-react";
-import { ChecklistItem, ErrorState } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ChecklistItem } from "@/components/loomarr/setup/checklist-item";
+import { Button } from "@/components/ui/button";
 import type { ConnectStepProps } from "./connect-step.type";
 
 // The shape shared by the two one-click wiring steps (§13 steps 3 and 5): explain what

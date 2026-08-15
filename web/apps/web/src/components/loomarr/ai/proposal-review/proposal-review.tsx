@@ -1,9 +1,13 @@
-import type { ProposalItem } from "@loomarr/api";
-import { formatPercent } from "@loomarr/core";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import { formatPercent } from "@loomarr/core/format";
 import { Check, Pencil, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { Badge, Button, Card, Input, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
 // ProposalReview — the human-in-the-loop review that fronts the approval gate (§3,

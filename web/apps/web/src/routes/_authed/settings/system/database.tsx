@@ -1,11 +1,13 @@
-import type { DatabaseCheck } from "@loomarr/api";
-import { systemApi, unwrap } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import type { MigrationStep } from "@/components/loomarr";
-import { DatabaseMigration, ErrorState } from "@/components/loomarr";
-import { useLoomarrEventListener } from "@/events";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import type { MigrationStep } from "@/components/loomarr/settings/database-migration";
+import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 // Settings → System → Database (§18, V11) — the SQLite → PostgreSQL migration stepper.
 //

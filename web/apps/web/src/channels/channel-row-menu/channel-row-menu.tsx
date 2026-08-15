@@ -1,15 +1,16 @@
-import { channelsApi, toProblem } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui";
+} from "@/components/ui/dropdown-menu";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
 

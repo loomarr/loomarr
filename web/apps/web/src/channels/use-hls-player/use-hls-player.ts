@@ -1,5 +1,6 @@
-import { channelsApi, toProblem, unwrap } from "@loomarr/api";
-import Hls from "hls.js";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useCallback, useRef, useState } from "react";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 import { deviceProfile } from "./device-profile";
@@ -62,7 +63,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   const generationRef = useRef(0);
 
   const bind = useCallback(
-    (video: HTMLVideoElement, url: string): (() => void) => {
+    async (video: HTMLVideoElement, url: string, current: () => boolean): Promise<() => void> => {
+      // hls.js is almost half a megabyte minified. Loading it with the Watch route made the route's
+      // controls and programme context wait for a transport library they do not need to render.
+      // Fetch it only after the signed URL arrives; the page paints first, then playback attaches.
+      // The generation check matters because a channel switch can happen while this chunk is in
+      // flight — an obsolete import must never attach its stream to the replacement video.
+      const { default: Hls } = await import("hls.js");
+      if (!current()) return () => undefined;
+
       let firstFrame = false;
       const onFirstFrame = () => {
         if (firstFrame) return;
@@ -217,7 +226,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             setError("Couldn't get a stream for this channel.");
             return;
           }
-          teardown = bind(video, src);
+          return bind(video, src, current).then((nextTeardown) => {
+            if (!current()) {
+              nextTeardown();
+              return;
+            }
+            teardown = nextTeardown;
+          });
         })
         .catch((e) => {
           if (!current()) return;

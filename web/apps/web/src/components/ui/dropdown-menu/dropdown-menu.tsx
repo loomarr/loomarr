@@ -1,7 +1,7 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Separator as SeparatorPrimitive } from "@base-ui/react/separator";
 import { Check } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type {
   DropdownMenuCheckboxItemProps,
   DropdownMenuContentProps,

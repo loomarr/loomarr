@@ -1,19 +1,14 @@
-import { SettingEntryProvenance, SettingResultStatus } from "@loomarr/api";
-import { formatRelative, humanizeSettingKey } from "@loomarr/core";
+import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
+import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import {
-  Badge,
-  Checkbox,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { SettingFieldProps } from "./setting-field.type";
 

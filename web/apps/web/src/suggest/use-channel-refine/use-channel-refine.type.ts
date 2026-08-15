@@ -1,5 +1,5 @@
-import type { ProposalDTO } from "@loomarr/api";
-import type { SuggestionPhase } from "@loomarr/core";
+import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
+import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface ChannelRefine {
   // The live phase from the SSE stream, or undefined before anything is running.

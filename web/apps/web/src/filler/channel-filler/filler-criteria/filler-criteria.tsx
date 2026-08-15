@@ -1,18 +1,15 @@
-import { ClipDTOAudience, ClipDTOKind, type FillerSelection, fillerApi } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { ClipDTOAudience } from "@loomarr/api/models/clipDTOAudience";
+import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import { useState } from "react";
-import { FieldHelp } from "@/components/loomarr";
-import {
-  Button,
-  Checkbox,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { FieldHelp } from "@/components/loomarr/feedback/field-help";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
 // control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.

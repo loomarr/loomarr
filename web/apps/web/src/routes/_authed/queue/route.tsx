@@ -1,12 +1,16 @@
-import { proposalsApi, type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import * as titlesApi from "@loomarr/api/endpoints/titles";
+import type { TitleDTO } from "@loomarr/api/models/titleDTO";
+import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
+import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useAuth } from "@/auth";
-import { ErrorState } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
-import { journeyProgress } from "@/queue";
+import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { journeyProgress } from "@/queue/journey";
 
 // Queue / My requests (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of

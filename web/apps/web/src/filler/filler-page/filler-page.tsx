@@ -1,34 +1,29 @@
-import type { ClipDTO } from "@loomarr/api";
-import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
-import { formatRelative, pluralize } from "@loomarr/core";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { isOk, unwrap } from "@loomarr/api/unwrap";
+import { formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import {
-  ClipCard,
-  ClipPlayer,
-  ClipRow,
-  EmptyState,
-  ErrorState,
-  PoolHealth,
-  WatchPill,
-} from "@/components/loomarr";
-import {
-  Button,
-  Card,
-  Input,
-  Label,
-  NavTabs,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ClipCard } from "@/components/loomarr/filler/clip-card";
+import { ClipPlayer } from "@/components/loomarr/filler/clip-player";
+import { ClipRow } from "@/components/loomarr/filler/clip-row";
+import { PoolHealth } from "@/components/loomarr/filler/pool-health";
+import { WatchPill } from "@/components/loomarr/filler/watch-pill";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";

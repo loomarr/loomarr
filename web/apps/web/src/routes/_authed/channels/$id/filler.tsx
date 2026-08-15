@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChannelFiller } from "@/filler";
+import { ChannelFiller } from "@/filler/channel-filler";
 import { useChannelDetail } from "./-channel-detail-context";
 
 // Filler — admin-only. This is already a dedicated route, so the sandbox is a normal page rather

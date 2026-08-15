@@ -1,17 +1,11 @@
 import { KeyRound, MonitorSmartphone, Server } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Checkbox,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { UserRowProps } from "./user-row.type";
 
 // UserRow — one row of the §11 allowlist. Role, quota, auto-approve, and disabled are

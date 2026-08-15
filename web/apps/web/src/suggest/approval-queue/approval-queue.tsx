@@ -1,9 +1,16 @@
-import { type ApprovalEditDTO, fillerApi, proposalsApi, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ApprovalQueueItem, EmptyState, ErrorState, PullCard } from "@/components/loomarr";
-import { Button, Checkbox } from "@/components/ui";
+import { ApprovalQueueItem } from "@/components/loomarr/ai/approval-queue-item";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { PullCard } from "@/components/loomarr/filler/pull-card";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
 // It lists everything still `submitted`, which is exactly what the status filter means.

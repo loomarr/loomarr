@@ -1,8 +1,11 @@
-import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
-import { Caption, StatusDot } from "@/components/ui";
-import { cn } from "@/lib";
+import { Caption } from "@/components/ui/caption";
+import { StatusDot } from "@/components/ui/status-dot";
+import { cn } from "@/lib/utils";
 import { ChannelIdent } from "../../channels";
 import type { GuideGridProps } from "./guide-grid.type";
 

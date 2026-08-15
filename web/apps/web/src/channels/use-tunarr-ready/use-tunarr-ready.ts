@@ -1,4 +1,4 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 
 // useTunarrReady reports whether Tunarr is configured (tunarr.url is set). Rebuild/reconcile
 // push to Tunarr, so a channel action that needs it must gate on this — otherwise the button

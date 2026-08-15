@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { NavTabsProps } from "./nav-tabs.type";
 
 // NavTabs — THE tab bar for this app: a pill per destination, the active one filled with a

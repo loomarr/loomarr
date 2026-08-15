@@ -1,4 +1,4 @@
-import { authApi } from "@loomarr/api";
+import * as authApi from "@loomarr/api/endpoints/auth";
 
 // The single definition of the GET /v1/auth/me query, shared by useAuth (render-time
 // identity) and the router beforeLoad guards (ensureQueryData in _authed/login).

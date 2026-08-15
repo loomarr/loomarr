@@ -7,18 +7,15 @@ import { SettingsSaveBarHost } from "./settings-save-bar-host";
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
 
-vi.mock(import("@loomarr/api"), async (importOriginal) => {
+vi.mock(import("@loomarr/api/endpoints/settings"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    settingsApi: {
-      ...actual.settingsApi,
-      useSettingsPatch: (() => ({
-        error: null,
-        isPending: false,
-        mutate: mocks.mutate,
-      })) as unknown as typeof actual.settingsApi.useSettingsPatch,
-    },
+    useSettingsPatch: (() => ({
+      error: null,
+      isPending: false,
+      mutate: mocks.mutate,
+    })) as unknown as typeof actual.useSettingsPatch,
   };
 });
 

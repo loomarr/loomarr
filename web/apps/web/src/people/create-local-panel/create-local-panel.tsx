@@ -1,17 +1,13 @@
-import { type CreateLocalUserInputBodyRole, toProblem, usersApi } from "@loomarr/api";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
+import { toProblem } from "@loomarr/api/mutator";
 import { useId, useState } from "react";
-import {
-  Button,
-  Card,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { CreateLocalPanelProps } from "./create-local-panel.type";
 
 // CreateLocalPanel — the second way into §11's allowlist, alongside import.

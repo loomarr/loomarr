@@ -1,18 +1,19 @@
-import { type ChannelPolicy, channelsApi, type LineupEntryDTO, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
-import {
-  ChannelAutoCurate,
-  ChannelCollectionsScope,
-  ChannelCyclePreview,
-  ChannelLineupEditor,
-  ChannelPolicyFields,
-  ChannelRulesEditor,
-  ChannelSeasonal,
-  ChannelSeriesScope,
-  CollapsibleSection,
-  RefinePanel,
-} from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
+import { ChannelAutoCurate } from "@/components/loomarr/channels/channel-auto-curate";
+import { ChannelCollectionsScope } from "@/components/loomarr/channels/channel-collections-scope";
+import { ChannelCyclePreview } from "@/components/loomarr/channels/channel-cycle-preview";
+import { ChannelLineupEditor } from "@/components/loomarr/channels/channel-lineup-editor";
+import { ChannelPolicyFields } from "@/components/loomarr/channels/channel-policy-fields";
+import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-editor";
+import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
+import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
+import { Button } from "@/components/ui/button";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
 // what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface

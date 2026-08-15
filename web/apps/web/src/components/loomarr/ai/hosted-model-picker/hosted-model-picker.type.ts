@@ -1,4 +1,4 @@
-import type { HostedProviderView } from "@loomarr/api";
+import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
 
 interface HostedModelPickerProps {
   // The curated hosted providers (OpenRouter + Custom), each with keyConfigured + live

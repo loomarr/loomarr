@@ -1,4 +1,5 @@
-import { fillerApi, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { unwrap } from "@loomarr/api/unwrap";
 import { SourcesPanel } from "../sources-panel";
 
 // SourcesTab — where clips come from. A thin wrapper that owns the ONE query the Sources tab

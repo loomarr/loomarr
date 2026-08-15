@@ -1,4 +1,4 @@
-import type { ImageDTO } from "@loomarr/api";
+import type { ImageDTO } from "@loomarr/api/models/imageDTO";
 import type { ReactNode } from "react";
 
 interface ImageProps {

@@ -1,6 +1,6 @@
 import { Eye, EyeOff } from "lucide-react";
 import * as React from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // shadcn/ui Input (new-york). The boundary is border-input (border-control ≥3:1,
 // §2.3) plus the signal focus ring — a control is never identified by a hairline

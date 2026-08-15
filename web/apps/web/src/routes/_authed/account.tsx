@@ -1,10 +1,17 @@
-import { authApi, toProblem, unwrap, usersApi } from "@loomarr/api";
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { Badge, Button, Card, Input, Label } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Your account (§11). The self-service half of local account management: change your
 // own password, see where you're signed in, and revoke a session.

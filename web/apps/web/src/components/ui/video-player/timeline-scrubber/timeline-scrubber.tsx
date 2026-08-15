@@ -1,10 +1,10 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import type { GuideAiring } from "@loomarr/api";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { useId, useMemo, useRef, useState } from "react";
 // A sibling path rather than the "@/components/ui" barrel: this file IS inside that barrel, and
 // importing it from within would close a cycle. Matches how every other ui component takes Button.
 import { Image } from "@/components/ui/image";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { TimelineScrubberProps } from "./timeline-scrubber.type";
 
 // TimelineScrubber — the live player's scrubber, a MINI GUIDE (§9.1 Watch, V47).

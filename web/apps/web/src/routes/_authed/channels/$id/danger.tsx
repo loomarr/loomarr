@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChannelDangerZone } from "@/components/loomarr";
+import { ChannelDangerZone } from "@/components/loomarr/channels/channel-danger-zone";
 import { useChannelDetail } from "./-channel-detail-context";
 
 // Danger zone — admin-only. Pause/resume and delete.

@@ -1,5 +1,6 @@
-import { Badge, Card } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { MyRequestCardProps } from "./my-request-card.type";
 
 // MyRequestCard — one submitted request, from the requester's side (V26 / `A2`, §12).

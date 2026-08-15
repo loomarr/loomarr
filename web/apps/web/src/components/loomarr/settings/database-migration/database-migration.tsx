@@ -1,7 +1,10 @@
-import { formatBytes } from "@loomarr/core";
+import { formatBytes } from "@loomarr/core/format";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
-import { Badge, Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
 // DatabaseMigration — the SQLite → PostgreSQL stepper (§18, V11; v2 mock System → Database).

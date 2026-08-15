@@ -1,8 +1,8 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import type { SearchResult } from "@loomarr/core";
+import type { SearchResult } from "@loomarr/core/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { SearchCommand } from "@/components/loomarr";
+import { SearchCommand } from "@/components/loomarr/shell/search-command";
 import { usePaletteResults } from "../use-palette-results";
 import type { CommandPaletteProps } from "./command-palette.type";
 

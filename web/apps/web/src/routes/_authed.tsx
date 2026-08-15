@@ -1,12 +1,17 @@
-import { ApiError, authApi } from "@loomarr/api";
+import * as authApi from "@loomarr/api/endpoints/auth";
+import { ApiError } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { meQueryOptions, needsBootstrap, useAuth } from "@/auth";
-import { AppShell, RestartOverlay } from "@/components/loomarr";
+import { meQueryOptions } from "@/auth/me-query";
+import { needsBootstrap } from "@/auth/setup-state-query";
+import { useAuth } from "@/auth/use-auth";
+import { AppShell } from "@/components/loomarr/shell/app-shell";
+import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
 import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
-import { LoomarrEventsProvider } from "@/events";
-import { CommandPalette, useCommandShortcut } from "@/palette";
+import { LoomarrEventsProvider } from "@/events/events-provider";
+import { CommandPalette } from "@/palette/command-palette";
+import { useCommandShortcut } from "@/palette/use-command-shortcut";
 
 // The authenticated app layout + session gate (§11). beforeLoad ensures the me query
 // (shared meQueryOptions) before any child renders — a 401 throws a redirect to /login

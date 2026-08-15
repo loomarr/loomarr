@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 
 // A minimal VALID SettingEntry. Same rule as `./channels` and `./users`: every required field the
 // wire declares, nothing more.

@@ -1,6 +1,6 @@
 import { Loader2, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { IntentInputProps } from "./intent-input.type";
 
 // IntentInput — the hero (§3). A natural-language channel intent wearing the

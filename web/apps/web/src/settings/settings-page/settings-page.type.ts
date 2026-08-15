@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import type { ReactNode } from "react";
 
 // A page groups one or more registry groups behind a single save bar (config-design §5).

@@ -1,7 +1,9 @@
-import type { HostedModelView, HostedProviderView } from "@loomarr/api";
+import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
+import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
 import { Check } from "lucide-react";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
 // The §8.1 hosted picker (OpenAI-compatible). The BE curates two hosted providers —

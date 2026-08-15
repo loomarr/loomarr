@@ -1,7 +1,7 @@
-import { toProblem } from "@loomarr/api";
+import { toProblem } from "@loomarr/api/mutator";
 import { AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
 // ErrorState — the RFC 7807 renderer (§3). Every failure surfaces the problem's

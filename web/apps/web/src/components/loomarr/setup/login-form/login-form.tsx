@@ -1,9 +1,11 @@
-import { loginSchema } from "@loomarr/core";
+import { loginSchema } from "@loomarr/core/schemas";
 import { useForm } from "@tanstack/react-form";
 import { FlaskConical, KeyRound, Loader2, LogIn } from "lucide-react";
-import { ErrorState } from "@/components/loomarr";
-import { Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
 
 // LoginForm — the sign-in surface (§11). Local or imported media-server credentials

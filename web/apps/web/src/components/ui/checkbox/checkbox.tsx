@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // A native <input type="checkbox"> styled with the Test Card tokens — the bool control
 // for settings forms (config-design §2 kinds). Deliberately NOT a headless primitive:

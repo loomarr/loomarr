@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { isSetupCompleted } from "@/wizard";
+import { isSetupCompleted } from "@/wizard/setup-completed";
 
 // The app home (`/`). On a fresh instance the operator lands in the first-run wizard
 // instead of an empty Channels page (config-design §6: until `setup.completed` is set,

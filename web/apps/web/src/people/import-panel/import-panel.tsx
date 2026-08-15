@@ -1,8 +1,13 @@
-import { settingsApi, unwrap, usersApi } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
 import { useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import { Button, Card, Checkbox, Label } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import type { ImportPanelProps } from "./import-panel.type";
 
 // ImportPanel — §11's "explicit import, never implicit". A media-server account grants no

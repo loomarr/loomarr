@@ -1,9 +1,12 @@
-import type { ClipDTO } from "@loomarr/api";
-import { formatClipDuration, formatRelative } from "@loomarr/core";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { formatClipDuration, formatRelative } from "@loomarr/core/format";
 import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card, Image } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
 // ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category

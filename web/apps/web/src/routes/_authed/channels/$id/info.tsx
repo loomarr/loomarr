@@ -1,12 +1,10 @@
-import { channelNumber, pluralize } from "@loomarr/core";
+import { channelNumber, pluralize } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ChannelBreaks,
-  ChannelIconField,
-  ChannelUpcoming,
-  CollapsibleSection,
-  OnAirIndicator,
-} from "@/components/loomarr";
+import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
+import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
+import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
+import { OnAirIndicator } from "@/components/loomarr/channels/on-air-indicator";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ChannelAdvanced } from "./-channel-advanced";
 import { useChannelDetail } from "./-channel-detail-context";
 

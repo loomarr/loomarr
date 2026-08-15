@@ -1,6 +1,6 @@
-// @loomarr/core — platform-agnostic domain layer (frontend-design §4.2): the SSE
-// invalidation bus, zod schemas, and formatters. No DOM/web-only surface beyond
-// the swappable EventSource construction, so the Expo app reuses it verbatim.
+// Complete @loomarr/core catalog for tests and tooling. Runtime code imports one module subpath at
+// a time (frontend-design §4.4). The modules remain platform-agnostic: no DOM/web-only surface beyond
+// the swappable EventSource construction, so the Expo app reuses them verbatim.
 export * from "./anchor";
 export * from "./clip-thumb";
 export * from "./contracts";

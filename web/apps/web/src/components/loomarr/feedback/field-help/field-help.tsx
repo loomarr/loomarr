@@ -1,7 +1,7 @@
 import { Info } from "lucide-react";
 import { useId } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { cn } from "@/lib";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
 
 // FieldHelp — a small (i) icon that shows a field's guidance on hover/focus, instead of a
