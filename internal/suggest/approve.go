@@ -13,7 +13,7 @@ import (
 )
 
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
-var ErrNotSubmitted = errors.New("proposal is not in the submitted state")
+var ErrNotSubmitted = store.ErrProposalNotSubmitted
 
 // ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
 //
@@ -42,9 +42,10 @@ func (e *ApprovalEdit) isEmpty() bool {
 
 // ApproveStore is the slice of the store approval needs.
 type ApproveStore interface {
+	// GetTitle is read-only quota input. The approval write itself is deliberately
+	// exposed only as the atomic commit below.
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-	UpsertTitle(ctx context.Context, rec provision.Record) error
-	UpdateProposal(ctx context.Context, p store.Proposal) error
+	CommitProposalApproval(ctx context.Context, commit store.ProposalApproval) (int, error)
 }
 
 // Approve turns a submitted proposal into real state: in-library picks become `available`
@@ -95,9 +96,11 @@ func Approve(
 		p.Note = edit.Note
 	}
 
-	// In-library picks become `available` records so the scheduler can place them (§8:
+	// Prepare every candidate before entering the store transaction. In-library picks become
+	// `available` records so the scheduler can place them (§8:
 	// "the approved lineup feeds the scheduler"). Without this, an in-library pick is
 	// unresolvable and never becomes a program.
+	titles := make([]provision.Record, 0, len(body.Lineup)+len(body.Acquisitions))
 	for _, l := range body.Lineup {
 		if !l.InLibrary || l.LibraryItemID == "" {
 			continue // a not-in-library lineup item is covered by acquisitions
@@ -110,32 +113,17 @@ func Approve(
 		if kerr != nil {
 			continue // grounded proposals are always keyable; skip defensively
 		}
-		// Idempotent: never clobber an existing record — it may already be tracked
-		// through the provisioner.
-		if _, gerr := st.GetTitle(ctx, key); gerr == nil {
-			continue
-		} else if !errors.Is(gerr, store.ErrNotFound) {
-			return 0, gerr
-		}
-		rec := provision.Record{
+		titles = append(titles, provision.Record{
 			Key: key, Title: title,
 			State: provision.Available, LibraryID: l.LibraryItemID,
-		}
-		if err := st.UpsertTitle(ctx, rec); err != nil {
-			return 0, err
-		}
+		})
 	}
 
+	decisionAt := now()
 	for _, a := range body.Acquisitions {
 		key, kerr := acquisitionKey(a)
 		if kerr != nil {
 			continue // a grounded proposal never has an unkeyable acquisition
-		}
-		// Idempotent enqueue (§4 inv. 3) — only create if absent.
-		if _, gerr := st.GetTitle(ctx, key); gerr == nil {
-			continue
-		} else if !errors.Is(gerr, store.ErrNotFound) {
-			return 0, gerr
 		}
 		title := provision.Title{
 			MediaType: provision.MediaType(a.MediaType),
@@ -145,11 +133,7 @@ func Approve(
 		// rows with `deadline <= now AND deadline > 0`, so a zero-deadline wanted title is
 		// never claimed and never submitted to Seerr. (Caught by the live smoke: approved
 		// acquisitions sat in `wanted` forever because the deadline was unset.)
-		rec := provision.Record{Key: key, Title: title, State: provision.Wanted, Deadline: now()}
-		if err := st.UpsertTitle(ctx, rec); err != nil {
-			return 0, err
-		}
-		enqueued++
+		titles = append(titles, provision.Record{Key: key, Title: title, State: provision.Wanted, Deadline: decisionAt})
 	}
 
 	p.Status = "approved"
@@ -158,11 +142,9 @@ func Approve(
 	// approves — a human admin, the per-user auto-approve grant, auto-curate, and V27's bulk
 	// approve — goes through this function, so none of them can record a decision without a
 	// time. `now` is injected, so the stamp is deterministic under test rather than wall-clock.
-	p.ApprovedAt = now()
-	if err := st.UpdateProposal(ctx, p); err != nil {
-		return 0, err
-	}
-	return enqueued, nil
+	p.ApprovedAt = decisionAt
+	p.UpdatedAt = decisionAt
+	return st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: p, Titles: titles})
 }
 
 // applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
@@ -248,6 +230,8 @@ func NewAcquisitions(ctx context.Context, st ApproveStore, p store.Proposal) (in
 		seen[string(key)] = true
 		if _, gerr := st.GetTitle(ctx, key); errors.Is(gerr, store.ErrNotFound) {
 			count++
+		} else if gerr != nil {
+			return 0, fmt.Errorf("quota: read title %s: %w", key, gerr)
 		}
 	}
 	return count, nil
