@@ -424,6 +424,113 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	}
 }
 
+func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
+	dir := t.TempDir()
+	body := make([]byte, 4096)
+	for i := range body {
+		body[i] = byte((i * 7) % 251)
+	}
+	probeFile := filepath.Join(dir, "probe.mp4")
+	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := filler.ClipID(probeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(probeFile); err != nil {
+		t.Fatal(err)
+	}
+	// The title reported in the live catalog was the former 40-character digest shape, not the
+	// current 64-character content id. Both are machine names and both must migrate.
+	stale := strings.Repeat("a", 40)
+	oldRel := filepath.ToSlash(filler.ClipRelPath(stale, ".mp4"))
+	oldFull := filepath.Join(dir, filepath.FromSlash(oldRel))
+	if err := os.MkdirAll(filepath.Dir(oldFull), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldFull, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	source := &fakeSource{clips: []filler.RawClip{{
+		ID: actual, Path: oldRel, Name: stale, Kind: filler.Commercial, DurationMs: 30_000,
+	}}}
+	st := newMemStore()
+	st.clips[actual] = filler.StoreClip{Clip: filler.Clip{
+		Hash: actual, Path: oldRel, Name: stale, Kind: filler.Commercial,
+		Brand: "Coca-Cola", Era: 1992, Audience: filler.Family,
+	}}
+	sync := filler.NewSyncer(source, st, dir, time.Now, discardLog())
+	res, err := sync.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 || res.Updated != 1 {
+		t.Fatalf("sync = %+v, want one repaired catalog path", res)
+	}
+	wantRel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	got := st.clips[actual]
+	if got.Path != wantRel || got.Name != "Coca-Cola — 1992" {
+		t.Errorf("repaired row = path %q name %q, want %q and preserved title", got.Path, got.Name, wantRel)
+	}
+	if _, err := os.Stat(oldFull); !os.IsNotExist(err) {
+		t.Errorf("stale media still exists: %v", err)
+	}
+	newFull := filepath.Join(dir, filepath.FromSlash(wantRel))
+	if id, err := filler.ClipID(newFull); err != nil || id != actual {
+		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
+	}
+	tags, ok := filler.ReadSidecarTags(newFull)
+	if !ok || tags.OriginalName != "Coca-Cola — 1992" {
+		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
+	}
+}
+
+func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("a canonical clip whose source name was lost")
+	probeFile := filepath.Join(dir, "probe.mp4")
+	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := filler.ClipID(probeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(probeFile); err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyTitle := "299bceca4e5635c05ea454255105152f0b999119"
+	source := &fakeSource{clips: []filler.RawClip{{
+		ID: actual, Path: rel, Name: legacyTitle, Kind: filler.Commercial, DurationMs: 30_000,
+	}}}
+	st := newMemStore()
+	sync := filler.NewSyncer(source, st, dir, time.Now, discardLog())
+	res, err := sync.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 || res.Added != 1 {
+		t.Fatalf("sync = %+v, want one repaired new clip", res)
+	}
+	if got := st.clips[actual].Name; got != "Untitled commercial" {
+		t.Errorf("name = %q, want neutral display name", got)
+	}
+	tags, ok := filler.ReadSidecarTags(full)
+	if !ok || tags.OriginalName != "Untitled commercial" {
+		t.Errorf("sidecar = %+v ok=%v, want durable neutral display name", tags, ok)
+	}
+}
+
 // A hand-dropped clip is FILED, not held (§10 V38c). Intake writes no `fetchedBy` for it, so the
 // sync's held/filed fork must let it straight into the catalog — holding a file the operator
 // placed themselves would mean it sits invisible until approved.

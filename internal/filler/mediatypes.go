@@ -36,4 +36,6 @@ type (
 	Prober = mediatools.Prober
 	// MezzanineProfile is the transcode target the transcode stage carries around.
 	MezzanineProfile = mediatools.MezzanineProfile
+	// MediaQuality is the black/content-silent/frozen evidence measured while decoding a clip.
+	MediaQuality = mediatools.MediaQuality
 )

@@ -68,6 +68,9 @@ func (m *progMemStore) GetClip(_ context.Context, id string) (StoreClip, bool, e
 func (m *progMemStore) SetClipsRemoved(context.Context, []string, time.Time) (int, error) {
 	return 0, nil
 }
+func (m *progMemStore) SetClipsHeld(context.Context, []string, bool, bool, time.Time) (int, error) {
+	return 0, nil
+}
 
 // reportingStage is a rung that emits a scripted progress script, the way transcode emits ffmpeg's
 // and the way `tag`/`vision` emit NoMeasurement.

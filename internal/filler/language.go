@@ -43,6 +43,11 @@ const (
 // the answer completely differently — one runs a local model and reads a field, the other asks a
 // multimodal model a question — but the job, the reject rule and every test see only the code.
 type LanguageDetector interface {
+	// UnavailableReason reports a missing prerequisite without attempting inference. Empty means
+	// the detector is configured well enough to try. This keeps configuration absence distinct
+	// from a backend that ran and failed: the former skips immediately, while the latter earns the
+	// bounded retry ladder.
+	UnavailableReason() string
 	// DetectLanguage inspects [startMs,endMs) of file. It returns LangUndetermined with a nil
 	// error when it genuinely could not tell, so a caller can distinguish "unavailable" from
 	// "failed" only when it cares — most do not, because both mean "do not reject".
@@ -209,6 +214,22 @@ type whisperLangJSON struct {
 	Transcription []struct {
 		Text string `json:"text"`
 	} `json:"transcription"`
+}
+
+// UnavailableReason distinguishes a detector that cannot possibly run from one that can run and
+// might fail. Retrying an empty model path cannot repair the configuration; it only delays every
+// clip before the non-fatal rung eventually skips.
+func (w *WhisperLanguage) UnavailableReason() string {
+	switch {
+	case w.WhisperPath == "":
+		return "the local language engine is not configured (set ingest.whisper_path)"
+	case w.Model == "":
+		return "the local language model is not configured (set filler.language_model)"
+	case w.FFmpegPath == "":
+		return "audio extraction is not configured (set playout.ffmpeg_path)"
+	default:
+		return ""
+	}
 }
 
 func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {

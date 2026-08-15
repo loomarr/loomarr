@@ -815,7 +815,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
-			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true},
+			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true},
 		},
 	}
 	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
@@ -833,13 +833,23 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	// The V34 review fields must cross the wire — the UI renders from exactly these.
 	s1 := got.Segments[1]
-	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable {
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable || !s1.Looked {
 		t.Errorf("review fields lost: %+v", s1)
 	}
 
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/nope", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown proposal → %d, want 404", resp.StatusCode)
+	}
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_detecting", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("incomplete detector checkpoint → %d, want 404 until reviewable", resp.StatusCode)
 	}
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_1", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
