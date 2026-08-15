@@ -116,7 +116,7 @@ func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (s
 	return ch, nil
 }
 
-func (quotaChannels) AfterApprovalCommitted(context.Context, store.Channel) {}
+func (quotaChannels) AfterApprovalCommitted(context.Context, string) {}
 
 func movieKey(t *testing.T, tmdbID int) provision.Key {
 	t.Helper()

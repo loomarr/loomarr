@@ -76,6 +76,36 @@ func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalAp
 		return 0, err
 	}
 
+	// The supersession guard must share the approval transaction. A check in the
+	// coordinator alone has a gap: a newer proposal can commit after that check but
+	// before this approval plans, letting the older planner read the newer channel
+	// revision and successfully CAS an older lineup over it. Channel revision protects
+	// stale snapshots; this protects stale proposal decisions.
+	//
+	// Run it after the submitted->approved CAS so SQLite takes its write lock before
+	// reading the comparison set; a deferred read transaction upgraded after another
+	// commit can otherwise fail with SQLITE_BUSY_SNAPSHOT instead of a domain result.
+	// The transaction rolls this status change back when a superseder exists.
+	// Compare against the candidate row's persisted job/time, not caller fields. Epoch
+	// seconds cannot order a tie, so equal timestamps fail closed instead of guessing.
+	var supersedingID string
+	err = tx.QueryRowContext(ctx, s.ph(
+		`SELECT newer.id
+		   FROM proposals newer
+		   JOIN proposals candidate ON candidate.id = ?
+		  WHERE newer.job_id = candidate.job_id
+		    AND newer.status = 'approved'
+		    AND newer.id <> candidate.id
+		    AND newer.created_at >= candidate.created_at
+		  LIMIT 1`), p.ID).Scan(&supersedingID)
+	if err == nil {
+		return 0, fmt.Errorf("%w: proposal %s is preceded by approved proposal %s",
+			ErrProposalSuperseded, p.ID, supersedingID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("approve proposal %s: check supersession: %w", p.ID, err)
+	}
+
 	enqueued := 0
 	for _, item := range encoded {
 		r := item.record
@@ -97,7 +127,7 @@ func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalAp
 			enqueued++
 		}
 	}
-	if err := s.upsertChannel(ctx, tx, commit.Channel); err != nil {
+	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
 			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
 		}

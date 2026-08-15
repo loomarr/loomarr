@@ -421,14 +421,27 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
   marked **operator-set** (§2.1 stickiness), (b) keeps `filler`/`window`/`autoCurate` always, and
   (c) merges `rules` by **provenance** (replace `llm`, keep `operator`).
 
-  ⚠ **This transaction does not by itself solve every channel stale-write race.** Two approvals
-  for one existing channel can plan from the same snapshot, and Channel PATCH and reconcile also
-  perform read-modify-write operations on that row. The later full-row write can therefore erase
-  an earlier lineup/policy change even though both proposal decisions remain audited. Preserving
-  every approval and operator edit requires a channel revision/compare-and-swap protocol adopted
-  by **every** full-row writer; adding it to approval alone would advertise a guarantee the older
-  writers can still violate. That cross-writer conversion is the next concurrency refactor rather
-  than a partial claim here.
+  **Every channel mutation participates in one revision protocol.** The persisted channel carries
+  a monotonic row revision independent of its display timestamp. A new row begins at revision 1;
+  a full replacement must name the revision it read and atomically advances it, while a stale save
+  changes nothing. Claims and targeted derived writes advance the same counter, so a stale full
+  snapshot cannot restore an old lease, codec, Tunarr id, clip override, desired lineup, or policy.
+  Approval treats a stale channel as a rolled-back/replan result: proposal, titles, and channel
+  still commit together. The same transaction also rejects a candidate when that job already has
+  an approved proposal created at the same persisted second or later: channel CAS protects a stale
+  channel snapshot, but this second guard prevents an older decision from reading a newer snapshot
+  and then validly CAS-ing the older lineup over it. Same-second proposal order is unknowable at the
+  stored timestamp precision, so the gate fails closed rather than guessing. Reconcile likewise
+  reloads and recomputes after a stale final write; its
+  Tunarr checkpoint is a targeted compare-and-swap of the server id **and number actually used**, so
+  an auto-renumber survives a later lineup failure without overwriting a concurrent operator edit.
+  If two Postgres replicas create before either
+  checkpoint wins, the loser removes its unattached remote id after the durable row proves that a
+  different id won; process-local channel locks are not treated as replica coordination. The
+  operator PATCH carries the revision shown
+  to the editor and returns 409 rather than replaying a stale whole-lineup/policy replacement onto
+  a state the operator never saw. This protocol is adopted by **every** channel-row writer; a
+  writer that does not advance or validate the revision reintroduces the lost-update bug.
 - **Cost-guarded + idempotent.** A channel whose intent-hash + lineup are unchanged since its last re-curation is skipped (the suggester's intent-hash cache), so a weekly run that finds nothing new makes no LLM call and no proposal. A re-curation that produces an identical proposal is a no-op end to end (same bind, no reconcile push — the §6.5 idempotency).
 
 The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content over time (add titles) but never *weakens* a gate — the audience ceiling (§4, and the kids-only default), the approval gate, and the per-channel opt-in all still hold. It grows a channel toward its intent; it can't turn a kids channel adult or spend acquisitions a human never authorized.

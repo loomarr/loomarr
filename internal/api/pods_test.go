@@ -88,7 +88,7 @@ func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Cartoons", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -344,7 +344,7 @@ func decodeFit(t *testing.T, resp *http.Response) []api.ChannelFitDTO {
 // The route resolves the clip in the URL, and answers per channel.
 func TestClipFit_AnswersForEveryChannel(t *testing.T) {
 	srv, st, fp := newPodsServer(t)
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-2", Name: "Late Night", Number: 7, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -392,7 +392,7 @@ func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
 		id  string
 		num int
 	}{{"ch-2", 2}, {"ch-3", 3}, {"ch-4", 4}, {"ch-5", 5}} {
-		if err := st.UpsertChannel(context.Background(), store.Channel{
+		if _, err := st.SaveChannel(context.Background(), store.Channel{
 			Channel: schedule.Channel{ID: ch.id, Name: ch.id, Number: ch.num, Status: "live"},
 		}); err != nil {
 			t.Fatal(err)

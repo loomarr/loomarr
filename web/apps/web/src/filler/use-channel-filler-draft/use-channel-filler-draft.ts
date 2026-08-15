@@ -43,7 +43,11 @@ const canonicalize = (s: FillerDraft): string => {
 // It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
 // policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
 // must merge onto the policy or it would wipe scope/audience/separation/ordering.
-const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
+const useChannelFillerDraft = (
+  channelId: string,
+  policy: ChannelPolicy | undefined,
+  revision: number,
+): ChannelFillerDraft => {
   const queryClient = useQueryClient();
   const saved: FillerSelection | undefined = policy?.filler;
   const savedBreaksPerHour = policy?.breaksPerHour;
@@ -92,7 +96,10 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
         });
         toast.success("Filler updated");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't update filler"),
+      onError: (e) => {
+        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
+        toast.error(toProblem(e).title ?? "Couldn't update filler");
+      },
     },
   });
 
@@ -114,7 +121,10 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
     // rest of it (scope/audience/separation/ordering) alongside the new filler.
     apply: () =>
-      update.mutate({ id: channelId, data: { policy: { ...policy, filler: draft, breaksPerHour } } }),
+      update.mutate({
+        id: channelId,
+        data: { revision, policy: { ...policy, filler: draft, breaksPerHour } },
+      }),
     isApplying: update.isPending,
     discard: () => {
       setDraft(saved ?? {});

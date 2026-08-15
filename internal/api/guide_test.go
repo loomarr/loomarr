@@ -172,7 +172,7 @@ func newGridServerWithConfig(
 
 func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
 	t.Helper()
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential"},
 	}); err != nil {
 		t.Fatal(err)
@@ -388,7 +388,7 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 		"tunarr-ch": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
 	}}
 	srv, st := newGridServer(t, g)
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential"},
 		Policy: schedule.ChannelPolicy{
 			OperatorPolicy: schedule.OperatorPolicy{

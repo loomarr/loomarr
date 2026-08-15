@@ -347,8 +347,8 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("validate channel: %w", err)
 	}
-	if err := st.UpsertChannel(ctx, ch); err != nil {
-		return fmt.Errorf("upsert channel: %w", err)
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		return fmt.Errorf("save channel: %w", err)
 	}
 	programs := 0
 	for _, s := range desired.Slots {

@@ -6,7 +6,7 @@ import { useChannelDetail } from "./-channel-detail-context";
 // than a permanently-open accordion nested inside one.
 const FillerScreen = () => {
   const { id, channel } = useChannelDetail();
-  return <ChannelFiller channelId={id} policy={channel.policy} />;
+  return <ChannelFiller channelId={id} revision={channel.revision} policy={channel.policy} />;
 };
 
 const Route = createFileRoute("/_authed/channels/$id/filler")({
