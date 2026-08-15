@@ -288,6 +288,11 @@ type SplitDetectionProgress struct {
 	ScannedThroughMs int64      `json:"scannedThroughMs"`
 	Black            []Interval `json:"black,omitempty"`
 	Silence          []Interval `json:"silence,omitempty"`
+	// Chapters says CoarseSegments came from container-authored chapter boundaries. It is private
+	// checkpoint provenance, not review data, and lets a resume restore scoring evidence even when
+	// a source supplied one untitled chapter (otherwise indistinguishable from a whole-reel
+	// boundary fallback after JSON removed the private source bitmask).
+	Chapters bool `json:"chapters,omitempty"`
 	// CoarseSegments is set once chapter/boundary triage is complete. Persisting it before
 	// transcript rescue means a timeout in the next phase never repeats the timeline scan.
 	CoarseSegments []SplitSegment `json:"coarseSegments,omitempty"`

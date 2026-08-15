@@ -2569,3 +2569,57 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("created_at = %v with none supplied, want the UpdatedAt fallback (%v)", got2.CreatedAt, arrived)
 	}
 }
+
+// testIncomingConveyorCount keeps the bounded Incoming total on the same readiness rule as the
+// list it describes. A split detection checkpoint is private pipeline state, so its composite
+// remains on the conveyor; only a completed proposal claims that composite into the reels list.
+// This runs unchanged against SQLite and Postgres because a backend-specific JSON predicate here
+// would be an easy source of a count that disagrees on one install type.
+func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	counters, ok := s.(interface {
+		CountIncomingConveyor(context.Context) (int, error)
+	})
+	if !ok {
+		t.Fatal("store does not expose the Incoming conveyor counter")
+	}
+
+	for _, c := range []Clip{
+		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+	} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+			ClipHash: c.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp-draft", ClipHash: "draft-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp-ready", ClipHash: "ready-reel", CreatedAt: time.Now().UTC(),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := counters.CountIncomingConveyor(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
+	}
+}

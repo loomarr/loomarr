@@ -109,6 +109,9 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
 	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
 
 	proposal, err := a.splitter.Propose(ctx, compHash)
 	if err != nil {
@@ -131,6 +134,20 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	}
 	if parent.Disposition != filler.DispositionFiled {
 		t.Fatalf("parent disposition = %q, want filed after the proposal was confirmed", parent.Disposition)
+	}
+	parentClip, err := st.GetClip(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parentClip.Held {
+		t.Fatal("confirmed composite is still held, so its catalog group is invisible")
+	}
+	topLevel, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, TopLevelOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
+		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
 	}
 	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true})
 	if err != nil {

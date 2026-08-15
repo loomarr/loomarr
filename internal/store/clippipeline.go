@@ -203,17 +203,47 @@ func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilt
 }
 
 // CountIncomingConveyor counts the exact union rendered by the Incoming belt: held legacy clips
-// plus running/review pipeline rows, minus reels that have their own row. Keeping this in SQL is
-// what lets the response cap rows without turning its total into the page length.
+// plus running/review pipeline rows, minus READY reels that have their own row. A split detection
+// checkpoint is still machine work and therefore stays on the belt; only a complete proposal
+// claims its composite into the reels list.
+//
+// Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
+// candidate and only intersecting proposal documents are decoded here. One query matters: counting
+// candidates and reading proposals separately can race a pipeline transition and briefly return a
+// negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
+// syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
 func (s *sqlStore) CountIncomingConveyor(ctx context.Context) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips c
-		WHERE NOT EXISTS (SELECT 1 FROM filler_split_proposals sp WHERE sp.clip_hash = c.hash)
-		  AND ((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
-		    OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
-		      WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`),
-		true, false, string(filler.DispositionRunning), string(filler.DispositionReview)).Scan(&n)
+	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
+	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
+		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT sp.id, sp.segments_json
+		FROM clips c
+		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
+		WHERE `+candidate), args...)
 	if err != nil {
+		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		n++
+		var id, raw sql.NullString
+		if err := rows.Scan(&id, &raw); err != nil {
+			return 0, fmt.Errorf("scan incoming conveyor: %w", err)
+		}
+		if !raw.Valid {
+			continue
+		}
+		var proposal filler.SplitProposal
+		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
+			return 0, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
+		}
+		if proposal.Ready() {
+			n--
+		}
+	}
+	if err := rows.Err(); err != nil {
 		return 0, fmt.Errorf("count incoming conveyor: %w", err)
 	}
 	return n, nil

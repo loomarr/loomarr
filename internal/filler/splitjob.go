@@ -48,6 +48,9 @@ type SplitStore interface {
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// SetClipsHeld files the fully resolved composite parent so the catalog can render it as the
+	// non-airable container for its children. A partially resolved proposal remains held.
+	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
 	// grounds the answer against it.
 	//
@@ -116,8 +119,8 @@ func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []
 	return current, nil
 }
 
-// mergeGrounding copies the grounding fields from `from` onto the segments of `onto` that still
-// describe the SAME span.
+// mergeGrounding copies the grounding and review-decision fields from `from` onto the segments of
+// `onto` that still describe the SAME span.
 //
 // ⚠ Matched on the span, not the index. Today nothing can reorder a proposal between the read and
 // the write (there is no PATCH route), so this is belt-and-braces — but it is the invariant that
@@ -142,6 +145,9 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 		if g.Era > 0 {
 			out[i].Era = g.Era
 		}
+		// Unlike learned tags, an empty reason is meaningful: a later pass may have supplied the
+		// evidence that clears an earlier hold. Always copy it so stale explanations cannot survive.
+		out[i].HoldReason = g.HoldReason
 	}
 	return out
 }
@@ -216,6 +222,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		}
 		if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
 			p.Detection.ScannedThroughMs = clip.DurationMs
+			p.Detection.Chapters = true
 			p.Detection.CoarseSegments = segs
 			p.Dropped = dropped
 			if err := sp.saveProposal(ctx, *p); err != nil {
@@ -266,6 +273,12 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		return p, false, nil
 	}
 
+	// Coarse segments crossed the durable JSON checkpoint before this pass. Their private source
+	// bitmasks are intentionally not part of SplitSegment's API shape, so derive them again from
+	// the detection facts that ARE persisted before the confidence ladder reads them. Without this
+	// restore every resumed boundary scored 0 and even black+silence agreement could never clear
+	// the default auto-split threshold.
+	restoreCoarseBoundarySources(p.Detection, clip.DurationMs)
 	segs := append([]SplitSegment(nil), p.Detection.CoarseSegments...)
 
 	// 2. Names for the unnamed (chapters bring their own).
@@ -339,6 +352,51 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	return p, true, nil
 }
 
+// restoreCoarseBoundarySources rebuilds the private scoring inputs after a checkpoint round trip.
+// Black/silence intervals are the authoritative detector facts; chapter segments are the only
+// coarse segments with names before the resume pass, and a nameless whole-reel fallback has only
+// the two reel edges. Deriving instead of serialising the bitmask keeps implementation evidence
+// out of the operator-facing SplitSegment schema while making restarts lossless.
+func restoreCoarseBoundarySources(progress *SplitDetectionProgress, durationMs int64) {
+	if progress == nil || len(progress.CoarseSegments) == 0 {
+		return
+	}
+
+	cuts := boundaryCuts(sourcedGaps(progress.Black, progress.Silence), durationMs)
+	if len(cuts) == 0 {
+		chapterAuthored := progress.Chapters || len(progress.CoarseSegments) > 1
+		for i := range progress.CoarseSegments {
+			if strings.TrimSpace(progress.CoarseSegments[i].Name) != "" {
+				chapterAuthored = true
+				break
+			}
+		}
+		for i := range progress.CoarseSegments {
+			if chapterAuthored {
+				progress.CoarseSegments[i].startSrc = srcChapter
+				progress.CoarseSegments[i].endSrc = srcChapter
+				continue
+			}
+			if progress.CoarseSegments[i].StartMs == 0 {
+				progress.CoarseSegments[i].startSrc = srcReelEdge
+			}
+			if progress.CoarseSegments[i].EndMs == durationMs {
+				progress.CoarseSegments[i].endSrc = srcReelEdge
+			}
+		}
+		return
+	}
+
+	sources := map[int64]boundarySource{0: srcReelEdge, durationMs: srcReelEdge}
+	for _, cut := range cuts {
+		sources[cut.Ms] |= cut.Src
+	}
+	for i := range progress.CoarseSegments {
+		progress.CoarseSegments[i].startSrc = sources[progress.CoarseSegments[i].StartMs]
+		progress.CoarseSegments[i].endSrc = sources[progress.CoarseSegments[i].EndMs]
+	}
+}
+
 func sourcedGaps(blacks, silences []Interval) []detectedGap {
 	gaps := make([]detectedGap, 0, len(blacks)+len(silences))
 	for _, b := range blacks {
@@ -364,7 +422,21 @@ func (sp *Splitter) resolveEmpty(ctx context.Context, proposalID string) error {
 	if len(p.Segments) != 0 {
 		return fmt.Errorf("%w: refusing to resolve non-empty proposal %s as discarded", ErrSplitValidation, proposalID)
 	}
-	if err := sp.store.SetClipComposite(ctx, p.ClipHash, true, sp.now().UTC()); err != nil {
+	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipHash)
+	}
+	now := sp.now().UTC()
+	if err := sp.store.SetClipComposite(ctx, p.ClipHash, true, now); err != nil {
+		return err
+	}
+	// Deterministically discarding every candidate is also a terminal resolution. The parent is
+	// still the useful catalog record of the reel, so expose it as a non-airable composite instead
+	// of leaving it hidden behind a hold for a proposal that no longer exists.
+	if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
 		return err
 	}
 	return sp.store.DeleteSplitProposal(ctx, proposalID)
@@ -710,6 +782,14 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	currentGeneration := appendUniqueStrings(p.Spawned, spawned...)
 	if len(hold) == 0 {
 		if _, err := sp.store.ReplaceSplitChildren(ctx, clip.Hash, currentGeneration, now); err != nil {
+			return nil, err
+		}
+		// The review disposition held the parent out of every catalog read. Once the proposal is
+		// fully consumed, file that parent so it can appear as the lineage container around the
+		// generated clips. It remains non-airable because SetClipComposite above is the catalog's
+		// independent airability chokepoint. Keep partial proposals held: their replacement
+		// generation is not committed yet and Incoming still owns the decision.
+		if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
 			return nil, err
 		}
 		if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {

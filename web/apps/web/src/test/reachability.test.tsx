@@ -187,10 +187,12 @@ const stubReachable = () => {
       stageOrder: [],
       total: 1,
     }),
-    // One clip, not an empty catalog: the per-clip actions (split, tag, pin) only render
-    // when there is a card to hang them on, and this suite exists to prove they mount.
+    // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
+    // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
+    // so using one row to assert both doors would require the UI to offer an action that cannot
+    // have an effect.
     getListFillerMockHandler({
-      total: 1,
+      total: 2,
       clips: [
         {
           hash: "hash-comp",
@@ -203,6 +205,17 @@ const stubReachable = () => {
           // mounts on a clip it is deliberately not offered for.
           isComposite: true,
           tagged: false,
+          aiTagged: false,
+          playCount: 0,
+          playsCounted: true,
+        },
+        {
+          hash: "hash-ad",
+          name: "80s cereal advert",
+          kind: "commercial",
+          durationMs: 30000,
+          isComposite: false,
+          tagged: true,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,

@@ -224,6 +224,7 @@ describe("FillerPage shell", () => {
     await userEvent.click(screen.getByRole("button", { name: /show segments from saturday morning reel/i }));
     expect(await screen.findByText("Cereal ad")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage 2 segments" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /use in a channel/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage 2 segments" }));
     expect(await screen.findByText("Airable clips filed from this compilation.")).toBeInTheDocument();

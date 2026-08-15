@@ -468,6 +468,16 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if d := discardNote(discarded); d != "" {
 			note += "; " + d
 		}
+		// Persist the per-segment reasons too. The ladder note explains the reel in aggregate, but
+		// the review screen has to tell the operator which cut needs classification, a grounded
+		// era, or a closer look at its boundary. Partial confirmation persists these through
+		// ConfirmSome; the all-held path previously returned before writing them anywhere.
+		if _, err := s.splitter.Reground(ctx, p.ID, part.Hold); err != nil {
+			if errors.Is(err, ErrProposalGone) {
+				return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			}
+			return StageResult{}, err
+		}
 		return StageResult{Verdict: VerdictReview, Note: note}, nil
 	}
 
