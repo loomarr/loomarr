@@ -113,6 +113,28 @@ type JobStatus struct {
 	Overdue bool `json:"overdue,omitempty"`
 }
 
+// JobHistory is the bounded execution read model for one named task. River keeps finalized
+// execution rows for 24 hours by default; the API exposes that honest window rather than
+// implying these counts are lifetime totals.
+type JobHistory struct {
+	WindowStart       time.Time
+	RunCount          int
+	FailureCount      int
+	AverageDurationMs int64
+	Truncated         bool
+	Recent            []JobExecution
+}
+
+// JobExecution is one completed run in a task's recent history.
+type JobExecution struct {
+	StartedAt  time.Time
+	FinishedAt time.Time
+	DurationMs int64
+	Result     string
+	Error      string
+	Manual     bool
+}
+
 // JobGroup is an operator outcome, not an implementation package. Keep this closed set in
 // the scheduler so every API client receives stable grouping semantics.
 type JobGroup string
@@ -333,7 +355,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 // execute runs one job and persists the outcome + next run.
-func (s *Scheduler) execute(ctx context.Context, j Job) {
+func (s *Scheduler) execute(ctx context.Context, j Job) jobExecutionOutput {
 	s.setRunning(j.Name, true)
 	defer s.setRunning(j.Name, false)
 
@@ -364,8 +386,12 @@ func (s *Scheduler) execute(ctx context.Context, j Job) {
 	}); uerr != nil {
 		s.log.Error("scheduler: record job result", "job", j.Name, "err", uerr)
 	}
-	if s.notifier != nil {
-		s.notifier.JobChanged(j.Name)
+	duration := now.Sub(start).Milliseconds()
+	if duration < 0 {
+		duration = 0
+	}
+	return jobExecutionOutput{
+		StartedAt: start, FinishedAt: now, DurationMs: duration, Result: result, Error: errText,
 	}
 }
 

@@ -1,5 +1,10 @@
-import type { JobView } from "@loomarr/api";
-import { getJobsListMockHandler, getJobsPauseMockHandler, getJobsRunMockHandler } from "@loomarr/api/msw";
+import type { JobHistoryView, JobView } from "@loomarr/api";
+import {
+  getJobsHistoryMockHandler,
+  getJobsListMockHandler,
+  getJobsPauseMockHandler,
+  getJobsRunMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -46,14 +51,43 @@ const jobs: JobView[] = [
   },
 ];
 
-const stubJobs = (list: JobView[] = jobs) => {
+const history: JobHistoryView = {
+  windowStart: "2026-07-22T12:00:00Z",
+  runCount: 8,
+  failureCount: 1,
+  averageDurationMs: 2500,
+  recent: [
+    {
+      startedAt: "2026-07-23T12:00:00Z",
+      finishedAt: "2026-07-23T12:00:05Z",
+      durationMs: 5000,
+      result: "error",
+      error: "media server unavailable",
+      trigger: "manual",
+    },
+    {
+      startedAt: "2026-07-23T11:55:00Z",
+      finishedAt: "2026-07-23T11:55:01Z",
+      durationMs: 1000,
+      result: "ok",
+      trigger: "scheduled",
+    },
+  ],
+};
+
+const stubJobs = (list: JobView[] = jobs, jobHistory: JobHistoryView = history) => {
   const runs: string[] = [];
   const pauses: { name: string; paused: boolean }[] = [];
   let listGets = 0;
+  let historyGets = 0;
   server.use(
     getJobsListMockHandler(() => {
       listGets += 1;
       return { jobs: list };
+    }),
+    getJobsHistoryMockHandler(() => {
+      historyGets += 1;
+      return jobHistory;
     }),
     getJobsRunMockHandler(({ params }) => {
       runs.push(String(params.name));
@@ -63,7 +97,7 @@ const stubJobs = (list: JobView[] = jobs) => {
       pauses.push({ name: String(params.name), paused: body.paused });
     }),
   );
-  return { runs, pauses, listCount: () => listGets };
+  return { runs, pauses, listCount: () => listGets, historyCount: () => historyGets };
 };
 
 const expandGroup = async (label: string) => {
@@ -98,7 +132,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 describe("TasksPage", () => {
   it("starts with outcome groups collapsed and reports aggregate health", async () => {
-    stubJobs();
+    const { historyCount } = stubJobs();
     render(<TasksPage />, { wrapper: makeWrapper() });
 
     const acquisitions = (await screen.findByText("Acquisitions")).closest("button");
@@ -107,6 +141,7 @@ describe("TasksPage", () => {
     expect(filler).toHaveTextContent("1 task · 1 failed");
     expect(filler).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Reconcile acquisitions")).not.toBeInTheDocument();
+    expect(historyCount()).toBe(0);
   });
 
   it("reveals compact task rows within a group", async () => {
@@ -129,6 +164,29 @@ describe("TasksPage", () => {
     await expandTask("Acquisitions", "Reconcile acquisitions");
     expect(screen.getByText(/Advances approved requests/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Run now/ })).toBeInTheDocument();
+  });
+
+  it("loads execution history only when a task expands", async () => {
+    const { historyCount } = stubJobs();
+    render(<TasksPage />, { wrapper: makeWrapper() });
+    await expandGroup("Acquisitions");
+    expect(historyCount()).toBe(0);
+
+    await expandTask("Acquisitions", "Reconcile acquisitions");
+    expect(await screen.findByRole("region", { name: "Execution history" })).toBeInTheDocument();
+    await waitFor(() => expect(historyCount()).toBe(1));
+    expect(screen.getByText("Past 24 hours")).toBeInTheDocument();
+    expect(screen.getByText("Runs").nextSibling).toHaveTextContent("8");
+    expect(screen.getByText("Failed").nextSibling).toHaveTextContent("1");
+    expect(screen.getByText("Average").nextSibling).toHaveTextContent("3s");
+    expect(screen.getByText("Manual")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+
+    const detail = screen.getByText("media server unavailable");
+    const disclosure = detail.closest("details") as HTMLElement;
+    expect(detail).not.toBeVisible();
+    await userEvent.click(within(disclosure).getByText("Show error"));
+    expect(detail).toBeVisible();
   });
 
   it("runs a task and refetches its status", async () => {
@@ -156,10 +214,11 @@ describe("TasksPage", () => {
     render(<TasksPage />, { wrapper: makeWrapper() });
     await expandTask("Filler", "Sync the filler catalogue");
 
-    const summary = screen.getByText("Show error");
-    expect(screen.getByText("no FILLER_DIR configured")).not.toBeVisible();
+    const error = screen.getByText("no FILLER_DIR configured");
+    const summary = within(error.closest("details") as HTMLElement).getByText("Show error");
+    expect(error).not.toBeVisible();
     await userEvent.click(summary);
-    expect(screen.getByText("no FILLER_DIR configured")).toBeVisible();
+    expect(error).toBeVisible();
   });
 
   it("pauses and resumes a task from expanded details", async () => {
