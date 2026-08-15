@@ -622,7 +622,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if preparedErr != nil {
 			reason := "the prepared media directory is unavailable: " + preparedErr.Error()
 			log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
-			jobReg.Add(preparedPlayoutJob(prepared.NewPlanner(nil, nil, encodePool, time.Now), reason))
+			jobReg.Add(preparedPlayoutJob(prepared.NewPlanner(prepared.PlannerDependencies{
+				Pool: encodePool, Now: time.Now, Log: log,
+			}), reason))
 		} else {
 			packager := prepared.NewFFmpegPackager(
 				set.str("playout.ffmpeg_path"),
@@ -653,7 +655,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				},
 			)
 			jobReg.Add(preparedPlayoutJob(
-				prepared.NewPlanner(preparedRuntime, preparer, encodePool, time.Now), "",
+				prepared.NewPlanner(prepared.PlannerDependencies{
+					Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
+					Retainer: preparedLibrary,
+					BudgetBytes: func() int64 {
+						return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
+					},
+					Now: time.Now, Log: log,
+				}), "",
 			))
 			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		}

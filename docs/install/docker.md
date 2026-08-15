@@ -53,6 +53,11 @@ Everything lives on one volume:
 | `/data/images/` | Cached artwork |
 | `/data/prepared/` | Reusable prepared programme media for instant channel changes |
 
+Prepared media is bounded by the hot-applied `PLAYOUT_PREPARED_BUDGET_GB` soft cap (512 GiB by
+default). Keep enough free space for one programme beyond the cap because packaging commits before
+the retention pass; recently played programmes remain protected even if that temporarily exceeds
+the cap.
+
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.
 

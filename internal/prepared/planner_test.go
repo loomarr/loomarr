@@ -40,11 +40,14 @@ func TestPlannerPreparesUniqueCandidatesInNeedOrder(t *testing.T) {
 	a := Request{Source: Source{Path: "/a", AudioTrack: 0}, Rendition: baselineRendition()}
 	b := Request{Source: Source{Path: "/b", AudioTrack: 1}, Rendition: baselineRendition()}
 	work := &recordingPreparation{}
-	p := NewPlanner(fixedCandidates{items: []Candidate{
-		{NeededAt: now.Add(time.Hour), Request: b},
-		{NeededAt: now.Add(2 * time.Hour), Request: a},
-		{NeededAt: now, Request: a},
-	}}, work, media.NewEncodePool(func() int { return 2 }), func() time.Time { return now })
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{
+			{NeededAt: now.Add(time.Hour), Request: b},
+			{NeededAt: now.Add(2 * time.Hour), Request: a},
+			{NeededAt: now, Request: a},
+		}}, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
+		Now: func() time.Time { return now },
+	})
 
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -62,9 +65,12 @@ func TestPlannerYieldsWhenLiveOwnsTheSpareCapacity(t *testing.T) {
 	}
 	defer release()
 	work := &recordingPreparation{}
-	p := NewPlanner(fixedCandidates{items: []Candidate{{Request: Request{
-		Source: Source{Path: "/a"}, Rendition: baselineRendition(),
-	}}}}, work, pool, time.Now)
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{
+			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+		}},
+		Preparation: work, Pool: pool, Now: time.Now,
+	})
 
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -82,9 +88,12 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}}
-	p := NewPlanner(fixedCandidates{items: []Candidate{{Request: Request{
-		Source: Source{Path: "/a"}, Rendition: baselineRendition(),
-	}}}}, work, pool, time.Now)
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{
+			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+		}},
+		Preparation: work, Pool: pool, Now: time.Now,
+	})
 
 	done := make(chan error, 1)
 	go func() { done <- p.Run(t.Context()) }()
@@ -114,12 +123,47 @@ func TestPlannerContinuesPastOneBadSource(t *testing.T) {
 		}
 		return nil
 	}}
-	p := NewPlanner(fixedCandidates{items: []Candidate{
-		{NeededAt: now, Request: bad}, {NeededAt: now.Add(time.Minute), Request: good},
-	}}, work, media.NewEncodePool(func() int { return 2 }), func() time.Time { return now })
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{
+			{NeededAt: now, Request: bad}, {NeededAt: now.Add(time.Minute), Request: good},
+		}}, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
+		Now: func() time.Time { return now },
+	})
 
 	err := p.Run(t.Context())
 	if err == nil || len(work.requests) != 2 {
 		t.Fatalf("Run error = %v, requests = %d; want error plus continued progress", err, len(work.requests))
+	}
+}
+
+type recordingRetainer struct {
+	calls  int
+	budget int64
+	result PruneResult
+	err    error
+}
+
+func (r *recordingRetainer) Prune(_ context.Context, budget int64) (PruneResult, error) {
+	r.calls++
+	r.budget = budget
+	return r.result, r.err
+}
+
+func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
+	pool := media.NewEncodePool(func() int { return 1 }) // no background slot by contract
+	retainer := &recordingRetainer{result: PruneResult{RemainingBytes: 700, BudgetBytes: 512}}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{
+			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+		}},
+		Preparation: &recordingPreparation{}, Pool: pool, Retainer: retainer,
+		BudgetBytes: func() int64 { return 512 }, Now: time.Now,
+	})
+
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if retainer.calls != 1 || retainer.budget != 512 {
+		t.Fatalf("retention calls = %d at %d bytes, want one at 512", retainer.calls, retainer.budget)
 	}
 }

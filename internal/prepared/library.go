@@ -87,7 +87,9 @@ type metadata struct {
 // Library hides workspace cleanup, validation, durability, reuse, and atomic publication behind
 // Publish and Lookup. Its root must be dedicated to prepared media.
 type Library struct {
-	root string
+	root      string
+	now       func() time.Time
+	startedAt time.Time
 
 	mu      sync.Mutex
 	locks   map[string]*keyLock
@@ -103,13 +105,21 @@ type catalogEntry struct {
 	specification Specification
 	publication   Publication
 	files         map[string]struct{}
+	lastUsed      time.Time
 }
 
 // NewLibrary creates (or opens) a prepared-media root.
 func NewLibrary(root string) (*Library, error) {
+	return newLibrary(root, time.Now)
+}
+
+func newLibrary(root string, now func() time.Time) (*Library, error) {
 	root = filepath.Clean(strings.TrimSpace(root))
 	if root == "." || root == "" {
 		return nil, fmt.Errorf("%w: empty library root", ErrInvalidSpecification)
+	}
+	if now == nil {
+		now = time.Now
 	}
 	if err := os.MkdirAll(root, 0o750); err != nil {
 		return nil, fmt.Errorf("prepared: create library root: %w", err)
@@ -119,7 +129,8 @@ func NewLibrary(root string) (*Library, error) {
 		return nil, fmt.Errorf("prepared: resolve library root: %w", err)
 	}
 	return &Library{
-		root: abs, locks: make(map[string]*keyLock), catalog: make(map[string]catalogEntry),
+		root: abs, now: now, startedAt: now(),
+		locks: make(map[string]*keyLock), catalog: make(map[string]catalogEntry),
 	}, nil
 }
 
@@ -136,7 +147,7 @@ func (l *Library) Publish(ctx context.Context, spec Specification, build Builder
 	unlock := l.lock(key)
 	defer unlock()
 
-	if pub, ok, err := l.Lookup(spec); err != nil || ok {
+	if pub, ok, err := l.lookupKey(key, spec, true); err != nil || ok {
 		return pub, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -190,7 +201,7 @@ func (l *Library) Publish(ctx context.Context, spec Specification, build Builder
 	final := filepath.Join(l.root, key)
 	if err := os.Rename(workspace, final); err != nil {
 		// Another process may have won the same immutable publication race.
-		if pub, ok, lookupErr := l.Lookup(spec); lookupErr == nil && ok {
+		if pub, ok, lookupErr := l.lookupKey(key, spec, true); lookupErr == nil && ok {
 			return pub, nil
 		}
 		return Publication{}, fmt.Errorf("prepared: publish: %w", err)
@@ -200,7 +211,7 @@ func (l *Library) Publish(ctx context.Context, spec Specification, build Builder
 		return Publication{}, err
 	}
 	pub := Publication{Key: key, Directory: final, Files: append([]string(nil), files...)}
-	l.remember(spec, pub)
+	l.remember(spec, pub, l.now())
 	return pub, nil
 }
 
@@ -211,23 +222,34 @@ func (l *Library) Lookup(spec Specification) (Publication, bool, error) {
 	if err != nil {
 		return Publication{}, false, err
 	}
-	if entry, ok := l.cached(key); ok {
+	unlock := l.lock(key)
+	defer unlock()
+	return l.lookupKey(key, spec, true)
+}
+
+func (l *Library) lookupKey(key string, spec Specification, touch bool) (Publication, bool, error) {
+	if entry, ok := l.cached(key, touch); ok {
 		if entry.specification != spec {
 			return Publication{}, false, ErrIncomplete
 		}
 		return clonePublication(entry.publication), true, nil
 	}
-	entry, ok, err := l.load(key)
+	entry, ok, err := l.readEntry(key)
 	if err != nil || !ok {
 		return Publication{}, ok, err
 	}
 	if entry.specification != spec {
 		return Publication{}, false, ErrIncomplete
 	}
+	lastUsed := time.Time{}
+	if touch {
+		lastUsed = l.now()
+	}
+	l.remember(entry.specification, entry.publication, lastUsed)
 	return clonePublication(entry.publication), true, nil
 }
 
-func (l *Library) load(key string) (catalogEntry, bool, error) {
+func (l *Library) readEntry(key string) (catalogEntry, bool, error) {
 	dir := filepath.Join(l.root, key)
 	body, err := os.ReadFile(filepath.Join(dir, publicationMetadata))
 	if errors.Is(err, os.ErrNotExist) {
@@ -249,9 +271,13 @@ func (l *Library) load(key string) (catalogEntry, bool, error) {
 		return catalogEntry{}, false, err
 	}
 	pub := Publication{Key: key, Directory: dir, Files: files}
-	l.remember(record.Specification, pub)
-	entry, _ := l.cached(key)
-	return entry, true, nil
+	declared := make(map[string]struct{}, len(files))
+	for _, name := range files {
+		declared[name] = struct{}{}
+	}
+	return catalogEntry{
+		specification: record.Specification, publication: pub, files: declared,
+	}, true, nil
 }
 
 // Open opens one file declared by a complete immutable publication. The publication key and asset
@@ -269,14 +295,17 @@ func (l *Library) Open(key, name string) (Asset, bool, error) {
 		strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == publicationMetadata {
 		return Asset{}, false, nil
 	}
+	unlock := l.lock(key)
+	defer unlock()
 
-	entry, ok := l.cached(key)
+	entry, ok := l.cached(key, false)
 	if !ok {
 		var err error
-		entry, ok, err = l.load(key)
+		entry, ok, err = l.readEntry(key)
 		if err != nil || !ok {
 			return Asset{}, ok, err
 		}
+		l.remember(entry.specification, entry.publication, time.Time{})
 	}
 	if _, declared := entry.files[clean]; !declared {
 		return Asset{}, false, nil
@@ -289,24 +318,29 @@ func (l *Library) Open(key, name string) (Asset, bool, error) {
 	if err != nil {
 		return Asset{}, false, fmt.Errorf("prepared: open asset: %w", err)
 	}
+	_, _ = l.cached(key, true)
 	return Asset{Content: f, Modified: info.ModTime()}, true, nil
 }
 
-func (l *Library) cached(key string) (catalogEntry, bool) {
+func (l *Library) cached(key string, touch bool) (catalogEntry, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	entry, ok := l.catalog[key]
+	if ok && touch {
+		entry.lastUsed = l.now()
+		l.catalog[key] = entry
+	}
 	return entry, ok
 }
 
-func (l *Library) remember(spec Specification, pub Publication) {
+func (l *Library) remember(spec Specification, pub Publication, lastUsed time.Time) {
 	files := make(map[string]struct{}, len(pub.Files))
 	for _, name := range pub.Files {
 		files[name] = struct{}{}
 	}
 	l.mu.Lock()
 	l.catalog[pub.Key] = catalogEntry{
-		specification: spec, publication: clonePublication(pub), files: files,
+		specification: spec, publication: clonePublication(pub), files: files, lastUsed: lastUsed,
 	}
 	l.mu.Unlock()
 }
