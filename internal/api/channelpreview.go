@@ -355,6 +355,9 @@ type previewDraftPodsInput struct {
 		// sandbox is experimenting with. Same shape as policy.filler; validated like a
 		// policy write, then assembled without persisting anything.
 		Filler schedule.FillerSelection `json:"filler"`
+		// BreakDuration is the unsaved per-channel override. Nil inherits the live global
+		// setting; zero is invalid because breaks_per_hour owns the off switch.
+		BreakDuration *schedule.Duration `json:"breakDuration,omitempty"`
 	}
 }
 
@@ -377,7 +380,9 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	}
 	// Validate the draft with the same rules a policy write uses (bad audience/kind/
 	// category/era → 422) — the sandbox must reject a nonsense selection, not assemble it.
-	if err := (schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Filler: &in.Body.Filler}}).Validate(); err != nil {
+	if err := (schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
+		Filler: &in.Body.Filler, BreakDuration: in.Body.BreakDuration,
+	}}).Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}
@@ -385,6 +390,9 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	// ⚠ ONE resolved selection feeds both the pod and the meter (V51f). Resolving it twice would
 	// reintroduce, inside a single handler, exactly the drift this pairing exists to remove.
 	sel := fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope.Era)
+	if in.Body.BreakDuration != nil {
+		sel.BreakDurationMs = in.Body.BreakDuration.Std().Milliseconds()
+	}
 
 	pod, err := s.pods.PreviewDraft(ctx, in.ID, sel)
 	if err != nil {

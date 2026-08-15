@@ -43,7 +43,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `server.public_url` (`SERVER_PUBLIC_URL`) | url | — | Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons. |
 | `playout.backend` (`PLAYOUT_BACKEND`) | enum | `internal` | Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel. _(one of: internal \| tunarr)_ |
-| `playout.encoder` (`PLAYOUT_ENCODER`) | string | — | ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice. |
+| `playout.encoder` (`PLAYOUT_ENCODER`) | string | — | ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice. _(advanced)_ |
 | `playout.audio_language` (`PLAYOUT_AUDIO_LANGUAGE`) | string | `eng` | Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1). |
 | `playout.quality_tier` (`PLAYOUT_QUALITY_TIER`) | enum | `balanced` | The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise. _(one of: efficient \| balanced \| quality)_ |
 | `playout.ffmpeg_path` (`PLAYOUT_FFMPEG_PATH`) | string | `ffmpeg` | Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual. _(advanced)_ |
@@ -166,7 +166,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
 | `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |
-| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips Loomarr may assemble into any channel's commercial break. |
+| `filler.break_duration` (`FILLER_BREAK_DURATION`) | duration | `5m` | How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off. |
+| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
@@ -189,7 +190,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `session.ttl` (`SESSION_TTL`) | duration | `720h` | How long you stay signed in before needing to log in again. |
-| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
+| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(advanced; one of: auto \| always \| never)_ |
 
 ## Single sign-on
 

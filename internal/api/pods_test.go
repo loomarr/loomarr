@@ -219,6 +219,30 @@ func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 	}
 }
 
+func TestPreviewDraftPods_PassesBreakDurationToAssembler(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
+		`{"filler":{},"breakDuration":"90s"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("draft preview → %d, want 200", resp.StatusCode)
+	}
+	if len(fp.draftAsked) != 1 || fp.draftAsked[0].BreakDurationMs != 90_000 {
+		t.Fatalf("draft break duration = %+v, want 90000ms", fp.draftAsked)
+	}
+}
+
+func TestPreviewDraftPods_RejectsTooShortBreakDuration(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
+		`{"filler":{},"breakDuration":"10s"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("short draft break → %d, want 422", resp.StatusCode)
+	}
+	if len(fp.draftAsked) != 0 {
+		t.Error("an invalid break duration was assembled")
+	}
+}
+
 // ⚠ **The pod and the coverage meter must come from ONE selection (§10 V51f).** Before this the
 // meter read the SAVED policy while the timeline directly beneath it rendered the DRAFT, so during
 // an edit the page showed a meter for one selection above a pod for another — with nothing on

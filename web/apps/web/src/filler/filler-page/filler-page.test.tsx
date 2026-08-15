@@ -72,9 +72,14 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
     // either way, which is why this survived the rename as a pure field swap.)
     getFillerIncomingMockHandler({
       clips: [],
+      clipsTotal: 0,
+      decisionsTotal: over.incomingTotal ?? 3,
       reels: [],
+      reelsTotal: 0,
       recentlyFiled: [],
+      recentlyFiledTotal: 0,
       rejected: [],
+      rejectedTotal: 0,
       stageOrder: [],
       total: over.incomingTotal ?? 3,
     }),
@@ -219,6 +224,7 @@ describe("FillerPage shell", () => {
     await userEvent.click(screen.getByRole("button", { name: /show segments from saturday morning reel/i }));
     expect(await screen.findByText("Cereal ad")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage 2 segments" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /use in a channel/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage 2 segments" }));
     expect(await screen.findByText("Airable clips filed from this compilation.")).toBeInTheDocument();

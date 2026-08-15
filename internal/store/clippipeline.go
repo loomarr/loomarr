@@ -178,6 +178,97 @@ func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilte
 	return collectClipPipelines(rows)
 }
 
+// CountClipPipelines answers the same filtered question without materialising an audit feed.
+// Incoming uses it to report an honest total while keeping the returned rows to one page.
+func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error) {
+	q := `SELECT COUNT(*) FROM filler_clip_pipeline`
+	var where []string
+	var args []any
+	if f.ConveyorOnly {
+		where = append(where, `disposition IN (?, ?)`)
+		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
+	}
+	if f.RejectedOnly {
+		where = append(where, `disposition = ?`)
+		args = append(args, string(filler.DispositionRejected))
+	}
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, ` AND `)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, s.ph(q), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count clip pipelines: %w", err)
+	}
+	return n, nil
+}
+
+// CountIncomingConveyor counts the exact union rendered by the Incoming belt: held legacy clips
+// plus running/review pipeline rows, minus READY reels that have their own row. A split detection
+// checkpoint is still machine work and therefore stays on the belt; only a complete proposal
+// claims its composite into the reels list.
+//
+// Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
+// candidate and only intersecting proposal documents are decoded here. One query matters: counting
+// candidates and reading proposals separately can race a pipeline transition and briefly return a
+// negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
+// syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
+func (s *sqlStore) CountIncomingConveyor(ctx context.Context) (int, error) {
+	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
+	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
+		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT sp.id, sp.segments_json
+		FROM clips c
+		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
+		WHERE `+candidate), args...)
+	if err != nil {
+		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		n++
+		var id, raw sql.NullString
+		if err := rows.Scan(&id, &raw); err != nil {
+			return 0, fmt.Errorf("scan incoming conveyor: %w", err)
+		}
+		if !raw.Valid {
+			continue
+		}
+		var proposal filler.SplitProposal
+		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
+			return 0, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
+		}
+		if proposal.Ready() {
+			n--
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+	}
+	return n, nil
+}
+
+// CountIncomingDecisions counts only conveyor rows the machine has handed to a person. It is the
+// source for the tab badge, which must not shrink to the first response page.
+func (s *sqlStore) CountIncomingDecisions(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips c
+		WHERE c.is_composite = ?
+		  AND NOT EXISTS (SELECT 1 FROM filler_split_proposals sp WHERE sp.clip_hash = c.hash)
+		  AND (EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		         WHERE p.clip_hash = c.hash AND p.disposition = ?)
+		    OR (c.removed_at = 0 AND c.held = ? AND NOT EXISTS
+		       (SELECT 1 FROM filler_clip_pipeline p
+		        WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?))))`),
+		false, string(filler.DispositionReview), true,
+		string(filler.DispositionRunning), string(filler.DispositionReview)).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count incoming decisions: %w", err)
+	}
+	return n, nil
+}
+
 // ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet.
 //
 // ⚠ **`NOT EXISTS`, deliberately NOT a LEFT JOIN.** `clipSelect` names its columns unqualified and

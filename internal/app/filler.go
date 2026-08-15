@@ -473,11 +473,17 @@ func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clip
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
+func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	return a.st.ReplaceSplitChildren(ctx, parentHash, keepHashes, at)
+}
 func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.st.DeleteClip(ctx, id)
 }
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
 
 // ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
@@ -501,10 +507,10 @@ func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash str
 // not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
 // the split rung must tell "the proposal was confirmed under me" apart from a real write failure,
 // because the first is a normal outcome and the second must fail the pass.
-func (a fillerSplitStoreAdapter) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
-	err := a.st.UpdateSplitProposalSegments(ctx, id, segs)
+func (a fillerSplitStoreAdapter) UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	err := a.st.UpdateSplitProposal(ctx, p)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, p.ID)
 	}
 	return err
 }
@@ -950,8 +956,17 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // complete and conformant and reachable by nothing — the same built-but-unimported shape as
 // `filler_sources` (V33) and the eight instances before it. Worth naming, because the
 // function looking finished is exactly what made it easy to leave unwired.
-func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
-	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
+func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+	discoverer := clipfetch.NewArchiveDownloader(false)
+	var (
+		res clipfetch.DiscoveryResult
+		err error
+	)
+	if strings.TrimSpace(query) == "" {
+		res, err = discoverer.DiscoverCollection(ctx, ref, limit)
+	} else {
+		res, err = discoverer.SearchCollection(ctx, ref, query, limit)
+	}
 	if err != nil {
 		return nil, 0, err
 	}

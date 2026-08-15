@@ -578,7 +578,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       clip={clip}
       {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
       {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
-      {...(isAdmin ? { onPin: () => setPinning(clip.hash) } : {})}
+      {...(isAdmin && !clip.isComposite ? { onPin: () => setPinning(clip.hash) } : {})}
       {...(isAdmin && clip.suggestedEra
         ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
         : {})}

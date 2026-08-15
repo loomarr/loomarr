@@ -74,7 +74,20 @@ describe("PlayoutPanel", () => {
   it("folds in throughput and cold-start on the row", () => {
     renderPanel(<PlayoutPanel status={status()} />);
     expect(screen.getByText(/2 viewers/)).toBeInTheDocument();
+    expect(screen.getByText(/h264_nvenc/)).toBeInTheDocument();
     expect(screen.getByText(/1\.3s to play/)).toBeInTheDocument();
+  });
+
+  it("accepts a task-specific title while keeping the dashboard default", () => {
+    const { rerender } = renderPanel(<PlayoutPanel status={status()} />);
+    expect(screen.getByRole("heading", { name: "Playout" })).toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <PlayoutPanel title="Current playback" status={status()} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "Current playback" })).toBeInTheDocument();
   });
 
   it("flags GPU contention with a badge", () => {
@@ -96,6 +109,12 @@ describe("PlayoutPanel", () => {
   it("distinguishes a Tunarr-backed install from unhealthy channels", () => {
     renderPanel(<PlayoutPanel status={status({ running: false, channels: [] })} />);
     expect(screen.getByText(/Tunarr is\./)).toBeInTheDocument();
+    expect(screen.getByText("Tunarr")).toBeInTheDocument();
+  });
+
+  it("names Loomarr as the owner of internal playback", () => {
+    renderPanel(<PlayoutPanel status={status()} />);
+    expect(screen.getByText("Loomarr")).toBeInTheDocument();
   });
 
   it("distinguishes a planner that has not run from an empty ready window", () => {

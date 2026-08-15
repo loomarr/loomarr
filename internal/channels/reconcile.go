@@ -122,6 +122,7 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
+	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 
@@ -381,7 +382,11 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
-	return SelectionFrom(ch.Policy.Filler, ch.Policy.Scope.Era)
+	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope.Era)
+	if ch.Policy.BreakDuration != nil {
+		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
+	}
+	return sel
 }
 
 // BreaksPerHourFor resolves a channel's commercial-break density (§10, V51f).
@@ -408,6 +413,23 @@ func BreaksPerHourFor(pol schedule.ChannelPolicy, hasFillerPool bool, global int
 	}
 	// A present zero (or a nonsense negative) is "no breaks on this channel".
 	return 0
+}
+
+// BreakDurationFor resolves the per-channel break length against the live global setting.
+// Invalid zero/sub-30s values fail to the documented 5m default; disabling belongs exclusively
+// to BreaksPerHour.
+func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Duration {
+	const fallback = 5 * time.Minute
+	if pol.BreakDuration != nil {
+		if d := pol.BreakDuration.Std(); d >= 30*time.Second {
+			return d
+		}
+		return fallback
+	}
+	if global >= 30*time.Second {
+		return global
+	}
+	return fallback
 }
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.

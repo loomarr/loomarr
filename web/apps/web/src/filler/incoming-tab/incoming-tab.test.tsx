@@ -75,6 +75,12 @@ const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
     stageOrder: [],
     total: 1,
     ...incoming,
+    clipsTotal: incoming.clipsTotal ?? incoming.clips?.length ?? 1,
+    decisionsTotal:
+      incoming.decisionsTotal ?? incoming.clips?.filter((clip) => clip.needsDecision).length ?? 1,
+    reelsTotal: incoming.reelsTotal ?? incoming.reels?.length ?? 0,
+    recentlyFiledTotal: incoming.recentlyFiledTotal ?? incoming.recentlyFiled?.length ?? 0,
+    rejectedTotal: incoming.rejectedTotal ?? incoming.rejected?.length ?? 0,
   };
   const patches: unknown[] = [];
   const files: unknown[] = [];

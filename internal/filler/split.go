@@ -288,6 +288,11 @@ type SplitDetectionProgress struct {
 	ScannedThroughMs int64      `json:"scannedThroughMs"`
 	Black            []Interval `json:"black,omitempty"`
 	Silence          []Interval `json:"silence,omitempty"`
+	// Chapters says CoarseSegments came from container-authored chapter boundaries. It is private
+	// checkpoint provenance, not review data, and lets a resume restore scoring evidence even when
+	// a source supplied one untitled chapter (otherwise indistinguishable from a whole-reel
+	// boundary fallback after JSON removed the private source bitmask).
+	Chapters bool `json:"chapters,omitempty"`
 	// CoarseSegments is set once chapter/boundary triage is complete. Persisting it before
 	// transcript rescue means a timeout in the next phase never repeats the timeline scan.
 	CoarseSegments []SplitSegment `json:"coarseSegments,omitempty"`
@@ -323,6 +328,10 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
+	// Spawned remembers children already produced by partial auto-confirm. It is private durable
+	// state, not review UI: final confirmation needs the whole new generation so it can retire
+	// superseded children without also retiring cuts produced on an earlier pass.
+	Spawned []string `json:"-"`
 	// Detection is persisted inside the store document, not served in OpenAPI. nil means the
 	// proposal is complete and reviewable; non-nil means the pipeline must resume detection.
 	Detection *SplitDetectionProgress `json:"-"`

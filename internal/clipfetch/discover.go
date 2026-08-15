@@ -259,6 +259,40 @@ func (d *ArchiveDownloader) Search(ctx context.Context, query string, limit int)
 	return d.client.search(ctx, query, limit)
 }
 
+// SearchCollection finds matching video items inside one Archive.org collection. This is the
+// search behind a registered source row: the row names a collection, so returning global Archive
+// matches would make the UI's scope a lie.
+func (d *ArchiveDownloader) SearchCollection(ctx context.Context, ref, query string, limit int) (DiscoveryResult, error) {
+	return d.client.searchCollection(ctx, ref, query, limit)
+}
+
+func (c *archiveClient) searchCollection(ctx context.Context, ref, query string, limit int) (DiscoveryResult, error) {
+	id := archiveIDFromURL(ref)
+	if id == "" {
+		return DiscoveryResult{}, fmt.Errorf("archive search: %q is not an archive.org collection", ref)
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return c.discover(ctx, ref, limit)
+	}
+	if limit <= 0 || limit > maxDiscoverRows {
+		limit = maxDiscoverRows
+	}
+
+	q := url.Values{}
+	escapedID := strings.ReplaceAll(id, `"`, `\"`)
+	q.Set("q", "("+sanitizeQuery(query)+`) AND collection:"`+escapedID+`" AND mediatype:movies`)
+	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year", "date"}
+	q.Set("rows", strconv.Itoa(limit))
+	q.Set("output", "json")
+
+	var out searchResp
+	if err := c.getJSON(ctx, c.base+"/advancedsearch.php?"+q.Encode(), &out); err != nil {
+		return DiscoveryResult{}, fmt.Errorf("archive search %q in %s: %w", query, id, err)
+	}
+	return toResult(out), nil
+}
+
 func (c *archiveClient) search(ctx context.Context, query string, limit int) (DiscoveryResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {

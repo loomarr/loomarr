@@ -77,6 +77,10 @@ type OperatorPolicy struct {
 	// flex that Tunarr renders as large channel-named blocks, which is a promise of commercials
 	// Loomarr cannot keep. This knob lowers density, never forces breaks into existence.
 	BreaksPerHour *int `json:"breaksPerHour,omitempty"`
+	// BreakDuration overrides the global target length for each commercial break. Nil inherits
+	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
+	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
+	BreakDuration *Duration `json:"breakDuration,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole
@@ -623,6 +627,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if err := p.Filler.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)
+	}
+	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
+		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
 	}
 	if p.AutoCurate != nil {
 		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {

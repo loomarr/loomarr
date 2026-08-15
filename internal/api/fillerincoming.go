@@ -187,10 +187,14 @@ type fillerIncomingOutput struct {
 		// ⚠ This replaced `asks` + `pipeline`. They were separate arrays over overlapping
 		// populations, and the operator saw the same clip twice — once demanded of them, once
 		// described as "just working". One belt, one row per clip, `needsDecision` says which end.
-		Clips []IncomingClipDTO `json:"clips"`
-		Reels []IncomingReelDTO `json:"reels"`
+		Clips          []IncomingClipDTO `json:"clips"`
+		ClipsTotal     int               `json:"clipsTotal" doc:"All clips on the conveyor; clips is capped to one page"`
+		DecisionsTotal int               `json:"decisionsTotal" doc:"All conveyor clips waiting on a person, including rows beyond this page"`
+		Reels          []IncomingReelDTO `json:"reels"`
+		ReelsTotal     int               `json:"reelsTotal" doc:"All reviewable reels; reels is capped to one page"`
 		// Rejected is the audit half of refusal, the sibling of RecentlyFiled.
-		Rejected []IncomingRejectDTO `json:"rejected"`
+		Rejected      []IncomingRejectDTO `json:"rejected"`
+		RejectedTotal int                 `json:"rejectedTotal" doc:"All rejected audit rows; rejected is capped to one page"`
 		// StageOrder is the whole ladder, in order — the answer to "which rungs are still ahead
 		// of this clip", which no per-clip row can give.
 		//
@@ -214,8 +218,9 @@ type fillerIncomingOutput struct {
 		// upgraded install clips begin entering the catalog unattended; an operator who did not
 		// expect that must be able to see exactly what was filed and send any of it back. An
 		// unattended decision that cannot be found is not one an appliance gets to make (§10).
-		RecentlyFiled []IncomingClipDTO `json:"recentlyFiled"`
-		Total         int               `json:"total" doc:"Everything waiting on a human — asks plus reels"`
+		RecentlyFiled      []IncomingClipDTO `json:"recentlyFiled"`
+		RecentlyFiledTotal int               `json:"recentlyFiledTotal" doc:"All automatically filed audit rows; recentlyFiled is capped to one page"`
+		Total              int               `json:"total" doc:"Everything waiting on a human — asks plus reels"`
 	}
 }
 
@@ -223,10 +228,9 @@ func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
 		Summary: "What has been downloaded but isn't filed yet",
-		Description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose " +
-			"tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no " +
-			"match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures " +
-			"one — `reason` reports the real state instead.",
+		Description: "Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, " +
+			"reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a " +
+			"large import cannot make the response unbounded or make the badge report only the first page.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.fillerIncoming)
 }
@@ -239,7 +243,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// ⚠ HELD clips are the queue (§10 V38). Before the lifecycle existed this read the whole
 	// catalog and inferred "waiting" from missing tags; now waiting is a STATE, so the queue is
 	// simply what is held. `HeldOnly` is required — the default filter excludes exactly these.
-	held, err := s.store.ListClips(ctx, store.ClipFilter{HeldOnly: true})
+	held, err := s.store.ListClips(ctx, store.ClipFilter{HeldOnly: true, Limit: incomingListLimit})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list clips", err)
 	}
@@ -253,7 +257,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// reports `needsDecision` through the legacy fallback, which is the honest answer when the
 	// pipeline's state could not be read at all.
 	pipeByHash := map[string]filler.ClipPipeline{}
-	if rows, perr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true, Limit: incomingPipelineLimit}); perr != nil {
+	if rows, perr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true, Limit: incomingListLimit}); perr != nil {
 		s.log.Warn("list pipeline rows for incoming", "err", perr)
 	} else {
 		for _, r := range rows {
@@ -280,6 +284,11 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// A read failure degrades honestly: `reeled` stays empty, so a composite appears as a belt row
 	// with no reel rather than vanishing from both halves.
 	proposals, proposalsErr := s.store.ListSplitProposals(ctx)
+	if bounded, ok := s.store.(interface {
+		ListReadySplitProposals(context.Context, int) ([]filler.SplitProposal, error)
+	}); ok {
+		proposals, proposalsErr = bounded.ListReadySplitProposals(ctx, incomingListLimit)
+	}
 	if proposalsErr != nil {
 		s.log.Warn("list split proposals for incoming", "err", proposalsErr)
 	}
@@ -348,6 +357,9 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 		return a.Path < b.Path
 	})
+	if len(out.Body.Clips) > incomingListLimit {
+		out.Body.Clips = out.Body.Clips[:incomingListLimit]
+	}
 
 	// ⚠ A split-proposal read failure is NOT fatal to the whole tab. The asks half is the part
 	// an operator can always act on, and losing the page because a secondary list did not load
@@ -382,7 +394,8 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	out.Body.RecentlyFiled = make([]IncomingClipDTO, 0)
 	// ⚠ Narrowed in SQL. This loaded the WHOLE catalog and discarded all but the auto-filed rows
 	// in Go — on an install with thousands of clips, to render a handful of audit cards.
-	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{AutoFiledOnly: true}); ferr != nil {
+	filedFilter := store.ClipFilter{AutoFiledOnly: true, Limit: incomingListLimit}
+	if filed, ferr := s.store.ListClips(ctx, filedFilter); ferr != nil {
 		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
 	} else {
 		filedImg := s.clipArtworkResolver(ctx, filed)
@@ -408,7 +421,8 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	}
 
 	out.Body.Rejected = make([]IncomingRejectDTO, 0)
-	if rows, rerr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true, Limit: incomingRejectLimit}); rerr != nil {
+	rejectedFilter := filler.PipelineFilter{RejectedOnly: true, Limit: incomingListLimit}
+	if rows, rerr := s.store.ListClipPipelines(ctx, rejectedFilter); rerr != nil {
 		s.log.Warn("list rejected clips for incoming", "err", rerr)
 	} else {
 		for _, r := range rows {
@@ -435,6 +449,47 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 	}
 	out.Body.Total += len(out.Body.Reels)
+
+	// Production stores answer totals without loading the omitted rows. The fallback keeps small
+	// test stores and adapters compatible, but never claims more than was actually observed.
+	out.Body.ClipsTotal = len(out.Body.Clips)
+	out.Body.DecisionsTotal = out.Body.Total - len(out.Body.Reels)
+	out.Body.ReelsTotal = len(out.Body.Reels)
+	out.Body.RejectedTotal = len(out.Body.Rejected)
+	out.Body.RecentlyFiledTotal = len(out.Body.RecentlyFiled)
+	if counters, ok := s.store.(interface {
+		CountIncomingConveyor(context.Context) (int, error)
+		CountIncomingDecisions(context.Context) (int, error)
+		CountClipPipelines(context.Context, filler.PipelineFilter) (int, error)
+		CountReadySplitProposals(context.Context) (int, error)
+	}); ok {
+		if n, cerr := counters.CountIncomingConveyor(ctx); cerr == nil {
+			out.Body.ClipsTotal = n
+		} else {
+			s.log.Warn("count incoming conveyor", "err", cerr)
+		}
+		if n, cerr := counters.CountReadySplitProposals(ctx); cerr == nil {
+			out.Body.ReelsTotal = n
+		} else {
+			s.log.Warn("count ready split proposals", "err", cerr)
+		}
+		if n, cerr := counters.CountClipPipelines(ctx, rejectedFilter); cerr == nil {
+			out.Body.RejectedTotal = n
+		} else {
+			s.log.Warn("count rejected clips", "err", cerr)
+		}
+		if n, cerr := s.store.CountClips(ctx, filedFilter); cerr == nil {
+			out.Body.RecentlyFiledTotal = n
+		} else {
+			s.log.Warn("count auto-filed clips", "err", cerr)
+		}
+		if decisions, cerr := counters.CountIncomingDecisions(ctx); cerr == nil {
+			out.Body.DecisionsTotal = decisions
+			out.Body.Total = decisions + out.Body.ReelsTotal
+		} else {
+			s.log.Warn("count incoming decisions", "err", cerr)
+		}
+	}
 	return out, nil
 }
 
@@ -444,10 +499,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 // so this cap only matters during a large import, where showing the first hundred movers is as
 // useful as showing four hundred. `rejected` is an audit feed ordered newest-first, so the cap is
 // a page rather than a filter: what an operator is looking for is what was just refused.
-const (
-	incomingPipelineLimit = 100
-	incomingRejectLimit   = 100
-)
+const incomingListLimit = 100
 
 // pipelineDTO renders one in-flight clip, resolving its display name.
 //

@@ -34,6 +34,26 @@ const SETTINGS = [
     value: "",
   }),
   setting({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
+  setting({
+    key: "session.ttl",
+    label: "Sign-in lifetime",
+    group: "users_security",
+    kind: "duration",
+    value: "720h",
+  }),
+  setting({
+    key: "cookie.secure",
+    label: "Secure cookies",
+    group: "users_security",
+    kind: "enum",
+    value: "auto",
+    advanced: true,
+    enumOptions: [
+      { value: "auto", label: "Auto (match the request)" },
+      { value: "always", label: "Always" },
+      { value: "never", label: "Never (local dev only)" },
+    ],
+  }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
 ];
 
@@ -52,7 +72,10 @@ const stubSettings = () => {
   server.use(
     getMeMockHandler(me()),
     getSetupStatusMockHandler({
-      checks: [{ name: "media_server", ok: false, hint: "Emby refused the token." }],
+      checks: [
+        { name: "media_server", ok: false, hint: "Emby refused the token." },
+        { name: "tunarr", ok: false, hint: "Tunarr is not connected." },
+      ],
     }),
     getSetupTestMockHandler(() => {
       seq.push("test");
@@ -104,6 +127,16 @@ describe("Settings", () => {
     // media_server's check fails, so its ConnectionBlock opens and shows the BE's hint
     // inline — diagnosis on the thing that fixes it, not in a separate checklist above.
     expect(await screen.findByText("Emby refused the token.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "true");
+    // Tunarr has no passing verdict either, but a fresh install must not expand every problem
+    // into one long wall of controls. Its collapsed header still says it needs attention.
+    const tunarr = screen.getByRole("button", { name: /tunarr/i });
+    expect(tunarr).toHaveAttribute("aria-expanded", "false");
+    expect(tunarr).toHaveTextContent("needs attention");
+    // Exploring the next service stays focused: connection forms behave as an accordion.
+    await userEvent.click(tunarr);
+    expect(tunarr).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "false");
     // No standalone "connection checklist" duplicating the block statuses — the wiring
     // actions self-report on their own blocks, quiet once set up (§5, §13).
     expect(screen.queryByRole("heading", { name: /connection checklist/i })).not.toBeInTheDocument();
@@ -312,6 +345,19 @@ describe("Settings page footers", () => {
     // §4), not a fetched list — so the assertion is that the panel is on the page at all.
     expect(await screen.findByText(/API token/i)).toBeInTheDocument();
     expect(screen.getByText(/Session secret/i)).toBeInTheDocument();
+  });
+});
+
+describe("Settings progressive disclosure", () => {
+  it("keeps cookie transport policy behind Security's Advanced disclosure", async () => {
+    stubSettings();
+    renderAt("/settings/security");
+
+    expect(await screen.findByLabelText("Sign-in lifetime")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Secure cookies")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /show advanced/i }));
+    expect(await screen.findByLabelText("Secure cookies")).toBeInTheDocument();
   });
 });
 
