@@ -158,7 +158,7 @@ flowchart TD
   p_provision["provision<br/><small>16 importers</small>"]
   p_schedule["schedule<br/><small>12 importers</small>"]
   p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>12 importers</small>"]
+  p_store["store<br/><small>13 importers</small>"]
   p_suggest["suggest<br/><small>5 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
@@ -241,7 +241,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 6 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 12 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 6**
