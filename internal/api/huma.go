@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -102,6 +103,10 @@ type Server struct {
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
+	// settingsApplyMu serializes a settings mutation with its derived wiring effects.
+	// Without it, two concurrent playout.backend writes can each converge correctly and
+	// still wire the media server in the opposite order from the values they committed.
+	settingsApplyMu sync.Mutex
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
@@ -135,7 +140,7 @@ type Server struct {
 	// the declared default. The keys read here answer "why is my catalog empty", so an
 	// unanswerable read must not render the drop-folder as switched off.
 	liveConfigBoolOn func(key string) bool
-	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
+	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
 	playoutObserver PlayoutObserver
@@ -476,18 +481,18 @@ type PodPreviewer interface {
 	Pool(ctx context.Context) (filler.PoolReport, error)
 }
 
-// GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
-// owns playout). Abstracted so the API needn't import the programmer client, and so a
-// unit test can drive the page without a Tunarr. nil ⇒ now/next reads empty.
+// GuideReader answers "what is airing now" from whichever backend streams each channel.
+// Keys and arguments are always Loomarr channel ids; an adapter that reads a remote backend
+// owns the translation to that backend's id. nil ⇒ now/next reads empty.
 type GuideReader interface {
-	// NowNext returns, per TUNARR channel id, the program airing at `now` and the one
+	// NowNext returns, per Loomarr channel id, the program airing at `now` and the one
 	// following it. A channel with no generated guide is simply absent.
 	NowNext(ctx context.Context, now time.Time) (map[string]ChannelNowNext, error)
-	// Upcoming returns, for one TUNARR channel, the program airing now (if any) followed by
+	// Upcoming returns, for one Loomarr channel, the program airing now (if any) followed by
 	// the next programs in airtime order, up to `limit` entries; commercial/flex gaps are
 	// skipped (§9 guide freshness). Powers the Overview "what's on later" strip. An unknown
 	// id / empty guide yields an empty slice, not an error.
-	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]NowNextEntry, error)
+	Upcoming(ctx context.Context, channelID string, now time.Time, limit int) ([]NowNextEntry, error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -587,11 +592,11 @@ type IconSuggestion struct {
 // Implemented by channels.Engine + the store; abstracted so the API doesn't
 // couple to the reconcile internals.
 type ChannelService interface {
-	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
+	// Reconcile converges one channel on its selected playout backend (§9,
 	// POST /v1/channels/{id}/reconcile).
 	Reconcile(ctx context.Context, channelID string) error
-	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
-	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
+	// Purge hard-deletes Loomarr's channel state plus any retained managed Tunarr projection —
+	// the DELETE /v1/channels/{id}?purge=true path (§7).
 	Purge(ctx context.Context, channelID string) error
 	// CyclePreviewDraft computes "what would air at `at`" for one channel WITHOUT touching
 	// Tunarr or the store beyond the read — the §8.1 time-travel preview. A draftLineup /
@@ -845,7 +850,7 @@ func humaConfig() huma.Config {
 	// per-instance place to put it.
 	huma.DefaultArrayNullable = false
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
-	cfg.Info.Description = "Turn a sentence into a self-maintaining Tunarr channel. " +
+	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs

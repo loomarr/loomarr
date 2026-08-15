@@ -394,6 +394,15 @@ does not exist.
 - `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
+- **Backend hot-apply is ordered, not merely immediate.** When `playout.backend` changes through
+  PATCH, clear, or environment takeover, active channels that inherit the global first reconcile
+  against the new effective backend; explicitly pinned, paused, and detached channels do not
+  participate. Only after that barrier succeeds may Loomarr move the media server's single owned
+  tuner/listing pair. A reconcile or connector failure leaves the existing tuner registration
+  untouched; because it still differs from the expected URLs, a later relevant settings write —
+  including after restart — retries rather than advertising a backend whose channels have not
+  converged yet. Settings mutations and these derived effects are serialized per process so
+  concurrent saves cannot wire them out of commit order.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
 - `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.

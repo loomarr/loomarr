@@ -215,9 +215,9 @@ func declared() []Setting {
 		// Loomarr serves its own channels. `playout.backend` is the ONLY key here with a
 		// per-channel override: it rides `policy_json` as `policy.playout` (nil = inherit
 		// this global), the same shape `rules`/`filler`/`window`/`autoCurate` already use,
-		// so there is no migration. That is what makes "changing this affects new channels
-		// only — the ones already on the other backend keep playing" true rather than
-		// aspirational: switching the default never touches an existing channel's policy.
+		// so there is no migration. Inheriting channels resolve this value live, so changing
+		// the default moves that fleet; a channel with an explicit policy remains pinned to
+		// its selected backend.
 		{
 			Key: "playout.backend", Label: "Playback engine", EnvVar: "PLAYOUT_BACKEND", Group: GroupPlayout,
 			Kind: KindEnum, Enum: []EnumOption{

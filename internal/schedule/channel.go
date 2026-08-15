@@ -113,7 +113,7 @@ type Channel struct {
 	// run (the policy-free path leaves it 0, preserving today's un-windowed behavior).
 	DefaultWindow time.Duration
 	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
-	TunarrID      string        // server-assigned Tunarr channel id; "" until first reconcile
+	TunarrID      string        // retained Tunarr projection id; "" until first-ever successful projection
 	Status        ChannelStatus // Loomarr-side status
 	Shuffle       ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
 	UpdatedAt     int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)

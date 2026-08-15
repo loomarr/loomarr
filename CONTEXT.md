@@ -2,7 +2,7 @@
 
 Loomarr turns a natural-language channel intent into a live, self-maintaining TV channel:
 it suggests a lineup, acquires what is missing, schedules it with commercial breaks, and
-pushes the result to Tunarr.
+converges it on Loomarr's internal playout or an optional Tunarr backend.
 
 This file is a **glossary and nothing else** — what each word *means*. It deliberately holds
 no behavior, no endpoints, and no decisions.
@@ -89,8 +89,8 @@ _Avoid_: regenerate, retry
 ### Channels and programming
 
 **Channel**:
-A Loomarr-owned channel definition — identity, Lineup, and Policy — which is reconciled into
-a Tunarr channel.
+A Loomarr-owned channel definition — identity, Lineup, and Policy — whose desired state is
+materialized locally and, when Tunarr is selected, projected into a Tunarr channel.
 _Avoid_: station, feed
 
 **Lineup**:
@@ -160,8 +160,9 @@ Loomarr serving its own video streams, as opposed to delegating to Tunarr (§9.1
 _Avoid_: streaming, transcoding (transcoding is one step within playout)
 
 **Reconcile**:
-Bringing an external system to match Loomarr's desired state — the Channel into Tunarr, the
-Library into Records. Always best-effort and repeatable; there is no manual "rebuild" (§7, §9).
+Bringing owned state to its desired form — a Channel's local schedule and optional Tunarr
+projection, or the Library into Records. Always best-effort and repeatable; there is no manual
+"rebuild" (§7, §9).
 _Avoid_: sync, push, publish
 
 **Image** (and **Rendition**):

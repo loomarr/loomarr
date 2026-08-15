@@ -383,6 +383,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			// Backend selection is live and per-channel-aware inside the engine: this closure
+			// supplies only the current global fallback, while schedule.PlaysInternally applies
+			// a channel's policy override. An internal channel must still derive + persist its
+			// desired state when Tunarr is entirely unconfigured.
+			ResolvePlayoutBackend: func() string { return set.str("playout.backend") },
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
@@ -1175,12 +1180,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
 	if st != nil {
-		var tunarrGuide api.GuideReader
-		if set.str("tunarr.url") != "" {
-			tunarrGuide = guideAdapter{
-				tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
-				window: 2 * time.Hour,
-			}
+		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
+		// Its connection resolves per request, so adding tunarr.url later hot-applies; while
+		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
+		var tunarrGuide tunarrGuideReader = guideAdapter{
+			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+			window: 2 * time.Hour,
 		}
 		// playoutRes is nil when internal playout is not wired; the router then has no reader
 		// for internal channels and gives them no entry — never a fallback to Tunarr's guide,

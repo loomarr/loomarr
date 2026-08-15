@@ -17,7 +17,7 @@ import (
 //
 // # The bug this exists for
 //
-// `GET /v1/channels/now-next` and `…/{id}/upcoming` read TUNARR's guide, keyed by TunarrID, and
+// `GET /v1/channels/now-next` and `…/{id}/upcoming` once read TUNARR's guide by TunarrID, and
 // were wired on `tunarr.url != ""` alone — with no reference to `playout.backend`. A channel
 // reconciled to Tunarr in the past keeps its `tunarr_id`, and Tunarr keeps generating listings
 // for it, so after a switch to internal playout these endpoints kept answering confidently from
@@ -39,16 +39,18 @@ import (
 //   - an internal channel resolves through BroadcastsBetween — the SAME resolver the encoder and
 //     the XMLTV guide already share, so §9.1's one-source guarantee now covers the card too;
 //   - a Tunarr channel keeps reading Tunarr's guide, unchanged;
-//   - a MIXED install is correct by construction, which matters because `playout.backend` is
-//     per-channel overridable (§15) and there is deliberately no fleet-wide flip.
+//   - Loomarr's own mixed-backend reads are correct by construction, which matters because
+//     `playout.backend` is per-channel overridable (§15). Media-server mixed-tuner wiring is a
+//     separate limitation recorded in design §9.1.
 //
-// The precedence is the same nil-means-inherit shape playoutChannels uses. Duplicating that rule
+// The router exposes only Loomarr ids to the API and translates to Tunarr ids internally. The
+// precedence is the same nil-means-inherit shape playoutChannels uses. Duplicating that rule
 // here would be a second place to get it wrong, so it is resolved by the shared playsInternally
 // helper below.
 type nowNextRouter struct {
 	// tunarr answers for Tunarr-backed channels. Nil ⇒ those channels simply have no entry,
 	// which is the pre-existing "no guide reader configured" behaviour.
-	tunarr api.GuideReader
+	tunarr tunarrGuideReader
 	// internal resolves an internal-playout channel's timeline. Nil ⇒ internal channels have
 	// no entry rather than falling back to Tunarr's guide — falling back is exactly the bug.
 	internal broadcastReader
@@ -59,6 +61,13 @@ type nowNextRouter struct {
 	// window is how far ahead to look for the NEXT programme. Long enough to contain one, and
 	// no longer: this is a read on a list view, not a guide.
 	window time.Duration
+}
+
+// tunarrGuideReader is keyed by Tunarr's remote channel ids. nowNextRouter translates that
+// adapter-specific shape into api.GuideReader's Loomarr-id contract at this seam.
+type tunarrGuideReader interface {
+	NowNext(ctx context.Context, now time.Time) (map[string]api.ChannelNowNext, error)
+	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]api.NowNextEntry, error)
 }
 
 // broadcastReader is the resolver slice the router needs — satisfied by *playoutResolver.
@@ -74,10 +83,8 @@ type channelLister interface {
 
 // NowNext returns what is on and what follows, per channel, from the right backend.
 //
-// Keyed by TUNARR ID because that is the contract api.channelsNowNext consumes — it joins the
-// map back to its channel list by `ch.TunarrID`. An internal channel that has never been
-// reconciled has no TunarrID and therefore cannot be keyed; that is a pre-existing limit of this
-// endpoint's shape, and such a channel simply has no entry, exactly as before.
+// The returned map is keyed by Loomarr channel id. Translation from Tunarr's remote ids happens
+// here, while an internal channel needs no remote identity at all.
 func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]api.ChannelNowNext, error) {
 	channels, err := r.channels.ListChannels(ctx)
 	if err != nil {
@@ -97,17 +104,17 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 
 	out := make(map[string]api.ChannelNowNext, len(channels))
 	for _, ch := range channels {
-		if ch.TunarrID == "" {
-			continue // cannot be keyed into this endpoint's map — see the doc comment
-		}
 		if !r.internalFor(ch) {
+			if ch.TunarrID == "" {
+				continue // Tunarr-backed but not yet created there: nothing can be airing.
+			}
 			if nn, ok := fromTunarr[ch.TunarrID]; ok {
-				out[ch.TunarrID] = nn
+				out[ch.ID] = nn
 			}
 			continue
 		}
 		if nn, ok := r.internalNowNext(ctx, ch, now); ok {
-			out[ch.TunarrID] = nn
+			out[ch.ID] = nn
 		}
 	}
 	return out, nil
@@ -165,22 +172,22 @@ func (r nowNextRouter) internalNowNext(
 
 // Upcoming returns one channel's "what's on later" strip from the right backend.
 func (r nowNextRouter) Upcoming(
-	ctx context.Context, tunarrID string, now time.Time, limit int,
+	ctx context.Context, channelID string, now time.Time, limit int,
 ) ([]api.NowNextEntry, error) {
 	if limit <= 0 {
 		limit = 6
 	}
-	// This endpoint is addressed by TUNARR id (the api.GuideReader contract), so the channel has
-	// to be found by it to decide the backend. A miss falls through to Tunarr, which is the
-	// pre-existing behaviour and cannot be wrong for a channel Loomarr does not know about.
-	ch, found := r.channelByTunarrID(ctx, tunarrID)
-	if found && r.internalFor(ch) {
-		return r.internalUpcoming(ctx, ch, now, limit)
-	}
-	if r.tunarr == nil {
+	ch, err := r.channels.GetChannel(ctx, channelID)
+	if err != nil {
 		return []api.NowNextEntry{}, nil
 	}
-	return r.tunarr.Upcoming(ctx, tunarrID, now, limit)
+	if r.internalFor(ch) {
+		return r.internalUpcoming(ctx, ch, now, limit)
+	}
+	if r.tunarr == nil || ch.TunarrID == "" {
+		return []api.NowNextEntry{}, nil
+	}
+	return r.tunarr.Upcoming(ctx, ch.TunarrID, now, limit)
 }
 
 func (r nowNextRouter) internalUpcoming(
@@ -215,27 +222,6 @@ func (r nowNextRouter) internalUpcoming(
 // three-hour films, without asking the resolver to arrange a week of schedule for a strip that
 // shows six rows.
 const upcomingWindow = 12 * time.Hour
-
-// channelByTunarrID finds a channel by its Tunarr id.
-//
-// A linear scan of the channel list, which is the right shape here: installs have tens of
-// channels, the list is already read on this path elsewhere, and an index would be a second
-// thing to keep in sync for no measurable gain.
-func (r nowNextRouter) channelByTunarrID(ctx context.Context, tunarrID string) (store.Channel, bool) {
-	if tunarrID == "" {
-		return store.Channel{}, false
-	}
-	channels, err := r.channels.ListChannels(ctx)
-	if err != nil {
-		return store.Channel{}, false
-	}
-	for _, ch := range channels {
-		if ch.TunarrID == tunarrID {
-			return ch, true
-		}
-	}
-	return store.Channel{}, false
-}
 
 // broadcastToNowNext converts the resolver's block to the card's entry shape.
 //

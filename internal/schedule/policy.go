@@ -98,11 +98,9 @@ type OperatorPolicy struct {
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
 	//
-	// The nil-means-inherit shape is what makes the promise true rather than aspirational:
-	// "changing the default affects new channels only — the ones already on the other
-	// backend keep playing exactly as they are". A channel that never opted in has no
-	// stored value to change, and one that DID has a value the global cannot overwrite.
-	// A fleet-wide flip is therefore not expressible by accident.
+	// The nil-means-inherit shape makes the global setting a live fleet default: a channel
+	// with no stored override follows a later global change, while an explicitly selected
+	// backend remains pinned until its own policy changes.
 	Playout *PlayoutPolicy `json:"playout,omitempty"`
 }
 

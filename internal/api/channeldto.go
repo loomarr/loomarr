@@ -42,7 +42,7 @@ type ChannelDTO struct {
 	// global-backend/channel-override precedence and lifecycle state, so Web/native clients never
 	// grow their own subtly different copy of those rules.
 	InAppPlayable bool   `json:"inAppPlayable" doc:"True when this channel can be tuned by Loomarr's in-app player"`
-	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
+	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout"`
 	IntentRef     string `json:"intentRef,omitempty"`
 	ProgramCount  int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
 	PendingCount  int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`

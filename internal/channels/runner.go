@@ -10,8 +10,9 @@ import (
 
 // Runner performs the channel-reconcile SWEEP (§9, §18): claim due channels (leased so
 // replicas don't collide) and reconcile each — re-deriving desired from the store,
-// revalidating slots, and pushing the minimal diff. This is what makes backfill crash-safe
-// and multi-replica correct: events only reduce latency; the sweep is the guarantee.
+// revalidating slots, and projecting the minimal diff when Tunarr owns playout. This is what
+// makes backfill crash-safe and multi-replica correct: events only reduce latency; the sweep
+// is the guarantee for internal and Tunarr-backed channels alike.
 //
 // The loop that drove it is gone — the sweep is now a scheduler job (§18.1). This type keeps
 // the lease/batch config and the Sweep pass the scheduler calls.
@@ -50,7 +51,7 @@ func NewRunner(e *Engine, st claimer, every, lease time.Duration, batch int, now
 
 // Sweep runs one pass: claim due channels and reconcile each. Returns the number of channels
 // reconciled. Called by the scheduler's channel-maintenance job (§18.1). Errors are logged, never
-// fatal — a down Tunarr degrades freshness, never wedges the process (§6).
+// fatal — one channel or selected backend failing never wedges the process (§6).
 func (r *Runner) Sweep(ctx context.Context) int {
 	claimed, err := r.store.ClaimDueChannels(ctx, r.now(), r.lease, r.batch)
 	if err != nil {

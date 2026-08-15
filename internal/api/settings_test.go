@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeSettings is a scripted api.SettingsService for the route tests.
@@ -21,6 +23,10 @@ type fakeSettings struct {
 
 	envOverride   string // last key passed to SetEnvOverride (§3.1)
 	envOverrideOn bool   // whether that call claimed the key or handed it back
+
+	afterPatch       func(map[string]string)
+	afterClear       func(string)
+	afterEnvOverride func(string, bool)
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
@@ -41,6 +47,9 @@ func (f *fakeSettings) Clear(_ context.Context, key string) api.SettingResult {
 	case "job.workers":
 		return api.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
 	}
+	if f.afterClear != nil {
+		f.afterClear(key)
+	}
 	return api.SettingResult{Key: key, Status: "saved"}
 }
 
@@ -57,6 +66,9 @@ func (f *fakeSettings) SetEnvOverride(_ context.Context, key string, on bool, _ 
 		// Provenance "db" in the fixture above — nothing in the environment to take back.
 		return api.SettingResult{Key: key, Status: "not_pinned"}
 	}
+	if f.afterEnvOverride != nil {
+		f.afterEnvOverride(key, on)
+	}
 	return api.SettingResult{Key: key, Status: "applied"}
 }
 
@@ -70,6 +82,9 @@ func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by stri
 			st = "pinned" // env-pinned
 		}
 		out = append(out, api.SettingResult{Key: k, Status: st})
+	}
+	if f.afterPatch != nil {
+		f.afterPatch(edits)
 	}
 	return out
 }
@@ -326,11 +341,18 @@ func TestSettings_SecretReveal(t *testing.T) {
 // stands in for both wiring connectors (LiveTV + media source) — enough surface
 // to prove the auto-wire fires (and stays non-fatal) after a connection save.
 type fakeConnector struct {
-	calls int
-	fail  bool
+	calls       int
+	fail        bool
+	beforeCall  func()
+	wired       bool
+	wiredErr    error
+	wiredChecks int
 }
 
 func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
+	if c.beforeCall != nil {
+		c.beforeCall()
+	}
 	c.calls++
 	if c.fail {
 		return false, false, context.DeadlineExceeded
@@ -338,7 +360,10 @@ func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
 	return true, true, nil // something changed (tuner + listing added)
 }
 
-func (c *fakeConnector) Wired(context.Context) (bool, error)    { return false, nil }
+func (c *fakeConnector) Wired(context.Context) (bool, error) {
+	c.wiredChecks++
+	return c.wired, c.wiredErr
+}
 func (c *fakeConnector) Reconnect(context.Context) (int, error) { return 0, nil }
 
 func (c *fakeConnector) ConnectSource(context.Context) (string, int, error) {
@@ -359,6 +384,12 @@ func (a mediaSourceAdapter) Connect(ctx context.Context) (string, int, error) {
 func (a mediaSourceAdapter) LibrariesReady(context.Context) (bool, error) { return false, nil }
 
 func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string]string) *httptest.Server {
+	srv, _ := newAutoWireServerWithChannels(t, live, source, cfg, &fakeSettings{}, nil)
+	return srv
+}
+
+func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cfg map[string]string,
+	settings *fakeSettings, channelSvc api.ChannelService) (*httptest.Server, store.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -366,14 +397,15 @@ func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string
 		Store:         st,
 		Auth:          api.NewTokenAuthorizer(adminToken),
 		Log:           slog.New(slog.DiscardHandler),
-		Settings:      &fakeSettings{},
+		Settings:      settings,
+		Channels:      channelSvc,
 		LiveTV:        live,
 		TunarrConnect: mediaSourceAdapter{inner: source},
 		LiveConfig:    func(k string) string { return cfg[k] },
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, st
 }
 
 // Saving a connection auto-wires Tunarr into the guide + library — no manual button
@@ -424,6 +456,235 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		}
 		if source.calls != 0 {
 			t.Errorf("media source should wait for library.url: %d", source.calls)
+		}
+	})
+
+	t.Run("internal backend wires without Tunarr", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		cfg := map[string]string{
+			"playout.backend":   "internal",
+			"server.public_url": "http://loomarr:8080",
+		}
+		srv := newAutoWireServer(t, live, source, cfg)
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("patch → %d", resp.StatusCode)
+		}
+		if live.calls != 1 {
+			t.Errorf("internal Live TV should wire without tunarr.url: %d", live.calls)
+		}
+		if source.calls != 0 {
+			t.Errorf("playout.backend must not trigger Tunarr media-source wiring: %d", source.calls)
+		}
+	})
+
+	t.Run("public URL change rewires internal Live TV", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		cfg := map[string]string{
+			"playout.backend":   "internal",
+			"server.public_url": "http://loomarr-new:8080",
+		}
+		srv := newAutoWireServer(t, live, source, cfg)
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"server.public_url":"http://loomarr-new:8080"}}`)
+		if live.calls != 1 {
+			t.Errorf("server.public_url should rewire internal Live TV: %d", live.calls)
+		}
+		if source.calls != 0 {
+			t.Errorf("server.public_url must not trigger Tunarr media-source wiring: %d", source.calls)
+		}
+	})
+
+	t.Run("internal Live TV waits for a reachable public URL", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "internal"})
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("unwireable internal backend invoked connectors: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+
+	t.Run("Tunarr Live TV still requires its URL", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "tunarr"})
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"tunarr"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("unconfigured Tunarr backend invoked connectors: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+}
+
+func TestSettings_BackendTransitionConvergesInheritedChannelsBeforeWiring(t *testing.T) {
+	cfg := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+		"tunarr.url":        "http://tunarr:8000",
+	}
+	settings := &fakeSettings{afterPatch: func(edits map[string]string) {
+		for key, value := range edits {
+			cfg[key] = value
+		}
+	}}
+	channelSvc := &fakeChannelSvc{}
+	live, source := &fakeConnector{}, &fakeConnector{}
+	reconciledBeforeWire := -1
+	live.beforeCall = func() { reconciledBeforeWire = len(channelSvc.reconciledIDs) }
+	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	seedChannel(t, st, "inherits", "Follows default", 1, "")
+	seedChannel(t, st, "pinned", "Pinned internal", 2, schedule.PlayoutBackendInternal)
+
+	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d", resp.StatusCode)
+	}
+	if reconciledBeforeWire != 1 {
+		t.Fatalf("inherited reconciles before Live TV wiring = %d, want 1", reconciledBeforeWire)
+	}
+	if len(channelSvc.reconciledIDs) != 1 || channelSvc.reconciledIDs[0] != "inherits" {
+		t.Fatalf("reconciled channels = %v, want only inherited channel", channelSvc.reconciledIDs)
+	}
+	if live.calls != 1 {
+		t.Fatalf("Live TV connects = %d, want 1", live.calls)
+	}
+}
+
+func TestSettings_BackendTransitionKeepsOldTunerUntilConvergenceSucceeds(t *testing.T) {
+	cfg := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+		"tunarr.url":        "http://tunarr:8000",
+	}
+	settings := &fakeSettings{afterPatch: func(edits map[string]string) {
+		for key, value := range edits {
+			cfg[key] = value
+		}
+	}}
+	channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
+	live, source := &fakeConnector{}, &fakeConnector{}
+	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
+	}
+	if live.calls != 0 {
+		t.Fatalf("Live TV rewired before convergence: %d calls", live.calls)
+	}
+
+	// The effective value is already tunarr, but the failed transition remains pending.
+	// Retrying the same save must cross the reconcile barrier before it can wire.
+	channelSvc.err = nil
+	channelSvc.reconciledIDs = nil
+	resp = do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("retry patch → %d", resp.StatusCode)
+	}
+	if len(channelSvc.reconciledIDs) != 1 || live.calls != 1 {
+		t.Fatalf("retry did not converge then wire: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
+	}
+}
+
+func TestSettings_LiveTVWiringIsDerivedFromCurrentRegistration(t *testing.T) {
+	configured := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+	}
+
+	t.Run("matching current URLs need neither convergence nor connect", func(t *testing.T) {
+		channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
+		live, source := &fakeConnector{wired: true}, &fakeConnector{}
+		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("patch → %d", resp.StatusCode)
+		}
+		if live.wiredChecks != 1 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("matching wiring performed effects: checks=%d connects=%d reconciles=%d",
+				live.wiredChecks, live.calls, channelSvc.reconciles)
+		}
+	})
+
+	t.Run("lookup failure keeps existing registration untouched", func(t *testing.T) {
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{wiredErr: context.DeadlineExceeded}, &fakeConnector{}
+		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
+		}
+		if live.wiredChecks != 1 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("failed lookup performed effects: checks=%d connects=%d reconciles=%d",
+				live.wiredChecks, live.calls, channelSvc.reconciles)
+		}
+	})
+}
+
+func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
+	t.Run("clear falls back to internal", func(t *testing.T) {
+		cfg := map[string]string{
+			"playout.backend":   "tunarr",
+			"server.public_url": "http://loomarr:8080",
+			"tunarr.url":        "http://tunarr:8000",
+		}
+		settings := &fakeSettings{afterClear: func(key string) {
+			if key == "playout.backend" {
+				cfg[key] = schedule.PlayoutBackendInternal
+			}
+		}}
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{}, &fakeConnector{}
+		seenBeforeWire := -1
+		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
+		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodDelete, "/v1/settings/playout.backend", adminToken, "")
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("clear → %d", resp.StatusCode)
+		}
+		if seenBeforeWire != 1 || live.calls != 1 {
+			t.Fatalf("clear did not converge then wire: before=%d live=%d", seenBeforeWire, live.calls)
+		}
+	})
+
+	t.Run("handing back to environment selects Tunarr", func(t *testing.T) {
+		cfg := map[string]string{
+			"playout.backend":   schedule.PlayoutBackendInternal,
+			"server.public_url": "http://loomarr:8080",
+			"tunarr.url":        "http://tunarr:8000",
+		}
+		settings := &fakeSettings{afterEnvOverride: func(key string, enabled bool) {
+			if key == "playout.backend" && !enabled {
+				cfg[key] = "tunarr"
+			}
+		}}
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{}, &fakeConnector{}
+		seenBeforeWire := -1
+		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
+		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPut, "/v1/settings/playout.backend/env-override", adminToken,
+			`{"enabled":false}`)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("env hand-back → %d", resp.StatusCode)
+		}
+		if seenBeforeWire != 1 || live.calls != 1 {
+			t.Fatalf("env hand-back did not converge then wire: before=%d live=%d", seenBeforeWire, live.calls)
 		}
 	})
 }

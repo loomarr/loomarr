@@ -196,6 +196,17 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	canTune, err := s.canTuneInternally(r.Context(), channelID)
+	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
+		http.NotFound(w, r)
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -341,11 +352,12 @@ type playoutChannel struct {
 
 // playoutChannels lists the channels internal playout serves.
 //
-// ONLY channels actually on the internal backend. A channel Tunarr is playing must not appear
+// ONLY channels in the internal surfable catalog. A channel Tunarr is playing must not appear
 // in Loomarr's tuner, or the media server has two tuners offering the same channel and picks
-// between them unpredictably — which presents as a channel that plays fine sometimes and not
-// others. `playout.backend` is per-channel overridable via policy_json (§15), so this is a real
-// filter and not a global on/off.
+// between them unpredictably. Paused/detached/empty channels remain visible in Loomarr's Guide,
+// but are deliberately off-air and therefore absent from both this M3U and its XMLTV document.
+// `playout.backend` is per-channel overridable via policy_json (§15), so this is a real filter
+// and not a global on/off.
 func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) {
 	chans, err := s.store.ListChannels(ctx)
 	if err != nil {
@@ -353,7 +365,7 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 	}
 	out := make([]playoutChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !s.playsInternally(ch) {
+		if !s.inAppPlayable(ch) {
 			continue
 		}
 		out = append(out, playoutChannel{
@@ -364,6 +376,20 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 		})
 	}
 	return out, nil
+}
+
+// canTuneInternally applies the same effective-backend + lifecycle policy as the advertised
+// tuner list and the in-app surfable catalog. Returning 404 for an ineligible id keeps direct
+// token-bearing URLs from becoming a lifecycle/backend enumeration oracle.
+func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool, error) {
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return s.inAppPlayable(ch), nil
 }
 
 // playsInternally reports whether a channel is served by internal playout.
@@ -403,6 +429,17 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID := r.PathValue("id")
 	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	canTune, err := s.canTuneInternally(r.Context(), channelID)
+	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
 		http.NotFound(w, r)
 		return
 	}

@@ -28,7 +28,7 @@ func (s *Server) registerChannels(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
-		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel.",
+		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.",
 		Tags: []string{"channels"},
 	}, RoleMember), s.channelsNowNext)
 
@@ -40,7 +40,7 @@ func (s *Server) registerChannels(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-upcoming", Method: http.MethodGet, Path: "/v1/channels/{id}/upcoming",
 		Summary:     "What's on this channel now and next",
-		Description: "The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
+		Description: "The program airing now (first) then the next few, in airtime order, from the backend that streams this channel (gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.channelUpcoming)
 
@@ -133,7 +133,7 @@ func (s *Server) registerChannels(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
-		Summary: "Force desired→Tunarr reconciliation", Description: "Admin only. Idempotent (§9).",
+		Summary: "Force channel convergence", Description: "Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).",
 		Tags: []string{"channels"},
 	}, RoleAdmin), s.reconcileChannel)
 
@@ -352,15 +352,15 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	// Kick an initial reconcile so the channel goes live immediately (§9 "live
 	// immediately — never dead air"). Best-effort: a reconcile failure leaves the
 	// channel in `building` for the sweep to pick up, it doesn't fail creation.
-	if s.channels != nil && !s.unconfigured("tunarr.url") {
+	if s.channels != nil {
 		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists and
-			// shows a schedule in the guide but has never reached Tunarr.
-			s.log.Error("initial channel reconcile FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists but
+			// has not converged on the backend selected for it.
+			s.log.Error("initial channel reconcile FAILED — it is not live yet; the next channel sweep will retry",
 				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
 			if s.activity != nil {
 				s.activity.Error(ctx, "channel.reconcile", ch.ID,
-					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
+					fmt.Sprintf("%q couldn't be brought live on its selected playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}
 	}
@@ -414,6 +414,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if in.Body.Revision != ch.Revision {
 		return nil, staleChannelConflict()
 	}
+	before := ch
+	wasInternal := s.playsInternally(ch)
 
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
@@ -481,6 +483,25 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		ch.Lineup = next
 	}
 
+	// `building` is the durable tuner-list freshness signal consumed by reconcile. Do not
+	// stamp it onto every edit: a lineup/policy-only change on an already-settled channel
+	// changes guide data, not the tuner channel list. Identity and effective-backend changes,
+	// a resume, and an empty internal channel attempting to materialize do change membership
+	// or M3U identity and therefore retain the stronger signal.
+	active := ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached
+	identityChanged := before.Name != ch.Name || before.Number != ch.Number ||
+		before.Group != ch.Group || before.Logo != ch.Logo
+	backendChanged := wasInternal != s.playsInternally(ch)
+	materializingInternal := before.Status == schedule.StatusEmpty && s.playsInternally(ch)
+	if active && (identityChanged || backendChanged || materializingInternal) {
+		ch.Status = schedule.StatusBuilding
+	}
+	if active {
+		// The immediate reconcile below is best-effort. Zero is the store's explicit due-now
+		// value, so an error cannot leave this edit waiting behind an old future deadline.
+		ch.ReconcileDeadline = time.Time{}
+	}
+
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
@@ -498,11 +519,11 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	ch = saved
 
-	// Auto-reconcile so the edit reaches Tunarr with no user action (§9 "self-
-	// maintaining"; there is no manual rebuild). Best-effort + skipped while paused or
-	// Tunarr-unconfigured: the edit is durable regardless, and the sweep is the
+	// Auto-reconcile so the edit reaches the selected playout backend with no user action
+	// (§9 "self-maintaining"; there is no manual rebuild). Best-effort + skipped while paused:
+	// the edit is durable regardless, and the sweep is the
 	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
-	if ch.Status != schedule.StatusPaused && s.channels != nil && !s.unconfigured("tunarr.url") {
+	if ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached && s.channels != nil {
 		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
 			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
 		}
@@ -583,8 +604,8 @@ func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
-	if s.channels == nil || s.unconfigured("tunarr.url") {
-		return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before reconciling a channel.")
+	if s.channels == nil {
+		return nil, errNotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -592,8 +613,8 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 		return nil, err
 	}
 	if err := s.channels.Reconcile(ctx, in.ID); err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
-			"Loomarr couldn't push this channel to Tunarr. Check its connection in Settings and try again.", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reconcile the channel",
+			"Loomarr couldn't rebuild this channel on its selected playout backend. Check that backend's settings and try again.", err)
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if err != nil {
@@ -604,7 +625,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 
 type deleteChannelInput struct {
 	ID    string `path:"id"`
-	Purge bool   `query:"purge" doc:"Also delete the Tunarr channel (default: detach only, §7)"`
+	Purge bool   `query:"purge" doc:"Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"`
 }
 type deleteChannelOutput struct{}
 
@@ -616,15 +637,19 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	// Purge (?purge=true): delete the Tunarr channel AND hard-delete the store row,
-	// through the engine (which holds the programmer). Idempotent on the Tunarr side.
+	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
+	// Tunarr projection through the channel service. This includes a historical projection
+	// preserved after switching the channel to internal playout.
 	if in.Purge {
 		if s.channels == nil {
-			return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before purging its channel.")
+			return nil, errNotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 		}
 		if err := s.channels.Purge(ctx, in.ID); err != nil {
-			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
-				"Loomarr couldn't delete this channel in Tunarr. Check its connection in Settings and try again.", err)
+			if errors.Is(err, store.ErrChannelStale) || errors.Is(err, store.ErrChannelConflict) {
+				return nil, staleChannelConflict()
+			}
+			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't purge the channel",
+				"Loomarr couldn't hard-delete its local state and any retained managed Tunarr projection. Check the configured integrations and try again.", err)
 		}
 		return &deleteChannelOutput{}, nil
 	}
