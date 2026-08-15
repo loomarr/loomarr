@@ -9,8 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Real playback (MANIFEST_PARSED → playing) is left to the browser, where V46 verified it live.
 
 // Hoisted so the vi.mock factory (which runs before module init) can close over them.
-const { channelPlayUrl, unwrap } = vi.hoisted(() => ({
+const { channelPlayUrl, hls, unwrap } = vi.hoisted(() => ({
   channelPlayUrl: vi.fn(),
+  hls: { supported: false, instances: [] as unknown[] },
   unwrap: vi.fn((res: unknown) => res),
 }));
 vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
@@ -25,12 +26,34 @@ vi.mock("@loomarr/api/mutator", () => ({
   toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
 }));
 
-// hls.js reports unsupported so bind() takes the non-MSE path — the test drives a <video> whose
-// canPlayType also returns "" (no native HLS), landing on the deterministic error branch instead of
-// constructing a real Hls instance.
-vi.mock("hls.js", () => ({
-  default: { isSupported: () => false, Events: {}, ErrorTypes: {} },
-}));
+// Most tests keep hls.js unsupported and exercise the native/fallthrough seams. The retained-engine
+// test opts in and records constructed controllers so a Channel-param rerender can prove reuse.
+vi.mock("hls.js", () => {
+  class MockHls {
+    static isSupported = () => hls.supported;
+    static Events = { ERROR: "error", MANIFEST_PARSED: "manifestParsed" };
+    static ErrorTypes = { MEDIA_ERROR: "mediaError", NETWORK_ERROR: "networkError" };
+
+    media: HTMLMediaElement | null = null;
+    attachMedia = vi.fn((media: HTMLMediaElement) => {
+      this.media = media;
+    });
+    destroy = vi.fn(() => {
+      this.media = null;
+    });
+    loadSource = vi.fn();
+    off = vi.fn();
+    on = vi.fn();
+    recoverMediaError = vi.fn();
+    startLoad = vi.fn();
+    stopLoad = vi.fn();
+
+    constructor() {
+      hls.instances.push(this);
+    }
+  }
+  return { default: MockHls };
+});
 
 import { useHlsPlayer } from "./use-hls-player";
 
@@ -47,6 +70,8 @@ const videoEl = (canPlay = "") =>
 describe("useHlsPlayer", () => {
   beforeEach(() => {
     channelPlayUrl.mockReset();
+    hls.supported = false;
+    hls.instances.length = 0;
     unwrap.mockReset().mockImplementation((res: unknown) => res);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -93,6 +118,47 @@ describe("useHlsPlayer", () => {
     await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
     expect(channelPlayUrl).not.toHaveBeenCalled();
     expect(video.src).toContain("sig=warmed");
+  });
+
+  it("retains one hls.js controller across a Channel-param tune", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockImplementation((id: string) =>
+      Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
+    );
+    const video = videoEl();
+    const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
+      initialProps: { id: "ch-1" },
+    });
+
+    let release!: () => void;
+    act(() => {
+      release = result.current.attach(video);
+    });
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as {
+      destroy: ReturnType<typeof vi.fn>;
+      loadSource: ReturnType<typeof vi.fn>;
+      stopLoad: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() =>
+      expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
+    );
+
+    act(() => release());
+    rerender({ id: "ch-2" });
+    let finalRelease!: () => void;
+    act(() => {
+      finalRelease = result.current.attach(video);
+    });
+
+    await waitFor(() =>
+      expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8"),
+    );
+    expect(hls.instances).toHaveLength(1);
+    expect(controller.stopLoad).toHaveBeenCalledOnce();
+
+    act(() => finalRelease());
+    await waitFor(() => expect(controller.destroy).toHaveBeenCalledOnce());
   });
 
   it("surfaces an error when the mint returns no URL", async () => {

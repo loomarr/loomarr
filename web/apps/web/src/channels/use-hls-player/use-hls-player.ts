@@ -1,4 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
+import type Hls from "hls.js";
 import { useCallback, useRef, useState } from "react";
 import { mintChannelPlaySource } from "../channel-play-url";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
@@ -47,6 +48,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   // A boolean cannot do this: the next attach resets it to false and accidentally re-authorizes an
   // older request that resolves late.
   const generationRef = useRef(0);
+  // A Channel route-param change keeps this hook and its <video> mounted. Retain the single hls.js
+  // controller across that synchronous effect hand-off so a tune does not recompile its worker and
+  // rebuild every parser/controller. The zero-delay disposal still destroys it when Watch really
+  // unmounts; the replacement attach cancels that disposal before starting its mint.
+  const hlsRef = useRef<{ instance?: Hls; destroyTimer?: number }>({});
   const warmedPlayURL = attempt?.playURL;
 
   const bind = useCallback(
@@ -103,47 +109,48 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // larger than the frame; low-latency off — this is live TV, and the steadier buffer survives a
       // flaky link.
       if (Hls.isSupported()) {
-        const hls = new Hls({
-          capLevelToPlayerSize: true,
-          enableWorker: true,
-          // Live channel: keep chasing the live edge, and be patient while it warms up. A channel
-          // takes a few seconds to produce its first segment (the encoder spins up), during which
-          // the playlist may briefly have no media — hls.js must RETRY, not give up.
-          liveDurationInfinity: true,
-          manifestLoadingMaxRetry: 8,
-          manifestLoadingRetryDelay: 1000,
-          levelLoadingMaxRetry: 8,
-          fragLoadingMaxRetry: 8,
-          // ⚠ **Start ~TWO segments from the live edge — the balance between fast first-paint and a
-          // survivable buffer (both measured in-browser).** hls.js's default liveSyncDurationCount is 3
-          // (~12s at our 4s segments) — the black window V47 first fixed by dropping it to 1. But 1
-          // sits the playhead AT the live edge, and on a TRANSCODING channel (HEVC→h264 at ~1.2×
-          // realtime, "little margin" per the doctor) the encoder never pulls ahead, so headroom stays
-          // pinned at 0s and any dip below realtime plays out as a BLACK FRAME with nothing buffered to
-          // cover it (measured: a transcoding channel held 0s headroom for 30s and fired a `waiting`
-          // event). Two segments keeps first-paint fast (one extra ~4s segment vs V47) while giving a
-          // one-segment cushion against those dips. A direct-play (`-c copy`) channel fills far past
-          // this instantly, so it costs the fast path nothing.
-          liveSyncDurationCount: 2,
-          // liveMaxLatencyDurationCount governs when hls.js gives up chasing and hard-seeks to the edge
-          // (which itself looks like a stall). Keep it well above the sync target so a slow transcode is
-          // allowed to drift and be absorbed by the buffer instead of triggering a corrective seek.
-          liveMaxLatencyDurationCount: 10,
-          // Generous forward buffer + a back buffer so the player keeps BUILDING a cushion after the
-          // fast start (start near the edge, buffer up behind the scenes — what Emby/Jellyfin do). The
-          // back buffer also lets a viewer nudge back a few seconds without a re-fetch.
-          maxBufferLength: 60,
-          backBufferLength: 30,
-        });
-        hls.loadSource(url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const hls =
+          hlsRef.current.instance ??
+          new Hls({
+            capLevelToPlayerSize: true,
+            enableWorker: true,
+            // Live channel: keep chasing the live edge, and be patient while it warms up. A channel
+            // takes a few seconds to produce its first segment (the encoder spins up), during which
+            // the playlist may briefly have no media — hls.js must RETRY, not give up.
+            liveDurationInfinity: true,
+            manifestLoadingMaxRetry: 8,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingMaxRetry: 8,
+            fragLoadingMaxRetry: 8,
+            // ⚠ **Start ~TWO segments from the live edge — the balance between fast first-paint and a
+            // survivable buffer (both measured in-browser).** hls.js's default liveSyncDurationCount is 3
+            // (~12s at our 4s segments) — the black window V47 first fixed by dropping it to 1. But 1
+            // sits the playhead AT the live edge, and on a TRANSCODING channel (HEVC→h264 at ~1.2×
+            // realtime, "little margin" per the doctor) the encoder never pulls ahead, so headroom stays
+            // pinned at 0s and any dip below realtime plays out as a BLACK FRAME with nothing buffered to
+            // cover it (measured: a transcoding channel held 0s headroom for 30s and fired a `waiting`
+            // event). Two segments keeps first-paint fast (one extra ~4s segment vs V47) while giving a
+            // one-segment cushion against those dips. A direct-play (`-c copy`) channel fills far past
+            // this instantly, so it costs the fast path nothing.
+            liveSyncDurationCount: 2,
+            // liveMaxLatencyDurationCount governs when hls.js gives up chasing and hard-seeks to the edge
+            // (which itself looks like a stall). Keep it well above the sync target so a slow transcode is
+            // allowed to drift and be absorbed by the buffer instead of triggering a corrective seek.
+            liveMaxLatencyDurationCount: 10,
+            // Generous forward buffer + a back buffer so the player keeps BUILDING a cushion after the
+            // fast start (start near the edge, buffer up behind the scenes — what Emby/Jellyfin do). The
+            // back buffer also lets a viewer nudge back a few seconds without a re-fetch.
+            maxBufferLength: 60,
+            backBufferLength: 30,
+          });
+        hlsRef.current.instance = hls;
+        const onManifestParsed = () => {
           markTunePhase(attempt, "manifest");
           void video.play().catch(() => {
             /* autoplay policy — the control handles it */
           });
-        });
-        hls.on(Hls.Events.ERROR, (_evt, data) => {
+        };
+        const onError = (_evt: string, data: { fatal: boolean; type: string }) => {
           if (!data.fatal) return; // non-fatal: hls.js recovers on its own
           // ⚠ A fatal error during a LIVE stream is usually RECOVERABLE, not terminal — the channel
           // is warming up (empty playlist for a beat) or a segment hiccuped. hls.js has built-in
@@ -159,12 +166,26 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               break;
             default:
               setState({ channelId, status: "error", error: "The stream stopped. Try again in a moment." });
+              if (hlsRef.current.instance === hls) hlsRef.current.instance = undefined;
               hls.destroy();
           }
-        });
+        };
+        hls.loadSource(url);
+        if (hls.media !== video) hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+        hls.on(Hls.Events.ERROR, onError);
         return () => {
           stopFirstFrameWatch();
-          hls.destroy();
+          hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+          hls.off(Hls.Events.ERROR, onError);
+          if (hlsRef.current.instance !== hls) return;
+          hls.stopLoad();
+          hlsRef.current.destroyTimer = window.setTimeout(() => {
+            if (hlsRef.current.instance !== hls) return;
+            hls.destroy();
+            hlsRef.current.instance = undefined;
+            hlsRef.current.destroyTimer = undefined;
+          }, 0);
         };
       }
 
@@ -195,6 +216,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
 
   const attach = useCallback(
     (video: HTMLVideoElement): (() => void) => {
+      if (hlsRef.current.destroyTimer !== undefined) {
+        window.clearTimeout(hlsRef.current.destroyTimer);
+        hlsRef.current.destroyTimer = undefined;
+      }
       const generation = ++generationRef.current;
       const controller = new AbortController();
       const current = () => generationRef.current === generation && !controller.signal.aborted;

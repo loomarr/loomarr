@@ -152,7 +152,12 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     // gates below; this percentile starts after the previous Channel's bounded hot set has settled.
     await waitForAdjacentWarm(backend, number);
   }
-  expect(p95(arbitrary), `arbitrary prepared p95: ${p95(arbitrary).toFixed(1)}ms`).toBeLessThan(1_500);
+  expect(
+    p95(arbitrary),
+    `arbitrary prepared p95: ${p95(arbitrary).toFixed(1)}ms; samples: ${arbitrary
+      .map((sample) => sample.toFixed(1))
+      .join(", ")}`,
+  ).toBeLessThan(1_500);
 
   // Start the adjacent run from the middle of the catalog and prove speculative work is prepared-only.
   const probeStart = backend.state.preparedProbes.length;

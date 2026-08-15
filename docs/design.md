@@ -1307,6 +1307,12 @@ its source. A real tune reuses the exact signed URL and the already-ready remux.
 also defers source-backed track probing until the first decoded frame so optional work cannot
 contend with the active Channel's cold open and seek.
 
+The Web adapter retains its one hls.js controller while the mounted Watch surface changes Channel
+parameters. Source replacement still recreates that controller's single MediaSource and clears the
+outgoing buffers, but it does not reconstruct hls.js, recompile its worker, or allocate a second
+player. The synchronous replacement attach cancels a zero-delay disposal; leaving Watch lets that
+disposal destroy the controller. Native-HLS clients keep the equivalent one-element source swap.
+
 The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
 viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink
 instead preserves the finite encoder startup burst in a lossless queue capped at 128 MiB; exceeding
