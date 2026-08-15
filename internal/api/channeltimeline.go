@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -22,10 +23,9 @@ import (
 // GuideAiring projection and preview resolver as the main Guide; this narrower endpoint simply
 // returns the current programme plus the next few rather than the cross-channel grid window.
 
-// timelineWindow is how far ahead the strip looks — "now + the next few". Long enough to show the
-// current programme plus a couple of upcoming items and their breaks; short enough that it is a
-// handful of blocks, not the whole day. The reader clips the first block to its real start, so the
-// current programme's true beginning anchors the strip.
+// timelineWindow is how far ahead the strip looks — "now + the next few". V60 also asks for the
+// shared DVR horizon behind now so programme context follows a delayed viewer. The future bound
+// remains a handful of blocks rather than the whole day.
 const timelineWindow = 3 * time.Hour
 
 // TimelineThumbResolver resolves a same-origin preview image path for one programme block (§9.1 V47). An
@@ -139,7 +139,9 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 	}
 
 	now := time.Now()
-	bs, err := s.playoutGuide.BroadcastsBetween(ctx, ch.ID, now, now.Add(timelineWindow))
+	bs, err := s.playoutGuide.BroadcastsBetween(
+		ctx, ch.ID, now.Add(-playout.DVRHorizon), now.Add(timelineWindow),
+	)
 	if err != nil {
 		return out, nil // a guide hiccup must not blank the player
 	}

@@ -15,8 +15,6 @@ import (
 	"github.com/mantonx/loomarr/internal/prepared"
 )
 
-const preparedManifestSegments = 3
-
 // PreparedAiring binds one immutable source rendition to its authoritative place on a Channel's
 // wall clock. Offset is meaningful for Current; previous Airings contribute their trailing media.
 type PreparedAiring struct {
@@ -25,8 +23,8 @@ type PreparedAiring struct {
 	Offset        time.Duration
 }
 
-// PreparedWindow is the live edge plus the immediately preceding Airings needed to render a stable
-// three-segment HLS window across a programme boundary. Previous is chronological, oldest first.
+// PreparedWindow is the live edge plus the preceding Airings needed to render the shared DVR
+// horizon across programme boundaries. Previous is chronological, oldest first.
 type PreparedWindow struct {
 	Previous []PreparedAiring
 	Current  PreparedAiring
@@ -210,13 +208,22 @@ func renderPreparedManifest(current preparedMedia, previous []preparedMedia) ([]
 		return nil, errors.New("playout: prepared window is beyond its media")
 	}
 
-	refs := []preparedSegmentRef{{media: current, segment: current.segments[index]}}
-	for i := index - 1; i >= 0 && len(refs) < preparedManifestSegments; i-- {
-		refs = append(refs, preparedSegmentRef{media: current, segment: current.segments[i]})
+	cutoff := current.airing.StartedAt.Add(current.airing.Offset).Add(-DVRHorizon)
+	refs := make([]preparedSegmentRef, 0, index+1)
+	for i := index; i >= 0; i-- {
+		segment := current.segments[i]
+		if !segment.startsAt.Add(segment.duration).After(cutoff) {
+			break
+		}
+		refs = append(refs, preparedSegmentRef{media: current, segment: segment})
 	}
-	for p := len(previous) - 1; p >= 0 && len(refs) < preparedManifestSegments; p-- {
-		for i := len(previous[p].segments) - 1; i >= 0 && len(refs) < preparedManifestSegments; i-- {
-			refs = append(refs, preparedSegmentRef{media: previous[p], segment: previous[p].segments[i]})
+	for p := len(previous) - 1; p >= 0; p-- {
+		for i := len(previous[p].segments) - 1; i >= 0; i-- {
+			segment := previous[p].segments[i]
+			if !segment.startsAt.Add(segment.duration).After(cutoff) {
+				break
+			}
+			refs = append(refs, preparedSegmentRef{media: previous[p], segment: segment})
 		}
 	}
 	reversePrepared(refs)

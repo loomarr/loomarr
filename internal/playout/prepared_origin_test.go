@@ -35,17 +35,28 @@ func preparedSpec(source string) prepared.Specification {
 }
 
 func publishHLS(t *testing.T, lib *prepared.Library, spec prepared.Specification) prepared.Publication {
+	return publishHLSWithSegments(t, lib, spec, 4)
+}
+
+func publishHLSWithSegments(
+	t *testing.T, lib *prepared.Library, spec prepared.Specification, segmentCount int,
+) prepared.Publication {
 	t.Helper()
 	pub, err := lib.Publish(t.Context(), spec, func(_ context.Context, workspace string) (prepared.Output, error) {
-		manifest := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:2\n" +
-			"#EXT-X-MAP:URI=\"init.mp4\"\n" +
-			"#EXTINF:2.000,\nseg-0.m4s\n#EXTINF:2.000,\nseg-1.m4s\n" +
-			"#EXTINF:2.000,\nseg-2.m4s\n#EXTINF:2.000,\nseg-3.m4s\n#EXT-X-ENDLIST\n"
-		files := []string{prepared.MediaManifestName, "init.mp4", "seg-0.m4s", "seg-1.m4s", "seg-2.m4s", "seg-3.m4s"}
+		var manifest strings.Builder
+		manifest.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:2\n")
+		manifest.WriteString("#EXT-X-MAP:URI=\"init.mp4\"\n")
+		files := []string{prepared.MediaManifestName, "init.mp4"}
+		for i := range segmentCount {
+			name := fmt.Sprintf("seg-%d.m4s", i)
+			files = append(files, name)
+			fmt.Fprintf(&manifest, "#EXTINF:2.000,\n%s\n", name)
+		}
+		manifest.WriteString("#EXT-X-ENDLIST\n")
 		for _, file := range files {
 			body := []byte(file)
 			if file == prepared.MediaManifestName {
-				body = []byte(manifest)
+				body = []byte(manifest.String())
 			}
 			if err := os.WriteFile(filepath.Join(workspace, file), body, 0o600); err != nil {
 				return prepared.Output{}, err
@@ -57,6 +68,54 @@ func publishHLS(t *testing.T, lib *prepared.Library, spec prepared.Specification
 		t.Fatal(err)
 	}
 	return pub
+}
+
+func TestPreparedOriginExposesTheSharedDVRHorizonAcrossAirings(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldestSpec := preparedSpec("episode-a")
+	previousSpec := preparedSpec("episode-b")
+	currentSpec := preparedSpec("episode-c")
+	oldest := publishHLSWithSegments(t, lib, oldestSpec, 240)
+	previous := publishHLSWithSegments(t, lib, previousSpec, 240)
+	current := publishHLSWithSegments(t, lib, currentSpec, 240)
+	started := time.Unix(10_000, 0).UTC()
+	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+		Previous: []PreparedAiring{
+			{Specification: oldestSpec, StartedAt: started.Add(-16 * time.Minute)},
+			{Specification: previousSpec, StartedAt: started.Add(-8 * time.Minute)},
+		},
+		Current: PreparedAiring{Specification: currentSpec, StartedAt: started, Offset: time.Minute},
+	}})
+
+	presentation, hit, err := origin.Tune(t.Context(), TuneRequest{
+		ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS,
+	})
+	if err != nil || !hit {
+		t.Fatalf("Tune = (_, %v, %v), want prepared hit", hit, err)
+	}
+	manifest := string(presentation.Manifest)
+	firstInWindow := preparedAssetToken(oldest.Key, "seg-60.m4s")
+	justExpired := preparedAssetToken(oldest.Key, "seg-59.m4s")
+	for _, want := range []string{
+		"#EXT-X-PROGRAM-DATE-TIME:" + started.Add(-14*time.Minute).Format(time.RFC3339Nano),
+		firstInWindow,
+		preparedAssetToken(previous.Key, "seg-0.m4s"),
+		preparedAssetToken(current.Key, "seg-30.m4s"),
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Errorf("manifest missing %q", want)
+		}
+	}
+	if strings.Contains(manifest, justExpired) {
+		t.Errorf("manifest retained expired segment %q", justExpired)
+	}
+	if got := strings.Count(manifest, "#EXT-X-DISCONTINUITY"); got != 2 {
+		t.Errorf("discontinuities = %d, want two Airing boundaries", got)
+	}
 }
 
 func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
