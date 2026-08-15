@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Deterministic \"test card\" fixtures for Storybook stories + tests (web + future mobile).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
