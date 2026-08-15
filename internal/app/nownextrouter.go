@@ -104,6 +104,9 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 
 	out := make(map[string]api.ChannelNowNext, len(channels))
 	for _, ch := range channels {
+		if !ch.Status.Reconcilable() {
+			continue // paused/detached channels are deliberately off Loomarr's guide surfaces
+		}
 		if !r.internalFor(ch) {
 			if ch.TunarrID == "" {
 				continue // Tunarr-backed but not yet created there: nothing can be airing.
@@ -127,7 +130,7 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 // a Tunarr that is slow or down when nothing on screen depends on it.
 func (r nowNextRouter) anyOnTunarr(channels []store.Channel) bool {
 	for _, ch := range channels {
-		if ch.TunarrID != "" && !r.internalFor(ch) {
+		if ch.Status.Reconcilable() && ch.TunarrID != "" && !r.internalFor(ch) {
 			return true
 		}
 	}
@@ -179,6 +182,9 @@ func (r nowNextRouter) Upcoming(
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
+		return []api.NowNextEntry{}, nil
+	}
+	if !ch.Status.Reconcilable() {
 		return []api.NowNextEntry{}, nil
 	}
 	if r.internalFor(ch) {

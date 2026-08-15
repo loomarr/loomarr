@@ -195,6 +195,46 @@ func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 	}
 }
 
+func TestNowNextRouter_OmitsPausedAndDetachedChannels(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	guide := &countingGuide{}
+	r := nowNextRouter{
+		tunarr: guide,
+		internal: stubBroadcasts{
+			title: "Must not air", start: now.Add(-time.Hour), stop: now.Add(time.Hour),
+		},
+		channels: routerChannels{list: []store.Channel{
+			{Channel: schedule.Channel{ID: "paused", Status: schedule.StatusPaused}},
+			{Channel: schedule.Channel{ID: "detached", TunarrID: "tun-detached", Status: schedule.StatusDetached}},
+		}},
+		internalFor: func(ch store.Channel) bool { return ch.ID == "paused" },
+		window:      2 * time.Hour,
+	}
+
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatalf("NowNext: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("NowNext = %+v, want no off-air channels", got)
+	}
+	if guide.calls != 0 {
+		t.Fatalf("Tunarr guide calls = %d, want none for detached channels", guide.calls)
+	}
+	for _, id := range []string{"paused", "detached"} {
+		upcoming, uerr := r.Upcoming(context.Background(), id, now, 6)
+		if uerr != nil {
+			t.Fatalf("Upcoming(%s): %v", id, uerr)
+		}
+		if len(upcoming) != 0 {
+			t.Fatalf("Upcoming(%s) = %+v, want no off-air entries", id, upcoming)
+		}
+	}
+	if guide.calls != 0 {
+		t.Fatalf("Tunarr guide calls after Upcoming = %d, want none", guide.calls)
+	}
+}
+
 // Upcoming routes on the backend too — the strip and the card must not disagree with each other
 // any more than either may disagree with the grid.
 func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
@@ -221,7 +261,13 @@ func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 
 func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	guide := &recordingTunarrGuide{}
+	var upcomingID string
+	guide := stubGuide{
+		now: "From Tunarr",
+		onUpcoming: func(id string) {
+			upcomingID = id
+		},
+	}
 	r := nowNextRouter{
 		tunarr:      guide,
 		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
@@ -233,8 +279,8 @@ func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upcoming: %v", err)
 	}
-	if guide.upcomingID != "tun1" {
-		t.Fatalf("Tunarr Upcoming id = %q, want translated remote id tun1", guide.upcomingID)
+	if upcomingID != "tun1" {
+		t.Fatalf("Tunarr Upcoming id = %q, want translated remote id tun1", upcomingID)
 	}
 	if len(got) != 1 || got[0].Title != "From Tunarr" {
 		t.Fatalf("upcoming = %+v", got)
@@ -271,7 +317,10 @@ func TestTMDBIDFromKey(t *testing.T) {
 
 // --- stubs ---
 
-type stubGuide struct{ now string }
+type stubGuide struct {
+	now        string
+	onUpcoming func(string)
+}
 
 func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
 	return map[string]api.ChannelNowNext{
@@ -281,7 +330,10 @@ func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNo
 	}, nil
 }
 
-func (s stubGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]api.NowNextEntry, error) {
+	if s.onUpcoming != nil {
+		s.onUpcoming(id)
+	}
 	return []api.NowNextEntry{{Title: s.now}}, nil
 }
 
@@ -295,17 +347,6 @@ func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]api.Chan
 func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
 	c.calls++
 	return nil, nil
-}
-
-type recordingTunarrGuide struct{ upcomingID string }
-
-func (r *recordingTunarrGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
-	return map[string]api.ChannelNowNext{}, nil
-}
-
-func (r *recordingTunarrGuide) Upcoming(_ context.Context, tunarrID string, _ time.Time, _ int) ([]api.NowNextEntry, error) {
-	r.upcomingID = tunarrID
-	return []api.NowNextEntry{{Title: "From Tunarr"}}, nil
 }
 
 type failingGuide struct{}

@@ -79,6 +79,13 @@ const (
 	StatusPaused ChannelStatus = "paused"
 )
 
+// Reconcilable reports whether automatic or direct reconciliation may manage a channel.
+// Paused and detached are the two explicit lifecycle opt-outs; every other status remains
+// active so building, empty, live, and drifted channels can converge or recover.
+func (s ChannelStatus) Reconcilable() bool {
+	return s != StatusPaused && s != StatusDetached
+}
+
 // Channel is a Loomarr-managed Tunarr channel (§9 scheduler domain). Identity is
 // Loomarr's own ID; TunarrID is the *server-assigned* id from Tunarr's create
 // response (Phase-0 finding: Tunarr ignores client-supplied ids), empty until

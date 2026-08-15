@@ -300,6 +300,25 @@ func (m *HLSManager) remove(key remuxKey) {
 	m.mu.Unlock()
 }
 
+// StopChannel tears down every live HLS remux for channelID, across every codec plan. Removing
+// the entries before teardown makes follow-up asset requests fail closed immediately; teardown
+// then cancels ffmpeg and releases each remux's underlying MPEG-TS session reference.
+func (m *HLSManager) StopChannel(channelID string) {
+	m.mu.Lock()
+	remuxes := make([]*hlsRemux, 0, 2)
+	for key, r := range m.remuxes {
+		if key.channel == channelID {
+			remuxes = append(remuxes, r)
+			delete(m.remuxes, key)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, r := range remuxes {
+		r.teardown()
+	}
+}
+
 // Stop tears down every remux and removes the temp root. Called on shutdown.
 func (m *HLSManager) Stop() {
 	m.mu.Lock()

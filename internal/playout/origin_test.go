@@ -8,12 +8,17 @@ import (
 	"testing"
 )
 
-type tuneSessions struct{ channel string }
+type tuneSessions struct {
+	channel string
+	stopped string
+}
 
 func (s *tuneSessions) Attach(_ context.Context, channel string, _ EncodePlan) (<-chan []byte, func(), error) {
 	s.channel = channel
 	return make(chan []byte), func() {}, nil
 }
+
+func (s *tuneSessions) StopChannel(channel string) { s.stopped = channel }
 
 func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 	t.Parallel()
@@ -32,6 +37,7 @@ func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 type tuneHLS struct {
 	channel string
 	path    string
+	stopped string
 }
 
 func (h *tuneHLS) Playlist(channel string, _ EncodePlan) (string, func(), error) {
@@ -40,6 +46,8 @@ func (h *tuneHLS) Playlist(channel string, _ EncodePlan) (string, func(), error)
 }
 
 func (h *tuneHLS) AssetPath(string, EncodePlan, string) (string, bool) { return "", false }
+
+func (h *tuneHLS) StopChannel(channel string) { h.stopped = channel }
 
 func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 	t.Parallel()
@@ -65,5 +73,9 @@ func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 	}
 	if sessions.channel != "ch-one" || hls.channel != "ch-two" {
 		t.Fatalf("adapters saw sessions=%q hls=%q", sessions.channel, hls.channel)
+	}
+	origin.StopChannel("ch-one")
+	if sessions.stopped != "ch-one" || hls.stopped != "ch-one" {
+		t.Fatalf("stop adapters saw sessions=%q hls=%q", sessions.stopped, hls.stopped)
 	}
 }

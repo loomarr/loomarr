@@ -156,9 +156,9 @@ flowchart TD
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
-  p_schedule["schedule<br/><small>12 importers</small>"]
+  p_schedule["schedule<br/><small>13 importers</small>"]
   p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>13 importers</small>"]
+  p_store["store<br/><small>14 importers</small>"]
   p_suggest["suggest<br/><small>5 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
@@ -209,14 +209,14 @@ flowchart TD
   Loomarr's Prometheus surface (design §7 /metrics, §18).
 - **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
-- **`schedule`** · 12 importers · → `provision`
+- **`schedule`** · 13 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 2**
 
 - **`httpx`** · 5 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
+- **`playout`** · 4 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
@@ -241,7 +241,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 6 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 6**
@@ -250,13 +250,14 @@ flowchart TD
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`auth`** · 3 importers · → `library`, `store`
   Issues and validates Loomarr sessions (design §11).
+- **`backendtransition`** · 1 importer · → `schedule`, `store`
+  Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
-
 **Layer 7**
 
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
@@ -292,7 +293,7 @@ flowchart TD
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -676,7 +677,7 @@ For Loomarr's channels to appear in the family's TV guide, the media server must
 
 - **Endpoints (both flavors, Emby lineage):** `POST /LiveTv/TunerHosts` (type `m3u`, `Url` = Tunarr's playlist URL) and `POST /LiveTv/ListingProviders` (type `xmltv`, `Url` = Tunarr's guide URL), using the admin `LIBRARY_TOKEN`. **M3U is preferred over HDHomeRun emulation** — explicit and discovery-free, so registration is deterministic.
 - **One-time & never silent.** There is no per-channel media-server call, ever. Wiring happens once, as a consequence of the operator saving their Tunarr connection — it is idempotent and fully derived from that connection, so it auto-runs on a Connections save rather than needing a separate button (`autoWireAfterSave`; the `livetv` setup check reports the result). Loomarr never reconfigures a media server unasked: saving the connection *is* the ask. `POST /v1/setup/livetv-reconnect` (admin — §7) force re-wires when a stale channel→stream binding needs clearing. *There is no `livetv-connect` route; it was removed when the wiring became automatic, and `scripts/check-retired.sh` now bans the name.*
-- **Idempotent & self-healing on URL change.** Enumerate first via **`GET /System/Configuration/livetv`** — one read that returns `{TunerHosts, ListingProviders}` — and if Tunarr is already registered the connect is a no-op. Duplicate tuners are a classic Emby mess; tests assert **second-call-no-op** (Phase 10 gate). **Reconcile is by *identity*, not URL string.** Loomarr tags every tuner it registers with `FriendlyName: "loomarr"`, so `Connect` owns exactly the tuners it created: when the Tunarr URL *changes* (the operator repoints `TUNARR_URL`), enumerate-first finds a Loomarr-owned tuner whose `Url` no longer matches the desired M3U, **DELETEs the stale one** (`DELETE /LiveTv/TunerHosts?Id=<id>` → 204, Phase-0 capture), and registers the new — so a URL change *moves* the tuner instead of orphaning a dead one alongside a live one. A tuner the household added by hand (any other `FriendlyName`) is **never touched** (§9 ownership: Loomarr owns only what it created). Listing providers carry no `FriendlyName`, so the stale one is identified as the Loomarr-shaped `xmltv` provider whose `Path` is a Tunarr guide URL that no longer matches; it is likewise DELETEd (`DELETE /LiveTv/ListingProviders?Id=<id>` → 204) and re-added. **A connect that changed anything (added or retired a tuner/listing) then pokes the media server — a tuner re-scan *and* a guide refresh — so the freshly-registered tuner's channels are discovered and their EPG populated immediately, rather than after the media server's nightly scan** (the newly-wired tuner has zero channels in the media server's view until it re-reads the M3U — a guide refresh alone won't surface them; §9 poke semantics). Both pokes are **best-effort**: a poke failure degrades freshness but never fails the wiring. A no-op connect (nothing changed) skips the pokes — there is nothing new to discover. *The Emby-lineage `GET /LiveTv/TunerHosts` / `GET /LiveTv/ListingProviders` are **write-only on Jellyfin** — `POST` works, `GET` returns **405** (verified against Jellyfin 10.10.3). Enumerating through them therefore failed on every Jellyfin install, so the idempotency check could not run and the connect either errored or duplicated the tuner on each attempt. The Phase-10 capture was Emby-only, which is how it survived: §6 claims both flavors, and only Emby was ever exercised. The config endpoint answers 200 on **both**, so this is one code path rather than a flavor branch.*
+- **Idempotent & self-healing on URL change.** Enumerate first via **`GET /System/Configuration/livetv`** — one read that returns `{TunerHosts, ListingProviders}` — and if Tunarr is already registered the connect is a no-op. Duplicate tuners are a classic Emby mess; tests assert **second-call-no-op** (Phase 10 gate). **Reconcile is by *identity*, not URL string.** Loomarr tags every tuner it registers with `FriendlyName: "loomarr"`, so `Connect` owns exactly the tuners it created: when the Tunarr URL *changes* (the operator repoints `TUNARR_URL`), it first **prepares** the new pair by adding and verifying both the target tuner and target listing while the old pair remains registered. Only after both target registrations exist does it **retire** the stale Loomarr-owned pair (`DELETE /LiveTv/TunerHosts?Id=<id>` and `DELETE /LiveTv/ListingProviders?Id=<id>` → 204, Phase-0 capture). A failed tuner or listing add therefore leaves the working pair untouched; a retry completes the missing half idempotently. A tuner the household added by hand (any other `FriendlyName`) is **never touched** (§9 ownership: Loomarr owns only what it created). Listing providers carry no `FriendlyName`, so the stale one is identified as the Loomarr-shaped `xmltv` provider whose `Path` is a Tunarr or internal-planned guide URL that no longer matches. Preparation, freshness, and retirement are separate connector operations: a backend transition may publish a prepared internal feed before asking the media server to re-scan it, durably activate that backend, and retire the old pair afterward. The ordinary `Connect` composition still performs all three in one call. **A connect that changed anything (added or retired a tuner/listing) then pokes the media server — a tuner re-scan *and* a guide refresh — so the freshly-registered tuner's channels are discovered and their EPG populated immediately, rather than after the media server's nightly scan** (the newly-wired tuner has zero channels in the media server's view until it re-reads the M3U — a guide refresh alone won't surface them; §9 poke semantics). Both pokes are **best-effort**: a poke failure degrades freshness but never fails the wiring. A no-op connect (nothing changed) skips the pokes — there is nothing new to discover. *The Emby-lineage `GET /LiveTv/TunerHosts` / `GET /LiveTv/ListingProviders` are **write-only on Jellyfin** — `POST` works, `GET` returns **405** (verified against Jellyfin 10.10.3). Enumerating through them therefore failed on every Jellyfin install, so the idempotency check could not run and the connect either errored or duplicated the tuner on each attempt. The Phase-10 capture was Emby-only, which is how it survived: §6 claims both flavors, and only Emby was ever exercised. The config endpoint answers 200 on **both**, so this is one code path rather than a flavor branch.*
 - **Version fragility → live capture.** The endpoints exist on both flavors, but **payload fields and the guide-refresh task id drift across versions.** A Phase-0-style maintainer-supervised capture (folded into Phase 10, §21) pins the exact accepted request/response payloads + the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; the adapter is written against those pins, not memory. Any contract deviation ⇒ update this doc first.
 - **Division of labor is unchanged (§1 non-goals):** Loomarr decides *what plays and when*; Tunarr owns playout/transcode/EPG and the HDHR/M3U/XMLTV tuner surface; Emby/Jellyfin consume that tuner + guide like any HDHomeRun. Loomarr never builds streaming; the escape hatch is a second `Programmer` adapter (ErsatzTV).
 
@@ -1004,6 +1005,20 @@ pair. Pinned, paused, and detached channels are excluded. If convergence fails, 
 registration remains in place and the transition stays pending for retry (configuration mechanics in
 `config-design.md` §8).
 
+The publication checkpoint is a **system-owned row in the §5 settings KV**, not a registry setting:
+`system.playout_backend_transition` stores versioned JSON `{version, applied, prepared}`. `applied`
+names the backend whose tuner/listing pair is currently published to the media server; `prepared` is
+empty in steady state and names the converged backend awaiting publication during a transition.
+Internal device routes are readable while internal is either applied **or prepared**, so the target
+M3U/XMLTV exists before the connector points the media server at it. Publication may advance `applied`
+only to non-empty `prepared`, then clears `prepared`. The row has no environment variable, Settings API
+field, or UI control — it records transition progress, not operator intent. On upgrade, a missing row
+with any pre-existing channel initializes `applied` to `tunarr`, the only backend legacy releases could
+have published; a genuinely empty fleet initializes `applied` from the desired backend. Both cases
+initialize `prepared` empty. Unknown versions, malformed JSON, missing fields, and unknown backend names
+fail closed without replacing the row, so corruption can never silently point the media server at an
+unprepared backend.
+
 | | **Loomarr (internal)** | **Tunarr** |
 | --- | --- | --- |
 | Streams | Loomarr, via bundled `ffmpeg` | Tunarr |
@@ -1093,9 +1108,17 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
 
 Both device-facing documents expose the same **surfable internal catalog** as in-app tuning:
 effective-internal channels that are on air. Paused, detached, and empty channels remain visible in
-Loomarr's own Guide for diagnosis and control, but are absent from M3U/XMLTV and direct internal tune
-requests return 404. A transition from empty to its first playable programme therefore changes the
-tuner channel list and triggers a re-scan, not merely an EPG refresh.
+Loomarr's own Guide as channel rows for diagnosis and control, but their now/next and upcoming
+programme answers are empty; they are absent from M3U/XMLTV and direct internal tune requests return
+404. When an internal channel leaves this catalog (pause, detach, purge, or an effective-backend
+change), the committed lifecycle write immediately stops every live MPEG-TS session and HLS remux for
+that channel and re-scans the media-server tuner. Additions re-scan too: a transition from empty to
+its first playable programme changes the tuner channel list and cannot use only an EPG refresh.
+
+Pause is local ownership state in v1. Loomarr stops its own playout and guide answers, but a retained
+managed Tunarr projection keeps playing its last lineup; detach and internal/Tunarr transitions
+likewise preserve that historical projection until explicit purge. Making a remote Tunarr projection
+durably off-air requires persisted projection lifecycle state and retry, not a one-shot lineup clear.
 
 ### One playout module, prepared first — not a second playback stack (V55–V56)
 
@@ -4320,7 +4343,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **39 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **40 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -4361,6 +4384,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | Package | Job |
 | --- | --- |
 | `store` | One Store interface, two backends, one conformance suite (§5) |
+| `backendtransition` | Durable publication state for playout-backend fleet transitions (§9.1), stored as a non-registry system row |
 | `settings` | The typed registry; `env > database > default` (config-design) |
 | `config` | ENV-ONLY bootstrap — the handful of values needed before the store opens |
 | `scheduler` | Recurring work as named, tunable, on-demand jobs (§18.1) |

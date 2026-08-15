@@ -41,16 +41,17 @@ type preparedLookup interface {
 // this warmed index plus Preparer.Lookup, so it cannot turn a viewer request into network or ffmpeg
 // work.
 type preparedRuntimeResolver struct {
-	channels      preparedChannelReader
-	timeline      preparedTimeline
-	inputs        preparedInputResolver
-	lookup        preparedLookup
-	now           func() time.Time
-	pathMap       func() library.PathMap
-	policy        func() string
-	globalBackend func() string
-	rendition     func() prepared.RenditionContract
-	readiness     *prepared.Readiness
+	channels         preparedChannelReader
+	timeline         preparedTimeline
+	inputs           preparedInputResolver
+	lookup           preparedLookup
+	now              func() time.Time
+	pathMap          func() library.PathMap
+	policy           func() string
+	globalBackend    func() string
+	transportBackend func() string
+	rendition        func() prepared.RenditionContract
+	readiness        *prepared.Readiness
 }
 
 type preparedRuntimeDependencies struct {
@@ -62,15 +63,20 @@ type preparedRuntimeDependencies struct {
 	PathMap       func() library.PathMap
 	Policy        func() string
 	GlobalBackend func() string
-	Rendition     func() prepared.RenditionContract
-	Readiness     *prepared.Readiness
+	// TransportBackend may temporarily differ from GlobalBackend while internal
+	// transport is published for a prepared cutover. It is used only at tune time;
+	// the background planner continues to follow the ordinarily applied backend.
+	TransportBackend func() string
+	Rendition        func() prepared.RenditionContract
+	Readiness        *prepared.Readiness
 }
 
 func newPreparedRuntimeResolver(deps preparedRuntimeDependencies) *preparedRuntimeResolver {
 	return &preparedRuntimeResolver{
 		channels: deps.Channels, timeline: deps.Timeline, inputs: deps.Inputs, lookup: deps.Lookup,
 		now: deps.Now, pathMap: deps.PathMap, policy: deps.Policy,
-		globalBackend: deps.GlobalBackend, rendition: deps.Rendition, readiness: deps.Readiness,
+		globalBackend: deps.GlobalBackend, transportBackend: deps.TransportBackend,
+		rendition: deps.Rendition, readiness: deps.Readiness,
 	}
 }
 
@@ -243,7 +249,9 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 		return playout.PreparedWindow{}, false, err
 	}
 	globalBackend := ""
-	if r.globalBackend != nil {
+	if r.transportBackend != nil {
+		globalBackend = r.transportBackend()
+	} else if r.globalBackend != nil {
 		globalBackend = r.globalBackend()
 	}
 	if !schedule.PlaysInternally(channel.Policy, globalBackend) {

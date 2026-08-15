@@ -70,6 +70,10 @@ const playoutModeParam = "mode"
 type Playout interface {
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
 	OpenAsset(channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
+	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
+	// transitions that make the channel ineligible for internal playout.
+	StopChannel(channelID string)
 }
 
 // PlayoutObserver is operational observation of playout, separate from the playback interface.
@@ -365,7 +369,7 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 	}
 	out := make([]playoutChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !s.inAppPlayable(ch) {
+		if !s.transportPlayable(ch) {
 			continue
 		}
 		out = append(out, playoutChannel{
@@ -389,6 +393,20 @@ func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool,
 	if err != nil {
 		return false, err
 	}
+	return s.transportPlayable(ch), nil
+}
+
+// canPlayInApp gates browser HLS and signed watch URLs on Applied, never merely prepared
+// transport. The media server needs to fetch an internal feed before cutover; a person should
+// not see that unpublished backend in ordinary UI routing.
+func (s *Server) canPlayInApp(ctx context.Context, channelID string) (bool, error) {
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
 	return s.inAppPlayable(ch), nil
 }
 
@@ -398,9 +416,13 @@ func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool,
 // which subsystem answers for a channel and is consulted from several surfaces. See the note
 // there on why a drifted second copy fails silently rather than loudly.
 //
-// No liveConfig ⇒ false: with no way to read the global, the safe answer is "not ours", so the
-// tuner advertises nothing rather than advertising channels it may not be serving.
+// AppliedBackend is production's durable checkpoint reader. LiveConfig remains only as the legacy
+// unit/embedded fallback; with neither seam, explicit pins can still be answered but an inherited
+// channel fails closed as "not ours".
 func (s *Server) playsInternally(ch store.Channel) bool {
+	if s.appliedBackend != nil {
+		return schedule.PlaysInternally(ch.Policy, s.appliedBackend())
+	}
 	if s.liveConfig == nil {
 		if p := ch.Policy.Playout; p != nil && p.Backend != "" {
 			return p.Backend == schedule.PlayoutBackendInternal
@@ -408,6 +430,22 @@ func (s *Server) playsInternally(ch store.Channel) bool {
 		return false
 	}
 	return schedule.PlaysInternally(ch.Policy, s.liveConfig("playout.backend"))
+}
+
+// transportPlayable is deliberately wider than inAppPlayable during a prepared internal
+// transition. The internal tuner/XMLTV endpoints must be readable before the media server is
+// refreshed against them, while ordinary UI and now/next routing remain on Applied.
+func (s *Server) transportPlayable(ch store.Channel) bool {
+	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
+		return false
+	}
+	if p := ch.Policy.Playout; p != nil && strings.TrimSpace(p.Backend) != "" {
+		return p.Backend == schedule.PlayoutBackendInternal
+	}
+	if s.publishedInternal != nil {
+		return s.publishedInternal()
+	}
+	return s.playsInternally(ch)
 }
 
 // hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
@@ -432,7 +470,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	canTune, err := s.canTuneInternally(r.Context(), channelID)
+	canTune, err := s.canPlayInApp(r.Context(), channelID)
 	if err != nil {
 		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
 		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't start the channel",

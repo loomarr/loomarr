@@ -33,6 +33,9 @@ type Tunarr struct {
 	LocalFillerClips    []programmer.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
+	// fleet operation to continue exercising the remaining Programmer calls.
+	SetLineupErrByChannel map[string]error
 	// Optional synchronization hooks for deterministic concurrency tests. They run
 	// BEFORE the fake takes its mutex, so a hook may block while the test commits a
 	// competing store write without deadlocking Tunarr introspection. Production
@@ -216,6 +219,9 @@ func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.
 	defer m.mu.Unlock()
 	if m.SetLineupErr != nil {
 		return m.SetLineupErr
+	}
+	if err := m.SetLineupErrByChannel[tunarrID]; err != nil {
+		return err
 	}
 	ch, ok := m.channels[tunarrID]
 	if !ok {

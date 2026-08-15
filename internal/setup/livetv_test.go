@@ -83,6 +83,168 @@ func TestConnect_AddsOnlyMissingHalf(t *testing.T) {
 	}
 }
 
+func TestPrepare_TunerAddFailureLeavesOldPair(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	lib.AddTunerErr = errors.New("media server unavailable")
+
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+	if _, err := c.Prepare(ctx, target); err == nil {
+		t.Fatal("Prepare should surface the target tuner add failure")
+	}
+	if !lib.HasTuner(oldURLs.M3U) || lib.TunerCount() != 1 || lib.ListingCount() != 1 {
+		t.Fatalf("old pair changed after target tuner failure: tuners=%d listings=%d old=%v",
+			lib.TunerCount(), lib.ListingCount(), lib.HasTuner(oldURLs.M3U))
+	}
+}
+
+func TestPrepare_ListingAddFailureRetainsOldPairAndRetriesMissingHalf(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	lib.AddListingErr = errors.New("listing endpoint unavailable")
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	first, err := c.Prepare(ctx, target)
+	if err == nil {
+		t.Fatal("Prepare should surface the target listing add failure")
+	}
+	if !first.TunerAdded || first.ListingAdded {
+		t.Fatalf("first prepare = %+v, want only target tuner added", first)
+	}
+	if !lib.HasTuner(oldURLs.M3U) || !lib.HasTuner(target.M3U) || lib.ListingCount() != 1 {
+		t.Fatalf("partial prepare did not preserve old pair: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+
+	lib.AddListingErr = nil
+	second, err := c.Prepare(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TunerAdded || !second.ListingAdded {
+		t.Fatalf("retry = %+v, want only missing target listing added", second)
+	}
+	if lib.TunerCount() != 2 || lib.ListingCount() != 2 {
+		t.Fatalf("retry duplicated or retired early: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+	if lib.Rescans != 0 || lib.Refreshes != 0 {
+		t.Fatalf("Prepare must not fetch an unpublished feed: rescans=%d refreshes=%d", lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestRetireStale_FailureLeavesTargetAndRetryCompletes(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+	if _, err := c.Prepare(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+	lib.RemoveTunerErr = errors.New("delete rejected")
+
+	if _, err := c.RetireStale(ctx, target); err == nil {
+		t.Fatal("RetireStale should surface stale tuner removal failure")
+	}
+	if !lib.HasTuner(target.M3U) || !lib.HasTuner(oldURLs.M3U) || lib.ListingCount() != 2 {
+		t.Fatalf("removal failure lost a registration: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+
+	lib.RemoveTunerErr = nil
+	res, err := c.RetireStale(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TunerRemoved != 1 || res.ListingRemoved != 1 {
+		t.Fatalf("retry retirement = %+v, want one stale pair removed", res)
+	}
+	if lib.HasTuner(oldURLs.M3U) || !lib.HasTuner(target.M3U) || lib.TunerCount() != 1 || lib.ListingCount() != 1 {
+		t.Fatalf("retry did not converge on target pair: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+}
+
+func TestRetireStale_RefusesBeforeBothTargetHalvesExist(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddTuner(ctx, target.M3U); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	if _, err := c.RetireStale(ctx, target); err == nil {
+		t.Fatal("RetireStale should refuse while the target listing is absent")
+	}
+	if !lib.HasTuner(oldURLs.M3U) || lib.ListingCount() != 1 {
+		t.Fatal("RetireStale removed the old pair before both target halves existed")
+	}
+}
+
+func TestConnect_PreparesBothTargetHalvesBeforeAnyRetirement(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	if _, err := c.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	calls := lib.Calls()
+	addTuner := callIndex(calls, "add-tuner:"+target.M3U)
+	addListing := callIndex(calls, "add-listing:"+target.XMLTV)
+	removeTuner := callPrefixIndex(calls, "remove-tuner:")
+	removeListing := callPrefixIndex(calls, "remove-listing:")
+	if addTuner < 0 || addListing < 0 || removeTuner < 0 || removeListing < 0 {
+		t.Fatalf("missing expected transition calls: %v", calls)
+	}
+	if removeTuner < addTuner || removeTuner < addListing || removeListing < addTuner || removeListing < addListing {
+		t.Fatalf("stale retirement ran before target pair was prepared: %v", calls)
+	}
+}
+
+func callIndex(calls []string, want string) int {
+	for i, call := range calls {
+		if call == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func callPrefixIndex(calls []string, prefix string) int {
+	for i, call := range calls {
+		if len(call) >= len(prefix) && call[:len(prefix)] == prefix {
+			return i
+		}
+	}
+	return -1
+}
+
 // When the Tunarr URL changes, Connect must RETIRE the Loomarr-owned tuner left at
 // the old URL (not orphan it beside the new one) while NEVER touching a tuner the
 // household added by hand — the ownership boundary from §6/§9. This is the fix for

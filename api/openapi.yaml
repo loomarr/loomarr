@@ -5609,7 +5609,7 @@ components:
           minimum: 1
           type: integer
         status:
-          description: Pause (off air, keep the channel) or resume.
+          description: Pause Loomarr-managed playout and guide surfaces, or resume. In v1, a retained Tunarr projection keeps its last lineup.
           enum:
             - paused
             - building

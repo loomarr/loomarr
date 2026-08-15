@@ -151,8 +151,8 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 }
 
 // channelDTO adds server-owned presentation facts to the pure persisted-channel projection.
-// `inAppPlayable` needs the live resolved global backend, which deliberately does not belong in
-// channelToDTO: that mapper is also used in domain-shape tests and must not read application config.
+// `inAppPlayable` needs the durable applied global backend, which deliberately does not belong in
+// channelToDTO: that mapper is also used in domain-shape tests and must not read runtime state.
 func (s *Server) channelDTO(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
 	out.InAppPlayable = s.inAppPlayable(ch)
@@ -165,12 +165,10 @@ func (s *Server) inAppPlayable(ch store.Channel) bool {
 	if !s.playsInternally(ch) {
 		return false
 	}
-	switch ch.Status {
-	case schedule.StatusPaused, schedule.StatusDetached, schedule.StatusEmpty:
+	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 		return false
-	default:
-		return true
 	}
+	return true
 }
 
 // entryStateResolver returns a per-key acquisition-state lookup for a SINGLE channel's DTO

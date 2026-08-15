@@ -34,6 +34,56 @@ import (
 //     §9): first materialization/backend switches re-scan the tuner; a desired-only
 //     change refreshes guide data.
 func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
+	return e.reconcile(ctx, channelID, reconcileOptions{})
+}
+
+// PrepareInheritedBackend materializes every active channel that inherits the global
+// playout backend as though target were already applied. It is the channel-domain half
+// of an ordered global backend transition: callers can prepare the fleet first, then
+// publish the new applied setting and rewire the media server. Explicit per-channel
+// backend pins remain authoritative and are not reconciled by this fleet operation.
+//
+// Channel failures are independent. The method continues preparing the remaining fleet
+// and returns their errors joined together, so retrying the operation converges only the
+// unfinished work through Reconcile's existing idempotent, minimal-diff path.
+func (e *Engine) PrepareInheritedBackend(ctx context.Context, target string) error {
+	target = schedule.NormalizePlayoutBackend(target)
+	if target != schedule.PlayoutBackendInternal && target != schedule.PlayoutBackendTunarr {
+		return fmt.Errorf("prepare inherited channels: invalid playout backend %q", target)
+	}
+
+	all, err := e.store.ListChannels(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare inherited channels: list channels: %w", err)
+	}
+
+	var errs []error
+	for _, ch := range all {
+		if !ch.Status.Reconcilable() || schedule.HasExplicitPlayoutBackend(ch.Policy) {
+			continue
+		}
+		if err := e.reconcile(ctx, ch.ID, reconcileOptions{
+			globalBackend: target,
+			inheritedOnly: true,
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("prepare inherited channel %s: %w", ch.ID, err))
+			if ctx.Err() != nil {
+				break
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+type reconcileOptions struct {
+	// globalBackend is an explicit transition target when inheritedOnly is true.
+	// It stays fixed across CAS retries; ordinary Reconcile deliberately continues
+	// resolving the currently applied backend once per fresh row attempt.
+	globalBackend string
+	inheritedOnly bool
+}
+
+func (e *Engine) reconcile(ctx context.Context, channelID string, opts reconcileOptions) (err error) {
 	lock := e.lockFor(channelID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -52,7 +102,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	const maxAttempts = 4
 	state := reconcileRun{}
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		err = e.reconcileOnce(ctx, channelID, &state)
+		err = e.reconcileOnce(ctx, channelID, &state, opts)
 		if !errors.Is(err, store.ErrChannelStale) && !errors.Is(err, store.ErrChannelConflict) {
 			return err
 		}
@@ -72,20 +122,32 @@ type reconcileRun struct {
 	channelListChanged bool
 }
 
-func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *reconcileRun) error {
+func (e *Engine) reconcileOnce(
+	ctx context.Context,
+	channelID string,
+	run *reconcileRun,
+	opts reconcileOptions,
+) error {
 
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return fmt.Errorf("load channel %s: %w", channelID, err)
 	}
-	if ch.Status == schedule.StatusDetached || ch.Status == schedule.StatusPaused {
+	if !ch.Status.Reconcilable() {
 		return nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
+	}
+	if opts.inheritedOnly && schedule.HasExplicitPlayoutBackend(ch.Policy) {
+		return nil // a concurrent operator pin wins over a fleet-default transition
 	}
 	// Resolve ONCE for this attempt from the same channel snapshot all work below uses.
 	// A policy edit that changes the backend advances the row revision, so the final
 	// SaveChannel CAS restarts from that new truth. The global value is live and not
 	// row-versioned; resolving once prevents one attempt from straddling two backends.
-	playsInternally := schedule.PlaysInternally(ch.Policy, e.playoutBackendFor())
+	globalBackend := opts.globalBackend
+	if !opts.inheritedOnly {
+		globalBackend = e.playoutBackendFor()
+	}
+	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
 
 	// Heal each entry's metadata in place through the one lineup primitive (§9 LineupHeal):
 	// fill an empty OfficialRating (§389 — a fail-closed audience gate would otherwise drop a

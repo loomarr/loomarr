@@ -353,6 +353,44 @@ func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *tes
 	}
 }
 
+func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *testing.T) {
+	now := time.Unix(45_000, 0)
+	preparedLibrary, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	readiness, err := prepared.OpenReadiness(preparedLibrary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	request := prepared.Request{Source: prepared.Source{Path: "/media/item.mkv"}, Rendition: render}
+	if err := readiness.RememberBinding(
+		prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"},
+		prepared.Binding{Policy: "policy", Request: request},
+	); err != nil {
+		t.Fatal(err)
+	}
+	r := newPreparedRuntimeResolver(preparedRuntimeDependencies{
+		Channels: preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		Timeline: &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+			Kind: schedule.SlotProgram, LibraryItemID: "item", Start: now.Add(-time.Minute), Stop: now.Add(time.Hour),
+		}}}},
+		Lookup: preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
+			request: {SourceFingerprint: "prepared-internal", Rendition: render},
+		}},
+		Now: func() time.Time { return now }, Policy: func() string { return "policy" },
+		GlobalBackend:    func() string { return schedule.PlayoutBackendTunarr },
+		TransportBackend: func() string { return schedule.PlayoutBackendInternal },
+		Rendition:        func() prepared.RenditionContract { return render }, Readiness: readiness,
+	})
+
+	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	if err != nil || !ok || window.Current.Specification.SourceFingerprint != "prepared-internal" {
+		t.Fatalf("prepared transport before cutover = (%+v, %v, %v)", window, ok, err)
+	}
+}
+
 func TestPreparedRuntimeChannelAudioPolicyChangeMakesTuneMissImmediately(t *testing.T) {
 	now := time.Unix(50_000, 0)
 	channels := preparedChannels{channels: []store.Channel{{

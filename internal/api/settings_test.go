@@ -11,6 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeSettings is a scripted api.SettingsService for the route tests.
@@ -27,6 +28,65 @@ type fakeSettings struct {
 	afterPatch       func(map[string]string)
 	afterClear       func(string)
 	afterEnvOverride func(string, bool)
+}
+
+func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T) {
+	cfg := map[string]string{"playout.backend": schedule.PlayoutBackendInternal}
+	settings := &fakeSettings{
+		afterPatch: func(edits map[string]string) {
+			if value, ok := edits["playout.backend"]; ok {
+				cfg["playout.backend"] = value
+			}
+		},
+		afterClear: func(string) { cfg["playout.backend"] = schedule.PlayoutBackendInternal },
+		afterEnvOverride: func(_ string, enabled bool) {
+			if !enabled {
+				cfg["playout.backend"] = schedule.PlayoutBackendTunarr
+			}
+		},
+	}
+	transition := &testkit.BackendTransition{Err: context.DeadlineExceeded}
+	live := &fakeConnector{}
+	st := openTestStore(t, t.TempDir()+"/transition.db")
+	t.Cleanup(func() { _ = st.Close() })
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
+		LiveTV: live, BackendTransition: transition,
+		LiveConfig: func(key string) string { return cfg[key] },
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	requests := []struct {
+		method, path, body string
+		wantStatus         int
+	}{
+		{http.MethodPatch, "/v1/settings", `{"edits":{"playout.backend":"tunarr"}}`, http.StatusOK},
+		{http.MethodDelete, "/v1/settings/playout.backend", "", http.StatusNoContent},
+		{http.MethodPut, "/v1/settings/playout.backend/env-override", `{"enabled":false}`, http.StatusNoContent},
+	}
+	for _, request := range requests {
+		resp := do(t, srv, request.method, request.path, adminToken, request.body)
+		if resp.StatusCode != request.wantStatus {
+			t.Fatalf("%s %s = %d, want %d", request.method, request.path, resp.StatusCode, request.wantStatus)
+		}
+	}
+	// Rotating the device token repairs internal URLs because they embed it. Other
+	// generated secrets have no Live TV consequence.
+	for _, name := range []string{"playout_token", "api_token", "session_secret"} {
+		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("regenerate %s = %d", name, resp.StatusCode)
+		}
+	}
+	if got := transition.Targets(); len(got) != 4 || got[0] != schedule.PlayoutBackendTunarr ||
+		got[1] != schedule.PlayoutBackendInternal || got[2] != schedule.PlayoutBackendTunarr ||
+		got[3] != schedule.PlayoutBackendTunarr {
+		t.Fatalf("transition targets = %v", got)
+	}
+	if live.calls != 0 || live.wiredChecks != 0 {
+		t.Fatalf("legacy Live TV path ran with durable transition: calls=%d checks=%d", live.calls, live.wiredChecks)
+	}
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {

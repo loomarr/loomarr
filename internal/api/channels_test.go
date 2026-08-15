@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // staleOnceChannelStore forces one deterministic read/write interleaving around SaveChannel.
@@ -1165,6 +1167,82 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 	}
 	if chSvc.reconciles != before+1 {
 		t.Errorf("resume should reconcile once: %d → %d", before, chSvc.reconciles)
+	}
+}
+
+func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/lifecycle.db")
+	t.Cleanup(func() { _ = st.Close() })
+	channelSvc := &fakeChannelSvc{}
+	playback := &testkit.Playout{}
+	rescanner := &testkit.TunerRescanner{}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
+		LiveConfig: func(key string) string {
+			if key == "playout.backend" {
+				return schedule.PlayoutBackendInternal
+			}
+			return ""
+		},
+	}))
+	t.Cleanup(srv.Close)
+
+	for i, id := range []string{"pause", "detach", "switch", "remote", "join"} {
+		mkChannel(t, srv, id, id, 60+i)
+	}
+
+	pause := do(t, srv, http.MethodPatch, "/v1/channels/pause", adminToken,
+		channelPatchBody(t, st, "pause", `{"status":"paused"}`))
+	if pause.StatusCode != http.StatusOK {
+		t.Fatalf("pause → %d, want 200", pause.StatusCode)
+	}
+
+	detach := do(t, srv, http.MethodDelete, "/v1/channels/detach", adminToken, "")
+	if detach.StatusCode != http.StatusNoContent {
+		t.Fatalf("detach → %d, want 204", detach.StatusCode)
+	}
+
+	switchBackend := do(t, srv, http.MethodPatch, "/v1/channels/switch", adminToken,
+		channelPatchBody(t, st, "switch", `{"policy":{"playout":{"backend":"tunarr"}}}`))
+	if switchBackend.StatusCode != http.StatusOK {
+		t.Fatalf("backend switch → %d, want 200", switchBackend.StatusCode)
+	}
+
+	remote, err := st.GetChannel(context.Background(), "remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote.Policy.Playout = &schedule.PlayoutPolicy{Backend: "tunarr"}
+	if _, err := st.SaveChannel(context.Background(), remote); err != nil {
+		t.Fatal(err)
+	}
+	remotePause := do(t, srv, http.MethodPatch, "/v1/channels/remote", adminToken,
+		channelPatchBody(t, st, "remote", `{"status":"paused"}`))
+	if remotePause.StatusCode != http.StatusOK {
+		t.Fatalf("Tunarr pause → %d, want 200", remotePause.StatusCode)
+	}
+
+	join, err := st.GetChannel(context.Background(), "join")
+	if err != nil {
+		t.Fatal(err)
+	}
+	join.Policy.Playout = &schedule.PlayoutPolicy{Backend: "tunarr"}
+	if _, err := st.SaveChannel(context.Background(), join); err != nil {
+		t.Fatal(err)
+	}
+	joinInternal := do(t, srv, http.MethodPatch, "/v1/channels/join", adminToken,
+		channelPatchBody(t, st, "join", `{"policy":{"playout":{"backend":"internal"}}}`))
+	if joinInternal.StatusCode != http.StatusOK {
+		t.Fatalf("switch to internal → %d, want 200", joinInternal.StatusCode)
+	}
+
+	if got, want := playback.StoppedChannels(), []string{"pause", "detach", "switch"}; !slices.Equal(got, want) {
+		t.Fatalf("stopped channels = %v, want %v", got, want)
+	}
+	if got := rescanner.Calls(); got != 4 {
+		t.Fatalf("tuner rescans = %d, want one per internal membership change", got)
 	}
 }
 

@@ -59,11 +59,13 @@ type Asset struct {
 
 type sessionAttacher interface {
 	Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error)
+	StopChannel(channelID string)
 }
 
 type hlsOrigin interface {
 	Playlist(string, EncodePlan) (string, func(), error)
 	AssetPath(string, EncodePlan, string) (string, bool)
+	StopChannel(channelID string)
 }
 
 type preparedDelivery interface {
@@ -167,4 +169,17 @@ func (o *Origin) OpenAsset(channelID string, plan EncodePlan, rel string) (Asset
 		return Asset{}, false, err
 	}
 	return Asset{Content: f, Modified: info.ModTime()}, true, nil
+}
+
+// StopChannel retires every live delivery path for one channel. HLS is stopped first so it
+// releases its session references and removes segment lookup state; the session manager then
+// disconnects MPEG-TS viewers and kills any remaining encoder plans. Prepared assets are
+// immutable cache entries, not live sessions, and remain available for later resume.
+func (o *Origin) StopChannel(channelID string) {
+	if o.hls != nil {
+		o.hls.StopChannel(channelID)
+	}
+	if o.sessions != nil {
+		o.sessions.StopChannel(channelID)
+	}
 }

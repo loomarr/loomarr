@@ -35,6 +35,7 @@ type fakePlayoutSessions struct {
 	capacity int
 	reported []reportedProgram
 	tunes    int
+	stopped  []string
 }
 
 // attachRecord is one Attach call — its channel and codec target.
@@ -98,6 +99,12 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 
 func (f *fakePlayoutSessions) OpenAsset(string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return playout.Asset{}, false, nil
+}
+
+func (f *fakePlayoutSessions) StopChannel(channelID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, channelID)
 }
 
 // reports returns the ReportProgram calls seen so far.

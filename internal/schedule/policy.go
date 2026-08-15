@@ -121,8 +121,23 @@ type PlayoutPolicy struct {
 	AudioLanguage string `json:"audioLanguage,omitempty"`
 }
 
-// PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
-const PlayoutBackendInternal = "internal"
+// Playout backend values are shared by settings, channel policy, and transition
+// preparation so a typo cannot silently fall through to Tunarr projection.
+const (
+	PlayoutBackendInternal = "internal"
+	PlayoutBackendTunarr   = "tunarr"
+)
+
+// NormalizePlayoutBackend canonicalizes a backend value at an input boundary.
+func NormalizePlayoutBackend(backend string) string {
+	return strings.TrimSpace(backend)
+}
+
+// HasExplicitPlayoutBackend reports whether policy pins a channel instead of inheriting
+// the fleet default. Empty and nil playout policies both mean inheritance.
+func HasExplicitPlayoutBackend(policy ChannelPolicy) bool {
+	return policy.Playout != nil && policy.Playout.Backend != ""
+}
 
 // ResolveAudioLanguage picks the audio language for a channel: its own
 // `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
@@ -149,10 +164,10 @@ func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) stri
 // pass the resolved global rather than reading settings here, because this package must not
 // depend on the settings registry.
 func PlaysInternally(policy ChannelPolicy, globalBackend string) bool {
-	if p := policy.Playout; p != nil && p.Backend != "" {
-		return p.Backend == PlayoutBackendInternal
+	if HasExplicitPlayoutBackend(policy) {
+		return policy.Playout.Backend == PlayoutBackendInternal
 	}
-	return strings.TrimSpace(globalBackend) == PlayoutBackendInternal
+	return NormalizePlayoutBackend(globalBackend) == PlayoutBackendInternal
 }
 
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the

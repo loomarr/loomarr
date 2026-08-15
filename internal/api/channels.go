@@ -389,7 +389,7 @@ type updateChannelInput struct {
 		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
 		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
 		// reconciler's/delete's to set, never a client's.
-		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause (off air, keep the channel) or resume."`
+		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause Loomarr-managed playout and guide surfaces, or resume. In v1, a retained Tunarr projection keeps its last lineup."`
 		// Lineup is a WHOLE-LIST replace (§7): the full ordered set of entries. Add = a new
 		// entry, remove = an omitted one, reorder = the same entries reordered. Each key is
 		// validated (provision.ParseKey); a key not `available` in the library is inert (a
@@ -416,6 +416,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	before := ch
 	wasInternal := s.playsInternally(ch)
+	wasInAppPlayable := s.inAppPlayable(ch)
 
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
@@ -488,7 +489,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	// changes guide data, not the tuner channel list. Identity and effective-backend changes,
 	// a resume, and an empty internal channel attempting to materialize do change membership
 	// or M3U identity and therefore retain the stronger signal.
-	active := ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached
+	active := ch.Status.Reconcilable()
 	identityChanged := before.Name != ch.Name || before.Number != ch.Number ||
 		before.Group != ch.Group || before.Logo != ch.Logo
 	backendChanged := wasInternal != s.playsInternally(ch)
@@ -501,6 +502,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		// value, so an error cannot leave this edit waiting behind an old future deadline.
 		ch.ReconcileDeadline = time.Time{}
 	}
+	isInAppPlayable := s.inAppPlayable(ch)
 
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
@@ -518,12 +520,13 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, err
 	}
 	ch = saved
+	s.applyInternalPlayoutLifecycle(ctx, ch.ID, wasInAppPlayable, isInAppPlayable)
 
 	// Auto-reconcile so the edit reaches the selected playout backend with no user action
 	// (§9 "self-maintaining"; there is no manual rebuild). Best-effort + skipped while paused:
 	// the edit is durable regardless, and the sweep is the
 	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
-	if ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached && s.channels != nil {
+	if ch.Status.Reconcilable() && s.channels != nil {
 		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
 			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
 		}
@@ -637,6 +640,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
+	wasInAppPlayable := s.inAppPlayable(ch)
 	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
 	// Tunarr projection through the channel service. This includes a historical projection
 	// preserved after switching the channel to internal playout.
@@ -651,19 +655,51 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't purge the channel",
 				"Loomarr couldn't hard-delete its local state and any retained managed Tunarr projection. Check the configured integrations and try again.", err)
 		}
+		if wasInAppPlayable && s.playout != nil {
+			s.playout.StopChannel(ch.ID)
+		}
 		return &deleteChannelOutput{}, nil
 	}
 	// Default: detach (stop managing; leave the Tunarr channel + the store row).
 	// Detached channels are never reconciled again (§9 ownership).
 	ch.Status = schedule.StatusDetached
 	ch.UpdatedAt = time.Now().Unix()
-	if _, err := s.store.SaveChannel(ctx, ch); err != nil {
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
 		if errors.Is(err, store.ErrChannelStale) {
 			return nil, staleChannelConflict()
 		}
 		return nil, err
 	}
+	s.applyInternalPlayoutLifecycle(ctx, saved.ID, wasInAppPlayable, false)
 	return &deleteChannelOutput{}, nil
+}
+
+// applyInternalPlayoutLifecycle handles membership changes in Loomarr's internal tuner catalog.
+// The persisted row is already committed when this runs, so a removal first fails new tune
+// requests through the canonical eligibility check, then disconnects existing sessions. Both
+// additions and removals re-scan the tuner: a guide refresh cannot change its channel list.
+//
+// Tunarr projections are intentionally untouched. §9 ownership preserves them across backend
+// transitions, and the v1 pause contract retains their last lineup; durable remote pause needs a
+// separate projection state rather than a one-shot best-effort clear.
+func (s *Server) applyInternalPlayoutLifecycle(
+	ctx context.Context, channelID string, wasInAppPlayable, isInAppPlayable bool,
+) {
+	if wasInAppPlayable == isInAppPlayable {
+		return
+	}
+	if wasInAppPlayable && s.playout != nil {
+		s.playout.StopChannel(channelID)
+	}
+	if s.tunerRescanner != nil {
+		if err := s.tunerRescanner.RescanTuner(ctx); err != nil {
+			if s.log != nil {
+				s.log.Warn("channel lifecycle: tuner rescan failed",
+					"channel", channelID, "err", err)
+			}
+		}
+	}
 }
 
 // staleChannelConflict is deliberately distinct from number/intent collisions: this edit was

@@ -394,18 +394,26 @@ does not exist.
 - `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
-- **Backend hot-apply is ordered, not merely immediate.** When `playout.backend` changes through
-  PATCH, clear, or environment takeover, active channels that inherit the global first reconcile
-  against the new effective backend; explicitly pinned, paused, and detached channels do not
-  participate. Only after that barrier succeeds may Loomarr move the media server's single owned
-  tuner/listing pair. A reconcile or connector failure leaves the existing tuner registration
-  untouched; because it still differs from the expected URLs, a later relevant settings write —
-  including after restart — retries rather than advertising a backend whose channels have not
-  converged yet. Settings mutations and these derived effects are serialized per process so
-  concurrent saves cannot wire them out of commit order.
+- **Backend hot-apply is a durable prepare → publish → retire transition, not merely an immediate
+  callback.** PATCH, clear, and environment takeover save the desired value first, then invoke one
+  coordinator. Ordinary reconcile, Guide/now-next, and in-app routing continue to read the durable
+  `applied` backend while active inherited channels are prepared for the target; explicitly pinned,
+  paused, and detached channels do not join that fleet barrier. Preparing internal playout durably
+  opens its token-authenticated M3U/XMLTV/direct transport before the media server refreshes the new
+  tuner/listing pair, but does not switch ordinary UI routes early. Only after target refresh and
+  cutover succeed is `applied` advanced; stale Loomarr-owned registrations retire last. A failure
+  before publication preserves the old routes and registration, while a retirement failure leaves
+  the new backend applied and retries cleanup. The system checkpoint survives restart, and both a
+  later relevant settings write and channel maintenance resume it (including URL-only repair when
+  the backend name did not change). Desired is re-read inside the coordinator's serialization
+  boundary, so an older maintenance retry cannot publish after a newer save. The setting mutation
+  remains successful when this follow-on transition is pending.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
 - `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
-- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
+- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating
+  `PLAYOUT_TOKEN` invokes the same durable publication repair because internal tuner/guide URLs
+  embed it; a repair failure leaves the rotation successful and the transition pending. Rotating
+  `SESSION_SECRET` or `API_TOKEN` has no Live TV consequence.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.
 

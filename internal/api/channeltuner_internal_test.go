@@ -48,3 +48,30 @@ func TestChannelDTOCarriesServerResolvedInAppPlayable(t *testing.T) {
 		t.Fatal("ChannelDTO.InAppPlayable = false for a live internally played channel")
 	}
 }
+
+func TestPreparedInternalPublicationOpensOnlyInheritedDeviceTransport(t *testing.T) {
+	s := &Server{
+		appliedBackend:    func() string { return schedule.PlayoutBackendTunarr },
+		publishedInternal: func() bool { return true },
+	}
+	channel := func(policy *schedule.PlayoutPolicy) store.Channel {
+		return store.Channel{
+			Channel: schedule.Channel{Status: schedule.StatusLive},
+			Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: policy}},
+		}
+	}
+
+	inherited := channel(nil)
+	if s.inAppPlayable(inherited) {
+		t.Fatal("prepared internal target leaked into ordinary in-app routing before cutover")
+	}
+	if !s.transportPlayable(inherited) {
+		t.Fatal("prepared internal target did not publish inherited device transport")
+	}
+	if s.transportPlayable(channel(&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendTunarr})) {
+		t.Fatal("explicit Tunarr pin was overridden by global internal transport publication")
+	}
+	if !s.transportPlayable(channel(&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})) {
+		t.Fatal("explicit internal pin was hidden while global Applied remained Tunarr")
+	}
+}

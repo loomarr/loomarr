@@ -376,8 +376,22 @@ func (m *Manager) spawnPlaceholder(ctx context.Context, s *Session) {
 		close(s.ready)
 		return
 	}
+	// An operator can pause/detach the channel while its cold encoder is spawning. StopChannel
+	// closes the placeholder immediately; if the process arrived afterwards, retire it here
+	// before any waiter can attach. The HTTP eligibility check prevents a fresh request from
+	// replacing it once the persisted lifecycle transition is visible.
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		cancel()
+		proc.Stop()
+		s.initErr = context.Canceled
+		close(s.ready)
+		return
+	}
 	s.cancel = cancel
 	s.proc = proc
+	s.mu.Unlock()
 	go s.pump()
 	close(s.ready)
 }
@@ -560,9 +574,16 @@ func (s *Session) close() {
 		delete(s.viewers, id)
 		close(ch)
 	}
+	cancel := s.cancel
 	s.mu.Unlock()
 
-	s.cancel() // kills the process group (process.go)
+	// Stop can race a cold session's spawn. In that window there is no process context to
+	// cancel yet; spawnPlaceholder observes closed after the spawn and tears the process down
+	// before publishing readiness. A nil-safe cancel here keeps lifecycle changes from turning
+	// that ordinary race into a panic.
+	if cancel != nil {
+		cancel() // kills the process group (process.go)
+	}
 
 	// Outside the lock, and after the cancel, so a subscriber that immediately re-reads the
 	// telemetry sees the session already gone rather than mid-teardown.
@@ -575,14 +596,33 @@ func (s *Session) close() {
 // operator stopping a channel.
 func (s *Session) Stop() { s.close() }
 
+// StopChannel tears down every live session for channelID, across every codec plan. It is the
+// operator lifecycle path: pausing, detaching, or moving a channel away from internal playout
+// must disconnect existing viewers immediately rather than merely refusing the next tune.
+func (m *Manager) StopChannel(channelID string) {
+	m.mu.Lock()
+	sessions := make([]*Session, 0, 2)
+	for key, s := range m.sessions {
+		if key.channel == channelID {
+			sessions = append(sessions, s)
+		}
+	}
+	m.mu.Unlock()
+
+	// Session.close calls forget, which owns map removal and admission-cost accounting. Do not
+	// pre-delete here: doing so would make forget unable to release a transcode reservation.
+	for _, s := range sessions {
+		s.Stop()
+	}
+}
+
 // Stop tears down every session. Called on shutdown — a live encoder never exits on its
 // own, so without this they outlive the process that started them.
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	sessions := make([]*Session, 0, len(m.sessions))
-	for id, s := range m.sessions {
+	for _, s := range m.sessions {
 		sessions = append(sessions, s)
-		delete(m.sessions, id)
 	}
 	m.mu.Unlock()
 

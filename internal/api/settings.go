@@ -132,27 +132,21 @@ var mediaSourceWiringKeys = map[string]struct{}{
 	"library.flavor": {},
 }
 
-// autoWireAfterSave runs the idempotent Live TV + media-source wiring when a save
-// touched a relevant key and the prerequisites are now configured. Every path is
-// best-effort and logged, never returned: the wiring is a follow-on effect of a
-// save that already succeeded, and both connectors no-op when already wired, so
-// re-running on each connection save is harmless (§6 idempotent).
+// autoWireAfterSave runs the derived Live TV transition + Tunarr media-source wiring when a
+// save touched their inputs. Both are follow-on effects: failure is logged and never changes a
+// setting result that already committed. The production backend transition owns prerequisite
+// validation and durable retries; the media-source connector retains its independent gates.
 func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string) {
 	if len(edits) == 0 {
 		return
 	}
 
-	// Live TV prerequisites follow the selected backend. Internal playout needs Loomarr's
-	// reachable public URL and deliberately does not require Tunarr; Tunarr playout needs its
-	// URL. Before changing the one tuner/listing registration, ask whether it already matches
-	// the CURRENT resolved URLs. A mismatch (first wiring, URL change, or backend transition)
-	// crosses the inherited-channel convergence barrier before Connect. This is derived from
-	// the media server rather than remembered in process memory, so a restart automatically
-	// retries unfinished wiring. Lookup/convergence failures leave the existing registration
-	// untouched; the settings save itself remains successful.
+	// The durable coordinator separates desired from applied, prepares inherited channels and
+	// target transport, then publishes and retires in order. URL/credential-only changes still
+	// enter the same seam so steady-state repair cannot be skipped.
 	liveTVTouched := touchesAny(edits, liveTVWiringKeys)
-	if liveTVTouched && s.livetv != nil && s.liveTVWireable() {
-		s.autoWireLiveTV(ctx)
+	if liveTVTouched {
+		s.applyLiveTVAfterSave(ctx)
 	}
 
 	// Media source: needs both Tunarr and the media server reachable.
@@ -162,6 +156,23 @@ func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string)
 		} else if enabled > 0 {
 			s.logi("auto-wired Tunarr's media source after save")
 		}
+	}
+}
+
+func (s *Server) applyLiveTVAfterSave(ctx context.Context) {
+	if s.backendTransition != nil {
+		desired := schedule.PlayoutBackendTunarr
+		if s.liveConfig != nil {
+			desired = s.liveConfig("playout.backend")
+		}
+		if err := s.backendTransition.Apply(ctx, desired); err != nil {
+			s.logw("playout backend transition remains pending after save", err)
+		}
+		return
+	}
+	if s.livetv != nil && s.liveTVWireable() {
+		// Legacy unit/embedded seam. Production always supplies BackendTransition.
+		s.autoWireLiveTV(ctx)
 	}
 }
 
@@ -212,7 +223,7 @@ func (s *Server) convergeInheritedChannels(ctx context.Context) error {
 		if ch.Policy.Playout != nil && strings.TrimSpace(ch.Policy.Playout.Backend) != "" {
 			continue
 		}
-		if ch.Status == schedule.StatusDetached || ch.Status == schedule.StatusPaused {
+		if !ch.Status.Reconcilable() {
 			continue
 		}
 		if s.channels == nil {
@@ -396,6 +407,10 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
+	if in.Name == "playout_token" {
+		s.settingsApplyMu.Lock()
+		defer s.settingsApplyMu.Unlock()
+	}
 	value, displayable, err := s.settings.RegenerateSecret(ctx, in.Name)
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
@@ -404,6 +419,11 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	out.Body.Displayable = displayable
 	if displayable {
 		out.Body.Value = value
+	}
+	if in.Name == "playout_token" {
+		// Internal tuner/listing URLs embed this credential. The rotation is already durable;
+		// publication repair is non-fatal and retryable just like a settings write.
+		s.applyLiveTVAfterSave(ctx)
 	}
 	return out, nil
 }

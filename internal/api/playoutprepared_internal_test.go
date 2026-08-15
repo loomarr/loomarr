@@ -49,6 +49,8 @@ func (p *preparedProbePlayout) OpenAsset(string, playout.EncodePlan, string) (pl
 	return p.asset, p.assetOK, nil
 }
 
+func (*preparedProbePlayout) StopChannel(string) {}
+
 func TestHLSPreparedModeReturnsNoContentWithoutLiveFallback(t *testing.T) {
 	probe := &preparedProbePlayout{err: playout.ErrPreparedUnavailable}
 	s := preparedHandlerServer(t, probe)
