@@ -65,6 +65,12 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       const { default: Hls } = await import("hls.js");
       if (!current()) return () => undefined;
 
+      // Name the generation on the element before any decoded-frame observer is armed. The tuner
+      // certification captures this value when requestVideoFrameCallback is REQUESTED, so a late
+      // callback from the outgoing Channel cannot be mistaken for the replacement when both use
+      // the same transferred MediaSource blob URL.
+      video.dataset.playbackChannel = channelId;
+
       let firstFrame = false;
       const onFirstFrame = () => {
         if (firstFrame) return;

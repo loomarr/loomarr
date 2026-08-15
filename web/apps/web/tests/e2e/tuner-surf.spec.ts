@@ -14,7 +14,7 @@ const installFrameClock = async (page: Page) => {
     // The 100-Channel scenario intentionally creates hundreds of API/HLS resource entries. Keep
     // Chromium's default 250-entry buffer from truncating the manifest timing evidence.
     performance.setResourceTimingBufferSize?.(2_000);
-    const frames: Array<{ at: number; src: string }> = [];
+    const frames: Array<{ at: number; channel: string; src: string }> = [];
     Object.defineProperty(window, "__loomarrDecodedFrames", { value: frames, configurable: true });
     const mediaEvents: Array<{ at: number; currentTime: number; readyState: number; type: string }> = [];
     Object.defineProperty(window, "__loomarrMediaEvents", { value: mediaEvents, configurable: true });
@@ -38,8 +38,9 @@ const installFrameClock = async (page: Page) => {
     Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
       configurable: true,
       value(this: HTMLVideoElement, callback: VideoFrameRequestCallback) {
+        const channel = this.dataset.playbackChannel ?? "";
         return original.call(this, (now, metadata) => {
-          frames.push({ at: performance.now(), src: this.currentSrc });
+          frames.push({ at: performance.now(), channel, src: this.currentSrc });
           callback(now, metadata);
         });
       },
@@ -87,7 +88,7 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
   const before = await page.locator("video").evaluate(() => ({
     count: (
       window as Window & {
-        __loomarrDecodedFrames: Array<{ at: number; src: string }>;
+        __loomarrDecodedFrames: Array<{ at: number; channel: string; src: string }>;
       }
     ).__loomarrDecodedFrames.length,
   }));
@@ -98,25 +99,27 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
   }, `/channels/${id}/watch`);
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
   await page.waitForFunction(
-    ({ count }) =>
+    ({ channel, count }) =>
       (
         window as Window & {
-          __loomarrDecodedFrames?: Array<{ at: number; src: string }>;
+          __loomarrDecodedFrames?: Array<{ at: number; channel: string; src: string }>;
         }
-      ).__loomarrDecodedFrames?.slice(count).length ?? 0,
-    before,
+      ).__loomarrDecodedFrames
+        ?.slice(count)
+        .some((frame) => frame.channel === channel) ?? false,
+    { channel: id, count: before.count },
     { timeout: 10_000 },
   );
   const decodedAt = await page.evaluate(
-    ({ count }) =>
+    ({ channel, count }) =>
       (
         window as Window & {
-          __loomarrDecodedFrames: Array<{ at: number; src: string }>;
+          __loomarrDecodedFrames: Array<{ at: number; channel: string; src: string }>;
         }
       ).__loomarrDecodedFrames
         .slice(count)
-        .at(0)?.at ?? Number.POSITIVE_INFINITY,
-    before,
+        .find((frame) => frame.channel === channel)?.at ?? Number.POSITIVE_INFINITY,
+    { channel: id, count: before.count },
   );
   const trace = await page.evaluate((since) => {
     const resources = performance

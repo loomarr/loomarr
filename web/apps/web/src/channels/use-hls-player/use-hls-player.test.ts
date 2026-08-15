@@ -64,6 +64,7 @@ import { useHlsPlayer } from "./use-hls-player";
 const videoEl = (canPlay = "") =>
   ({
     canPlayType: () => canPlay,
+    dataset: {},
     play: vi.fn().mockResolvedValue(undefined),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -148,6 +149,7 @@ describe("useHlsPlayer", () => {
     await waitFor(() =>
       expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
     );
+    expect(video.dataset.playbackChannel).toBe("ch-1");
 
     act(() => release());
     rerender({ id: "ch-2" });
@@ -159,6 +161,7 @@ describe("useHlsPlayer", () => {
     await waitFor(() =>
       expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8"),
     );
+    expect(video.dataset.playbackChannel).toBe("ch-2");
     expect(hls.instances).toHaveLength(1);
     expect(controller.stopLoad).toHaveBeenCalledOnce();
     expect(controller.transferMedia).toHaveBeenCalledOnce();
