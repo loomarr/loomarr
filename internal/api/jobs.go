@@ -35,6 +35,7 @@ var ErrJobDisabled = huma.Error409Conflict("job disabled") // sentinel; handler 
 // expression; scheduleKey is the settings key the "Modify Job" modal PATCHes to change it.
 type JobView struct {
 	Name        string    `json:"name" doc:"Stable job id (also the run/trigger key)"`
+	Group       string    `json:"group" enum:"acquisitions,channels,filler,artwork,playout,system,backup" doc:"Operator outcome used to group tasks"`
 	Title       string    `json:"title" doc:"Human label for the Tasks page"`
 	Description string    `json:"description" doc:"One plain sentence saying what running this job does"`
 	Schedule    string    `json:"schedule" doc:"Effective cron expression (settings override or default)"`

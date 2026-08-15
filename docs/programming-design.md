@@ -270,7 +270,7 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   rules" editor (chips, drag-to-priority). The LLM still only proposes rule VALUES;
   deterministic code evaluates `When` and enforces — the model never orders episodes.
 - **No new scheduler.** Rules evaluate against the container wall-clock at reconcile
-  time; the periodic channel-sweep (§main-doc) already re-runs the pure lineup builder
+  time; periodic channel maintenance (§main-doc) already re-runs the pure lineup builder
   with a fresh `now`, so it *is* the refill loop — a rule/window boundary simply produces
   a different desired lineup on the next sweep. Because the desired lineup stays a pure
   function of `(seed, coarse-now, policy)`, reconcile idempotency holds within a slice.

@@ -73,7 +73,7 @@ type SeriesEpisodeStore interface {
 	GetSeriesEpisodes(ctx context.Context, libraryID string) (SeriesEpisodes, error)
 	UpsertSeriesEpisodes(ctx context.Context, se SeriesEpisodes) error
 	// ListStaleSeriesEpisodes returns shows fetched before `before`, oldest first, for the
-	// series-episode-refresh job (§18.1).
+	// channel-maintenance job (§18.1).
 	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
 }
 
@@ -401,7 +401,7 @@ type ActivityStore interface {
 	RecordActivity(ctx context.Context, a Activity) error
 	// ListActivity returns the newest feed rows first, capped at limit.
 	ListActivity(ctx context.Context, limit int) ([]Activity, error)
-	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
+	// PurgeActivity deletes feed rows older than `before` (§18.1 housekeeping). The feed
 	// is the one append-only table here, so it is the one that needs a purge.
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }

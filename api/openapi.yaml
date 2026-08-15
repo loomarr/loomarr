@@ -2661,6 +2661,17 @@ components:
         disabledReason:
           description: Why this job cannot run here; empty when it can
           type: string
+        group:
+          description: Operator outcome used to group tasks
+          enum:
+            - acquisitions
+            - channels
+            - filler
+            - artwork
+            - playout
+            - system
+            - backup
+          type: string
         lastError:
           description: Error detail when lastResult is error
           type: string
@@ -2698,6 +2709,7 @@ components:
           type: string
       required:
         - name
+        - group
         - title
         - description
         - schedule

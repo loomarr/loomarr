@@ -157,7 +157,7 @@ flowchart TD
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
   p_schedule["schedule<br/><small>12 importers</small>"]
-  p_scheduler["scheduler<br/><small>7 importers</small>"]
+  p_scheduler["scheduler<br/><small>6 importers</small>"]
   p_store["store<br/><small>11 importers</small>"]
   p_suggest["suggest<br/><small>5 importers</small>"]
   p_catalog --> p_library
@@ -250,17 +250,17 @@ flowchart TD
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
+- **`auth`** · 2 importers · → `library`, `store`
+  Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`scheduler`** · 7 importers · → `store`
+- **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
 
 **Layer 7**
 
-- **`auth`** · 2 importers · → `library`, `scheduler`, `store`
-  Issues and validates Loomarr sessions (design §11).
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
 - **`images`** · 2 importers · → `scheduler`
@@ -430,7 +430,7 @@ answer, never a second opinion:
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
   today's behaviour rather than to an empty channel.
-- **Refresh:** the **`series-episode-refresh`** job (§18.1) re-enumerates shows whose rows have
+- **Refresh:** the **`channel-maintenance`** job (§18.1) re-enumerates shows whose rows have
   aged out. Bounded to the shows actually referenced by channel lineups — the set that matters
   is small and known, and sweeping the whole library would cost far more than it saves.
 - ⚠ **NOT hung off `library-scan`.** That job correlates *in-flight* acquisitions
@@ -487,7 +487,7 @@ subject_id}` — for the Dashboard's **Recent activity** feed (§12, V32).
   text, so the UI cannot receive a colour it has no rendering for.
 - **Read path:** `ListActivity(limit)` — newest first, and nothing else. The feed is a glance,
   not a query surface; a filterable log is a different feature (§20).
-- **Retention:** `activity.retention` (§15), purged by the `activity-purge` job (§18.1). ⚠ The
+- **Retention:** `activity.retention` (§15), enforced by the `housekeeping` job (§18.1). ⚠ The
   key is **consumed in the same PR that declares it**. `jobs.retention` and
   `proposals.retention` were declared long ago and are read by **nothing** — no purge exists
   for either table — which is the same dead-setting shape V12 found in `backup.retain`. Adding
@@ -504,14 +504,14 @@ operators to ignore the ladder. The signal spreads airings evenly and stops a ti
 its own last showing; only more content fixes the underlying frequency, which is what re-curation
 and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
 
-### Retention & janitor
-State accumulates; a **janitor** (piggybacking the reconciler ticker) enforces retention so a year-old install isn't dragging a landfill:
+### Retention & housekeeping
+State accumulates; the daily **housekeeping** task enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)
-- **Activity:** feed rows purged after `activity.retention` (default 30d) by the `activity-purge` job (§18.1, V32).
-- **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `retention-purge` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
+- **Activity:** feed rows purged after `activity.retention` (default 30d) by the `housekeeping` job (§18.1, V32).
+- **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `housekeeping` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
 - **Proposals:** `denied` purged after `PROPOSALS_RETENTION` (default 90d). ⚠ **`approved` and `submitted` are kept indefinitely**, for different reasons: an approved proposal is the audit trail behind `approved_by` (the record of a decision that spent real resources), and a `submitted` one is a member still waiting for an answer — ageing it out would silently discard a request rather than decline it.
   - ⚠ **Purge order is proposals, then jobs.** `proposals.job_id` has no foreign key, so the constraint is ours to keep: removing a job first would leave a proposal pointing at nothing. Verified that no read path joins the two (`job_id` is diagnostic provenance; the proposal endpoint does not resolve it), so an orphan is cosmetic rather than broken — but a purge that creates one on every run is a purge that makes the data harder to reason about for no gain.
-  - *These two keys were declared long before they were read — the same declared-but-unconsumed shape V12 found in `backup.retain` and V32 avoided for `activity.retention`. This section described the purge as shipped for several phases while it did not exist.*
+  - These two keys were declared before the purge existed; `housekeeping` is now their single consumer and operator control.
 - Filler catalog sync (§10) already removes clips that vanished from the media server.
 
 ### Concurrency consequence of supporting Postgres (important)
@@ -4352,15 +4352,15 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `IMAGES_CACHE_BUDGET_MB` | `2048` — soft cap on the derivative cache before the GC job evicts least-recently-used renditions. Derivatives are always regenerable, so eviction costs latency, never data. |
 | Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
-| `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The sweep clock itself is `JOB_CHANNEL_SWEEP_SCHEDULE` under System → Tasks. Advanced because changing the task schedule is the normal operator decision. |
+| `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
 | `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
-| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) — ⚠ **declared but not consumed**; no purge exists for either table yet (§5). |
-| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `activity-purge` removes them (§5, §18.1, V32). |
-| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `series-episode-refresh` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
+| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
+| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
+| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
 | `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* The folder Loomarr registers as a Tunarr `local` source. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
@@ -4543,9 +4543,11 @@ The first-run wizard (§13) walks these checks interactively — the list below 
 
 All recurring background work runs under **one scheduler** (`internal/scheduler`), modeled on how Sonarr/Radarr/Overseerr expose *System → Tasks*: a registry of **named jobs**, each with a **default interval** that is **user-configurable**, all **triggerable on demand** ("Run now"). This replaces the previous model of four independent `time.NewTicker` goroutines — there is now **one scheduling mechanism**, one place to see what runs when, and one way to force a run.
 
-- **Jobs are code-defined; schedules are cron settings; run-history is state.** The set of jobs and their `Run` funcs live in a code registry (a runner can't live in a DB row). Each job's schedule is a **cron expression** (6-field, seconds-leading, Overseerr-style, e.g. `0 */5 * * * *`) in an ordinary **settings key** (`job.<name>.schedule`, a new `KindCron` validated via the cron lib, `env > db > default`, hot-read per tick), so a schedule is edited through the normal settings path (`PATCH /v1/settings`), not a bespoke one. Next-run is computed from the cron, not `now + interval`. *Last-run / next-run / last-result* is **runtime state** in a small `scheduled_jobs` table (keyed by job name), upserted after each run — this powers the Tasks UI.
+- **An execution job is not automatically an operator task.** The scheduler owns fine-grained execution, but the Tasks page presents seven outcome groups: **Acquisitions, Channels, Filler, Artwork, Playout, System, and Backup**. A group is collapsed initially; its summary reports aggregate health and its jobs expand underneath it. A job row is compact by default (title, status, frequency, last/next run). Expanding the row reveals its required description, failure detail, and controls. This keeps implementation stages available for diagnosis without making every internal seam an equally prominent operator decision.
 
-- **Every job carries a Title AND a Description, both required.** The title is the human label ("Reconcile acquisitions"); the description is one plain sentence saying what running it actually does ("Checks in-flight downloads and moves finished ones into your library"). ⚠ **Required, not optional** — an operator deciding whether to run or pause a task needs to know what it does, and a nullable field is one where every later job ships without one. Enforced by the registry seal test, alongside the existing uniqueness checks.
+- **Jobs are code-defined; schedules are cron settings; run-history is state.** The set of jobs and their `Run` funcs live in a code registry (a runner can't live in a DB row). Each recurring job's schedule is a **cron expression** (6-field, seconds-leading, Overseerr-style, e.g. `0 */5 * * * *`) in an ordinary **settings key** (`job.<name>.schedule`, a new `KindCron` validated via the cron lib, `env > db > default`), so a schedule is edited through the normal settings path (`PATCH /v1/settings`), not a bespoke one. River wakes a lightweight gate every 15 seconds and the gate resolves the current cron before deciding whether to enqueue; saving a cron therefore changes actual execution promptly without rebuilding leader-only River state or restarting. Next-run is computed from the cron, not `now + interval`. *Last-run / next-run / last-result* is **runtime state** in a small `scheduled_jobs` table (keyed by job name), upserted after each run — this powers the Tasks UI.
+
+- **Every job carries a Group, Title, and Description, all required.** The group is one of the seven operator outcomes above. The title is a short verb phrase; the description is one plain sentence that adds scope or consequence instead of restating the title. ⚠ **Required, not always visible** — the row disclosure hides the description initially, but an operator deciding whether to run or pause a task must be able to reveal what it does. Enforced by the registry seal test, alongside the existing uniqueness checks.
 
 - **A run reports progress, and the button reflects it.** Triggering a job moves its control through `Run now → Running… → done`, driven by the existing `job` SSE frame rather than client-side guessing. Jobs report **indeterminate** progress by default (a spinner, not a fake percentage); a job that genuinely knows its denominator may report a fraction. ⚠ **Never synthesize a percentage from elapsed time** — a bar that reaches 90% and stops is a worse claim than a spinner that says only "running".
 
@@ -4554,13 +4556,13 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 
 - ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — declared ceiling ⇒ `long`, none ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently and forever. Deriving the queue *set* and the *routing* from one function makes that state unreachable.
 
-  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — `channel-sweep`, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
+  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — channel maintenance, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
 
   ⚠ **`MaxWorkers 1` on SQLite is about the DEFAULT queue's WIDTH, not a ban on a second producer.** The pool holds `MaxOpenConns(1)`, so a second worker blocks *at the pool* — it cannot corrupt anything — and a long media job spends its time inside `exec.Command` holding no connection at all. It starved the others by holding a worker SLOT, not a connection. `long` is nevertheless 1 on Postgres too, for an unrelated reason already recorded in §10: ffmpeg competes with playout for the GPU, so a media worker *pool* would turn a catalog import into a live-channel outage.
 
   ⚠ **Run-now must take the same queue the schedule would.** Forgetting `InsertOpts` on the trigger path reproduces the exact symptom above for manual runs, and nothing else in the suite covers it.
 
-  ⚠ Known and deliberately not fixed: River's periodic enqueuer inserts on schedule regardless of worker availability, so a long pass accumulates queued rows that drain back-to-back afterwards. After the split this is confined to `long` and self-limiting (each pass is budget-bounded and mostly a no-op). `UniqueOpts` is **not** the answer — Run-now inserts the same args, so deduplication would silently swallow an operator's click.
+  **Scheduled ticks coalesce; explicit runs do not.** A periodic insert is unique by job name while an earlier scheduled instance is available, running, scheduled, or retryable, so a slow pass cannot accumulate a train of identical ticks. `Run now` carries an explicit/manual bit and is inserted without that uniqueness rule: it remains a real request rather than being swallowed by the coalescer.
 
 - **An overdue job says so.** A job past its next run and waiting on a worker is marked `overdue` by the scheduler and rendered as such. ⚠ Before this the Tasks page ran the past timestamp through a duration formatter that answers **"expired"** for any past instant — a word written for session expiry — so a starved job reported itself in another subsystem's vocabulary. Deliberately NOT "which job is holding the worker": that is per-process, and on a multi-replica Postgres install it would confidently name the wrong one.
 
@@ -4568,19 +4570,18 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 
   ⚠ **River's schema is applied at boot via `rivermigrate`, never the `river migrate-up` CLI.** goose owns the application catalog; River owns its own. Two migration *libraries* is a stated cost — two migration *systems an operator must run* would not be shippable, and is why the programmatic path is load-bearing rather than a convenience.
 
-- **Pause is Loomarr's state, not River's.** A paused job is skipped when its schedule comes due and its row greys out on the Tasks page, showing "Paused" where the next-run time would be — a time that will never fire reads as a bug. Persisted per job (`job.<name>.paused`), so it survives restarts and leadership changes.
+- **Pause is Loomarr's state, not River's.** A paused job is skipped when its schedule comes due and its row greys out on the Tasks page, showing "Paused" where the next-run time would be — a time that will never fire reads as a bug. Persisted per job (`job.<name>.paused`), so it survives restarts and leadership changes. A manual River payload is distinct from a periodic one, so **Run now still executes while paused**; pause stops the schedule, not an explicit operator request.
 
   ⚠ **River's own pause is the wrong granularity and the wrong durability.** `Client.QueuePause` pauses a whole *queue*, not a job; and `PeriodicJobs().Remove` only takes effect on the client holding leadership, so a restart or a leadership change would silently resume a job the operator deliberately paused. Pause is a record of operator intent and must be as durable as any other setting.
 
   **Distinct from `DisabledReason`**, which states a fact about the environment (backup needs SQLite) that no clicking changes: paused is an operator choice with a Resume control, disabled is not.
-- **The existing loops are jobs.** The channel sweep, filler sync, and session sweep are registered jobs (reading `channel.reconcile_every`, `filler.sync_every`, and `job.session_sweep.interval`); their standalone ticker/retune plumbing is gone. Their *logic* (`Sweep`/`Sync`) is unchanged — only the loop driver moved. So they appear on the Tasks page and are Run-now-triggerable like any other job.
+- **The existing loops are jobs.** Channel maintenance and filler sync are registered jobs; their standalone ticker/retune plumbing is gone. Expired-session collection is a stage of daily housekeeping because expiry is enforced on reads and deletion only bounds storage. Their logic is unchanged; the scheduler owns the loop and on-demand trigger.
 - **Availability jobs (§4, §6).** Poll-based availability runs as scheduler jobs: **`library-scan`** (incremental, default every 5m — `RecentlyAdded(since)` within `job.library_scan.lookback`) and **`library-full-scan`** (daily safety net — `AllItems()`). The scan confirms any in-flight (`requested`/`downloading`) title now present in the media server → `available`, correlating by `provision.Key`. This is the mechanism that replaces the retired inbound `/hooks/arr` webhook.
 - **Arr queue poller (§6, arr provider only).** When `requester.provider=arr`, a **`arr-queue-poll`** job (default every 1m) reads each configured arr's `/api/v3/queue` and correlates records to in-flight titles by `provision.Key` (via the arr's lookup id). A title with a live download record is **`Grabbed`** → `downloading` (resetting the deadline), and its **download progress is persisted on the title record** — `progress` (0..1), `eta_text`, and `download_status` (the arr's own status string, passed through so a `warning`/`stalled` download reads as such rather than fake healthy progress). Persisting (rather than an in-memory cache) means `GET /v1/titles` reads progress straight from the store and it survives a restart. A grabbed-but-stalled title still ages out under the reconciler's deadline discipline (§4). Availability itself still comes from the library scan; the poller adds the grabbed transition + progress, never the `available` flip.
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
-- **Series episode refresh (§5, §9).** A **`series-episode-refresh`** job (default hourly) re-enumerates the shows whose cached episode lists have aged past `episodes.max_age`, so `series_episodes` stays current without any expansion happening on the request path. **Bounded to the shows referenced by channel lineups** — that set is small and known, and sweeping the whole library would cost more than the cache saves. Deliberately its own job rather than a hook on `library-scan`: that job only correlates *in-flight* acquisitions and returns early when there are none, so it would never revisit an already-`available` show (see §5).
+- **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and reconciles them with Tunarr. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
-- **Retention purge (§5).** A **`retention-purge`** job (default daily) removes finished jobs past `JOBS_RETENTION` and denied proposals past `PROPOSALS_RETENTION`. **Proposals first, then jobs**, so the purge never creates an orphaned `proposals.job_id` (there is no foreign key to enforce it). In-flight work and the audit trail are both exempt: a `queued`/`running` job and an `approved`/`submitted` proposal are never removed by age.
-- **Activity purge (§5, §12, V32).** An **`activity-purge`** job (default daily) deletes feed rows older than `activity.retention`. The feed is append-only on a busy install, so it needs a reader for its own retention key — declared and consumed in one PR, unlike `JOBS_RETENTION`/`PROPOSALS_RETENTION`, which are still read by nothing.
+- **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; in-flight work and the approval audit trail remain exempt.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.
   - **The alternative was silence, and silence is a claim too.** A conditionally-registered job simply vanishes, which is indistinguishable — from the Tasks page alone — from a job that runs fine and has never failed. For backup specifically, the failure mode of that ambiguity is an operator believing they are covered when they are not.
   - **Disabled is not "off".** It is not operator-settable and carries no enable control: it means *this build/backend cannot run this job*, which no amount of clicking changes. A per-job on/off switch would be a different feature.
@@ -4959,8 +4960,7 @@ no incidental PII from operator uploads, no ICC ambiguity.
 | --- | --- |
 | `images-fetch` | pulls bytes for `remote` rows that have none, under the concurrency cap |
 | `images-avif` | encodes the AVIF ladder via ffmpeg for images that have WebP but no AVIF |
-| `images-rehydrate` | re-fetches everything recoverable that is missing — the post-restore path |
-| `images-gc` | evicts unused derivatives, deletes images with no refs, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
+| `images-maintenance` | re-fetches recoverable missing files, evicts unused derivatives, deletes unreferenced images, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
 
 ### Frontend contract
 

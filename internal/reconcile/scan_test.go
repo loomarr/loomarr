@@ -209,4 +209,7 @@ func TestLibraryScan_NoInflightNoop(t *testing.T) {
 	if n != 0 || len(emit.events) != 0 {
 		t.Errorf("confirmed %d / %d events, want 0/0", n, len(emit.events))
 	}
+	if ms.LastEmbyToken != "" {
+		t.Error("incremental scan contacted the media server with no in-flight titles")
+	}
 }
