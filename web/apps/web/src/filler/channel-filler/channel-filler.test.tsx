@@ -120,7 +120,10 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
     // silent 404 the component would have rendered around.
     getSettingsListMockHandler({
       features: {},
-      settings: [setting({ key: "filler.pod_max", value: "4", kind: "int", group: "filler" })],
+      settings: [
+        setting({ key: "filler.pod_max", value: "4", kind: "int", group: "filler" }),
+        setting({ key: "filler.breaks_per_hour", value: "4", kind: "int", group: "filler" }),
+      ],
     }),
     // ⚠ FOUND BY THE GUARD. The coverage meter reads this on mount and the old catch-all served
     // it a CLIP LIST — `{ clips: [...] }` where the component wants `{ level, total, rungs }`. It
@@ -137,10 +140,11 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
   return { patches, previews, catalogQueries };
 };
 
-const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
+const policy = (filler?: ChannelPolicy["filler"], breaksPerHour?: number): ChannelPolicy => ({
   ordering: "shuffle",
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
+  ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
 });
 
 describe("ChannelFiller", () => {
@@ -153,8 +157,29 @@ describe("ChannelFiller", () => {
     expect(await screen.findByLabelText("Audience")).toBeInTheDocument();
     expect(screen.getByText("Categories")).toBeInTheDocument();
     expect(screen.getByText("Clip kinds")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Break frequency" })).toHaveTextContent(
+        "Follow default (4 per hour)",
+      ),
+    );
     // The mount preview assembles the (saved) selection and renders the pod timeline.
     await waitFor(() => expect(screen.getByLabelText("Pod segments")).toBeInTheDocument());
+  });
+
+  it("offers inherited, disabled, and custom break frequency without re-previewing the clip mix", async () => {
+    const user = userEvent.setup();
+    const { patches, previews } = stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+
+    await waitFor(() => expect(previews).toHaveLength(1));
+    await user.click(screen.getByRole("combobox", { name: "Break frequency" }));
+    await user.click(await screen.findByRole("option", { name: "No commercial breaks" }));
+
+    expect(await screen.findByRole("button", { name: /apply filler/i })).toBeInTheDocument();
+    expect(previews).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /apply filler/i }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({ policy: { breaksPerHour: 0 } });
   });
 
   it("editing a criterion re-previews and reveals Apply", async () => {

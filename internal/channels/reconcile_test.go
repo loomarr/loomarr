@@ -102,6 +102,35 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 }
 
+func TestReconcile_ReadsLiveCooldownSetting(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	cooldown := 10 * time.Minute
+	e := channels.New(st, tun, avail, nil, channels.Config{
+		ResolveReconcileTTL: func() time.Duration { return cooldown },
+	}, func() time.Time { return now }, testkit.Logger())
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if want := now.Add(10 * time.Minute); !ch.ReconcileDeadline.Equal(want) {
+		t.Fatalf("initial deadline = %v, want %v", ch.ReconcileDeadline, want)
+	}
+
+	cooldown = 30 * time.Minute
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ = st.GetChannel(context.Background(), "c1")
+	if want := now.Add(30 * time.Minute); !ch.ReconcileDeadline.Equal(want) {
+		t.Fatalf("deadline after settings change = %v, want %v", ch.ReconcileDeadline, want)
+	}
+}
+
 // A lineup-push failure right after channel creation must NOT lose the new Tunarr
 // id: the create is checkpointed to the store before the push. So the next reconcile
 // UPDATES the existing channel instead of re-creating it — the fix for the live-smoke
