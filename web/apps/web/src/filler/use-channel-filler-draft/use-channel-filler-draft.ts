@@ -29,10 +29,10 @@ const canonicalize = (s: FillerDraft): string => {
 };
 
 // useChannelFillerDraft — the live filler sandbox (§10, §12) for one channel. It holds a
-// DRAFT FillerSelection in local state (seeded from the channel's saved `policy.filler`)
+// DRAFT filler selection and break frequency in local state (seeded from the saved policy)
 // and, on every settled change, re-assembles the actual break through POST …/pods/preview
 // — the SAME assembler + seed reconcile uses — so what you see is exactly what will air.
-// Nothing is saved until `apply`, which PATCHes the draft onto `policy.filler`; the
+// Nothing is saved until `apply`, which PATCHes both choices onto the policy; the
 // existing onSuccess → invalidate → SSE loop reconciles from there (seamless for the
 // effect, draft/apply for the authoring — the one deliberate exception, §10).
 //
@@ -42,21 +42,24 @@ const canonicalize = (s: FillerDraft): string => {
 //
 // It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
 // policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
-// must send `{ ...policy, filler: draft }` or it would wipe scope/audience/separation/
-// ordering. The draft itself is seeded from `policy.filler`.
+// must merge onto the policy or it would wipe scope/audience/separation/ordering.
 const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
   const queryClient = useQueryClient();
   const saved: FillerSelection | undefined = policy?.filler;
+  const savedBreaksPerHour = policy?.breaksPerHour;
   // The saved selection this draft was seeded from, as a canonical string — its identity,
   // not its reference (the page hands a fresh `ch.policy.filler` object every render). We
   // resync the draft to `saved` only when THIS changes: a genuine server update (an apply
   // landing, a re-approval reseeding the era) adopts, an incidental re-render does not —
   // the same render-time "adjust state" pattern useChannelLineup uses, no effect/flash.
-  const savedKey = canonicalize(saved ?? {});
+  const savedSelectionKey = canonicalize(saved ?? {});
+  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}`;
   const [draft, setDraft] = useState<FillerDraft>(saved ?? {});
+  const [breaksPerHour, setBreaksPerHour] = useState<number | undefined>(savedBreaksPerHour);
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
   if (savedKey !== adoptedKey) {
     setDraft(saved ?? {});
+    setBreaksPerHour(savedBreaksPerHour);
     setAdoptedKey(savedKey);
   }
 
@@ -98,6 +101,8 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   return {
     draft,
     setDraft,
+    breaksPerHour,
+    setBreaksPerHour,
     preview: body,
     isPreviewing: preview.isPending,
     // The transport mutator THROWS an ApiError on non-2xx for mutations (unlike a query,
@@ -105,12 +110,16 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     // `preview.error`, not `preview.data`. Surfaced so a broken draft reads as an error,
     // not an empty pool.
     previewError: preview.error,
-    isDirty: draftKey !== savedKey,
+    isDirty: draftKey !== savedSelectionKey || breaksPerHour !== savedBreaksPerHour,
     // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
     // rest of it (scope/audience/separation/ordering) alongside the new filler.
-    apply: () => update.mutate({ id: channelId, data: { policy: { ...policy, filler: draft } } }),
+    apply: () =>
+      update.mutate({ id: channelId, data: { policy: { ...policy, filler: draft, breaksPerHour } } }),
     isApplying: update.isPending,
-    discard: () => setDraft(saved ?? {}),
+    discard: () => {
+      setDraft(saved ?? {});
+      setBreaksPerHour(savedBreaksPerHour);
+    },
   };
 };
 

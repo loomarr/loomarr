@@ -5,7 +5,7 @@ import { SettingsEditsProvider, SettingsPage, SettingsSaveBarHost, useSettingsEn
 const FillerOperations = () => (
   <SettingsPage
     title="Filler settings"
-    description="Where clips arrive, what Loomarr may automate, and the limits that keep background processing bounded. Channel break defaults remain under Settings → Defaults."
+    description="Where clips arrive, how breaks are assembled, and the limits that keep background processing bounded. Per-channel frequency and clip matching live on each channel's Filler page."
     entries={useSettingsEntries()}
     blocks={[
       {
@@ -24,6 +24,13 @@ const FillerOperations = () => (
           "filler.fetch.max_catalog_clips",
           "filler.fetch.max_disk_gb",
         ],
+      },
+      {
+        group: "filler",
+        title: "Break assembly",
+        description:
+          "Global limits for every channel. The inherited break frequency stays under Settings → Defaults.",
+        keys: ["filler.pod_max"],
       },
       {
         group: "filler",

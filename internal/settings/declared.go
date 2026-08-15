@@ -63,6 +63,17 @@ func positiveWholeNumber(v any) error {
 	return nil
 }
 
+func nonNegativeWholeNumber(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number")
+	}
+	if n < 0 {
+		return fmt.Errorf("want 0 or more (got %d)", n)
+	}
+	return nil
+}
+
 func declared() []Setting {
 	return []Setting{
 		// --- Connections: media server (§15, Phase 5) ---
@@ -410,9 +421,9 @@ func declared() []Setting {
 
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
-			Key: "channel.reconcile_every", Label: "Refresh channels every", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
-			Kind: KindDuration, Default: "10m",
-			Doc: "How often Loomarr rebuilds channels to pick up newly-available content.",
+			Key: "channel.reconcile_every", Label: "Channel rebuild cooldown", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
+			Kind: KindDuration, Default: "10m", Advanced: true,
+			Doc: "Minimum delay after a successful rebuild before that channel is eligible for another scheduled sweep. Change the sweep cadence under System → Tasks.",
 		},
 		{
 			Key: "sched.window_hours", Label: "Schedule ahead", EnvVar: "SCHED_WINDOW_HOURS", Group: GroupChannels,
@@ -781,13 +792,13 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.breaks_per_hour", Label: "Breaks per program hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,
-			Kind: KindInt, Default: 4,
-			Doc: "Commercial-break density: breaks interleaved per program hour.",
+			Kind: KindInt, Default: 4, Validate: nonNegativeWholeNumber,
+			Doc: "Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency.",
 		},
 		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
-			Kind: KindInt, Default: 4,
-			Doc: "Maximum clips per commercial pod.",
+			Kind: KindInt, Default: 4, Validate: positiveWholeNumber,
+			Doc: "Maximum clips Loomarr may assemble into any channel's commercial break.",
 		},
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,

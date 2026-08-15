@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/metrics"
@@ -89,8 +90,8 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// once clips land, the next reconcile sees a pool and re-inserts breaks.
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
-	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHour)
-	chDomain.DefaultWindow = e.defaultWindow // §6.5 rolling-window horizon from settings
+	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
+	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 
 	// Record the relaxation-ladder steps this pass applied (§7) back onto the
@@ -181,7 +182,11 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// 6: persist. Status reflects drift; a channel with any real program is live.
 	ch.Desired = desired.Slots
 	ch.Status = e.statusFor(desired, drifted)
-	ch.ReconcileDeadline = e.now().Add(e.reconcileTTL)
+	reconcileTTL := e.reconcileTTLFor()
+	if reconcileTTL <= 0 {
+		reconcileTTL = 10 * time.Minute
+	}
+	ch.ReconcileDeadline = e.now().Add(reconcileTTL)
 	ch.UpdatedAt = e.now().Unix()
 	if err := e.store.UpsertChannel(ctx, ch); err != nil {
 		return fmt.Errorf("persist channel %s: %w", channelID, err)

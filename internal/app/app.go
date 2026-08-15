@@ -367,9 +367,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
-			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
-			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density
-			DefaultWindow: set.dur("sched.window_hours"),      // §6.5 rolling-window horizon
+			Policy:               schedule.PodFill,
+			ReconcileTTL:         set.dur("channel.reconcile_every"),
+			BreaksPerHour:        set.intv("filler.breaks_per_hour"),
+			DefaultWindow:        set.dur("sched.window_hours"),
+			ResolveReconcileTTL:  func() time.Duration { return set.dur("channel.reconcile_every") },
+			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
+			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops

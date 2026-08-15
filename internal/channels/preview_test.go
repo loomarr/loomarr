@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -84,6 +85,54 @@ func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 	if want := time.Unix(1_800_000_000, 0).UTC(); !at.Equal(want) {
 		t.Errorf("zero at resolved to %v, want the engine clock %v", at, want)
 	}
+}
+
+func TestCyclePreview_ReadsLiveChannelDefaults(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	window := 24 * time.Hour
+	breaks := 0
+	e := channels.New(st, tun, avail, nil, channels.Config{
+		ResolveDefaultWindow: func() time.Duration { return window },
+		ResolveBreaksPerHour: func() int { return breaks },
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).
+		WithPods(&fakePods{ids: []string{"clip-a"}})
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	_, slots, _, gotWindow, err := e.CyclePreview(context.Background(), "c1", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotWindow != 24*time.Hour {
+		t.Fatalf("initial window = %v, want 24h", gotWindow)
+	}
+	if got := fillerSlotCount(slots); got != 0 {
+		t.Fatalf("initial filler slots = %d, want none", got)
+	}
+
+	window = 48 * time.Hour
+	breaks = 30
+	_, slots, _, gotWindow, err = e.CyclePreview(context.Background(), "c1", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotWindow != 48*time.Hour {
+		t.Fatalf("window after settings change = %v, want 48h", gotWindow)
+	}
+	if got := fillerSlotCount(slots); got == 0 {
+		t.Fatal("break frequency change did not affect the next preview")
+	}
+}
+
+func fillerSlotCount(slots []schedule.Slot) int {
+	n := 0
+	for _, slot := range slots {
+		if slot.Kind == schedule.SlotFiller {
+			n++
+		}
+	}
+	return n
 }
 
 // The exclusion report reaches the caller (#263). ComputeDesiredAt has always produced it and

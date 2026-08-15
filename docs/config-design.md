@@ -28,11 +28,19 @@ Loomarr's model is the *arr convention with one addition:
 - `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
 
-**The per-channel tier (added with `programming-design.md`):** programming heuristics introduce settings that vary *per channel* — the ChannelPolicy (scope, audience ceiling, separation windows, ordering, seasonal mode). These are **not registry settings**: a policy instance is channel *data*, stored on the channel row, edited in proposal review / the channel editor, and never env-addressable. What the registry holds is their **global defaults**. Full precedence, per key:
+**The per-channel tier (added with `programming-design.md`):** a policy instance is channel
+*data*, stored on the channel row, edited in proposal review / the channel editor, and never
+env-addressable. Some policy fields also have an env-pinnable registry fallback today: the rolling
+schedule horizon, filler break frequency, playout backend, and auto-curation limits. Their full
+precedence is:
 
-`channel policy > registry default (env-pinnable per the normal rule) > built-in`
+`channel policy > registry default > built-in`
 
-The test for which tier a new knob belongs to: *would two channels sensibly want different values?* Yes → policy field with a registry default. No → plain registry setting.
+Other programming fields — including ordering, separation, and seasonality — currently resolve
+directly from channel policy to their built-in behavior. They must not be presented as Settings
+defaults until a consumed registry tier exists. The test for a future knob remains: *would two
+channels sensibly want different values?* Yes → policy field, with a registry default only when the
+product needs fleet-wide control. No → plain registry setting.
 
 **Self-updating channels (`programming-design.md` §8.2) follow this tier exactly.** A channel opts into scheduled re-curation via a per-channel `policy.autoCurate` field (rides `policy_json`, no schema change — like `rules`/`filler`/`window` before it), and the two thresholds it's bounded by have the classic split: the global defaults `recurate.min_score_pct` (the quality bar a net-new title must clear) and `recurate.max_titles` (the growth cap) are **registry settings** (env-pinnable, hot-applied per call), while `policy.autoCurate` may carry a per-channel **override** of either. `job.recurate.schedule` is a plain global `KindCron` job knob (all channels re-curate on one clock). The registry values are read live inside the re-curation grant, so raising the fleet-wide bar takes effect on the next run with no restart.
 
@@ -187,7 +195,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
 | **AI** | Model roles: lineup model/provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker still owns probe/catalog/hot-swap. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
-| **Defaults** | Only what a NEW channel inherits: ordering, no-repeat/separation policy, seasonality, rolling window, and filler break density. Filler ingestion/storage/automation live with the Filler workflow, not above these defaults. | — |
+| **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (backend, quality, language/subtitles, detected encoder/capacity, guide, advanced paths) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. | per sub-tab where testable |
 | **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
@@ -343,7 +351,12 @@ No parallel form system. Each wizard step renders the relevant **settings group'
 
 The rule that survives: **one function computes the set, and every consumer reads it.** The checklist, the tab states, and the API gating never re-derive availability — only the *inputs* differ, never the seam.
 
-**Policy defaults are settings; policy effects are data.** Changing a registry default (e.g. the episode no-repeat window) hot-applies like any setting — but it only affects channels that *don't override* that key. The channel editor shows per-field provenance mirroring the settings UI: `channel override | default | built-in`.
+**Policy effects are channel data; only consumed fallbacks are Settings defaults.** The rolling
+schedule horizon and filler break frequency resolve as `channel choice > registry default >
+built-in` and are read again when a channel is rebuilt. Ordering, separation, and seasonality
+currently resolve as `channel policy > built-in`; no registry value is shown for them. The channel
+editor must describe the active ladder in user language rather than implying a Settings tier that
+does not exist.
 
 ---
 
