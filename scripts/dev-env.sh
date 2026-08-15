@@ -45,6 +45,7 @@ if [ "$ROOT" = "$PRIMARY" ]; then
 	DEFAULT_DATABASE=
 	DEFAULT_FILLER=
 	DEFAULT_PREPARED=
+	DEFAULT_DEV_LOGIN=
 else
 	INSTANCE="${BRANCH_SLUG}-$(printf '%03d' "$SLOT")"
 	DEFAULT_BACKEND=$((18000 + SLOT))
@@ -54,6 +55,7 @@ else
 	DEFAULT_DATABASE="sqlite://$ROOT/.agent-data/loomarr.db"
 	DEFAULT_FILLER="$ROOT/.filler-drop"
 	DEFAULT_PREPARED="$ROOT/.agent-data/prepared"
+	DEFAULT_DEV_LOGIN=1
 fi
 
 BACKEND_PORT="${LOOMARR_DEV_PORT:-$DEFAULT_BACKEND}"
@@ -70,6 +72,7 @@ ARTIFACT_DIR="$ROOT/.artifacts/$INSTANCE"
 DATABASE_OVERRIDE="${LOOMARR_AGENT_DATABASE_URL:-$DEFAULT_DATABASE}"
 FILLER_OVERRIDE="${LOOMARR_AGENT_FILLER_DIR:-$DEFAULT_FILLER}"
 PREPARED_OVERRIDE="${LOOMARR_AGENT_PREPARED_DIR:-$DEFAULT_PREPARED}"
+DEV_LOGIN_OVERRIDE="${LOOMARR_AGENT_DEV_LOGIN:-$DEFAULT_DEV_LOGIN}"
 
 emit_export() {
 	name="$1"
@@ -94,9 +97,11 @@ case "${1:-show}" in
 		emit_export LOOMARR_AGENT_DATABASE_URL "$DATABASE_OVERRIDE"
 		emit_export LOOMARR_AGENT_FILLER_DIR "$FILLER_OVERRIDE"
 		emit_export LOOMARR_AGENT_PREPARED_DIR "$PREPARED_OVERRIDE"
+		emit_export LOOMARR_AGENT_DEV_LOGIN "$DEV_LOGIN_OVERRIDE"
 		emit_export FILLER_DROP_DIR "${FILLER_DROP_DIR:-$ROOT/.filler-drop}"
 		;;
 	show)
+		if [ -n "$DEV_LOGIN_OVERRIDE" ]; then dev_login_label=automatic; else dev_login_label='<from .env>'; fi
 		printf '%-22s %s\n' \
 			'instance' "$INSTANCE" \
 			'worktree' "$ROOT" \
@@ -109,6 +114,7 @@ case "${1:-show}" in
 			'database override' "${DATABASE_OVERRIDE:-<from .env>}" \
 			'filler override' "${FILLER_OVERRIDE:-<from .env>}" \
 			'prepared override' "${PREPARED_OVERRIDE:-<from .env>}"
+		printf '%-22s %s\n' 'dev login' "$dev_login_label"
 		;;
 	*)
 		echo "usage: scripts/dev-env.sh [show|export]" >&2

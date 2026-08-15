@@ -96,6 +96,32 @@ describe("app router auth", () => {
     // worth asserting is the credential payload the form actually sent.
     expect(logins).toEqual([{ username: "ada", password: "hunter2!" }]);
   });
+
+  it("automatically uses the server-gated dev login", async () => {
+    let authed = false;
+    let devLogins = 0;
+    server.use(
+      http.get("*/v1/auth/me", () =>
+        authed ? HttpResponse.json(ADMIN) : HttpResponse.json({ title: "Unauthorized" }, { status: 401 }),
+      ),
+      http.get("*/v1/setup/state", () =>
+        HttpResponse.json({ bootstrapped: true, devLogin: true, sso: false }),
+      ),
+      http.post("*/v1/auth/dev-login", () => {
+        devLogins += 1;
+        authed = true;
+        return HttpResponse.json(ADMIN);
+      }),
+      ...appHandlers(),
+    );
+
+    renderApp("/guide");
+
+    await waitFor(() => expect(devLogins).toBe(1));
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(devLogins).toBe(1);
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  });
 });
 
 // THE POST-LOGIN REDIRECT ROUND TRIP (§11).
