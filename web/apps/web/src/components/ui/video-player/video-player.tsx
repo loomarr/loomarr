@@ -45,6 +45,7 @@ const VideoPlayer = ({
   barControls,
   overlay,
   attach,
+  onChannelStep,
   className,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -87,6 +88,11 @@ const VideoPlayer = ({
     const target = e.target as HTMLElement;
     const isSlider = target.getAttribute("role") === "slider";
     const isButton = target.tagName === "BUTTON";
+    const ownsNavigationKey = Boolean(
+      target.closest(
+        "button, input, select, textarea, [role=slider], [role=menuitem], [role=menuitemcheckbox]",
+      ),
+    );
     switch (e.key) {
       case " ":
       case "k":
@@ -108,6 +114,20 @@ const VideoPlayer = ({
       case "m":
         e.preventDefault();
         setMuted((m) => !m);
+        break;
+      case "ArrowUp":
+      case "PageUp":
+      case "ChannelUp":
+        if (!live || !onChannelStep || ownsNavigationKey) return;
+        e.preventDefault();
+        onChannelStep(1);
+        break;
+      case "ArrowDown":
+      case "PageDown":
+      case "ChannelDown":
+        if (!live || !onChannelStep || ownsNavigationKey) return;
+        e.preventDefault();
+        onChannelStep(-1);
         break;
       default:
         break;

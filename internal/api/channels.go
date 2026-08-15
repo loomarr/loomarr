@@ -176,7 +176,7 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	logoImage := s.logoImageResolver(ctx, logos)
 	for _, ch := range all {
 		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil, logoImage))
+		out.Body.Channels = append(out.Body.Channels, s.channelDTO(ch, nil, logoImage))
 	}
 	return out, nil
 }
@@ -189,7 +189,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -353,7 +353,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -484,7 +484,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 type refineChannelInput struct {
@@ -572,7 +572,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &reconcileOutput{Body: s.channelDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type deleteChannelInput struct {

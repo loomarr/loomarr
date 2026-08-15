@@ -6,6 +6,7 @@ const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
   id: "ch-1",
   name: "Saturday Cartoons",
   number: 42,
+  inAppPlayable: true,
   status: "live",
   strategy: "shuffle",
   programCount: 10,
