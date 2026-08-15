@@ -1308,12 +1308,15 @@ also defers source-backed track probing until the first decoded frame so optiona
 contend with the active Channel's cold open and seek.
 
 The Web adapter retains its one hls.js controller while the mounted Watch surface changes Channel
-parameters. A same-element replacement transfers the controller's open MediaSource and compatible
-SourceBuffers, then clears their old ranges before the independent Channel timeline attaches; if that
-standard MSE handoff is unavailable or cannot be cleared, replacement falls back to a full MediaSource
-reset. It never retains old media bytes, reconstructs hls.js, recompiles its worker, or allocates a
-second player. The synchronous replacement attach cancels a zero-delay disposal; leaving Watch lets
-that disposal destroy the controller. Native-HLS clients keep the equivalent one-element source swap.
+parameters. A same-element replacement transfers the controller's reusable MediaSource — `open`, or
+`ended` after a complete prepared publication — and compatible SourceBuffers, then clears their old
+ranges before the independent Channel timeline attaches; MSE reopens an ended source on that mutation.
+If the source is closed or cannot be cleared, replacement falls back to a full MediaSource reset. It
+never retains old media bytes, reconstructs hls.js, recompiles its worker, or allocates a second
+player. Replacement playback starts only after that handoff attaches, and the target's first
+`loadeddata` joins playback again after any queued element reset. The synchronous replacement attach
+cancels a zero-delay disposal; leaving Watch lets that disposal destroy the controller. Native-HLS
+clients keep the equivalent one-element source swap.
 
 The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
 viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink

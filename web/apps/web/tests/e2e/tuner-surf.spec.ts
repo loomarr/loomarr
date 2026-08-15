@@ -14,9 +14,15 @@ const installFrameClock = async (page: Page) => {
     // The 100-Channel scenario intentionally creates hundreds of API/HLS resource entries. Keep
     // Chromium's default 250-entry buffer from truncating the manifest timing evidence.
     performance.setResourceTimingBufferSize?.(2_000);
-    const frames: Array<{ at: number; channel: string; src: string }> = [];
+    const frames: Array<{ at: number; channel: string; ended: boolean; paused: boolean; src: string }> = [];
     Object.defineProperty(window, "__loomarrDecodedFrames", { value: frames, configurable: true });
-    const mediaEvents: Array<{ at: number; currentTime: number; readyState: number; type: string }> = [];
+    const mediaEvents: Array<{
+      at: number;
+      channel: string;
+      currentTime: number;
+      readyState: number;
+      type: string;
+    }> = [];
     Object.defineProperty(window, "__loomarrMediaEvents", { value: mediaEvents, configurable: true });
     for (const type of ["loadstart", "loadedmetadata", "loadeddata", "canplay", "play", "playing"]) {
       document.addEventListener(
@@ -25,6 +31,7 @@ const installFrameClock = async (page: Page) => {
           if (!(event.target instanceof HTMLVideoElement)) return;
           mediaEvents.push({
             at: performance.now(),
+            channel: event.target.dataset.playbackChannel ?? "",
             currentTime: event.target.currentTime,
             readyState: event.target.readyState,
             type,
@@ -40,7 +47,13 @@ const installFrameClock = async (page: Page) => {
       value(this: HTMLVideoElement, callback: VideoFrameRequestCallback) {
         const channel = this.dataset.playbackChannel ?? "";
         return original.call(this, (now, metadata) => {
-          frames.push({ at: performance.now(), channel, src: this.currentSrc });
+          frames.push({
+            at: performance.now(),
+            channel,
+            ended: this.ended,
+            paused: this.paused,
+            src: this.currentSrc,
+          });
           callback(now, metadata);
         });
       },
@@ -83,26 +96,47 @@ const waitForDecodedFrame = async (page: Page) => {
 // startup rather than a viewer selecting another Channel. The real-runtime gate owns cold boot.
 // A popstate navigation is the platform-neutral route input behind browser Back/Forward and lands
 // in the same TanStack Router path as an in-app Link without coupling this transport test to the
-// Guide's virtualized row layout.
+// Guide's virtualized row layout. Dispatch it from a trusted, otherwise-unused key event so WebKit
+// sees the same user activation a remote/keyboard channel choice supplies; page.evaluate alone is
+// not a viewer action and is therefore forbidden from starting the replacement media.
 const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; trace: string }> => {
   const before = await page.locator("video").evaluate(() => ({
     count: (
       window as Window & {
-        __loomarrDecodedFrames: Array<{ at: number; channel: string; src: string }>;
+        __loomarrDecodedFrames: Array<{
+          at: number;
+          channel: string;
+          ended: boolean;
+          paused: boolean;
+          src: string;
+        }>;
       }
     ).__loomarrDecodedFrames.length,
   }));
   const started = await page.evaluate(() => performance.now());
   await page.evaluate((path) => {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+    window.addEventListener(
+      "keydown",
+      () => {
+        window.history.pushState({}, "", path);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+      },
+      { once: true },
+    );
   }, `/channels/${id}/watch`);
+  await page.keyboard.press("x");
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
   await page.waitForFunction(
     ({ channel, count }) =>
       (
         window as Window & {
-          __loomarrDecodedFrames?: Array<{ at: number; channel: string; src: string }>;
+          __loomarrDecodedFrames?: Array<{
+            at: number;
+            channel: string;
+            ended: boolean;
+            paused: boolean;
+            src: string;
+          }>;
         }
       ).__loomarrDecodedFrames
         ?.slice(count)
@@ -110,17 +144,35 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
     { channel: id, count: before.count },
     { timeout: 10_000 },
   );
-  const decodedAt = await page.evaluate(
+  const decoded = await page.evaluate(
     ({ channel, count }) =>
       (
         window as Window & {
-          __loomarrDecodedFrames: Array<{ at: number; channel: string; src: string }>;
+          __loomarrDecodedFrames: Array<{
+            at: number;
+            channel: string;
+            ended: boolean;
+            paused: boolean;
+            src: string;
+          }>;
         }
       ).__loomarrDecodedFrames
         .slice(count)
-        .find((frame) => frame.channel === channel)?.at ?? Number.POSITIVE_INFINITY,
+        .find((frame) => frame.channel === channel),
     { channel: id, count: before.count },
   );
+  const joined = await page.evaluate(
+    ({ channel, since }) =>
+      (
+        window as Window & {
+          __loomarrMediaEvents?: Array<{ at: number; channel: string; type: string }>;
+        }
+      ).__loomarrMediaEvents?.some(
+        (event) => event.at >= since && event.channel === channel && event.type === "playing",
+      ) ?? false,
+    { channel: id, since: started },
+  );
+  expect(joined, `${id} decoded target media without joining playback`).toBe(true);
   const trace = await page.evaluate((since) => {
     const resources = performance
       .getEntriesByType("resource")
@@ -139,7 +191,7 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
       .map((event) => `${event.type}${event.readyState}@${(event.at - since).toFixed(0)}`);
     return [...resources, ...(events ?? [])].join(" ");
   }, started);
-  return { duration: decodedAt - started, trace };
+  return { duration: (decoded?.at ?? Number.POSITIVE_INFINITY) - started, trace };
 };
 
 const adjacentNumbers = (number: number): [number, number] => [
@@ -190,6 +242,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await page.goto(`/channels/${channelId(1)}/watch`);
   await waitForDecodedFrame(page);
   await expect(page.locator("video")).toHaveCount(1);
+  await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
   await waitForAdjacentWarm(backend, 1);
 
   // Arbitrary prepared tune: navigate the already-running app to a non-adjacent Channel. Measure
@@ -283,6 +336,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       };
     });
     expect(timing.detail).toMatchObject({ adjacent: true, warmed: true });
+    expect(await page.locator("video").evaluate((element) => element.paused)).toBe(false);
     osd.push(timing.osd);
     adjacentFrames.push(timing.frame);
     expect(backend.state.playURLMints.filter((candidate) => candidate === id)).toHaveLength(targetMints);

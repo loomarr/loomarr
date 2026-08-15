@@ -170,6 +170,96 @@ describe("useHlsPlayer", () => {
     await waitFor(() => expect(controller.destroy).toHaveBeenCalledOnce());
   });
 
+  it("reuses compatible SourceBuffers after a prepared playlist reaches ended", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockImplementation((id: string) =>
+      Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
+    );
+    let replacementLoadedData!: () => void;
+    const video = {
+      ...videoEl(),
+      addEventListener: vi.fn((event: string, callback: () => void) => {
+        if (event === "loadeddata") replacementLoadedData = callback;
+      }),
+      requestVideoFrameCallback: vi.fn(() => 1),
+      cancelVideoFrameCallback: vi.fn(),
+    } as unknown as HTMLVideoElement;
+    const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
+      initialProps: { id: "ch-1" },
+    });
+
+    let release!: () => void;
+    act(() => {
+      release = result.current.attach(video);
+    });
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as {
+      attachMedia: ReturnType<typeof vi.fn>;
+      loadSource: ReturnType<typeof vi.fn>;
+      on: ReturnType<typeof vi.fn>;
+      transferMedia: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() =>
+      expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
+    );
+
+    let finishRemoval!: () => void;
+    const remove = vi.fn();
+    const transferred = {
+      media: video,
+      mediaSource: { readyState: "ended" },
+      tracks: {
+        video: {
+          buffer: {
+            updating: false,
+            buffered: { length: 1, start: () => 0, end: () => 1 },
+            addEventListener: vi.fn((event: string, callback: () => void) => {
+              if (event === "updateend") finishRemoval = callback;
+            }),
+            removeEventListener: vi.fn(),
+            remove,
+          },
+        },
+      },
+    };
+    controller.transferMedia.mockReturnValue(transferred);
+    const attachedBeforeTune = controller.attachMedia.mock.calls.length;
+
+    act(() => release());
+    rerender({ id: "ch-2" });
+    act(() => {
+      result.current.attach(video);
+    });
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
+    expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8");
+    expect(controller.attachMedia).toHaveBeenCalledTimes(attachedBeforeTune);
+    const manifestParsed = controller.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "manifestParsed")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(manifestParsed).toBeTypeOf("function");
+    manifestParsed?.();
+    expect(video.play).not.toHaveBeenCalled();
+
+    act(() => finishRemoval());
+    await waitFor(() => expect(controller.attachMedia).toHaveBeenLastCalledWith(transferred));
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+
+    vi.mocked(video.play).mockClear();
+    const fragmentBuffered = controller.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "fragBuffered")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(fragmentBuffered).toBeTypeOf("function");
+    fragmentBuffered?.();
+    expect(video.play).toHaveBeenCalledOnce();
+
+    vi.mocked(video.play).mockClear();
+    replacementLoadedData();
+    expect(video.play).toHaveBeenCalledOnce();
+    replacementLoadedData();
+    expect(video.play).toHaveBeenCalledOnce();
+  });
+
   it("surfaces an error when the mint returns no URL", async () => {
     channelPlayUrl.mockResolvedValue({}); // neither relativeUrl nor url
     const { result } = renderHook(() => useHlsPlayer("ch-1"));

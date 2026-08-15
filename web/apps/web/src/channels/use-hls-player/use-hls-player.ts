@@ -117,8 +117,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (requestFrame) frameCallback = requestFrame(() => onFirstFrame());
         else video.addEventListener("playing", onFirstFrame, { once: true });
       };
-      const onLoadedData = () => armFirstFrameWatch();
+      let joinReplacementOnLoadedData: (() => void) | undefined;
+      const onLoadedData = () => {
+        armFirstFrameWatch();
+        const joinReplacement = joinReplacementOnLoadedData;
+        joinReplacementOnLoadedData = undefined;
+        joinReplacement?.();
+      };
       const stopFirstFrameWatch = () => {
+        joinReplacementOnLoadedData = undefined;
         if (frameCallback !== undefined) video.cancelVideoFrameCallback?.(frameCallback);
         video.removeEventListener("loadeddata", onLoadedData);
         video.removeEventListener("playing", onFirstFrame);
@@ -170,13 +177,28 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             backBufferLength: 30,
           });
         hlsRef.current.instance = hls;
-        const onManifestParsed = () => {
-          markTunePhase(attempt, "manifest");
+        let manifestParsed = false;
+        let replacementAttached = false;
+        const playReplacement = () => {
+          if (!replacementAttached) return;
           void video.play().catch(() => {
             /* autoplay policy — the control handles it */
           });
         };
-        const onFragmentBuffered = () => armFirstFrameWatch();
+        joinReplacementOnLoadedData = playReplacement;
+        const onManifestParsed = () => {
+          manifestParsed = true;
+          markTunePhase(attempt, "manifest");
+          playReplacement();
+        };
+        const onFragmentBuffered = () => {
+          armFirstFrameWatch();
+          // attachMedia can queue a target loadstart after it returns. WebKit then resets the
+          // element to paused even when the immediate post-attach play() succeeded. Join once as
+          // bytes buffer and once more when target loadeddata proves that queued loadstart is past;
+          // both belong to this viewer tune, rather than being an autoplay retry loop.
+          playReplacement();
+        };
         const onError = (_evt: string, data: { fatal: boolean; type: string }) => {
           if (!data.fatal) return; // non-fatal: hls.js recovers on its own
           // ⚠ A fatal error during a LIVE stream is usually RECOVERABLE, not terminal — the channel
@@ -197,32 +219,50 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.destroy();
           }
         };
-        // Preserve the open MediaSource AND its compatible SourceBuffers, but never their outgoing
+        // Preserve the reusable MediaSource AND its compatible SourceBuffers, but never their outgoing
         // Channel-relative bytes. transferMedia() is hls.js's public in-place handoff; clearing the
         // buffered ranges through standard MSE avoids both WebKit's expensive MediaSource close/open
-        // and its equally expensive SourceBuffer remove/recreate cycle. A closed source or failed
-        // clear falls back to hls.js's normal full reset below.
+        // and its equally expensive SourceBuffer remove/recreate cycle. Prepared publications leave
+        // MediaSource in `ended`, which remains reusable: SourceBuffer.remove/append transitions it
+        // back to `open`. Only a closed source (or failed clear) needs hls.js's full reset below.
         let transferred = hls.url && hls.media === video ? hls.transferMedia() : null;
         let clearing: Promise<void> | undefined;
-        if (transferred?.mediaSource?.readyState === "open") {
-          // Do not serialize manifest I/O behind the asynchronous MSE remove. hls.js detects an
-          // updating transferred SourceBuffer and blocks only the append queue, so the replacement
-          // manifest and init segment can arrive while WebKit clears the old range.
+        if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
+          // Start manifest I/O immediately, but do not attach hls.js to the transferred buffers until
+          // their asynchronous removal completes. WebKit can strand hls.js's SourceBuffer blocker
+          // when attach and remove overlap, even though the replacement segment has already arrived.
           clearing = clearTransferredBuffers(transferred);
           video.currentTime = 0;
-        } else if (transferred) {
-          hls.attachMedia(transferred);
+        } else {
           transferred = null;
         }
-        hls.loadSource(url);
-        if (transferred) hls.attachMedia(transferred);
-        else if (hls.media !== video) hls.attachMedia(video);
-        void clearing?.catch(() => hls.recoverMediaError());
         if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
         else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
+        hls.loadSource(url);
+        if (clearing) {
+          try {
+            await clearing;
+          } catch {
+            // A failed range removal cannot be reused safely. Attaching the element directly gives
+            // hls.js a fresh MediaSource; the transferred source loses its final reference when the
+            // element's blob URL is replaced.
+            transferred = null;
+          }
+        }
+        if (!current()) {
+          stopFirstFrameWatch();
+          hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+          hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
+          hls.off(Hls.Events.ERROR, onError);
+          return () => undefined;
+        }
+        if (transferred) hls.attachMedia(transferred);
+        else if (hls.media !== video) hls.attachMedia(video);
+        replacementAttached = true;
+        if (manifestParsed) playReplacement();
         return () => {
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
