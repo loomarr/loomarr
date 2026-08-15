@@ -173,7 +173,7 @@ func seedChannel(t *testing.T, st store.Store, id, name string, number int, back
 	if backend != "" {
 		ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: backend}
 	}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }

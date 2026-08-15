@@ -41,7 +41,7 @@ type CuratorStore interface {
 	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
 	// plus a linear walk, duplicated byte-for-byte in `binder`.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
-	// ⚠ NO UpsertChannel, deliberately. This package decides retirements (§8.2a) but must not
+	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
 	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
 	// and the resulting two-writer arrangement was held together by a comment explaining that

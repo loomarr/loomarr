@@ -181,12 +181,16 @@ const SortableLineupRow = ({
 // reported as "why do I still see the same old movies".
 type LineupSort = "order" | "newest" | "year";
 
-const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
+const ChannelLineupEditor = ({ channelId, revision, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
 
-  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
+  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(
+    channelId,
+    lineup,
+    revision,
+  );
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },

@@ -287,7 +287,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	mk := func(id, status, creator string) Proposal {
-		return Proposal{ID: id, JobID: "job-1", Status: status, CreatedBy: creator,
+		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
 			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
 	}
 	_ = s.CreateProposal(ctx, mk("p1", "submitted", "alice"))
@@ -503,15 +503,15 @@ func testProposalApprovalSameIntentConflict(t *testing.T, newStore NewStoreFunc)
 	now := time.Unix(1_800_000_000, 0).UTC()
 	const jobID = "job-shared-intent"
 
-	seed := func(id string) Proposal {
+	seed := func(id string, createdAt time.Time) Proposal {
 		p := Proposal{ID: id, JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
-			CreatedAt: now, UpdatedAt: now}
+			CreatedAt: createdAt, UpdatedAt: createdAt}
 		if err := s.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)
 		}
 		return p
 	}
-	first, second := seed("same-intent-first"), seed("same-intent-second")
+	first, second := seed("same-intent-first", now), seed("same-intent-second", now.Add(time.Second))
 	first.Status, first.ApprovedBy = "approved", "admin-a"
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
 		Proposal: first,
@@ -552,9 +552,109 @@ func testProposalApprovalSameIntentConflict(t *testing.T, newStore NewStoreFunc)
 	for i, id := range []string{"empty-intent-a", "empty-intent-b"} {
 		ch := approvalChannel(id, "unused", 142+i)
 		ch.IntentRef = ""
-		if err := s.UpsertChannel(ctx, ch); err != nil {
+		if _, err := s.SaveChannel(ctx, ch); err != nil {
 			t.Errorf("empty intent_ref channel %s: %v", id, err)
 		}
+	}
+}
+
+func testProposalApprovalStaleChannel(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	const jobID = "job-stale-channel"
+
+	planned := approvalChannel("ch-stale-approval", jobID, 145)
+	planned = mustSaveChannel(t, s, planned)
+	winner := planned
+	winner.Name = "concurrent operator edit"
+	winner = mustSaveChannel(t, s, winner)
+
+	p := Proposal{
+		ID: "proposal-stale-channel", JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CreateProposal(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	p.Status, p.ApprovedBy = "approved", "admin"
+	title := provision.Record{
+		Key: "movie:tmdb:145", Title: provision.Title{MediaType: provision.Movie, TMDBID: 145},
+		State: provision.Wanted, Deadline: now,
+	}
+	planned.Name = "stale approval"
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: p, Titles: []provision.Record{title}, Channel: planned,
+	}); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("stale approval = %v, want ErrChannelStale", err)
+	}
+
+	gotProposal, err := s.GetProposal(ctx, p.ID)
+	if err != nil || gotProposal.Status != "submitted" {
+		t.Fatalf("proposal after stale approval = (%+v, %v), want submitted", gotProposal, err)
+	}
+	if _, err := s.GetTitle(ctx, title.Key); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale approval inserted title: %v", err)
+	}
+	gotChannel, err := s.GetChannel(ctx, winner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChannel.Name != winner.Name || gotChannel.Revision != winner.Revision {
+		t.Fatalf("stale approval changed channel: name=%q revision=%d", gotChannel.Name, gotChannel.Revision)
+	}
+}
+
+func testProposalApprovalSuperseded(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	const jobID = "job-superseded-approval"
+
+	older := Proposal{
+		ID: "proposal-older", JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	newer := Proposal{
+		ID: "proposal-newer", JobID: jobID, Status: "approved", ProposalJSON: `{}`,
+		// Equal timestamps are deliberately ambiguous at the persisted precision and
+		// therefore fail closed rather than allowing either proposal to roll the other back.
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CreateProposal(ctx, older); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateProposal(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	current := mustSaveChannel(t, s, approvalChannel("ch-superseded", jobID, 146))
+
+	older.Status = "approved"
+	older.ApprovedBy = "admin"
+	olderChannel := current
+	olderChannel.Name = "older lineup"
+	title := provision.Record{
+		Key: "movie:tmdb:146", Title: provision.Title{MediaType: provision.Movie, TMDBID: 146},
+		State: provision.Wanted, Deadline: now,
+	}
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: older, Titles: []provision.Record{title}, Channel: olderChannel,
+	}); !errors.Is(err, ErrProposalSuperseded) {
+		t.Fatalf("older approval = %v, want ErrProposalSuperseded", err)
+	}
+	gotProposal, err := s.GetProposal(ctx, older.ID)
+	if err != nil || gotProposal.Status != "submitted" {
+		t.Fatalf("older proposal after rejection = (%+v, %v), want submitted", gotProposal, err)
+	}
+	if _, err := s.GetTitle(ctx, title.Key); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("superseded approval inserted title: %v", err)
+	}
+	gotChannel, err := s.GetChannel(ctx, current.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChannel.Name != current.Name || gotChannel.Revision != current.Revision {
+		t.Fatalf("superseded approval changed channel: name=%q revision=%d", gotChannel.Name, gotChannel.Revision)
 	}
 }
 
@@ -750,14 +850,14 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 		return ch
 	}
 	for _, ch := range []Channel{mk("c1", "job-a", 1), mk("c2", "job-b", 2), mk("c3", "", 3)} {
-		if err := s.UpsertChannel(ctx, ch); err != nil {
+		if _, err := s.SaveChannel(ctx, ch); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.UpsertChannel(ctx, mk("c4", "job-b", 4)); !errors.Is(err, ErrChannelConflict) {
+	if _, err := s.SaveChannel(ctx, mk("c4", "job-b", 4)); !errors.Is(err, ErrChannelConflict) {
 		t.Errorf("duplicate intent write = %v, want ErrChannelConflict", err)
 	}
-	if err := s.UpsertChannel(ctx, mk("c5", "job-c", 2)); !errors.Is(err, ErrChannelConflict) {
+	if _, err := s.SaveChannel(ctx, mk("c5", "job-c", 2)); !errors.Is(err, ErrChannelConflict) {
 		t.Errorf("duplicate number write = %v, want ErrChannelConflict", err)
 	}
 

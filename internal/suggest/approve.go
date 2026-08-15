@@ -15,10 +15,11 @@ import (
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
 var ErrNotSubmitted = store.ErrProposalNotSubmitted
 
-// ErrSuperseded reports an older proposal for a job whose newer proposal has already been
-// approved. Spending the stale acquisitions and rolling the channel backward is not a valid
-// approval; the older row remains submitted for an explicit deny/audit decision.
-var ErrSuperseded = errors.New("suggest: proposal was superseded by a newer approval")
+// ErrSuperseded reports an older proposal for a job whose same-time-or-newer proposal has already
+// been approved. Spending the stale acquisitions and rolling the channel backward is not a valid
+// approval; equal persisted timestamps fail closed because their order is unknowable. The older
+// row remains submitted for an explicit deny/audit decision.
+var ErrSuperseded = store.ErrProposalSuperseded
 
 // ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
 //
@@ -68,7 +69,7 @@ type ChannelBinder interface {
 	// AfterApprovalCommitted may probe codecs and reconcile with Tunarr. Those are remote or
 	// derived consequences, not part of the local transaction; failures are recorded and
 	// retried by the channel sweep rather than unwinding an approval that already committed.
-	AfterApprovalCommitted(ctx context.Context, ch store.Channel)
+	AfterApprovalCommitted(ctx context.Context, channelID string)
 }
 
 // ApprovalResult is the complete observable result of the approval gate.
@@ -121,14 +122,6 @@ func (a *Approver) Approve(
 	if a.channels == nil {
 		return ApprovalResult{}, errors.New("approve: channel binder is not configured")
 	}
-	latest, err := a.store.NewestProposalByStatusForJob(ctx, p.JobID, "approved")
-	if err == nil && latest.CreatedAt.After(p.CreatedAt) {
-		return ApprovalResult{}, ErrSuperseded
-	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return ApprovalResult{}, fmt.Errorf("approve: read latest decision: %w", err)
-	}
-
 	var body Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return ApprovalResult{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
@@ -210,7 +203,18 @@ func (a *Approver) Approve(
 	var ch store.Channel
 	var enqueued int
 	for attempt := 0; attempt < maxChannelPlanAttempts; attempt++ {
-		var err error
+		// This check belongs inside the retry loop. A newer approval can commit after an
+		// older candidate's first check and force its channel CAS to fail. Rechecking before
+		// every replan prevents that older candidate from then serialising after the newer
+		// decision and rolling the channel back.
+		latest, err := a.store.NewestProposalByStatusForJob(ctx, p.JobID, "approved")
+		if err == nil && !latest.CreatedAt.Before(p.CreatedAt) {
+			return ApprovalResult{}, ErrSuperseded
+		}
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return ApprovalResult{}, fmt.Errorf("approve: read latest decision: %w", err)
+		}
+
 		ch, err = a.channels.PlanApprovedChannel(ctx, p)
 		if err != nil {
 			return ApprovalResult{}, fmt.Errorf("approve: plan channel: %w", err)
@@ -223,7 +227,7 @@ func (a *Approver) Approve(
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, store.ErrChannelConflict) || attempt == maxChannelPlanAttempts-1 {
+		if (!errors.Is(err, store.ErrChannelConflict) && !errors.Is(err, store.ErrChannelStale)) || attempt == maxChannelPlanAttempts-1 {
 			return ApprovalResult{}, err
 		}
 		if err := ctx.Err(); err != nil {
@@ -234,7 +238,7 @@ func (a *Approver) Approve(
 	// Codec probing and the immediate Tunarr push are explicitly post-commit. The planned channel
 	// is already due for the durable sweep, so this best-effort continuation can never turn a
 	// successful local approval into an error or strand an approved proposal without a channel.
-	a.channels.AfterApprovalCommitted(ctx, ch)
+	a.channels.AfterApprovalCommitted(ctx, ch.ID)
 	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
 }
 

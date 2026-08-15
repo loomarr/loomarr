@@ -10,6 +10,7 @@ const ProgrammingScreen = () => {
   return (
     <ChannelProgramming
       channelId={id}
+      revision={ch.revision}
       channelName={ch.name}
       lineup={ch.lineup ?? []}
       policy={ch.policy}

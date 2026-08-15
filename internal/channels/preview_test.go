@@ -32,7 +32,7 @@ func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
 	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{weekend}}}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 	}}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 

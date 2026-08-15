@@ -45,7 +45,7 @@ func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []sc
 	for _, k := range airing {
 		ch.Desired = append(ch.Desired, schedule.Slot{Kind: schedule.SlotProgram, Key: k, DurationMs: 1000})
 	}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
