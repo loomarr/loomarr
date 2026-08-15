@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -353,7 +354,14 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 }
 
 func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash, newHash string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id, policy_json FROM channels`)
+	query := `SELECT id, policy_json FROM channels`
+	if s.dialect == DialectPostgres {
+		// Lock the policy snapshots before decoding them. Without this, a concurrent
+		// channel CAS could commit between SELECT and UPDATE and this maintenance
+		// transaction would overwrite its policy with the pre-edit JSON.
+		query += ` FOR UPDATE`
+	}
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -395,7 +403,9 @@ func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash
 		return err
 	}
 	for _, item := range changed {
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE channels SET policy_json = ? WHERE id = ?`), string(item.blob), item.id); err != nil {
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE channels SET policy_json = ?, revision = revision + 1 WHERE id = ?`),
+			string(item.blob), item.id); err != nil {
 			return err
 		}
 	}
@@ -1004,10 +1014,9 @@ func (s *sqlStore) SetClipsHeld(ctx context.Context, paths []string, held, autoF
 // SetClipsRemoved tombstones (or restores) clips by path — the Catalog tab's "Remove from
 // catalog" (V35).
 //
-// ⚠ **This is the ONLY writer of `removed_at`**, exactly as RecordClipPlay is the only writer of
-// the play counters, and for the same reason: `UpsertClip` deliberately omits the column from its
-// DO UPDATE list, so the next scan cannot resurrect a removed clip by finding its file still on
-// disk. Route the write anywhere else and that guarantee is gone.
+// ⚠ This and ReplaceSplitChildren are the ONLY writers of `removed_at`, and both express the same
+// catalog tombstone transition. `UpsertClip` deliberately omits the column, so the next scan
+// cannot resurrect a removed clip merely by finding its file still on disk.
 //
 // ⚠ It does NOT touch the file. Nothing in Loomarr deletes an operator's media — the button says
 // remove from the CATALOG, and the file stays where they put it.
@@ -1034,6 +1043,111 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 	n, err := res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("set clips removed: %w", err)
+	}
+	return int(n), nil
+}
+
+// ReplaceSplitChildren completes a re-split by making keepHashes the active generation for one
+// composite. Old children are TOMBSTONED, never deleted; their bytes and metadata remain available
+// to restore. Any clip explicitly pinned by a channel joins the keep set, because a detector
+// improvement must not silently invalidate an operator override.
+//
+// The policy reads and clip writes share one transaction. Postgres locks channel rows while their
+// pins are decoded, so a concurrent channel CAS cannot add a pin in the gap between the read and
+// retirement. Current-generation hashes are restored too: a cut retired by an earlier generation
+// may become byte-identical to a newly accepted cut, and UpsertClip intentionally preserves its
+// tombstone on an ordinary scan.
+func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	if parentHash == "" {
+		return 0, errors.New("replace split children: parent hash is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	query := `SELECT policy_json FROM channels`
+	if s.dialect == DialectPostgres {
+		query += ` FOR UPDATE`
+	}
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("replace split children %s read channel pins: %w", parentHash, err)
+	}
+	keep := make(map[string]struct{}, len(keepHashes))
+	for _, hash := range keepHashes {
+		if hash != "" {
+			keep[hash] = struct{}{}
+		}
+	}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("replace split children %s scan channel policy: %w", parentHash, err)
+		}
+		var policy schedule.ChannelPolicy
+		if err := json.Unmarshal([]byte(raw), &policy); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("replace split children %s decode channel policy: %w", parentHash, err)
+		}
+		if policy.Filler != nil {
+			for _, hash := range policy.Filler.Pinned {
+				if hash != "" {
+					keep[hash] = struct{}{}
+				}
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("replace split children %s read channel pins: %w", parentHash, err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("replace split children %s close channel pins: %w", parentHash, err)
+	}
+
+	hashes := make([]string, 0, len(keep))
+	for hash := range keep {
+		hashes = append(hashes, hash)
+	}
+	sort.Strings(hashes)
+	placeholders := make([]string, len(hashes))
+	for i := range hashes {
+		placeholders[i] = "?"
+	}
+
+	if len(hashes) > 0 {
+		args := make([]any, 0, len(hashes)+3)
+		args = append(args, epoch(at), parentHash)
+		for _, hash := range hashes {
+			args = append(args, hash)
+		}
+		q := `UPDATE clips SET removed_at = 0, updated_at = ? WHERE parent_hash = ? AND hash IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := tx.ExecContext(ctx, s.ph(q), args...); err != nil {
+			return 0, fmt.Errorf("replace split children %s restore generation: %w", parentHash, err)
+		}
+	}
+
+	args := []any{epoch(at), epoch(at), parentHash}
+	q := `UPDATE clips SET removed_at = ?, updated_at = ? WHERE parent_hash = ? AND removed_at = 0`
+	if len(hashes) > 0 {
+		q += ` AND hash NOT IN (` + strings.Join(placeholders, ",") + `)`
+		for _, hash := range hashes {
+			args = append(args, hash)
+		}
+	}
+	res, err := tx.ExecContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return 0, fmt.Errorf("replace split children %s retire old generation: %w", parentHash, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("replace split children %s count retired: %w", parentHash, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
 	}
 	return int(n), nil
 }

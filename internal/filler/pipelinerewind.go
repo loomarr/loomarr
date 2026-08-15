@@ -72,10 +72,11 @@ func (p *Pipeline) WithRewind(store RewindStore, clipDir string) *Pipeline {
 // confirmed eras — the very things a person went to the trouble of getting right. A re-tag simply
 // runs the classifier again and merges.
 //
-// ⚠ A rewind on a composite does NOT touch its confirmed segments. They are independent clips with
-// their own ladders; a re-split proposes a new cut list beside them and the operator resolves the
-// overlap. Deleting them would destroy tagged, possibly hand-corrected adverts to re-derive them
-// from a detector that has no idea a human was involved.
+// ⚠ A rewind on a composite does NOT touch its confirmed segments. They remain the active
+// generation while the replacement proposal is incomplete. Final confirmation atomically
+// tombstones superseded children, preserving their files and metadata for restore; exact reused
+// hashes and channel-pinned clips survive. Touching them here would replace a complete reel with
+// an unfinished one and destroy the recovery boundary.
 func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force bool) error {
 	idx := StageIndex(from)
 	if idx < 0 {

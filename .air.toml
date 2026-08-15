@@ -25,7 +25,7 @@ tmp_dir = "tmp"
   # Source shared credentials first, then re-apply the worktree isolation resolved by
   # scripts/dev-env.sh. This prevents a copied .env from putting two agents back on :8080 or
   # the same SQLite file. A missing .env remains supported.
-  full_bin = "sh -c 'set -a; [ -f .env ] && . ./.env; [ -n \"${LOOMARR_DEV_PORT:-}\" ] && LISTEN_ADDR=\":${LOOMARR_DEV_PORT}\"; [ -n \"${LOOMARR_AGENT_DATABASE_URL:-}\" ] && DATABASE_URL=\"${LOOMARR_AGENT_DATABASE_URL}\"; [ -n \"${LOOMARR_AGENT_FILLER_DIR:-}\" ] && FILLER_DIR=\"${LOOMARR_AGENT_FILLER_DIR}\"; set +a; exec ./tmp/loomarr-dev'"
+  full_bin = "sh -c 'set -a; [ -f .env ] && . ./.env; [ -n \"${LOOMARR_DEV_PORT:-}\" ] && LISTEN_ADDR=\":${LOOMARR_DEV_PORT}\"; [ -n \"${LOOMARR_AGENT_DATABASE_URL:-}\" ] && DATABASE_URL=\"${LOOMARR_AGENT_DATABASE_URL}\"; [ -n \"${LOOMARR_AGENT_FILLER_DIR:-}\" ] && FILLER_DIR=\"${LOOMARR_AGENT_FILLER_DIR}\"; [ -n \"${LOOMARR_AGENT_PREPARED_DIR:-}\" ] && PLAYOUT_PREPARED_DIR=\"${LOOMARR_AGENT_PREPARED_DIR}\"; [ -n \"${LOOMARR_AGENT_DEV_LOGIN:-}\" ] && LOOMARR_DEV_LOGIN=\"${LOOMARR_AGENT_DEV_LOGIN}\"; set +a; exec ./tmp/loomarr-dev'"
   # Rebuild only on backend Go source changes.
   include_ext = ["go"]
   exclude_dir = ["web", "tmp", "docs", "design", "node_modules", ".git", "internal/testkit/fixtures"]

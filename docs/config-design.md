@@ -194,10 +194,10 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | Page | Contents | Live tests |
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
-| **AI** | Model roles: lineup model/provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker still owns probe/catalog/hot-swap. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
+| **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
-| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (backend, quality, language/subtitles, detected encoder/capacity, guide, advanced paths) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. | per sub-tab where testable |
-| **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
+| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
+| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
 ⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
@@ -230,6 +230,12 @@ here. **The lookup half still governs presentation:** keys are monospace and ver
 humanized, because someone arrives holding a literal `job.workers` from a compose file and a row
 reading "Job workers" does not match the string they are carrying.
 
+The exception is an **action-owned value** whose safe write is more than a registry PATCH.
+`llm.model` stays searchable and shows its resolved value, but its action deep-links to the AI
+picker instead of rendering free text: selection also verifies tool capability, preserves the
+branded hosted provider, and hot-swaps the client. Letting the raw table bypass those effects
+would make the escape hatch a second, less-safe implementation of the same product decision.
+
 V55 closes the loophole that made this escape hatch the only home of ordinary settings. Every
 non-advanced key has an owning workflow page; the raw table links to that page, carries the same
 help and environment-takeover affordance as the full field, and exposes the explicit **Clear
@@ -258,6 +264,13 @@ only in the raw escape hatch; workflow forms never derive product copy from iden
 
 **Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). `llm.api_key` is hosted-only, while `llm.url` applies to both providers: it is the Ollama host for local AI and the OpenAI-compatible base URL for hosted AI. Hiding the local URL would make a non-default Ollama host impossible to configure. The UI evaluates conditions against live edits; a hidden field's value is untouched.
 
+**Unavailable fields stay legible.** A workflow may disable a setting whose prerequisite cannot
+currently run, but it must render the reason beside that same control. This is distinct from an
+environment pin: provenance says who owns a value; unavailability says whether the app can act on
+it. The saved desired value is retained so fixing the prerequisite activates the operator's prior
+choice instead of resetting it. The disabled control and its reason remain programmatically
+associated for assistive technology.
+
 ### V55 surface audit decisions
 
 - Retired declared-but-unconsumed promises: `season.precision`, `playout.transport`,
@@ -275,7 +288,7 @@ only in the raw escape hatch; workflow forms never derive product copy from iden
   the six-month compliance ceiling are fixed by the image module. Operators control storage,
   outbound fetching, upload size, and derivative cache budget.
 
-**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
+**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · unavailable reason where applicable · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, unavailable reason, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
 **One curated home, with progressive disclosure.** `All settings` remains the searchable escape
 hatch, but every key has only one task-shaped editor elsewhere. A control does not appear on both
@@ -286,6 +299,22 @@ show ordinary choices first, and put tuning limits, executable paths, and pipeli
 group's Advanced disclosure. A safe default is not a reason to make its tuning knob part of the
 everyday path. Group headings carry a one-line explanation when the distinction would otherwise be
 unclear.
+
+Playback applies that rule to the encoder specifically: automatic selection is the ordinary path,
+so the free-form `playout.encoder` override is Advanced alongside executable and storage paths. The
+page leads with the read-only live status because it answers who is actually streaming, which GPU or
+software path is active, and whether any fallback encoders are consuming capacity before the
+operator changes a preference. Tunarr-backed channels keep their encoding profile in Connections →
+Tunarr; Playback explains that ownership instead of presenting Loomarr's internal controls as if they
+reconfigured Tunarr.
+
+Connections applies the same rule to service-owned identifiers. Loomarr automatically chooses
+Tunarr's Default transcode profile and the first Sonarr/Radarr profile and root folder when their
+fields are blank. Their free-form identifiers are therefore labelled as **overrides** and remain
+behind the connection block's Advanced disclosure; the ordinary path asks only how to reach the
+service. Security likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
+and is the safe ordinary path; changing the transport policy is deployment troubleshooting, not a
+routine sign-in preference.
 
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
@@ -317,7 +346,7 @@ curated home for its enable switch, confidence threshold, and destructive on-fil
 but those values are staged inside the panel and committed with an explicit **Save auto-filing**
 action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
-**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). **Broken blocks open, healthy ones collapse**, so the page opens focused on what needs attention — and a fully set-up install shows a page of quiet collapsed blocks with nothing to worry about.
+**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 
 **Wiring is an effect of saving, not a manual action.** Registering Tunarr as a tuner/guide source in the media server (`livetv`) and pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from the saved connection values* — there is no decision to make and re-running is a no-op. So a Connections save runs them server-side automatically (`settingsPatch` → both connectors, best-effort and non-fatal: a wiring failure never fails the save and surfaces on the relevant connection's own status). The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the Tunarr connection (the Connections step) already auto-wires the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the Tunarr connection's own verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
 

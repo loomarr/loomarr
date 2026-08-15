@@ -39,14 +39,14 @@ import { Button } from "@/components/ui/button";
 
 interface ChannelProgrammingProps {
   channelId: string;
+  revision: number;
   channelName: string;
   lineup: LineupEntryDTO[];
   policy: ChannelPolicy;
   onPolicyChange: (next: ChannelPolicy) => void;
-  // The channel's playback strategy. Not part of ChannelPolicy and saved by its own PATCH,
-  // but edited here because Ordering's "inherit channel default" refers to it.
+  // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
+  // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
   strategy?: string;
-  onStrategyChange?: (next: string) => void;
   // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
   // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
   // control says so instead of offering a setting the job would skip.
@@ -75,12 +75,12 @@ const Block = ({
 
 const ChannelProgramming = ({
   channelId,
+  revision,
   channelName,
   lineup,
   policy,
   onPolicyChange,
   strategy,
-  onStrategyChange,
   intentRef,
   onRefined,
 }: ChannelProgrammingProps) => {
@@ -88,7 +88,7 @@ const ChannelProgramming = ({
 
   // The scheduling-rules draft (§12). Only the rules block reads it; everything else on this
   // surface keeps saving inline through `onPolicyChange`.
-  const rules = useChannelRulesDraft(channelId, policy);
+  const rules = useChannelRulesDraft(channelId, policy, revision);
 
   // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
@@ -120,7 +120,7 @@ const ChannelProgramming = ({
         hint="The titles this channel draws from, and the content it stays within."
         defaultOpen
       >
-        <ChannelLineupEditor channelId={channelId} lineup={lineup} />
+        <ChannelLineupEditor channelId={channelId} revision={revision} lineup={lineup} />
         <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="scope" />
         {/* `scope.series` narrows the channel to specific shows. It sits under the scope
             fields because it is the same question ("what may play?") at a coarser grain than
@@ -132,13 +132,7 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields
-          policy={policy}
-          onChange={onPolicyChange}
-          show="ordering"
-          strategy={strategy}
-          onStrategyChange={onStrategyChange}
-        />
+        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" strategy={strategy} />
       </Block>
 
       <Block

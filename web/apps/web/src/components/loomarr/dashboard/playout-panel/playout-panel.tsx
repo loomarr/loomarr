@@ -169,7 +169,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
           </Tooltip>
         </div>
         <p className="mt-0.5 truncate text-muted-foreground text-xs">
-          {`${channel.target} · ${channel.mode} · ${pluralize(channel.viewers, "viewer")}`}
+          {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
         </p>
       </PanelRow.Main>
 
@@ -203,13 +203,16 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   );
 };
 
-const PlayoutPanel = ({ status, loading, className }: PlayoutPanelProps) => {
+const PlayoutPanel = ({ status, loading, title = "Playout", className }: PlayoutPanelProps) => {
   const channels = status?.channels ?? [];
 
   return (
-    <Card className={cn("flex flex-col overflow-hidden p-0", className)}>
+    <Card className={cn("flex shrink-0 flex-col overflow-hidden p-0", className)}>
       <div className="flex items-center justify-between gap-3 border-border border-b px-4 py-3">
-        <h2 className="font-semibold text-base">Playout</h2>
+        <h2 className="font-semibold text-base">{title}</h2>
+        {!loading && status != null && (
+          <Badge variant="neutral">{status.running ? "Loomarr" : "Tunarr"}</Badge>
+        )}
       </div>
 
       {loading && <p className="px-4 py-6 text-muted-foreground text-sm">Reading playout status…</p>}

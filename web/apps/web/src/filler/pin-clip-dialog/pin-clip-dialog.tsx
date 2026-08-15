@@ -47,7 +47,10 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
         // fit is as stale as the channel is.
         void queryClient.invalidateQueries({ queryKey: fillerApi.getClipChannelFitQueryKey() });
       },
-      onError: (e) => setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't save that change"),
+      onError: (e, vars) => {
+        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(vars.id) });
+        setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't save that change");
+      },
     },
   });
 
@@ -79,7 +82,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
 
     update.mutate({
       id: channelId,
-      data: { policy: { ...policy, filler: { ...f, pinned, excluded } } },
+      data: { revision: res.data.revision, policy: { ...policy, filler: { ...f, pinned, excluded } } },
     });
   };
 

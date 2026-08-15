@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
@@ -236,8 +237,7 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="absolute top-1.5 left-1.5 size-4 accent-signal"
@@ -330,8 +330,7 @@ const ClipCard = ({
           overlays would have nowhere to sit and the clip would become unselectable. On a
           Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
       {!clip.thumbImage && onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="mt-0.5 size-4 shrink-0 accent-signal"

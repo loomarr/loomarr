@@ -25,6 +25,103 @@ type BreakFrequencyFieldProps = {
   onChange: (next: number | undefined) => void;
 };
 
+type BreakDurationFieldProps = {
+  value: string | undefined;
+  defaultValue: string | undefined;
+  disabled: boolean;
+  onChange: (next: string | undefined) => void;
+};
+
+const durationMinutes = (value: string | undefined): number | undefined => {
+  const match = value?.trim().match(/^([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)$/);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (unit === "ms") return amount / 60_000;
+  if (unit === "s") return amount / 60;
+  if (unit === "h") return amount * 60;
+  return amount;
+};
+
+// Break length has inheritance and override, but deliberately no "off" sentinel. Frequency
+// owns whether a channel has breaks, keeping a zero duration from meaning two different things.
+const BreakDurationField = ({ value, defaultValue, disabled, onChange }: BreakDurationFieldProps) => {
+  const mode = value === undefined ? "default" : "custom";
+  const defaultMinutes = durationMinutes(defaultValue) ?? 5;
+  const [customValue, setCustomValue] = useState(String(durationMinutes(value) ?? defaultMinutes));
+
+  useEffect(() => {
+    const minutes = durationMinutes(value);
+    if (minutes !== undefined) setCustomValue(String(minutes));
+  }, [value]);
+
+  const options = [
+    { value: "default", label: `Follow default (${defaultMinutes} min)` },
+    { value: "custom", label: "Custom length" },
+  ];
+
+  const changeMode = (next: string) => {
+    if (next === "default") onChange(undefined);
+    if (next === "custom") {
+      const parsed = Number(customValue);
+      const nextValue = Number.isFinite(parsed) && parsed >= 0.5 ? parsed : defaultMinutes;
+      setCustomValue(String(nextValue));
+      onChange(`${nextValue}m`);
+    }
+  };
+
+  const changeCustomValue = (next: string) => {
+    setCustomValue(next);
+    const parsed = Number(next);
+    if (Number.isFinite(parsed) && parsed >= 0.5) onChange(`${parsed}m`);
+  };
+
+  const restoreValidValue = () => {
+    const parsed = Number(customValue);
+    if (!Number.isFinite(parsed) || parsed < 0.5) {
+      setCustomValue(String(durationMinutes(value) ?? defaultMinutes));
+    }
+  };
+
+  return (
+    <div className="grid gap-2 sm:max-w-md">
+      <Label htmlFor="channel-break-duration">Break length</Label>
+      <Select value={mode} items={options} onValueChange={changeMode} disabled={disabled}>
+        <SelectTrigger id="channel-break-duration">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {mode === "custom" && (
+        <div className="flex items-center gap-2">
+          <Input
+            aria-label="Custom break length in minutes"
+            className="w-24"
+            type="number"
+            min={0.5}
+            step={0.5}
+            inputMode="decimal"
+            value={customValue}
+            disabled={disabled}
+            onChange={(event) => changeCustomValue(event.target.value)}
+            onBlur={restoreValidValue}
+          />
+          <span className="text-muted-foreground text-sm">minutes</span>
+        </div>
+      )}
+      <p className="text-muted-foreground text-sm">
+        Loomarr automatically uses enough clips to fill this target. The minimum is 30 seconds.
+      </p>
+    </div>
+  );
+};
+
 // The persisted pointer has three meaningful states. This field owns that encoding so the
 // surrounding page can speak in operator choices rather than nil/zero sentinel values.
 const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakFrequencyFieldProps) => {
@@ -120,12 +217,14 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFillerProps) => {
   const {
     draft,
     setDraft,
     breaksPerHour,
     setBreaksPerHour,
+    breakDuration,
+    setBreakDuration,
     preview,
     isPreviewing,
     previewError,
@@ -133,7 +232,7 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
     apply,
     isApplying,
     discard,
-  } = useChannelFillerDraft(channelId, policy);
+  } = useChannelFillerDraft(channelId, policy, revision);
 
   const pinned = draft.pinned ?? [];
   const excluded = draft.excluded ?? [];
@@ -146,17 +245,15 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
   // resolve whichever pins happened to land on page one and render the rest as bare hashes.
   const { resolve, isLoading: resolving } = useFillerCatalog([...pinned, ...excluded]);
 
-  // `filler.pod_max` — the cap on clips per break, so the pin list can say when it exceeds it
-  // (#237). Read from the settings list the sibling filler panels already use rather than added
-  // to a DTO: it is a global knob, not a property of this channel, and the section is admin-only.
+  // Global inherited break defaults. Read from the settings list rather than added to a channel
+  // DTO: they are global knobs, and the section is admin-only.
   // ⚠ `retry: false` for the same reason the coverage query uses it — a filler-less install
   // answers 501 and three retries is console noise for a state that simply renders nothing.
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
   const settingEntries = unwrap(settings.data, (b) => b.settings) ?? [];
-  const podMaxEntry = settingEntries.find((e) => e.key === "filler.pod_max");
-  const podMax = podMaxEntry ? Number(podMaxEntry.value) : undefined;
   const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
   const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
+  const defaultBreakDuration = settingEntries.find((e) => e.key === "filler.break_duration")?.value;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.
@@ -195,6 +292,13 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
           onChange={setBreaksPerHour}
         />
 
+        <BreakDurationField
+          value={breakDuration}
+          defaultValue={defaultBreakDuration}
+          disabled={isApplying}
+          onChange={setBreakDuration}
+        />
+
         {/* scopeEra so the criteria panel can SHOW that a blank era follows the channel's own
             (§10 V51f) — the server has always applied it, and nothing said so. */}
         <FillerCriteria
@@ -218,9 +322,6 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}
             resolving={resolving}
-            // Only the PIN list is capped by pod_max — an exclusion list of any length costs
-            // nothing, because excluding is a filter rather than a thing to fit in a break.
-            cap={podMax}
             disabled={isApplying}
             excludeIds={excluded}
           />

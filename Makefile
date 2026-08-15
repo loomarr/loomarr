@@ -94,10 +94,10 @@ agent-baseline: ## run make check once per clean commit/toolchain and share the 
 agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
-agent-worktree: ## create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in)
+agent-worktree: ## create + bootstrap a ready-to-use sibling worktree (TOPIC=branch)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" ./scripts/agent.sh worktree "$(TOPIC)"
 
-bootstrap: ## install frontend dependencies, run codegen, and prepare isolated local directories
+bootstrap: ## prepare frontend, isolated directories, and a secondary-worktree dev identity
 	@./scripts/agent.sh bootstrap
 
 doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
@@ -219,7 +219,7 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_PREPARED_DIR:-.agent-data/prepared}"; \
 	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
 	  sh scripts/dev-be-guard.sh; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \

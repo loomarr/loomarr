@@ -217,7 +217,7 @@ func effectiveMaxTitles(ctx context.Context, ac *schedule.AutoCurate, th Thresho
 //
 // ⚠ This is a floor on an UNSCORED pick, never a bypass. Everything downstream is unchanged:
 // the title cap still applies, the per-channel opt-in still gates the run, and the acquisition
-// still routes through the one suggest.Approve gate (§8.2). It cannot make a pick the operator
+// still routes through the one suggest.Approver gate (§8.2). It cannot make a pick the operator
 // never authorized, and it cannot admit a title the model marked as a poor fit.
 const adjacencyUnscoredFloor = 0.60
 

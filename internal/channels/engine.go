@@ -105,6 +105,7 @@ type Engine struct {
 	policy           schedule.PendingPolicy
 	reconcileTTLFor  func() time.Duration // live minimum delay before the next sweep eligibility
 	breaksPerHourFor func() int           // live §10 commercial-break default
+	breakDurationFor func() time.Duration // live §10 commercial-break length default
 	defaultWindowFor func() time.Duration // live §6.5 rolling-window default
 	now              func() time.Time
 
@@ -127,6 +128,8 @@ type Config struct {
 	// applied to every channel at reconcile time. 0 = no breaks.
 	BreaksPerHour        int
 	ResolveBreaksPerHour func() int
+	BreakDuration        time.Duration
+	ResolveBreakDuration func() time.Duration
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) — how far ahead each channel materializes before it rolls forward.
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
@@ -149,6 +152,9 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 	if cfg.ResolveBreaksPerHour == nil {
 		cfg.ResolveBreaksPerHour = func() int { return cfg.BreaksPerHour }
 	}
+	if cfg.ResolveBreakDuration == nil {
+		cfg.ResolveBreakDuration = func() time.Duration { return cfg.BreakDuration }
+	}
 	if cfg.ResolveDefaultWindow == nil {
 		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
 	}
@@ -164,6 +170,7 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		policy:           cfg.Policy,
 		reconcileTTLFor:  cfg.ResolveReconcileTTL,
 		breaksPerHourFor: cfg.ResolveBreaksPerHour,
+		breakDurationFor: cfg.ResolveBreakDuration,
 		defaultWindowFor: cfg.ResolveDefaultWindow,
 		now:              now,
 		locks:            map[string]*sync.Mutex{},

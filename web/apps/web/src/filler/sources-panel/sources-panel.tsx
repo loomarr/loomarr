@@ -122,11 +122,20 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // rude — and the results would flicker under the cursor.
   const [sourceQuery, setSourceQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const searchedSource = sources.find((source) => source.id === searchOpenFor);
   const discover = fillerApi.useDiscoverFiller(
-    { q: submittedQuery },
+    { q: submittedQuery, collection: searchedSource?.uri },
     // Admin-only on the server, and only once something has actually been submitted — an
     // enabled query with an empty q would 422 on mount.
-    { query: { enabled: isAdmin && submittedQuery.trim().length >= 2 } },
+    {
+      query: {
+        enabled:
+          isAdmin &&
+          submittedQuery.trim().length >= 2 &&
+          searchedSource?.kind === "archive" &&
+          Boolean(searchedSource.uri),
+      },
+    },
   );
 
   // Runtime + quality for the rows on screen (V35).
@@ -186,7 +195,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   return (
-    <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <FillerSources
         sources={sources}
         // ⚠ The pending row is tracked by ID. This used to be

@@ -39,7 +39,7 @@
         "noExplicitAny": "warn"
       },
       "a11y": {
-        "noLabelWithoutControl": "off"
+        "noLabelWithoutControl": "error"
       },
       "nursery": {
         "useSortedClasses": {

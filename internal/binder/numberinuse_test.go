@@ -34,7 +34,7 @@ func seedNumberedChannel(t *testing.T, st store.Store, id string, number int) {
 	ch.Number = number
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }

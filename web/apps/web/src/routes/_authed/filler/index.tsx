@@ -27,6 +27,9 @@ type FillerSearch = {
   // is deliberately NOT here — it is one constant for both views, so switching grid/list cannot
   // renumber the pages under the operator.
   page?: number;
+  // A composite's content hash. Present means the catalog is showing the airable segments filed
+  // beneath that compilation; absent means the normal top-level catalog hierarchy.
+  parent?: string;
 };
 
 const KINDS = ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
@@ -44,6 +47,7 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
   // `?page=abc` must land on page one rather than sending `offset=-60` (a 422) or NaN.
   const rawPage = Number(search.page);
   const page = Number.isFinite(rawPage) && rawPage > 1 ? Math.floor(rawPage) : undefined;
+  const parent = typeof search.parent === "string" && search.parent.length <= 128 ? search.parent : undefined;
   return {
     ...(q ? { q } : {}),
     ...(kind ? { kind } : {}),
@@ -51,6 +55,7 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
     ...(untagged ? { untagged } : {}),
     ...(view ? { view } : {}),
     ...(page ? { page } : {}),
+    ...(parent ? { parent } : {}),
   };
 };
 

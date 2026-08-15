@@ -68,6 +68,10 @@ type FillerSourceDTO struct {
 	Searchable bool `json:"searchable"`
 	// Target is the thing itself — a path, a library name, a URL.
 	Target string `json:"target"`
+	// URI is the machine-facing source reference. It is deliberately separate from Target:
+	// Target may be an operator label, while a collection search must send the actual Archive
+	// identifier. Absent on derived provider/provenance rows that have no source to address.
+	URI string `json:"uri,omitempty"`
 	// Detail is operator-facing prose explaining how this source behaves, rendered verbatim.
 	Detail string `json:"detail"`
 	// Count is how many catalog clips came from this source, counted live.
@@ -617,6 +621,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				Switchable: true,
 				Removable:  true,
 				Target:     label,
+				URI:        src.URI,
 				Detail:     sourceDetail(src.Kind, src.URI),
 				Count:      bySource[src.Kind],
 				Configured: true,

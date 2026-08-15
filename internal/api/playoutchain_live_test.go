@@ -73,7 +73,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", Name: "Chain", Number: 1}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: "internal"}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 

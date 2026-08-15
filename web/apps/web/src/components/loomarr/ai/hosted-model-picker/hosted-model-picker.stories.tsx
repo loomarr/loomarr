@@ -1,9 +1,17 @@
-import type { HostedProviderView } from "@loomarr/api";
+import type { HostedModelView, HostedProviderView } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { HostedModelPicker } from "./hosted-model-picker";
 
 const noop = () => {};
+
+const FALLBACK_MODEL: HostedModelView = {
+  id: "openai/gpt-4o-mini",
+  label: "GPT-4o mini",
+  why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
+  recommended: true,
+  tools: true,
+};
 
 const OPENROUTER = (over: Partial<HostedProviderView> = {}): HostedProviderView => ({
   key: "openrouter",
@@ -56,10 +64,20 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 const NoKeyYet: Story = {
-  args: { providers: [OPENROUTER({ keyConfigured: false, active: false, models: [] }), CUSTOM] },
+  args: {
+    providers: [
+      OPENROUTER({
+        keyConfigured: false,
+        active: false,
+        modelsLive: false,
+        models: [FALLBACK_MODEL],
+      }),
+      CUSTOM,
+    ],
+  },
 };
 const CuratedFallback: Story = {
-  args: { providers: [OPENROUTER({ modelsLive: false })] },
+  args: { providers: [OPENROUTER({ modelsLive: false, models: [FALLBACK_MODEL] })] },
 };
 
 export default meta;

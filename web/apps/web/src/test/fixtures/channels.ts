@@ -18,6 +18,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 // silence it with `as ChannelDTO`.
 const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
   id: "ch-1",
+  revision: 1,
   name: "Late Night Noir",
   number: 1,
   inAppPlayable: true,

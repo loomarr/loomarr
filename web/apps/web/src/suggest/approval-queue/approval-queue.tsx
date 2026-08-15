@@ -26,16 +26,16 @@ const ApprovalQueue = () => {
   // they just made rather than an emptier queue. Without this the flow stops at
   // "approved" and the channel — the entire point — is somewhere they have to go find.
   //
-  // Guarded on channelId: approval is durable even when channel creation fails, and in
-  // that case there is nowhere to navigate to. Staying put is right, and the queue
-  // refresh still shows the proposal left the queue.
+  // channelId is required on success because approval + titles + the local channel are one
+  // transaction. A failure never removes the proposal from this queue.
   const navigate = useNavigate();
   const approve = proposalsApi.useApproveProposal({
     mutation: {
       onSuccess: (res) => {
         invalidate();
-        const channelId = res.status === 200 ? res.data.channelId : undefined;
-        if (channelId) void navigate({ to: "/channels/$id", params: { id: channelId } });
+        if (res.status === 200) {
+          void navigate({ to: "/channels/$id", params: { id: res.data.channelId } });
+        }
       },
     },
   });
@@ -136,8 +136,9 @@ const ApprovalQueue = () => {
           all" above a single item is noise. */}
       {bulkable.length > 1 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <label htmlFor="approval-select-all" className="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox
+              id="approval-select-all"
               checked={selectedBulkable.length === bulkable.length && bulkable.length > 0}
               disabled={busy}
               aria-label="Select all for bulk approve"

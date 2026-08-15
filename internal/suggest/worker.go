@@ -47,12 +47,6 @@ type Service struct {
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
 	// which is the correct default: the gate is closed unless something opens it.
 	auto *AutoApprover
-	// binder materializes an approved proposal onto a channel (§7). nil ⇒ an
-	// auto-approval enqueues acquisitions but does not rebind the channel — the
-	// composition root always wires one alongside WithAutoApprove so that gap is
-	// closed in production; nil stays a safe default for unit tests that don't
-	// care about channels.
-	binder ChannelBinder
 	// autoCurate applies the §8.2 channel-scoped auto-curate grant to a re-curation
 	// proposal. nil ⇒ re-curation proposals wait for an admin (the closed default). Distinct
 	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
@@ -68,28 +62,15 @@ type ChannelAutoCurator interface {
 	Consider(ctx context.Context, p store.Proposal) (Decision, error)
 }
 
-// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
-// first approval, patch it (preserving operator-owned fields) on re-approval or
-// refine. The suggest package declares this interface itself (dependency
-// inversion) — it needs exactly one method, and *binder.Binder satisfies it
-// structurally without suggest importing internal/binder.
-type ChannelBinder interface {
-	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
-}
+const (
+	jobKindSuggest  = "suggest"
+	jobKindRecurate = "recurate"
+)
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
 // composition root, where the settings service and the full store are both available.
 func (s *Service) WithAutoApprove(a *AutoApprover) *Service {
 	s.auto = a
-	return s
-}
-
-// WithChannelBinder wires the shared channel-binding logic (§7) so an auto-approved
-// proposal ALSO rebinds its channel — the fix for the gap where auto-approve
-// enqueued acquisitions but never touched the channel a refine was meant to update.
-// Mirrors WithAutoApprove's functional-option style.
-func (s *Service) WithChannelBinder(b ChannelBinder) *Service {
-	s.binder = b
 	return s
 }
 
@@ -175,7 +156,7 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 	}
 	now := s.now()
 	job := store.Job{
-		ID: s.newID(), Kind: "suggest", Status: "queued",
+		ID: s.newID(), Kind: jobKindSuggest, Status: "queued",
 		IntentJSON: string(blob), IntentHash: hash, CreatedBy: createdBy,
 		Deadline: now, CreatedAt: now, UpdatedAt: now, // due immediately
 	}
@@ -187,31 +168,44 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 
 // Refine re-runs an EXISTING suggestion job with a refine-flavored intent (§7 refine).
 // It re-queues the channel's own `IntentRef` job rather than minting a new one, so the
-// refined proposal lands on that job — and approving it patches the SAME channel via the
-// existing `channelForIntent`/newest-approved-proposal path (no new schema, no duplicate
-// channel). Bypasses the intent-hash cache deliberately: a refine always re-generates
+// refined proposal lands on that job — and approving that exact proposal patches the SAME
+// intent-bound channel (no duplicate channel). Bypasses the intent-hash cache deliberately:
+// a refine always re-generates
 // (the operator asked for a change; a cached identical run would be surprising). Returns
 // the job id (== the channel's IntentRef) for the caller to poll for the new proposal.
 func (s *Service) Refine(ctx context.Context, jobID string, intent Intent) (string, error) {
+	return s.requeue(ctx, jobID, intent, jobKindSuggest, "refine")
+}
+
+// Recurate re-runs a channel job under the channel-scoped unattended grant. The distinct
+// durable kind is the authorization discriminator the worker reads: a scheduled refresh must
+// never fall through the requester's auto-approve grant, and a human refine must never be
+// mistaken for unattended curation merely because its channel is opted in.
+func (s *Service) Recurate(ctx context.Context, jobID string, intent Intent) (string, error) {
+	return s.requeue(ctx, jobID, intent, jobKindRecurate, "recurate")
+}
+
+func (s *Service) requeue(ctx context.Context, jobID string, intent Intent, kind, operation string) (string, error) {
 	job, err := s.store.GetJob(ctx, jobID)
 	if err != nil {
-		return "", fmt.Errorf("refine: load job %q: %w", jobID, err)
+		return "", fmt.Errorf("%s: load job %q: %w", operation, jobID, err)
 	}
 	blob, err := json.Marshal(intent)
 	if err != nil {
-		return "", fmt.Errorf("refine: marshal intent: %w", err)
+		return "", fmt.Errorf("%s: marshal intent: %w", operation, err)
 	}
 	now := s.now()
 	// Re-queue in place: swap in the refine intent and make it due immediately. The worker
 	// picks it up, generates a fresh proposal on this job, and the newest-approved wins.
 	job.IntentJSON = string(blob)
 	job.IntentHash = IntentHash(intent)
+	job.Kind = kind
 	job.Status = "queued"
 	job.LastError = ""
 	job.Deadline = now
 	job.UpdatedAt = now
 	if err := s.store.UpdateJob(ctx, job); err != nil {
-		return "", fmt.Errorf("refine: requeue job: %w", err)
+		return "", fmt.Errorf("%s: requeue job: %w", operation, err)
 	}
 	return job.ID, nil
 }
@@ -300,15 +294,13 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
-	approved := false
-	if s.auto != nil {
+	if job.Kind != jobKindRecurate && s.auto != nil {
 		if d, aerr := s.auto.Consider(ctx, p); aerr != nil {
 			// A failed auto-approval must not fail the JOB: the proposal exists and an
 			// admin can still act on it. Log and move on.
 			s.log.Warn("auto-approve failed; proposal stays in the queue",
 				"proposal", p.ID, "user", p.CreatedBy, "err", aerr)
 		} else if d.Approved {
-			approved = true
 			s.log.Info("auto-approved within quota",
 				"proposal", p.ID, "user", p.CreatedBy, "enqueued", d.Enqueued)
 		} else {
@@ -318,41 +310,19 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	// The channel-scoped auto-CURATE grant (§8.2): distinct from the per-user grant above.
 	// A re-curation job's proposal is authorized by the CHANNEL's AutoCurate opt-in, not a
 	// user's grant, and is bounded by the quality bar + title cap rather than the user quota.
-	// Only tried when the per-user path didn't already approve (a proposal is approved once).
-	// Same "never fail the job" contract.
-	if !approved && s.autoCurate != nil {
+	// The durable job kind makes the two grants mutually exclusive; this path cannot follow a
+	// requester auto-approval. Same "never fail the job" contract.
+	if job.Kind == jobKindRecurate && s.autoCurate != nil {
 		if d, aerr := s.autoCurate.Consider(ctx, p); aerr != nil {
 			s.log.Warn("auto-curate failed; proposal stays in the queue",
 				"proposal", p.ID, "job", job.ID, "err", aerr)
 		} else if d.Approved {
-			approved = true
 			s.log.Info("auto-curated within thresholds",
 				"proposal", p.ID, "job", job.ID, "enqueued", d.Enqueued)
 		} else if d.Reason != "" {
 			s.log.Debug("not auto-curated", "proposal", p.ID, "reason", d.Reason)
 		}
 	}
-	// Rebind the channel (§7/§8/§11) after ANY auto-approval — per-user or auto-curate. The
-	// manual-approve HTTP handler always did this; auto-approve previously stopped at
-	// enqueueing acquisitions, leaving the channel's lineup stale. Same non-fatal handling as
-	// the manual path: a bind failure must not undo or fail an approval that already stands.
-	//
-	// RE-READ the proposal from the store before binding: the grant mutated it in place
-	// (Status→approved, ApprovedBy set, and — for auto-curate — the acquisition list filtered).
-	// Our local `p` is the pre-approval copy (ApprovedBy ""), so binding it would take the
-	// full-REPLACE path and lose the auto-curate additive semantics (§8.2). The persisted
-	// proposal is the source of truth for what was approved.
-	if approved && s.binder != nil {
-		bindP := p
-		if fresh, ferr := s.store.GetProposal(ctx, p.ID); ferr == nil {
-			bindP = fresh
-		}
-		if _, berr := s.binder.BindApprovedChannel(ctx, bindP); berr != nil {
-			s.log.Warn("auto-approved, but the channel could not be bound",
-				"proposal", p.ID, "job", job.ID, "err", berr)
-		}
-	}
-
 	job.Status = "done"
 	job.UpdatedAt = now
 	_ = s.store.UpdateJob(ctx, job)

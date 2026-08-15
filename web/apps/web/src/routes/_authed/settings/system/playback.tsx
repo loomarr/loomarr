@@ -11,38 +11,48 @@ const PlaybackSettings = () => {
   return (
     <SettingsPage
       title="Playback"
-      description="How Loomarr delivers channels, chooses tracks and picture quality, and protects this machine from too many simultaneous transcodes."
+      description="See who is streaming your channels, then set the everyday playback preferences for this machine."
       entries={useSettingsEntries()}
       blocks={[
         {
           group: "playout",
-          title: "Delivery",
+          title: "Playback engine",
+          description:
+            "Choose who streams channels by default. Loomarr manages internal playback here; Tunarr-backed channels use the transcode profile in Settings → Connections.",
           keys: ["playout.backend", "server.public_url"],
         },
         {
           group: "playout",
-          title: "Video and audio",
+          title: "Picture and sound",
+          description:
+            "Defaults for Loomarr's internal playback. Individual channels can still choose their own audio language.",
           keys: ["playout.quality_tier", "playout.audio_language"],
         },
         {
           group: "playout",
-          title: "Hardware and capacity",
+          title: "Live capacity",
+          description:
+            "Limit simultaneous internal transcodes. Loomarr selects the best detected encoder automatically; a manual override is available under Advanced.",
           keys: ["playout.max_channels", "playout.encoder"],
         },
         {
           group: "playout",
-          title: "Guide",
+          title: "TV guide",
           description: "How channel times are displayed and how far back the guide can browse.",
           keys: ["guide.timezone", "guide.retention_hours"],
         },
         {
           group: "connections.media_server",
-          title: "Direct play",
+          title: "Direct-play paths",
+          description:
+            "Advanced path translation for media files mounted at different locations in Loomarr and your media server.",
           keys: ["library.path_map"],
         },
         {
           group: "playout",
-          title: "Playback paths",
+          title: "Internal playback storage",
+          description:
+            "Advanced executable, cache, and prepared-media storage controls. The defaults are right for most installations.",
           keys: [
             "playout.ffmpeg_path",
             "playout.hls_dir",
@@ -51,8 +61,9 @@ const PlaybackSettings = () => {
           ],
         },
       ]}
-      footer={<PlayoutPanel status={unwrap(status.data)} loading={status.isLoading} />}
-    />
+    >
+      <PlayoutPanel title="Current playback" status={unwrap(status.data)} loading={status.isLoading} />
+    </SettingsPage>
   );
 };
 

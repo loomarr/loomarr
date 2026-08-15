@@ -52,12 +52,17 @@ make agent-worktree TOPIC=fix/example
 ```
 
 The command creates a sibling worktree, runs `pnpm install --frozen-lockfile`, runs codegen, and creates
-the ignored `.agent-data/` and `.artifacts/` directories. `BOOTSTRAP_SKIP_FE=1` is available for a
-known Go-only task.
+the ignored `.agent-data/` and `.artifacts/` directories. It also prepares the isolated database with
+a `developer` admin and completed setup, then enables automatic dev login. Opening the worktree's Vite
+URL therefore lands directly in the app. Both provisioning and login reuse the production domain
+paths; no shipped server gains a bootstrap shortcut. Set `AGENT_DEV_IDENTITY=0` when the task is the
+first-run wizard itself. `BOOTSTRAP_SKIP_FE=1` is available for a known Go-only task.
 
 The harness does not copy `.env` by default. `COPY_ENV=1` is an explicit opt-in for integration work;
 the copy is mode `0600`. Even then, secondary worktrees override the local SQLite path and runtime
 ports after sourcing `.env`, preventing two agents from sharing a database or listener accidentally.
+The automatic developer exists only in that isolated database; the primary database and its
+authentication policy are never changed.
 
 ## Runtime isolation
 

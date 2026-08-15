@@ -3,10 +3,10 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
-import { formatRelative, pluralize } from "@loomarr/core/format";
+import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -18,6 +18,7 @@ import { PoolHealth } from "@/components/loomarr/filler/pool-health";
 import { WatchPill } from "@/components/loomarr/filler/watch-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NavTabs } from "@/components/ui/nav-tabs";
@@ -84,6 +85,65 @@ const VIEWS = [
   { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
 ] as const;
 
+interface CompositeCatalogGroupProps {
+  clip: ClipDTO;
+  onManage: () => void;
+  renderParent: (clip: ClipDTO) => ReactNode;
+  renderChild: (clip: ClipDTO) => ReactNode;
+}
+
+const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: CompositeCatalogGroupProps) => {
+  const [open, setOpen] = useState(false);
+  const children = fillerApi.useListFiller(
+    { parentHash: clip.hash, limit: 500 },
+    { query: { enabled: open } },
+  );
+  const rows = unwrap(children.data, (body) => body.clips) ?? [];
+  const total = unwrap(children.data, (body) => body.total) ?? 0;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
+          preview, tag, era and split controls as every other catalog item; replacing it with a
+          bespoke group heading made those established actions disappear. The disclosure below
+          adds hierarchy without creating a second, weaker representation of the parent. */}
+      {renderParent(clip)}
+      <Disclosure open={open} onOpenChange={setOpen}>
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-3 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">Compilation segments</p>
+              <p className="font-mono text-muted-foreground text-xs">
+                {formatClipDuration(clip.durationMs)} source reel
+              </p>
+            </div>
+            {open && children.isFetching ? (
+              <span className="text-muted-foreground text-xs">Loading segments…</span>
+            ) : null}
+            {open && !children.isFetching ? (
+              <Button variant="outline" size="sm" onClick={onManage}>
+                Manage {pluralize(total, "segment")}
+              </Button>
+            ) : null}
+            <Disclosure.Trigger label={`${open ? "Hide" : "Show"} segments from ${clip.name}`} />
+          </div>
+          <Disclosure.Panel className="border-border border-t p-3">
+            {children.error ? (
+              <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
+            ) : rows.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border">{rows.map(renderChild)}</div>
+            ) : children.isFetching ? null : (
+              <p className="text-muted-foreground text-sm">
+                No filed segments remain under this compilation.
+              </p>
+            )}
+          </Disclosure.Panel>
+        </Card>
+      </Disclosure>
+    </div>
+  );
+};
+
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
 // ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
 // on their own schedule and a button for work that already happens invites the reading that it
@@ -115,7 +175,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     untagged = false,
     view = "grid",
     page = 1,
+    parent: parentHash,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
+  const filtered = Boolean(q || kind || audience || untagged);
   // ⚠ **Every filter change RESETS the page, and this is the single highest-risk line on the
   // page** (§10 V51d). `setFilters` merges blindly; without the reset, typing in the search box
   // while on page 7 lands on an empty page 7 of a two-page result and renders "No clips match"
@@ -129,6 +191,23 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       search: (prev) => ({ ...prev, page: undefined, ...next }),
       replace: true,
     });
+  const viewRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const chooseView = (next: (typeof VIEWS)[number]["id"]) =>
+    setFilters({ view: next === "grid" ? undefined : next });
+  const onViewKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % VIEWS.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+      next = (index - 1 + VIEWS.length) % VIEWS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = VIEWS.length - 1;
+    else return;
+
+    event.preventDefault();
+    viewRefs.current[next]?.focus();
+    const nextView = VIEWS[next];
+    if (nextView) chooseView(nextView.id);
+  };
 
   // What the Catalog tab's link carries back.
   //
@@ -146,6 +225,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     // ⚠ The page rides back too: returning to Catalog from Incoming should land where you left,
     // not silently on page one of a catalog you were seven pages into.
     ...(page > 1 ? { page } : {}),
+    ...(parentHash ? { parent: parentHash } : {}),
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
@@ -169,9 +249,14 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(kind ? { kind: kind as never } : {}),
     ...(audience ? { audience: audience as never } : {}),
     ...(untagged ? { untagged: true } : {}),
+    ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
     limit: CATALOG_PAGE_SIZE,
     ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
   });
+  const parent = fillerApi.useListFiller(
+    { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
+    { query: { enabled: Boolean(parentHash) } },
+  );
 
   // Resolving the clip the tag dialog is about (§10 V54). The dialog is SHARED with the Incoming
   // tab — one clip, one editor, wherever you reached it from — and Incoming's rows are held, so
@@ -444,7 +529,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const firstOnPage = (page - 1) * CATALOG_PAGE_SIZE + 1;
   const lastOnPage = (page - 1) * CATALOG_PAGE_SIZE + clipList.length;
 
-  const filtered = Boolean(q || kind || audience || untagged);
+  const parentName = unwrap(parent.data, (body) => body.clips[0]?.name);
+  const selectableRows = clipList.filter((clip) => !clip.isComposite);
 
   // The header's at-a-glance line (the mock's `watchLine`), rendered entirely from
   // `GET /v1/filler/watch`.
@@ -472,6 +558,42 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         ...(watch.lastScanAt ? [`last scan ${formatRelative(watch.lastScanAt)}`] : []),
       ].join(" · ")
     : "";
+
+  const renderCatalogRow = (clip: ClipDTO) => (
+    <ClipRow
+      key={clip.hash}
+      clip={clip}
+      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+      selected={selected.has(clip.hash)}
+    />
+  );
+  const renderCatalogCard = (clip: ClipDTO) => (
+    <ClipCard
+      key={clip.hash}
+      clip={clip}
+      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
+      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
+      {...(isAdmin && !clip.isComposite ? { onPin: () => setPinning(clip.hash) } : {})}
+      {...(isAdmin && clip.suggestedEra
+        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
+        : {})}
+      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
+      {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
+      splitPending={Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"}
+      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+      selected={selected.has(clip.hash)}
+      onPlay={() => setPlaying(clip.hash)}
+    />
+  );
+  const renderComposite = (clip: ClipDTO) => (
+    <CompositeCatalogGroup
+      key={clip.hash}
+      clip={clip}
+      onManage={() => setFilters({ parent: clip.hash })}
+      renderParent={view === "list" ? renderCatalogRow : renderCatalogCard}
+      renderChild={(child) => <ClipRow key={child.hash} clip={child} />}
+    />
+  );
 
   return (
     // ⚠ p-6 — the page owns its own gutter. Without it this page rendered flush against the
@@ -538,7 +660,13 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
           // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
           // moment the listing started paging.
-          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: total },
+          {
+            id: "catalog",
+            label: "Catalog",
+            to: "/filler",
+            search: catalogSearch,
+            count: total,
+          },
           ...(isAdmin
             ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
             : []),
@@ -558,9 +686,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         // out of the shell costs the header nothing.
         <SourcesTab />
       ) : (
-        <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6">
           {split.error != null && <ErrorState error={split.error} />}
           {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
+
+          {parentHash ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-sm">{parentName || "Compilation segments"}</p>
+                <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setFilters({ parent: undefined })}>
+                Back to top-level catalog
+              </Button>
+            </div>
+          ) : null}
 
           {/* The bulk bar, shown only when something is selected. It appears ABOVE the grid
               rather than floating over it: a bar that covers the cards hides the very thing the
@@ -712,15 +852,20 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 buttons announces neither which is active nor that they are alternatives.
                 `ml-auto` puts it at the far end of the toolbar, as the mock draws it. */}
             <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Clip view">
-              {VIEWS.map((v) => (
+              {VIEWS.map((v, index) => (
                 <Button
                   key={v.id}
+                  ref={(node) => {
+                    viewRefs.current[index] = node;
+                  }}
                   variant={view === v.id ? "default" : "outline"}
                   size="sm"
                   role="radio"
                   aria-checked={view === v.id}
+                  tabIndex={view === v.id ? 0 : -1}
                   title={v.title}
-                  onClick={() => setFilters({ view: v.id === "grid" ? undefined : v.id })}
+                  onClick={() => chooseView(v.id)}
+                  onKeyDown={(event) => onViewKeyDown(event, index)}
                 >
                   <v.icon className="size-4" aria-hidden />
                   {v.label}
@@ -788,8 +933,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                     "Select this page" whenever there is more than one — and `goToPage` clears
                     the selection, or a Remove would reach rows from a page nobody is looking at. */}
                 {isAdmin && (
-                  <Button variant="ghost" size="sm" onClick={() => selectAll(rows)}>
-                    {allSelected(rows)
+                  <Button variant="ghost" size="sm" onClick={() => selectAll(selectableRows)}>
+                    {allSelected(selectableRows)
                       ? "Clear selection"
                       : pageCount > 1
                         ? "Select this page"
@@ -801,56 +946,19 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               </div>
               {view === "list" ? (
                 <div className="overflow-hidden rounded-lg border border-border">
-                  {rows.map((clip) => (
-                    <ClipRow
-                      key={clip.hash}
-                      clip={clip}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-                      selected={selected.has(clip.hash)}
-                    />
-                  ))}
+                  {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {rows.map((clip) => (
-                    <ClipCard
-                      key={clip.hash}
-                      clip={clip}
-                      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
-                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
-                      {...(isAdmin ? { onPin: () => setPinning(clip.hash) } : {})}
-                      {...(isAdmin && clip.suggestedEra
-                        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
-                        : {})}
-                      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                      // ⚠ **Offered only on a COMPILATION, and only behind a confirmation (§10
-                      // V54 A8).** It used to render on every card and fire on the first click —
-                      // including on a 15-second commercial, where a full-decode search for
-                      // adverts inside one advert is minutes of GPU spent to find nothing.
-                      //
-                      // `isComposite` is the pipeline's OWN answer to "is this a recording of
-                      // several adverts", set by the probe rung at measurement time (§10 V45), so
-                      // gating on it invents no threshold and duplicates no setting.
-                      //
-                      // ⚠ Known gap, deliberately accepted: `looksComposite` swallows a
-                      // BlackSilence failure and returns false, so a genuine compilation whose
-                      // scan errored is unmarked and loses its manual split here. The BE still
-                      // accepts the call, so nothing is permanently lost — but re-probing is the
-                      // only route back to the button. Worth revisiting if it is ever seen.
-                      {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
-                      splitPending={
-                        Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"
-                      }
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-                      selected={selected.has(clip.hash)}
-                      // ⚠ NOT gated on isAdmin, unlike every other action on this card. Watching
-                      // a clip mutates nothing, and `/v1/filler/media` is member-readable by
-                      // design — these are the same commercials the household's channels play at
-                      // them. Gating it would hide a safe capability from exactly the people who
-                      // would want to check what is airing.
-                      onPlay={() => setPlaying(clip.hash)}
-                    />
-                  ))}
+                  {rows.map((clip) =>
+                    clip.isComposite ? (
+                      <div key={clip.hash} className="col-span-full">
+                        {renderComposite(clip)}
+                      </div>
+                    ) : (
+                      renderCatalogCard(clip)
+                    ),
+                  )}
                 </div>
               )}
 

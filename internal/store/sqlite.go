@@ -39,7 +39,7 @@ RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, 
 // except the one case it existed for. Channels that opt out of reconciliation say so in `status`;
 // that is the only exclusion, and a magic deadline value must never become a second one.
 const sqliteChannelClaimSQL = `
-UPDATE channels SET reconcile_deadline = ?1
+UPDATE channels SET reconcile_deadline = ?1, revision = revision + 1
 WHERE id IN (
     SELECT id FROM channels
     WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2
@@ -47,7 +47,7 @@ WHERE id IN (
 )
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
           status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-          reconcile_deadline, updated_at`
+          reconcile_deadline, updated_at, revision`
 
 // SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteJobClaimSQL = `

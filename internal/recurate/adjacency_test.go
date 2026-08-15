@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/provision"
@@ -40,7 +39,7 @@ func seedChannelWithLineup(t *testing.T, st store.Store, id, jobID string, lineu
 	ch.Status = schedule.StatusLive
 	ch.Policy = schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}}
 	ch.Lineup = lineup
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -171,7 +170,7 @@ func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		adjItem(9659, "Mad Max", 0), // model returned no score for a title it was handed
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -193,7 +192,7 @@ func TestCurator_ScoredAdjacencyPickKeepsTheModelsJudgement(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		adjItem(111, "Weak Fit", 0.20), // the model DID score it, and scored it poorly
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -213,7 +212,7 @@ func TestCurator_UnscoredLLMPickIsStillDropped(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(222, "Unscored LLM Pick", 0), // no Source ⇒ not adjacency
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {

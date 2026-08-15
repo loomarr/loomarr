@@ -91,9 +91,14 @@ const appHandlers = (): RequestHandler[] => [
   // where this used to carry `asks` and `pipeline` as separate arrays over overlapping populations.
   getFillerIncomingMockHandler({
     clips: [],
+    clipsTotal: 0,
+    decisionsTotal: 0,
     reels: [],
+    reelsTotal: 0,
     recentlyFiled: [],
+    recentlyFiledTotal: 0,
     rejected: [],
+    rejectedTotal: 0,
     stageOrder: [],
     total: 0,
   }),

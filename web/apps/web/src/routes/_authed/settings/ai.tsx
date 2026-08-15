@@ -13,7 +13,7 @@ const AiSettings = () => (
         group: "ai",
         title: "Lineup model",
         check: "llm",
-        keys: ["llm.provider", "llm.url", "llm.model", "llm.api_key", "llm.keep_alive"],
+        keys: ["llm.provider", "llm.url", "llm.api_key", "llm.keep_alive"],
       },
       {
         group: "filler",
@@ -40,7 +40,13 @@ const AiSettings = () => (
     ]}
     // Render prop so the model picker reacts to the LIVE provider edit — it collapses to a
     // hosted hint the moment the dropdown flips to OpenAI, not only after Save.
-    footer={({ liveValue }) => <AiModelSettings provider={liveValue("llm.provider")} />}
+    footer={({ liveValue, setEdit }) => (
+      <AiModelSettings
+        provider={liveValue("llm.provider")}
+        baseUrl={liveValue("llm.url")}
+        onBaseUrlChange={(value) => setEdit("llm.url", value)}
+      />
+    )}
   />
 );
 

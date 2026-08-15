@@ -1,5 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
+import type { WarmedChannel } from "../channel-warmer";
 import type { TuneAttempt } from "../tuner-timing";
 
 type TuneDirection = -1 | 1;
@@ -9,6 +10,7 @@ interface UseChannelTunerOptions {
   channels: ChannelDTO[];
   nowNext: ChannelNowNext[];
   onTune: (channel: ChannelDTO) => void;
+  warmChannel?: (channelId: string, signal: AbortSignal) => Promise<WarmedChannel | undefined>;
 }
 
 interface UseChannelTuner {

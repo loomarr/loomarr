@@ -76,6 +76,25 @@ describe("useHlsPlayer", () => {
     );
   });
 
+  it("reuses an adjacent warmer's exact signed URL without minting again", async () => {
+    const video = videoEl("application/vnd.apple.mpegurl");
+    const { result } = renderHook(() =>
+      useHlsPlayer("ch-2", {
+        id: 2,
+        adjacent: true,
+        warmed: true,
+        playURL: "/v1/playout/hls/ch-2/master.m3u8?sig=warmed",
+      }),
+    );
+
+    act(() => {
+      result.current.attach(video);
+    });
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    expect(channelPlayUrl).not.toHaveBeenCalled();
+    expect(video.src).toContain("sig=warmed");
+  });
+
   it("surfaces an error when the mint returns no URL", async () => {
     channelPlayUrl.mockResolvedValue({}); // neither relativeUrl nor url
     const { result } = renderHook(() => useHlsPlayer("ch-1"));

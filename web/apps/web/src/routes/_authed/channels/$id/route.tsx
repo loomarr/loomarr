@@ -116,7 +116,10 @@ const ChannelDetailLayout = () => {
         invalidate();
         toast.success("Saved");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't save that change"),
+      onError: (e) => {
+        invalidate();
+        toast.error(toProblem(e).title ?? "Couldn't save that change");
+      },
     },
   });
   const del = channelsApi.useDeleteChannel({
@@ -151,12 +154,13 @@ const ChannelDetailLayout = () => {
   // close) from failure (a 409 renumber surfaces inline on the field, editor stays open). The
   // hook-level onError toast still fires; the field also gets the rejection to show in place.
   const saveName = (name: string | number) =>
-    update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
+    update.mutateAsync({ id, data: { revision: ch.revision, name: String(name) } }).then(() => undefined);
   const saveNumber = (number: string | number) =>
-    update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
+    update.mutateAsync({ id, data: { revision: ch.revision, number: Number(number) } }).then(() => undefined);
   // The icon is just another field on the same PATCH (§7) — not a bespoke endpoint — so it
   // commits exactly like the identity fields above. `""` clears it.
-  const saveLogo = (logo: string) => update.mutateAsync({ id, data: { logo } }).then(() => undefined);
+  const saveLogo = (logo: string) =>
+    update.mutateAsync({ id, data: { revision: ch.revision, logo } }).then(() => undefined);
 
   return (
     <div className="flex h-full flex-col">
@@ -180,7 +184,7 @@ const ChannelDetailLayout = () => {
               validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
               onSave={saveName}
             />
-            <label className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
               <span className="font-mono uppercase tracking-wide">Ch</span>
               <ChannelIdentityField
                 label="Channel number"
@@ -194,7 +198,7 @@ const ChannelDetailLayout = () => {
                 }}
                 onSave={saveNumber}
               />
-            </label>
+            </div>
           </div>
         ) : (
           <>
@@ -242,14 +246,9 @@ const ChannelDetailLayout = () => {
               invalidate,
               saving: update.isPending,
               deleting: del.isPending,
-              update: (data) => update.mutate({ id, data }),
-              updateAsync: (data) => update.mutateAsync({ id, data }),
-              savePolicy: (policy) => update.mutate({ id, data: { policy } }),
-              // `strategy` is a CHANNEL field, not a policy one, so it takes its own PATCH —
-              // but it is edited on the Programming surface beside Ordering, because that is
-              // where its effect is visible: Ordering's "inherit channel default" has always
-              // referred to this value.
-              saveStrategy: (strategy) => update.mutate({ id, data: { strategy } }),
+              update: (data) => update.mutate({ id, data: { ...data, revision: ch.revision } }),
+              updateAsync: (data) => update.mutateAsync({ id, data: { ...data, revision: ch.revision } }),
+              savePolicy: (policy) => update.mutate({ id, data: { revision: ch.revision, policy } }),
               saveLogo,
               onDelete: ({ purge }) => del.mutate({ id, params: { purge } }),
             }}

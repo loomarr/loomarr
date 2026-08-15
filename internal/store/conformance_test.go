@@ -44,6 +44,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Channels", func(t *testing.T) {
 		t.Run("ChannelRoundTrip", func(t *testing.T) { testChannelRoundTrip(t, newStore) })
+		t.Run("ChannelRevisionCAS", func(t *testing.T) { testChannelRevisionCAS(t, newStore) })
+		t.Run("ChannelTargetedRevisionWrites", func(t *testing.T) { testChannelTargetedRevisionWrites(t, newStore) })
 		t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
@@ -61,6 +63,12 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClaimDueScheduledJobs", func(t *testing.T) { testClaimDueScheduledJobs(t, newStore) })
 		t.Run("ScheduledJobPaused", func(t *testing.T) { testScheduledJobPaused(t, newStore) })
 		t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
+		t.Run("ProposalApprovalAtomic", func(t *testing.T) { testProposalApprovalAtomic(t, newStore) })
+		t.Run("ProposalApprovalStaleChannel", func(t *testing.T) { testProposalApprovalStaleChannel(t, newStore) })
+		t.Run("ProposalApprovalSuperseded", func(t *testing.T) { testProposalApprovalSuperseded(t, newStore) })
+		t.Run("ProposalApprovalSameIntentConflict", func(t *testing.T) { testProposalApprovalSameIntentConflict(t, newStore) })
+		t.Run("ProposalDecisionConcurrent", func(t *testing.T) { testProposalDecisionConcurrent(t, newStore) })
+		t.Run("ProposalApprovalOverlappingTitles", func(t *testing.T) { testProposalApprovalOverlappingTitles(t, newStore) })
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
@@ -85,6 +93,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
+		t.Run("IncomingConveyorCount", func(t *testing.T) { testIncomingConveyorCount(t, newStore) })
 		t.Run("Taxonomy", func(t *testing.T) { testTaxonomy(t, newStore) })
 	})
 

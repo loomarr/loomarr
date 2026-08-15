@@ -60,6 +60,11 @@ const playoutTokenParam = "token"
 // (see scripts/check-retired.sh).
 const playoutPlanParam = "plan"
 
+// playoutModeParam is an unsigned least-privilege modifier on the signed HLS master route. The
+// only accepted behavior today is `prepared`: it removes live fallback, so changing it cannot
+// expand what the channel-scoped signature authorizes.
+const playoutModeParam = "mode"
+
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
@@ -404,8 +409,13 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 
 	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
 		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
+		PreparedOnly: r.URL.Query().Get(playoutModeParam) == "prepared",
 	})
 	if err != nil {
+		if errors.Is(err, playout.ErrPreparedUnavailable) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if errors.Is(err, playout.ErrUnsupportedDelivery) {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 				"Internal playout isn't running on this instance.")
@@ -428,7 +438,21 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	defer presentation.Release()
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(rewritePlaylistAuth(presentation.Manifest, r.URL.RawQuery))
+	_, _ = w.Write(rewritePlaylistAuth(presentation.Manifest, hlsAssetQuery(r.URL.Query())))
+}
+
+// hlsAssetQuery carries the channel-scoped signature and rendition selectors onto asset requests,
+// but never the prepared-only master hint. Prepared publication URLs are immutable cache keys and
+// must be byte-identical when the real tune follows the warm request.
+func hlsAssetQuery(query url.Values) string {
+	asset := make(url.Values, len(query))
+	for key, values := range query {
+		if key == playoutModeParam {
+			continue
+		}
+		asset[key] = append([]string(nil), values...)
+	}
+	return asset.Encode()
 }
 
 // clientPlan reads the EncodePlan for a Watch HLS request (a browser OR a native app) from `?plan=`.
@@ -539,7 +563,11 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
-	w.Header().Set("Cache-Control", "no-store")
+	if asset.Immutable {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	http.ServeContent(w, r, rel, asset.Modified, asset.Content)
 }
 
@@ -600,11 +628,13 @@ func (s *Server) registerPlayout(api huma.API) {
 	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
 	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
 	// that works across every player + the browser.
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
+	hlsMaster := bytesResponse(huma.Operation{
 		OperationID: "playout-hls-master", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/master.m3u8",
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "The HLS master playlist for the in-app and native players.",
-		"application/vnd.apple.mpegurl"), s.hlsPlaylistHandler)
+		"application/vnd.apple.mpegurl")
+	hlsMaster.Responses["204"] = &huma.Response{Description: "No prepared presentation is currently available; live playout was not started."}
+	streamOp[playoutHLSInput](s, api, hlsMaster, s.hlsPlaylistHandler)
 	// A segment is a bare file beside the master (`seg-N.ts`) — direct play is one playlist, no
 	// variant subdirs, so a single `{asset}` segment (not a trailing wildcard) is enough.
 	//
@@ -632,6 +662,13 @@ type playoutChannelInput struct {
 type playoutAssetInput struct {
 	ID    string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
 	Asset string `path:"asset" example:"seg-7.ts" doc:"A file beside the master playlist — a segment, or the media playlist"`
+}
+
+// playoutHLSInput documents the master-only prepared mode. Keeping it separate from
+// playoutChannelInput avoids claiming that MPEG-TS/program routes accept the hint.
+type playoutHLSInput struct {
+	ID   string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
+	Mode string `query:"mode" enum:"prepared" doc:"Optional prepared-only lookup; returns 204 on a miss and never starts live playout"`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout

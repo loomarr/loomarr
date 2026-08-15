@@ -684,12 +684,12 @@ type discoverFillerInput struct {
 	// movies corpus ranked by nothing, which is not an answer to any question — so a search
 	// needs at least two characters. No longer `required`, because `collection` is the other
 	// way to ask; exactly one of the two must be given (checked in the handler).
-	Query string `query:"q" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\". Mutually exclusive with the collection parameter."`
+	Query string `query:"q" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\". When collection is also present, searches within that collection."`
 	// Collection lists ONE named archive.org collection instead of searching. This is what a
 	// starter pack is (§10, V17d): a curated collection an operator keeps or excludes from
 	// before anything is fetched. Deliberately the same endpoint as the keyword search — a
 	// separate route would be a second implementation of "list clips, download nothing".
-	Collection string `query:"collection" doc:"An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."`
+	Collection string `query:"collection" doc:"An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."`
 	// Limit caps the page. A listing is for DECIDING — an operator judges a source from a
 	// handful of titles — so the ceiling is low on purpose.
 	Limit int `query:"limit" minimum:"1" maximum:"25" doc:"Max results (default 25)"`
@@ -717,13 +717,13 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 			"Enable filler in Settings before searching for clips to add.")
 	}
 
-	// Exactly one mode. Both would be ambiguous (search WITHIN a collection is a different
-	// query archive.org would have to be asked differently), and neither is the empty search
-	// the minLength above exists to prevent.
+	// At least one mode. With both present, the keyword is scoped to the named collection — the
+	// request made by a source row's search box. Neither is the empty search the minLength above
+	// exists to prevent.
 	query, collection := strings.TrimSpace(in.Query), strings.TrimSpace(in.Collection)
-	if (query == "") == (collection == "") {
+	if query == "" && collection == "" {
 		return nil, apiErr(http.StatusUnprocessableEntity, "Ask for one thing",
-			"Send either q (to search) or collection (to list one collection), not both and not neither.")
+			"Send q to search Archive.org, collection to list one collection, or both to search within it.")
 	}
 
 	var (
@@ -732,7 +732,7 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 		err   error
 	)
 	if collection != "" {
-		items, total, err = s.filler.DiscoverCollection(ctx, collection, in.Limit)
+		items, total, err = s.filler.DiscoverCollection(ctx, collection, query, in.Limit)
 	} else {
 		items, total, err = s.filler.Discover(ctx, query, in.Limit)
 	}

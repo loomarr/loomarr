@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -51,8 +52,11 @@ type incomingBody struct {
 		Reason     string `json:"reason"`
 		Restorable bool   `json:"restorable"`
 	} `json:"rejected"`
-	StageOrder []string `json:"stageOrder"`
-	Total      int      `json:"total"`
+	StageOrder     []string `json:"stageOrder"`
+	ClipsTotal     int      `json:"clipsTotal"`
+	DecisionsTotal int      `json:"decisionsTotal"`
+	ReelsTotal     int      `json:"reelsTotal"`
+	Total          int      `json:"total"`
 }
 
 func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody) {
@@ -247,6 +251,32 @@ func TestFillerIncoming_TotalCoversBothHalves(t *testing.T) {
 		t.Errorf("total = %d, want 2 — it must cover asks AND reels", body.Total)
 	}
 }
+
+func TestFillerIncoming_CapsRowsButKeepsTheFullTotals(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for i := 0; i < incomingListLimitForTest+7; i++ {
+		path := fmt.Sprintf("incoming-%03d.mp4", i)
+		putClip(t, st, filler.Clip{
+			Path: path, Name: path, Kind: filler.Commercial, DurationMs: 30_000, Held: true,
+		})
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Clips) != incomingListLimitForTest {
+		t.Fatalf("clips = %d, want bounded page of %d", len(body.Clips), incomingListLimitForTest)
+	}
+	if body.ClipsTotal != incomingListLimitForTest+7 {
+		t.Errorf("clipsTotal = %d, want all %d conveyor clips", body.ClipsTotal, incomingListLimitForTest+7)
+	}
+	if body.Total != incomingListLimitForTest+7 {
+		t.Errorf("total = %d, want all decisions rather than the page length", body.Total)
+	}
+	if body.DecisionsTotal != incomingListLimitForTest+7 {
+		t.Errorf("decisionsTotal = %d, want all decisions", body.DecisionsTotal)
+	}
+}
+
+const incomingListLimitForTest = 100
 
 // Empty is an array, never null: a null makes every consumer guard before iterating, and "nothing
 // needs you" is a real answer the tab renders as its all-clear state.
@@ -470,6 +500,44 @@ func TestFillerIncoming_ACompilationBeingDetectedStillShows(t *testing.T) {
 	}
 	if body.Total != 0 {
 		t.Errorf("total = %d, want 0 — nothing here needs a human yet", body.Total)
+	}
+}
+
+// A detection checkpoint is private pipeline state, not a reviewable reel. The list side already
+// filters these drafts out of `reels` and leaves their compilation on the conveyor; the server-side
+// total must apply the same readiness rule or the UI renders one preparing card beneath a zero
+// count. This is the production shape between the first boundary-scan pass and its resume.
+func TestFillerIncoming_ACompilationDetectionCheckpointCountsOnTheConveyor(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	putClip(t, st, filler.Clip{
+		Hash: "hash-checkpoint", Path: "comps/checkpoint.mp4", Name: "Commercial Break Checkpoint",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: "hash-checkpoint", Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp_checkpoint", ClipHash: "hash-checkpoint", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want one compilation still being detected", len(body.Clips))
+	}
+	if body.ClipsTotal != 1 {
+		t.Errorf("clipsTotal = %d, want 1 — a draft proposal does not take its clip off the conveyor", body.ClipsTotal)
+	}
+	if len(body.Reels) != 0 || body.ReelsTotal != 0 {
+		t.Errorf("reels = %d total %d, want no reviewable reel for a detection checkpoint",
+			len(body.Reels), body.ReelsTotal)
 	}
 }
 

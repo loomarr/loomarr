@@ -5,6 +5,8 @@ interface PlayoutPanelProps {
   // Optional so the panel can render its loading and "not running" states before data arrives.
   status?: PlayoutStatus;
   loading?: boolean;
+  // The dashboard keeps the concise default; Settings names the card as live, read-only state.
+  title?: string;
   className?: string;
 }
 

@@ -115,7 +115,8 @@ make agent-worktree TOPIC=<branch>
 It installs frontend dependencies and runs codegen. Credentials are not copied by default; use
 `COPY_ENV=1` only when the task genuinely needs the maintainer's configured integrations. Secondary
 worktrees receive deterministic, distinct backend/frontend/Storybook/Tunarr ports, a Compose project,
-an SQLite database, a filler drop folder, and `.artifacts/<instance>/`.
+an SQLite database, a prepared-publication library, a filler drop folder, and
+`.artifacts/<instance>/`.
 
 Do not park a secondary worktree on `main`. Never remove a worktree containing uncommitted or untracked
 work. Use `git worktree list` and `make agent-status` before cleanup.

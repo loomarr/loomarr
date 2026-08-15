@@ -277,8 +277,13 @@ const FillerCriteria = ({
         </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {KINDS.map((k) => (
-            <label key={k} className="flex cursor-pointer items-center gap-2 text-sm">
+            <label
+              key={k}
+              htmlFor={`filler-kind-${k}`}
+              className="flex cursor-pointer items-center gap-2 text-sm"
+            >
               <Checkbox
+                id={`filler-kind-${k}`}
                 checked={kinds.includes(k)}
                 disabled={disabled}
                 onChange={() => onChange({ ...selection, kinds: toggle(kinds, k) })}

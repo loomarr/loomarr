@@ -96,6 +96,7 @@ const AUDIENCE_LABEL: Record<string, string> = {
 
 const SplitReviewEditor = ({
   proposal,
+  minClipDurationMs,
   confirming,
   onConfirm,
   onBack,
@@ -178,6 +179,7 @@ const SplitReviewEditor = ({
           last={i === draft.length - 1}
           focused={focusedKey === seg.key}
           clipHash={proposal.clipHash}
+          minClipDurationMs={minClipDurationMs}
           // ⚠ ONE open at a time, held here rather than per row. Two expanded previews are two
           // audio streams talking over each other, and a per-row `useState` would let all 52
           // open — 52 range requests against one 20-minute file.
@@ -220,6 +222,7 @@ interface SegmentRowProps {
   focused: boolean;
   // The COMPOSITE's hash — what the preview plays a window of. A proposed cut has no bytes yet.
   clipHash: string;
+  minClipDurationMs?: number;
   previewOpen: boolean;
   onPreviewChange: (open: boolean) => void;
   onChange: (patch: Partial<DraftSegment>) => void;
@@ -233,6 +236,7 @@ const SegmentRow = ({
   last,
   focused,
   clipHash,
+  minClipDurationMs,
   previewOpen,
   onPreviewChange,
   onChange,
@@ -380,6 +384,20 @@ const SegmentRow = ({
           ) : null}
         </div>
 
+        {segment.holdReason ? (
+          <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
+            {`Needs review: ${segment.holdReason}.`}
+          </p>
+        ) : null}
+
+        {segment.boundaryConfidence ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-muted-foreground text-xs">
+            <span>{`Cut confidence ${segment.boundaryConfidence}%`}</span>
+            {segment.startEvidence ? <span>{`Start: ${segment.startEvidence}`}</span> : null}
+            {segment.endEvidence ? <span>{`End: ${segment.endEvidence}`}</span> : null}
+          </div>
+        ) : null}
+
         {/* Unsplittable: over-long AND the rescue could not see boundaries (no whisper, or
             none detectable in the text). Said unmistakably, because the alternative is
             guessing — exactly what the era rule forbids in tag form. */}
@@ -387,6 +405,13 @@ const SegmentRow = ({
           <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
             Loomarr couldn't see boundaries in this span, either because there's no transcript or because
             there are no detectable breaks. Cut it by hand with the times above, or drop it.
+          </p>
+        ) : null}
+
+        {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
+          <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+            This cut is {formatClipDuration(span)}, below the {formatClipDuration(minClipDurationMs)} catalog
+            minimum. It can be confirmed, but the ingest gate will reject it unless you widen or merge it.
           </p>
         ) : null}
 

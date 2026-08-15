@@ -78,3 +78,49 @@ func TestPodAdapter_NilPolicyResolverIsTheZeroPolicy(t *testing.T) {
 			report.Eligible, report.Commercials)
 	}
 }
+
+func TestPodAdapter_BreakDurationRaisesSoftPodLimit(t *testing.T) {
+	clips := make([]filler.Clip, 0, 12)
+	for i := 0; i < 12; i++ {
+		clips = append(clips, filler.Clip{
+			Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
+			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
+		})
+	}
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+		return filler.Policy{PodMax: 4, BreakDurationMs: 5 * 60_000}
+	}, discardLogger())
+
+	pod, err := adapter.Preview(context.Background(), "ch-1", 7, filler.Selection{
+		Era: filler.Year(1992), Audience: filler.Kids,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pod.Entries) != 10 || pod.TotalMs != 300_000 {
+		t.Fatalf("5m target with 30s clips = %d entries / %dms, want 10 / 300000; pod_max must be soft", len(pod.Entries), pod.TotalMs)
+	}
+}
+
+func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
+	clips := make([]filler.Clip, 0, 12)
+	for i := 0; i < 12; i++ {
+		clips = append(clips, filler.Clip{
+			Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
+			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
+		})
+	}
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, func() filler.Policy {
+		return filler.Policy{PodMax: 4, BreakDurationMs: 5 * 60_000}
+	}, discardLogger())
+
+	pod, err := adapter.Preview(context.Background(), "ch-1", 7, filler.Selection{
+		Era: filler.Year(1992), Audience: filler.Kids, BreakDurationMs: 2 * 60_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pod.Entries) != 4 || pod.TotalMs != 120_000 {
+		t.Fatalf("2m channel override = %d entries / %dms, want 4 / 120000", len(pod.Entries), pod.TotalMs)
+	}
+}

@@ -33,7 +33,7 @@ const canonicalize = (s: FillerDraft): string => {
 };
 
 // useChannelFillerDraft — the live filler sandbox (§10, §12) for one channel. It holds a
-// DRAFT filler selection and break frequency in local state (seeded from the saved policy)
+// DRAFT filler selection, break frequency and break length in local state (seeded from the saved policy)
 // and, on every settled change, re-assembles the actual break through POST …/pods/preview
 // — the SAME assembler + seed reconcile uses — so what you see is exactly what will air.
 // Nothing is saved until `apply`, which PATCHes both choices onto the policy; the
@@ -47,23 +47,30 @@ const canonicalize = (s: FillerDraft): string => {
 // It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
 // policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
 // must merge onto the policy or it would wipe scope/audience/separation/ordering.
-const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
+const useChannelFillerDraft = (
+  channelId: string,
+  policy: ChannelPolicy | undefined,
+  revision: number,
+): ChannelFillerDraft => {
   const queryClient = useQueryClient();
   const saved: FillerSelection | undefined = policy?.filler;
   const savedBreaksPerHour = policy?.breaksPerHour;
+  const savedBreakDuration = policy?.breakDuration;
   // The saved selection this draft was seeded from, as a canonical string — its identity,
   // not its reference (the page hands a fresh `ch.policy.filler` object every render). We
   // resync the draft to `saved` only when THIS changes: a genuine server update (an apply
   // landing, a re-approval reseeding the era) adopts, an incidental re-render does not —
   // the same render-time "adjust state" pattern useChannelLineup uses, no effect/flash.
   const savedSelectionKey = canonicalize(saved ?? {});
-  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}`;
+  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}|duration:${savedBreakDuration ?? "default"}`;
   const [draft, setDraft] = useState<FillerDraft>(saved ?? {});
   const [breaksPerHour, setBreaksPerHour] = useState<number | undefined>(savedBreaksPerHour);
+  const [breakDuration, setBreakDuration] = useState<string | undefined>(savedBreakDuration);
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
   if (savedKey !== adoptedKey) {
     setDraft(saved ?? {});
     setBreaksPerHour(savedBreaksPerHour);
+    setBreakDuration(savedBreakDuration);
     setAdoptedKey(savedKey);
   }
 
@@ -79,10 +86,13 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey IS the dependency
   useEffect(() => {
     const t = setTimeout(() => {
-      preview.mutate({ id: channelId, data: { filler: JSON.parse(draftKey) as FillerSelection } });
+      preview.mutate({
+        id: channelId,
+        data: { filler: JSON.parse(draftKey) as FillerSelection, breakDuration },
+      });
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [channelId, draftKey]);
+  }, [channelId, draftKey, breakDuration]);
 
   const update = channelsApi.useUpdateChannel({
     mutation: {
@@ -96,7 +106,10 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
         });
         toast.success("Filler updated");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't update filler"),
+      onError: (e) => {
+        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
+        toast.error(toProblem(e).title ?? "Couldn't update filler");
+      },
     },
   });
 
@@ -107,6 +120,8 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     setDraft,
     breaksPerHour,
     setBreaksPerHour,
+    breakDuration,
+    setBreakDuration,
     preview: body,
     isPreviewing: preview.isPending,
     // The transport mutator THROWS an ApiError on non-2xx for mutations (unlike a query,
@@ -114,15 +129,22 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     // `preview.error`, not `preview.data`. Surfaced so a broken draft reads as an error,
     // not an empty pool.
     previewError: preview.error,
-    isDirty: draftKey !== savedSelectionKey || breaksPerHour !== savedBreaksPerHour,
+    isDirty:
+      draftKey !== savedSelectionKey ||
+      breaksPerHour !== savedBreaksPerHour ||
+      breakDuration !== savedBreakDuration,
     // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
     // rest of it (scope/audience/separation/ordering) alongside the new filler.
     apply: () =>
-      update.mutate({ id: channelId, data: { policy: { ...policy, filler: draft, breaksPerHour } } }),
+      update.mutate({
+        id: channelId,
+        data: { revision, policy: { ...policy, filler: draft, breaksPerHour, breakDuration } },
+      }),
     isApplying: update.isPending,
     discard: () => {
       setDraft(saved ?? {});
       setBreaksPerHour(savedBreaksPerHour);
+      setBreakDuration(savedBreakDuration);
     },
   };
 };

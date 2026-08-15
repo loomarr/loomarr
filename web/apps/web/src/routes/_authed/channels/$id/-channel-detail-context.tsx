@@ -1,7 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { UpdateChannelInputBody } from "@loomarr/api/models/updateChannelInputBody";
-import type { UpdateChannelInputBodyStrategy } from "@loomarr/api/models/updateChannelInputBodyStrategy";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
@@ -28,10 +27,9 @@ type ChannelDetailValue = {
   invalidate: () => void;
   saving: boolean;
   deleting: boolean;
-  update: (data: UpdateChannelInputBody) => void;
-  updateAsync: (data: UpdateChannelInputBody) => Promise<unknown>;
+  update: (data: Omit<UpdateChannelInputBody, "revision">) => void;
+  updateAsync: (data: Omit<UpdateChannelInputBody, "revision">) => Promise<unknown>;
   savePolicy: (policy: ChannelPolicy) => void;
-  saveStrategy: (strategy: UpdateChannelInputBodyStrategy) => void;
   /** `""` clears it — the icon is just another field on the same PATCH (§7). */
   saveLogo: (logo: string) => Promise<void>;
   onDelete: (opts: { purge: boolean }) => void;

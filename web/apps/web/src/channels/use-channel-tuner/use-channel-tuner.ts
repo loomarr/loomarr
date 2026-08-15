@@ -1,5 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type WarmedChannel, warmPreparedChannel } from "../channel-warmer";
 import { beginTune, markTunePhase } from "../tuner-timing";
 import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";
 
@@ -36,11 +37,13 @@ const useChannelTuner = ({
   channels,
   nowNext,
   onTune,
+  warmChannel = warmPreparedChannel,
 }: UseChannelTunerOptions): UseChannelTuner => {
   const catalog = useMemo(() => surfableCatalog(channels), [channels]);
   const [request, setRequest] = useState<{ channel: ChannelDTO; attempt: ReturnType<typeof beginTune> }>();
   const pendingId = useRef(currentId);
   const requestedId = useRef<string | undefined>(undefined);
+  const warmed = useRef(new Map<string, WarmedChannel>());
 
   useEffect(() => {
     // A navigation from outside this controller becomes the new base. Keep our request while the
@@ -52,11 +55,37 @@ const useChannelTuner = ({
   }, [currentId]);
 
   const current = request?.channel ?? catalog.find((channel) => channel.id === currentId);
+
+  useEffect(() => {
+    if (!current) return;
+    const controller = new AbortController();
+    const neighbors = [adjacentChannel(catalog, current.id, -1), adjacentChannel(catalog, current.id, 1)]
+      .filter((channel): channel is ChannelDTO => Boolean(channel && channel.id !== current.id))
+      .filter((channel, index, all) => all.findIndex((candidate) => candidate.id === channel.id) === index);
+    const keep = new Set([current.id, ...neighbors.map((channel) => channel.id)]);
+    for (const id of warmed.current.keys()) {
+      if (!keep.has(id)) warmed.current.delete(id);
+    }
+    for (const neighbor of neighbors) {
+      const cached = warmed.current.get(neighbor.id);
+      if (cached && cached.expiresAt > Date.now() + 60_000) continue;
+      void warmChannel(neighbor.id, controller.signal)
+        .then((result) => {
+          if (result && !controller.signal.aborted) warmed.current.set(neighbor.id, result);
+        })
+        .catch(() => {
+          // Warming is speculative. A real tune still mints and attaches normally.
+        });
+    }
+    return () => controller.abort();
+  }, [catalog, current, warmChannel]);
+
   const step = useCallback(
     (direction: TuneDirection) => {
       const target = adjacentChannel(catalog, pendingId.current, direction);
       if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
-      const attempt = beginTune(true);
+      const warm = warmed.current.get(target.id);
+      const attempt = beginTune(true, warm?.warmed, warm?.url);
       pendingId.current = target.id;
       requestedId.current = target.id;
       setRequest({ channel: target, attempt });
@@ -68,7 +97,8 @@ const useChannelTuner = ({
 
   const retry = useCallback(() => {
     if (!current) return;
-    const attempt = beginTune(false);
+    const warm = warmed.current.get(current.id);
+    const attempt = beginTune(false, warm?.warmed, warm?.url);
     pendingId.current = current.id;
     requestedId.current = current.id;
     setRequest({ channel: current, attempt });

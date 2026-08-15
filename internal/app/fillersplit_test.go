@@ -83,16 +83,81 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 		splitClips: fillerSplitStoreAdapter{st},
 	}
 	if withSplitter {
+		drop := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(drop, filepath.Dir(compPath)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		tools := splitFakeTools{chapters: []filler.Chapter{
 			{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
 			{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
 		}}
 		n := 0
-		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, t.TempDir(),
+		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, drop,
 			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
 	return a, st
+}
+
+// Confirm is the operator's terminal decision for the remaining proposal. The composite row stays
+// for lineage, but its pipeline row must leave Incoming's running/review conveyor; otherwise the UI
+// claims the already-confirmed reel is still being prepared forever.
+func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
+	ctx := context.Background()
+	a, st := newSplitAdapter(t, events.NewBus(), true)
+	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	proposal, err := a.splitter.Propose(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.ConfirmSplit(ctx, proposal.ID, proposal.Segments); err != nil {
+		t.Fatal(err)
+	}
+	parent, found, err := st.GetClipPipeline(ctx, compHash)
+	if err != nil || !found {
+		t.Fatalf("parent pipeline = (_, %v, %v), want row", found, err)
+	}
+	if parent.Disposition != filler.DispositionFiled {
+		t.Fatalf("parent disposition = %q, want filed after the proposal was confirmed", parent.Disposition)
+	}
+	parentClip, err := st.GetClip(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parentClip.Held {
+		t.Fatal("confirmed composite is still held, so its catalog group is invisible")
+	}
+	topLevel, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, TopLevelOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
+		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
+	}
+	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range conveyor {
+		if row.ClipHash == compHash {
+			t.Fatal("confirmed composite still appears on the Incoming conveyor")
+		}
+	}
 }
 
 // No drop-folder ⇒ the typed unavailable error the API renders as a 409 naming

@@ -143,6 +143,9 @@ func TestPruneProtectsTheAcceptedScheduleWithoutTreatingAProbeAsPlayback(t *test
 		t.Fatal(err)
 	}
 	publication := publishSized(t, lib, "scheduled", 600<<10)
+	if err := os.Chtimes(publication.Directory, now, now); err != nil {
+		t.Fatal(err)
+	}
 	specification := baselineSpec("scheduled")
 	now = now.Add(preparedStartupGrace + preparedUseGrace + time.Hour)
 	if _, ok, err := lib.Peek(specification); err != nil || !ok {
@@ -209,9 +212,9 @@ func publishSized(t *testing.T, lib *Library, source string, size int) Publicati
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Publish uses the real filesystem clock for the directory mtime, while these tests deliberately
-	// drive Library with an injected clock. Keep both sides of the retention comparison on that same
-	// clock so the fixture does not become date-dependent when wall time passes its fixed test date.
+	// Retention deliberately falls back to the publication directory's mtime after a restart.
+	// Keep that durable timestamp on the same injected clock as the in-memory LRU; using the
+	// host clock makes a fixed-date test start failing once wall time passes its fake `now`.
 	if err := os.Chtimes(pub.Directory, lib.now(), lib.now()); err != nil {
 		t.Fatal(err)
 	}

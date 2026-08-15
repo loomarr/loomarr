@@ -58,6 +58,7 @@ const WizardAiBlock = () => {
   // surface flips the instant you switch to OpenAI-compatible — before Save.
   const liveProvider =
     edits["llm.provider"] ?? aiEntries.find((e) => e.key === "llm.provider")?.value ?? status?.provider;
+  const liveBaseUrl = edits["llm.url"] ?? aiEntries.find((e) => e.key === "llm.url")?.value ?? "";
 
   // A model became active (or provider saved): flip the wizard's `llm` checklist dot green.
   const refreshSetupStatus = () =>
@@ -112,7 +113,12 @@ const WizardAiBlock = () => {
 
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen
           by the LIVE provider. onModelChange flips the wizard's green dot when a model is set. */}
-      <AiModelSettings provider={liveProvider} onModelChange={refreshSetupStatus} />
+      <AiModelSettings
+        provider={liveProvider}
+        baseUrl={liveBaseUrl}
+        onBaseUrlChange={(value) => setEdits((current) => ({ ...current, "llm.url": value }))}
+        onModelChange={refreshSetupStatus}
+      />
     </div>
   );
 };

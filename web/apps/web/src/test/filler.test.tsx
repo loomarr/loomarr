@@ -150,6 +150,12 @@ const stubFiller = ({
       stageOrder: [],
       total: 0,
       ...incoming,
+      clipsTotal: incoming?.clipsTotal ?? incoming?.clips?.length ?? 0,
+      decisionsTotal:
+        incoming?.decisionsTotal ?? incoming?.clips?.filter((clip) => clip.needsDecision).length ?? 0,
+      reelsTotal: incoming?.reelsTotal ?? incoming?.reels?.length ?? 0,
+      recentlyFiledTotal: incoming?.recentlyFiledTotal ?? incoming?.recentlyFiled?.length ?? 0,
+      rejectedTotal: incoming?.rejectedTotal ?? incoming?.rejected?.length ?? 0,
     }),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
     // the SERVER — counts and health verdict both — rather than deriving them from the sources

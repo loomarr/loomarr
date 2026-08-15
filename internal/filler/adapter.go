@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"log/slog"
+	"sort"
 
 	"github.com/mantonx/loomarr/internal/metrics"
 )
@@ -66,6 +67,8 @@ type Selection struct {
 	Kinds      []string // empty = the default kinds
 	Pinned     []string // clip ids always included
 	Excluded   []string // clip ids never used
+	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
+	BreakDurationMs int64
 }
 
 // NewPodAdapter builds the scheduler-facing pod assembler.
@@ -79,7 +82,9 @@ func NewPodAdapter(catalog CatalogReader, policy func() Policy, log *slog.Logger
 // poolGapMs is the notional window Assemble fills to size the channel's clip pool.
 // A channel's filler-list is a POOL Tunarr draws from, not a single sized break,
 // so we assemble a generous pool (~one long break's worth); Tunarr picks per gap.
-const poolGapMs = 600_000 // 10 min of clips
+const poolGapMs int64 = 600_000 // 10 min of clips
+
+const defaultBreakDurationMs int64 = 300_000 // 5 min; mirrors filler.break_duration
 
 // BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
 // channel and return the clips' Tunarr program uuids for its filler-list. ok=false
@@ -162,6 +167,7 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	// two different snapshots if a setting is written between them — a pod sized by one policy
 	// and filled by another, which is a bug that would appear only under a concurrent write.
 	pol := a.pol()
+	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)
@@ -170,8 +176,57 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
-	w := a.windowFor(channelID, seed, sel, podMax)
+	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
+	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Assemble(clips, w, pol, map[string]bool{}), nil
+}
+
+// effectiveBreakDurationMs resolves the per-channel override over the live global setting.
+// A zero is inheritance, never "off" — breaks_per_hour owns the off switch. Invalid legacy
+// values also fall back to the documented 5 minute default rather than recreating Tunarr's
+// silent 30 second clamp and making Loomarr's preview disagree with playout.
+func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
+	if sel.BreakDurationMs >= 30_000 {
+		return sel.BreakDurationMs
+	}
+	if pol.BreakDurationMs >= 30_000 {
+		return pol.BreakDurationMs
+	}
+	return defaultBreakDurationMs
+}
+
+// podMaxForDuration makes pod_max a soft density ceiling when it is too small to plausibly
+// fill the requested break. It derives the required count from the median duration of the
+// tightest non-empty matching pool, so a 30s catalog gets about ten slots for a 5m break while
+// a 60s catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targetMs int64) int {
+	var matched []Clip
+	for _, pool := range candidatePools(clips, w, pol) {
+		if len(pool.clips) > 0 {
+			matched = pool.clips
+			break
+		}
+	}
+	if len(matched) == 0 {
+		return configured
+	}
+
+	durations := make([]int64, 0, len(matched))
+	for _, c := range matched {
+		if c.DurationMs > 0 {
+			durations = append(durations, c.DurationMs)
+		}
+	}
+	if len(durations) == 0 {
+		return configured
+	}
+	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	median := durations[len(durations)/2]
+	required := int((targetMs + median - 1) / median)
+	if required > configured {
+		return required
+	}
+	return configured
 }
 
 // windowFor builds the Window a channel's selection describes.
@@ -180,11 +235,15 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 // They already share the ladder (both end up in `candidatePools`); this is the step before it,
 // and duplicating it is how a meter ends up reporting on a slightly different window than the
 // pod it claims to describe — an off-by-one-field bug that no ladder test would catch.
-func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int) Window {
+func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64) Window {
+	gapMs := poolGapMs
+	if breakDurationMs > gapMs {
+		gapMs = breakDurationMs
+	}
 	return Window{
 		ChannelID: channelID, Seed: seed,
 		Era: sel.Era, Audience: sel.Audience,
-		GapMs: poolGapMs, PodMax: podMax,
+		GapMs: gapMs, PodMax: podMax, BreakDurationMs: breakDurationMs,
 		Categories: sel.Categories, Kinds: sel.Kinds,
 		Pinned: sel.Pinned, Excluded: sel.Excluded,
 	}
@@ -221,13 +280,16 @@ func (a *PodAdapter) Catalog(ctx context.Context) ([]Clip, error) { return a.cat
 // catalog was never part of it.
 func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection) CoverageReport {
 	pol := a.pol()
+	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
 	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
 	// so nobody threads a real seed through expecting it to matter.
-	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), pol)
+	w := a.windowFor(channelID, 0, sel, podMax, breakDurationMs)
+	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
+	return Coverage(clips, w, pol)
 }
 
 // FitForChannel reports how ONE clip relates to one channel's selection (§10 V35 item 1.7).
@@ -238,13 +300,14 @@ func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection)
 // catalog once per channel row would make an N-channel picker an N-catalog-load operation.
 func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit {
 	pol := a.pol()
+	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
 	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
 	// of one break, so a real seed would imply an answer that varies per pod.
-	return FitFor(c, a.windowFor(channelID, 0, sel, podMax), pol)
+	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs), pol)
 }
 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material

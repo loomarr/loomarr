@@ -114,15 +114,14 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
       const clips = opts.clips ?? [];
       return { clips, total: clips.length };
     }),
-    // ⚠ ALSO FOUND BY THE GUARD, a second time. The pin list reads `filler.pod_max` so it can say
-    // when a channel has more pins than one break can play (#237) — and the unhandled-request
-    // assertion turned that new fetch into five red tests the moment it landed, rather than a
-    // silent 404 the component would have rendered around.
+    // The channel editor reads inherited break defaults from settings so its labels and draft
+    // preview describe the same values reconcile will use.
     getSettingsListMockHandler({
       features: {},
       settings: [
         setting({ key: "filler.pod_max", value: "4", kind: "int", group: "filler" }),
         setting({ key: "filler.breaks_per_hour", value: "4", kind: "int", group: "filler" }),
+        setting({ key: "filler.break_duration", value: "5m", kind: "duration", group: "filler" }),
       ],
     }),
     // ⚠ FOUND BY THE GUARD. The coverage meter reads this on mount and the old catch-all served
@@ -140,17 +139,22 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
   return { patches, previews, catalogQueries };
 };
 
-const policy = (filler?: ChannelPolicy["filler"], breaksPerHour?: number): ChannelPolicy => ({
+const policy = (
+  filler?: ChannelPolicy["filler"],
+  breaksPerHour?: number,
+  breakDuration?: string,
+): ChannelPolicy => ({
   ordering: "shuffle",
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
   ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
+  ...(breakDuration !== undefined ? { breakDuration } : {}),
 });
 
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
     // transition, so the content isn't in the DOM on the first synchronous pass).
@@ -162,14 +166,35 @@ describe("ChannelFiller", () => {
         "Follow default (4 per hour)",
       ),
     );
+    expect(screen.getByRole("combobox", { name: "Break length" })).toHaveTextContent(
+      "Follow default (5 min)",
+    );
     // The mount preview assembles the (saved) selection and renders the pod timeline.
     await waitFor(() => expect(screen.getByLabelText("Pod segments")).toBeInTheDocument());
+  });
+
+  it("previews and applies a custom break length", async () => {
+    const user = userEvent.setup();
+    const { patches, previews } = stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+
+    await waitFor(() => expect(previews).toHaveLength(1));
+    await user.click(screen.getByRole("combobox", { name: "Break length" }));
+    await user.click(await screen.findByRole("option", { name: "Custom length" }));
+    const input = await screen.findByLabelText("Custom break length in minutes");
+    await user.clear(input);
+    await user.type(input, "1.5");
+
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ breakDuration: "1.5m" }));
+    await user.click(screen.getByRole("button", { name: /apply filler/i }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({ policy: { breakDuration: "1.5m" } });
   });
 
   it("offers inherited, disabled, and custom break frequency without re-previewing the clip mix", async () => {
     const user = userEvent.setup();
     const { patches, previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
     await user.click(screen.getByRole("combobox", { name: "Break frequency" }));
@@ -185,7 +210,7 @@ describe("ChannelFiller", () => {
   it("editing a criterion re-previews and reveals Apply", async () => {
     const user = userEvent.setup();
     const { previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     await user.click(await screen.findByRole("button", { name: /choose categories/i }));
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
@@ -207,7 +232,7 @@ describe("ChannelFiller", () => {
   it("Apply PATCHes the draft merged onto the saved policy; Discard clears the dirty state", async () => {
     const user = userEvent.setup();
     const { patches } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ audience: "kids" })} />);
 
     await user.click(await screen.findByRole("button", { name: /choose categories/i }));
     await user.click(await screen.findByRole("button", { name: "Candy" }));
@@ -246,7 +271,7 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
 
@@ -269,10 +294,10 @@ describe("ChannelFiller", () => {
       getListTaxonomyMockHandler({ taxa: [] }),
       getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [], criteria: HEALTHY }),
       // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
-      // the settings read too — the pin list asks for `filler.pod_max` (#237).
+      // the inherited-default settings read too.
       getSettingsListMockHandler({ features: {}, settings: [] }),
     );
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
   });
 });

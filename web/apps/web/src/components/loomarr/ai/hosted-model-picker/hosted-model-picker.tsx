@@ -36,11 +36,13 @@ const HostedModelPicker = ({
             )}
           </div>
 
-          {!hp.keyConfigured ? (
-            // No key yet: point the operator at where to get one. The key is entered in
-            // the settings form above (llm.api_key), not here.
+          {!hp.keyConfigured && (
+            // Keep the safe fallback visible below this instruction: it answers which
+            // model Loomarr recommends before credentials can unlock the live catalog.
             <p className="text-muted-foreground text-sm">
-              Add this provider's URL + key above and press Test to list its models.
+              {hp.key === "openrouter"
+                ? "Add your OpenRouter key above and save to use the suggested model and load live options."
+                : "Add this provider's URL + key above and save to load its models."}
               {hp.keysUrl && (
                 <>
                   {" "}
@@ -55,14 +57,24 @@ const HostedModelPicker = ({
                 </>
               )}
             </p>
-          ) : models.length === 0 ? (
+          )}
+
+          {hp.keyConfigured && models.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               No models returned. Check the key and base URL above, then Test again.
             </p>
-          ) : (
+          ) : models.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {models.map((m: HostedModelView) => {
                 const isActive = hp.active && m.id === activeModel;
+                const unusable = !m.tools;
+                const action = isActive
+                  ? "In use"
+                  : !hp.keyConfigured
+                    ? "Add key first"
+                    : unusable
+                      ? "Can't use"
+                      : "Use this";
                 return (
                   <li
                     key={m.id}
@@ -76,25 +88,32 @@ const HostedModelPicker = ({
                         {m.label}
                         <span className="font-mono text-static-400 text-xs">{m.id}</span>
                         {m.recommended && <Badge variant="signal">recommended</Badge>}
-                        {m.tools && <Badge variant="lock">tools</Badge>}
+                        <Badge variant={m.tools ? "lock" : "caution"}>
+                          {m.tools ? "Tools" : "Tools required"}
+                        </Badge>
                         {isActive && <Badge variant="lock">active</Badge>}
                       </p>
                       {m.why && <p className="mt-0.5 text-muted-foreground text-sm">{m.why}</p>}
+                      {unusable && !m.why && (
+                        <p className="mt-0.5 text-muted-foreground text-sm">
+                          Loomarr requires advertised tool-calling to ground suggestions safely.
+                        </p>
+                      )}
                     </div>
                     <Button
                       variant={isActive ? "outline" : "default"}
                       size="sm"
-                      disabled={busy || isActive}
+                      disabled={busy || isActive || !hp.keyConfigured || unusable}
                       onClick={() => onSelect({ provider: hp.key, model: m.id, baseUrl: hp.baseUrl })}
                     >
                       {isActive ? <Check className="size-4" aria-hidden /> : null}
-                      {isActive ? "In use" : "Use this"}
+                      {action}
                     </Button>
                   </li>
                 );
               })}
             </ul>
-          )}
+          ) : null}
         </div>
       );
     })}

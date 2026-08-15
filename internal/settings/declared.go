@@ -1,6 +1,9 @@
 package settings
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
@@ -74,6 +77,17 @@ func nonNegativeWholeNumber(v any) error {
 	return nil
 }
 
+func breakDuration(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d < 30*time.Second {
+		return fmt.Errorf("want at least 30s (got %s) — shorter values are clamped by Tunarr and would make playout backends disagree", d)
+	}
+	return nil
+}
+
 func declared() []Setting {
 	return []Setting{
 		// --- Connections: media server (§15, Phase 5) ---
@@ -134,13 +148,13 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "sonarr.quality_profile", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
+			Key: "sonarr.quality_profile", Label: "Sonarr quality profile override", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "sonarr.root_folder", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
+			Key: "sonarr.root_folder", Label: "Sonarr root folder override", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Sonarr root folder path. Blank = Sonarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
@@ -158,13 +172,13 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "radarr.quality_profile", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
+			Key: "radarr.quality_profile", Label: "Radarr quality profile override", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "radarr.root_folder", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
+			Key: "radarr.root_folder", Label: "Radarr root folder override", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr root folder path. Blank = Radarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
@@ -177,7 +191,7 @@ func declared() []Setting {
 			Doc: "Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels.",
 		},
 		{
-			Key: "tunarr.transcode_config_id", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
+			Key: "tunarr.transcode_config_id", Label: "Transcode profile override", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
 		},
@@ -215,7 +229,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
-			Kind: KindString, Default: "",
+			Kind: KindString, Default: "", Advanced: true,
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
 		},
 		{
@@ -370,15 +384,15 @@ func declared() []Setting {
 			// universal, so hiding this for Ollama made remote Ollama impossible to configure.
 			Key: "llm.url", Label: "AI service address", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the OpenAI-compatible base URL ending in /v1.",
+			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
 		},
 		{
-			// For a hosted service you type the model name; for Ollama the ranked model
-			// picker below is how you choose, so this free-text field is hidden there to
-			// avoid two controls setting the same thing.
+			// The normal AI page uses the ranked picker for both provider kinds so two
+			// controls never compete. This declaration remains for env compatibility and
+			// the explicit All Settings escape hatch.
 			Key: "llm.model", Label: "Hosted lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "",
-			Doc:      "The model name for your hosted AI service (e.g. gpt-4o-mini).",
+			Doc:      "The active hosted model id. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
@@ -796,9 +810,14 @@ func declared() []Setting {
 			Doc: "Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency.",
 		},
 		{
+			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
+			Kind: KindDuration, Default: "5m", Validate: breakDuration,
+			Doc: "How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+		},
+		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
 			Kind: KindInt, Default: 4, Validate: positiveWholeNumber,
-			Doc: "Maximum clips Loomarr may assemble into any channel's commercial break.",
+			Doc: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
@@ -973,7 +992,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "cookie.secure", Label: "Secure cookies", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
-			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto",
+			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto", Advanced: true,
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
 
