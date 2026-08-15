@@ -12,7 +12,11 @@ const mockFetch = (status: number, body: unknown) =>
     ),
   );
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  delete (globalThis as typeof globalThis & { __loomarrInitialAuthResponse?: Promise<Response> })
+    .__loomarrInitialAuthResponse;
+  vi.restoreAllMocks();
+});
 
 describe("customFetch", () => {
   it("sends cookies and a CSRF header on mutations, none on GET", async () => {
@@ -43,6 +47,30 @@ describe("customFetch", () => {
       status: 200,
       data: { id: "u1", name: "Ada" },
     });
+  });
+
+  it("adopts the document's in-flight initial auth request exactly once", async () => {
+    const fetchSpy = mockFetch(200, { id: "later" });
+    vi.stubGlobal("fetch", fetchSpy);
+    (
+      globalThis as typeof globalThis & {
+        __loomarrInitialAuthResponse?: Promise<Response>;
+      }
+    ).__loomarrInitialAuthResponse = Promise.resolve(
+      new Response(JSON.stringify({ id: "prefetched", name: "Ada" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(customFetch("/v1/auth/me")).resolves.toMatchObject({
+      status: 200,
+      data: { id: "prefetched", name: "Ada" },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await expect(customFetch("/v1/auth/me")).resolves.toMatchObject({ data: { id: "later" } });
+    expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
   it("carries an undefined data for an empty (204) body", async () => {

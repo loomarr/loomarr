@@ -172,6 +172,13 @@ the entry script plus its module preloads may not exceed 1 MiB uncompressed. The
 heavy screen from becoming a parse cliff; the second catches a nominally split build that still downloads
 the whole app before authentication or route selection.
 
+The embedded production server negotiates gzip for HTML, JavaScript, CSS, and other compressible static
+formats. It prepares those representations once when its handler is constructed, not on every request;
+the route budget above remains uncompressed so compression cannot hide parse and evaluation regressions.
+The document also starts the initial `/v1/auth/me` read while that entry graph is downloading. The shared
+API transport adopts that exact response once, preserving the route guard's error handling without putting
+the session round trip after JavaScript evaluation or issuing a duplicate request.
+
 ---
 
 ## 5. Component workshop + pixel-perfect testing (Storybook + Playwright)
