@@ -268,7 +268,7 @@ dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its back
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
 .PHONY: test-pg
-test-pg: ## all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker)
+test-pg: rust-dev-build ## all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker)
 # ⚠ The `-run TestPostgresConformance` filter this used to carry meant every OTHER integration test
 # in the package compiled and never ran — including TestMigrateSQLiteToPostgres, which its own file
 # header calls "the V11 gate", plus TestMigrateCoversEveryTable and the three TestPreflight* tests.
