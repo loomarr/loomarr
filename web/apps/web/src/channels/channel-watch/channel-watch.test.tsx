@@ -109,4 +109,23 @@ describe("ChannelWatch pickers", () => {
     // rather than a catch-all answering it.
     expect(wasProbed()).toBe(false);
   });
+
+  it("renders accessible Channel Up/Down controls that share the tuner step action", async () => {
+    stubTracks();
+    const step = vi.fn();
+    render(
+      <ChannelWatch
+        channel={live}
+        isAdmin
+        onSavePolicy={vi.fn()}
+        tuner={{ canSurf: true, step, retry: vi.fn() }}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    await startWatching();
+
+    await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
+    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
+    expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
 });

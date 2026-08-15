@@ -98,23 +98,20 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
 | `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
 | `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
-| `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
+| `job.channel_maintenance.schedule` (`JOB_CHANNEL_MAINTENANCE_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron). |
 | `job.playout_prepare.schedule` (`JOB_PLAYOUT_PREPARE_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available. _(advanced)_ |
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
 | `job.filler_split_sweep.schedule` (`JOB_FILLER_SPLIT_SWEEP_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`. |
 | `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.filler_pipeline.schedule` (`JOB_FILLER_PIPELINE_SCHEDULE`) | cron | `0 */2 * * * *` | How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron). |
 | `job.filler_reindex.schedule` (`JOB_FILLER_REINDEX_SCHEDULE`) | cron | `0 5 * * * *` | How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled. |
-| `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.images_fetch.schedule` (`JOB_IMAGES_FETCH_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders. |
 | `job.images_adopt_artwork.schedule` (`JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see. |
 | `job.images_avif.schedule` (`JOB_IMAGES_AVIF_SCHEDULE`) | cron | `0 20 * * * *` | How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP. |
-| `job.images_rehydrate.schedule` (`JOB_IMAGES_REHYDRATE_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder. |
-| `job.images_gc.schedule` (`JOB_IMAGES_GC_SCHEDULE`) | cron | `0 0 5 * * *` | How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork. |
+| `job.images_maintenance.schedule` (`JOB_IMAGES_MAINTENANCE_SCHEDULE`) | cron | `0 0 5 * * *` | When Loomarr restores recoverable artwork, enforces retention, and cleans up image storage. |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
 | `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
-| `job.series_episode_refresh.schedule` (`JOB_SERIES_EPISODE_REFRESH_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr re-reads the episode lists of shows used by channels, so the guide doesn't have to ask the media server on every load (cron). |
 | `episodes.max_age` (`EPISODES_MAX_AGE`) | duration | `24h` | How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness. |
 | `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
 | `job.seerr_queue_poll.schedule` (`JOB_SEERR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only). |
@@ -123,8 +120,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
 | `activity.retention` (`ACTIVITY_RETENTION`) | duration | `720h` | How long the Dashboard's recent-activity entries are kept before they're cleaned up. |
-| `job.retention_purge.schedule` (`JOB_RETENTION_PURGE_SCHEDULE`) | cron | `0 30 4 * * *` | When to clean up finished suggestion jobs and declined requests. |
-| `job.activity_purge.schedule` (`JOB_ACTIVITY_PURGE_SCHEDULE`) | cron | `0 15 4 * * *` | When to clean up old recent-activity entries. |
+| `job.housekeeping.schedule` (`JOB_HOUSEKEEPING_SCHEDULE`) | cron | `0 30 4 * * *` | When Loomarr removes expired sessions and operational records beyond their retention periods. |
 | `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 
 ## Channels & playback

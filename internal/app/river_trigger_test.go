@@ -34,7 +34,7 @@ func TestRiverTrigger_IsNotOnTheSlowSchedulePath(t *testing.T) {
 
 	fired := make(chan time.Time, 4)
 	reg := scheduler.NewRegistry().Add(scheduler.Job{
-		Name: "probe", Title: "Probe", Description: "probe job.",
+		Name: "probe", Group: scheduler.GroupSystem, Title: "Probe", Description: "probe job.",
 		// Far-future cron: only an explicit Trigger can run this, so the measurement can
 		// never accidentally time a periodic firing.
 		DefaultCron: "0 0 5 1 1 *",

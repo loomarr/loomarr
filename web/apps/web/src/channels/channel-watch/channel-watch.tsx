@@ -6,7 +6,7 @@ import {
   type TrackDTO,
   unwrap,
 } from "@loomarr/api";
-import { Play, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
@@ -14,6 +14,9 @@ import { TunerLoader } from "@/components/loomarr/shell";
 import { Button, VideoPlayer } from "@/components/ui";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
+import { TunerOSD } from "../tuner-osd";
+import type { TuneAttempt } from "../tuner-timing";
+import type { TuneDirection } from "../use-channel-tuner";
 import { languageLabel } from "./language-label";
 
 // ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
@@ -37,6 +40,13 @@ interface ChannelWatchProps {
   onSavePolicy: (policy: ChannelPolicy) => void;
   /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
   mediaServerName?: string;
+  tuner?: {
+    canSurf: boolean;
+    currentTitle?: string;
+    attempt?: TuneAttempt;
+    step: (direction: TuneDirection) => void;
+    retry: () => void;
+  };
 }
 
 // withSaved keeps the currently-saved value present in an options list even when the airing does
@@ -100,8 +110,9 @@ const ChannelWatch = ({
   isAdmin,
   onSavePolicy,
   mediaServerName = "your media server",
+  tuner,
 }: ChannelWatchProps) => {
-  const player = useHlsPlayer(channel.id);
+  const player = useHlsPlayer(channel.id, tuner?.attempt);
   // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
   // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
   // second click makes "open the channel" a two-step act to do the obvious thing.
@@ -177,6 +188,33 @@ const ChannelWatch = ({
   // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
   const barControls = (
     <>
+      {tuner && (
+        <fieldset className="flex min-w-0 items-center gap-0.5 border-0 p-0">
+          <legend className="sr-only">Channel navigation</legend>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            aria-label="Channel down"
+            disabled={!tuner.canSurf}
+            onClick={() => tuner.step(-1)}
+          >
+            <ChevronDown className="size-4" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            aria-label="Channel up"
+            disabled={!tuner.canSurf}
+            onClick={() => tuner.step(1)}
+          >
+            <ChevronUp className="size-4" aria-hidden />
+          </Button>
+        </fieldset>
+      )}
       <TrackSelectMenu
         icon={Volume2}
         label="Audio"
@@ -203,6 +241,7 @@ const ChannelWatch = ({
       // an error shows its own message below, and a playing stream needs no overlay.
       overlay={player.status === "loading" ? <TunerLoader /> : undefined}
       attach={player.attach}
+      onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />
   );
@@ -217,7 +256,17 @@ const ChannelWatch = ({
           />
         ) : active ? (
           <div className="flex flex-col gap-3 p-3">
-            {playerEl}
+            <div className="relative">
+              {playerEl}
+              {player.status === "loading" && tuner && (
+                <TunerOSD
+                  number={channel.number}
+                  name={channel.name}
+                  currentTitle={tuner.currentTitle}
+                  className="absolute top-4 left-4 z-[2]"
+                />
+              )}
+            </div>
 
             {/* The tune-in status line under the player — the player's own control bar carries the
                 LIVE badge, scrubber, controls and fullscreen, so this is just the join note. */}
@@ -228,6 +277,11 @@ const ChannelWatch = ({
                   ? "Tuning in…"
                   : "You're joining live, mid-programme."}
             </p>
+            {player.status === "error" && tuner && (
+              <Button variant="outline" size="sm" onClick={tuner.retry} className="self-start">
+                Retry channel
+              </Button>
+            )}
           </div>
         ) : (
           <button

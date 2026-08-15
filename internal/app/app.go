@@ -203,6 +203,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// this registry as each subsystem is wired below; the scheduler is built + started once
 	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
 	jobReg := scheduler.NewRegistry()
+	var episodeRefresh *reconcile.EpisodeRefresh
 
 	// Dashboard activity feed (§12, V32). One recorder, passed to every subsystem that
 	// records a line — nil-safe, so a store-less boot records nothing rather than needing a
@@ -215,8 +216,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
 	// constructed given a store so acquisitions process the moment a requester is
 	// configured — no restart (§8.1). Its dynamic seerr/library connections are empty
-	// until configured; with nothing `wanted` it's a no-op. Session cleanup is its own
-	// scheduler job now (was the janitor piggybacking the reconcile ticker).
+	// until configured; with nothing `wanted` it's a no-op. Session cleanup is part of
+	// daily housekeeping rather than piggybacking the reconcile ticker.
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		req := set.requesterFor() // Seerr or direct Sonarr/Radarr, per requester.provider (§6)
@@ -226,18 +227,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The reconcile tick is now a scheduler job (§18.1) — same Tick logic, driven by the
 		// shared heartbeat on a cron schedule instead of its own ticker.
 		jobReg.Add(rec.Job())
-		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
-		// ticker via the janitor).
 		// Retention for the accumulating tables (§5, §18.1). The purge POLICY — what may be
 		// deleted, in what order, after how long — lives in internal/retention; the store owns
 		// only the SQL. Windows are read live, so a settings change applies on the next run.
-		jobReg.AddAll(retention.New(st, retention.Windows{
+		jobReg.Add(retention.New(st, retention.Windows{
 			Proposals: func() time.Duration { return set.dur("proposals.retention") },
 			Jobs:      func() time.Duration { return set.dur("jobs.retention") },
 			Activity:  func() time.Duration { return set.dur("activity.retention") },
-		}, time.Now, log).Jobs())
-
-		jobReg.Add(auth.NewSessionSweeper(st).Job(time.Now))
+		}, time.Now, log).Job())
 
 		// Poll-based availability (§4, §18.1): the PRIMARY path a requested title reaches
 		// `available`. The scan lists what the media server recently added and confirms any
@@ -253,10 +250,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// that job only correlates in-flight acquisitions and returns early when there are
 		// none, so it would never revisit an already-available show — the exact set this
 		// refreshes. Bounded to the shows channel lineups actually reference.
-		epRefresh := reconcile.NewEpisodeRefresh(st, episodeResolver(lib), func() time.Duration {
+		episodeRefresh = reconcile.NewEpisodeRefresh(st, episodeResolver(lib), func() time.Duration {
 			return set.dur("episodes.max_age")
 		}, time.Now, log)
-		jobReg.Add(epRefresh.Job())
 
 		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
 		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
@@ -266,12 +262,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads",
-				"Asks Sonarr and Radarr how your in-progress downloads are doing, so the queue shows real progress and stalled grabs are visible."))
+			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
+				"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
 		} else if seerr := set.seerrRequester(); seerr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status",
-				"Asks Seerr which requested titles are still being fetched. Seerr reports a coarse status rather than a percentage."))
+			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
+				"Updates requested titles from the coarse acquisition states reported by Seerr."))
 		}
 	}
 
@@ -715,7 +711,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
 		// lease/batch are still constructed; only its standalone loop is gone.
 		chSweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(chSweep.Job())
+		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh))
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 

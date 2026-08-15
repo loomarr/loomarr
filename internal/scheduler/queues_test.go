@@ -17,7 +17,7 @@ import (
 
 func queueTestJob(name string, timeout time.Duration) Job {
 	return Job{
-		Name: name, Title: name, Description: "queue test job " + name + ".",
+		Name: name, Group: GroupSystem, Title: name, Description: "queue test job " + name + ".",
 		DefaultCron: everyMinute, Timeout: timeout,
 		Run: func(context.Context) error { return nil },
 	}

@@ -62,6 +62,9 @@ interface VideoPlayerProps {
   // needs `attachMedia`, not a plain `src`) while keeping every accessible control here — the
   // primitive stays clip-and-transport-agnostic, exactly as its header promises.
   attach?: (video: HTMLVideoElement) => () => void;
+  // Live-tuner navigation. Kept as a direction callback so this transport-agnostic primitive does
+  // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
+  onChannelStep?: (direction: -1 | 1) => void;
   className?: string;
 }
 

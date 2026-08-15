@@ -56,7 +56,7 @@ than letting it describe something finished.
 
 | Workstream | State | Branch | Plan / evidence |
 | --- | --- | --- | --- |
-| V57 · tuner surf UX | design contract; implementation checkpoints open | `tuner-surf-ux` | §9.1: one latest-request-wins Tuner controller, one decoder, immediate OSD, prepared-only adjacent warming, User Timing, and a 100-Channel Playwright gate. Checkpoints: controller/controls → prepared warmer → scale gate. |
+| V57 · tuner surf UX | controller checkpoint ready; prepared warmer + scale gate open | `tuner-controller` | §9.1 controller/controls: server-derived surfability, latest-request-wins cancellation, one persistent player, immediate OSD + retry, decoded-frame handoff, User Timing, and visible/keyboard Channel Up/Down. Evidence: `make check`, `make fe`, focused 4-case Linux visual gate. Next: prepared-only adjacent warmer → 100-Channel Playwright scale gate. |
 | V54 · filler refresh 2 | phase A merged (#247, #248), B–H open | `v54-filler-refresh` | [`docs/engineering/plans/v54-filler-refresh-2.md`](docs/engineering/plans/v54-filler-refresh-2.md) (A severity · B sources twirl-down · C split preview · D catalog artwork/hierarchy/pagination · E break length · F dHash · G a11y · H §10 docs). ⚠ Its audit produced FALSE NEGATIVES in 7 of 12 areas — "X does not exist" in that plan is a claim to re-grep, never a fact. Narrative: [archive/progress-journal.md](docs/engineering/archive/progress-journal.md). |
 | Docs overhaul | this PR | `docs-overhaul` | `make check` + `make docs-lint` + all four `*-verify` targets green. Adds `docs/claims_test.go` and the generated `docs/dev/commands.md`. |
 

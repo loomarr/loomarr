@@ -80,7 +80,13 @@ const ChannelDetailLayout = () => {
   // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
   const { pathname } = useLocation();
 
-  const channel = channelsApi.useGetChannel(id);
+  // A surf request changes `$id` before the replacement GET completes. On Watch, retaining the
+  // previous DTO keeps the one player/decoder mounted while ChannelWatch immediately renders the
+  // target from the already-loaded list. Other sections do not opt into this: an editor must never
+  // temporarily show one channel's data under another channel's URL.
+  const channel = channelsApi.useGetChannel(id, {
+    query: { placeholderData: pathname.endsWith("/watch") ? (previous) => previous : undefined },
+  });
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
 
   const invalidate = () => {
