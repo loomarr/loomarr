@@ -142,6 +142,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             /* autoplay policy — the control handles it */
           });
         };
+        const onFragmentBuffered = () => armFirstFrameWatch();
         const onError = (_evt: string, data: { fatal: boolean; type: string }) => {
           if (!data.fatal) return; // non-fatal: hls.js recovers on its own
           // ⚠ A fatal error during a LIVE stream is usually RECOVERABLE, not terminal — the channel
@@ -162,20 +163,38 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.destroy();
           }
         };
-        // loadSource synchronously detaches and recreates hls.js's MediaSource when a controller is
-        // being reused. Arm the decoded-frame observer only AFTER that hand-off: this prevents
-        // WebKit attributing the outgoing retained picture to the replacement without forcing an
-        // extra video.load() before hls.js performs the same detach itself. That duplicate reset was
-        // expensive on constrained WebKit runners and delayed every otherwise-ready Channel.
+        // Preserve the open MediaSource but never its Channel-relative timeline. transferMedia()
+        // is hls.js's public in-place handoff; removing the old SourceBuffers through standard MSE
+        // gives the new manifest fresh timestamp state without WebKit's expensive source close/open
+        // cycle. An updating/closed source falls back to hls.js's normal full reset below.
+        let transferred = hls.url && hls.media === video ? hls.transferMedia() : null;
+        if (transferred?.mediaSource?.readyState === "open") {
+          try {
+            for (const buffer of Array.from(transferred.mediaSource.sourceBuffers)) {
+              if (buffer.updating) buffer.abort();
+              transferred.mediaSource.removeSourceBuffer(buffer);
+            }
+            transferred.tracks = {};
+          } catch {
+            hls.attachMedia(transferred);
+            transferred = null;
+          }
+        } else if (transferred) {
+          hls.attachMedia(transferred);
+          transferred = null;
+        }
         hls.loadSource(url);
-        if (hls.media !== video) hls.attachMedia(video);
+        if (transferred) hls.attachMedia(transferred);
+        else if (hls.media !== video) hls.attachMedia(video);
         if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
         else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+        hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
         return () => {
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+          hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           if (hlsRef.current.instance !== hls) return;
           hls.stopLoad();

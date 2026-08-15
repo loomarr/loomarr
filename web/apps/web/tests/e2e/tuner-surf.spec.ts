@@ -84,8 +84,7 @@ const waitForDecodedFrame = async (page: Page) => {
 // in the same TanStack Router path as an in-app Link without coupling this transport test to the
 // Guide's virtualized row layout.
 const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; trace: string }> => {
-  const before = await page.locator("video").evaluate((video) => ({
-    src: video.currentSrc,
+  const before = await page.locator("video").evaluate(() => ({
     count: (
       window as Window & {
         __loomarrDecodedFrames: Array<{ at: number; src: string }>;
@@ -99,26 +98,24 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
   }, `/channels/${id}/watch`);
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
   await page.waitForFunction(
-    ({ count, src }) =>
+    ({ count }) =>
       (
         window as Window & {
           __loomarrDecodedFrames?: Array<{ at: number; src: string }>;
         }
-      ).__loomarrDecodedFrames
-        ?.slice(count)
-        .some((frame) => frame.src !== src) ?? false,
+      ).__loomarrDecodedFrames?.slice(count).length ?? 0,
     before,
     { timeout: 10_000 },
   );
   const decodedAt = await page.evaluate(
-    ({ count, src }) =>
+    ({ count }) =>
       (
         window as Window & {
           __loomarrDecodedFrames: Array<{ at: number; src: string }>;
         }
       ).__loomarrDecodedFrames
         .slice(count)
-        .find((frame) => frame.src !== src)?.at ?? Number.POSITIVE_INFINITY,
+        .at(0)?.at ?? Number.POSITIVE_INFINITY,
     before,
   );
   const trace = await page.evaluate((since) => {

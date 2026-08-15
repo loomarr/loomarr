@@ -31,22 +31,26 @@ vi.mock("@loomarr/api/mutator", () => ({
 vi.mock("hls.js", () => {
   class MockHls {
     static isSupported = () => hls.supported;
-    static Events = { ERROR: "error", MANIFEST_PARSED: "manifestParsed" };
+    static Events = { ERROR: "error", FRAG_BUFFERED: "fragBuffered", MANIFEST_PARSED: "manifestParsed" };
     static ErrorTypes = { MEDIA_ERROR: "mediaError", NETWORK_ERROR: "networkError" };
 
     media: HTMLMediaElement | null = null;
+    url: string | null = null;
     attachMedia = vi.fn((media: HTMLMediaElement) => {
       this.media = media;
     });
     destroy = vi.fn(() => {
       this.media = null;
     });
-    loadSource = vi.fn();
+    loadSource = vi.fn((url: string) => {
+      this.url = url;
+    });
     off = vi.fn();
     on = vi.fn();
     recoverMediaError = vi.fn();
     startLoad = vi.fn();
     stopLoad = vi.fn();
+    transferMedia = vi.fn(() => null);
 
     constructor() {
       hls.instances.push(this);
@@ -139,6 +143,7 @@ describe("useHlsPlayer", () => {
       destroy: ReturnType<typeof vi.fn>;
       loadSource: ReturnType<typeof vi.fn>;
       stopLoad: ReturnType<typeof vi.fn>;
+      transferMedia: ReturnType<typeof vi.fn>;
     };
     await waitFor(() =>
       expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
@@ -156,6 +161,7 @@ describe("useHlsPlayer", () => {
     );
     expect(hls.instances).toHaveLength(1);
     expect(controller.stopLoad).toHaveBeenCalledOnce();
+    expect(controller.transferMedia).toHaveBeenCalledOnce();
 
     act(() => finalRelease());
     await waitFor(() => expect(controller.destroy).toHaveBeenCalledOnce());
