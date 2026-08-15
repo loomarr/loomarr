@@ -39,7 +39,7 @@ func observerFrom(ctx context.Context) func(Observation) {
 // supported Unix targets expose Maxrss with different units: bytes on Darwin, KiB on Linux.
 // Reflection lets other targets report 0 rather than making the worker adapter uncompilable.
 func processPeakRSSBytes(state *os.ProcessState) int64 {
-	if state == nil || state.SysUsage() == nil {
+	if state == nil {
 		return 0
 	}
 	v := reflect.ValueOf(state.SysUsage())

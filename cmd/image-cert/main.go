@@ -30,7 +30,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *reportPath == "" {
-		fmt.Fprintln(stderr, "image-cert: --report or IMAGE_CERT_REPORT is required")
+		_, _ = fmt.Fprintln(stderr, "image-cert: --report or IMAGE_CERT_REPORT is required")
 		return 2
 	}
 	if *worker == "" {
@@ -38,7 +38,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	absoluteWorker, err := filepath.Abs(*worker)
 	if err != nil {
-		fmt.Fprintf(stderr, "image-cert: worker path: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "image-cert: worker path: %v\n", err)
 		return 2
 	}
 
@@ -51,31 +51,29 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "image-cert: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "image-cert: %v\n", err)
 		return 1
 	}
 
 	expected := map[string]string(nil)
 	var boundaries []images.CertificationBoundary
-	cleanup := func() {}
 	if *corpus == "" {
 		generated, tempErr := os.MkdirTemp("", "loomarr-image-cert-corpus-*")
 		if tempErr != nil {
-			fmt.Fprintf(stderr, "image-cert: create repository corpus: %v\n", tempErr)
+			_, _ = fmt.Fprintf(stderr, "image-cert: create repository corpus: %v\n", tempErr)
 			return 1
 		}
-		cleanup = func() { _ = os.RemoveAll(generated) }
-		defer cleanup()
+		defer func() { _ = os.RemoveAll(generated) }()
 		manifest, writeErr := images.WriteCertificationCorpus(generated)
 		if writeErr != nil {
-			fmt.Fprintf(stderr, "image-cert: generate repository corpus: %v\n", writeErr)
+			_, _ = fmt.Fprintf(stderr, "image-cert: generate repository corpus: %v\n", writeErr)
 			return 1
 		}
 		*corpus = generated
 		expected = manifest.ExpectedRefusals
 		boundaries = manifest.BoundaryCases
 	} else if !filepath.IsAbs(*corpus) {
-		fmt.Fprintln(stderr, "image-cert: --corpus must be an absolute path")
+		_, _ = fmt.Fprintln(stderr, "image-cert: --corpus must be an absolute path")
 		return 2
 	}
 
@@ -87,13 +85,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		BoundaryCases:    boundaries,
 	})
 	if err := writeReport(*reportPath, report); err != nil {
-		fmt.Fprintf(stderr, "image-cert: write report: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "image-cert: write report: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "image-cert: %d passed, %d refused, %d failed; report %s\n",
+	_, _ = fmt.Fprintf(stdout, "image-cert: %d passed, %d refused, %d failed; report %s\n",
 		report.Summary.Passed, report.Summary.Refused, report.Summary.Failed, *reportPath)
 	if certErr != nil {
-		fmt.Fprintf(stderr, "image-cert: %v\n", certErr)
+		_, _ = fmt.Fprintf(stderr, "image-cert: %v\n", certErr)
 		return 1
 	}
 	return 0
