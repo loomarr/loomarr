@@ -1,8 +1,8 @@
-import { channelsApi, toProblem, unwrap } from "@loomarr/api";
+import { toProblem } from "@loomarr/api";
 import Hls from "hls.js";
 import { useCallback, useRef, useState } from "react";
+import { mintChannelPlaySource } from "../channel-play-url";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
-import { deviceProfile } from "./device-profile";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -34,24 +34,6 @@ interface UseHlsPlayer {
   attach: (video: HTMLVideoElement) => () => void;
 }
 
-// qualityHint derives the play-url `quality` cap from the device — NOT to pick the rendition (the
-// client does that live), but to keep the server from OFFERING renditions this device cannot use.
-// Save-Data and a slow effective type say "small screen or metered link, cap low"; a small
-// viewport says the same. Absent any signal we send nothing (auto = full ladder). Coarse on
-// purpose: a starting hint the client refines from.
-const qualityHint = (): "auto" | "720" | "480" => {
-  const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
-    .connection;
-  if (conn?.saveData) return "480";
-  if (conn?.effectiveType === "2g" || conn?.effectiveType === "slow-2g") return "480";
-  if (conn?.effectiveType === "3g") return "720";
-
-  const px = Math.max(window.screen.width, window.screen.height) * (window.devicePixelRatio || 1);
-  if (px <= 640) return "480";
-  if (px <= 1280) return "720";
-  return "auto";
-};
-
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [error, setError] = useState<string | undefined>();
@@ -60,6 +42,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   // A boolean cannot do this: the next attach resets it to false and accidentally re-authorizes an
   // older request that resolves late.
   const generationRef = useRef(0);
+  const warmedPlayURL = attempt?.playURL;
 
   const bind = useCallback(
     (video: HTMLVideoElement, url: string): (() => void) => {
@@ -199,19 +182,17 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // and setState in a loop ("Maximum update depth exceeded"). The plain function has no such
       // identity, so `attach` depends only on the stable `channelId` and `bind`.
       let teardown: (() => void) | undefined;
-      channelsApi
-        // The DeviceProfile body (§9.1 V48) tells the server what THIS browser can direct-play, so an
-        // HEVC-capable browser gets a `-c:v copy` stream instead of a HEVC→h264 transcode. Probed from
-        // MediaSource.isTypeSupported; an empty profile resolves to the safe h264/aac baseline server-
-        // side, so a browser that can't decode HEVC is never handed an undecodable stream.
-        .channelPlayUrl(channelId, deviceProfile(), { quality: qualityHint() }, { signal: controller.signal })
-        .then((res) => {
+      // Reuse an adjacent warmer's signed URL when present. Otherwise mint normally. Both paths
+      // arrive at the same transport attachment; warming never creates a second player.
+      const source = warmedPlayURL
+        ? Promise.resolve({ url: warmedPlayURL, expiresAt: Number.POSITIVE_INFINITY })
+        : mintChannelPlaySource(channelId, controller.signal);
+      source
+        .then((body) => {
           if (!current()) return;
-          const body = unwrap(res);
-          // Prefer the RELATIVE same-origin URL: the browser is already on Loomarr's origin, so
-          // this needs no CORS (hls.js fetches by XHR) and works even when server.public_url is
-          // unset. The absolute `url` is the native-app form and only a fallback here.
-          const src = body?.relativeUrl || body?.url;
+          // mintChannelPlaySource already prefers the relative same-origin form, which avoids
+          // CORS and works when server.public_url is unset.
+          const src = body?.url;
           if (!src) {
             setStatus("error");
             setError("Couldn't get a stream for this channel.");
@@ -231,7 +212,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         teardown?.();
       };
     },
-    [channelId, bind],
+    [channelId, bind, warmedPlayURL],
   );
 
   return { status, error, attach };

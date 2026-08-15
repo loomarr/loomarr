@@ -2,6 +2,7 @@ package playout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -104,6 +105,9 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	if err != nil || string(body) != "seg-2.m4s" {
 		t.Fatalf("asset body = %q, err=%v", body, err)
 	}
+	if !asset.Immutable {
+		t.Fatal("prepared asset is not marked immutable")
+	}
 }
 
 func TestOriginPreparedHitBypassesLiveAndMissFallsBack(t *testing.T) {
@@ -139,6 +143,14 @@ func TestOriginPreparedHitBypassesLiveAndMissFallsBack(t *testing.T) {
 	got, err = missOrigin.Tune(t.Context(), TuneRequest{ChannelID: "fallback", Plan: PlanBaseline, Delivery: DeliveryHLS})
 	if err != nil || string(got.Manifest) != "live" || hls.channel != "fallback" {
 		t.Fatalf("fallback Tune = (%q, %v), live channel=%q", got.Manifest, err, hls.channel)
+	}
+
+	hls.channel = ""
+	_, err = missOrigin.Tune(t.Context(), TuneRequest{
+		ChannelID: "warm-only", Plan: PlanBaseline, Delivery: DeliveryHLS, PreparedOnly: true,
+	})
+	if !errors.Is(err, ErrPreparedUnavailable) || hls.channel != "" {
+		t.Fatalf("prepared-only miss = %v, live channel=%q; want clean miss without live fallback", err, hls.channel)
 	}
 }
 

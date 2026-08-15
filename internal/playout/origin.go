@@ -17,7 +17,12 @@ const (
 	DeliveryHLS
 )
 
-var ErrUnsupportedDelivery = errors.New("playout: unsupported delivery")
+var (
+	ErrUnsupportedDelivery = errors.New("playout: unsupported delivery")
+	// ErrPreparedUnavailable is a clean prepared-only miss. Callers use it to warm only media that
+	// already exists without falling through to the live remux/encoder path.
+	ErrPreparedUnavailable = errors.New("playout: prepared presentation unavailable")
+)
 
 // TuneRequest is everything a transport adapter must prove to tune a Channel. It deliberately
 // carries no encoder, cache, or scratch-directory choice; those are Origin implementation details.
@@ -25,6 +30,9 @@ type TuneRequest struct {
 	ChannelID string
 	Plan      EncodePlan
 	Delivery  Delivery
+	// PreparedOnly forbids live fallback. It is a read-only probe for media already published by
+	// the readiness control plane and must never create an encoder/remux session on a miss.
+	PreparedOnly bool
 }
 
 // Presentation is one tuned Channel. Exactly one of Stream or Manifest is populated according
@@ -44,8 +52,9 @@ type readSeekCloser interface {
 // Asset is an opened follow-up resource. Callers know its bytes and modification time, never its
 // live or prepared filesystem layout.
 type Asset struct {
-	Content  readSeekCloser
-	Modified time.Time
+	Content   readSeekCloser
+	Modified  time.Time
+	Immutable bool
 }
 
 type sessionAttacher interface {
@@ -97,6 +106,12 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 			return presentation, nil
 		}
 		preparedErr = err
+	}
+	if request.Delivery == DeliveryHLS && request.PreparedOnly {
+		if preparedErr != nil {
+			return Presentation{}, preparedErr
+		}
+		return Presentation{}, ErrPreparedUnavailable
 	}
 	switch request.Delivery {
 	case DeliveryMPEGTS:

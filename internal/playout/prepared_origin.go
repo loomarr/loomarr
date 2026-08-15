@@ -120,7 +120,7 @@ func (o *PreparedOrigin) OpenAsset(_ string, _ EncodePlan, rel string) (Asset, b
 	if err != nil || !ok {
 		return Asset{}, ok, err
 	}
-	return Asset{Content: asset.Content, Modified: asset.Modified}, true, nil
+	return Asset{Content: asset.Content, Modified: asset.Modified, Immutable: true}, true, nil
 }
 
 type preparedSegment struct {
