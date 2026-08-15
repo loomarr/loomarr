@@ -236,6 +236,25 @@ func TestScanDir_RejectsAClipWithNoAudioStream(t *testing.T) {
 	}
 }
 
+func TestScanDir_RejectsAClipWithNoVideoStream(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "audio-only.mp4")
+
+	audioOnly := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: 30_000, NoVideo: true}, nil
+	}
+	clips, skipped, err := filler.ScanDir(context.Background(), dir, audioOnly, 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 0 {
+		t.Errorf("an audio-only file was catalogued: %+v", clips)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1", skipped)
+	}
+}
+
 // An unset FILLER_DIR is "filler not configured" — an empty catalog, not an error. A missing
 // one IS an error: it is almost always a misconfigured path, and silently returning nothing
 // presents as "filler mysteriously does nothing".

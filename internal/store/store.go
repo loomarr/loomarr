@@ -150,6 +150,9 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
+	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
+	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -272,6 +275,11 @@ type ClipStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+	// ListClipFingerprints/UpsertClipFingerprint own the persisted derived cache used by
+	// compilation de-duplication (§10). Reads batch the catalog by exact algorithm; corrupt rows
+	// are omitted with an error so valid siblings remain reusable and the bad row is recomputed.
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 }
 
 // SplitProposalStore is the persisted split-proposal surface (§10, V34) —

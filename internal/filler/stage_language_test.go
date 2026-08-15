@@ -38,10 +38,13 @@ func (f *fakeLangStore) SetClipLanguage(_ context.Context, path, language string
 
 // fixedDetector answers the same thing for every clip.
 type fixedDetector struct {
-	lang  string
-	err   error
-	calls int
+	lang        string
+	err         error
+	unavailable string
+	calls       int
 }
+
+func (d *fixedDetector) UnavailableReason() string { return d.unavailable }
 
 func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (string, error) {
 	d.calls++
@@ -59,6 +62,23 @@ func newLangStage(st filler.LanguageClipStore, d filler.LanguageDetector, want s
 	return filler.NewLanguageStage(d, st, "/filler",
 		func() string { return want },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
+}
+
+// Missing configuration is not a transient inference failure. It cannot improve with backoff, so
+// the optional rung must step aside immediately instead of holding every new clip for 35 minutes.
+func TestLanguageStage_UnavailableBackendDoesNotApply(t *testing.T) {
+	det := &fixedDetector{unavailable: "the local language model is not configured"}
+	applies, why := newLangStage(newFakeLangStore(), det, "en").
+		Applies(context.Background(), langClip("a.mp4", ""))
+	if applies {
+		t.Fatal("an unavailable detector applied; the runner would waste its retry ladder")
+	}
+	if why != det.unavailable {
+		t.Errorf("reason = %q, want %q", why, det.unavailable)
+	}
+	if det.calls != 0 {
+		t.Errorf("detector called %d times, want no inference attempt", det.calls)
+	}
 }
 
 // THE behaviour: a confidently foreign clip is refused.

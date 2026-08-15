@@ -54,7 +54,7 @@ func (s *scriptedTools) Transcribe(context.Context, string, int64, int64) ([]fil
 }
 
 func (s *scriptedTools) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedTools) BlackSilence(context.Context, string) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
 func (s *scriptedTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {

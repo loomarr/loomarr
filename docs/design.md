@@ -1576,6 +1576,15 @@ Tagging options form a **grounding ladder** — cheapest, most-trusted signal fi
 
 Tiers 0–2 are pre-V44 (text-only classification via the configured LLM — filename, the source title/description that yt-dlp/Archive preserve as info-JSON sidecars, and, for split segments, the segment transcript, V34; whisper.cpp, §14). **V44 adds tiers 3–5**: persisting transcripts and running them on demand (`transcribe` job below), a grounded `brand` field, cheap frame heuristics, and vision-based tagging. Vision is no longer future work — it is the only tier that reads a *wordless* clip, and it fits the same grounding discipline (a model reading `KELLOGG'S` off an on-screen box is grounded exactly as an era is grounded when its year appears in the filename). Even text-only tagging is what makes thousands of clips practical; the visual tier closes the silent-advert gap that no amount of text ever could.
 
+⚠ **Vision JSON is field-tolerant and evidence-strict.** A local model can return a valid object
+with one wrong-typed optional field (measured live: `category: 0`). That field is discarded without
+discarding the independently readable fields in the same answer; a numeric-string era is likewise
+accepted as an integer. This does not weaken grounding: brand and era still need literal visible
+evidence, and category still has to resolve through the taxonomy. A syntactically invalid or
+non-object answer remains a retryable provider failure. The Ollama vision request also enables its
+native JSON output mode; prompt-only JSON produced malformed syntax often enough to consume real
+retries. Hosted providers retain their existing portable prompt-and-parse path.
+
 **On-demand transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would be a ~9.5-hour scan on arm64. The `transcribe` job (below, modelled on the language gate) is therefore opt-in, timer-driven, batched, and **selective**: it transcribes only clips whose source text is *thin OR that remain untagged after a text-only pass* — a clip with a rich archive.org description never pays for Whisper. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
 
 **Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
@@ -1667,8 +1676,10 @@ not, right or wrong. V38 gives an arriving clip a **state**:
 
 A clip that arrives is not automatically a clip worth playing. Real downloads from the archive
 sources include truncated fragments, audio-only files, and spots recorded a decade apart at wildly
-different levels. **All of this is handled automatically — there is no badge, no review step, and
-no operator decision.** A gate an operator has to read is a gate they learn to click through (§7).
+different levels. **Objective failures are handled automatically — there is no badge or operator
+decision for a file that cannot play.** A gate an operator has to read is a gate they learn to
+click through (§7). Content anomalies that can also be intentional are the narrow exception below:
+the machine shows its measurement and asks rather than deleting a plausible creative choice.
 
 **Rejected at the scan boundary.** `ScanDir` already skips unprobeable files; these join it, and
 they never become clips at all:
@@ -1678,6 +1689,41 @@ they never become clips at all:
   and airable in the dev catalog, i.e. a third of a second of nothing in an ad break.
 - **No audio stream.** Silence mid-break.
 - **No video stream.** An audio-only file in a video catalog.
+
+**The transcode pass also inspects the content it is already decoding.** Stream presence does not
+catch a valid MP4 containing thirty seconds of black, a muted audio track, or a decoder repeating
+one damaged frame. Adding a second unconditional decode would double the most expensive routine
+part of ingest, so `blackdetect`, `silencedetect`, and `freezedetect` ride the mezzanine encode's
+video/audio filter chains. Their measured intervals are written to the sidecar: the evidence
+survives a catalog rebuild, and an older mezzanine that predates the measurement gets one bounded
+inspection pass rather than another lossy encode.
+
+On the first pipeline pass after this ships, already-filed rows whose sidecars carry a mezzanine
+marker but no quality report are re-queued at `transcode`. The marker makes that rung inspection-
+only: it does not encode those bytes again. The ordinary transcode budget still bounds the work,
+so a large existing catalog drains over cycles instead of turning an upgrade into a decode storm.
+Rows already rejected or waiting on a person are left alone.
+
+The decision is deliberately asymmetric:
+
+- **At least 90% black or 90% content-silent is a hard reject.** This is dead air with streams
+  attached, not the wordless-but-audible advert the language rule below protects. It appears in
+  the refusal audit with the measured coverage; no operator control can make it playable.
+- **A black or silent span of at least 5 seconds, or a frozen span of at least 10 seconds, goes to
+  review unless the hard rule above already decided it.** A long end slate, a radio spot over a
+  still, and an intentional dramatic pause are plausible, so freeze alone is never auto-rejected.
+  These are the rare judgement calls; clean clips proceed without a badge or a decision.
+
+Any `review` disposition holds the clip out of rotation at the pipeline boundary, including a
+hand-dropped or previously-filed clip. Recording "needs a look" while leaving the same bytes
+eligible for the next break would make the review state decorative rather than protective. The
+hold must succeed before the terminal review row is committed; on a transient store failure the
+row stays runnable and the persisted detector report re-emits the verdict without decoding or
+encoding the media again.
+
+Intervals are unioned and clamped to the probed duration before coverage is calculated, so
+overlapping detector events cannot manufacture more than 100%. A trailing event with no explicit
+end is closed at the measured duration rather than dropped.
 
 **Loudness is measured at ingest and applied at playout.** Measured across real fetched clips the
 spread was **−21.8 to −32.6 LUFS** — about 11 dB, which is the clip-to-clip volume jump an operator
@@ -1758,6 +1804,14 @@ the hosted path can guess, which is why the floor exists.
 | Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
 | Cost | free | fractions of a cent for a 10s span |
 | Offline | yes | no |
+
+⚠ **An unavailable backend is a skip, not a retry.** If the selected detector has no model,
+executable, media tool, or hosted client configured, the language rung records why it did not apply
+and the clip advances immediately. Backoff is reserved for a backend that was ready enough to run
+and then failed, or one that ran but returned no trustworthy answer. Retrying a missing model at
+5- and 30-minute intervals cannot make it appear; it only turns an optional quality gate into a
+35-minute ingest delay. A later configuration change can use the ordinary rewind action to re-run
+the rung for clips that already passed it.
 
 ⚠ **NOT Ollama, and this is the trap worth naming.** "We already run a local LLM, so we do not need
 whisper" is the reasonable inference and it is wrong: Ollama has no audio input path at all. Probed
@@ -1885,12 +1939,16 @@ V44's signals.
 #### 1. Composite is a first-class kind, detected at intake
 
 A **composite** is a recorded break — many adverts in one file. It is detected when the clip is
-pulled in (not left to be mis-tagged as a single advert), from cheap deterministic signals: duration
-past `OverlongSegmentMs` (§10 V34, 120s — no single advert runs that long) AND multiple
-black/silence boundaries (the fades between spots, which `blackdetect` already finds — measured
-present on the KCPQ clip: black at 0s, 6.1s, 15s…). A composite is **not airable**: it is never
-matched into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial"
-is the bug this section removes.
+pulled in (not left to be mis-tagged as a single advert) from the cheap deterministic signal the
+catalog already has: duration past `OverlongSegmentMs` (§10 V34, 120s — by definition it cannot be
+one normally airable advert). The earlier intake detector also required multiple black/silence
+boundaries, but that made `probe` fully decode every long recording and then made `split` fully
+decode it again. On hour-scale captures the first pass could consume the whole job deadline before
+the owning stage began. Boundary detection therefore belongs only to `split`; a long single-product
+infomercial may ultimately remain one `unsplittable` proposal for review, but it is still correctly
+quarantined from playout while Loomarr decides. A composite is **not airable**: it is never matched
+into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial" is the
+bug this section removes.
 
 ⚠ **`IsComposite` is a distinct axis from `Kind`, deliberately.** A composite's *segments* are
 commercials/bumpers/PSAs; the composite itself is a container. Overloading `Kind` with a `composite`
@@ -2361,7 +2419,7 @@ A removed clip is excluded from the catalog listing and from pod assembly **by d
 Between "a file arrived" and "a clip the scheduler can place" there is work only a person can finish. `GET /v1/filler/incoming` is that queue, in one read:
 
 - **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing. ⚠ **Nor does a COMPILATION** (V54): it is `kind=commercial` and permanently untagged — the pipeline deliberately skips tag and vision for a composite, "a compilation is cut up rather than filed" — so read literally it satisfies the second bullet above, and for a while it did. It is not an advert with missing tags; it is a container of adverts, and its handoff to a human is the reel below. Asking an operator to "Add tags" to it would tag twenty unrelated products as one clip.
-- **Compilations mid-split** — the persisted split proposals, with a count of the segments an operator cannot simply accept (unsplittable, or flagged as a duplicate).
+- **Compilations mid-split** — persisted proposals only after bounded detection and classification have examined every usable segment. Known duplicates and below-floor fragments have already been discarded; the attention count is limited to genuinely doubtful boundaries, unsplittable spans, and examined segments the model could not classify.
 
 ⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
 
@@ -2543,9 +2601,31 @@ been a different clip and the tags would be gone.
    which a re-scan does not fix by itself. Tolerable for filler (clips are a synced cache, and
    the operator can delete the shadowing file), and stated here because a silent shadow is worse
    than a documented one.
-2. **A re-encoded or trimmed file is a DIFFERENT clip, and loses its tags.** That is correct — it
-   is a different file — but an operator who re-encodes their library re-tags it. Worth saying
-   because "I only changed the bitrate" does not feel like "I replaced the clip".
+2. **A re-encoded or trimmed file is a DIFFERENT content identity.** A file changed outside
+   Loomarr and re-entered through the watch folder is a new clip and is tagged again. A transform
+   Loomarr performs inside the ingest pipeline is different: it computes the transformed bytes'
+   hash, files them at that hash's canonical path, and atomically re-keys the catalog row plus its
+   tags, pipeline state and lineage references. Display metadata and provenance travel with that
+   replacement; the old hash must never remain as the name of bytes it no longer identifies.
+   This distinction is load-bearing: rewriting a hash-addressed path in place makes the next scan
+   discover a new identity with only the hash-shaped filename left as its title.
+
+   **Legacy mismatches repair themselves at sync.** V51b briefly rewrote a clip in place while
+   leaving the old hash in its path, so a later scan could quite correctly identify hash B at a
+   filename whose stem was hash A. The legacy name may be the old 40-character digest or the
+   current 64-character content id; both are recognisably machine-generated. When the new value is
+   a full content identity and the old stem is either hash shape, sync files
+   the bytes at B's canonical shard path without overwriting anything, carries the sidecar, and
+   removes A's stale link only after B exists. It also seeds a missing sidecar from the durable
+   catalog name before moving, so a human title that still survives in the database does not turn
+   into a hash on the following scan. If that name was already lost too, sync may replace the hash
+   only with a conservative display name assembled from durable grounded facts (brand/category and
+   era). With no such facts it uses the explicitly neutral **“Untitled commercial”** (or the
+   corresponding known kind), because displaying an implementation hash as if it were a title is
+   not more truthful. This display-name repair also runs when the file is already at its canonical
+   path: a stale sidecar name must not keep resurrecting the hash on every sync. An arbitrary
+   operator filename is never "repaired" merely for being non-canonical; this is a narrowly
+   recognisable old Loomarr state, not a folder tidy.
 3. **The migration DROPS the catalog** (`00033`), because ids cannot be recomputed without
    reading every file, and a migration that does I/O over an operator's whole media library is
    not a migration. Clips are a synced cache and the next scan repopulates paths.
@@ -2678,7 +2758,7 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under the **detection floor** are dropped. That floor is `max(MinSegmentMs, filler.min_duration)` — the 3s sliver floor and the catalog floor, whichever binds (10s on a default install). ⚠ `max()`, never replacement: `filler.min_duration` is settable to `0s`, and a 400ms fade artefact must still be dropped there. The two numbers are **one floor on purpose** — a segment the auto-confirm gate would admit and the scan boundary would then reject (§10 V40) is a clip cut out of a compilation and thrown away, work done to produce nothing and a source file consumed for it. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
 3. **Rescue.** A segment far longer than a plausible advert means boundaries the A/V pass could not see; it goes to **transcript (whisper) + LLM** for cut points. ⚠ The LLM must return **exactly one entry when the transcript is a single advert** — without that instruction it invented cuts at suspiciously round 30/61/92s marks inside one 121s infomercial. With no runnable whisper (`INGEST_WHISPER_PATH`, §15) an over-long segment is not guessed at: it surfaces in the review as **unsplittable**.
 4. **Metadata.** Each segment's transcript feeds the **existing** text-signal classifier unchanged (above) — it already knows `cereal`, `toys`, `cars`. Era follows the grounding rule above: persisted only when the year appears in the text, else carried on the proposal as an unconfirmed suggestion.
-5. **Dedup.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. Matches are **flagged on the proposal**, never silently dropped — the operator sees "already in the catalog" and decides.
+5. **Deterministic discard.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. A matched segment is discarded before classification: keeping another copy cannot improve the catalog, and asking a person to make that decision is queue-shaped busywork. A segment shorter than the existing `filler.min_duration` floor is discarded at the same seam — the scan boundary would reject the resulting clip immediately, so cutting and reviewing it can produce no usable outcome. **Neither discard deletes source media:** the composite row and file remain (§10 V45), so re-splitting with improved detection is the recovery path. Detection ambiguity is never a deterministic discard: an `unsplittable` or over-long span remains with the whole reel for review.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.
 
    ⚠ **The review PLAYS each proposed cut, in place (V54).** It did not, for as long as it existed: measured 2026-08-12 on a 52-segment reel, the screen offered a name field, two mm:ss fields, Merge, Drop and Confirm, and **no media element at all** — an operator was asked whether a cut at 04:17 was right with nothing to see or hear. V54 A7 had already deleted the mock's "click to preview" caption for being false; this is the other half.
@@ -3276,11 +3356,60 @@ That is why attempts reached 12 against a `MaxAttempts` of 3, and why the row ne
 **Any rung that ever times out loops forever**; `split` is simply the one that timed out first.
 Failure and deferral both persist through a detached context.
 
-**Known gap, deliberately not built.** A much longer recording — a 3-hour capture is ~500 segments
-— would spend ~5 minutes in the fingerprint pass alone and exceed a pass again. The fix then is a
-per-pass SEGMENT budget with resume by `(ParentHash, index)`; the lineage column already exists
-(§10 V45, migration 00039). Not built because the measured corpus does not reach it, and a resume
-rule interacts with proposal editing in ways that need their own design.
+**Long recordings resume instead of restarting.** The split proposal is also the detector's durable
+checkpoint before it becomes operator-visible. When chapters are absent, boundary detection scans
+one fixed ten-minute span per pipeline pass, persists `scannedThroughMs` plus the accumulated
+black/silence gaps, and yields without spending an attempt. The next pass resumes at that exact
+offset. Once the final span is scanned, the module fuses the gaps into segments, performs rescue and
+dedup, removes the private checkpoint, and only then exposes the proposal in the review queue. The
+ten-minute span is an implementation budget, not a setting: it is deliberately well inside the
+two-minute job deadline on the measured hardware, and adding another operator control would make
+reliability depend on tuning Loomarr should own.
+
+The checkpoint rides inside `filler_split_proposals.segments_json` as a versioned document rather
+than adding coordination columns to the table. Readers remain backward-compatible with the former
+bare segment array. A draft has no reviewable segments and is filtered from both the Incoming reels
+list and `GET /v1/filler/splits/{id}`; the pipeline and rewind path still see it. Persist after every
+successful span, before starting the next: a crash or deadline can repeat at most one span, never
+the whole recording. The media-tools seam takes a time span and returns black and silence gaps
+separately; preserving the source across checkpoints is what lets detector agreement remain the
+strongest boundary-confidence evidence. Whether production uses ffmpeg filters or a test adapter
+supplies captured intervals stays inside that module.
+
+**Every segment operation is duration-bounded.** The ffmpeg adapters seek with `-ss` and limit work
+with `-t (end-start)`. They never pair an input seek with absolute `-to end`: `-to` is a position,
+not a duration, and made a late 30-second segment decode/cut an ever-growing portion of the reel.
+That error made fingerprinting super-linear and could produce oversized cuts. Timeline checkpointing
+still stands independently—the fixed span makes each invocation bounded; the durable proposal makes
+the sequence resumable.
+
+**Catalog fingerprints are a persisted derived cache, not work a reel repeats (V54).** Duplicate
+detection compares each proposed span with every other catalog clip. Decoding those whole catalog
+clips again for every compilation makes the rung scale with *catalog size × reels attempted*, and a
+deadline or restart throws away every completed decode. Loomarr therefore persists the successful,
+non-empty dHash sequence for a catalog clip in a sibling `filler_clip_fingerprints` table and reuses
+it across reels, retries and process restarts. Proposed spans remain proposal-local work: only
+whole catalog clips are reusable across compilations.
+
+The cache key is **`(clip_hash, algorithm)`**. `clip_hash` is the SHA-256 identity of the actual
+bytes, so replacing or transcoding a file produces a hard miss instead of reusing evidence from the
+old media. `algorithm` versions every sampling and hashing choice (`fps`, dimensions, pixel format,
+hash construction and comparison alignment), so a future detector change can coexist with old rows
+without a lock-step rewrite. Identity replacement deletes the old hash's entries rather than
+re-keying them: the new bytes must earn new evidence. Catalog pruning removes orphan cache rows; the
+table deliberately has no foreign key to the rebuildable `clips` cache, matching the pipeline-state
+ownership rule above.
+
+Cache population is incremental. After one catalog clip decodes, its fingerprint is upserted through
+a short context detached from the expiring pipeline pass; a later timeout can repeat at most the
+currently-decoding clip, not the entire catalog prefix. Concurrent misses may compute the same clip
+and converge through the same upsert. Each reel loads the current algorithm's cache in **one read**,
+not one query per catalog clip; a malformed row is omitted without discarding valid siblings. A
+read/write/cache-document failure is **fail-open**: Loomarr
+computes from media when it can, logs a cache write failure, and never calls a clip duplicate from
+missing or corrupt cached evidence. Empty frame sequences and failed decodes are not cached, because
+an undecodable file is not proof that two adverts are the same. This is derived state and adds no
+operator setting or review control.
 
 #### The rule V51g established, restated as its principle (V54)
 
@@ -3304,8 +3433,9 @@ absolute would forbid a shape that no longer costs what it cost when it was meas
   across segments but for the number — and grounding correctly refused to invent tags from that.
   **A faster model classifying `"part 7"` grounds exactly as much as a slow one.** The tripwire in
   `splitjob.go` stands: it must not come back to that file.
-- The atomic confirm stays atomic. Deferral-not-failure stays. The per-pass segment budget for
-  ~500-segment captures is still an unbuilt gap.
+- The atomic confirm stays atomic. Deferral-not-failure stays. The per-pass segment budget is now
+  a persisted checkpoint: each examined segment is marked on the proposal, a deliberate yield
+  spends no retry, and the next pass resumes the unchecked tail even for ~500-segment captures.
 
 **What a per-segment model call must satisfy to be permitted:**
 
@@ -3970,6 +4100,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **`ffmpeg` is a core runtime dependency, not an ingest-only tool** (revised — §9.1). It serves two callers now: yt-dlp's stream merging, and **internal playout's encoder**. A Loomarr that can't encode can't play out, so the previous opt-in-variant model (below) no longer describes a coherent artifact.
   - **`ffprobe` is bundled** (revised — it was previously excluded to save ~99MB, on the grounds that *"Loomarr never probes media — Tunarr assigns duration during its `local`-source scan"*). Internal playout owns duration and cut points, so the premise is gone. Both reversals trace to the same root cause: §9.1.
   - **`whisper-cli` (whisper.cpp) transcribes filler audio for compilation splitting** (§10, V34 — a maintainer-approved §14 addition, 2026-07-31). The transcript is the only signal that sees an ad boundary with no black frame and no silence: measured, one 149s block defeated every A/V detector while holding three complete adverts whose cuts exist only in language (plan §6.4). It matches the vendored-binary pattern in the ways that matter — exec'd, no cgo, no service — and ships in the single image with its model file like the rest of the tooling. ⚠ **It is NOT self-contained the way `yt-dlp` is** (this line used to say it was): whisper-cli links `libwhisper` + `libggml`, so those ship beside it, and **ggml `dlopen()`s its compute backend from the executable's own directory** — hence the binary lives in `/usr/local/lib/whisper` with a symlink on `PATH`. Getting that layout wrong produces a binary where `--help` succeeds and the first real transcription aborts (`GGML_ASSERT(device) failed`), so the image proves whisper by **transcribing at build time**, never by `--help`. On amd64 upstream ships 15 `libggml-cpu-*` microarchitecture variants selected at run time; copy the whole set or it fails only on untested host CPUs. ⚠ **Model size is a correctness property, not a tuning preference:** verified against the vendored **v1.9.1** binary on a real 244s commercial break — `tiny.en` dropped a complete 20s advert at the file's average loudness and `base.en` dropped 7s of equally audible speech, while **`small.en`** had no gap over audible content (its only gap is true near-silence). `small.en` therefore ships, at **466MB** — the single largest item in the image. Full method and table: plan §6.4.
+  - **OpenRouter can replace the local inference paths, including timed transcription** (§8.1, §10). Text/tool calls and vision already use its OpenAI-compatible `/chat/completions`; audio-language questions use `input_audio`; transcription uses its dedicated `/audio/transcriptions` endpoint with `response_format: verbose_json` and segment timestamps. This is one credential and provider selection, but deliberately not one model: the text model, vision model, and STT model are separate capability choices. Long spans are chunked below the endpoint's processing timeout and timestamps are offset back onto the original span. This adds no dependency or service. It does add explicit egress and usage cost for clip audio/frames, so every hosted modality remains an operator choice and the local whisper/Ollama paths remain available.
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
@@ -4184,13 +4315,14 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_VISION_PROVIDER` / `FILLER_VISION_URL` / `FILLER_VISION_API_KEY` | **all empty ⇒ vision uses the main LLM's provider, URL and key** — unchanged behaviour for every existing install (§10 V54a). Set them to point vision at a *different service* from the one that writes text. ⚠ **This gap was load-bearing.** `FILLER_VISION_MODEL` promised a vision model independent of `LLM_MODEL`, but the provider was built from `LLM_URL`/`LLM_API_KEY`, so the model name was the ONLY independent part: naming a local `llava:7b` while `LLM_URL` was a hosted endpoint sent an Ollama tag to that endpoint. Measured on the maintainer's stack — `llava:7b` → `https://openrouter.ai/api/v1` → **HTTP 401** on every segment, so split grounding had never once run and the gate refused every reel with *"a segment could not be classified"*. ⚠ **The key is NEVER inherited when `FILLER_VISION_PROVIDER` is set.** Declaring a separate vision service means declaring its own credentials: inheriting would send the operator's hosted key to whatever host they named, including `localhost`. ⚠ `FILLER_VISION_URL` empty with provider `ollama` resolves to the conventional `http://localhost:11434`, the same rule `ollamaBase` already applies to probes and pulls. |
 | `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely |
 | `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
+| `FILLER_TRANSCRIBE_PROVIDER` / `FILLER_TRANSCRIBE_MODEL` | **`whisper` / `openai/whisper-large-v3`** (§10). Which backend writes timed clip transcripts and rescues spoken-only compilation boundaries. `whisper` uses the bundled local `INGEST_WHISPER_*` paths. `hosted` uses the selected §8.1 OpenAI-compatible provider's key and base URL; OpenRouter is the supported all-hosted path and exposes `/audio/transcriptions` with `verbose_json` segment timestamps. The model is separate from `LLM_MODEL`: a chat/vision model and an STT model have different modalities, so one model id cannot honestly serve both. Hosted spans are split into sub-minute requests and their timestamps reassembled, respecting OpenRouter's ~60s upstream processing timeout while preserving the timing the boundary-rescue prompt requires. A provider without the transcription endpoint fails visibly and retries; it never falls back to untimed invented cuts. ⚠ Hosted transcription sends clip audio off the box and incurs provider cost; local remains the default. |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |
 | `FILLER_AUTOFILE_ENABLED` / `FILLER_AUTOFILE_MIN_CONFIDENCE` | **`true` / `85`** (§10 V38). Whether a tagged clip is filed automatically, and the score it must reach. ⚠ **These keys were REMOVED from this table in V35's review** as declared-but-unconsumed — §15's own rule is that a setting not in the registry does not exist. They return **with their consumer, in the same PR**: the filing path reads them, and a test proves a clip below the threshold reaches Incoming instead of the catalog. ⚠ **ON by default means an existing install starts auto-filing on its first tagging run after upgrade** (maintainer, 2026-08-02) — a deliberate product call. What makes it safe is not the number but §10's grounding **cap**: an ungrounded era cannot reach any threshold, so the fabrication class stays with a human regardless |
 | `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the one rung that rewrites the operator's file. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
 | `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
-| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every segment must reach. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert and the source is consumed either way. That risk has not changed; the evidence has. The gate is strict (the whole reel qualifies or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the whole reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
+| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |

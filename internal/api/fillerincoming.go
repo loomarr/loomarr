@@ -117,8 +117,8 @@ type IncomingReelDTO struct {
 	// real state, and rendering nothing there would hide it.
 	ClipName string `json:"clipName"`
 	Segments int    `json:"segments" doc:"How many clips the detector found"`
-	// NeedsAttention counts segments the operator cannot simply accept — an unsplittable
-	// stretch, or one flagged as a duplicate of something already in the catalog.
+	// NeedsAttention counts segments that still need judgment after automatic curation — an
+	// unsplittable stretch or one the classifier examined without grounding.
 	NeedsAttention int    `json:"needsAttention"`
 	CreatedAt      string `json:"createdAt" doc:"RFC3339"`
 }
@@ -355,6 +355,9 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	out.Body.Reels = make([]IncomingReelDTO, 0)
 	if proposalsErr == nil {
 		for _, p := range proposals {
+			if !p.Ready() {
+				continue // detector checkpoint, not an operator decision
+			}
 			// One read per pending reel to resolve a display name. ⚠ Bounded by design: a
 			// proposal exists only while a compilation is waiting on a human, so this list is
 			// the review queue, not the catalog. A missing clip is not an error — the reel
@@ -472,6 +475,13 @@ func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageD
 	p := pipelineDTO(row)
 	dto.Pipeline = &p
 	dto.NeedsDecision = !c.IsComposite && row.Disposition == filler.DispositionReview
+	if dto.NeedsDecision && len(row.Stages) > 0 {
+		// A review verdict's stage note is the machine's measured reason for asking. Prefer it to
+		// the legacy tag-shape fallback so "15s frozen picture" does not render as "needs tags".
+		if note := row.Stages[len(row.Stages)-1].Note; note != "" {
+			dto.Reason = note
+		}
+	}
 	return dto
 }
 
@@ -569,13 +579,14 @@ func askReasonFor(c store.Clip) string {
 
 // segmentsNeedingAttention counts the segments an operator cannot simply accept.
 //
-// Unsplittable and duplicate are first-class outcomes of V34's pipeline, not errors — the point
-// of surfacing the count is that a reel of twelve clean segments and a reel with three problems
-// are different amounts of work, and the queue should say which is which before it is opened.
+// The point of surfacing the count is that a reel of twelve clean segments and a reel with three
+// genuine ambiguities are different amounts of work. DupOf remains for legacy/manual proposals;
+// the automated path now removes it before this read.
 func segmentsNeedingAttention(p filler.SplitProposal) int {
 	n := 0
 	for _, seg := range p.Segments {
-		if seg.Unsplittable || seg.DupOf != "" || doubtfulBoundary(seg) {
+		unclassified := seg.Looked && seg.Audience == "" && seg.Category == ""
+		if seg.Unsplittable || seg.DupOf != "" || doubtfulBoundary(seg) || unclassified {
 			n++
 		}
 	}

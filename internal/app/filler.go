@@ -17,6 +17,7 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -113,8 +114,14 @@ func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (fill
 func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return fillerStoreAdapter(a).UpsertClip(ctx, c)
 }
+func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
+	return a.st.ReplaceClipIdentity(ctx, oldHash, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
@@ -456,6 +463,12 @@ func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreC
 		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
 	}
 	return out, nil
+}
+func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error) {
+	return a.st.ListClipFingerprints(ctx, algorithm)
+}
+func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, frames)
 }
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
@@ -1080,6 +1093,27 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 		Model: req.Model, Prompt: req.Prompt, Audio: req.Audio,
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
+}
+
+// hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
+// seam. OpenRouter uses the same base URL and bearer key as the rest of Loomarr's hosted AI work;
+// only the capability-specific model differs.
+type hostedSTTAdapter struct{ oa *llm.OpenAI }
+
+func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) ([]mediatools.TranscriptSegment, error) {
+	segments, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
+		Model: model, Audio: audio, Format: format, Language: language,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mediatools.TranscriptSegment, 0, len(segments))
+	for _, seg := range segments {
+		out = append(out, mediatools.TranscriptSegment{
+			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
+		})
+	}
+	return out, nil
 }
 
 // (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its

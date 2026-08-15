@@ -1,6 +1,7 @@
 package mediatools
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -8,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/mantonx/loomarr/internal/playout"
 )
@@ -96,14 +96,16 @@ type TranscodeRequest struct {
 // loudness pass established, kept verbatim because the failure it guards against (a half-written
 // clip in the catalog) is identical here. ffmpeg cannot read and write the same path either:
 // pointed at its own input it produces a truncated or empty file.
-func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percent int)) error {
+func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percent int)) (MediaQuality, error) {
 	if req.In == "" || req.Out == "" {
-		return fmt.Errorf("transcode: both an input and an output are required")
+		return MediaQuality{}, fmt.Errorf("transcode: both an input and an output are required")
 	}
 	tmp := req.Out + ".mezz.tmp" + filepath.Ext(req.Out)
 	defer func() { _ = os.Remove(tmp) }()
 
-	args := []string{"-nostdin", "-v", "error"}
+	// Detector facts share this encode. `-v info` is required because the three filters report on
+	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
+	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
 	// ⚠ fd 3 carries the progress stream. `-progress pipe:3` keeps it OFF stderr, which is where
 	// ffmpeg also writes real errors — scraping the two out of one stream is what viewra did, and
 	// a chunked read there can split a token across the buffer boundary.
@@ -113,7 +115,8 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	p := req.Profile
 	args = append(args,
 		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
-		"-pix_fmt", p.PixelFormat)
+		"-pix_fmt", p.PixelFormat,
+		"-vf", qualityVideoFilters)
 	if p.KeyframeSeconds > 0 {
 		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
 		// also guarantees the FIRST frame is an IDR — a clip whose first keyframe arrives late is
@@ -124,6 +127,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		args = append(args, "-c:a", p.AudioCodec,
 			"-b:a", strconv.Itoa(p.AudioKbps)+"k",
 			"-ar", strconv.Itoa(p.AudioRateHz), "-ac", strconv.Itoa(p.AudioCh))
+		audioFilter := qualityAudioFilter
 		if req.TargetLUFS != 0 {
 			// ⚠ Loudness rides along in the pass that is already re-encoding the audio, rather
 			// than as a second rewrite of the same file. V42's standalone loudness pass existed
@@ -136,8 +140,9 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 			// measurement run over the whole file, which here would mean decoding the source
 			// twice on top of an already-expensive encode. The first-second ramp single-pass
 			// leaves is the accepted cost, and playout normalises again anyway.
-			args = append(args, "-af", "loudnorm=I="+strconv.FormatFloat(req.TargetLUFS, 'f', -1, 64)+":TP=-1:LRA=11")
+			audioFilter += ",loudnorm=I=" + strconv.FormatFloat(req.TargetLUFS, 'f', -1, 64) + ":TP=-1:LRA=11"
 		}
+		args = append(args, "-af", audioFilter)
 	} else {
 		args = append(args, "-an")
 	}
@@ -146,9 +151,11 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	args = append(args, "-movflags", "+faststart", "-y", tmp)
 
 	cmd := exec.CommandContext(ctx, FFmpegOr(req.FFmpegPath), args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	pr, pw, err := os.Pipe()
 	if err != nil {
-		return fmt.Errorf("transcode %s: progress pipe: %w", filepath.Base(req.In), err)
+		return MediaQuality{}, fmt.Errorf("transcode %s: progress pipe: %w", filepath.Base(req.In), err)
 	}
 	cmd.ExtraFiles = []*os.File{pw} // becomes fd 3 in the child
 
@@ -179,19 +186,19 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	_ = pw.Close() // unblocks the reader; the child no longer holds fd 3
 	<-done
 	if runErr != nil {
-		return fmt.Errorf("transcode %s: %w", filepath.Base(req.In), runErr)
+		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), runErr, stderr.String())
 	}
 
 	if err := verifyTranscode(ctx, req, tmp); err != nil {
-		return err
+		return MediaQuality{}, err
 	}
 	if err := os.Rename(tmp, req.Out); err != nil {
-		return fmt.Errorf("transcode %s: %w", filepath.Base(req.In), err)
+		return MediaQuality{}, fmt.Errorf("transcode %s: %w", filepath.Base(req.In), err)
 	}
 	if onProgress != nil {
 		onProgress(100)
 	}
-	return nil
+	return qualityFromDetectorOutput(stderr.String(), req.DurationMs), nil
 }
 
 // verifyTranscodeToleranceMs is how far the output's duration may drift from the input's.
@@ -234,46 +241,4 @@ func verifyTranscode(ctx context.Context, req TranscodeRequest, tmp string) erro
 		}
 	}
 	return nil
-}
-
-// MezzanineOutputPath is where a clip's re-encode is written: the same shard, the same hash, the
-// mp4 extension.
-//
-// ⚠ **Re-encoding does NOT change the clip's primary key, and this is the load-bearing decision of
-// the whole stage.** The hash is an INTAKE-TIME identity, not a continuously-verified checksum,
-// and the system already behaves this way: `TakeIn` skips any file already under a valid shard
-// path (so a filed clip is never re-hashed), and V42 already sanctioned rewriting a filed clip's
-// bytes in place with nothing re-hashing it afterwards.
-//
-// So hash.go's warning — "a re-encoded file is a DIFFERENT clip and loses its tags" — is about a
-// re-encode that happens OUTSIDE Loomarr and re-enters through the watch folder. That is still
-// true and still enforced: a file arriving in the watch folder is hashed and is a different clip.
-// Once filed at `a3/f9/<hash>.ext`, the PATH is the identity of record and the hash is that path's
-// name — so every tag, taxonomy row, parent_hash, play counter and channel pin survives a rewrite.
-//
-// Dedup is unaffected either way: two downloads of the same source hash identically AT INTAKE and
-// the second is discarded before any transcode runs.
-func MezzanineOutputPath(clipPath string) string {
-	return strings.TrimSuffix(clipPath, filepath.Ext(clipPath)) + ".mp4"
-}
-
-// moveSidecar carries a clip's sidecar across an extension change.
-//
-// ⚠ **The easiest thing in this stage to get wrong, and the most expensive.** The sidecar holds
-// `originalName` — the only surviving copy of `Frosted Flakes 1993.mp4` after intake renames the
-// file to its hash — and §8 grounds an era only where the year appears literally in a text signal.
-// Leaving the sidecar behind at the old extension would therefore silently demote every
-// filename-grounded era in the catalog to ungrounded, with no error anywhere.
-func MoveSidecar(oldPath, newPath string) error {
-	if oldPath == newPath {
-		return nil
-	}
-	from, to := SidecarPathFor(oldPath), SidecarPathFor(newPath)
-	if from == to {
-		return nil
-	}
-	if _, err := os.Stat(from); err != nil {
-		return nil // no sidecar to move; a hand-copied clip legitimately has none
-	}
-	return os.Rename(from, to)
 }

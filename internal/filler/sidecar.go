@@ -147,6 +147,11 @@ type SidecarTags struct {
 	// carrying an older id is re-encoded (from the operator's own file, once), while a bare `true`
 	// would silently pin every existing clip to whatever profile shipped first.
 	Mezzanine string `json:"mezzanine,omitempty"`
+	// MediaQuality is the content inspection measured during the mezzanine encode. A pointer is
+	// deliberate: nil means "not inspected yet", while a non-nil report with empty intervals is
+	// the meaningful answer "inspected and clean". Keeping it beside the bytes prevents a catalog
+	// rebuild from paying for another full decode or forgetting a prior refusal.
+	MediaQuality *MediaQuality `json:"mediaQuality,omitempty"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
