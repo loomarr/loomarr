@@ -26,6 +26,7 @@ import (
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/programmer"
@@ -282,6 +283,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
 	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
 	var hwEncodeSlots func(context.Context) int
+	// One host-wide pool arbitrates the measured hardware slots between live playout and prepared
+	// media. It is created beside the resolver that owns capability detection, then handed to both
+	// consumers; neither may maintain a private GPU counter.
+	var encodePool *media.EncodePool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -562,7 +567,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				hlsMgr.Stop()
 			}()
 		}
-		playoutSvc = playout.NewOrigin(playoutMgr, liveHLS)
+		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+			LiveSessions: playoutMgr,
+			LiveHLS:      liveHLS,
+		})
 		playoutResolverSvc = playoutRes
 
 		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
@@ -602,6 +610,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Info("playout: hardware encode admission", "hw_slots", n)
 			return n
 		}
+		encodePool = media.NewEncodePool(func() int { return hwEncodeSlots(rootCtx) })
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -1306,11 +1315,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLMVRAMFn,
-		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
-		// the gate that routes an over-capacity channel to software up front instead of stalling on a
-		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
-		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
-		HWEncodeSlots: hwEncodeSlots,
+		// The same pool is consumed by live playout here and by the prepared-media planner. Live work
+		// has foreground priority; preparation is cancellable and cannot consume the final slot.
+		EncodePool: encodePool,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

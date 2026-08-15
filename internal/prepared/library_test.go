@@ -3,6 +3,7 @@ package prepared_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,7 @@ func baseline(source string) prepared.Specification {
 		SourceFingerprint: source,
 		Rendition: prepared.RenditionContract{
 			VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080,
+			FrameRate: 25, VideoBitrateKbps: 5000, AudioBitrateKbps: 160,
 			SegmentDurationMS: 2000, PackagingVersion: 1,
 		},
 	}
@@ -143,6 +145,37 @@ func TestLibrarySourceFingerprintChangesIdentity(t *testing.T) {
 	}
 	if one.Key == two.Key {
 		t.Fatal("changed source fingerprint reused stale publication identity")
+	}
+}
+
+func TestLibraryOpensOnlyDeclaredAssetsFromACompletePublication(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := lib.Publish(context.Background(), baseline("source-a"), writeOne("segment.m4s", "media"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	asset, ok, err := lib.Open(pub.Key, "segment.m4s")
+	if err != nil || !ok {
+		t.Fatalf("Open declared asset = (_, %v, %v), want hit", ok, err)
+	}
+	defer func() { _ = asset.Content.Close() }()
+	body, err := io.ReadAll(asset.Content)
+	if err != nil || string(body) != "media" || asset.Modified.IsZero() {
+		t.Fatalf("opened asset = (%q, %v, %v)", body, asset.Modified, err)
+	}
+
+	for _, name := range []string{".publication.json", "missing.m4s", "../segment.m4s"} {
+		if _, ok, err := lib.Open(pub.Key, name); err != nil || ok {
+			t.Errorf("Open(%q) = (_, %v, %v), want absent", name, ok, err)
+		}
+	}
+	if _, ok, err := lib.Open("not-a-publication-key", "segment.m4s"); err != nil || ok {
+		t.Fatalf("Open invalid key = (_, %v, %v), want absent", ok, err)
 	}
 }
 
