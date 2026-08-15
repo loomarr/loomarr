@@ -20,11 +20,12 @@ import (
 // PATH and hid two shipped bugs for two phases (§10 V51a); a double that indexes differently from
 // the thing it stands in for cannot see key confusion by construction.
 type pipeMemStore struct {
-	clips   map[string]filler.StoreClip
-	rows    map[string]filler.ClipPipeline
-	removed []string
-	held    []string
-	holdErr error
+	clips     map[string]filler.StoreClip
+	rows      map[string]filler.ClipPipeline
+	proposals []filler.SplitProposal
+	removed   []string
+	held      []string
+	holdErr   error
 }
 
 func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
@@ -55,7 +56,7 @@ func (m *pipeMemStore) ClearClipVisionTags(context.Context, string, time.Time) e
 	return nil
 }
 func (m *pipeMemStore) ListSplitProposals(context.Context) ([]filler.SplitProposal, error) {
-	return nil, nil
+	return append([]filler.SplitProposal(nil), m.proposals...), nil
 }
 func (m *pipeMemStore) DeleteSplitProposal(context.Context, string) error { return nil }
 
@@ -284,6 +285,74 @@ func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudge
 	}
 	if transcode.runs != 0 {
 		t.Error("quality backfill ignored the transcode budget")
+	}
+}
+
+func TestPipeline_RepairsFiledCompositeHeldByOlderConfirm(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "legacy-confirmed-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/legacy-confirmed.mp4", Name: "Legacy confirmed reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionFiled,
+	}
+
+	res, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 {
+		t.Fatalf("pipeline reported %d repaired composites, want 1", res.Repaired)
+	}
+	if got := st.clips[hash]; got.Held {
+		t.Fatalf("filed composite remains held after compatibility pass: %+v", got)
+	}
+}
+
+func TestPipeline_DoesNotFileCompositeWithSplitProposalStillWaiting(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "partly-confirmed-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/partly-confirmed.mp4", Name: "Partly confirmed reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionFiled,
+	}
+	st.proposals = []filler.SplitProposal{{
+		ID: "proposal-with-leftovers", ClipHash: hash,
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}}
+
+	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.clips[hash]; !got.Held {
+		t.Fatalf("composite with a pending split proposal was filed: %+v", got)
+	}
+}
+
+func TestPipeline_DoesNotFileCompositeStillWaitingForDecision(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "review-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/review.mp4", Name: "Review reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionReview,
+	}
+
+	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.clips[hash]; !got.Held {
+		t.Fatalf("composite still waiting for a decision was filed: %+v", got)
 	}
 }
 

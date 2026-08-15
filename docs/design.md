@@ -2200,6 +2200,14 @@ the load-bearing change, and it buys three things V34 threw away:
 The parent stays on disk and in the store, marked composite (not airable); its segments are the
 airable clips. `parent_hash` is nullable — a hand-dropped single advert has none.
 
+⚠ **A terminal parent cannot remain held after its proposal is gone.** Full confirmation now files
+the composite parent and releases its hold as one operation. On upgrade, the pipeline performs a
+data-selected compatibility pass for parents written by the older confirm path: it releases a hold
+only when the pipeline row is already `filed`, the clip is still a composite, and no split proposal
+survives for that hash. A review row or a proposal with leftovers remains held. The repaired parent
+does not become airable — `is_composite` is the independent playout gate — so this repair removes
+stale operator friction without weakening split review.
+
 **A completed re-split replaces the prior generation; it does not stack another overlapping set
 beside it.** Partial auto-confirm remembers every child it produced on the proposal. When the last
 cut is confirmed, the store atomically restores every child in that remembered generation and
@@ -2426,6 +2434,16 @@ from the display path, rather than carrying dead fields that read as capability.
 hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
 their modalities differ. Local transcription remains the bundled whisper path; there is no
 embedding role.
+
+⚠ **All three roles resolve one active provider selection, including its branded credential.** A
+hosted selection stores the wire kind as `llm.provider=openai`, its brand as
+`llm.hosted_provider` (`openrouter`, `custom`, …), and its secret as
+`llm.api_key.<brand>`. Text tagging and split classification, inherited vision, hosted timed
+transcription, and the setup connection check must all resolve that selection rather than reading
+the legacy `llm.api_key` row directly. The wire remains OpenAI-compatible; the brand exists so a
+restart can recover the right namespaced key. Custom endpoints may have an empty key, so endpoint
+presence — not credential presence — is the runtime availability boundary, while the setup check
+reports the selected provider's own credential state.
 
 - **A "Model roles" section on the AI page** — text / vision / audio, each a reusable
   `ModelPicker` (the component is already props-driven — `catalog`/`active`/`onSelect`, not hardwired

@@ -40,11 +40,13 @@ import (
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
 func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, *filler.Tagger) {
-	if !set.boolv("filler.ai_tagging") || set.str("llm.url") == "" {
+	if !set.boolv("filler.ai_tagging") {
 		return nil, nil
 	}
-
-	provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
+	provider := activeFillerProvider(set)
+	if provider == nil {
+		return nil, nil
+	}
 
 	// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars ingest writes
 	// beside each clip (§10). An unset FILLER_DIR yields a nil FS and tagging falls back to
@@ -172,16 +174,24 @@ func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Split
 		return nil
 	}
 
-	var splitProvider llm.Provider
-	if set.str("llm.url") != "" {
-		splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-	}
+	splitProvider := activeFillerProvider(set)
 
 	tools := buildFillerMediaTools(set)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
 	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
 		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+}
+
+// activeFillerProvider resolves the same branded provider selection as the AI surface. OpenRouter
+// credentials live under llm.api_key.openrouter rather than the legacy base key; every filler text
+// path must therefore build from Selection instead of reconstructing the wire from registry rows.
+func activeFillerProvider(set resolved) llm.Provider {
+	sel := resolveSelection(set)
+	if sel.URL == "" {
+		return nil
+	}
+	return buildProviderFor(sel)
 }
 
 // buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
@@ -194,11 +204,11 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 	hosted := &mediatools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
 		Client: func() mediatools.AudioTranscriptionClient {
-			url := set.str("llm.url")
-			if url == "" {
+			sel := resolveSelection(set)
+			if sel.URL == "" {
 				return nil
 			}
-			return hostedSTTAdapter{llm.NewOpenAI(url, set.str("filler.transcribe.model"), set.str("llm.api_key"))}
+			return hostedSTTAdapter{llm.NewOpenAI(sel.URL, set.str("filler.transcribe.model"), sel.APIKey)}
 		},
 		Model: func() string { return set.str("filler.transcribe.model") },
 	}
@@ -492,16 +502,23 @@ type visionWiring struct {
 // host they just named, `localhost` included. A local Ollama needs none, so the common case sends
 // nothing.
 func visionEndpoint(set resolved) visionWiring {
+	sel := resolveSelection(set)
+	wireProvider := sel.Provider
+	if wireProvider != "" && wireProvider != "ollama" {
+		// OpenRouter and Custom are Loomarr's provider identities; both speak the
+		// OpenAI-compatible wire used by the vision client.
+		wireProvider = "openai"
+	}
 	v := visionWiring{
-		provider: set.str("llm.provider"),
-		url:      set.str("llm.url"),
-		key:      set.str("llm.api_key"),
+		provider: wireProvider,
+		url:      sel.URL,
+		key:      sel.APIKey,
 		model:    set.str("filler.vision.model"),
 	}
 	// Empty ⇒ reuse the main model, for an install whose model already sees images. Same
 	// separation `filler.language_model` makes for the audio gate.
 	if v.model == "" {
-		v.model = set.str("llm.model")
+		v.model = sel.Model
 	}
 	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
 	// resolves to "" and means the same thing — inherit, not "no provider".
