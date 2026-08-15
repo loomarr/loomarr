@@ -462,7 +462,10 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.Status = "denied"
 	p.ApprovedBy = userIDFromHuma(ctx)
 	p.DenyReason = in.Body.Reason
-	if err := s.store.UpdateProposal(ctx, p); err != nil {
+	p.UpdatedAt = time.Now()
+	if err := s.store.CommitProposalDenial(ctx, p); errors.Is(err, store.ErrProposalNotSubmitted) {
+		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+	} else if err != nil {
 		return nil, err
 	}
 	out := &denyOutput{}

@@ -3,6 +3,7 @@ package suggest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -67,7 +68,9 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 		}
 		var body Proposal
 		if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-			continue // a malformed stored proposal must not block the whole account
+			// The cap is a safety boundary. If an approved audit row cannot be read,
+			// its pending spend is unknown, so unattended approval must fail closed.
+			return Usage{}, fmt.Errorf("quota: proposal %s is malformed: %w", p.ID, err)
 		}
 		for _, a := range body.Acquisitions {
 			key, kerr := acquisitionKey(a)
@@ -77,10 +80,13 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 			seen[string(key)] = true
 
 			rec, gerr := st.GetTitle(ctx, key)
-			if gerr != nil {
+			if errors.Is(gerr, store.ErrNotFound) {
 				// Not found means the title was never created or has been pruned;
 				// either way it is not pending against this user.
 				continue
+			}
+			if gerr != nil {
+				return Usage{}, fmt.Errorf("quota: read title %s: %w", key, gerr)
 			}
 			if !rec.State.Terminal() {
 				usage.Pending++

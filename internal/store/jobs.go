@@ -157,18 +157,6 @@ func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error)
 	return scanProposal(s.db.QueryRowContext(ctx, s.ph(proposalSelect+` WHERE id = ?`), id))
 }
 
-func (s *sqlStore) UpdateProposal(ctx context.Context, p Proposal) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
-		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=? WHERE id=?`),
-		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
-	if err != nil {
-		return fmt.Errorf("update proposal %s: %w", p.ID, err)
-	}
-	return nil
-}
-
 func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(proposalSelect+` WHERE status = ? ORDER BY created_at DESC`), status)
 	if err != nil {

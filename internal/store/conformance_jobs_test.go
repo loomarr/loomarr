@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -298,7 +300,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	p1.Status = "approved"
 	p1.ApprovedBy = "admin"
 	p1.UpdatedAt = now
-	if err := s.UpdateProposal(ctx, p1); err != nil {
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p1}); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := s.GetProposal(ctx, "p1")
@@ -307,6 +309,262 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {
 		t.Errorf("GetProposal(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	proposal := Proposal{
+		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
+		ProposalJSON: `{"lineup":[]}`, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+	}
+	if err := s.CreateProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+
+	existing := provision.Record{
+		Key: "movie:tmdb:1", Title: provision.Title{MediaType: provision.Movie, TMDBID: 1, Name: "Existing"},
+		State: provision.Downloading, Attempts: 3, LastError: "keep me",
+	}
+	if err := s.UpsertTitle(ctx, existing); err != nil {
+		t.Fatal(err)
+	}
+	available := provision.Record{
+		Key: "movie:tmdb:2", Title: provision.Title{MediaType: provision.Movie, TMDBID: 2, Name: "Available"},
+		State: provision.Available, LibraryID: "library-2",
+	}
+	wanted := provision.Record{
+		Key: "movie:tmdb:3", Title: provision.Title{MediaType: provision.Movie, TMDBID: 3, Name: "Wanted"},
+		State: provision.Wanted, Deadline: now,
+	}
+	proposal.Status = "approved"
+	proposal.ApprovedBy = "admin"
+	proposal.ApprovedAt = now
+	proposal.UpdatedAt = now
+	enqueued, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: proposal,
+		Titles: []provision.Record{
+			{Key: existing.Key, Title: provision.Title{MediaType: provision.Movie, TMDBID: 1}, State: provision.Wanted, Deadline: now},
+			available, wanted, wanted,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enqueued != 1 {
+		t.Fatalf("enqueued = %d, want 1 newly inserted wanted title", enqueued)
+	}
+	got, err := s.GetProposal(ctx, proposal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "approved" || got.ApprovedBy != "admin" || !got.ApprovedAt.Equal(now) || !got.UpdatedAt.Equal(now) {
+		t.Errorf("approved proposal = %+v", got)
+	}
+	preserved, err := s.GetTitle(ctx, existing.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.State != provision.Downloading || preserved.Attempts != 3 || preserved.LastError != "keep me" {
+		t.Errorf("existing title was overwritten: %+v", preserved)
+	}
+	if got, err := s.GetTitle(ctx, available.Key); err != nil || got.State != provision.Available || got.LibraryID != "library-2" {
+		t.Errorf("available title = (%+v, %v)", got, err)
+	}
+	if got, err := s.GetTitle(ctx, wanted.Key); err != nil || got.State != provision.Wanted || !got.Deadline.Equal(now) {
+		t.Errorf("wanted title = (%+v, %v)", got, err)
+	}
+
+	loser := Proposal{ID: "denied", JobID: "job-denied", Status: "denied", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+	if err := s.CreateProposal(ctx, loser); err != nil {
+		t.Fatal(err)
+	}
+	loser.Status = "approved"
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: loser,
+		Titles:   []provision.Record{{Key: "movie:tmdb:99", Title: provision.Title{MediaType: provision.Movie, TMDBID: 99}, State: provision.Wanted, Deadline: now}},
+	}); !errors.Is(err, ErrProposalNotSubmitted) {
+		t.Fatalf("approve denied proposal = %v, want ErrProposalNotSubmitted", err)
+	}
+	if _, err := s.GetTitle(ctx, "movie:tmdb:99"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("losing approval inserted a title: %v", err)
+	}
+	missing := Proposal{ID: "missing", Status: "approved"}
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: missing}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("approve missing proposal = %v, want ErrNotFound", err)
+	}
+
+	invalid := Proposal{ID: "invalid", JobID: "job-invalid", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+	if err := s.CreateProposal(ctx, invalid); err != nil {
+		t.Fatal(err)
+	}
+	invalid.Status = "approved"
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: invalid, Titles: []provision.Record{{
+		Key: "movie:tmdb:404", Title: provision.Title{MediaType: provision.Movie, TMDBID: 404}, State: provision.Wanted,
+	}}}); err == nil {
+		t.Fatal("approval accepted a wanted title with no deadline")
+	}
+	if got, err := s.GetProposal(ctx, invalid.ID); err != nil || got.Status != "submitted" {
+		t.Errorf("invalid approval changed proposal = (%+v, %v)", got, err)
+	}
+	if _, err := s.GetTitle(ctx, "movie:tmdb:404"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("invalid approval inserted title: %v", err)
+	}
+}
+
+func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
+	t.Run("ApproveApprove", func(t *testing.T) {
+		s := newStore(t)
+		ctx := context.Background()
+		now := time.Unix(1_800_000_000, 0).UTC()
+		seed := Proposal{ID: "race-approve", JobID: "job", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+		if err := s.CreateProposal(ctx, seed); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		type outcome struct {
+			actor, key string
+			err        error
+		}
+		out := make(chan outcome, 2)
+		for i, actor := range []string{"admin-a", "admin-b"} {
+			key := provision.Key([]string{"movie:tmdb:10", "movie:tmdb:20"}[i])
+			go func() {
+				<-start
+				p := seed
+				p.Status, p.ApprovedBy, p.ProposalJSON = "approved", actor, `{"winner":"`+actor+`"}`
+				_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
+					Key: key, Title: provision.Title{MediaType: provision.Movie, TMDBID: map[string]int{"admin-a": 10, "admin-b": 20}[actor]}, State: provision.Wanted, Deadline: now,
+				}}})
+				out <- outcome{actor: actor, key: string(key), err: err}
+			}()
+		}
+		close(start)
+		first, second := <-out, <-out
+		results := []outcome{first, second}
+		wins := 0
+		for _, result := range results {
+			if result.err == nil {
+				wins++
+				got, _ := s.GetProposal(ctx, seed.ID)
+				if got.ApprovedBy != result.actor || got.ProposalJSON != `{"winner":"`+result.actor+`"}` {
+					t.Errorf("proposal does not match winner %s: %+v", result.actor, got)
+				}
+				if _, err := s.GetTitle(ctx, provision.Key(result.key)); err != nil {
+					t.Errorf("winner title %s missing: %v", result.key, err)
+				}
+			} else if !errors.Is(result.err, ErrProposalNotSubmitted) {
+				t.Errorf("loser error = %v", result.err)
+			} else if _, err := s.GetTitle(ctx, provision.Key(result.key)); !errors.Is(err, ErrNotFound) {
+				t.Errorf("loser title %s exists: %v", result.key, err)
+			}
+		}
+		if wins != 1 {
+			t.Errorf("successful approvals = %d, want 1", wins)
+		}
+	})
+
+	t.Run("ApproveDeny", func(t *testing.T) {
+		s := newStore(t)
+		ctx := context.Background()
+		now := time.Unix(1_800_000_000, 0).UTC()
+		seed := Proposal{ID: "race-decision", JobID: "job", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+		if err := s.CreateProposal(ctx, seed); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+		go func() {
+			<-start
+			p := seed
+			p.Status, p.ApprovedBy = "approved", "approver"
+			_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
+				Key: "movie:tmdb:30", Title: provision.Title{MediaType: provision.Movie, TMDBID: 30}, State: provision.Wanted, Deadline: now,
+			}}})
+			errs <- err
+		}()
+		go func() {
+			<-start
+			p := seed
+			p.Status, p.ApprovedBy, p.DenyReason = "denied", "denier", "no"
+			errs <- s.CommitProposalDenial(ctx, p)
+		}()
+		close(start)
+		a, b := <-errs, <-errs
+		if (a == nil) == (b == nil) {
+			t.Fatalf("decision errors = (%v, %v), want one winner", a, b)
+		}
+		loser := a
+		if loser == nil {
+			loser = b
+		}
+		if !errors.Is(loser, ErrProposalNotSubmitted) {
+			t.Errorf("loser error = %v", loser)
+		}
+		got, err := s.GetProposal(ctx, seed.ID)
+		if err != nil || (got.Status != "approved" && got.Status != "denied") {
+			t.Errorf("terminal proposal = (%+v, %v)", got, err)
+		}
+		_, titleErr := s.GetTitle(ctx, "movie:tmdb:30")
+		if got.Status == "approved" && titleErr != nil {
+			t.Errorf("approved winner has no acquisition: %v", titleErr)
+		}
+		if got.Status == "denied" && !errors.Is(titleErr, ErrNotFound) {
+			t.Errorf("denied winner has acquisition: %v", titleErr)
+		}
+	})
+}
+
+func testProposalApprovalOverlappingTitles(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	for _, id := range []string{"overlap-a", "overlap-b"} {
+		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: id, Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record := func(id int) provision.Record {
+		return provision.Record{
+			Key:   provision.Key("movie:tmdb:" + string(rune('0'+id))),
+			Title: provision.Title{MediaType: provision.Movie, TMDBID: id},
+			State: provision.Wanted, Deadline: now,
+		}
+	}
+	one, two := record(1), record(2)
+	start := make(chan struct{})
+	type result struct {
+		err error
+	}
+	results := make(chan result, 2)
+	for _, tc := range []struct {
+		id     string
+		titles []provision.Record
+	}{
+		{id: "overlap-a", titles: []provision.Record{one, two}},
+		{id: "overlap-b", titles: []provision.Record{two, one}},
+	} {
+		go func() {
+			<-start
+			p, err := s.GetProposal(ctx, tc.id)
+			if err == nil {
+				p.Status = "approved"
+				_, err = s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: tc.titles})
+			}
+			results <- result{err: err}
+		}()
+	}
+	close(start)
+	a, b := <-results, <-results
+	if a.err != nil || b.err != nil {
+		t.Fatalf("overlapping approvals = (%v, %v), want both committed", a.err, b.err)
+	}
+	for _, rec := range []provision.Record{one, two} {
+		if _, err := s.GetTitle(ctx, rec.Key); err != nil {
+			t.Errorf("overlapping title %s missing: %v", rec.Key, err)
+		}
 	}
 }
 
