@@ -135,9 +135,9 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
               {hover && (
                 <>
                   {!isBreak(hover.block) && hover.block.thumbUrl && (
-                    // The episode still is the hero — a 16:9 image the card is built around. A subtle bottom
-                    // gradient lets the S/E badge sit over it. object-cover fills the width without letterbox.
-                    <div className="relative aspect-video w-full overflow-hidden bg-static-800">
+                    // Episodes and movies both resolve to landscape art (still / backdrop).
+                    // Preserve the complete image even if a source deviates slightly from 16:9.
+                    <div className="relative aspect-video w-full overflow-hidden bg-black">
                       {/*
                         ⚠ This was <img src={tmdbUrl}> until V52 phase 7. The Watch timeline is one
                         of the three surfaces §22 names as loading third-party images in the
@@ -154,10 +154,10 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
                           image={hover.block.thumbImage}
                           alt=""
                           sizes="16rem"
-                          className="size-full object-cover"
+                          className="size-full object-contain"
                         />
                       ) : (
-                        <img src={hover.block.thumbUrl} alt="" className="size-full object-cover" />
+                        <img src={hover.block.thumbUrl} alt="" className="size-full object-contain" />
                       )}
                       {episodeTag(hover.block) && (
                         <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-static-0 backdrop-blur-sm">

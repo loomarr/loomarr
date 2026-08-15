@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"strings"
+
+	"github.com/mantonx/loomarr/internal/images"
 )
 
 // Resolving a channel's `logo` URL back to an image record (§22, V52 phase 5).
@@ -45,6 +47,17 @@ func imageHashFromLogo(logo string) string {
 		return ""
 	}
 	return rest
+}
+
+// browserLogoURL keeps an image-service logo on the in-app page's own origin while preserving an
+// operator-pasted external URL verbatim. The stored logo stays absolute because Tunarr is a
+// machine client with no page origin; only the browser projection changes.
+func browserLogoURL(logo string, pathFor func(string, int, images.Format) string) string {
+	hash := imageHashFromLogo(logo)
+	if hash == "" || pathFor == nil {
+		return logo
+	}
+	return pathFor(hash, channelLogoWidth, images.FormatJPEG)
 }
 
 // isSHA256Hex reports whether s is exactly 64 lowercase hex characters.

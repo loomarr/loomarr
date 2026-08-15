@@ -113,13 +113,17 @@ func (f *fakeImageService) URLFor(hash string, width int, format images.Format) 
 	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
 }
 
+func (f *fakeImageService) PathFor(hash string, width int, format images.Format) string {
+	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
+}
+
 func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format) string {
 	out := ""
 	for i, w := range role.Widths() {
 		if i > 0 {
 			out += ", "
 		}
-		out += fmt.Sprintf("%s %dw", f.URLFor(hash, w, format), w)
+		out += fmt.Sprintf("%s %dw", f.PathFor(hash, w, format), w)
 	}
 	return out
 }
