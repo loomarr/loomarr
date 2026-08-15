@@ -1,6 +1,8 @@
 import { ClipDTOAudience, ClipDTOKind, type FillerSelection, fillerApi } from "@loomarr/api";
+import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr";
 import {
+  Button,
   Checkbox,
   Input,
   Label,
@@ -102,6 +104,7 @@ const FillerCriteria = ({
   const categories = selection.categories ?? [];
   const kinds = selection.kinds ?? [];
   const productCategories = useProductCategories();
+  const [choosingCategories, setChoosingCategories] = useState(false);
 
   return (
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
@@ -224,28 +227,49 @@ const FillerCriteria = ({
         <FieldLabel help="Narrow to certain kinds of ad. None selected draws from every category.">
           Categories
         </FieldLabel>
-        <div className="flex flex-wrap gap-1.5">
-          {productCategories.map((c) => {
-            const on = categories.includes(c.slug);
-            return (
-              <button
-                key={c.slug}
-                type="button"
-                disabled={disabled}
-                aria-pressed={on}
-                onClick={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
-                className={cn(
-                  "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                  on
-                    ? "border-signal bg-signal-tint-30 text-foreground"
-                    : "border-border text-muted-foreground hover:border-input hover:text-foreground",
-                )}
-              >
-                {c.label}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-sm">
+            {categories.length === 0
+              ? "All categories"
+              : `${categories.length} ${categories.length === 1 ? "category" : "categories"} selected`}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            aria-expanded={choosingCategories}
+            onClick={() => setChoosingCategories((current) => !current)}
+          >
+            {choosingCategories ? "Done" : "Choose categories"}
+          </Button>
         </div>
+        {(choosingCategories || categories.length > 0) && (
+          <div className="flex flex-wrap gap-1.5">
+            {productCategories
+              .filter((c) => choosingCategories || categories.includes(c.slug))
+              .map((c) => {
+                const on = categories.includes(c.slug);
+                return (
+                  <button
+                    key={c.slug}
+                    type="button"
+                    disabled={disabled}
+                    aria-pressed={on}
+                    onClick={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      on
+                        ? "border-signal bg-signal-tint-30 text-foreground"
+                        : "border-border text-muted-foreground hover:border-input hover:text-foreground",
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {/* Kinds — checkboxes over the six clip kinds. None checked means the default set

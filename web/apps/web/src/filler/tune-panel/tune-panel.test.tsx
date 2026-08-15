@@ -11,9 +11,9 @@ import { TunePanel } from "./tune-panel";
 
 // The auto-file policy panel (§10 V42, the v2 mock's `toggleAuto` block).
 //
-// ⚠ These assert the PATCH BODIES, not that a click rendered something. The chips write real
-// settings that change what happens to clips without a human — a control that looks right and
-// writes the wrong key is the failure worth catching, and no rendering assertion sees it.
+// ⚠ These assert the PATCH BODIES, not only that a click rendered something. The three values
+// stage together and save once; a control that looks right and writes the wrong key is the
+// failure worth catching, and no rendering assertion sees it.
 
 const autofile = (key: string, value: string, provenance: SettingEntry["provenance"] = "default") =>
   setting({ key, value, provenance, kind: key.includes("confidence") ? "int" : "bool", group: "filler" });
@@ -28,6 +28,7 @@ const stubTune = (over: { settings?: SettingEntry[] } = {}) => {
     getSettingsListMockHandler({
       features: {},
       settings: over.settings ?? [
+        autofile("filler.autofile.enabled", "true"),
         autofile("filler.autofile.min_confidence", "85"),
         autofile("filler.autofile.normalize_loudness", "false"),
       ],
@@ -69,6 +70,7 @@ describe("TunePanel", () => {
   it("marks the stored confidence as the pressed chip", async () => {
     stubTune({
       settings: [
+        autofile("filler.autofile.enabled", "true"),
         autofile("filler.autofile.min_confidence", "95"),
         autofile("filler.autofile.normalize_loudness", "false"),
       ],
@@ -90,6 +92,8 @@ describe("TunePanel", () => {
     await screen.findByRole("button", { name: "75%" });
 
     await userEvent.click(screen.getByRole("button", { name: "75%" }));
+    expect(edits).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: /save auto-filing/i }));
 
     await waitFor(() => {
       expect(edits).toEqual([{ edits: { "filler.autofile.min_confidence": "75" } }]);
@@ -103,6 +107,8 @@ describe("TunePanel", () => {
     const box = await screen.findByRole("checkbox", { name: /normalize loudness/i });
 
     await userEvent.click(box);
+    expect(edits).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: /save auto-filing/i }));
 
     await waitFor(() => {
       expect(edits).toEqual([{ edits: { "filler.autofile.normalize_loudness": "true" } }]);
@@ -132,6 +138,7 @@ describe("TunePanel", () => {
 
     stubTune({
       settings: [
+        autofile("filler.autofile.enabled", "true"),
         autofile("filler.autofile.min_confidence", "85"),
         autofile("filler.autofile.normalize_loudness", "true"),
       ],
@@ -147,6 +154,7 @@ describe("TunePanel", () => {
   it("disables the chips when the key is pinned by the environment", async () => {
     stubTune({
       settings: [
+        autofile("filler.autofile.enabled", "true"),
         autofile("filler.autofile.min_confidence", "85", "env"),
         autofile("filler.autofile.normalize_loudness", "false"),
       ],
@@ -162,8 +170,8 @@ describe("TunePanel", () => {
     renderPanel(12, 3);
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
 
-    expect(await screen.findByText(/files 12 clips without asking/i)).toBeInTheDocument();
-    expect(screen.getByText(/3 come to you/i)).toBeInTheDocument();
+    expect(await screen.findByText(/12 clips were filed automatically/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 need review/i)).toBeInTheDocument();
   });
 
   it("says nothing needs you when the queue is empty", async () => {
@@ -171,6 +179,21 @@ describe("TunePanel", () => {
     renderPanel(4, 0);
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
 
-    expect(await screen.findByText(/nothing needs you/i)).toBeInTheDocument();
+    expect(await screen.findByText(/nothing needs review/i)).toBeInTheDocument();
+  });
+
+  it("stages the on/off switch and saves it explicitly", async () => {
+    const edits = stubTune();
+    renderPanel();
+    await userEvent.click(screen.getByRole("button", { name: /tune/i }));
+
+    await userEvent.click(await screen.findByRole("switch", { name: /file confident clips/i }));
+    expect(screen.getByText(/every incoming clip waits here/i)).toBeInTheDocument();
+    expect(edits).toEqual([]);
+
+    await userEvent.click(screen.getByRole("button", { name: /save auto-filing/i }));
+    await waitFor(() => {
+      expect(edits).toEqual([{ edits: { "filler.autofile.enabled": "false" } }]);
+    });
   });
 });

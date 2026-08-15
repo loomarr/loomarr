@@ -17,7 +17,6 @@ const AiSettings = () => (
         group: "filler",
         title: "Filler analysis models",
         keys: [
-          "filler.vision.enabled",
           "filler.vision.provider",
           "filler.vision.url",
           "filler.vision.api_key",

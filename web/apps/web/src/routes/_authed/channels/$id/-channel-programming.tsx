@@ -9,6 +9,7 @@ import {
   ChannelRulesEditor,
   ChannelSeasonal,
   ChannelSeriesScope,
+  CollapsibleSection,
   RefinePanel,
 } from "@/components/loomarr";
 import { Button } from "@/components/ui";
@@ -52,16 +53,23 @@ interface ChannelProgrammingProps {
   onRefined: () => void;
 }
 
-// Block — one titled step of the Programming surface. The numberless heading + one-line hint
-// name what the block controls in the operator's words (not the schema's).
-const Block = ({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) => (
-  <section className="flex flex-col gap-4 border-border border-t pt-6">
-    <div>
-      <h3 className="font-semibold text-base">{title}</h3>
-      <p className="text-muted-foreground text-sm">{hint}</p>
-    </div>
-    {children}
-  </section>
+// Block — one intent-sized step of the Programming surface. The first task opens; secondary
+// tuning stays quiet until requested. Closed content remains reachable to find-in-page through
+// the shared disclosure primitive.
+const Block = ({
+  title,
+  hint,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  hint: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) => (
+  <CollapsibleSection title={title} description={hint} defaultOpen={defaultOpen}>
+    <div className="flex flex-col gap-4">{children}</div>
+  </CollapsibleSection>
 );
 
 const ChannelProgramming = ({
@@ -106,7 +114,11 @@ const ChannelProgramming = ({
         onApplied={onRefined}
       />
 
-      <Block title="What plays" hint="The titles this channel draws from, and the content it stays within.">
+      <Block
+        title="What plays"
+        hint="The titles this channel draws from, and the content it stays within."
+        defaultOpen
+      >
         <ChannelLineupEditor channelId={channelId} lineup={lineup} />
         <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="scope" />
         {/* `scope.series` narrows the channel to specific shows. It sits under the scope
@@ -190,13 +202,16 @@ const ChannelProgramming = ({
 
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
           wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
-      <div className="border-border border-t pt-6">
+      <CollapsibleSection
+        title="Preview schedule"
+        description="Check what airs at a specific time and which rule wins."
+      >
         <ChannelCyclePreview
           channelId={channelId}
           lineupKeys={lineupKeys}
           draftPolicy={rules.isDirty ? rules.draft : undefined}
         />
-      </div>
+      </CollapsibleSection>
     </div>
   );
 };
