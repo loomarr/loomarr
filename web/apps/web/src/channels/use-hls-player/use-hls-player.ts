@@ -84,14 +84,6 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         else video.addEventListener("playing", onFirstFrame, { once: true });
       };
       const onLoadedData = () => armFirstFrameWatch();
-      // Detaching MediaSource can leave its last decoded picture retained. Clear that source before
-      // watching the replacement: WebKit otherwise reports the retained picture through a newly
-      // registered callback and attributes it to the next Channel. The poster captured by the tuner
-      // continues to hold the outgoing picture while the element itself becomes source-empty.
-      video.removeAttribute("src");
-      video.load();
-      if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
-      else armFirstFrameWatch();
       const stopFirstFrameWatch = () => {
         if (frameCallback !== undefined) video.cancelVideoFrameCallback?.(frameCallback);
         video.removeEventListener("loadeddata", onLoadedData);
@@ -170,8 +162,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.destroy();
           }
         };
+        // loadSource synchronously detaches and recreates hls.js's MediaSource when a controller is
+        // being reused. Arm the decoded-frame observer only AFTER that hand-off: this prevents
+        // WebKit attributing the outgoing retained picture to the replacement without forcing an
+        // extra video.load() before hls.js performs the same detach itself. That duplicate reset was
+        // expensive on constrained WebKit runners and delayed every otherwise-ready Channel.
         hls.loadSource(url);
         if (hls.media !== video) hls.attachMedia(video);
+        if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
+        else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.ERROR, onError);
         return () => {
@@ -194,6 +193,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // browser, not a Chromium false-positive.
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         const onManifest = () => markTunePhase(attempt, "manifest");
+        // Native HLS has no transport controller to detach the previous URL for us.
+        video.removeAttribute("src");
+        video.load();
+        if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
+        else armFirstFrameWatch();
         video.addEventListener("loadedmetadata", onManifest, { once: true });
         video.src = url;
         void video.play().catch(() => {
