@@ -101,7 +101,7 @@ func tmdbPosterStub(t *testing.T, posters map[string]string, fail map[string]boo
 
 func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []schedule.LineupEntry) {
 	t.Helper()
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: id, Name: "Test", Number: 1, Status: "live"},
 		Lineup:  entries,
 	}); err != nil {

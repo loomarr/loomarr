@@ -341,12 +341,14 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err := s.numberConflict(ctx, ch.Number); err != nil {
 		return nil, err
 	}
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
 		if errors.Is(err, store.ErrChannelConflict) {
 			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
 		}
 		return nil, err
 	}
+	ch = saved
 	// Kick an initial reconcile so the channel goes live immediately (§9 "live
 	// immediately — never dead air"). Best-effort: a reconcile failure leaves the
 	// channel in `building` for the sweep to pick up, it doesn't fail creation.
@@ -377,6 +379,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 type updateChannelInput struct {
 	ID   string `path:"id" example:"ch_abc123"`
 	Body struct {
+		Revision int64                   `json:"revision" minimum:"1" doc:"Revision returned by the channel read this edit was based on. A stale revision is rejected with 409."`
 		Name     *string                 `json:"name,omitempty"`
 		Number   *int                    `json:"number,omitempty" minimum:"1"`
 		Group    *string                 `json:"group,omitempty"`
@@ -407,6 +410,9 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
+	}
+	if in.Body.Revision != ch.Revision {
+		return nil, staleChannelConflict()
 	}
 
 	if in.Body.Name != nil {
@@ -479,13 +485,18 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
-	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	ch.UpdatedAt = time.Now().Unix() // SaveChannel does not stamp this
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
+		if errors.Is(err, store.ErrChannelStale) {
+			return nil, staleChannelConflict()
+		}
 		if errors.Is(err, store.ErrChannelConflict) {
 			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
 		}
 		return nil, err
 	}
+	ch = saved
 
 	// Auto-reconcile so the edit reaches Tunarr with no user action (§9 "self-
 	// maintaining"; there is no manual rebuild). Best-effort + skipped while paused or
@@ -621,8 +632,18 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	// Detached channels are never reconciled again (§9 ownership).
 	ch.Status = schedule.StatusDetached
 	ch.UpdatedAt = time.Now().Unix()
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	if _, err := s.store.SaveChannel(ctx, ch); err != nil {
+		if errors.Is(err, store.ErrChannelStale) {
+			return nil, staleChannelConflict()
+		}
 		return nil, err
 	}
 	return &deleteChannelOutput{}, nil
+}
+
+// staleChannelConflict is deliberately distinct from number/intent collisions: this edit was
+// valid when authored, but the channel changed before it could commit. The only honest recovery
+// is to refresh and let the operator decide again, especially for whole-list lineup replacement.
+func staleChannelConflict() error {
+	return errConflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
 }

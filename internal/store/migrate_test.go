@@ -178,6 +178,41 @@ func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T)
 	}
 }
 
+func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-revision.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 55); err != nil {
+		t.Fatalf("migrate through 55: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO channels (id, name, number, strategy, status)
+		 VALUES ('pre-revision', 'Pre revision', 156, 'sequential', 'building')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 56); err != nil {
+		t.Fatalf("migrate through 56: %v", err)
+	}
+	var revision int64
+	if err := db.QueryRowContext(ctx, `SELECT revision FROM channels WHERE id='pre-revision'`).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 {
+		t.Fatalf("backfilled revision = %d, want 1", revision)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE channels SET revision=0 WHERE id='pre-revision'`); err == nil {
+		t.Fatal("channel revision CHECK accepted zero")
+	}
+}
+
 func TestMigrationProviderRejectsUnknownDialect(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "unknown.db"))
 	if err != nil {

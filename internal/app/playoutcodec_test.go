@@ -1,9 +1,12 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // The §9.1 V50 decision (Q2): a channel's broadcast codec is the MAJORITY of its content's codecs,
@@ -34,5 +37,47 @@ func TestMajorityBroadcastCodec(t *testing.T) {
 				t.Errorf("majorityBroadcastCodec(%v) = %q, want %q", tc.codecs, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestComputeChannelCodecRetriesAChangingChannel(t *testing.T) {
+	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 2, 2, 2}}
+	r := &playoutResolver{channels: access, codecs: access}
+
+	got, err := r.ComputeChannelCodec(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != store.BroadcastCodecH264 {
+		t.Fatalf("codec = %q, want h264 fallback", got)
+	}
+	if len(access.Writes) != 1 || access.Writes[0].ExpectedRevision != 2 {
+		t.Fatalf("writes = %+v, want one write against stable revision 2", access.Writes)
+	}
+}
+
+func TestComputeChannelCodecRetriesAStaleTargetedWrite(t *testing.T) {
+	access := &testkit.ChannelCodecStore{
+		ReadRevisions: []int64{1, 1, 2, 2},
+		WriteErrors:   []error{store.ErrChannelStale, nil},
+	}
+	r := &playoutResolver{channels: access, codecs: access}
+
+	if _, err := r.ComputeChannelCodec(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(access.Writes) != 2 || access.Writes[0].ExpectedRevision != 1 || access.Writes[1].ExpectedRevision != 2 {
+		t.Fatalf("writes = %+v, want retries against revisions 1 then 2", access.Writes)
+	}
+}
+
+func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
+	boom := errors.New("database unavailable")
+	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 1}, WriteErrors: []error{boom}}
+	r := &playoutResolver{channels: access, codecs: access}
+
+	_, err := r.ComputeChannelCodec(context.Background(), "ch1")
+	if !errors.Is(err, boom) {
+		t.Fatalf("error = %v, want database failure", err)
 	}
 }

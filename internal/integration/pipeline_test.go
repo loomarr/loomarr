@@ -429,8 +429,12 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// ⚠ The full policy, not just the ceiling: a policy PATCH REPLACES wholesale, so era/genres
 	// are restated or the tightening would also quietly widen the scope. And era/genres live
 	// under `scope` — the flat shape is the LLM's, which groundPolicy converts.
+	current, err := r.store.GetChannel(context.Background(), approved.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if resp := r.do(t, http.MethodPatch, "/v1/channels/"+approved.ChannelID,
-		`{"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`+
+		fmt.Sprintf(`{"revision":%d,"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`, current.Revision)+
 			`"audience":{"ceiling":"TV-Y"},"ordering":"syndication"}}`,
 	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("tighten ceiling → %d, want 200", resp.StatusCode)

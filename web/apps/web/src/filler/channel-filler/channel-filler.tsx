@@ -122,7 +122,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFillerProps) => {
   const {
     draft,
     setDraft,
@@ -135,7 +135,7 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
     apply,
     isApplying,
     discard,
-  } = useChannelFillerDraft(channelId, policy);
+  } = useChannelFillerDraft(channelId, policy, revision);
 
   const pinned = draft.pinned ?? [];
   const excluded = draft.excluded ?? [];

@@ -11,28 +11,62 @@ import (
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
-func TestApproverReplansAfterChannelUniquenessRace(t *testing.T) {
-	st := &testkit.ApprovalStore{CommitErrors: []error{store.ErrChannelConflict, nil}}
-	channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) store.Channel {
-		ch := store.Channel{}
-		ch.ID, ch.IntentRef, ch.Number = "ch-approved", p.JobID, attempt
-		return ch
-	}}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
+func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
+	for _, conflict := range []error{store.ErrChannelConflict, store.ErrChannelStale} {
+		t.Run(conflict.Error(), func(t *testing.T) {
+			st := &testkit.ApprovalStore{CommitErrors: []error{conflict, nil}}
+			channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) store.Channel {
+				ch := store.Channel{}
+				ch.ID, ch.IntentRef, ch.Number = "ch-approved", p.JobID, attempt
+				return ch
+			}}
+			approver := suggest.NewApprover(st, channels, time.Now)
+			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
 
-	result, err := approver.Approve(context.Background(), p, nil, "admin")
-	if err != nil {
-		t.Fatal(err)
+			result, err := approver.Approve(context.Background(), p, nil, "admin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(channels.Plans) != 2 || len(st.Commits) != 2 {
+				t.Fatalf("plans/commits = %d/%d, want 2/2", len(channels.Plans), len(st.Commits))
+			}
+			if len(channels.Committed) != 1 || channels.Committed[0] != "ch-approved" {
+				t.Fatalf("post-commit = %+v, want only the replanned channel id", channels.Committed)
+			}
+			if result.ChannelID != "ch-approved" {
+				t.Errorf("channel id = %q", result.ChannelID)
+			}
+		})
 	}
-	if len(channels.Plans) != 2 || len(st.Commits) != 2 {
-		t.Fatalf("plans/commits = %d/%d, want 2/2", len(channels.Plans), len(st.Commits))
+}
+
+func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
+	p := store.Proposal{
+		ID: "older", JobID: "job1", Status: "submitted", ProposalJSON: `{}`,
+		CreatedAt: time.Unix(100, 0),
 	}
-	if len(channels.Committed) != 1 || channels.Committed[0].Number != 2 {
-		t.Fatalf("post-commit = %+v, want only the replanned channel", channels.Committed)
+	newer := store.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
+	st := &testkit.ApprovalStore{
+		CommitErrors: []error{store.ErrChannelStale},
+		LatestFunc: func(call int) (store.Proposal, error) {
+			if call == 1 {
+				return store.Proposal{}, store.ErrNotFound
+			}
+			return newer, nil
+		},
 	}
-	if result.ChannelID != "ch-approved" {
-		t.Errorf("channel id = %q", result.ChannelID)
+	channels := &testkit.ApprovalChannels{}
+	approver := suggest.NewApprover(st, channels, time.Now)
+
+	_, err := approver.Approve(context.Background(), p, nil, "admin")
+	if !errors.Is(err, suggest.ErrSuperseded) {
+		t.Fatalf("error = %v, want ErrSuperseded", err)
+	}
+	if len(st.Commits) != 1 || len(channels.Plans) != 1 {
+		t.Fatalf("commits/plans = %d/%d, want 1/1", len(st.Commits), len(channels.Plans))
+	}
+	if len(channels.Committed) != 0 {
+		t.Fatalf("post-commit ran for superseded proposal: %+v", channels.Committed)
 	}
 }
 
@@ -66,7 +100,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	if len(st.Commits) != 1 || st.Commits[0].Channel.ID != "ch-approved" {
 		t.Fatalf("atomic commit = %+v", st.Commits)
 	}
-	if len(channels.Committed) != 1 || channels.Committed[0].ID != "ch-approved" {
+	if len(channels.Committed) != 1 || channels.Committed[0] != "ch-approved" {
 		t.Fatalf("post-commit calls = %+v", channels.Committed)
 	}
 }

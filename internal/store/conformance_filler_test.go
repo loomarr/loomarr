@@ -588,7 +588,8 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	channel.Policy.Filler = &schedule.FillerSelection{
 		Pinned: []string{"keep", old.Hash}, Excluded: []string{old.Hash, "other"},
 	}
-	if err := s.UpsertChannel(ctx, channel); err != nil {
+	channel, err = s.SaveChannel(ctx, channel)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -640,6 +641,9 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if gotChannel.Policy.Filler == nil || gotChannel.Policy.Filler.Pinned[1] != replacement.Hash ||
 		gotChannel.Policy.Filler.Excluded[0] != replacement.Hash {
 		t.Errorf("channel overrides did not follow replacement: %+v", gotChannel.Policy.Filler)
+	}
+	if gotChannel.Revision != channel.Revision+1 {
+		t.Errorf("channel policy rekey revision = %d, want %d", gotChannel.Revision, channel.Revision+1)
 	}
 	if _, found, err := cachedClipFingerprint(ctx, s, old.Hash, "dhash-v1"); err != nil || found {
 		t.Errorf("old-byte fingerprint survived identity replacement: found=%v err=%v", found, err)

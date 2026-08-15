@@ -72,7 +72,7 @@ func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedu
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusLive
 	ch.Policy = pol
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -411,7 +411,7 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 
 	// There is deliberately no returned error: once local approval has committed,
 	// derived/external convergence cannot undo it.
-	b.AfterApprovalCommitted(context.Background(), ch)
+	b.AfterApprovalCommitted(context.Background(), ch.ID)
 
 	if codec.channelID != ch.ID || reconciler.channelID != ch.ID {
 		t.Errorf("post-commit calls = codec:%q reconcile:%q, want %q", codec.channelID, reconciler.channelID, ch.ID)

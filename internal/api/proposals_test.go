@@ -79,10 +79,15 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 
 // seedProposal writes a submitted proposal with one acquisition (Speed).
 func seedProposal(t *testing.T, st store.Store, id string) {
+	seedProposalAt(t, st, id, time.Time{})
+}
+
+func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
 	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		CreatedAt: created,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -437,17 +442,18 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 // ordinary editable fields; silently reverting an edit on re-approve is data loss.
 func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	body := `{"intent":{"description":"90s cartoons"},"lineup":[{"mediaType":"movie",` +
 		`"tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
 		`"acquisitions":[]}`
-	seed := func(id, job string) {
+	seed := func(id, job string, created time.Time) {
 		if err := st.CreateProposal(context.Background(), store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body,
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	seed("p-a", "job-same")
+	seed("p-a", "job-same", base)
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-a/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first approve → %d", resp.StatusCode)
@@ -460,12 +466,12 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	// The operator renames and renumbers it, as §7 says they may.
 	ch, _ := st.GetChannel(context.Background(), first.ChannelID)
 	ch.Name, ch.Number = "Cartoon Corner", 42
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
 	// A second proposal for the SAME intent (a re-run of that job) is approved.
-	seed("p-b", "job-same")
+	seed("p-b", "job-same", base.Add(time.Hour))
 	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-b/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("second approve → %d", resp.StatusCode)
@@ -628,7 +634,7 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	// A hand-made channel already occupies number 1.
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
 			ID: "ch_manual", Name: "Manual", Number: 1, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,
@@ -956,8 +962,9 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 // "approve 3" silently becoming "approved 2" is invisible.
 func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
-	seedProposal(t, st, "p1")
-	seedProposal(t, st, "p2")
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	seedProposalAt(t, st, "p1", base)
+	seedProposalAt(t, st, "p2", base.Add(time.Hour))
 	// p1 is already approved before the bulk call.
 	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
 

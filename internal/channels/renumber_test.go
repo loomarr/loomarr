@@ -2,8 +2,10 @@ package channels_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -38,7 +40,7 @@ func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
 	ctx := context.Background()
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,6 +91,57 @@ func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 	}
 }
 
+func TestReconcile_AutoRenumberAlsoAvoidsLocalOnlyChannels(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	tun.SeedForeignChannel(1, "Remote occupant")
+	seedChannel(t, st, "local-only", 2)
+	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+
+	if err := e.Reconcile(context.Background(), "target"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetChannel(context.Background(), "target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Number != 3 {
+		t.Fatalf("auto-renumber chose %d, want 3 (Tunarr owns 1 and local-only owns 2)", got.Number)
+	}
+	if tun.Creates != 1 || tun.Deletes != 0 {
+		t.Fatalf("remote creates/deletes = %d/%d, want 1/0", tun.Creates, tun.Deletes)
+	}
+}
+
+func TestReconcile_CleansUpWhenLocalNumberIsClaimedAfterRemotePlan(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	tun.SeedForeignChannel(1, "Remote occupant")
+	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+
+	var once sync.Once
+	tun.BeforeEnsureChannel = func(spec programmer.ChannelSpec) {
+		if spec.TunarrID == "" && spec.Number == 2 {
+			once.Do(func() { seedChannel(t, st, "late-local", 2) })
+		}
+	}
+	if err := e.Reconcile(context.Background(), "target"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetChannel(context.Background(), "target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Number != 3 {
+		t.Fatalf("retry chose %d, want 3 after local channel claimed 2", got.Number)
+	}
+	if tun.Creates != 2 || tun.Deletes != 1 {
+		t.Fatalf("remote creates/deletes = %d/%d, want 2/1 cleanup", tun.Creates, tun.Deletes)
+	}
+}
+
 // The ordinary case must not pay for the collision handling: a free number is used as-is.
 func TestReconcile_KeepsItsNumberWhenTunarrHasNothingThere(t *testing.T) {
 	st := newStore(t)
@@ -105,7 +158,7 @@ func TestReconcile_KeepsItsNumberWhenTunarrHasNothingThere(t *testing.T) {
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
 	ctx := context.Background()
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
