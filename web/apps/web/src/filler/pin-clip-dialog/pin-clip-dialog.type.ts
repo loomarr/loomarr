@@ -1,4 +1,4 @@
-import type { ClipDTO } from "@loomarr/api";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 
 type PinClipDialogProps = {
   // The clip to pin into a channel — undefined closes the dialog (same open/close idiom as

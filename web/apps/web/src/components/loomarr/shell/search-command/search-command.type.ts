@@ -1,4 +1,4 @@
-import type { PaletteScope, SearchResult } from "@loomarr/core";
+import type { PaletteScope, SearchResult } from "@loomarr/core/contracts";
 
 // SearchResult / PaletteScope are FE view models (the ⌘K palette merges API candidates +
 // channels + help — a superset of the generated SearchScope), so they live in core, not

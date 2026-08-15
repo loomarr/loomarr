@@ -1,4 +1,4 @@
-import type { ServicesView } from "@loomarr/api";
+import type { ServicesView } from "@loomarr/api/models/servicesView";
 
 interface ServicesPanelProps {
   /** Every configured integration plus Loomarr's own row, from GET /v1/system/services. */

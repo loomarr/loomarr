@@ -1,20 +1,18 @@
-import type {
-  ChannelFitDTO,
-  ClipDTO,
-  DiscoveredClip,
-  FillerSourceDTO,
-  GuideChannelTimeline,
-  IncomingClipDTO,
-  IncomingReelDTO,
-  IncomingRejectDTO,
-  PodEntryDTO,
-  PodPoolDTO,
-  PoolDTO,
-  Proposal,
-  PullDTO,
-  SplitProposal,
-} from "@loomarr/api";
-import type { SearchResult } from "@loomarr/core";
+import type { ChannelFitDTO } from "@loomarr/api/models/channelFitDTO";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import type { IncomingReelDTO } from "@loomarr/api/models/incomingReelDTO";
+import type { IncomingRejectDTO } from "@loomarr/api/models/incomingRejectDTO";
+import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
+import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
+import type { PoolDTO } from "@loomarr/api/models/poolDTO";
+import type { Proposal } from "@loomarr/api/models/proposal";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
+import type { SplitProposal } from "@loomarr/api/models/splitProposal";
+import type { SearchResult } from "@loomarr/core/contracts";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
 // both web and the future mobile app (§4.2, §5.2). Typed against the orval-generated

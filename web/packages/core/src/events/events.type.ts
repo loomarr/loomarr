@@ -21,20 +21,18 @@
 // reads as one list, and so a frame added on the backend shows up here as a compile error
 // rather than as a listener that never fires.
 
-import type {
-  ActivityEvent,
-  ChannelEvent,
-  DatabaseEvent,
-  FillerClipEvent,
-  FillerIngestEvent,
-  FillerSplitEvent,
-  JobEvent,
-  LLMPullEvent,
-  PlayoutEvent,
-  SuggestionEvent,
-  SuggestionEventPhase,
-  TitleEvent,
-} from "@loomarr/api";
+import type { ActivityEvent } from "@loomarr/api/models/activityEvent";
+import type { ChannelEvent } from "@loomarr/api/models/channelEvent";
+import type { DatabaseEvent } from "@loomarr/api/models/databaseEvent";
+import type { FillerClipEvent } from "@loomarr/api/models/fillerClipEvent";
+import type { FillerIngestEvent } from "@loomarr/api/models/fillerIngestEvent";
+import type { FillerSplitEvent } from "@loomarr/api/models/fillerSplitEvent";
+import type { JobEvent } from "@loomarr/api/models/jobEvent";
+import type { LLMPullEvent } from "@loomarr/api/models/lLMPullEvent";
+import type { PlayoutEvent } from "@loomarr/api/models/playoutEvent";
+import type { SuggestionEvent } from "@loomarr/api/models/suggestionEvent";
+import type { SuggestionEventPhase } from "@loomarr/api/models/suggestionEventPhase";
+import type { TitleEvent } from "@loomarr/api/models/titleEvent";
 
 // Kept under the frontend's historical names so call sites don't churn: the Go type is
 // LLMPullEvent (Go initialisms), the frontend has always called it LlmPullEvent, and

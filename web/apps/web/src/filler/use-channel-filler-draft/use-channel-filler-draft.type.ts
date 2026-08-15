@@ -1,4 +1,5 @@
-import type { FillerSelection, PodPoolDTO } from "@loomarr/api";
+import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
+import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
 
 // The draft the sandbox edits. It is exactly a FillerSelection — the same shape the
 // backend persists on `policy.filler` and previews at POST …/pods/preview — so "apply"

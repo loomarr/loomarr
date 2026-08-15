@@ -105,6 +105,7 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 | Component | Purpose | States to register |
 | --- | --- | --- |
 | `AppShell` | Nav rail (Channels, Board, Suggest, Filler, Users, Settings, Help) + ⌘K + user menu | member / admin / mobile-web collapsed |
+| `PageHeader` | A page's single semantic title and optional explanatory copy | title only · title + description |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
 | `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
@@ -171,6 +172,11 @@ The production build enforces both sides of this contract: no JavaScript chunk m
 the entry script plus its module preloads may not exceed 1 MiB uncompressed. The first bound keeps one
 heavy screen from becoming a parse cliff; the second catches a nominally split build that still downloads
 the whole app before authentication or route selection.
+
+The frontend lint gate also reads every production TypeScript import and rejects those catalog roots,
+including type-only imports. That stricter source rule keeps the interface obvious in editors and prevents
+a later value import from silently changing a type-only dependency into an eager runtime dependency. Tests
+and stories may use the complete catalogs because they are tooling entrypoints rather than route payloads.
 
 The embedded production server negotiates gzip for HTML, JavaScript, CSS, and other compressible static
 formats. It prepares those representations once when its handler is constructed, not on every request;

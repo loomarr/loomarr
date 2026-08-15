@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
@@ -149,10 +150,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">{title}</h1>
-        {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
-      </header>
+      <PageHeader title={title} description={description} className="border-border border-b px-6 py-4" />
 
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
         {children}
