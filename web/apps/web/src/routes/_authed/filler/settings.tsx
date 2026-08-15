@@ -61,8 +61,8 @@ const FillerOperations = () => {
           group: "filler",
           title: "Break assembly",
           description:
-            "Global limits for every channel. The inherited break frequency stays under Settings → Defaults.",
-          keys: ["filler.pod_max"],
+            "Default break length and clip density. A channel can override its length; frequency stays under Settings → Defaults.",
+          keys: ["filler.break_duration", "filler.pod_max"],
         },
         {
           group: "filler",

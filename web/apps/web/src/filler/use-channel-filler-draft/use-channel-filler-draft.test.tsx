@@ -75,11 +75,16 @@ const stubDraft = (opts: { previewStatus?: number } = {}) => {
   return { previews, saves };
 };
 
-const policy = (filler?: ChannelPolicy["filler"], breaksPerHour?: number): ChannelPolicy => ({
+const policy = (
+  filler?: ChannelPolicy["filler"],
+  breaksPerHour?: number,
+  breakDuration?: string,
+): ChannelPolicy => ({
   ordering: "shuffle",
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
   ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
+  ...(breakDuration !== undefined ? { breakDuration } : {}),
 });
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
@@ -138,6 +143,29 @@ describe("useChannelFillerDraft", () => {
     act(() => result.current.setBreaksPerHour(0));
     await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
     expect(previews).toHaveLength(1);
+  });
+
+  it("reassembles when break length changes and includes it in apply/discard", async () => {
+    const { previews, saves } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4, "5m"), 1), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(1));
+
+    act(() => result.current.setBreakDuration("90s"));
+    expect(result.current.isDirty).toBe(true);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(2));
+    expect(previews.at(-1)).toMatchObject({ breakDuration: "90s" });
+
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toMatchObject({ policy: { breakDuration: "90s" } });
+
+    act(() => result.current.discard());
+    expect(result.current.breakDuration).toBe("5m");
+    expect(result.current.isDirty).toBe(false);
   });
 
   it("fires a debounced preview POST with the canonical draft, and renders its result", async () => {

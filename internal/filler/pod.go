@@ -90,6 +90,8 @@ type Window struct {
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
 	PodMax int
+	// BreakDurationMs is the live global target. A per-channel Selection may override it.
+	BreakDurationMs int64
 	// The per-channel selection (§10 FillerSelection), all optional:
 	//   Categories — commercial-pool category narrowing (empty = any).
 	//   Kinds      — which clip kinds the pod may use (empty = the default set);
@@ -118,6 +120,9 @@ type Policy struct {
 	// falls back to 4). Wired from the setting so preview and reconcile agree — previously
 	// the adapter hardcoded 32, ignoring the knob.
 	PodMax int
+	// BreakDurationMs is the live global target for each break. A channel may override
+	// it through Selection; zero falls back to the documented 5 minute default.
+	BreakDurationMs int64
 	// MinQualityHeight is the opt-in minimum clip height in pixels (FILLER_MIN_QUALITY, §15;
 	// V17c). 0 ⇒ OFF, which is the default and the only value that preserves what
 	// `00014_clips_quality` originally promised.
@@ -177,7 +182,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	pod := Pod{MatchLevel: MatchBumperCard}
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
-	if b, ok := pickBumper(catalog, w, used, rng); ok {
+	if b, ok := pickBumper(catalog, w, used, rng); ok && b.DurationMs <= w.GapMs {
 		pod.append(b, used)
 	}
 
@@ -185,7 +190,9 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	// the ladder (the one thing the ranking ladder can't express). Pins still respect
 	// the pod budget — a pin can't make an unbounded pod — and skip anything already
 	// `used` (i.e. excluded or a pinned bumper already placed).
-	pinned := pickPinned(catalog, w, policy, used)
+	pinWindow := w
+	pinWindow.GapMs -= pod.TotalMs
+	pinned := pickPinned(catalog, pinWindow, policy, used)
 	for _, c := range pinned {
 		pod.append(clipToEntry(c), used)
 	}
@@ -213,7 +220,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	}
 
 	// Return bumper.
-	if b, ok := pickBumper(catalog, w, used, rng); ok {
+	if b, ok := pickBumper(catalog, w, used, rng); ok && pod.TotalMs+b.DurationMs <= w.GapMs {
 		pod.append(b, used)
 	}
 
@@ -222,6 +229,11 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	// (§10 never dead air). Pins alone count as content — a pinned-only pod is a real
 	// pod, not the fallback.
 	if len(pinned) == 0 && len(commercials) == 0 {
+		// An opportunistic intro bumper is not a matched break body. Replace it rather than
+		// appending the card: the comment has always promised "just the embedded card", and
+		// retaining a full-gap bumper before it can exceed the window's duration budget.
+		pod.Entries = nil
+		pod.TotalMs = 0
 		pod.append(FallbackCard, used)
 		pod.MatchLevel = MatchBumperCard
 	} else if level == "" && len(pinned) > 0 {
@@ -263,7 +275,7 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 		if !ok || used[id] || !durationEligible(c, policy) {
 			continue
 		}
-		if totalMs+c.DurationMs > budget && len(out) > 0 {
+		if totalMs+c.DurationMs > budget {
 			continue
 		}
 		out = append(out, c)

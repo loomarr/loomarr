@@ -452,7 +452,8 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 	// resolves per call and says so. This is that contract, honoured by the pod path too.
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, func() filler.Policy {
 		return filler.Policy{
-			PodMax: set.intv("filler.pod_max"),
+			PodMax:          set.intv("filler.pod_max"),
+			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor
 			// existed — see the warning on Policy.MinQualityHeight.
 			MinQualityHeight: set.intv("filler.min_quality"),

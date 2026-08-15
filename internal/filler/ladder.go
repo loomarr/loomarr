@@ -133,8 +133,8 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
 				continue // would repeat a category back-to-back
 			}
-			if totalMs+c.DurationMs > budget && len(out) > 0 {
-				continue // doesn't fit (but always allow at least one clip)
+			if totalMs+c.DurationMs > budget {
+				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
 			}
 			out = append(out, c)
 			totalMs += c.DurationMs

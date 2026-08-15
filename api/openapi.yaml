@@ -696,6 +696,12 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         breaksPerHour:
           format: int64
           type: integer
@@ -3738,6 +3744,12 @@ components:
             - https://example.com/v1/schemas/PreviewDraftPodsInputBody.json
           format: uri
           readOnly: true
+          type: string
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
           type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"

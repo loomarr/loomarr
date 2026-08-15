@@ -323,6 +323,10 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
+	// Spawned remembers children already produced by partial auto-confirm. It is private durable
+	// state, not review UI: final confirmation needs the whole new generation so it can retire
+	// superseded children without also retiring cuts produced on an earlier pass.
+	Spawned []string `json:"-"`
 	// Detection is persisted inside the store document, not served in OpenAPI. nil means the
 	// proposal is complete and reviewable; non-nil means the pipeline must resume detection.
 	Detection *SplitDetectionProgress `json:"-"`

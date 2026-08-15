@@ -26,10 +26,11 @@ type splitProposalDocument struct {
 	Version   int                            `json:"version"`
 	Segments  []filler.SplitSegment          `json:"segments,omitempty"`
 	Detection *filler.SplitDetectionProgress `json:"detection,omitempty"`
+	Spawned   []string                       `json:"spawned,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
-	return json.Marshal(splitProposalDocument{Version: 1, Segments: p.Segments, Detection: p.Detection})
+	return json.Marshal(splitProposalDocument{Version: 2, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned})
 }
 
 func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
@@ -43,7 +44,7 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return err
 	}
-	p.Segments, p.Detection = doc.Segments, doc.Detection
+	p.Segments, p.Detection, p.Spawned = doc.Segments, doc.Detection, doc.Spawned
 	return nil
 }
 
@@ -185,8 +186,8 @@ func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
 	return nil
 }
 
-// UpdateSplitProposalSegments replaces the segments of an EXISTING proposal (§10 V54 — split-time
-// grounding accumulates across passes, so a pass writes back what it learned).
+// UpdateSplitProposal replaces the document of an EXISTING proposal (§10 V54 — split-time
+// grounding and partial-confirm output accumulate across passes, so a pass writes back what it learned).
 //
 // ⚠ **Deliberately NOT `UpsertSplitProposal`.** That one is `INSERT … ON CONFLICT(clip_hash)`, so
 // a grounding write landing after `Confirm` consumed the proposal would RESURRECT it: a pending
@@ -196,19 +197,19 @@ func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
 //
 // ⚠ It does not touch `created_at`. `ListSplitProposals` orders by it, so writing it would let a
 // reel jump the review queue merely for having been grounded.
-func (s *sqlStore) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
-	raw, err := json.Marshal(segs)
+func (s *sqlStore) UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	raw, err := marshalSplitProposal(p)
 	if err != nil {
-		return fmt.Errorf("marshal split segments: %w", err)
+		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), id)
+		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), p.ID)
 	if err != nil {
-		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
 	if n == 0 {
 		return ErrNotFound

@@ -473,6 +473,9 @@ func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clip
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
+func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	return a.st.ReplaceSplitChildren(ctx, parentHash, keepHashes, at)
+}
 func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.st.DeleteClip(ctx, id)
 }
@@ -501,10 +504,10 @@ func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash str
 // not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
 // the split rung must tell "the proposal was confirmed under me" apart from a real write failure,
 // because the first is a normal outcome and the second must fail the pass.
-func (a fillerSplitStoreAdapter) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
-	err := a.st.UpdateSplitProposalSegments(ctx, id, segs)
+func (a fillerSplitStoreAdapter) UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	err := a.st.UpdateSplitProposal(ctx, p)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, p.ID)
 	}
 	return err
 }

@@ -151,8 +151,33 @@ func (m *splitMemStore) UpsertClipFingerprint(ctx context.Context, clipHash, alg
 	return nil
 }
 func (m *splitMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
+	if old, ok := m.clips[c.Hash]; ok {
+		// Match production's lifecycle preservation on conflict.
+		c.RemovedAt = old.RemovedAt
+		c.ParentHash = old.ParentHash
+	}
 	m.clips[c.Hash] = c
 	return nil
+}
+func (m *splitMemStore) ReplaceSplitChildren(_ context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	keep := make(map[string]bool, len(keepHashes))
+	for _, hash := range keepHashes {
+		keep[hash] = true
+	}
+	retired := 0
+	for hash, c := range m.clips {
+		if c.ParentHash != parentHash {
+			continue
+		}
+		if keep[hash] {
+			c.RemovedAt = time.Time{}
+		} else if c.RemovedAt.IsZero() {
+			c.RemovedAt = at
+			retired++
+		}
+		m.clips[hash] = c
+	}
+	return retired, nil
 }
 func (m *splitMemStore) DeleteClip(_ context.Context, id string) error {
 	delete(m.clips, id)
@@ -203,13 +228,12 @@ func (m *splitMemStore) ListSplitProposals(context.Context) ([]filler.SplitPropo
 // ⚠ REFUSES to insert, exactly as the real store does. A fake that happily created the row would
 // hide the resurrection race this method exists to prevent — the class this repo has already been
 // bitten by twice (a double that never refuses cannot catch a write-through-a-dead-handle bug).
-func (m *splitMemStore) UpdateSplitProposalSegments(_ context.Context, id string, segs []filler.SplitSegment) error {
-	p, ok := m.proposals[id]
+func (m *splitMemStore) UpdateSplitProposal(_ context.Context, p filler.SplitProposal) error {
+	_, ok := m.proposals[p.ID]
 	if !ok {
-		return fmt.Errorf("%w: %s", filler.ErrProposalGone, id)
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, p.ID)
 	}
-	p.Segments = segs
-	m.proposals[id] = p
+	m.proposals[p.ID] = p
 	return nil
 }
 
@@ -857,6 +881,80 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(drop, seg.Path)); err != nil {
 			t.Errorf("cataloged segment %s has no file: %v", seg.Path, err)
 		}
+	}
+}
+
+func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
+	st := newSplitMemStore()
+	parentHash := seedCompilation(st, "comps/resplit.mp4", 60_000)
+	drop := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(drop, "comps"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(drop, "comps", "resplit.mp4"), []byte("reel"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sp := newSplitter(st, &fakeTools{}, nil, drop)
+
+	oldProposal := filler.SplitProposal{
+		ID: "old", ClipHash: parentHash, CreatedAt: time.Now(),
+		Segments: []filler.SplitSegment{
+			{StartMs: 0, EndMs: 30_000, Name: "old one"},
+			{StartMs: 30_000, EndMs: 60_000, Name: "old two"},
+		},
+	}
+	if err := st.UpsertSplitProposal(context.Background(), oldProposal); err != nil {
+		t.Fatal(err)
+	}
+	oldHashes, err := sp.Confirm(context.Background(), oldProposal.ID, oldProposal.Segments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newProposal := filler.SplitProposal{
+		ID: "new", ClipHash: parentHash, CreatedAt: time.Now().Add(time.Second),
+		Segments: []filler.SplitSegment{
+			{StartMs: 0, EndMs: 20_000, Name: "new one"},
+			{StartMs: 20_000, EndMs: 40_000, Name: "new two"},
+			{StartMs: 40_000, EndMs: 60_000, Name: "new three"},
+		},
+	}
+	if err := st.UpsertSplitProposal(context.Background(), newProposal); err != nil {
+		t.Fatal(err)
+	}
+	first, err := sp.ConfirmSome(context.Background(), newProposal.ID, newProposal.Segments[:1], newProposal.Segments[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || st.clips[first[0]].RemovedAt.IsZero() {
+		t.Fatalf("partial re-split child = %v / %+v, want a tombstone until the generation is complete", first, st.clips[first[0]])
+	}
+	for _, hash := range oldHashes {
+		if !st.clips[hash].RemovedAt.IsZero() {
+			t.Errorf("old generation %s retired before the replacement was complete", hash)
+		}
+	}
+	persisted := st.proposals[newProposal.ID]
+	if len(persisted.Spawned) != 1 || persisted.Spawned[0] != first[0] {
+		t.Fatalf("proposal spawned state = %v, want first partial child", persisted.Spawned)
+	}
+
+	last, err := sp.Confirm(context.Background(), newProposal.ID, persisted.Segments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hash := range oldHashes {
+		if st.clips[hash].RemovedAt.IsZero() {
+			t.Errorf("superseded old child %s remained airable after final confirm", hash)
+		}
+	}
+	for _, hash := range append(first, last...) {
+		if !st.clips[hash].RemovedAt.IsZero() {
+			t.Errorf("replacement child %s stayed tombstoned after final confirm", hash)
+		}
+	}
+	if _, ok := st.proposals[newProposal.ID]; ok {
+		t.Error("completed re-split proposal survived final confirm")
 	}
 }
 
