@@ -1,9 +1,12 @@
-import { helpApi, unwrap } from "@loomarr/api";
+import * as helpApi from "@loomarr/api/endpoints/help";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import { Card, Input, Label } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { DocView } from "../doc-view";
 import { docMatches } from "../search-docs";
 

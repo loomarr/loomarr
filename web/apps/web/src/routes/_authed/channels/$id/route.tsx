@@ -1,17 +1,19 @@
-import type { ChannelDTO } from "@loomarr/api";
-import { channelsApi, toProblem, unwrap } from "@loomarr/api";
-import { channelNumber } from "@loomarr/core";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
+import { channelNumber } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { ChannelIdentityField } from "@/channels";
-import type { OnAirState } from "@/components/loomarr";
-import { ErrorState } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { ChannelIdentityField } from "@/channels/channel-identity-field";
+import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,

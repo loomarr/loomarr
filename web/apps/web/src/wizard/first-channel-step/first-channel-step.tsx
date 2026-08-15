@@ -1,8 +1,8 @@
-import { CHANNEL_TEMPLATES } from "@loomarr/core";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { useCompleteSetup } from "../use-complete-setup";
 
 // Wizard step 7 — the guided first channel (§13). It hands off rather than rebuilding:

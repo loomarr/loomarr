@@ -1,10 +1,15 @@
-import { settingsApi, setupApi, systemApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { ErrorState, SettingsFields } from "@/components/loomarr";
-import { Button } from "@/components/ui";
-import { AiModelSettings, useSettingsEntries } from "@/settings";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { Button } from "@/components/ui/button";
+import { AiModelSettings } from "@/settings/ai-model-settings";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // The wizard's AI onboarding (config-design §6: "AI — skippable; includes the §8.1 model
 // picker"). It mirrors Settings → AI: the `ai` group's PROVIDER form (Ollama vs an

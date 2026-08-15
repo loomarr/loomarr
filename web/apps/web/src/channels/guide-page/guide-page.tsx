@@ -1,30 +1,24 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/auth";
-import {
-  ColorBars,
-  EmptyState,
-  ErrorState,
-  GuideDetailCard,
-  GuideGrid,
-  TvStatic,
-} from "@/components/loomarr";
-import {
-  Button,
-  Caption,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { cn } from "@/lib";
-import { ChannelSuggestPanel } from "@/suggest";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GuideDetailCard } from "@/components/loomarr/guide/guide-detail-card";
+import { GuideGrid } from "@/components/loomarr/guide/guide-grid";
+import { ColorBars } from "@/components/loomarr/shell/color-bars";
+import { TvStatic } from "@/components/loomarr/shell/tv-static";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { cn } from "@/lib/utils";
+import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";

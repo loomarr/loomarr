@@ -1,7 +1,9 @@
-import type { ChannelFitDTO } from "@loomarr/api";
+import type { ChannelFitDTO } from "@loomarr/api/models/channelFitDTO";
 import { Ban, RotateCcw } from "lucide-react";
-import { Badge, Button, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { ChannelOverridePickerProps } from "./channel-override-picker.type";
 
 // ChannelOverridePicker — which channels use this clip (§10, V35 item 1.7).

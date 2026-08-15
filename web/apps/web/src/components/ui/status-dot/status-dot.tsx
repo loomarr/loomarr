@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { StatusDotProps, StatusTone } from "./status-dot.type";
 
 // StatusDot — the small round state indicator (§5.1c).

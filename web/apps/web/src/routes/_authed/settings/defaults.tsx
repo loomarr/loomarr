@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SettingsPage, useSettingsEntries } from "@/settings";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Settings → Defaults (config-design §5) — only settings that are ACTUALLY consulted as a
 // per-channel fallback. A curated page is a promise about ownership, so operational knobs and

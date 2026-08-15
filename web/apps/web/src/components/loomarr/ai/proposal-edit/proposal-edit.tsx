@@ -1,9 +1,15 @@
-import { type ProposalItem, type SearchCandidate, searchApi, unwrap } from "@loomarr/api";
-import { provisionKey } from "@loomarr/core";
+import * as searchApi from "@loomarr/api/endpoints/search";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
+import { unwrap } from "@loomarr/api/unwrap";
+import { provisionKey } from "@loomarr/core/provision";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
 import type { ProposalEditProps } from "./proposal-edit.type";
 

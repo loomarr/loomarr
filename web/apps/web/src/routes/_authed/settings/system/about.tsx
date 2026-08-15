@@ -1,6 +1,7 @@
-import { systemApi } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { createFileRoute } from "@tanstack/react-router";
-import { AboutPanel, ErrorState } from "@/components/loomarr";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { AboutPanel } from "@/components/loomarr/settings/about-panel";
 
 // Settings → System → About (§16, V12) — what the operator quotes in a bug report.
 //

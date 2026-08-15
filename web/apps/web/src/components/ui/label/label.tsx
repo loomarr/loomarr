@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // shadcn/ui Label (new-york), plain <label> — no Radix dep needed for the simple
 // case. Pair with the input's id for an accessible name.

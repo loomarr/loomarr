@@ -10,7 +10,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BrandLockup } from "../../shell";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 

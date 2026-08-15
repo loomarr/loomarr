@@ -1,6 +1,6 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { useState } from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { SettingField } from "../setting-field";
 import type { SettingsFieldsProps } from "./settings-fields.type";
 

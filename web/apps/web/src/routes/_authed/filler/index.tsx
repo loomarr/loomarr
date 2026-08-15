@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { FillerPage } from "@/filler";
+import { FillerPage } from "@/filler/filler-page";
 
 // The clip catalog's filters live in the URL so a filtered/searched view is shareable and
 // back-button-aware (the same deep-link contract as the channel-detail section routes).

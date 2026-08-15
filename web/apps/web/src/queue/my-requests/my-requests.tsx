@@ -1,6 +1,8 @@
-import { proposalsApi, unwrap } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries } from "@tanstack/react-query";
-import { ErrorState, MyRequestCard } from "@/components/loomarr";
+import { MyRequestCard } from "@/components/loomarr/ai/my-request-card";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 
 // MyRequests — the first tier of "My requests" (V26 / `A2`, §12): the REQUESTS a member
 // submitted, above the tracked-titles table that has always been the second tier.

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SettingsPage, useSettingsEntries } from "@/settings";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 const StorageSettings = () => (
   <SettingsPage

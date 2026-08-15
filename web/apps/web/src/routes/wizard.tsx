@@ -1,27 +1,29 @@
-import { SettingEntryProvenance, setupApi, unwrap } from "@loomarr/api";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { useAuth } from "@/auth";
-import { WizardShell } from "@/components/loomarr";
-import { useDocumentTitle } from "@/lib";
-import { useSettingsEntries } from "@/settings";
+import { useAuth } from "@/auth/use-auth";
+import { WizardShell } from "@/components/loomarr/setup/wizard-shell";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
+import { BootstrapStep } from "@/wizard/bootstrap-step";
+import { ChecklistStep } from "@/wizard/checklist-step";
+import { FirstChannelStep } from "@/wizard/first-channel-step";
+import { PlayoutStep } from "@/wizard/playout-step";
 import {
-  BootstrapStep,
-  ChecklistStep,
   deriveStepStatuses,
-  FirstChannelStep,
   isConnectionId,
   isStepDone,
   PLAYOUT_INTERNAL,
   PLAYOUT_TUNARR,
   type PlayoutBackend,
-  PlayoutStep,
   resolveStep,
-  TunarrLibraryStep,
-  UsersStep,
   wizardSteps,
-} from "@/wizard";
+} from "@/wizard/steps";
+import { TunarrLibraryStep } from "@/wizard/tunarr-library-step";
+import { UsersStep } from "@/wizard/users-step";
 
 // `?step=` and `?conn=` make the wizard deep-linkable (§13) — a support thread or a doc can
 // point at "your Connections step, Tunarr block" instead of describing how to click there.

@@ -1,6 +1,9 @@
-import { proposalsApi, unwrap } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries } from "@tanstack/react-query";
-import { ApprovalHistoryRow, EmptyState, ErrorState } from "@/components/loomarr";
+import { ApprovalHistoryRow } from "@/components/loomarr/ai/approval-history-row";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 
 // ApprovalHistory — Queue's History tab (V27): every DECIDED proposal, newest first.
 //

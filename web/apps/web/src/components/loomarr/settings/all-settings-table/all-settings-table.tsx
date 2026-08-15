@@ -1,8 +1,9 @@
-import { type SettingEntry, SettingEntryProvenance } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { Input } from "@/components/ui";
-import { cn } from "@/lib";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { SettingField } from "../setting-field";
 import type { AllSettingsTableProps } from "./all-settings-table.type";
 

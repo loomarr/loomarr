@@ -1,6 +1,8 @@
-import { settingsApi, setupApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
 import { useQueryClient } from "@tanstack/react-query";
-import { ErrorState, SettingsSaveBar } from "@/components/loomarr";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SettingsSaveBar } from "@/components/loomarr/settings/settings-save-bar";
 import { useSettingsEdits } from "../settings-edits";
 
 // One commit control for any settings workflow. Settings uses it across route tabs; Filler uses

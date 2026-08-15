@@ -1,4 +1,4 @@
-import type { ChannelDTO } from "@loomarr/api";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 
 // A minimal VALID ChannelDTO — every required field the wire declares, nothing more.
 //

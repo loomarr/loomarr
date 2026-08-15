@@ -1,5 +1,5 @@
-import { Card, CardContent } from "@/components/ui";
-import { cn } from "@/lib";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
 

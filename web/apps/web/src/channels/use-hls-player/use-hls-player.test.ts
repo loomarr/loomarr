@@ -13,15 +13,17 @@ const { channelPlayUrl, unwrap } = vi.hoisted(() => ({
   channelPlayUrl: vi.fn(),
   unwrap: vi.fn((res: unknown) => res),
 }));
-vi.mock("@loomarr/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@loomarr/api")>();
+vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@loomarr/api/endpoints/channels")>();
   return {
     ...actual,
-    channelsApi: { ...actual.channelsApi, channelPlayUrl },
-    unwrap,
-    toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
+    channelPlayUrl,
   };
 });
+vi.mock("@loomarr/api/unwrap", () => ({ unwrap }));
+vi.mock("@loomarr/api/mutator", () => ({
+  toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
+}));
 
 // hls.js reports unsupported so bind() takes the non-MSE path — the test drives a <video> whose
 // canPlayType also returns "" (no native HLS), landing on the deterministic error branch instead of

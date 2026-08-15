@@ -1,9 +1,18 @@
-import { toProblem, type UserBody, unwrap, usersApi } from "@loomarr/api";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import type { UserBody } from "@loomarr/api/models/userBody";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
-import { useAuth } from "@/auth";
-import { EmptyState, ErrorState, SessionList, UserRow } from "@/components/loomarr";
-import { Button, Card, Input, Label } from "@/components/ui";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SessionList } from "@/components/loomarr/people/session-list";
+import { UserRow } from "@/components/loomarr/people/user-row";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CreateLocalPanel } from "../create-local-panel";
 import { ImportPanel } from "../import-panel";
 

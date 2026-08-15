@@ -1,4 +1,5 @@
-import { channelsApi, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { unwrap } from "@loomarr/api/unwrap";
 import { deviceProfile } from "../use-hls-player/device-profile";
 import type { ChannelPlaySource } from "./channel-play-url.type";
 

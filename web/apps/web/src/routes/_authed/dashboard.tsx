@@ -1,28 +1,24 @@
-import {
-  channelsApi,
-  dashboardApi,
-  fillerApi,
-  proposalsApi,
-  systemApi,
-  TitleDTOState,
-  titlesApi,
-  unwrap,
-} from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import * as titlesApi from "@loomarr/api/endpoints/titles";
+import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { useAuth } from "@/auth";
-import {
-  ActivityFeed,
-  EmptyState,
-  PlayoutPanel,
-  RestartNeededBanner,
-  ServiceControl,
-  ServicesPanel,
-  StatCard,
-} from "@/components/loomarr";
+import { useAuth } from "@/auth/use-auth";
+import { ActivityFeed } from "@/components/loomarr/dashboard/activity-feed";
+import { PlayoutPanel } from "@/components/loomarr/dashboard/playout-panel";
+import { RestartNeededBanner } from "@/components/loomarr/dashboard/restart-needed-banner";
+import { ServiceControl } from "@/components/loomarr/dashboard/service-control";
+import { ServicesPanel } from "@/components/loomarr/dashboard/services-panel";
+import { StatCard } from "@/components/loomarr/dashboard/stat-card";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
-import { useDocumentTitle } from "@/lib";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Dashboard (§12, V16) — "is everything alright?" in one screen.
 //

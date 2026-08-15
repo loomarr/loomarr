@@ -1,5 +1,7 @@
-import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
-import { cn } from "@/lib";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
 

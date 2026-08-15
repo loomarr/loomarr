@@ -1,5 +1,5 @@
-import { formatMmSs } from "@loomarr/core";
-import { cn } from "@/lib";
+import { formatMmSs } from "@loomarr/core/format";
+import { cn } from "@/lib/utils";
 import type { FilmstripSegment, SegmentFilmstripProps } from "./segment-filmstrip.type";
 
 // SegmentFilmstrip — the reel's detected clips as one time-scaled bar (the v2 mock's `rl.strip`).

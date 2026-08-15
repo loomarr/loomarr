@@ -1,5 +1,7 @@
-import { Checkbox, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { ChannelAutoCurateProps } from "./channel-auto-curate.type";
 

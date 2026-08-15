@@ -1,8 +1,11 @@
-import type { ProposalItem } from "@loomarr/api";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
-import { Badge, Button, Card, Input } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
 

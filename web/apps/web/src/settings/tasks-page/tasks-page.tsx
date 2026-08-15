@@ -1,12 +1,20 @@
-import { type JobHistoryView, type JobView, jobsApi, toProblem, unwrap } from "@loomarr/api";
-import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core";
+import * as jobsApi from "@loomarr/api/endpoints/jobs";
+import type { JobHistoryView } from "@loomarr/api/models/jobHistoryView";
+import type { JobView } from "@loomarr/api/models/jobView";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
+import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pause, Pencil, Play } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
-import { ErrorDetails, ErrorState, RunButton, useRunFeedback } from "@/components/loomarr";
-import { Button, StatusDot, type StatusTone } from "@/components/ui";
-import { cn } from "@/lib";
+import { ErrorDetails } from "@/components/loomarr/feedback/error-details";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { RunButton } from "@/components/loomarr/feedback/run-button";
+import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
+import { Button } from "@/components/ui/button";
+import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { cn } from "@/lib/utils";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
 
