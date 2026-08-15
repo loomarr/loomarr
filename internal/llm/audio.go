@@ -132,8 +132,8 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (string, e
 	}
 
 	var out openaiChatResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode audio response: %w", err)
+	if err := decodeOpenAIJSON(resp, &out, "audio response"); err != nil {
+		return "", err
 	}
 	if out.Error != nil {
 		return "", fmt.Errorf("audio chat: %s", out.Error.Message)

@@ -14,6 +14,9 @@ interface SettingsBlock {
   keys?: string[];
   // The named connection check this block can run, when it has one (§8 per-block Test).
   check?: string;
+  // A workflow prerequisite may make one field temporarily unavailable while retaining its
+  // desired value. The reason is rendered beside and associated with the disabled control.
+  disabledReasons?: Record<string, string>;
   // A note pinned to the bottom of this block's body, below its fields and its Test row — for
   // something about the SERVICE rather than about its settings. TMDB's attribution (§22).
   //
@@ -36,7 +39,12 @@ interface SettingsPageProps {
   // the current value of any key honoring unsaved edits (so the model picker hides the
   // instant the provider dropdown flips to OpenAI, not only after Save). A plain
   // ReactNode is still accepted for footers that need no live state.
-  footer?: ReactNode | ((ctx: { liveValue: (key: string) => string }) => ReactNode);
+  footer?:
+    | ReactNode
+    | ((ctx: {
+        liveValue: (key: string) => string;
+        setEdit: (key: string, value: string) => void;
+      }) => ReactNode);
 }
 
 export type { SettingsBlock, SettingsPageProps };

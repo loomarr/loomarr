@@ -38,7 +38,9 @@ const HostedModelPicker = ({
             // No key yet: point the operator at where to get one. The key is entered in
             // the settings form above (llm.api_key), not here.
             <p className="text-muted-foreground text-sm">
-              Add this provider's URL + key above and press Test to list its models.
+              {hp.key === "openrouter"
+                ? "Add your OpenRouter key above and press Test to list its models."
+                : "Add this provider's URL + key above and press Test to list its models."}
               {hp.keysUrl && (
                 <>
                   {" "}

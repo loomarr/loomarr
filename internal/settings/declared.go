@@ -370,7 +370,7 @@ func declared() []Setting {
 			// universal, so hiding this for Ollama made remote Ollama impossible to configure.
 			Key: "llm.url", Label: "AI service address", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the OpenAI-compatible base URL ending in /v1.",
+			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
 		},
 		{
 			// For a hosted service you type the model name; for Ollama the ranked model

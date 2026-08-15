@@ -176,6 +176,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                     onChange={setEdit}
                     results={results}
                     onEnvOverride={onEnvOverride}
+                    disabledReasons={block.disabledReasons}
                   />
                 </ConnectionBlock>
               </div>
@@ -193,12 +194,13 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                 onChange={setEdit}
                 results={results}
                 onEnvOverride={onEnvOverride}
+                disabledReasons={block.disabledReasons}
               />
             </section>
           );
         })}
 
-        {typeof footer === "function" ? footer({ liveValue }) : footer}
+        {typeof footer === "function" ? footer({ liveValue, setEdit }) : footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>
