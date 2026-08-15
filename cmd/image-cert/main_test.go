@@ -34,10 +34,10 @@ func TestRunWritesTheRepositoryCertificationReport(t *testing.T) {
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
-	if !report.Passed || report.Summary.Passed != 7 || report.Summary.Refused != 2 {
+	if !report.Passed || report.Summary.Passed != 7 || report.Summary.Refused != 11 {
 		t.Errorf("report = %+v", report.Summary)
 	}
-	if !strings.Contains(stdout.String(), reportPath) || !strings.Contains(stdout.String(), "7 passed, 2 refused") {
+	if !strings.Contains(stdout.String(), reportPath) || !strings.Contains(stdout.String(), "7 passed, 11 refused") {
 		t.Errorf("stdout = %q", stdout.String())
 	}
 }
