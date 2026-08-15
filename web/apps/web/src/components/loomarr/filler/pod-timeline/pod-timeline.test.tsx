@@ -27,6 +27,7 @@ describe("PodTimeline", () => {
     );
     expect(screen.getByRole("list", { name: /pod segments/i })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getByText("Sunny D, 30s")).toHaveClass("sr-only");
     expect(screen.getByText("1990s")).toBeInTheDocument();
     // A legend spells out the codes actually present (bumper + commercial here), so BMP/AD
     // don't read as mystery tokens — and only those two, not every possible kind. The legend

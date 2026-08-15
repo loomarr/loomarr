@@ -707,7 +707,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as a **job** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/splits/{proposalId}` | Read a split proposal (admin, §10 V34) — the source of truth on SSE reconnect, the same pattern as `/v1/proposals/{id}`. |
-| POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, written into the drop-folder, and the **original compilation row removed** — its identity is a path that now means twenty clips, not one. |
+| POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, and written into the drop-folder beneath the **preserved non-airable compilation parent**. Confirming completes the parent's pipeline work; the row and source bytes remain for lineage and recovery. |
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
@@ -2236,7 +2236,7 @@ not in the table, or a title with no date, yields empty — never a guess. This 
 on the whole ladder (no model, no network) and the one that makes period/regional authenticity
 possible. The parser runs on the **composite** and its output propagates to every segment.
 
-#### 4. Semantic metadata + an embedding column, for confident channel matching
+#### 4. Semantic metadata, without a vector column
 
 The end goal — "automatically curate clips with high confidence they match a channel" — needs a
 signal the enum tags cannot give: **thematic/tonal matching**. The shape of this was decided by a
@@ -2269,26 +2269,18 @@ Payment Offer Ends 6/2", six red cars):
   for only ~3–5s (the closing logo card). `MediaTools.Keyframes(n)` already takes a count; V45 uses
   several frames biased toward the segment's end, where branding lives, rather than one.
 
-- ⚠ **Embeddings are DEMOTED to a secondary role: content-dedup and lexical search only — never the
-  primary curation signal.** The prototype embedded 10 real ad transcripts (`nomic-embed-text`, 768d)
-  and ranked them against channel-theme queries. It matched well where the transcript shared
-  VOCABULARY with the query (a Dove body-wash ad scored 0.728 against "personal care", cleanly #1)
-  and FAILED on abstract theme (a genuine sci-fi/X-Files promo ranked #4, *below* a Christmas candy
-  ad, against a "sci-fi channel" query — 0.48 vs 0.55). Scores compressed into 0.40–0.55, so the
-  ranking is fragile. `nomic-embed-text` matches literal topical words, not inferred theme, which is
-  exactly the case structured tags already cover — so an embedding buys little as a curation axis and
-  actively misleads where the tags are absent. It keeps a place only for what it IS good at:
-  near-duplicate detection by content and a "clips lexically like this" search, both supplementary.
-
-If the embedding column is built at all, the same constraints hold: stored *in* the existing store
-via `sqlite-vec` / `pgvector` (a column, not a second datastore — §14 keeps "one binary, one store"),
-generated by the already-running Ollama `nomic-embed-text` (no new service, no key). But it is a
-dedup/search helper, not the thematic matcher, and Part 4 leads with the LLM tags.
+- ⚠ **Embeddings were measured and rejected.** The prototype embedded 10 real ad transcripts with
+  `nomic-embed-text` and failed on the abstract-theme case structured tags must solve. Duplicate
+  detection instead uses persisted, versioned whole-catalog dHash evidence: deterministic across
+  providers, reusable between split jobs, and supported identically by SQLite and Postgres. A vector
+  extension is also incompatible with the current portability boundary: the SQLite build is pure Go
+  (`CGO_ENABLED=0`) and the Postgres conformance image does not carry pgvector. Reconsidering fuzzy
+  search would require a new measured use case and a §14 dependency decision; it is not latent work.
 
 ⚠ **Structured filters stay structured and deterministic — the thematic layer only RANKS.** The pod
 assembler's core queries — era, audience, category, no-repeat-brand, network/market — are exact
 `WHERE` clauses and must stay deterministic (pod assembly is seeded so the guide can promise what
-airs, §10/§19). The LLM theme tags (and, if present, embeddings) are a *ranking* signal over an
+airs, §10/§19). The grounded LLM theme tags are a *ranking* signal over an
 already-eligible structured candidate set — they order the pool toward the channel's theme, they
 never decide *which* clips are eligible.
 
@@ -2352,55 +2344,37 @@ the earlier framing is only the job's *body*: it calls the store's set-based `Re
 does not iterate clips. `category` survives as a **derived shadow** (the primary product leaf) so
 existing readers do not break during the migration.
 
-⚠ **The taxonomy SHRINKS the embedding's job (#4), it does not compete with it.** The taxonomy is the
-*structured, deterministic* half of thematic matching (topic/season/product family — what the
-embedding prototype failed at); the embedding is left the *fuzzy residue* (vibe similarity, dedup).
-When the embedding lands, it embeds *tags + transcript* (grounded tags anchor the fuzzy text), and its
-re-embed job is a SIBLING of this reindex job — both "derived-from-clip, rebuilt-on-change" background
-jobs (cron, off by default, wired like the transcribe/vision jobs). ⚠ **The two diverge in their
-body, and the reason is instructive:** the reindex work is a set-based SQL rebuild (the derivation —
-ancestor rollup — is expressible as a join over the closure table), so it does no per-clip loop; the
-re-embed work is a per-clip *model call* (`nomic-embed-text` over each clip's tags+transcript), which
-is not set-based and DOES loop-and-batch like transcribe/vision. So "sibling" means *same wiring and
-lifecycle*, not *same body* — a derivation that SQL can express in bulk should be, and one that needs
-a model per clip is batched. Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
+⚠ **The taxonomy owns thematic matching.** The embedding prototype failed at the topic/season/theme
+case this graph makes explicit, while persisted dHash owns the separate near-duplicate problem. The
+reindex remains a set-based SQL rebuild over `taxa_closure`; there is no re-embed job or vector column.
+Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
 
 #### The curation confidence this produces
 
-With brand (V44), broadcast context (#3), and semantic embedding (#4), the assembler gains new match
+With brand (V44), broadcast context (#3), and grounded taxonomy tags (#4), the assembler gains new match
 and variety axes: **no repeat advertiser in a break** (Brand, today carried but unused), **network/
 market/era-window** filters (a "1996 Seattle Fox" channel), **loudness-aware ordering** (the LUFS
 V42 measures, used to pace a break instead of only to normalise), and a **thematic match score** (the
-embedding). "High confidence this segment fits channel X" becomes a real number: the grounding gate
-(is the metadata fact or guess?) times the thematic distance (does it fit the theme?). The operator
+grounded tag set). "High confidence this segment fits channel X" comes from auditable grounded
+signals rather than an opaque vector distance. The operator
 rules layer (`internal/schedule`'s `SchedulingRule` WHEN/WHAT/HOW, borrowed rather than reinvented)
 expresses the exclusions and quotas.
 
-⚠ **New dependencies (§14 records them): `sqlite-vec` / `pgvector` for the embedding column, and the
-Ollama `nomic-embed-text` model for generating embeddings.** Both stay inside the "one store, one
-binary" boundary — a store extension and an already-present local model — which is why they earn
-their place where a standalone vector database (Qdrant/Weaviate) would not: at a catalog of thousands
-(the `filler.fetch.max_catalog_clips` ceiling is 2000), a second datastore to back up and reconcile
-buys nothing a column does not.
+⚠ **No vector dependencies.** `sqlite-vec`, pgvector and `nomic-embed-text` are not part of the
+runtime or §14. Persisted dHash is ordinary store data and keeps the dual-dialect conformance suite
+over one behavior.
 
 #### Frontend implications (V45 — governed by §12/§13 and `docs/frontend-design.md`)
 
 The keep-parent model **inverts a user-facing flow**, so V45's FE work is not all additive — two
 things it makes actively *wrong* must be corrected in the SAME change as the backend, not deferred:
 
-1. ⚠ **The split-review UI asserts the compilation is DELETED on confirm** — the exact opposite of
-   V45. `split-review-page.tsx` reads "the compilation row is gone" / "Nothing is in the catalog
-   yet"; `split-review-editor.tsx`'s empty state says "Go back to keep the compilation whole" — a
-   framing where the parent survives ONLY if you *don't* confirm. Under V45 confirm KEEPS the
-   parent (as a composite) and creates segments that point back to it. The copy and the mental model
-   both flip: confirm now means "file these segments under this break", and the parent is always
-   kept. This lives in the review-gate route and editor, and it is coupled to the backend Confirm
-   change — shipping one without the other leaves the UI lying about what the button does.
-2. ⚠ **`kind` is a closed 6-value enum on the frontend with no `composite`** — the catalog kind
-   filter, the `KIND_LABEL`/`CLIP_DOT` maps, and the `FillerSearch.kind` route validation all drop
-   or mis-render an unknown value. Adding `composite` to the OpenAPI enum without the FE additions
-   SILENTLY breaks the catalog filter, so the enum extension is a coupled BE+FE unit (regenerate the
-   orval client, extend the label maps and the route-param validator together).
+1. ⚠ **Resolved:** split review says confirming files segments beneath the preserved compilation,
+   and completion files the parent's pipeline row so it leaves Incoming without deleting lineage.
+2. ⚠ **Composite is a separate boolean, not a seventh clip kind.** `isComposite` marks a non-airable
+   container while the underlying recording retains its measured content kind. Catalog navigation
+   opts into composites with `includeComposites+topLevel` and loads children with `parentHash`; the
+   six-value airable-kind filter remains closed and unchanged.
 
 **The FE already anticipated the composite problem, which is why these additions complete an existing
 design rather than fight it.** `pool-health` warns in-tree that "a catalog of five hundred
@@ -2412,7 +2386,7 @@ Incoming) for a per-clip/per-pod curation-confidence score; the `ClipCard` badge
 kept-parent lineage view; and `GuideDetailCard`'s per-clip pod lines (already era/quality) for
 broadcast context and the match-level ("why this clip") explanation.
 
-**New additive surfaces**, each with an identified home: a `composite` badge + catalog filter value;
+**Additive surfaces**, each with an identified home: a compilation container in the catalog;
 a lineage view (segment ↔ parent break) in the review editor header and the clip card; broadcast
 context (network/market/air-date) on the card, guide hover, and as new catalog filters; a
 curation-confidence indicator (reusing `ConfidenceMeter`); and mood/topic/sensitivity chips on the
@@ -2426,31 +2400,27 @@ from the display path, rather than carrying dead fields that read as capability.
 
 #### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
 
-⚠ **The system now runs FOUR model roles, but the AI settings page only lets you choose ONE.** Text
-(qwen3), vision (qwen2.5vl), audio/transcribe (whisper), and embedding (nomic-embed-text) are
-distinct models, yet `/settings/ai`'s model picker binds only `llm.model`; `filler.vision.model` is a
-bare text field on the *Filler* page, whisper is `INGEST_WHISPER_*` env-only, and embeddings would
-have no control at all. Model selection fragmented as roles multiplied. V45 fixes the IA:
+⚠ **The system has three model roles:** text, vision, and audio/transcription. They may share one
+hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
+their modalities differ. Local transcription remains the bundled whisper path; there is no
+embedding role.
 
-- **A "Model roles" section on the AI page** — text / vision / audio / embedding, each a reusable
+- **A "Model roles" section on the AI page** — text / vision / audio, each a reusable
   `ModelPicker` (the component is already props-driven — `catalog`/`active`/`onSelect`, not hardwired
   to `llm.model`), each pointed at its own settings key. The one backend addition is filtering the
   ranked model catalog **by role capability** (Ollama's `/api/show` reports `vision`/`embedding`/…,
   which §8.1 model selection already reads) so the vision picker only offers vision-capable models.
 - **The organising principle: models live on the AI page; feature toggles and behavior live on the
-  Filler page.** So `filler.vision.model` and a new `filler.embed.model` move to / are exposed on the
-  AI page; `filler.vision.enabled` / `filler.transcribe.enabled` / a new `filler.embed.enabled` and
+  Filler page.** So `filler.vision.model` is exposed on the AI page;
+  `filler.vision.enabled` / `filler.transcribe.enabled` and
   the split/curation behavior knobs stay on Filler.
 
 **Setting to change immediately, independent of the phase:** `filler.vision.model` default becomes
 **`qwen2.5vl:7b`** — the prototype proved llava:7b's confident-fabrication (a misread date grounded as
 fact) is unsafe for the grounding gate, while qwen reads OCR accurately and fails honestly.
 
-**New V45 settings** (all §15-declared, config-docs regenerated): `filler.embed.enabled` (opt-in),
-`filler.embed.model` (default `nomic-embed-text`), `filler.split.autoconfirm_confidence` (the
-signal-agreement bar for auto-confirming a segment), `filler.split.rescue_over_ms` (the "longer than
-a typical spot" transcript-rescue trigger, default ~45–60s, replacing the fixed 120s over-long gate),
-and a no-repeat-brand curation toggle.
+The split confidence threshold reuses `filler.autofile.min_confidence`; the duration ceiling is
+`filler.autosplit.max_duration`. There are no `filler.embed.*` settings.
 
 ### Tagging confidence, and auto-filing (V38)
 
@@ -3680,7 +3650,7 @@ The scheduler assembles realistic **ad pods**, not single random clips:
 - **Matching rules:** `era` to the block (90s sitcom block → 90s ads), `audience` to the channel (Saturday-morning cartoons → toy/cereal ads, not car insurance), `category` variety within a pod so it doesn't play three car ads back to back.
 - **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`**, applied live at every derivation rather than stamped once at create, so a 90s channel gets 90s ads out of the box and keeps getting them when its scope changes; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip ids always included), `excluded` (clip ids never used). Every field is optional and an empty selection == the whole catalog (the prior behavior), so this is additive.
 - **How the selection reaches assembly.** The theme filter is applied as a **catalog pre-filter** (`[]Clip → []Clip` by category + kinds) plus `Window.Era`/`Window.Audience` from the selection — replacing the previously **hardcoded** `PodEra→0` and empty audience. `excluded` ids are pre-seeded into the assembler's no-repeat set (`used`), which already excludes at every pick site, so exclusion needs no ladder change. `pinned` ids are placed as a **top-priority pool** at the front of the commercial fill before the ladder takes the rest (the one genuinely new assembly step, since the ladder ranks pools and has no force-include). If a clip is both pinned and excluded, **exclude wins** (the safe default). *(Historical note: the assembler once passed `general` as the channel audience under a comment claiming it "matches broadly" — the opposite of the filter's actual behavior — so every channel's filler-list held only bumpers + the fallback card, §10's central feature silently doing nothing; found by building the §12 pod preview. The per-channel selection above is what finally wires real era/audience through.)*
-- **Density:** target break length and breaks-per-hour; min/max filler duration. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and it inserts `SlotFiller` gaps that the reconcile's pod assembler (`fillPods` → `Assemble`) fills with matched pods. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
+- **Density:** target break length and breaks-per-hour; min/max filler duration. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and the reconcile's `PodAdapter.Assemble` bridge calls the pure `filler.Assemble` over the matched catalog. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
 - **Repeat avoidance:** don't repeat a clip within a session/window.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
@@ -3712,7 +3682,7 @@ Two jobs the suggester (§8) can do here, both under the same grounding rule (ca
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
 
 ### Config
-Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
+Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-backed channel Loomarr separately exposes the same folder as a Tunarr `local` source), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
 
 ---
 
@@ -4432,7 +4402,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* The folder Loomarr registers as a Tunarr `local` source. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
 | `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and a watch folder that vanishes silently loses whatever had not been filed yet. The scan skips it by name, so a file waiting there is never catalogued from its arrival path |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4`. Break frequency is the inherited channel default (`policy.breaksPerHour`: absent = follow it, `0` = no breaks, positive = custom). Pod size is a global assembly cap for every channel, not an inherited default. Both are non-negative/positive whole numbers respectively. |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
@@ -4731,11 +4701,11 @@ Each phase ends green (compiles + its tests pass) before the next.
 9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, **local-admin bootstrap (once) + explicit media-server import (allowlist; un-imported → 403) + local bcrypt credential path**, user sync (periodic + on-demand; refreshes imported users, never adds), role enforcement on all mutating routes, `API_TOKEN` break-glass, login rate-limit. **Auth & roles tests are the gate.** *(The identity model was reworked from the earlier claim-on-login/lazy-provision design — see §11.)*
 10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). *Phase 10 shipped this behind a manual `POST` route; it was later removed in favour of auto-wiring on a Connections save, since an idempotent action fully derived from the connection had nothing to decide — `retired-ok`.* **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
 11. **Suggester (§8).** `Suggester` + Ollama and the OpenAI-compatible client (hosted OR Ollama's own `/v1`); in-app provider/model selection (§8.1: probe, catalog, hot-swap); catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/proposals*` + `/v1/system/llm*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
-12. **Commercials & filler (§10).** Catalog sync from the Tunarr `local` filler source (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder), whose tooling ships in the single image (§16 — the `loomarr:filler` variant this line used to name no longer exists). **Filler-never-a-program + pod-matching tests are the gate.**
+12. **Commercials & filler (§10).** Catalog sync by scanning Loomarr's own `FILLER_DIR` (`/v1/filler/sync` + periodic), with Tunarr registration only for Tunarr-backed playout; clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder), whose tooling ships in the single image (§16 — the `loomarr:filler` variant this line used to name no longer exists). **Filler-never-a-program + pod-matching tests are the gate.**
 12.5. **End-to-end integration (the seams).** *Added after the first live smoke (2026-07-13/14) revealed that phases 0–12, each gate-green in isolation, had unwired seams between them — the per-phase unit gates never exercised the composition.* This phase makes "the whole thing works, driven only through Loomarr's own endpoints" an explicit gate, not an emergent hope. Scope = close every seam between an approved intent and a playing channel **with pods**, each proven against the live stack AND covered by an integration test:
     - **Approve → lineup carries acquisitions** (`#9`): a not-yet-available acquisition must enter the channel's lineup as a *pending* entry (key preserved) so backfill/sweep can place it — today `lineupEntries` drops non-in-library items, so acquired titles never appear.
     - **Provisioner availability events → scheduler** (`#10`) and **→ SSE `/v1/events`** (`#11`): wire the emitter adapters in `cmd/loomarr/main.go` (a `reconcile.Emitter` + ingest-handler emitter) that fan `DomainEvent`s to `engine.OnAvailability` **and** `eventBus.Publish`. Both are built on the consuming side and never called.
-    - **Commercial breaks between programs** (§10 density): `ComputeDesired` must interleave pod-fill break slots at `FILLER_BREAKS_PER_HOUR` between *available* programs (today `SlotFiller` gaps are only created for *un*available titles, so an all-available channel gets zero commercials even with a full catalog). The pod assembler + `fillPods` already consume such gaps.
+    - **Commercial breaks between programs** (§10 density): `ComputeDesired` interleaves pod-fill break slots at `FILLER_BREAKS_PER_HOUR` between *available* programs. The pod adapter and `filler.Assemble` consume those gaps through the shared assembly seam.
     - **Filler catalog present**: the manual smoke syncs a real (small) filler library so pods have content; the automated gate uses testkit clips.
     - **Playback sanity**: the channel plays through Tunarr AND is watchable from the media server's Live TV (rule out tuner-stream/format issues end-to-end, not just a raw Tunarr pull).
     Already fixed en route to this phase (live-smoke commits): `#6` channel-create binds the approved lineup, `#7` program duration resolution, `#8` in-library picks become `available` records, `#12` Tunarr content-id resolution (media-server id → program uuid), `#13` series expansion (a series entry → episode slots). **Gate:** an integration test (`make e2e` or a Go integration suite) that drives intent → suggest → approve → create channel → reconcile → asserts the pushed Tunarr lineup has real programs **with pod breaks**; plus the live manual smoke below. No phase-13 UI work starts until this is green — the UI must be built on a system that actually works end-to-end.

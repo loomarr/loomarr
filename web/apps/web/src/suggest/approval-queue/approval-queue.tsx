@@ -129,8 +129,9 @@ const ApprovalQueue = () => {
           all" above a single item is noise. */}
       {bulkable.length > 1 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <label htmlFor="approval-select-all" className="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox
+              id="approval-select-all"
               checked={selectedBulkable.length === bulkable.length && bulkable.length > 0}
               disabled={busy}
               aria-label="Select all for bulk approve"

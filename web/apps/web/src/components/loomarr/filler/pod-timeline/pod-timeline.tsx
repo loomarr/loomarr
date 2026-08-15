@@ -89,6 +89,7 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
               SEGMENT_FILL[entry.kind],
             )}
           >
+            <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
             <Caption tone="strong" shout className="truncate">
               {SEGMENT_ABBR[entry.kind]}
             </Caption>

@@ -49,6 +49,22 @@ describe("SegmentFilmstrip", () => {
     expect(short + long).toBeCloseTo(100, 1);
   });
 
+  it("renders unassigned time as a labelled gap instead of compressing it away", () => {
+    render(
+      <SegmentFilmstrip
+        segments={[
+          seg("first", 0, 10_000, { name: "First" }),
+          seg("second", 15_000, 25_000, { name: "Second" }),
+        ]}
+      />,
+    );
+
+    const gap = screen.getByLabelText("00:10–00:15 unassigned");
+    expect(gap).toHaveAttribute("title", "00:10–00:15 unassigned");
+    expect(flexOf(screen.getByRole("button", { name: /First/ }))).toBeCloseTo(40, 1);
+    expect(Number.parseFloat(gap.style.flex)).toBeCloseTo(20, 1);
+  });
+
   // ⚠ Without a floor, a 0.5s sting inside a 20-minute reel computes to well under a pixel:
   // present in the DOM, impossible to click, invisible. The distortion is deliberate.
   it("keeps a very short segment clickable", () => {
