@@ -3,6 +3,7 @@ import {
   getChannelPlayUrlMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
+  getDashboardSummaryMockHandler,
   getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
@@ -63,6 +64,14 @@ const appHandlers = (): RequestHandler[] => [
   // "not bootstrapped, no SSO, no dev login" whether or not that was true.
   getSetupStateMockHandler({ bootstrapped: true, devLogin: false, sso: false }),
   getSetupStatusMockHandler({ checks: [] }),
+  getDashboardSummaryMockHandler({
+    acquiring: 0,
+    channels: 0,
+    generatedAt: 0,
+    needsApproval: 0,
+    onAir: 0,
+    unavailable: 0,
+  }),
   getListChannelsMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),
