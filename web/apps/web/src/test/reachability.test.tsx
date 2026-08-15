@@ -70,15 +70,17 @@ const FEATURES = {
   ingest: true,
 };
 
-// One entry per settings GROUP — the groups are what the pages render, and a group with no
-// field renders no form. ⚠ Each of these was ten hand-written lines repeating the same eight
+// At least one entry for every curated block — a block with no matching field renders no form.
+// ⚠ Each of these was ten hand-written lines repeating the same eight
 // required SettingEntry fields; `setting()` owns them now, so a new required field on the wire
 // breaks one fixture instead of seven copies.
 const SETTINGS = [
   setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
   setting({ key: "filler.dir", group: "filler", kind: "string", value: "/filler" }),
+  setting({ key: "filler.pod_max", group: "filler", kind: "int", value: "4" }),
+  setting({ key: "filler.breaks_per_hour", group: "filler", kind: "int", value: "4" }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2" }),
-  setting({ key: "channel.reconcile_every", group: "channels", kind: "duration", value: "5m" }),
+  setting({ key: "sched.window_hours", group: "channels", kind: "duration", value: "24h" }),
   setting({ key: "session.ttl", group: "users_security", kind: "duration", value: "720h" }),
   setting({ key: "llm.url", group: "ai", kind: "url", value: "http://ollama:11434" }),
 ];

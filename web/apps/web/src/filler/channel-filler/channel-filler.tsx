@@ -1,14 +1,119 @@
 import { channelsApi, settingsApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { CollapsibleSection, CoverageMeter, PodTimeline } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import { cn } from "@/lib";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
 import type { ChannelFillerProps } from "./channel-filler.type";
 import { FillerClipList } from "./filler-clip-list";
 import { FillerCriteria } from "./filler-criteria";
 import { useFillerCatalog } from "./use-filler-catalog";
+
+type BreakFrequencyFieldProps = {
+  value: number | undefined;
+  defaultValue: number | undefined;
+  disabled: boolean;
+  onChange: (next: number | undefined) => void;
+};
+
+// The persisted pointer has three meaningful states. This field owns that encoding so the
+// surrounding page can speak in operator choices rather than nil/zero sentinel values.
+const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakFrequencyFieldProps) => {
+  const mode = value === undefined ? "default" : value === 0 ? "off" : "custom";
+  const seed = defaultValue != null && defaultValue > 0 ? defaultValue : 1;
+  const [customValue, setCustomValue] = useState(String(value != null && value > 0 ? value : seed));
+
+  useEffect(() => {
+    if (value != null && value > 0) setCustomValue(String(value));
+  }, [value]);
+
+  const defaultLabel =
+    defaultValue === 0
+      ? "Follow default (no breaks)"
+      : defaultValue != null
+        ? `Follow default (${defaultValue} per hour)`
+        : "Follow default";
+  const options = [
+    { value: "default", label: defaultLabel },
+    { value: "off", label: "No commercial breaks" },
+    { value: "custom", label: "Custom frequency" },
+  ];
+
+  const changeMode = (next: string) => {
+    if (next === "default") onChange(undefined);
+    if (next === "off") onChange(0);
+    if (next === "custom") {
+      const remembered = Number(customValue);
+      const nextValue = Number.isInteger(remembered) && remembered >= 1 ? remembered : seed;
+      setCustomValue(String(nextValue));
+      onChange(nextValue);
+    }
+  };
+
+  const changeCustomValue = (next: string) => {
+    setCustomValue(next);
+    const parsed = Number(next);
+    if (Number.isInteger(parsed) && parsed >= 1) onChange(parsed);
+  };
+
+  const restoreValidValue = () => {
+    const parsed = Number(customValue);
+    if (!Number.isInteger(parsed) || parsed < 1) setCustomValue(String(value && value > 0 ? value : seed));
+  };
+
+  return (
+    <div className="grid gap-2 sm:max-w-md">
+      <Label htmlFor="channel-break-frequency">Break frequency</Label>
+      <Select key={defaultLabel} value={mode} items={options} onValueChange={changeMode} disabled={disabled}>
+        <SelectTrigger id="channel-break-frequency">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {mode === "custom" && (
+        <div className="flex items-center gap-2">
+          <Input
+            aria-label="Custom breaks per program hour"
+            className="w-24"
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={customValue}
+            disabled={disabled}
+            onChange={(event) => changeCustomValue(event.target.value)}
+            onBlur={restoreValidValue}
+          />
+          <span className="text-muted-foreground text-sm">breaks per program hour</span>
+        </div>
+      )}
+      <p className="text-muted-foreground text-sm">
+        How often this channel pauses for filler. Manage the inherited value in{" "}
+        <Link to="/settings/defaults" className="text-signal underline-offset-2 hover:underline">
+          Channel defaults
+        </Link>
+        .
+      </p>
+    </div>
+  );
+};
 
 // ChannelFiller — the per-channel filler sandbox (§10, §12), the Filler section on the
 // channel page. Three parts over one live draft: the THEME criteria (era/audience/
@@ -18,8 +123,19 @@ import { useFillerCatalog } from "./use-filler-catalog";
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
 const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
-  const { draft, setDraft, preview, isPreviewing, previewError, isDirty, apply, isApplying, discard } =
-    useChannelFillerDraft(channelId, policy);
+  const {
+    draft,
+    setDraft,
+    breaksPerHour,
+    setBreaksPerHour,
+    preview,
+    isPreviewing,
+    previewError,
+    isDirty,
+    apply,
+    isApplying,
+    discard,
+  } = useChannelFillerDraft(channelId, policy);
 
   const pinned = draft.pinned ?? [];
   const excluded = draft.excluded ?? [];
@@ -38,10 +154,11 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
   // ⚠ `retry: false` for the same reason the coverage query uses it — a filler-less install
   // answers 501 and three retries is console noise for a state that simply renders nothing.
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
-  const podMaxEntry = (unwrap(settings.data, (b) => b.settings) ?? []).find(
-    (e) => e.key === "filler.pod_max",
-  );
+  const settingEntries = unwrap(settings.data, (b) => b.settings) ?? [];
+  const podMaxEntry = settingEntries.find((e) => e.key === "filler.pod_max");
   const podMax = podMaxEntry ? Number(podMaxEntry.value) : undefined;
+  const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
+  const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.
@@ -72,6 +189,13 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
             .
           </p>
         </div>
+
+        <BreakFrequencyField
+          value={breaksPerHour}
+          defaultValue={defaultBreaksPerHour}
+          disabled={isApplying}
+          onChange={setBreaksPerHour}
+        />
 
         {/* scopeEra so the criteria panel can SHOW that a blank era follows the channel's own
             (§10 V51f) — the server has always applied it, and nothing said so. */}

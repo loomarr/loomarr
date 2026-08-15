@@ -131,7 +131,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | How often Loomarr rebuilds channels to pick up newly-available content. |
+| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | Minimum delay after a successful rebuild before that channel is eligible for another scheduled sweep. Change the sweep cadence under System → Tasks. _(advanced)_ |
 | `sched.window_hours` (`SCHED_WINDOW_HOURS`) | duration | `24h` | How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything). |
 
 ## Filler / commercials
@@ -167,8 +167,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. _(advanced)_ |
 | `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
 | `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
-| `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
-| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
+| `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |
+| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips Loomarr may assemble into any channel's commercial break. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
