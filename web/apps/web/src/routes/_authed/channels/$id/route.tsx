@@ -178,7 +178,7 @@ const ChannelDetailLayout = () => {
               validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
               onSave={saveName}
             />
-            <label className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
               <span className="font-mono uppercase tracking-wide">Ch</span>
               <ChannelIdentityField
                 label="Channel number"
@@ -192,7 +192,7 @@ const ChannelDetailLayout = () => {
                 }}
                 onSave={saveNumber}
               />
-            </label>
+            </div>
           </div>
         ) : (
           <>

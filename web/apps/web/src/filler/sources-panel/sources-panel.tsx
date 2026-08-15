@@ -189,7 +189,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   return (
-    <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <FillerSources
         sources={sources}
         // ⚠ The pending row is tracked by ID. This used to be

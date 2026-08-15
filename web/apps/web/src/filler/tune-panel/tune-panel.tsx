@@ -117,8 +117,9 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
 
       {open && (
         <div className="flex flex-col gap-3 border-border border-t pt-[13px]">
-          <label className="flex cursor-pointer items-center gap-3 text-sm">
+          <label htmlFor="filler-autofile-enabled" className="flex cursor-pointer items-center gap-3 text-sm">
             <Switch
+              id="filler-autofile-enabled"
               checked={enabled}
               disabled={pinned(ENABLED_KEY)}
               onChange={(event) => write(ENABLED_KEY, String(event.target.checked))}

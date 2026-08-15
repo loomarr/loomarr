@@ -10,7 +10,7 @@ Everything starts with a folder of clips.
 - `FILLER_DIR` — the folder Loomarr watches (usually `/filler`).
 - Add clips any way you like: copy them in, use a tool like MeTube, or use Loomarr's
   built-in ingest (below).
-- After adding files, run a sync on the **Filler** page.
+- Loomarr notices arrivals and files them automatically; the Filler page shows the live pipeline.
 
 Loomarr reads the folder itself, so clips are available whether or not you run Tunarr. Your
 media server is not involved either: filler never lives in an Emby or Jellyfin library, which
@@ -37,8 +37,9 @@ always work, whatever the image.
 Matching a clip to a channel needs to know what it is (kids, era, vibe). Tag clips
 manually, or set `FILLER_AI_TAGGING=true` to have Loomarr tag them at sync.
 
-Untagged commercials still play but only match broadly — so a themed channel may fall back
-to just bumpers. If a channel plays no commercials, check its **pod preview**.
+Untagged commercials are a last-resort rung only for general and late-night channels. They are
+excluded from kids and family channels because an unknown audience must never be treated as safe
+for children. If a themed channel falls back to bumpers, check its **pod preview** and tag the clips.
 
 ## Tuning
 

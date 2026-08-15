@@ -142,6 +142,19 @@ describe("SplitReviewEditor", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("warns when an edited cut is below the resolved catalog floor", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{ ...proposal, segments: [seg({ endMs: 8_000, name: "Short legacy cut" })] }}
+        minClipDurationMs={10_000}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(/8s.*below the 10s catalog minimum/i);
+  });
+
   it("Back leaves without confirming", () => {
     const { onConfirm, onBack } = renderEditor();
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
