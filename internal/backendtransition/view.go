@@ -50,6 +50,17 @@ func snapshotFor(state State) Snapshot {
 	}
 }
 
+// ParseSnapshot validates one committed checkpoint payload carried by the Postgres lifecycle
+// invalidation stream. Keeping decoding here prevents the cross-replica stop path from growing a
+// second interpretation of the system-owned state document.
+func ParseSnapshot(raw string) (Snapshot, error) {
+	state, err := decode(raw)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return snapshotFor(state), nil
+}
+
 // ReconcileBackend returns the durable in-progress target when present, otherwise the published
 // backend. Ordinary reconciliation uses this ordering so it cannot undo fleet preparation.
 func (s Snapshot) ReconcileBackend() string {

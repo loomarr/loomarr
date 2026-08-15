@@ -35,7 +35,7 @@ func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("
 // process's controller Runtime, so request-path status must read DurableView instead.
 type liveTVAdapter struct {
 	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.TunarrURLs, error)
+	urls func(context.Context) (setup.LiveTVURLs, error)
 }
 
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
@@ -56,7 +56,7 @@ func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
 // M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
 type transportTunerRescanner struct {
 	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.TunarrURLs, error)
+	urls func(context.Context) (setup.LiveTVURLs, error)
 }
 
 func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {

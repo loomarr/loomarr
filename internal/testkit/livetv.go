@@ -27,6 +27,7 @@ type LiveTV struct {
 	AddListingErr    error
 	RemoveTunerErr   error
 	RemoveListingErr error
+	StaleListingsErr error
 	RefreshErr       error
 	RescanErr        error
 }
@@ -143,6 +144,9 @@ func (l *LiveTV) StaleLoomarrListings(_ context.Context, desiredXMLTV string) ([
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.calls = append(l.calls, "stale-listings:"+desiredXMLTV)
+	if l.StaleListingsErr != nil {
+		return nil, l.StaleListingsErr
+	}
 	var ids []string
 	for id, u := range l.listings {
 		if isLoomarrListing(u) && u != desiredXMLTV {

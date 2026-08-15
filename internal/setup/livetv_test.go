@@ -80,8 +80,106 @@ func TestReconnectTargetUsesExplicitAppliedBackendURLs(t *testing.T) {
 		t.Fatalf("reconnect result = %+v, target=%v old=%v", result,
 			lib.HasTuner(target.M3U), lib.HasTuner(oldURLs.M3U))
 	}
+	if result.ListingRemoved != 1 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want one freshly added target",
+			result, lib.ListingCount())
+	}
 	if lib.Rescans != 1 || lib.Refreshes != 1 {
 		t.Fatalf("repair pokes = rescans %d refreshes %d, want 1 each", lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestReconnectTargetForceRepairsCurrentListing(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	lib.SeedTuner(target.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, target.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	callStart := len(lib.Calls())
+	connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+	result, err := connector.ReconnectTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ListingRemoved != 1 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want current provider reset",
+			result, lib.ListingCount())
+	}
+	calls := lib.Calls()[callStart:]
+	remove := callPrefixIndex(calls, "remove-listing:")
+	add := callIndex(calls, "add-listing:"+target.XMLTV)
+	if remove < 0 || add < 0 || remove > add {
+		t.Fatalf("listing was not removed before re-add: %v", calls)
+	}
+}
+
+func TestReconnectTargetRepairsMissingListing(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	lib.SeedTuner(target.M3U, "loomarr")
+	connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+	result, err := connector.ReconnectTarget(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ListingRemoved != 0 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want missing provider added",
+			result, lib.ListingCount())
+	}
+}
+
+func TestReconnectTargetPropagatesListingRepairFailures(t *testing.T) {
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	wantErr := errors.New("listing repair failed")
+	tests := []struct {
+		name  string
+		setup func(*testkit.LiveTV)
+	}{
+		{
+			name: "enumerate",
+			setup: func(lib *testkit.LiveTV) {
+				lib.StaleListingsErr = wantErr
+			},
+		},
+		{
+			name: "remove",
+			setup: func(lib *testkit.LiveTV) {
+				if err := lib.AddListingProvider(context.Background(), target.XMLTV); err != nil {
+					t.Fatal(err)
+				}
+				lib.RemoveListingErr = wantErr
+			},
+		},
+		{
+			name: "add",
+			setup: func(lib *testkit.LiveTV) {
+				lib.AddListingErr = wantErr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lib := testkit.NewLiveTV()
+			lib.SeedTuner(target.M3U, "loomarr")
+			tt.setup(lib)
+			connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+			if _, err := connector.ReconnectTarget(context.Background(), target); !errors.Is(err, wantErr) {
+				t.Fatalf("ReconnectTarget error = %v, want %v", err, wantErr)
+			}
+			if tt.name == "enumerate" {
+				calls := lib.Calls()
+				if callPrefixIndex(calls, "remove-tuner:") >= 0 ||
+					callPrefixIndex(calls, "add-tuner:") >= 0 {
+					t.Fatalf("enumeration failure mutated tuner registration: %v", calls)
+				}
+			}
+		})
 	}
 }
 

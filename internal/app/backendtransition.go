@@ -16,10 +16,10 @@ import (
 // transition prepare one target and refresh or retire against another.
 type backendPublisher struct {
 	connector      *setup.LiveTVConnector
-	urls           func(context.Context, string) (setup.TunarrURLs, error)
+	urls           func(context.Context, string) (setup.LiveTVURLs, error)
 	mu             sync.Mutex
 	preparedTarget string
-	preparedURLs   setup.TunarrURLs
+	preparedURLs   setup.LiveTVURLs
 }
 
 // currentBackendTransition refreshes the settings snapshot, then keeps the mutation and desired
@@ -105,14 +105,14 @@ func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, e
 	return result.TunerRemoved, err
 }
 
-func (p *backendPublisher) prepared(target string) (setup.TunarrURLs, error) {
+func (p *backendPublisher) prepared(target string) (setup.LiveTVURLs, error) {
 	if p == nil || p.connector == nil {
-		return setup.TunarrURLs{}, fmt.Errorf("live TV publisher is unavailable")
+		return setup.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.preparedTarget != target {
-		return setup.TunarrURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
+		return setup.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
 	}
 	return p.preparedURLs, nil
 }

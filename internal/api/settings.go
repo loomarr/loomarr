@@ -149,9 +149,13 @@ func (s *Server) mutateLiveTVSettings(
 	affectsLiveTV bool,
 	mutation func(context.Context) bool,
 ) error {
-	if !affectsLiveTV || s.backendTransition == nil {
+	if !affectsLiveTV {
 		mutation(ctx)
 		return nil
+	}
+	if s.backendTransition == nil {
+		return errNotImplemented("Settings workflow unavailable",
+			"The Live TV settings workflow isn't running, so this can't be changed right now.")
 	}
 	mutationRan := false
 	err := s.backendTransition.ApplyMutation(ctx, func(lockCtx context.Context) bool {

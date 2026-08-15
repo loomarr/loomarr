@@ -181,7 +181,7 @@ exactly the old contract.
 | --- | --- | --- |
 | `SESSION_SECRET` | **All sessions revoked — including yours** | Confirm → regen → redirect to login. `API_TOKEN` remains as break-glass, so you cannot lock yourself out. |
 | `API_TOKEN` | Old token dead instantly | Show the new token once prominently; remind that machine clients/scripts must update. |
-| `PLAYOUT_TOKEN` | Every media-server tuner stops — the M3U and XMLTV URLs carry the old token | Show the new `/playout/tuner.m3u?token=…` URL; the media server's tuner entry has to be updated to match, or Live TV goes empty. |
+| `PLAYOUT_TOKEN` | Existing device and signed URLs stop authorizing; the durable Live TV workflow republishes the tuner/listing pair with the new token | Show the new `/playout/tuner.m3u?token=…` URL for manual consumers; automatic wiring is repaired through the backend-transition coordinator. |
 
 **Redaction is systemic, not per-callsite:** the settings service exposes a `Redactor` (the current set of secret values) wired into the `slog` handler — a secret value appearing in any log line is replaced before write. Secrets are excluded from `/v1/setup/status`, from validation error strings (validators must never echo the value), and from RFC 7807 bodies. There is a test that greps captured logs for a known secret and demands zero hits.
 
@@ -411,9 +411,11 @@ does not exist.
   before publication preserves the old routes and registration, while a retirement failure leaves
   the new backend applied and retries cleanup. The system checkpoint survives restart, and both a
   later relevant settings write and channel maintenance resume it (including URL-only repair when
-  the backend name did not change). Desired is re-read inside the coordinator's serialization
-  boundary, so an older maintenance retry cannot publish after a newer save. On Postgres that
-  boundary is a store-owned, database-scoped advisory lock held across the relevant setting write,
+  the backend name did not change). A URL-only repair replays the inherited-channel fleet barrier
+  before publisher preparation and refresh; failure or restart retries that ordering instead of
+  exposing a newly configured publisher ahead of its channels. Desired is re-read inside the
+  coordinator's serialization boundary, so an older maintenance retry cannot publish after a newer
+  save. On Postgres that boundary is a store-owned, database-scoped advisory lock held across the relevant setting write,
   checkpoint load, every external publisher phase, and checkpoint save; separate replicas therefore
   cannot insert a newer desired write midway through an older publication. Only after acquiring it
   does a replica refresh both setting values and provenance, then mutate and resolve desired. The

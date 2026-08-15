@@ -142,6 +142,50 @@ func TestSettings_BackendTransitionLockFailureDoesNotRunMutation(t *testing.T) {
 	}
 }
 
+func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, body string
+		mutated                  func(*fakeSettings) bool
+	}{
+		{
+			name: "patch", method: http.MethodPatch, path: "/v1/settings",
+			body:    `{"edits":{"playout.backend":"internal"}}`,
+			mutated: func(s *fakeSettings) bool { return s.patched != nil },
+		},
+		{
+			name: "clear", method: http.MethodDelete, path: "/v1/settings/playout.backend",
+			mutated: func(s *fakeSettings) bool { return s.cleared != "" },
+		},
+		{
+			name: "environment hand-back", method: http.MethodPut,
+			path: "/v1/settings/playout.backend/env-override", body: `{"enabled":false}`,
+			mutated: func(s *fakeSettings) bool { return s.envOverride != "" },
+		},
+		{
+			name: "playout token rotation", method: http.MethodPost,
+			path:    "/v1/settings/secrets/playout_token/regenerate",
+			mutated: func(s *fakeSettings) bool { return s.regen != "" },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := &fakeSettings{}
+			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
+			})
+			srv := httptest.NewServer(h)
+			t.Cleanup(srv.Close)
+
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			if resp.StatusCode != http.StatusNotImplemented {
+				t.Fatalf("request without transition workflow = %d, want 501", resp.StatusCode)
+			}
+			if tc.mutated(settings) {
+				t.Fatal("mutation ran without transition workflow")
+			}
+		})
+	}
+}
+
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 	return []api.SettingEntry{
 		{Key: "library.url", Group: "connections.media_server", Kind: "url", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
@@ -236,10 +280,11 @@ func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSettings{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Settings: fs,
+		Store:             st,
+		Auth:              testAuthorizer{},
+		Log:               slog.New(slog.DiscardHandler),
+		Settings:          fs,
+		BackendTransition: &testkit.BackendTransition{},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

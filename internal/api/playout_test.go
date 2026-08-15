@@ -97,7 +97,7 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 	return playout.Presentation{Stream: chunks, Release: release}, err
 }
 
-func (f *fakePlayoutSessions) OpenAsset(string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (f *fakePlayoutSessions) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return playout.Asset{}, false, nil
 }
 

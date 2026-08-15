@@ -24,7 +24,7 @@ type Publisher interface {
 	Prepare(ctx context.Context, target string) (changed bool, err error)
 	Refresh(ctx context.Context, target string) error
 	RetireStale(ctx context.Context, target string) error
-	// Reconnect force-replaces the currently applied tuner registration. It is the
+	// Reconnect force-replaces the currently applied tuner/listing registration pair. It is the
 	// operator repair for a media server that cached a stale channel-to-stream binding.
 	// The controller calls it only while holding the same workflow lock as Apply.
 	Reconnect(ctx context.Context, target string) (tunersReset int, err error)
@@ -146,7 +146,7 @@ func (c *Controller) ApplyCurrent(ctx context.Context, desired func(context.Cont
 	return c.applyResolved(ctx, desired)
 }
 
-// ReconnectCurrent force-repairs the tuner registration for the durably applied backend.
+// ReconnectCurrent force-repairs the tuner/listing pair for the durably applied backend.
 // It resolves desired inside the workflow lock only so Load can safely initialize an absent
 // checkpoint; a pending target is deliberately not exposed early. Holding the complete
 // store-owned lock prevents this destructive remove-and-readd operation from interleaving with
@@ -265,8 +265,11 @@ func (c *Controller) applyLocked(ctx context.Context, desired string) error {
 		state = replaced
 	}
 
-	// Steady state still runs the publisher repair path. URLs and credentials can change while
-	// the selected backend does not, and a failed post-publication retirement must retry here.
+	// Steady state still replays the complete fleet -> publisher repair path. URLs and
+	// credentials can change while the selected backend does not, so the inherited channel
+	// fleet must adopt the current target configuration before the media server is refreshed.
+	// Replaying both idempotent barriers also repairs a crash between them, and a failed
+	// post-publication retirement retries only after their current configuration is verified.
 	if state.Applied() == desired && state.Prepared() == "" {
 		return c.repairPublished(ctx, desired)
 	}
@@ -325,6 +328,12 @@ func (c *Controller) applyLocked(ctx context.Context, desired string) error {
 }
 
 func (c *Controller) repairPublished(ctx context.Context, target string) error {
+	if c.fleet == nil {
+		return fmt.Errorf("repair inherited fleet for %q: fleet is unavailable", target)
+	}
+	if err := c.fleet.PrepareInheritedBackend(ctx, target); err != nil {
+		return fmt.Errorf("repair inherited fleet for %q: %w", target, err)
+	}
 	if c.publisher == nil {
 		return fmt.Errorf("repair publisher for %q: publisher is unavailable", target)
 	}

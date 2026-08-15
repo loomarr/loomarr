@@ -319,8 +319,9 @@ func (m *HLSManager) StopChannel(channelID string) {
 	}
 }
 
-// Stop tears down every remux and removes the temp root. Called on shutdown.
-func (m *HLSManager) Stop() {
+// StopAll tears down every live remux but leaves the scratch root reusable. It is the fail-closed
+// lifecycle path while a Postgres replica re-establishes its durable invalidation listener.
+func (m *HLSManager) StopAll() {
 	m.mu.Lock()
 	remuxes := make([]*hlsRemux, 0, len(m.remuxes))
 	for _, r := range m.remuxes {
@@ -332,6 +333,11 @@ func (m *HLSManager) Stop() {
 	for _, r := range remuxes {
 		r.teardown()
 	}
+}
+
+// Stop tears down every remux and removes the temp root. Called on shutdown.
+func (m *HLSManager) Stop() {
+	m.StopAll()
 	_ = os.RemoveAll(m.root)
 }
 

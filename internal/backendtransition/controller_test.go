@@ -213,8 +213,10 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 
 			wantFleetCalls := 1
 			if phase == "fleet" || phase == "publisher-prepare" || phase == "refresh" ||
-				phase == "cutover" || phase == "save-published" {
-				wantFleetCalls = 2 // a durable in-progress target always replays the fleet barrier
+				phase == "cutover" || phase == "save-published" || phase == "retire" {
+				// A durable in-progress target and an applied target awaiting cleanup both
+				// replay the fleet barrier before publisher work after restart.
+				wantFleetCalls = 2
 			}
 			if got := fleet.callCount(); got != wantFleetCalls {
 				t.Fatalf("fleet calls = %d, want %d", got, wantFleetCalls)
@@ -299,20 +301,28 @@ func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t
 
 func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	publisher := newPublisherAdapter(nil)
+	record := &phaseRecorder{}
+	publisher := newPublisherAdapter(record)
 	publisher.needsRepair = true // same backend, but its resolved registration URLs changed
 	refreshErr := errors.New("media server refresh failed")
 	publisher.refreshFailOnce = refreshErr
-	fleet := &fleetAdapter{}
+	fleet := &fleetAdapter{record: record}
 	controller := NewController(base, fleet, publisher, nil)
 
 	if err := controller.Apply(context.Background(), BackendTunarr); !errors.Is(err, refreshErr) {
 		t.Fatalf("first repair error = %v, want refresh failure", err)
 	}
 	assertDurableState(t, base, BackendTunarr, "")
+	if got, want := record.snapshot(), []string{
+		"fleet:tunarr",
+		"publisher.prepare:tunarr",
+		"publisher.refresh:tunarr",
+	}; !slices.Equal(got, want) {
+		t.Fatalf("first repair phases = %v, want %v", got, want)
+	}
 
-	// Prepare now reports unchanged because the repaired URL exists. Refresh must still replay;
-	// otherwise the first failure would become permanent.
+	// Fleet and Refresh must both replay. The publisher target now exists, but a prior process
+	// may have crashed after only part of the inherited channel fleet adopted the changed URL.
 	if err := controller.Apply(context.Background(), BackendTunarr); err != nil {
 		t.Fatalf("retry repair: %v", err)
 	}
@@ -325,8 +335,48 @@ func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 	if got := publisher.retireCount(); got != 1 {
 		t.Fatalf("Retire calls = %d, want only the successful repair", got)
 	}
-	if fleet.callCount() != 0 {
-		t.Fatalf("steady-state repair prepared fleet %d times", fleet.callCount())
+	if fleet.callCount() != 2 {
+		t.Fatalf("steady-state repair fleet calls = %d, want one per attempt", fleet.callCount())
+	}
+	if got, want := record.snapshot(), []string{
+		"fleet:tunarr",
+		"publisher.prepare:tunarr",
+		"publisher.refresh:tunarr",
+		"fleet:tunarr",
+		"publisher.prepare:tunarr",
+		"publisher.refresh:tunarr",
+		"publisher.retire:tunarr",
+	}; !slices.Equal(got, want) {
+		t.Fatalf("repair retry phases = %v, want %v", got, want)
+	}
+}
+
+func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *testing.T) {
+	base := initializedStore(t, BackendTunarr)
+	record := &phaseRecorder{}
+	fleetErr := errors.New("channel fleet unavailable")
+	fleet := &fleetAdapter{record: record, failOnce: fleetErr}
+	controller := NewController(base, fleet, newPublisherAdapter(record), nil)
+
+	if err := controller.Apply(context.Background(), BackendTunarr); !errors.Is(err, fleetErr) {
+		t.Fatalf("repair error = %v, want fleet failure", err)
+	}
+	if got, want := record.snapshot(), []string{"fleet:tunarr"}; !slices.Equal(got, want) {
+		t.Fatalf("failed repair phases = %v, want %v", got, want)
+	}
+	assertDurableState(t, base, BackendTunarr, "")
+
+	if err := controller.Apply(context.Background(), BackendTunarr); err != nil {
+		t.Fatalf("retry repair: %v", err)
+	}
+	if got, want := record.snapshot(), []string{
+		"fleet:tunarr",
+		"fleet:tunarr",
+		"publisher.prepare:tunarr",
+		"publisher.refresh:tunarr",
+		"publisher.retire:tunarr",
+	}; !slices.Equal(got, want) {
+		t.Fatalf("repair retry phases = %v, want %v", got, want)
 	}
 }
 
@@ -391,8 +441,8 @@ func TestControllerSerializesConcurrentApplyAndRuntimeReads(t *testing.T) {
 	close(stopReads)
 	<-readsDone
 
-	if got := fleet.callCount(); got != 1 {
-		t.Fatalf("fleet calls = %d, want one transition followed by steady repairs", got)
+	if got := fleet.callCount(); got != callers {
+		t.Fatalf("fleet calls = %d, want one barrier per serialized transition/repair", got)
 	}
 	assertDurableState(t, base, BackendInternal, "")
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendInternal, "", true)

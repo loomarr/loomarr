@@ -32,6 +32,10 @@ const (
 type sqlStore struct {
 	db      *sql.DB
 	dialect Dialect
+	// dsn is retained only by the Postgres adapter so commit invalidation listeners can own
+	// a dedicated pgx connection without consuming or retaining a database/sql pooled handle.
+	// Empty for SQLite.
+	dsn string
 	// mu guards onClose only — the pool itself is already goroutine-safe.
 	mu      sync.Mutex
 	onClose []func() // pre-close hooks, run in order before the pool closes (see OnClose)
@@ -141,6 +145,16 @@ func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 // updated_by NULL — these writes have no human author. The audited admin path is
 // UpsertSetting.
 func (s *sqlStore) SetSetting(ctx context.Context, key, value string) error {
+	if payload, notify, err := backendInvalidation(key, value); err != nil {
+		return err
+	} else if s.dialect == DialectPostgres && notify {
+		var notified any
+		return s.db.QueryRowContext(ctx,
+			`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
+			 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+			 RETURNING pg_notify('`+postgresInvalidationChannel+`', $4)`,
+			key, value, time.Now().Unix(), payload).Scan(&notified)
+	}
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`),

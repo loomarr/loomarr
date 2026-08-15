@@ -381,22 +381,22 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
-		liveTVConnector = setup.NewLiveTVConnectorFixed(lib, setup.TunarrURLs{})
+		liveTVConnector = setup.NewLiveTVConnectorFixed(lib, setup.LiveTVURLs{})
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.TunarrURLs, error) {
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
 				if set.svc != nil {
 					if err := set.svc.Refresh(ctx); err != nil {
-						return setup.TunarrURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
+						return setup.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
 					}
 				}
 				backend, err := appliedBackendContext(ctx)
 				if err != nil {
-					return setup.TunarrURLs{}, err
+					return setup.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.TunarrURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
 				return setup.LiveTVURLsFor(
 					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
@@ -405,14 +405,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		transportFreshness := transportTunerRescanner{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.TunarrURLs, error) {
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
 				backend, err := transportBackendContext(ctx)
 				if err != nil {
-					return setup.TunarrURLs{}, err
+					return setup.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.TunarrURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
 				return setup.LiveTVURLsFor(
 					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
@@ -789,17 +789,31 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			jobReg.Add(preparedPlayoutJob(planner, ""))
 			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		}
-		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+		var lifecycleGate *playoutAdmissionGate
+		var durablePlayoutEligibility func(context.Context, string) (bool, error)
+		if store.DialectOf(st) == store.DialectPostgres {
+			lifecycleGate = &playoutAdmissionGate{}
+			backendView = backendtransition.NewDurableView(st)
+			durablePlayoutEligibility = func(ctx context.Context, channelID string) (bool, error) {
+				return durableInternalTransportPlayable(ctx, st, backendView, channelID)
+			}
+		}
+		origin := playout.NewOrigin(playout.OriginDependencies{
 			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+			Available: func() bool {
+				return lifecycleGate == nil || lifecycleGate.Available()
+			},
+			Eligible: durablePlayoutEligibility,
 		})
+		playoutSvc = origin
 
 		// The durable backend checkpoint is initialized synchronously before any request can
 		// observe its runtime gates. Initialize performs store I/O only; fleet and media-server
 		// work is retried by settings writes and channel maintenance.
-		backendURLs := func(ctx context.Context, target string) (setup.TunarrURLs, error) {
+		backendURLs := func(ctx context.Context, target string) (setup.LiveTVURLs, error) {
 			tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 			if err != nil {
-				return setup.TunarrURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
+				return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
 			}
 			return setup.LiveTVURLsFor(
 				target, set.str("tunarr.url"), set.str("server.public_url"), tok,
@@ -814,7 +828,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if err := backendController.Initialize(rootCtx, resolveDesiredBackend); err != nil {
 			return nil, fmt.Errorf("initialize playout backend transition: %w", err)
 		}
-		backendView = backendtransition.NewDurableView(st)
+		if backendView == nil {
+			backendView = backendtransition.NewDurableView(st)
+		}
+		if lifecycleGate != nil {
+			lifecycle := &postgresPlayoutLifecycle{
+				store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
+			}
+			if err := lifecycle.Start(rootCtx); err != nil {
+				return nil, fmt.Errorf("start postgres playout lifecycle: %w", err)
+			}
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by

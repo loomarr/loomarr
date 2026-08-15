@@ -45,7 +45,7 @@ func (p *preparedProbePlayout) Tune(_ context.Context, request playout.TuneReque
 	return p.presentation, p.err
 }
 
-func (p *preparedProbePlayout) OpenAsset(string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (p *preparedProbePlayout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return p.asset, p.assetOK, nil
 }
 

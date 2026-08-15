@@ -69,7 +69,7 @@ const playoutModeParam = "mode"
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
-	OpenAsset(channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
 	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
 	// transitions that make the channel ineligible for internal playout.
@@ -468,13 +468,7 @@ func playsInternallyAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
 }
 
 func transportPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
-	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
-		return false
-	}
-	if schedule.HasExplicitPlayoutBackend(ch.Policy) {
-		return schedule.PlaysInternally(ch.Policy, schedule.PlayoutBackendTunarr)
-	}
-	return checkpoint.PublishedInternal
+	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
 }
 
 // hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
@@ -649,7 +643,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, ok, err := s.playout.OpenAsset(channelID, clientPlan(r), rel)
+	asset, ok, err := s.playout.OpenAsset(r.Context(), channelID, clientPlan(r), rel)
 	if err != nil || !ok {
 		http.NotFound(w, r)
 		return

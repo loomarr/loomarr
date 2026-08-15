@@ -60,16 +60,16 @@ func (f failingCurrentTransitionFleet) PrepareInheritedBackend(context.Context, 
 
 func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
-	connector := setup.NewLiveTVConnectorFixed(liveTV, setup.TunarrURLs{})
+	connector := setup.NewLiveTVConnectorFixed(liveTV, setup.LiveTVURLs{})
 	resolves := 0
 	publisher := &backendPublisher{
 		connector: connector,
-		urls: func(context.Context, string) (setup.TunarrURLs, error) {
+		urls: func(context.Context, string) (setup.LiveTVURLs, error) {
 			resolves++
 			if resolves == 1 {
-				return setup.TunarrURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
+				return setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
 			}
-			return setup.TunarrURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
+			return setup.LiveTVURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
 		},
 	}
 	ctx := context.Background()
@@ -99,7 +99,7 @@ func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
 	target := setup.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
 	rescanner := transportTunerRescanner{
 		c: connector,
-		urls: func(context.Context) (setup.TunarrURLs, error) {
+		urls: func(context.Context) (setup.LiveTVURLs, error) {
 			return target, nil
 		},
 	}

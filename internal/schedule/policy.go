@@ -170,6 +170,21 @@ func PlaysInternally(policy ChannelPolicy, globalBackend string) bool {
 	return NormalizePlayoutBackend(globalBackend) == PlayoutBackendInternal
 }
 
+// InternalTransportPlayable is the canonical admission rule for Loomarr's device-facing
+// tuner. publishedInternal comes from the durable backend-publication checkpoint rather than
+// desired settings: inherited channels must be readable while internal is prepared, and must
+// disappear only when that published transport is retired. An explicit per-channel backend does
+// not inherit that checkpoint; it answers from its own pin.
+func InternalTransportPlayable(status ChannelStatus, policy ChannelPolicy, publishedInternal bool) bool {
+	if !status.Reconcilable() || status == StatusEmpty {
+		return false
+	}
+	if HasExplicitPlayoutBackend(policy) {
+		return PlaysInternally(policy, PlayoutBackendTunarr)
+	}
+	return publishedInternal
+}
+
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the
 // opt-in; the two optional overrides let a channel be stricter or looser than the global
 // recurate defaults. A zero-value (non-nil) AutoCurate means "opted in, use the global
