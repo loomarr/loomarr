@@ -18,6 +18,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/binder"
+	"github.com/mantonx/loomarr/internal/buildinfo"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/config"
@@ -76,6 +77,9 @@ type Overrides struct {
 	// DatabaseMigrationError carries a failed attempt into the replacement SQLite
 	// generation, where the database status endpoint can explain why it stayed put.
 	DatabaseMigrationError string
+	// ImageWorkerExecutable selects the required Rust image worker in tests and embedded builds.
+	// Empty resolves LOOMARR_IMAGE_WORKER, then the sibling/local/PATH-installed release binary.
+	ImageWorkerExecutable string
 }
 
 // flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
@@ -792,7 +796,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil {
 		// The image service (§22, V52). First in this block deliberately: it depends on nothing
 		// else here, and the jobs registered later need it.
-		imageSvc = newImageService(st, set)
+		var imageErr error
+		imageSvc, imageErr = newImageService(st, set, ov.ImageWorkerExecutable, buildinfo.Get().Version)
+		if imageErr != nil {
+			return nil, imageErr
+		}
 		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))

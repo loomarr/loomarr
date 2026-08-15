@@ -171,6 +171,13 @@ or a URL and receive an Image; they ask for a Rendition and receive a file. Noth
 that package knows the disk layout, the hash, the format ladder, or which encoder ran.
 _Avoid_: thumbnail, asset, poster (all are Renditions of an Image)
 
+**Image worker**:
+The required Rust process behind the Image service's one rendering seam (§22). It validates and
+interprets pixels and writes unpublished Renditions; Go still owns Image identity, policy, and
+publication. It is an implementation detail shipped in the Loomarr container, not a sidecar or an
+optional integration.
+_Avoid_: image service (that includes the Go-owned domain), daemon, fallback
+
 ### People and access
 
 **The allowlist**:

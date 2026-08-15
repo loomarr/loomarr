@@ -53,16 +53,23 @@ step 'secondary dev identity'
 mkdir -p "$TMP/fake-bin"
 # shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
 printf '%s\n' '#!/usr/bin/env sh' 'echo "$*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/go"
-chmod +x "$TMP/fake-bin/go"
+# shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo $*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/cargo"
+chmod +x "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
 bootstrap_log="$TMP/bootstrap-runs"
 PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 \
 	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
+grep -q 'cargo build --locked -p loomarr-image' "$bootstrap_log"
 grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"
 : > "$bootstrap_log"
 PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 AGENT_DEV_IDENTITY=0 \
 	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
-[ ! -s "$bootstrap_log" ]
-rm -f "$TMP/fake-bin/go"
+grep -q 'cargo build --locked -p loomarr-image' "$bootstrap_log"
+if grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"; then
+	echo 'agent-harness-test: disabled dev identity still ran dev-bootstrap' >&2
+	exit 1
+fi
+rm -f "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
 
 step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null

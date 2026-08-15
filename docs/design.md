@@ -186,7 +186,7 @@ flowchart TD
 
 **Layer 0** — no internal dependencies. These are the vocabulary the rest agrees on.
 
-- **`buildinfo`** · 1 importer
+- **`buildinfo`** · 2 importers
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
@@ -256,8 +256,6 @@ flowchart TD
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
-- **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`, `store`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 7**
 
@@ -265,7 +263,7 @@ flowchart TD
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
-- **`images`** · 2 importers · → `scheduler`
+- **`images`** · 3 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
@@ -284,6 +282,8 @@ flowchart TD
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
+- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
 
@@ -292,7 +292,7 @@ flowchart TD
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -4281,11 +4281,10 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
-| Image decode + resize | **stdlib `image/*` + `golang.org/x/image`** (`webp` decoder, `draw.CatmullRom`) | The image service (§22) needs decode, high-quality downscale, and no cgo. `x/image` is Go-team maintained with zero supply-chain surface, and `CatmullRom` is the quality tier worth paying for on artwork. **`disintegration/imaging` rejected** — effectively unmaintained since 2019; its live fork adds ICC/animation we do not need. **`govips`/`bimg` rejected** — both are cgo bindings to libvips, which is 4–8× faster than ImageMagick and entirely beside the point: pulling libvips and its dependency tree into a QEMU-emulated `linux/arm64` build is exactly the cost `modernc.org/sqlite` was chosen to avoid, and it would drag LGPL-2.1+ into the image. |
-| WebP encode | **`github.com/gen2brain/webp`**, built with **`-tags nodynamic`** | The one no-cgo lossy-WebP encoder that is actually production-grade. ⚠ **It is no longer a wazero/WASM library** — a design written from 2023 knowledge would reject it on that basis and be wrong. It is now libwebp transpiled to **pure Go via `wasm2go`**, roughly 3× native libwebp (the older wazero path was ~5×). ⚠ **The `nodynamic` tag is not optional:** without it the library `dlopen`s a system libwebp when one is present, so the same image encodes differently depending on the base layer — a reproducibility hazard across our two architectures. **`nativewebp` rejected** (pure Go but **lossless VP8L only**, useless for posters); **`kolesa-team/go-webp` / `chai2010/webp` rejected** (cgo); `KarpelesLab/gowebp` and `skrashevich/go-webp` are genuinely pure-Go and worth watching, but at ~12–108 commits each they are too immature to be a primary encoder. |
-| AVIF encode | **the already-vendored `ffmpeg`** (`libaom-av1` / `libsvtav1`), via subprocess | **No new dependency.** In-process AVIF from Go exists (`gen2brain/avif`) and works, but AVIF encoding is 300–1200 ms for a ~1000px image — an order of magnitude past WebP — and paying that through a transpiled-C-in-Go path, on a request, is untenable. ffmpeg is already a core runtime dependency (§9.1), is natively multithreaded on both arches, and a subprocess is exactly what you want around a one-second CPU burn: killable, with a timeout. This is why §22 makes AVIF a background job rather than a lazy rendition. ⚠ The image build must **assert the AV1 encoder exists**, the way it already proves whisper by transcribing at build time rather than by `--help`. |
-| JPEG encode | **stdlib `image/jpeg`** | §22 keeps a JPEG floor for old iOS and legacy Android WebViews — over-represented among a self-hosted media server's clients (televisions, ageing tablets). ⚠ **`gen2brain/jpegli` was evaluated and rejected on inspection**, reversing an earlier intent recorded here: its ~20% density win is real, but it arrives on a **wazero WASM runtime** — a second, heavier interpreter in the binary, distinct from the `wasm2go`-transpiled path the WebP encoder uses — in order to improve *the rendition the fewest clients take*, which is a compatibility floor rather than a quality target. Stdlib costs nothing and is already correct. If JPEG ever becomes a primary format that trade flips. |
-| Image placeholder (LQIP) | **`github.com/galdor/go-thumbhash`** | The ~25-byte blur preview stored on every image row (§22). **BlurHash rejected** despite being the more widely deployed format: ThumbHash is smaller, higher quality per byte, faster to decode, and — the decider — **carries alpha**, where BlurHash renders transparency as **black**. Channel logos are routinely transparent PNGs, so BlurHash would have needed a composite-onto-dominant-colour step purely to avoid shipping black placeholder boxes. BlurHash's one remaining advantage is ecosystem breadth, which buys nothing in an app that owns both ends of the wire. *(Watching, not adopting: `google/wuffs`' **Handsum**, better again per byte, but published 2026-07 with no client-side decoder ecosystem yet.)* |
+| Image rendering runtime | **the required Rust `loomarr-image` one-shot worker**, over a versioned bounded-JSON/file-manifest protocol | Static and animated decoding is an untrusted, allocation-heavy boundary. A sibling process contains panics and native-code crashes without making the Go server use cgo, returns all worker memory to the OS after each Image, and can be killed on cancellation. One invocation renders a complete requested ladder, amortising process startup. A persistent daemon adds supervision and retained-memory complexity before measurement justifies it; in-process FFI would let a decoder fault take down Loomarr. The worker is part of Loomarr, ships in the one image, and is mandatory: a missing or incompatible worker prevents readiness, with no Go codec fallback (§22). |
+| Rust image dependencies | **pinned `serde`/`serde_json` + `sha2` + `base64` + `thumbhash` + `image` + `fast_image_resize` + `webp`/`webp-animation`, locked by `Cargo.lock`; `png` is direct only in tests** | Serde is the bounded worker protocol rather than a hand-written parser; `sha2` verifies content identity on both sides of the process boundary; `base64` and `thumbhash` produce the existing placeholder wire format. `image` supplies one animation-decoder contract for GIF, APNG, and WebP; the direct test-only `png` edge generates a standards-valid APNG fixture instead of checking in opaque bytes. `fast_image_resize` supplied the measured static speed/RSS win; `webp` provides static encoding while `webp-animation` exposes libwebp's incremental encoder so a timeline does not accumulate full-frame buffers. A pure-Rust `zenwebp` replacement remains contingent on the corpus proving dependency, licence, deterministic-output, malformed-input, and both-architecture gates rather than novelty. The complete resolved graph ships in the SBOM. |
+| AVIF encode | **the required Rust image worker, using the pure-Rust `ravif` path behind `image`, background-only** | AVIF remains outside request latency so a cold grid cannot multiply expensive encodes. The worker's startup self-test performs a real encode; no ffmpeg or Go image fallback survives. |
+| Image placeholder (LQIP) | **the Rust `thumbhash` crate inside `loomarr-image`** | The ~25-byte blur preview stored on every image row (§22). ThumbHash carries alpha, which avoids black placeholder boxes for transparent channel logos. The worker emits the existing base64 wire format, so the frontend contract does not change. |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
 
 ### Frontend (Node 22.5+, Vite + React 19 + TypeScript)
@@ -4548,9 +4547,23 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 ## 16. Deployment (Docker)
 
-Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver ⇒ no cgo). Toolchain pins: **Go 1.22+** for the binary, **Node 20+** in the FE build stage. Non-root. `HEALTHCHECK` → `/healthz`. The web UI is embedded and served at `/`.
+Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
+Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
+the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
+already require that base. `HEALTHCHECK` → `/healthz`; readiness additionally requires the bundled
+image worker's release/profile self-test. The web UI is embedded and served at `/`.
 
-**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published tag. It vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at **~1.3GB measured** (amd64 uncompressed rootfs; **~821MB before whisper-cli**). ⚠ The **+486MB is almost entirely the whisper MODEL** (466MB for `ggml-small.en.bin`; the binary and its libggml/libwhisper set are only ~20MB) — and that model size is a correctness floor, not a preference (§14). Re-measured when V34 landed, as this line previously promised. ⚠ **Do not compare this number to the "549MB" below or the "510MB" this line used to claim**: those were *compressed registry* sizes for a tree that no longer exists, and mixing the two units is how the earlier figure drifted. What an operator downloads is the compressed pull, which is smaller.
+**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published
+tag. It contains the Go server and its required release-matched `loomarr-image` Rust worker, and
+vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
+model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
+**~1.3GB measured before the Rust worker** (amd64 uncompressed rootfs; **~821MB before whisper-cli**).
+The image-size figure must be re-measured at the Rust cutover. ⚠ The **+486MB is almost entirely the
+whisper MODEL** (466MB for `ggml-small.en.bin`; the binary and its libggml/libwhisper set are only
+~20MB) — and that model size is a correctness floor, not a preference (§14). ⚠ **Do not compare this
+number to the "549MB" below or the "510MB" this line used to claim**: those were *compressed registry*
+sizes for a tree that no longer exists, and mixing the two units is how the earlier figure drifted.
+What an operator downloads is the compressed pull, which is smaller.
 
 It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh named volume inherits nonroot ownership and the documented `docker run -v loomarr-data:/data loomarr` boots. Without that the volume arrives root-owned and boot dies with *"unable to open database file (14)"* — a failure that was **masked** while `DATABASE_URL` had no default (§15), because the app never tried to open a file. Compose's one-shot chown init container stays for **bind mounts**, which the image cannot pre-seed.
 
@@ -4560,7 +4573,9 @@ It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh
 
 **The cost, stated plainly:** the default download grows by more than an order of magnitude (31MB → a rootfs of ~1.3GB uncompressed, ~821MB of it before V34's whisper model) and every install carries an encoder whether or not it uses internal playout, plus a speech model whether or not it ever splits a compilation. That is the price of the capability, and it is the third time this packaging question has been decided — sidecar → opt-in tag → single image. Each reversal followed a change in what the tooling was *for*; if a future change makes the encoder optional again, revisit it with that history in view rather than as a fresh question.
 
-Every binary is invoked via `exec` — `yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are the only vendored non-Go artifacts the project permits (§14).
+Every non-Go binary is invoked via `exec`. `loomarr-image` is required application code; `yt-dlp`,
+`ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are vendored
+tools. The Go server stays cgo-free, and pixel buffers never cross the process boundary.
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
@@ -4851,7 +4866,10 @@ That was not merely untidy. It had three concrete consequences:
 - **No modern format on any still.** The only WebP in the product was the *animated* hover loop.
 
 This section defines `internal/images`: one service owning ingest → storage → derivatives → serving,
-which every image path uses and none bypasses.
+which every image path uses and none bypasses. Go owns Image identity, policy, jobs, authorization,
+storage records, and publication. The required Rust `loomarr-image` worker owns every operation that
+interprets pixels: validation, inspection, static or animated decode, compositing, resize, encode,
+ThumbHash, and dominant colour. There is one production renderer and **no Go codec fallback**.
 
 ### Identity and storage
 
@@ -4879,14 +4897,17 @@ Three tables, added forward-only (§16):
 
 - **`images`** — one row per logical image: `hash` (PK), `origin` (`upload` | `remote` | `extracted` |
   `generated`), `source_url`, `visibility` (`public` | `member`), `mime`, `width`, `height`, `bytes`,
-  `animated`, `placeholder` (ThumbHash), `dominant_hex`, `origin_fetched_at`, `meta` (JSON), and the
-  usual timestamps plus `last_used_at`.
+  `animated`, `frame_count`, `duration_ms`, `loop_count` (`0` means infinite; `NULL` means static),
+  `placeholder` (ThumbHash), `dominant_hex`, `origin_fetched_at`, `meta` (JSON), and the usual
+  timestamps plus `last_used_at`.
 - **`image_refs`** — `(image_hash, owner_kind, owner_id, role)`. What an image *decorates*. Kept in
   its own table rather than as a column on each domain so the garbage collector can find orphans
   **without every domain knowing about images** — the same reasoning that keeps §10's clip identity
   out of the channel schema.
-- **`image_derivatives`** — `(image_hash, format, width, bytes, path, created_at)`. Regenerable,
-  never backed up, freely deletable.
+- **`image_derivatives`** — `(image_hash, recipe, format, width, bytes, output_hash, path, animated,
+  created_at)`. `recipe` is part of identity and the immutable URL: an encoder/profile change creates
+  new bytes at a new URL rather than mutating an artifact cached for a year. Regenerable, never backed
+  up, freely deletable.
 
 ⚠ `source_url` is the load-bearing column, not decoration: it is what makes a remote image
 *recoverable* rather than merely *cached*, and it is why losing the image directory is survivable for
@@ -4897,42 +4918,64 @@ everything except uploads.
 WebP and AVIF are two orders of magnitude apart in encode cost, and treating them uniformly gets one
 of them wrong:
 
-- **WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
+- **Static WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
   advance which widths a surface will ask for, so an eager matrix would encode mostly-unserved
   renditions.
+- **Animated WebP ladders generate lazily at bounded ladder widths**, behind the same singleflight and
+  global worker cap as stills. The explicitly requested first-presentation-frame JPEG is an output
+  contract for clients that do not display motion, not another renderer.
 - **AVIF generates in a background job, never on a request.**
 
-⚠ **The usual justification for that split is wrong, and it is worth recording why, because the
-correct reason leads to different decisions later.** The received wisdom is that AVIF costs an order
-of magnitude more than WebP (300–1200 ms per image). **Measured on a development box with
-`libaom -still-picture -cpu-used 6`, a 500px poster encodes in ~86 ms against WebP's ~67 ms** — about
-1.3×, not 10×. The alarming figures in circulation come from running a *video* encoder at video
-defaults: asked for a single 1000×1500 frame, SVT-AV1 allocated **2.34 GB** and spawned **82 threads**
-while producing a file **78% larger** than libaom's still-picture path.
-
-The reason that survives measurement is **concurrency, not latency**. Every AVIF encode is a forked,
-natively-multithreaded process; generating them lazily means a cold grid of fifty posters forks fifty
-at once, which will thrash a four-core NAS whatever the per-image number is. A job runs them at a
-controlled rate. A request cannot.
+The load-bearing reason is **concurrency and request latency**. AVIF is produced by the pure-Rust
+`ravif` path with one encoder thread, but a cold grid must still not queue expensive worker processes
+in front of HTTP responses. The background job drains that work under the same global worker cap.
 
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
 and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
 job has caught up.
 
-⚠ **Use `libaom-av1` with `-still-picture`, never `libsvtav1`,** for the measurements above. The
-dependency row in §14 says the image must *contain* an AV1 encoder; this says which one to call.
-
 ### Formats and negotiation
 
 Three formats are emitted: **AVIF** (smallest), **WebP** (near-universal), and **JPEG** (the floor).
 
-**Animated WebP is the deliberate exception to the still-image ladder.** Clip hover loops are
-already rendered at card size, so ingest identifies motion from the WebP RIFF chunk table and the
-serve path returns the original bytes as its one WebP rendition. It is never decoded and re-encoded:
-Go's `image.Image` represents one frame, so sending a loop through the otherwise-correct resize path
-silently turns it into frame zero. Animated records advertise one honest-width WebP source, no AVIF,
-while the JPEG fallback may remain a still for clients that cannot decode WebP at all.
+**Animation is a first-class ladder, not an original-file exception.** Animated WebP, GIF, and APNG
+inputs produce responsive animated-WebP Renditions; a one-frame animated container is static. JPEG
+and still WebP/AVIF requests use the first fully composited presentation frame. Animated AVIF is not
+emitted. Motion preservation means the same displayed canvas at every frame boundary, with frame
+order, per-frame duration, alpha, and finite/infinite looping preserved. GIF and WebP disposal flags
+do not map one-for-one, so the worker may normalise to full-canvas replace frames after applying source
+blend and disposal operations, including restore-to-previous. Container bytes and flags need not be
+identical; the visible timeline does. WebP timestamps have millisecond resolution, so fractional APNG
+delays are rounded on cumulative time (preventing per-frame drift); source zero-delay frames use a
+deterministic 10 ms viewer floor.
+
+Every transform uses a named recipe (`loomarr-rendition-v1` initially) fixing decoder, resize kernel,
+quality, effort, animation normalisation, thread limits, and encoder versions. The recipe is present
+in the derivative key, internal filename, and public URL query, so a future recipe creates a distinct
+immutable cache identity. Output SHA-256 remains recorded even when architecture-specific native
+encoding produces different but contract-equivalent bytes.
+
+### Required renderer protocol and limits
+
+At boot the Go composition root runs `loomarr-image capabilities --protocol 1 --self-test`. The exact
+Loomarr release, protocol, recipe identifier, required formats, and embedded static-plus-animation probe
+must agree before readiness. The production command `loomarr-image generate --protocol 1` reads one
+bounded JSON request from stdin, writes one bounded result to stdout, and uses stderr only for bounded
+diagnostics. The request names a content-addressed source, its expected SHA-256, a private staging
+directory, explicit format/width/motion targets, and resource limits. Rust writes only complete safe
+relative files inside that staging directory and returns their metadata and SHA-256 values. Go
+validates the exact target set, containment, regular-file type, signatures, sizes, and hashes before
+atomic rename and Store commit. Rust never sees the Store or canonical publication paths.
+
+The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
+canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,
+and 64 MiB of output. The fixture corpus may lower them before release; raising them is a design
+change. Rust checks limits before large allocations and while streaming frames. Go owns the global
+worker semaphore and cancellation: it terminates on context cancellation and removes the private
+staging directory. Corrupt, unsupported, source-changed, limit, decode, encode, I/O, and internal
+worker refusals have stable machine codes. None invokes Go
+pixel processing.
 
 ⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at
 ~95% and WebP ~97% global support, and a general web app could reasonably drop the fallback. The
@@ -5086,17 +5129,9 @@ expensive at identical output quality.
 
 ### Metadata
 
-Rich metadata is recorded in the `images.meta` column and **additionally embedded in the WebP
-rendition**, which is the one Tunarr fetches and can redistribute.
-
-⚠ **Embedding is WebP-only, and that is an ecosystem constraint rather than a preference.** No Go
-library writes image metadata into containers — the maintained reader is explicitly read-only forever,
-the XMP libraries emit packets but support no image containers, and the EXIF libraries emit IFDs but
-not containers. For WebP the remaining work is small and mechanical: promote to the extended format
-with a `VP8X` chunk carrying the metadata feature bits, then append the XMP and EXIF chunks with
-even-byte padding. For AVIF the equivalent is ISOBMFF box surgery, which is not worth hand-rolling;
-if AVIF metadata is ever needed it goes through ffmpeg. Everything else is **stripped**: smaller files,
-no incidental PII from operator uploads, no ICC ambiguity.
+Rich metadata is recorded in the `images.meta` column. Encoded derivatives strip source-container
+metadata: smaller files, no incidental PII from operator uploads, and no ICC ambiguity. Consumers that
+need attribution or provenance read the image row instead of parsing format-specific EXIF/XMP boxes.
 
 ### Two modes
 
@@ -5110,7 +5145,7 @@ no incidental PII from operator uploads, no ICC ambiguity.
 | job | does |
 | --- | --- |
 | `images-fetch` | pulls bytes for `remote` rows that have none, under the concurrency cap |
-| `images-avif` | encodes the AVIF ladder via ffmpeg for images that have WebP but no AVIF |
+| `images-avif` | fills scheduled static AVIF ladders through the required Rust worker; animated WebP ladders are rendered lazily behind the bounded request seam |
 | `images-maintenance` | re-fetches recoverable missing files, evicts unused derivatives, deletes unreferenced images, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
 
 ### Frontend contract

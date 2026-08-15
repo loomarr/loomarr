@@ -17,7 +17,7 @@ make agent-verify BASE=origin/main
 make agent-stop
 ```
 
-`agent-baseline` caches a successful `make check` by clean commit, Go toolchain, operating system, and
+`agent-baseline` caches a successful `make check` by clean commit, Go and Rust toolchains, operating system, and
 architecture. Worktrees at the same commit wait for one proof and reuse it. Dirty trees always run the
 gate and never populate the cache.
 
@@ -87,7 +87,7 @@ left untouched. CI exercises this ownership contract on both Linux (`/proc`) and
 
 ## Doctor and cleanup
 
-`make doctor` verifies the required toolchain and reports worktrees, per-worktree addresses, the Go
+`make doctor` verifies the required Go/Rust/frontend toolchain and reports worktrees, per-worktree addresses, the Go
 cache size, smoke-artifact size, a secondary worktree parked on `main`, and image artifacts placed in
 the repository root. It never deletes anything.
 
