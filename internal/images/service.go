@@ -72,6 +72,16 @@ type Config struct {
 	// icon URL persistently. Empty falls back to a relative URL, which is safe and works whenever
 	// the fetcher resolves Loomarr at the same origin.
 	PublicBaseURL func() string
+	// Observer reports the bounded worker and queue vocabulary defined by V59a. It is optional;
+	// nil callbacks make instrumentation a no-op without changing image behavior.
+	Observer Observer
+}
+
+// Observer is the composition-root seam for image worker telemetry.
+type Observer struct {
+	QueueWait func(time.Duration)
+	InFlight  func(delta int)
+	Worker    func(rustgen.Observation)
 }
 
 // DefaultFormats is §22's fixed compatibility ladder.
@@ -254,12 +264,28 @@ func (s *Service) inspect(ctx context.Context, data []byte, hash string) (rustge
 }
 
 func (s *Service) generate(ctx context.Context, request rustgen.Request) (rustgen.Manifest, error) {
+	waitStarted := time.Now()
 	select {
 	case s.slots <- struct{}{}:
-		defer func() { <-s.slots }()
 	case <-ctx.Done():
+		if s.cfg.Observer.QueueWait != nil {
+			s.cfg.Observer.QueueWait(time.Since(waitStarted))
+		}
 		return rustgen.Manifest{}, ctx.Err()
 	}
+	if s.cfg.Observer.QueueWait != nil {
+		s.cfg.Observer.QueueWait(time.Since(waitStarted))
+	}
+	if s.cfg.Observer.InFlight != nil {
+		s.cfg.Observer.InFlight(1)
+	}
+	defer func() {
+		<-s.slots
+		if s.cfg.Observer.InFlight != nil {
+			s.cfg.Observer.InFlight(-1)
+		}
+	}()
+	ctx = rustgen.WithObserver(ctx, s.cfg.Observer.Worker)
 	return s.renderer.Generate(ctx, request)
 }
 
