@@ -1,8 +1,13 @@
-import type { ChannelHealth, PlayoutGPU, PreparedReadiness } from "@loomarr/api";
-import { formatBytes, formatRelative, pluralize } from "@loomarr/core";
+import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
+import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
+import type { PreparedReadiness } from "@loomarr/api/models/preparedReadiness";
+import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { Info } from "lucide-react";
-import { Badge, Card, PanelRow, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { PanelRow } from "@/components/ui/panel-row";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
 // PlayoutPanel — the dashboard's single live-playout picture (§12, §9.1 V47, GET /v1/playout/status).

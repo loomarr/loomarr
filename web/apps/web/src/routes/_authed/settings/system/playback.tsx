@@ -1,7 +1,9 @@
-import { dashboardApi, unwrap } from "@loomarr/api";
+import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute } from "@tanstack/react-router";
-import { PlayoutPanel } from "@/components/loomarr";
-import { SettingsPage, useSettingsEntries } from "@/settings";
+import { PlayoutPanel } from "@/components/loomarr/dashboard/playout-panel";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 const PlaybackSettings = () => {
   const status = dashboardApi.useGetPlayoutStatus();

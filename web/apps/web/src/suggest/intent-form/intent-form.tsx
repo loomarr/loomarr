@@ -1,8 +1,10 @@
-import type { Intent } from "@loomarr/api";
-import { CHANNEL_TEMPLATES, intentSchema } from "@loomarr/core";
+import type { Intent } from "@loomarr/api/models/intent";
+import { intentSchema } from "@loomarr/core/schemas";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { useState } from "react";
-import { IntentInput } from "@/components/loomarr";
-import { Input, Label } from "@/components/ui";
+import { IntentInput } from "@/components/loomarr/ai/intent-input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { IntentFormProps } from "./intent-form.type";
 
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,

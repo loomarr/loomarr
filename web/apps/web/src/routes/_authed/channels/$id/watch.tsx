@@ -1,7 +1,9 @@
-import { channelsApi, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
-import { ChannelWatch, useChannelTuner } from "@/channels";
+import { ChannelWatch } from "@/channels/channel-watch";
+import { useChannelTuner } from "@/channels/use-channel-tuner";
 import { useChannelDetail } from "./-channel-detail-context";
 
 // WATCH — play the channel live in the browser (§9.1, V46). A VIEWER surface (like Overview): a

@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { TunerOSDProps } from "./tuner-osd.type";
 
 // TunerOSD is the synchronous acknowledgement of a tune request (§9.1 V57). It names the target

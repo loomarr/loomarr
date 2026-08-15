@@ -1,6 +1,8 @@
-import type { IncomingClipDTO } from "@loomarr/api";
-import { formatClipDuration } from "@loomarr/core";
-import { Caption, Disclosure, Image } from "@/components/ui";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import { formatClipDuration } from "@loomarr/core/format";
+import { Caption } from "@/components/ui/caption";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Image } from "@/components/ui/image";
 import { ClipPipeline, copyFor } from "../../clip-pipeline";
 
 // One row of the Incoming conveyor for a clip the MACHINE still owns (§10 V51b/V51e).

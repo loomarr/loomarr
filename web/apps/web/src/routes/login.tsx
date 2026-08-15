@@ -1,9 +1,13 @@
-import { authApi, setupApi } from "@loomarr/api";
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as setupApi from "@loomarr/api/endpoints/setup";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { meQueryOptions, readSetupState, safeRedirectPath } from "@/auth";
-import { LoginForm, LoginShell } from "@/components/loomarr";
-import { useDocumentTitle } from "@/lib";
+import { meQueryOptions } from "@/auth/me-query";
+import { safeRedirectPath } from "@/auth/safe-redirect-path";
+import { readSetupState } from "@/auth/setup-state-query";
+import { LoginForm } from "@/components/loomarr/setup/login-form";
+import { LoginShell } from "@/components/loomarr/setup/login-shell";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Login — the public sign-in screen (§11, §13). An idle surface (dark broadcast frame).
 // beforeLoad bounces an already-signed-in visitor to where they were headed; the

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { thumbHashToDataURL } from "thumbhash";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ImageProps } from "./image.type";
 
 // Image — THE way this app renders anything served by the image service (§22, V52 phase 4).

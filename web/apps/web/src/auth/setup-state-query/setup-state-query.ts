@@ -1,4 +1,5 @@
-import { type SetupStateOutputBody, setupApi } from "@loomarr/api";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import type { SetupStateOutputBody } from "@loomarr/api/models/setupStateOutputBody";
 
 // The single definition of the GET /v1/setup/state query — the UNAUTHENTICATED
 // "does this install have an owner yet?" signal the router guards branch on (§7).

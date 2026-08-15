@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // Settings → System (config-design §5, V9) — "the machine", as distinct from "the product".
 //

@@ -1,7 +1,9 @@
-import type { ChannelDTO, ChannelPolicy, UpdateChannelInputBody } from "@loomarr/api";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { UpdateChannelInputBody } from "@loomarr/api/models/updateChannelInputBody";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
-import type { OnAirState } from "@/components/loomarr";
+import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 
 // The channel-detail layout's shared state (V-nav-paths), read by each section route
 // (`info.tsx`, `programming.tsx`, `filler.tsx`, `danger.tsx`). Previously all of this lived

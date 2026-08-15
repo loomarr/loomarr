@@ -1,7 +1,9 @@
-import { channelsApi, proposalsApi, unwrap } from "@loomarr/api";
-import type { SuggestionPhase } from "@loomarr/core";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { unwrap } from "@loomarr/api/unwrap";
+import type { SuggestionPhase } from "@loomarr/core/events";
 import { useState } from "react";
-import { useLoomarrEventListener } from "@/events";
+import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
 import type { ChannelRefine } from "./use-channel-refine.type";
 

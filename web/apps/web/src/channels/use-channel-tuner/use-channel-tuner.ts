@@ -1,4 +1,4 @@
-import type { ChannelDTO } from "@loomarr/api";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type WarmedChannel, warmChannel as warmAdjacentChannel } from "../channel-warmer";
 import { beginTune, markTunePhase } from "../tuner-timing";

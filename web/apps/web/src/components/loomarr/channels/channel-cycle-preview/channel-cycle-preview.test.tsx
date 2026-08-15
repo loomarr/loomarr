@@ -11,15 +11,12 @@ import { ChannelCyclePreview } from "./channel-cycle-preview";
 // unit test cares about.
 const mockUsePreviewChannelCycle = vi.fn();
 const mockUsePreviewChannelProgramming = vi.fn();
-vi.mock("@loomarr/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@loomarr/api")>();
+vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@loomarr/api/endpoints/channels")>();
   return {
     ...actual,
-    channelsApi: {
-      ...actual.channelsApi,
-      usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
-      usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
-    },
+    usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
+    usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
   };
 });
 

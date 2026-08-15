@@ -156,6 +156,29 @@ web/
 - **TanStack Form + zod**, the zod schema passed straight to the form as a **Standard Schema** validator — no resolver adapter. Zod schemas live in `packages/core` so mobile reuses validation verbatim, and `@tanstack/form-core` lets it reuse the form logic too. (Not shadcn's `<Form>`: that wrapper is react-hook-form-bound and Loomarr hand-composes `Label`+`Input`, so there was nothing to inherit.)
 - **No global state library.** TanStack Query owns server state (SSE-invalidated, main doc §12); local UI state is React state. Introducing zustand/jotai requires updating this doc first.
 
+### 4.4 Route payloads are bounded
+
+File-route code splitting only helps when a route's imports stay behind that route boundary. Production
+code imports the nearest component or domain barrel (`@/components/ui/button`,
+`@/components/loomarr/dashboard`, `@/filler/filler-page`), never an app-wide barrel such as
+`@/components/ui`, `@/components/loomarr`, `@/channels`, `@/filler`, or `@/settings`. The same rule
+applies to workspace packages: runtime code imports a tag/model subpath from `@loomarr/api` and a
+single module from `@loomarr/core`, while their package roots remain the complete public catalogs for
+tests and tooling. Using a catalog barrel in the running app lets the bundler merge unrelated screens
+back into one eagerly preloaded chunk.
+
+The production build enforces both sides of this contract: no JavaScript chunk may exceed 500 KiB, and
+the entry script plus its module preloads may not exceed 1 MiB uncompressed. The first bound keeps one
+heavy screen from becoming a parse cliff; the second catches a nominally split build that still downloads
+the whole app before authentication or route selection.
+
+The embedded production server negotiates gzip for HTML, JavaScript, CSS, and other compressible static
+formats. It prepares those representations once when its handler is constructed, not on every request;
+the route budget above remains uncompressed so compression cannot hide parse and evaluation regressions.
+The document also starts the initial `/v1/auth/me` read while that entry graph is downloading. The shared
+API transport adopts that exact response once, preserving the route guard's error handling without putting
+the session round trip after JavaScript evaluation or issuing a duplicate request.
+
 ---
 
 ## 5. Component workshop + pixel-perfect testing (Storybook + Playwright)

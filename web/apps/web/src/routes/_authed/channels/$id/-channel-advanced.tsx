@@ -1,6 +1,8 @@
-import type { ChannelDTO, ChannelPolicy } from "@loomarr/api";
-import { humanizeRelaxation } from "@loomarr/core";
-import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import { humanizeRelaxation } from "@loomarr/core/format";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own

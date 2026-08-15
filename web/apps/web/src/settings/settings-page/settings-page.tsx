@@ -1,8 +1,13 @@
-import { settingsApi, setupApi, systemApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
+import { Button } from "@/components/ui/button";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
 

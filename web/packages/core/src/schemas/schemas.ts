@@ -19,7 +19,9 @@
 // all), and OpenAPI has nowhere to put a user-facing message. So every product rule below —
 // the trims, the lengths, the 0–200 cap, the password confirmation — is deliberately
 // hand-authored and must STAY that way. Do not "simplify" these into the generated schema.
-import { bootstrapBody, loginBody, submitProposalBody } from "@loomarr/api/zod";
+import { loginBody } from "@loomarr/api/zod/auth";
+import { submitProposalBody } from "@loomarr/api/zod/proposals";
+import { bootstrapBody } from "@loomarr/api/zod/setup";
 import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only

@@ -1,12 +1,16 @@
-import { ApiError, authApi, setupApi } from "@loomarr/api";
-import { bootstrapSchema } from "@loomarr/core";
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import { ApiError } from "@loomarr/api/mutator";
+import { bootstrapSchema } from "@loomarr/core/schemas";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import { Button, Input, Label } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { BootstrapStepProps } from "./bootstrap-step.type";
 
 // Wizard step 1 — create the owning admin (§11, §13). Unauthenticated *because* it is

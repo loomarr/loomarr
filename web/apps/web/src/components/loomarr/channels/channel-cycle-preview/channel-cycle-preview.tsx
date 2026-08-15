@@ -1,19 +1,22 @@
-import {
-  type ChannelPolicy,
-  type CycleSlotDTO,
-  channelsApi,
-  type ExcludedDTO,
-  // ⚠ One import for both the TYPE and the const — orval emits a `typeof`-derived union beside
-  // the frozen object, so the switchable values and the type that constrains them cannot drift.
-  ExcludedItemDTOReason,
-  unwrap,
-} from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { CycleSlotDTO } from "@loomarr/api/models/cycleSlotDTO";
+import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
+import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason";
+import { unwrap } from "@loomarr/api/unwrap";
 import { Clapperboard, Clock, ShieldAlert, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, Button, Disclosure, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
+
+// One import provides both the type and const: orval derives the union from the frozen object,
+// so the switchable values and the type that constrains them cannot drift.
 
 // A quick-pick preset: label + a function from "now" to the RFC3339 `at` it produces.
 // Kept as pure date math (no server round trip) — the preview endpoint is what actually

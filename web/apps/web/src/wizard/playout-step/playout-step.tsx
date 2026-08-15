@@ -1,11 +1,15 @@
-import { settingsApi, setupApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
-import { ConnectionBlock, SettingsFields } from "@/components/loomarr";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
-import { useSettingsEntries } from "@/settings";
+import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
 

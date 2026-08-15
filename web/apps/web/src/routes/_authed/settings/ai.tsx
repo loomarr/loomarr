@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AiModelSettings, SettingsPage, useSettingsEntries } from "@/settings";
+import { AiModelSettings } from "@/settings/ai-model-settings";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 const AiSettings = () => (
   <SettingsPage

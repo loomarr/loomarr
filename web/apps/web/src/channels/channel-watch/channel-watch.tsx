@@ -1,17 +1,16 @@
-import {
-  type ChannelDTO,
-  type ChannelPolicy,
-  channelsApi,
-  type GuideAiring,
-  type TrackDTO,
-  unwrap,
-} from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { TrackDTO } from "@loomarr/api/models/trackDTO";
+import { unwrap } from "@loomarr/api/unwrap";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
-import { TunerLoader } from "@/components/loomarr/shell";
-import { Button, VideoPlayer } from "@/components/ui";
+import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
+import { Button } from "@/components/ui/button";
+import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { TunerOSD } from "../tuner-osd";

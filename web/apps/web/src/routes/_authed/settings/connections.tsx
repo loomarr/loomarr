@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TmdbAttribution } from "@/components/loomarr/settings";
-import { blockTitle, SettingsPage, useSettingsEntries } from "@/settings";
+import { TmdbAttribution } from "@/components/loomarr/settings/tmdb-attribution";
+import { blockTitle } from "@/settings/provider-title";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Connections is just the four connection blocks — each self-reporting (status dot + inline
 // Test + Fix), with the first failure open for focused triage. There is no wiring section or checklist:

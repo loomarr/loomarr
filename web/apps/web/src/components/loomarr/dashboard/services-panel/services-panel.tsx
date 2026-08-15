@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
-import { Button, PanelRow } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { PanelRow } from "@/components/ui/panel-row";
+import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
 // ServicesPanel — "is anything broken?" (§12, V31; v2 mock Dashboard § Services).

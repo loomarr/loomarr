@@ -1,7 +1,9 @@
-import { type Intent, proposalsApi, unwrap } from "@loomarr/api";
-import type { SuggestionPhase } from "@loomarr/core";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import type { Intent } from "@loomarr/api/models/intent";
+import { unwrap } from "@loomarr/api/unwrap";
+import type { SuggestionPhase } from "@loomarr/core/events";
 import { useState } from "react";
-import { useLoomarrEventListener } from "@/events";
+import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
 import type { SuggestionRun } from "./use-suggestion-run.type";
 

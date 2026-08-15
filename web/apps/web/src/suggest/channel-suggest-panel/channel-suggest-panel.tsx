@@ -1,9 +1,12 @@
-import { proposalsApi, toProblem } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/auth";
-import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loomarr";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";

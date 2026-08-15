@@ -1,8 +1,9 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { SecretName, SecretRow } from "@/components/loomarr";
-import { ErrorState, SecretsPanel } from "@/components/loomarr";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import type { SecretName, SecretRow } from "@/components/loomarr/settings/secrets-panel";
+import { SecretsPanel } from "@/components/loomarr/settings/secrets-panel";
 
 // The generated-secrets panel (config-design §4/§5). Consequences are spelled out per
 // secret because they differ sharply: one breaks integrations, one signs everybody out.

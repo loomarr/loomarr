@@ -1,9 +1,11 @@
-import { settingsApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, Switch } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import type { TunePanelProps } from "./tune-panel.type";
 
 // TunePanel — the auto-file policy, inline on Incoming (the v2 mock's `toggleAuto` block).

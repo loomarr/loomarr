@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ErrorDetailsProps } from "./error-details.type";
 
 // ErrorDetails — a failure message that OPENS UP rather than being clipped to one line.

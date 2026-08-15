@@ -1,6 +1,8 @@
-import type { PodPoolDTOMatchLevel } from "@loomarr/api";
-import { Badge, Caption, Image } from "@/components/ui";
-import { cn } from "@/lib";
+import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
+import { Badge } from "@/components/ui/badge";
+import { Caption } from "@/components/ui/caption";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import type { GuideDetailCardProps } from "./guide-detail-card.type";
 
 // GuideDetailCard — what a guide block actually IS (§12, the v2 mock's hover card).

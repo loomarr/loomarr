@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { EmptyStateProps } from "./empty-state.type";
 
 // EmptyState — mandatory for every list (§6): a calm surface with exactly ONE next

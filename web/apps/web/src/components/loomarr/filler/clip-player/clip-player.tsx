@@ -1,8 +1,9 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { clipMediaURL } from "@loomarr/core";
+import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { X } from "lucide-react";
-import { Button, VideoPlayer } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { VideoPlayer } from "@/components/ui/video-player";
+import { cn } from "@/lib/utils";
 import type { ClipPlayerProps } from "./clip-player.type";
 
 // ClipPlayer — watch one catalog clip in a modal (V39).

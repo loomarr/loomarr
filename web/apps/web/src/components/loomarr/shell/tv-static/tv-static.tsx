@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { TvStaticProps } from "./tv-static.type";
 
 // TvStatic — the CRT snow behind idle surfaces (login, wizard, empty states) and NOWHERE

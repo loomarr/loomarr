@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";

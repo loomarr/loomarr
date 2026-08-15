@@ -1,8 +1,11 @@
-import { type SearchCandidate, searchApi, unwrap } from "@loomarr/api";
+import * as searchApi from "@loomarr/api/endpoints/search";
+import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
+import { unwrap } from "@loomarr/api/unwrap";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelSeriesScopeProps } from "./channel-series-scope.type";

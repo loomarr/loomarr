@@ -7,7 +7,7 @@ import {
   tintSteps,
   tintSurface,
 } from "@loomarr/tokens";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // Palette — the design system documenting itself (frontend-design §2.1, §5.1a).
 //

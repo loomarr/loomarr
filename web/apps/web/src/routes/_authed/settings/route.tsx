@@ -1,9 +1,10 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ErrorState } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
-import { SettingsEditsProvider, SettingsSaveBarHost } from "@/settings";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
 // Settings (config-design §5) — Sonarr's shape: grouped pages, an explicit save bar per page.
 // It is also the troubleshooting console for the life of the install (§13), which is why the

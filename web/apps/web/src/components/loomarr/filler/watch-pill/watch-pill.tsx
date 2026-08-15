@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { WatchHealth, WatchPillProps } from "./watch-pill.type";
 
 // WatchPill — the mock's `watchLine`, top-right of the Filler page header (§10 V38c).

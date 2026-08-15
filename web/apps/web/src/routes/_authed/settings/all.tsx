@@ -1,9 +1,10 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { AllSettingsTable } from "@/components/loomarr";
-import { useSettingsEdits, useSettingsEntries } from "@/settings";
+import { AllSettingsTable } from "@/components/loomarr/settings/all-settings-table";
+import { useSettingsEdits } from "@/settings/settings-edits";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Settings → All settings (config-design §5, V10) — the escape hatch.
 //

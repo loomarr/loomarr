@@ -1,10 +1,15 @@
-import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { toProblem } from "@loomarr/api/mutator";
+import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { EmptyState, ErrorState, SplitReviewEditor } from "@/components/loomarr";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import type { SplitReviewPageProps } from "./split-review-page.type";
 
 const durationSettingMs = (value: string | undefined): number | undefined => {

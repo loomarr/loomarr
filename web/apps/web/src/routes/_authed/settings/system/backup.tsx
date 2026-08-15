@@ -1,9 +1,11 @@
-import { systemApi } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { BackupPanel, ErrorState } from "@/components/loomarr";
-import { SettingsPage, useSettingsEntries } from "@/settings";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Settings → System → Backup (§16, V12) — the backups on disk.
 //

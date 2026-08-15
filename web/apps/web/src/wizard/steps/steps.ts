@@ -1,5 +1,5 @@
-import type { SetupCheck } from "@loomarr/api";
-import type { WizardStep, WizardStepStatus } from "@/components/loomarr";
+import type { SetupCheck } from "@loomarr/api/models/setupCheck";
+import type { WizardStep, WizardStepStatus } from "@/components/loomarr/setup/wizard-shell";
 
 // PlayoutBackend is who actually streams a channel (design §9.1). `internal` is the default:
 // Loomarr encodes and serves the stream itself, and the media server picks it up as Live TV.

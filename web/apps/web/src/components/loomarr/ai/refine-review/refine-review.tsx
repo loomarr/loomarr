@@ -1,7 +1,9 @@
-import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { Check, Download, Minus } from "lucide-react";
-import { Button, Card } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
 
 // --- programming-policy deltas (§8.2) --------------------------------------------------

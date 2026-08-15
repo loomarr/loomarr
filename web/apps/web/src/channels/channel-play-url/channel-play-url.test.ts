@@ -6,11 +6,11 @@ const { channelPlayUrl, unwrap, deviceProfile } = vi.hoisted(() => ({
   deviceProfile: vi.fn(() => ({ video: [], audio: [], video10bit: false })),
 }));
 
-vi.mock("@loomarr/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@loomarr/api")>()),
-  channelsApi: { channelPlayUrl },
-  unwrap,
+vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@loomarr/api/endpoints/channels")>()),
+  channelPlayUrl,
 }));
+vi.mock("@loomarr/api/unwrap", () => ({ unwrap }));
 vi.mock("../use-hls-player/device-profile", () => ({ deviceProfile }));
 
 import { mintChannelPlaySource } from "./channel-play-url";

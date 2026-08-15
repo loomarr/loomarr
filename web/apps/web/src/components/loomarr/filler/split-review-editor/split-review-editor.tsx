@@ -1,9 +1,13 @@
-import type { SplitSegment } from "@loomarr/api";
-import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core";
+import type { SplitSegment } from "@loomarr/api/models/splitSegment";
+import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
 import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Badge, Button, Card, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
 import { SegmentPreview } from "../segment-preview";
 import type { SplitReviewEditorProps } from "./split-review-editor.type";
