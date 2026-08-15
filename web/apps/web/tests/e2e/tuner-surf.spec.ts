@@ -164,7 +164,7 @@ const waitForAdjacentWarm = async (
   for (const neighbor of adjacentNumbers(number)) {
     const asset = `${channelId(neighbor)}/segment.m4s`;
     await expect
-      .poll(() => backend.state.assetRequests.filter((candidate) => candidate === asset).length)
+      .poll(() => backend.state.assetCompletions.filter((candidate) => candidate === asset).length)
       .toBeGreaterThan(after.get(asset) ?? 0);
   }
 };
@@ -176,7 +176,7 @@ const adjacentWarmCounts = (
   new Map(
     adjacentNumbers(number).map((neighbor) => {
       const asset = `${channelId(neighbor)}/segment.m4s`;
-      return [asset, backend.state.assetRequests.filter((candidate) => candidate === asset).length];
+      return [asset, backend.state.assetCompletions.filter((candidate) => candidate === asset).length];
     }),
   );
 
@@ -257,7 +257,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     const targetMints = backend.state.playURLMints.filter((candidate) => candidate === id).length;
     const next = target === 100 ? 1 : target + 1;
     const nextAsset = `${channelId(next)}/segment.m4s`;
-    const nextAssetRequests = backend.state.assetRequests.filter(
+    const nextAssetCompletions = backend.state.assetCompletions.filter(
       (candidate) => candidate === nextAsset,
     ).length;
 
@@ -291,8 +291,8 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     // before the following measured click. Count from this iteration so an identical request made
     // during the arbitrary phase cannot masquerade as the current controller's warm.
     await expect
-      .poll(() => backend.state.assetRequests.filter((candidate) => candidate === nextAsset).length)
-      .toBeGreaterThan(nextAssetRequests);
+      .poll(() => backend.state.assetCompletions.filter((candidate) => candidate === nextAsset).length)
+      .toBeGreaterThan(nextAssetCompletions);
     current = target;
   }
 

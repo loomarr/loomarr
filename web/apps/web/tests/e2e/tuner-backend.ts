@@ -56,6 +56,7 @@ interface TunerBackend {
   delayNextActiveManifest: (channelId: string, delayMs: number) => Promise<void>;
   readonly state: {
     activeManifests: string[];
+    assetCompletions: string[];
     assetRequests: string[];
     playURLMints: string[];
     preparedProbes: string[];
@@ -65,6 +66,7 @@ interface TunerBackend {
 const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
   const state = {
     activeManifests: [] as string[],
+    assetCompletions: [] as string[],
     assetRequests: [] as string[],
     playURLMints: [] as string[],
     preparedProbes: [] as string[],
@@ -82,6 +84,12 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
     if (asset) state.assetRequests.push(`${asset[1]}/${asset[2]}`);
     const playURL = path.match(/^\/v1\/channels\/(ch-\d+)\/play-url$/);
     if (playURL && request.method() === "POST") state.playURLMints.push(playURL[1] ?? "");
+  });
+  page.on("requestfinished", (request) => {
+    const asset = new URL(request.url()).pathname.match(
+      /^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s)$/,
+    );
+    if (asset) state.assetCompletions.push(`${asset[1]}/${asset[2]}`);
   });
 
   return {
