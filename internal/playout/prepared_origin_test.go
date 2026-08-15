@@ -27,6 +27,7 @@ func preparedSpec(source string) prepared.Specification {
 		SourceFingerprint: source,
 		Rendition: prepared.RenditionContract{
 			VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080,
+			FrameRate: 25, VideoBitrateKbps: 5000, AudioBitrateKbps: 160,
 			SegmentDurationMS: 2000, PackagingVersion: 1,
 		},
 	}
@@ -39,10 +40,10 @@ func publishHLS(t *testing.T, lib *prepared.Library, spec prepared.Specification
 			"#EXT-X-MAP:URI=\"init.mp4\"\n" +
 			"#EXTINF:2.000,\nseg-0.m4s\n#EXTINF:2.000,\nseg-1.m4s\n" +
 			"#EXTINF:2.000,\nseg-2.m4s\n#EXTINF:2.000,\nseg-3.m4s\n#EXT-X-ENDLIST\n"
-		files := []string{preparedManifestName, "init.mp4", "seg-0.m4s", "seg-1.m4s", "seg-2.m4s", "seg-3.m4s"}
+		files := []string{prepared.MediaManifestName, "init.mp4", "seg-0.m4s", "seg-1.m4s", "seg-2.m4s", "seg-3.m4s"}
 		for _, file := range files {
 			body := []byte(file)
-			if file == preparedManifestName {
+			if file == prepared.MediaManifestName {
 				body = []byte(manifest)
 			}
 			if err := os.WriteFile(filepath.Join(workspace, file), body, 0o600); err != nil {

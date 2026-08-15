@@ -40,6 +40,9 @@ type RenditionContract struct {
 	AudioLayout       string `json:"audioLayout,omitempty"`
 	Width             int    `json:"width"`
 	Height            int    `json:"height"`
+	FrameRate         int    `json:"frameRate,omitempty"`
+	VideoBitrateKbps  int    `json:"videoBitrateKbps,omitempty"`
+	AudioBitrateKbps  int    `json:"audioBitrateKbps,omitempty"`
 	SegmentDurationMS int    `json:"segmentDurationMs"`
 	PackagingVersion  int    `json:"packagingVersion"`
 }
@@ -317,6 +320,7 @@ func keyFor(spec Specification) (string, error) {
 	r := spec.Rendition
 	if strings.TrimSpace(spec.SourceFingerprint) == "" || strings.TrimSpace(r.VideoCodec) == "" ||
 		strings.TrimSpace(r.AudioCodec) == "" || r.Width <= 0 || r.Height <= 0 ||
+		r.FrameRate <= 0 || r.VideoBitrateKbps <= 0 || r.AudioBitrateKbps <= 0 ||
 		r.SegmentDurationMS <= 0 || r.PackagingVersion <= 0 {
 		return "", ErrInvalidSpecification
 	}
