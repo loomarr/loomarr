@@ -65,6 +65,22 @@ type Asset struct {
 	Immutable bool
 }
 
+// Admission is a tracked raw-transport operation. Context is cancelled when the request ends or
+// lifecycle teardown retires its channel; Release must be called after the operation is finished.
+// The unexported release function keeps registration ownership inside Origin while allowing HTTP
+// adapters and shared test doubles to carry the lease without learning its bookkeeping.
+type Admission struct {
+	Context context.Context
+	release func()
+}
+
+// Release retires the admission lease. It is safe to call on the zero value and more than once.
+func (a Admission) Release() {
+	if a.release != nil {
+		a.release()
+	}
+}
+
 type sessionAttacher interface {
 	Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error)
 	StopChannel(channelID string)
@@ -96,6 +112,24 @@ type Origin struct {
 	lifecycleMu sync.RWMutex
 	available   func() bool
 	eligible    func(context.Context, string) (bool, error)
+
+	admissionsMu sync.Mutex
+	admissions   map[*admissionLease]string
+}
+
+type admissionLease struct {
+	origin *Origin
+	once   sync.Once
+	cancel context.CancelFunc
+}
+
+func (l *admissionLease) release() {
+	l.once.Do(func() {
+		l.cancel()
+		l.origin.admissionsMu.Lock()
+		delete(l.origin.admissions, l)
+		l.origin.admissionsMu.Unlock()
+	})
 }
 
 // OriginDependencies are the implementations hidden behind the one production playout seam.
@@ -125,16 +159,27 @@ func newOrigin(prepared preparedDelivery, sessions sessionAttacher, hls hlsOrigi
 	return &Origin{prepared: prepared, sessions: sessions, hls: hls}
 }
 
-// CheckAdmission applies the same fail-closed lifecycle decision used by Tune and OpenAsset
-// without starting delivery. Internal playlist/program HTTP hops use it before doing resolver or
-// encoder work, so possessing the device token cannot bypass channel lifecycle state.
-func (o *Origin) CheckAdmission(ctx context.Context, channelID string) error {
+// AcquireAdmission applies the same fail-closed lifecycle decision used by Tune and OpenAsset and
+// registers a cancellable raw-transport operation before teardown can pass it. Internal program
+// hops hold the returned lease through resolver and encoder work; StopChannel/StopAll cancel it.
+func (o *Origin) AcquireAdmission(ctx context.Context, channelID string) (Admission, error) {
 	if o == nil {
-		return ErrUnavailable
+		return Admission{}, ErrUnavailable
 	}
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
-	return o.checkAdmissionLocked(ctx, channelID)
+	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
+		return Admission{}, err
+	}
+	leaseCtx, cancel := context.WithCancel(ctx)
+	lease := &admissionLease{origin: o, cancel: cancel}
+	o.admissionsMu.Lock()
+	if o.admissions == nil {
+		o.admissions = make(map[*admissionLease]string)
+	}
+	o.admissions[lease] = channelID
+	o.admissionsMu.Unlock()
+	return Admission{Context: leaseCtx, release: lease.release}, nil
 }
 
 func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) error {
@@ -244,6 +289,7 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 func (o *Origin) StopChannel(channelID string) {
 	o.lifecycleMu.Lock()
 	defer o.lifecycleMu.Unlock()
+	o.cancelAdmissions(channelID)
 	if o.hls != nil {
 		o.hls.StopChannel(channelID)
 	}
@@ -257,10 +303,25 @@ func (o *Origin) StopChannel(channelID string) {
 func (o *Origin) StopAll() {
 	o.lifecycleMu.Lock()
 	defer o.lifecycleMu.Unlock()
+	o.cancelAdmissions("")
 	if o.hls != nil {
 		o.hls.StopAll()
 	}
 	if o.sessions != nil {
 		o.sessions.Stop()
+	}
+}
+
+// cancelAdmissions cancels every raw operation for channelID; an empty id means all channels.
+// lifecycleMu is held by the caller, so an admission that passed its durable check cannot register
+// after this snapshot and escape teardown.
+func (o *Origin) cancelAdmissions(channelID string) {
+	o.admissionsMu.Lock()
+	defer o.admissionsMu.Unlock()
+	for lease, admittedChannel := range o.admissions {
+		if channelID == "" || admittedChannel == channelID {
+			lease.cancel()
+			delete(o.admissions, lease)
+		}
 	}
 }

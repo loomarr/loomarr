@@ -30,8 +30,10 @@ func (*Playout) OpenAsset(context.Context, string, playout.EncodePlan, string) (
 	return playout.Asset{}, false, nil
 }
 
-// CheckAdmission satisfies the API's canonical lifecycle admission seam.
-func (p *Playout) CheckAdmission(context.Context, string) error { return p.AdmissionErr }
+// AcquireAdmission satisfies the API's canonical lifecycle admission seam.
+func (p *Playout) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
+	return playout.Admission{Context: ctx}, p.AdmissionErr
+}
 
 func (p *Playout) StopChannel(channelID string) {
 	p.mu.Lock()

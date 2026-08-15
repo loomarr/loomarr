@@ -102,10 +102,10 @@ func (f *fakePlayoutSessions) OpenAsset(context.Context, string, playout.EncodeP
 	return playout.Asset{}, false, nil
 }
 
-func (f *fakePlayoutSessions) CheckAdmission(context.Context, string) error {
+func (f *fakePlayoutSessions) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.admitErr
+	return playout.Admission{Context: ctx}, f.admitErr
 }
 
 func (f *fakePlayoutSessions) StopChannel(channelID string) {

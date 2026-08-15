@@ -118,7 +118,7 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	}
 }
 
-func TestOriginCheckAdmissionDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
+func TestOriginAcquireAdmissionDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
 	t.Parallel()
 	wantReadErr := errors.New("checkpoint unavailable")
 	for _, tc := range []struct {
@@ -143,8 +143,8 @@ func TestOriginCheckAdmissionDistinguishesLifecycleMissFromDurableOutage(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := NewOrigin(OriginDependencies{Eligible: tc.eligible})
-			if err := origin.CheckAdmission(context.Background(), "ch-one"); !errors.Is(err, tc.want) {
-				t.Fatalf("CheckAdmission error = %v, want %v", err, tc.want)
+			if _, err := origin.AcquireAdmission(context.Background(), "ch-one"); !errors.Is(err, tc.want) {
+				t.Fatalf("AcquireAdmission error = %v, want %v", err, tc.want)
 			}
 		})
 	}

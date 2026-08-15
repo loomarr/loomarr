@@ -68,9 +68,9 @@ const playoutModeParam = "mode"
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
-	// CheckAdmission applies the canonical lifecycle/backend gate without starting delivery.
-	// Internal playlist/program hops call it before resolver or encoder work.
-	CheckAdmission(ctx context.Context, channelID string) error
+	// AcquireAdmission applies the canonical lifecycle/backend gate and tracks raw transport work
+	// until Release. Lifecycle teardown cancels the lease context before retiring live delivery.
+	AcquireAdmission(ctx context.Context, channelID string) (playout.Admission, error)
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
 	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
@@ -301,9 +301,13 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !s.checkPlayoutAdmission(w, r, channelID) {
+	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
+	if !ok {
 		return
 	}
+	// The playlist performs no resolver or encoder work, so its lease is needed only for the
+	// fail-closed durable decision at this admission boundary.
+	admission.Release()
 	programURL := s.playoutURL("program", channelID)
 	if programURL == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
@@ -328,29 +332,31 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(playout.Playlist(programURL)))
 }
 
-// checkPlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
+// acquirePlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
 // contract. Ineligible channel ids stay indistinguishable from missing routes; a replica that
 // cannot prove durable state reports temporary unavailability and performs no downstream work.
-func (s *Server) checkPlayoutAdmission(w http.ResponseWriter, r *http.Request, channelID string) bool {
+func (s *Server) acquirePlayoutAdmission(
+	w http.ResponseWriter, r *http.Request, channelID string,
+) (playout.Admission, bool) {
 	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout unavailable",
 			"Internal playout isn't available on this instance right now.")
-		return false
+		return playout.Admission{}, false
 	}
-	err := s.playout.CheckAdmission(r.Context(), channelID)
+	admission, err := s.playout.AcquireAdmission(r.Context(), channelID)
 	if err == nil {
-		return true
+		return admission, true
 	}
 	if errors.Is(err, playout.ErrIneligible) {
 		http.NotFound(w, r)
-		return false
+		return playout.Admission{}, false
 	}
 	if s.log != nil {
 		s.log.Warn("playout: lifecycle admission unavailable", "channel", channelID, "err", err)
 	}
 	s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout temporarily unavailable",
 		"Loomarr couldn't verify this channel's current lifecycle state. Try again in a moment.")
-	return false
+	return playout.Admission{}, false
 }
 
 // tunerHandler serves the M3U channel list the media server registers as a tuner.

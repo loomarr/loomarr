@@ -42,12 +42,26 @@ type fakeResolver struct {
 	profile      playout.Profile
 	calls        int
 	mu           sync.Mutex
+	// airingEntered/airingRelease form a deterministic barrier for lifecycle races. When both
+	// are set, AiringNow announces that resolution began and waits until either the request is
+	// cancelled or the test releases it.
+	airingEntered chan struct{}
+	airingRelease <-chan struct{}
 }
 
-func (f *fakeResolver) AiringNow(_ context.Context, _ string) (playout.Airing, string, error) {
+func (f *fakeResolver) AiringNow(ctx context.Context, _ string) (playout.Airing, string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
+	entered, release := f.airingEntered, f.airingRelease
+	f.mu.Unlock()
+	if entered != nil && release != nil {
+		close(entered)
+		select {
+		case <-ctx.Done():
+			return playout.Airing{}, "", ctx.Err()
+		case <-release:
+		}
+	}
 	return f.airing, f.url, f.err
 }
 
@@ -217,6 +231,42 @@ func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T)
 				t.Fatalf("encoder started with %v", got)
 			}
 		})
+	}
+}
+
+func TestPlayoutProgramAdmissionCannotEscapeConcurrentStopAll(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	resolver := &fakeResolver{
+		airing: playableAiring(0, time.Hour), url: "http://emby/v/1",
+		airingEntered: entered, airingRelease: release,
+	}
+	encoder := &fakeEncoder{failErr: errors.New("must not start")}
+	origin := playout.NewOrigin(playout.OriginDependencies{
+		Eligible:     func(context.Context, string) (bool, error) { return true, nil },
+		LiveSessions: &playout.Manager{},
+		LiveHLS:      &playout.HLSManager{},
+	})
+	srv := newProgramServer(t, programOpts{
+		resolver: resolver,
+		encoder:  encoder.start,
+		playout:  origin,
+	})
+
+	done := make(chan *http.Response, 1)
+	go func() {
+		resp, _ := srv.Client().Get(srv.URL + "/v1/playout/program/ch1?token=" + playoutToken)
+		done <- resp
+	}()
+	<-entered
+	origin.StopAll()
+	close(release)
+	resp := <-done
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if got := encoder.args(); got != nil {
+		t.Fatalf("encoder started after StopAll with %v", got)
 	}
 }
 
