@@ -209,41 +209,29 @@ flowchart TD
   Owns immutable, reusable playout publications.
 - **`schedule`** · 12 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
-
-**Layer 2**
-
-- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
-  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
-  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-
-**Layer 3**
-
-- **`activity`** · 3 importers · → `store`
-  Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
-- **`mediatools`** · 2 importers · → `playout`
-  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
-**Layer 4**
+**Layer 2**
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `scheduler`, `store`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
+  Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
-**Layer 5**
+**Layer 3**
 
+- **`mediatools`** · 2 importers · → `playout`
+  Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §18).
 
-**Layer 6**
+**Layer 4**
 
 - **`httpx`** · 5 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 
-**Layer 7**
+**Layer 5**
 
 - **`llm`** · 5 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -252,43 +240,49 @@ flowchart TD
 - **`requester`** · 2 importers · → `httpx`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
-**Layer 8**
+**Layer 6**
 
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+
+**Layer 7**
+
+- **`clipfetch`** · 1 importer · → `filler`
+  Downloads filler clips into the drop-folder (design §10, §16).
+- **`library`** · 6 importers · → `filler`, `httpx`
+  Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
+- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+
+**Layer 8**
+
+- **`activity`** · 3 importers · → `store`
+  Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
+- **`auth`** · 3 importers · → `library`, `store`
+  Issues and validates Loomarr sessions (design §11).
+- **`catalog`** · 5 importers · → `library`, `provision`
+  Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
+- **`retention`** · 1 importer · → `scheduler`, `store`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`setup`** · 1 importer · → `library`
+  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
 - **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
 
-- **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
-- **`clipfetch`** · 1 importer · → `filler`
-  Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 6 importers · → `filler`, `httpx`
-  Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-
-**Layer 10**
-
-- **`auth`** · 3 importers · → `library`, `store`
-  Issues and validates Loomarr sessions (design §11).
-- **`catalog`** · 5 importers · → `library`, `provision`
-  Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
-  Provisioning backstop (design §4, §7, §18).
-- **`setup`** · 1 importer · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
-
-**Layer 11**
-
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
+- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
+  Provisioning backstop (design §4, §7, §18).
 - **`suggest`** · 5 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
-**Layer 12**
+**Layer 10**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -297,12 +291,12 @@ flowchart TD
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 
-**Layer 13**
+**Layer 11**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 14**
+**Layer 12**
 
 - **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
