@@ -183,7 +183,10 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
           }
           return (
             <section key={block.title} className="flex flex-col gap-4">
-              <h2 className="font-semibold text-lg">{block.title}</h2>
+              <div>
+                <h2 className="font-semibold text-lg">{block.title}</h2>
+                {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
+              </div>
               <SettingsFields
                 entries={blockEntries}
                 values={edits}

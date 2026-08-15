@@ -30,6 +30,7 @@ const PlaybackSettings = () => {
         {
           group: "playout",
           title: "Guide",
+          description: "How channel times are displayed and how far back the guide can browse.",
           keys: ["guide.timezone", "guide.retention_hours"],
         },
         {
