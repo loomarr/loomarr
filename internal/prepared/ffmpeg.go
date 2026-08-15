@@ -15,7 +15,9 @@ import (
 const (
 	// MediaManifestName is the validated VOD media playlist every prepared packager publishes.
 	MediaManifestName = "media.m3u8"
-	packagingVersion  = 1
+	// CurrentPackagingVersion changes whenever the prepared byte layout or manifest contract makes
+	// older publications incompatible. It participates in immutable publication identity.
+	CurrentPackagingVersion = 1
 )
 
 var ErrUnsupportedRendition = errors.New("prepared: unsupported rendition")
@@ -52,7 +54,7 @@ func (p *FFmpegPackager) Package(ctx context.Context, workspace string, source S
 func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]string, error) {
 	if strings.TrimSpace(workspace) == "" || strings.TrimSpace(source.Path) == "" || source.AudioTrack < 0 ||
 		r.Width <= 0 || r.Height <= 0 || r.FrameRate <= 0 || r.VideoBitrateKbps <= 0 ||
-		r.AudioBitrateKbps <= 0 || r.SegmentDurationMS <= 0 || r.PackagingVersion != packagingVersion {
+		r.AudioBitrateKbps <= 0 || r.SegmentDurationMS <= 0 || r.PackagingVersion != CurrentPackagingVersion {
 		return nil, ErrUnsupportedRendition
 	}
 	videoEncoder := ""

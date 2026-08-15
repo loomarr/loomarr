@@ -192,6 +192,8 @@ flowchart TD
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`media`** · 2 importers
+  Owns host-wide resources shared by live and background media work.
 - **`prepared`** · 1 importer
   Owns immutable, reusable playout publications.
 - **`provision`** · 16 importers
@@ -283,12 +285,12 @@ flowchart TD
 
 **Layer 9**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1066,6 +1068,25 @@ pixel format/HDR, audio codec/layout, dimensions, frame rate, video/audio bitrat
 and packaging version are data. Changing any output property produces a different publication key.
 There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
 compatible renditions and render/fetch their transport; they do not redefine preparation identity.
+
+The first production contract is one **portable baseline rendition**, derived from the TOP rung of
+the existing `playout.quality_tier` ladder: H.264 High 4.1, 8-bit SDR `yuv420p`, AAC stereo, and
+two-second fMP4 fragments. Width, height, frame rate, and bitrate come from that ladder rather than a
+second preparation-only quality table. This is deliberately a media contract, not a promise that
+every device gets only one rendition forever: Web (Safari/Firefox/Chrome), Android TV, Roku, and
+Apple TV can all consume it, while a later capable-client adapter may select an additional HEVC
+publication without changing the identity or scheduler model. A tier change creates a different
+immutable publication; it never rewrites bytes under an existing key.
+
+Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
+One measured encode pool admits both classes. Live program children take foreground leases and may
+use every slot. The readiness planner may hold at most one background lease, only when measured
+capacity leaves at least one separate slot for a cold live tune. If foreground demand reaches that
+last slot, the pool cancels the background encode and gives it a short bounded opportunity to exit;
+if it does not, that one live child takes the existing software fallback rather than waiting behind
+maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
+does not guess and it does not consume the only live slot. This priority contract is shared code;
+adding a second semaphore around ffmpeg is forbidden.
 
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
@@ -3913,7 +3934,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **37 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **38 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -3960,6 +3981,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
+| `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
