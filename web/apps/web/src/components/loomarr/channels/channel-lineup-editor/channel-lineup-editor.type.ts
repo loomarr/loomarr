@@ -1,4 +1,4 @@
-import type { LineupEntryDTO } from "@loomarr/api";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 
 interface ChannelLineupEditorProps {
   channelId: string;

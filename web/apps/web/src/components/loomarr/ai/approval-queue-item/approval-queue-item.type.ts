@@ -1,4 +1,6 @@
-import type { ApprovalEditDTO, ProposalItem, RefusedPick } from "@loomarr/api";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { RefusedPick } from "@loomarr/api/models/refusedPick";
 
 type ApprovalStatus = "pending" | "approving" | "denied";
 

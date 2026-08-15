@@ -1,4 +1,4 @@
-import type { FillerWatchOutputBodyHealth } from "@loomarr/api";
+import type { FillerWatchOutputBodyHealth } from "@loomarr/api/models/fillerWatchOutputBodyHealth";
 
 /**
  * How the filler pipeline is doing right now (§10 V38c).

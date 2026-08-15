@@ -17,7 +17,8 @@
     "test": "pnpm -r --parallel test",
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
     "dev": "pnpm --filter @loomarr/web dev",
-    "lint": "biome check",
+    "lint": "biome check && pnpm imports:check",
+    "imports:check": "node --test scripts/check-imports.test.mjs && node scripts/check-imports.mjs",
     "lint:fix": "biome check --write",
     "format": "biome format --write"
   },
