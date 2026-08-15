@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -18,21 +19,23 @@ var errFake = errors.New("target ran out of disk after 506 of 1204 rows")
 // fakeDatabase is a scriptable DatabaseService for the API-layer tests. It records what
 // it was asked so the gate assertions can prove the request never reached the engine.
 type fakeDatabase struct {
-	status      api.DatabaseStatus
-	checks      []api.DatabaseCheck
-	preflightAt string
-	migrateErr  error
-	migratedTo  string
-	backupErr   error
-	backupHit   bool
-	switchedTo  string
+	status       api.DatabaseStatus
+	checks       []api.DatabaseCheck
+	preflightErr error
+	preflightAt  string
+	migrateErr   error
+	migratedTo   string
+	backupErr    error
+	backupHit    bool
+	switchErr    error
+	switchedTo   string
 }
 
 func (f *fakeDatabase) Status(context.Context) (api.DatabaseStatus, error) { return f.status, nil }
 
 func (f *fakeDatabase) Preflight(_ context.Context, dsn string) ([]api.DatabaseCheck, error) {
 	f.preflightAt = dsn
-	return f.checks, nil
+	return f.checks, f.preflightErr
 }
 
 func (f *fakeDatabase) Backup(context.Context) (api.DatabaseBackup, error) {
@@ -52,6 +55,9 @@ func (f *fakeDatabase) Migrate(_ context.Context, dsn string) error {
 }
 
 func (f *fakeDatabase) Switchover(_ context.Context, dsn string) error {
+	if f.switchErr != nil {
+		return f.switchErr
+	}
 	f.switchedTo = dsn
 	return nil
 }
@@ -91,8 +97,8 @@ func TestSystemDatabase_RequiresAdmin(t *testing.T) {
 	}
 }
 
-// An install already on Postgres wires no service, and the routes 501 rather than
-// pretending a migration is available.
+// An embedding that provides no database service gets an explicit 501 rather than a
+// fabricated status. The production composition root provides status on both backends.
 func TestSystemDatabase_NotConfigured501(t *testing.T) {
 	srv := serverWithDatabase(t, nil)
 	resp := do(t, srv, http.MethodGet, "/v1/system/database", adminToken, "")
@@ -137,6 +143,33 @@ func TestSystemDatabase_PreflightRequired(t *testing.T) {
 	}
 	if fake.migratedTo != "" {
 		t.Error("the migration must not have run")
+	}
+}
+
+func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
+	for _, tc := range []struct {
+		name, path string
+		configure  func(*fakeDatabase)
+	}{
+		{
+			name: "preflight", path: "/v1/system/database/preflight",
+			configure: func(f *fakeDatabase) { f.preflightErr = api.ErrNotSQLite },
+		},
+		{
+			name: "switchover", path: "/v1/system/database/switchover",
+			configure: func(f *fakeDatabase) { f.switchErr = api.ErrNotSQLite },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeDatabase{}
+			tc.configure(fake)
+			srv := serverWithDatabase(t, fake)
+			resp := do(t, srv, http.MethodPost, tc.path, adminToken,
+				`{"dsn":"postgres://u:p@h:5432/d"}`)
+			if resp.StatusCode != http.StatusConflict {
+				t.Fatalf("Postgres %s -> %d, want 409", tc.name, resp.StatusCode)
+			}
+		})
 	}
 }
 
@@ -202,6 +235,34 @@ func TestSystemDatabase_MigrationFailureIsAConflictNotA500(t *testing.T) {
 	}
 }
 
+func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
+	fake := &fakeDatabase{migrateErr: api.ErrDatabaseURLPinned}
+	srv := serverWithDatabase(t, fake)
+	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
+		`{"dsn":"postgres://u:p@h:5432/d"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("pinned migration → %d, want 409", resp.StatusCode)
+	}
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if detail, _ := body["detail"].(string); !strings.Contains(detail, "pinned") {
+		t.Fatalf("detail = %q, want pinned explanation", detail)
+	}
+	if fake.migratedTo != "" {
+		t.Fatal("a pinned migration request reached the process requester")
+	}
+}
+
+func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
+	fake := &fakeDatabase{migrateErr: api.ErrMigrationUnavailable}
+	srv := serverWithDatabase(t, fake)
+	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
+		`{"dsn":"postgres://u:p@h:5432/d"}`)
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("migration without process requester → %d, want 501", resp.StatusCode)
+	}
+}
+
 // Switchover always reports restartRequired: DATABASE_URL is a boot-time setting, so a
 // response that did not say so would leave the operator thinking the move was live.
 func TestSystemDatabase_SwitchoverRequiresRestart(t *testing.T) {
@@ -227,5 +288,18 @@ func TestSystemDatabase_SwitchoverRequiresRestart(t *testing.T) {
 	}
 	if fake.switchedTo != "postgres://u:p@h:5432/d" {
 		t.Errorf("switched to %q, want the requested DSN", fake.switchedTo)
+	}
+}
+
+func TestSystemDatabase_LegacySwitchoverFailsClosedWithoutVerification(t *testing.T) {
+	fake := &fakeDatabase{switchErr: api.ErrMigrationNotVerified}
+	srv := serverWithDatabase(t, fake)
+	resp := do(t, srv, http.MethodPost, "/v1/system/database/switchover", adminToken,
+		`{"dsn":"postgres://u:p@h:5432/d"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("unverified switchover → %d, want 409", resp.StatusCode)
+	}
+	if fake.switchedTo != "" {
+		t.Fatal("unverified switchover was accepted")
 	}
 }

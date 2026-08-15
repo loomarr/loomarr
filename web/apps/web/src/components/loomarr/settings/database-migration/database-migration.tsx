@@ -1,14 +1,14 @@
 import { formatBytes } from "@loomarr/core";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
-import { Badge, Button, Caption, Input, Label } from "@/components/ui";
+import { Badge, Button, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
 // DatabaseMigration — the SQLite → PostgreSQL stepper (§18, V11; v2 mock System → Database).
 //
-// Six stages: connect → preflight → backup → migrate → verify → restart. They are separate
-// stages rather than one button because each is a decision point — preflight can send you
-// back to fix the target, and the backup between them is a gate rather than a step.
+// Four browser stages: connect → preflight → backup → reconnect. Copy, independent
+// verification, bootstrap commit and restart are one process-owned operation after the
+// current generation drains; the browser must not offer separate commit controls.
 //
 // ⚠ **The gate this renders is not the gate.** The Migrate button is disabled until a
 // backup exists, but that is a hint; the server refuses a migrate call without one
@@ -20,9 +20,7 @@ const STEPS: { key: MigrationStep; label: string }[] = [
   { key: "connect", label: "Connect" },
   { key: "preflight", label: "Preflight" },
   { key: "backup", label: "Backup" },
-  { key: "migrate", label: "Migrate" },
-  { key: "verify", label: "Verify" },
-  { key: "restart", label: "Restart" },
+  { key: "reconnect", label: "Reconnect" },
 ];
 
 const DatabaseMigration = ({
@@ -36,7 +34,6 @@ const DatabaseMigration = ({
   onPreflight,
   onBackup,
   onMigrate,
-  onSwitchover,
   pending,
   error,
   envPinned,
@@ -44,7 +41,6 @@ const DatabaseMigration = ({
 }: DatabaseMigrationProps) => {
   const at = step === null ? -1 : STEPS.findIndex((s) => s.key === step);
   const backup = status.backup;
-  const tables = status.tables ?? [];
 
   // Already on Postgres: say so rather than rendering nothing. An absent stepper reads as
   // a missing feature; this reads as an answered question.
@@ -73,8 +69,8 @@ const DatabaseMigration = ({
         </div>
         <p className="mt-1.5 text-muted-foreground text-sm">
           {step === null
-            ? "Six steps, reversible until the switch-over. Your SQLite file is never deleted."
-            : `Step ${at + 1} of 6 · nothing is switched over until verify passes.`}
+            ? "Four steps. Your SQLite file is never deleted."
+            : `Step ${at + 1} of 4 · the switch happens only after an independent parity check.`}
         </p>
         {/* Why anyone would do this — and why they might not need to. Stating the SQLite
             constraint is the honest framing: Postgres is not "better", it buys replicas. */}
@@ -85,17 +81,15 @@ const DatabaseMigration = ({
       </header>
 
       {envPinned ? (
-        // An env pin wins at boot, so Loomarr can copy the data but cannot record the
-        // switch. Offering the full stepper would promise a switchover the next boot
-        // would silently undo — the server refuses it for the same reason.
+        // An env pin wins at boot, so an atomic copy-and-switch cannot commit.
         <div className="flex gap-3 p-4">
           <Lock className="mt-0.5 size-4 shrink-0 text-lock" aria-hidden />
           <div>
             <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
             <p className="mt-1 text-muted-foreground text-sm">
-              Loomarr can copy your data to PostgreSQL, but it cannot record the switch. An environment
-              variable always wins at boot. Migrate the data, then change DATABASE_URL where you set it and
-              restart.
+              In-app migration is unavailable because an environment variable always wins at boot. Change
+              DATABASE_URL where Loomarr is launched and restart; Loomarr will not make a copy that can
+              silently diverge from the database it keeps using.
             </p>
           </div>
         </div>
@@ -221,77 +215,26 @@ const DatabaseMigration = ({
                   {/* Disabled until the backup exists. The SERVER refuses regardless — this
                       only stops a click that could not have worked. */}
                   <Button onClick={onMigrate} disabled={!backup || pending === "migrate"}>
-                    {pending === "migrate" ? "Migrating…" : "Migrate data"}
+                    {pending === "migrate" ? "Requesting restart…" : "Migrate and restart"}
                   </Button>
                 </div>
-              </div>
-            )}
-
-            {(step === "migrate" || step === "verify") && (
-              <div className="flex flex-col gap-3">
-                <p className="font-mono text-tune text-xs">
-                  {status.phase === "failed"
-                    ? "aborted: source database untouched"
-                    : "copying table by table · source stays read-only"}
+                <p className="text-muted-foreground text-xs">
+                  Loomarr will acknowledge the request, drain connections, close SQLite, copy and verify the
+                  data, switch its boot configuration, and restart. This page reconnects automatically.
                 </p>
-                <ul className="flex flex-col gap-2">
-                  {tables.map((t) => {
-                    const pct = t.source === 0 ? 100 : Math.round((t.copied / t.source) * 100);
-                    return (
-                      <li key={t.table} className="flex items-center gap-3">
-                        <span className="w-32 shrink-0 truncate font-mono text-xs">{t.table}</span>
-                        <span
-                          className="h-1.5 flex-1 overflow-hidden rounded-full bg-static-800"
-                          role="progressbar"
-                          aria-valuenow={pct}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-label={`${t.table} copy progress`}
-                        >
-                          <span
-                            className={cn(
-                              "block h-full rounded-full",
-                              status.phase === "failed" ? "bg-onair" : pct === 100 ? "bg-signal" : "bg-tune",
-                            )}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </span>
-                        <Caption className="w-24 shrink-0 text-right">{`${t.copied}/${t.source}`}</Caption>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                {status.parity === "match" && (
-                  <div className="flex flex-col gap-3">
-                    <p className="text-sm">
-                      Row-count parity, table by table. Nothing switches over until every row is accounted
-                      for.
-                      <span className="ml-2 font-mono text-2xs text-signal uppercase">match</span>
-                    </p>
-                    <Button onClick={onSwitchover} disabled={pending === "switchover"}>
-                      {pending === "switchover" ? "Switching over…" : "Switch over"}
-                    </Button>
-                  </div>
-                )}
-                {status.parity === "mismatch" && (
-                  <p className="flex items-start gap-2 text-onair-300 text-sm">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                    Row counts do not match, so nothing was switched over. Your SQLite database was only read
-                    from, this install is still running on it.
-                  </p>
-                )}
               </div>
             )}
 
-            {step === "restart" && (
-              <div className="flex flex-col gap-2">
+            {step === "reconnect" && (
+              <div className="flex flex-col gap-3">
+                <p className="font-mono text-tune text-xs">migration accepted · waiting for Loomarr</p>
                 <p className="text-sm">
-                  Loomarr will use the migrated database on its next start. With a restart policy it will be
-                  back on PostgreSQL in a few seconds; without one, start it manually.
+                  The connection may disappear while Loomarr drains, copies, verifies, switches databases, and
+                  restarts. Keep this page open; it will reconnect automatically.
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  Your SQLite file is left in place, untouched, as a fallback.
+                  If any step fails, Loomarr comes back on SQLite and explains why. The SQLite file is never
+                  deleted.
                 </p>
               </div>
             )}

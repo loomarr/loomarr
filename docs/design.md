@@ -523,23 +523,37 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
 ### Migrating SQLite → PostgreSQL (V11)
 
 An install that outgrows SQLite can move without an export/import dance: **Settings → System →
-Database** runs a six-stage stepper — connect → preflight → backup → migrate → verify → restart.
-Only this direction is supported; the reverse is served by the backup file plus reverting one
-config line.
+Database** runs connect → preflight → backup → **migrate and restart**. Only this direction is
+supported; the reverse is served by the backup file plus reverting one config line.
 
 **The invariant: the source is only ever READ.** Every failure mode ends with the operator still
 running on the database they started on, which is what makes "roll back by reverting one config
 line" true rather than aspirational. Nothing in the copy writes to, vacuums, or locks the source
-beyond its read transaction, and the destination is never switched to until parity passes.
+beyond its read transaction: after the live store closes, the migration reopens SQLite with both
+URI `mode=ro` and `query_only`, rather than trusting the driver's advisory read-only transaction.
+The destination is never switched to until parity passes. The copy
+does **not** run inside the request or beside a writable SQLite generation. `POST
+/v1/system/database/migrate` validates the server-owned gates, queues a process-level migration, and
+returns before the connection drops. The generation then drains, closes the live store, performs the
+copy and independent parity check, merges the target into the authoritative `/data/bootstrap.json`
+only after parity, and starts a fresh generation on PostgreSQL. Other bootstrap choices are
+preserved. There is therefore no interval where accepted writes can land in SQLite after their
+table was copied.
 
 | Stage | What it does | Why it is its own stage |
 | --- | --- | --- |
 | Connect | Takes the target DSN | — |
 | Preflight | Reachable · version ≥ 13 · **target is empty** · privileges · UTF8 encoding | Fails while failing is free; can send you back to fix the target |
-| Backup | Writes a server-side snapshot into `backup.dir` | **A gate, not a step** — see below |
-| Migrate | Copies every table, streaming progress as `database` SSE frames | — |
-| Verify | Re-counts BOTH sides independently; a mismatch aborts | A copy that reports success is a claim; parity is the evidence |
-| Restart | Persists the new `DATABASE_URL` to the bootstrap file | Copying data and changing which database the app answers from are different commitments |
+| Backup | Writes a server-side snapshot into `backup.dir` | **A gate, not a suggestion** — see below |
+| Migrate and restart | Drains the generation, copies every table, independently verifies parity, commits `DATABASE_URL`, then starts on PostgreSQL | These are one process-owned commitment: writes stay quiesced from copy through switchover |
+
+After the request is accepted, the browser expects Loomarr to disconnect and polls the status route
+until it reconnects. A successful reconnect reports PostgreSQL. On any open/copy/parity/bootstrap
+failure, the bootstrap target is not committed and Loomarr starts a fresh SQLite generation carrying
+the failure text; the half-written, preflight-empty target must be cleared before retrying. The SQLite
+file is never deleted. The first PostgreSQL generation remains part of the commit: if opening,
+composing, or binding its listener fails, Loomarr restores the prior SQLite URL in bootstrap and
+rebuilds on SQLite.
 
 Four rules that are not negotiable, each because the obvious alternative is subtly wrong:
 
@@ -563,11 +577,19 @@ Four rules that are not negotiable, each because the obvious alternative is subt
    the branch means the next binary column added does not silently arrive mangled; the cost is a
    path no test covers. *(Named here as the historical example, not a live column — retired-ok.)*
 4. **Preflight refuses a populated target.** "Wipe it and retry" is safe advice only because this
-   check guarantees there was nothing there to lose.
+   check guarantees there was nothing there to lose. A database-scoped advisory lock serializes
+   competing Loomarr migrations across preflight and copy, and destination tables remain exclusively
+   locked through parity and commit so a concurrent writer cannot create an unverified row.
+5. **Switchover is not a second operator action.** The process writes the bootstrap target only after
+   parity, while the old store is closed, then immediately starts the new generation. The historical
+   `/v1/system/database/switchover` route remains for generated-client compatibility but fails closed
+   unless this exact process holds an exact verified result for that exact DSN; the current atomic
+   flow never needs it.
 
-**An env-pinned `DATABASE_URL` makes this copy-only.** Env always wins at boot (§15), so writing
-the bootstrap file would produce a switch that silently does not happen. The server refuses the
-switchover and the UI says so up front, rather than after a backup and a full copy.
+**An env-pinned `DATABASE_URL` disables in-app migration.** Env always wins at boot (§15), so an
+atomic copy-and-switch cannot honestly commit its target. The server rejects the migrate request
+before queueing any process work. Change the value where Loomarr is launched and restart instead;
+there is no copy-only mode that can leave two diverging databases behind.
 
 ---
 
