@@ -68,6 +68,9 @@ const playoutModeParam = "mode"
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
+	// CheckAdmission applies the canonical lifecycle/backend gate without starting delivery.
+	// Internal playlist/program hops call it before resolver or encoder work.
+	CheckAdmission(ctx context.Context, channelID string) error
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
 	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
@@ -293,7 +296,15 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 // `-stream_loop -1` cycles between them forever; each open of the program URL asks "what is
 // airing now?" and gets whatever is current.
 func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
-	programURL := s.playoutURL("program", r.PathValue("id"))
+	channelID := r.PathValue("id")
+	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if !s.checkPlayoutAdmission(w, r, channelID) {
+		return
+	}
+	programURL := s.playoutURL("program", channelID)
 	if programURL == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
 			"Set Loomarr's public address in Settings → Server so streams can be reached.")
@@ -315,6 +326,31 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write([]byte(playout.Playlist(programURL)))
+}
+
+// checkPlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
+// contract. Ineligible channel ids stay indistinguishable from missing routes; a replica that
+// cannot prove durable state reports temporary unavailability and performs no downstream work.
+func (s *Server) checkPlayoutAdmission(w http.ResponseWriter, r *http.Request, channelID string) bool {
+	if s.playout == nil {
+		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout unavailable",
+			"Internal playout isn't available on this instance right now.")
+		return false
+	}
+	err := s.playout.CheckAdmission(r.Context(), channelID)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, playout.ErrIneligible) {
+		http.NotFound(w, r)
+		return false
+	}
+	if s.log != nil {
+		s.log.Warn("playout: lifecycle admission unavailable", "channel", channelID, "err", err)
+	}
+	s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout temporarily unavailable",
+		"Loomarr couldn't verify this channel's current lifecycle state. Try again in a moment.")
+	return false
 }
 
 // tunerHandler serves the M3U channel list the media server registers as a tuner.

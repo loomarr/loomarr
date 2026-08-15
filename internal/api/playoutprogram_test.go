@@ -19,6 +19,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeResolver answers "what's on" without a store or a media server.
@@ -132,6 +133,7 @@ func (f *fakeEncoder) args() []string {
 type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
+	playout  api.Playout
 	noToken  bool
 	sessions api.PlayoutObserver
 	// config overlays LiveConfig, for tests about a setting the handler reads live —
@@ -154,6 +156,9 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	for k, v := range o.config {
 		cfg[k] = v
 	}
+	if o.playout == nil {
+		o.playout = &testkit.Playout{}
+	}
 	opts := api.Options{
 		Store:           st,
 		Auth:            api.NewTokenAuthorizer(adminToken),
@@ -161,6 +166,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
 		PlayoutObserver: o.sessions,
+		Playout:         o.playout,
 		LiveConfig:      func(k string) string { return cfg[k] },
 		ReclaimVRAM:     o.reclaimVRAM,
 	}
@@ -170,6 +176,48 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		admission api.Playout
+		status    int
+	}{
+		{
+			name:      "channel outside transport catalog",
+			admission: &testkit.Playout{AdmissionErr: playout.ErrIneligible},
+			status:    http.StatusNotFound,
+		},
+		{
+			name: "listener gate closed",
+			admission: playout.NewOrigin(playout.OriginDependencies{
+				Available: func() bool { return false },
+			}),
+			status: http.StatusServiceUnavailable,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}
+			encoder := &fakeEncoder{output: "must-not-run"}
+			srv := newProgramServer(t, programOpts{
+				resolver: resolver,
+				encoder:  encoder.start,
+				playout:  tc.admission,
+			})
+
+			resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+			if resp.StatusCode != tc.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+			if got := resolver.callCount(); got != 0 {
+				t.Fatalf("resolver calls = %d, want 0", got)
+			}
+			if got := encoder.args(); got != nil {
+				t.Fatalf("encoder started with %v", got)
+			}
+		})
+	}
 }
 
 func playableAiring(offset, remaining time.Duration) playout.Airing {
@@ -471,6 +519,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	srv := httptest.NewServer(api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: logger,
 		PlayoutSecret:   func() string { return playoutToken },
+		Playout:         &testkit.Playout{},
 		PlayoutResolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
 		// An "encoder" that exits immediately without writing anything — exactly what a
 		// hardware encoder does when its device is missing.

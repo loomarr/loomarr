@@ -24,6 +24,9 @@ var (
 	// committed lifecycle transition. The composition root closes this gate before tearing down
 	// local sessions and reopens it only after a durable catch-up.
 	ErrUnavailable = errors.New("playout: lifecycle state unavailable")
+	// ErrIneligible is the clean lifecycle miss for a channel outside the transport-published
+	// internal catalog (paused, detached, empty, or effectively Tunarr-backed).
+	ErrIneligible = errors.New("playout: channel is not eligible for internal transport")
 	// ErrPreparedUnavailable is a clean prepared-only miss. Callers use it to warm only media that
 	// already exists without falling through to the live remux/encoder path.
 	ErrPreparedUnavailable = errors.New("playout: prepared presentation unavailable")
@@ -122,19 +125,42 @@ func newOrigin(prepared preparedDelivery, sessions sessionAttacher, hls hlsOrigi
 	return &Origin{prepared: prepared, sessions: sessions, hls: hls}
 }
 
+// CheckAdmission applies the same fail-closed lifecycle decision used by Tune and OpenAsset
+// without starting delivery. Internal playlist/program HTTP hops use it before doing resolver or
+// encoder work, so possessing the device token cannot bypass channel lifecycle state.
+func (o *Origin) CheckAdmission(ctx context.Context, channelID string) error {
+	if o == nil {
+		return ErrUnavailable
+	}
+	o.lifecycleMu.RLock()
+	defer o.lifecycleMu.RUnlock()
+	return o.checkAdmissionLocked(ctx, channelID)
+}
+
+func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) error {
+	if o.available != nil && !o.available() {
+		return ErrUnavailable
+	}
+	if o.eligible == nil {
+		return nil
+	}
+	eligible, err := o.eligible(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if !eligible {
+		return ErrIneligible
+	}
+	return nil
+}
+
 // Tune returns the presentation for the requested delivery without exposing which implementation
 // produced it.
 func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, error) {
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
-	if o.available != nil && !o.available() {
-		return Presentation{}, ErrUnavailable
-	}
-	if o.eligible != nil {
-		eligible, err := o.eligible(ctx, request.ChannelID)
-		if err != nil || !eligible {
-			return Presentation{}, ErrUnavailable
-		}
+	if err := o.checkAdmissionLocked(ctx, request.ChannelID); err != nil {
+		return Presentation{}, err
 	}
 	var preparedErr error
 	if request.Delivery == DeliveryHLS && o.prepared != nil {
@@ -183,14 +209,8 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePlan, rel string) (Asset, bool, error) {
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
-	if o.available != nil && !o.available() {
-		return Asset{}, false, ErrUnavailable
-	}
-	if o.eligible != nil {
-		eligible, err := o.eligible(ctx, channelID)
-		if err != nil || !eligible {
-			return Asset{}, false, ErrUnavailable
-		}
+	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
+		return Asset{}, false, err
 	}
 	if o.prepared != nil {
 		asset, ok, err := o.prepared.OpenAsset(channelID, plan, rel)

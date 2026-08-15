@@ -183,7 +183,10 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 		}
 		return nil
 
-	case store.InvalidationBackend:
+	case store.InvalidationSetting:
+		if event.Key != backendtransition.CheckpointSettingKey {
+			return nil
+		}
 		snapshot, err := backendtransition.ParseSnapshot(event.Value)
 		if err != nil {
 			return fmt.Errorf("decode committed backend checkpoint: %w", err)

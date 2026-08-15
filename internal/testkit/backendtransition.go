@@ -5,6 +5,16 @@ import (
 	"sync"
 )
 
+// Snapshotter is a shared, typed snapshot-reader double. The generic result keeps
+// testkit independent of the package defining a snapshot while still satisfying
+// that package's narrow Snapshot method structurally.
+type Snapshotter[T any] struct {
+	Result T
+	Err    error
+}
+
+func (s Snapshotter[T]) Snapshot(context.Context) (T, error) { return s.Result, s.Err }
+
 // BackendTransition is the shared in-memory double for the settings consequence and repair seam.
 // It runs the supplied mutation before recording the resolved desired target, mirroring the
 // production interface without reproducing any prepare/publish phases in API tests.

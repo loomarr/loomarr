@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	stateKey     = "system.playout_backend_transition"
-	stateVersion = 1
+	// CheckpointSettingKey identifies this package's versioned durable state in the
+	// settings KV and in the store's generic setting-invalidation stream. Callers
+	// observe the identifier but must use Load and Save rather than writing it directly.
+	CheckpointSettingKey = "system.playout_backend_transition"
+	stateVersion         = 1
 
 	// BackendInternal identifies Loomarr's internal playout.
 	BackendInternal = schedule.PlayoutBackendInternal
@@ -80,7 +83,7 @@ func Load(ctx context.Context, st stateStore, desired string) (State, error) {
 		return State{}, fmt.Errorf("%w: desired backend: %v", ErrInvalidState, err)
 	}
 
-	raw, err := st.GetSetting(ctx, stateKey)
+	raw, err := st.GetSetting(ctx, CheckpointSettingKey)
 	if err == nil {
 		return decode(raw)
 	}
@@ -156,7 +159,7 @@ func Save(ctx context.Context, st stateWriter, state State) error {
 	if err != nil {
 		return fmt.Errorf("encode backend transition state: %w", err)
 	}
-	if err := st.SetSetting(ctx, stateKey, string(raw)); err != nil {
+	if err := st.SetSetting(ctx, CheckpointSettingKey, string(raw)); err != nil {
 		return fmt.Errorf("store backend transition state: %w", err)
 	}
 	return nil

@@ -13,10 +13,6 @@ import (
 
 const (
 	postgresInvalidationChannel = "loomarr_durable_change"
-	// Kept private in both owning packages deliberately: store cannot import
-	// backendtransition (that package already imports store), while only this one system-owned
-	// setting participates in playout lifecycle invalidation.
-	backendTransitionSettingKey = "system.playout_backend_transition"
 	// Bounds detection of a half-open listener connection. This probes connection liveness only;
 	// lifecycle state still arrives through commit-triggered notifications and durable catch-up.
 	postgresInvalidationHeartbeat = 5 * time.Second
@@ -26,7 +22,7 @@ const (
 // a stop transition even when a later resume commits before a replica handles the first event.
 // Durable rows remain truth; reconnect reconciliation is what closes notification-loss gaps.
 type Invalidation struct {
-	Kind      string                 `json:"kind"`
+	Kind      InvalidationKind       `json:"kind"`
 	ChannelID string                 `json:"channelId,omitempty"`
 	Status    schedule.ChannelStatus `json:"status,omitempty"`
 	Backend   string                 `json:"backend,omitempty"`
@@ -34,9 +30,12 @@ type Invalidation struct {
 	Value     string                 `json:"value,omitempty"`
 }
 
+// InvalidationKind identifies the durable record family changed by an invalidation.
+type InvalidationKind string
+
 const (
-	InvalidationChannel = "channel"
-	InvalidationBackend = "backend"
+	InvalidationChannel InvalidationKind = "channel"
+	InvalidationSetting InvalidationKind = "setting"
 )
 
 func channelInvalidation(ch Channel) (string, error) {
@@ -49,14 +48,10 @@ func channelInvalidation(ch Channel) (string, error) {
 	})
 }
 
-func backendInvalidation(key, value string) (string, bool, error) {
-	if key != backendTransitionSettingKey {
-		return "", false, nil
-	}
-	payload, err := marshalInvalidation(Invalidation{
-		Kind: InvalidationBackend, Key: key, Value: value,
+func settingInvalidation(key, value string) (string, error) {
+	return marshalInvalidation(Invalidation{
+		Kind: InvalidationSetting, Key: key, Value: value,
 	})
-	return payload, true, err
 }
 
 func marshalInvalidation(event Invalidation) (string, error) {

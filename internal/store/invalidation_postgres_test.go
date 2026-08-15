@@ -86,14 +86,15 @@ func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
 		t.Fatalf("pause event = %+v", event)
 	}
 
-	checkpoint := `{"version":1,"applied":"tunarr","prepared":""}`
-	if err := writer.SetSetting(ctx, backendTransitionSettingKey, checkpoint); err != nil {
+	settingKey := "system.invalidation_probe"
+	settingValue := `{"version":1,"value":"committed"}`
+	if err := writer.SetSetting(ctx, settingKey, settingValue); err != nil {
 		t.Fatal(err)
 	}
 	event = awaitInvalidation(t, events)
-	if event.Kind != InvalidationBackend || event.Key != backendTransitionSettingKey ||
-		event.Value != checkpoint {
-		t.Fatalf("backend event = %+v", event)
+	if event.Kind != InvalidationSetting || event.Key != settingKey ||
+		event.Value != settingValue {
+		t.Fatalf("setting event = %+v", event)
 	}
 
 	if err := writer.DeleteChannel(ctx, committed.ID, committed.Revision); err != nil {

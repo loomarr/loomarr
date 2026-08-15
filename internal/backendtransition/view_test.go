@@ -44,11 +44,11 @@ func TestDurableViewFailsClosedWithoutInitializing(t *testing.T) {
 	if _, err := view.Snapshot(context.Background()); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("missing snapshot error = %v, want ErrInvalidState", err)
 	}
-	if _, err := st.GetSetting(context.Background(), stateKey); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetSetting(context.Background(), CheckpointSettingKey); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing view initialized checkpoint: %v", err)
 	}
 
-	if err := st.SetSetting(context.Background(), stateKey, `{`); err != nil {
+	if err := st.SetSetting(context.Background(), CheckpointSettingKey, `{`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := view.Snapshot(context.Background()); !errors.Is(err, ErrInvalidState) {

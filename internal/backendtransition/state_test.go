@@ -28,7 +28,7 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 			}
 			assertState(t, state, tt.desired, "", tt.publishedInternal)
 
-			raw, err := st.GetSetting(context.Background(), stateKey)
+			raw, err := st.GetSetting(context.Background(), CheckpointSettingKey)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,13 +112,13 @@ func TestLoadCorruptStateFailsClosed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			st := testkit.SQLiteStore(t)
 			ctx := context.Background()
-			if err := st.SetSetting(ctx, stateKey, tt.raw); err != nil {
+			if err := st.SetSetting(ctx, CheckpointSettingKey, tt.raw); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Load(ctx, st, BackendInternal); !errors.Is(err, ErrInvalidState) {
 				t.Fatalf("Load error = %v, want ErrInvalidState", err)
 			}
-			got, err := st.GetSetting(ctx, stateKey)
+			got, err := st.GetSetting(ctx, CheckpointSettingKey)
 			if err != nil {
 				t.Fatal(err)
 			}

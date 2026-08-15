@@ -145,9 +145,11 @@ func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 // updated_by NULL — these writes have no human author. The audited admin path is
 // UpsertSetting.
 func (s *sqlStore) SetSetting(ctx context.Context, key, value string) error {
-	if payload, notify, err := backendInvalidation(key, value); err != nil {
-		return err
-	} else if s.dialect == DialectPostgres && notify {
+	if s.dialect == DialectPostgres {
+		payload, err := settingInvalidation(key, value)
+		if err != nil {
+			return err
+		}
 		var notified any
 		return s.db.QueryRowContext(ctx,
 			`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)

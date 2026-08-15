@@ -36,6 +36,7 @@ type fakePlayoutSessions struct {
 	reported []reportedProgram
 	tunes    int
 	stopped  []string
+	admitErr error
 }
 
 // attachRecord is one Attach call — its channel and codec target.
@@ -99,6 +100,12 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 
 func (f *fakePlayoutSessions) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return playout.Asset{}, false, nil
+}
+
+func (f *fakePlayoutSessions) CheckAdmission(context.Context, string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.admitErr
 }
 
 func (f *fakePlayoutSessions) StopChannel(channelID string) {
@@ -492,6 +499,28 @@ func TestPlayoutPlaylist_IsTheTwoLineFfconcat(t *testing.T) {
 	}
 	if !strings.Contains(got, "token="+playoutToken) {
 		t.Errorf("entries carry no token; ffmpeg cannot authenticate any other way: %q", got)
+	}
+}
+
+func TestPlayoutPlaylistUsesCanonicalLifecycleAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "channel outside transport catalog", err: playout.ErrIneligible, status: http.StatusNotFound},
+		{name: "durable lifecycle unavailable", err: playout.ErrUnavailable, status: http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := &fakePlayoutSessions{admitErr: tc.err}
+			srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
+			seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+			resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
+			if resp.StatusCode != tc.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+		})
 	}
 }
 

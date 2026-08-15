@@ -118,6 +118,38 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	}
 }
 
+func TestOriginCheckAdmissionDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
+	t.Parallel()
+	wantReadErr := errors.New("checkpoint unavailable")
+	for _, tc := range []struct {
+		name     string
+		eligible func(context.Context, string) (bool, error)
+		want     error
+	}{
+		{
+			name: "ineligible",
+			eligible: func(context.Context, string) (bool, error) {
+				return false, nil
+			},
+			want: ErrIneligible,
+		},
+		{
+			name: "durable read failure",
+			eligible: func(context.Context, string) (bool, error) {
+				return false, wantReadErr
+			},
+			want: ErrUnavailable,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			origin := NewOrigin(OriginDependencies{Eligible: tc.eligible})
+			if err := origin.CheckAdmission(context.Background(), "ch-one"); !errors.Is(err, tc.want) {
+				t.Fatalf("CheckAdmission error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
 type blockingTuneSessions struct {
 	entered chan struct{}
 	release chan struct{}

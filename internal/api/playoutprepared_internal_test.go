@@ -49,6 +49,8 @@ func (p *preparedProbePlayout) OpenAsset(context.Context, string, playout.Encode
 	return p.asset, p.assetOK, nil
 }
 
+func (*preparedProbePlayout) CheckAdmission(context.Context, string) error { return nil }
+
 func (*preparedProbePlayout) StopChannel(string) {}
 
 func TestHLSPreparedModeReturnsNoContentWithoutLiveFallback(t *testing.T) {

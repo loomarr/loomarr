@@ -87,6 +87,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if !s.checkPlayoutAdmission(w, r, channelID) {
+		return
+	}
 
 	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
 	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner

@@ -109,7 +109,7 @@ func (c *Controller) Initialize(ctx context.Context, desired func(context.Contex
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+	return c.store.WithSettingLock(ctx, CheckpointSettingKey, func(lockCtx context.Context) error {
 		target, err := desired(lockCtx)
 		if err != nil {
 			return fmt.Errorf("resolve desired backend: %w", err)
@@ -165,7 +165,7 @@ func (c *Controller) ReconnectCurrent(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var reset int
-	err := c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+	err := c.store.WithSettingLock(ctx, CheckpointSettingKey, func(lockCtx context.Context) error {
 		target, err := desired(lockCtx)
 		if err != nil {
 			return fmt.Errorf("resolve desired backend before reconnect: %w", err)
@@ -217,7 +217,7 @@ func (c *Controller) MutateAndApplyCurrent(
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+	return c.store.WithSettingLock(ctx, CheckpointSettingKey, func(lockCtx context.Context) error {
 		if err := refresh(lockCtx); err != nil {
 			return fmt.Errorf("refresh settings before backend mutation: %w", err)
 		}
@@ -239,7 +239,7 @@ func (c *Controller) applyResolved(ctx context.Context, resolveDesired func(cont
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+	return c.store.WithSettingLock(ctx, CheckpointSettingKey, func(lockCtx context.Context) error {
 		desired, err := resolveDesired(lockCtx)
 		if err != nil {
 			return fmt.Errorf("resolve desired backend: %w", err)

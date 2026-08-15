@@ -790,13 +790,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		}
 		var lifecycleGate *playoutAdmissionGate
-		var durablePlayoutEligibility func(context.Context, string) (bool, error)
+		// Every transport hop uses one durable eligibility decision, including SQLite's raw
+		// playlist/program chain. Postgres additionally closes the process-wide listener gate
+		// whenever notification continuity cannot be proved.
+		backendView = backendtransition.NewDurableView(st)
+		durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
+			return durableInternalTransportPlayable(ctx, st, backendView, channelID)
+		}
 		if store.DialectOf(st) == store.DialectPostgres {
 			lifecycleGate = &playoutAdmissionGate{}
-			backendView = backendtransition.NewDurableView(st)
-			durablePlayoutEligibility = func(ctx context.Context, channelID string) (bool, error) {
-				return durableInternalTransportPlayable(ctx, st, backendView, channelID)
-			}
 		}
 		origin := playout.NewOrigin(playout.OriginDependencies{
 			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
@@ -829,9 +831,6 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			return nil, err
 		}
 		backendController = builtBackendController
-		if backendView == nil {
-			backendView = backendtransition.NewDurableView(st)
-		}
 		if lifecycleGate != nil {
 			lifecycle := &postgresPlayoutLifecycle{
 				store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,

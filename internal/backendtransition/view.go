@@ -29,7 +29,7 @@ func (v *DurableView) Snapshot(ctx context.Context) (Snapshot, error) {
 	if v == nil || v.store == nil {
 		return Snapshot{}, fmt.Errorf("backend transition: checkpoint view is unavailable")
 	}
-	raw, err := v.store.GetSetting(ctx, stateKey)
+	raw, err := v.store.GetSetting(ctx, CheckpointSettingKey)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return Snapshot{}, fmt.Errorf("backend transition: checkpoint is missing: %w", ErrInvalidState)

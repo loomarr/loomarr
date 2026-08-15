@@ -13,9 +13,11 @@ import (
 type Playout struct {
 	mu sync.Mutex
 
-	TuneResult playout.Presentation
-	TuneErr    error
-	stopped    []string
+	TuneResult   playout.Presentation
+	TuneErr      error
+	AdmissionErr error
+	stopped      []string
+	stoppedAll   int
 }
 
 func (p *Playout) Tune(context.Context, playout.TuneRequest) (playout.Presentation, error) {
@@ -28,10 +30,20 @@ func (*Playout) OpenAsset(context.Context, string, playout.EncodePlan, string) (
 	return playout.Asset{}, false, nil
 }
 
+// CheckAdmission satisfies the API's canonical lifecycle admission seam.
+func (p *Playout) CheckAdmission(context.Context, string) error { return p.AdmissionErr }
+
 func (p *Playout) StopChannel(channelID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.stopped = append(p.stopped, channelID)
+}
+
+// StopAll records a process-wide lifecycle stop.
+func (p *Playout) StopAll() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stoppedAll++
 }
 
 // StoppedChannels returns a snapshot of the lifecycle stops received so far.
@@ -39,6 +51,25 @@ func (p *Playout) StoppedChannels() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.stopped...)
+}
+
+// Stopped reports whether StopChannel was called for channelID.
+func (p *Playout) Stopped(channelID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, stopped := range p.stopped {
+		if stopped == channelID {
+			return true
+		}
+	}
+	return false
+}
+
+// StopAllCalls reports the number of process-wide lifecycle stops.
+func (p *Playout) StopAllCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stoppedAll
 }
 
 // TunerRescanner is the shared in-memory double for operation-specific media-server channel-list
