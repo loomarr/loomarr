@@ -1,6 +1,6 @@
 import type { ChannelNowNext } from "@loomarr/api";
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { channel } from "@/test/fixtures/channels";
 import { adjacentChannel, surfableCatalog, useChannelTuner } from "./use-channel-tuner";
 
@@ -19,6 +19,8 @@ describe("channel tuner", () => {
       return 1;
     });
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("sorts only the server-declared surfable channels and wraps", () => {
     const catalog = surfableCatalog(channels);
@@ -64,6 +66,25 @@ describe("channel tuner", () => {
 
     act(() => frames.shift()?.(16));
     act(() => frames.shift()?.(32));
+
+    expect(result.current.channel?.id).toBe("ch-30");
+    expect(result.current.acknowledging).toBe(false);
+    expect(onTune).toHaveBeenCalledWith(expect.objectContaining({ id: "ch-30" }));
+  });
+
+  it("does not lose a tune when the browser stops delivering animation frames", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    const onTune = vi.fn();
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
+    );
+
+    act(() => result.current.step(1));
+    expect(result.current.acknowledging).toBe(true);
+    expect(onTune).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(50));
 
     expect(result.current.channel?.id).toBe("ch-30");
     expect(result.current.acknowledging).toBe(false);

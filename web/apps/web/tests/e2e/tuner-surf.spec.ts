@@ -39,11 +39,17 @@ const waitForDecodedFrame = async (page: Page) => {
     { timeout: 10_000 },
   );
 
-  // Firefox can reject autoplay only after the manifest has loaded. Checking the control once,
-  // immediately after navigation, races that decision: the button is still hidden then appears
-  // later while the test waits forever for a frame that cannot decode until a user gesture. Race
-  // the real decoded frame against the fallback control and click it once if the browser asks.
-  await Promise.race([decoded, play.waitFor({ state: "visible", timeout: 9_000 }).then(() => play.click())]);
+  // Firefox can reject autoplay after navigation, but the Play control is also visible briefly
+  // BEFORE hls.js attaches MediaSource. Clicking in that empty-source window spends the synthetic
+  // user gesture on a play() that cannot start, then leaves the real source paused. Race a normal
+  // decoded frame against one fallback click made only after the video has an attached source.
+  const fallbackPlay = Promise.all([
+    play.waitFor({ state: "visible", timeout: 9_000 }),
+    page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
+      timeout: 9_000,
+    }),
+  ]).then(() => play.click());
+  await Promise.race([decoded, fallbackPlay]);
   await decoded;
 };
 

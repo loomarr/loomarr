@@ -25,10 +25,32 @@ const adjacentChannel = (
 };
 
 const acrossNextPaint = (beforePaint: () => void, afterPaint: () => void) => {
+  let beforeRan = false;
+  let afterRan = false;
+  const before = () => {
+    if (beforeRan) return;
+    beforeRan = true;
+    beforePaint();
+  };
+  const after = () => {
+    if (afterRan) return;
+    afterRan = true;
+    clearTimeout(fallback);
+    afterPaint();
+  };
+
+  // A hidden/throttled Firefox document can stop delivering animation frames altogether. The
+  // acknowledgement state has already been committed by the click, so give it one short paint
+  // opportunity, then guarantee the tune intent advances even when rAF never arrives. Both paths
+  // are idempotent because a late frame must not navigate a second time.
+  const fallback = setTimeout(() => {
+    before();
+    after();
+  }, 50);
   if (typeof requestAnimationFrame !== "function") return;
   requestAnimationFrame(() => {
-    beforePaint();
-    requestAnimationFrame(afterPaint);
+    before();
+    requestAnimationFrame(after);
   });
 };
 
