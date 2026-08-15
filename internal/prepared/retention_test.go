@@ -26,7 +26,7 @@ func TestPruneEvictsWholeColdPublicationsOldestFirst(t *testing.T) {
 		t.Fatalf("touch protected publication = (_, %v, %v)", ok, err)
 	}
 
-	result, err := lib.Prune(context.Background(), 1<<20)
+	result, err := lib.Prune(context.Background(), 1<<20, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestPruneLeavesRecentPublicationsOverTheSoftCap(t *testing.T) {
 		t.Fatalf("Lookup = (_, %v, %v)", ok, err)
 	}
 
-	result, err := lib.Prune(context.Background(), 1<<20)
+	result, err := lib.Prune(context.Background(), 1<<20, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,14 +86,14 @@ func TestPruneProtectsTheWholeStoreDuringStartupGrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := reopened.Prune(context.Background(), 1)
+	result, err := reopened.Prune(context.Background(), 1, nil)
 	if err != nil || result.PublicationsEvicted != 0 {
 		t.Fatalf("startup Prune = (%+v, %v), want protected", result, err)
 	}
 	assertPublicationPresent(t, publication)
 
 	now = now.Add(preparedStartupGrace + time.Second)
-	result, err = reopened.Prune(context.Background(), 1)
+	result, err = reopened.Prune(context.Background(), 1, nil)
 	if err != nil || result.PublicationsEvicted != 1 {
 		t.Fatalf("post-grace Prune = (%+v, %v), want eviction", result, err)
 	}
@@ -119,7 +119,7 @@ func TestPruneRemovesOnlyAbandonedOwnedStagingDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := lib.Prune(context.Background(), 1<<20)
+	result, err := lib.Prune(context.Background(), 1<<20, nil)
 	if err == nil || !errors.Is(err, ErrUnknownEntry) {
 		t.Fatalf("Prune error = %v, want ErrUnknownEntry", err)
 	}
@@ -133,6 +133,69 @@ func TestPruneRemovesOnlyAbandonedOwnedStagingDirectories(t *testing.T) {
 		if _, err := os.Stat(dir); err != nil {
 			t.Errorf("Prune removed %s: %v", dir, err)
 		}
+	}
+}
+
+func TestPruneProtectsTheAcceptedScheduleWithoutTreatingAProbeAsPlayback(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+	lib, err := newLibrary(t.TempDir(), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication := publishSized(t, lib, "scheduled", 600<<10)
+	specification := baselineSpec("scheduled")
+	now = now.Add(preparedStartupGrace + preparedUseGrace + time.Hour)
+	if _, ok, err := lib.Peek(specification); err != nil || !ok {
+		t.Fatalf("Peek = (_, %v, %v), want hit", ok, err)
+	}
+
+	result, err := lib.Prune(context.Background(), 1, []Specification{specification})
+	if err != nil || result.PublicationsEvicted != 0 || result.ProtectedBytes == 0 {
+		t.Fatalf("scheduled Prune = (%+v, %v), want protected", result, err)
+	}
+	assertPublicationPresent(t, publication)
+
+	result, err = lib.Prune(context.Background(), 1, nil)
+	if err != nil || result.PublicationsEvicted != 1 {
+		t.Fatalf("unscheduled Prune = (%+v, %v), want eviction", result, err)
+	}
+	assertPublicationMissing(t, publication)
+}
+
+func TestPruneOwnsReadinessControlFiles(t *testing.T) {
+	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+	lib, err := newLibrary(t.TempDir(), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	readiness, err := OpenReadiness(lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := Request{Source: Source{Path: filepath.Join(t.TempDir(), "source.mkv")}, Rendition: baselineRendition()}
+	if err := readiness.RememberBinding(
+		BindingKey{ChannelID: "ch", LibraryItemID: "item"}, Binding{Policy: "policy", Request: request},
+	); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(lib.root, ".readiness-abandoned")
+	if err := os.WriteFile(stale, []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-preparedStagingGrace - time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := lib.Prune(context.Background(), 1, nil)
+	if err != nil {
+		t.Fatalf("Prune with readiness control files: %v", err)
+	}
+	if result.StagingRemoved != 1 {
+		t.Fatalf("Prune = %+v, want abandoned readiness workspace removed", result)
+	}
+	if _, err := os.Stat(filepath.Join(lib.root, readinessMetadata)); err != nil {
+		t.Fatalf("readiness index was removed: %v", err)
 	}
 }
 

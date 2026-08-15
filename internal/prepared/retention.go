@@ -43,7 +43,9 @@ type pruneCandidate struct {
 // Prune evicts complete cold publications until the logical-byte soft cap is met. It never removes
 // an unknown root entry, an invalid publication, or a recently used publication. Per-key locking
 // keeps deletion atomic with Lookup/Open/Publish without blocking unrelated channel tunes.
-func (l *Library) Prune(ctx context.Context, budgetBytes int64) (PruneResult, error) {
+func (l *Library) Prune(
+	ctx context.Context, budgetBytes int64, protected []Specification,
+) (PruneResult, error) {
 	result := PruneResult{BudgetBytes: budgetBytes}
 	if l == nil || budgetBytes <= 0 {
 		return result, nil
@@ -56,6 +58,15 @@ func (l *Library) Prune(ctx context.Context, budgetBytes int64) (PruneResult, er
 	startupProtected := now.Before(l.startedAt.Add(preparedStartupGrace))
 	candidates := make([]pruneCandidate, 0, len(entries))
 	var errs []error
+	protectedKeys := make(map[string]struct{}, len(protected))
+	for _, specification := range protected {
+		key, keyErr := keyFor(specification)
+		if keyErr != nil {
+			errs = append(errs, keyErr)
+			continue
+		}
+		protectedKeys[key] = struct{}{}
+	}
 	for _, dirEntry := range entries {
 		if err := ctx.Err(); err != nil {
 			return result, err
@@ -65,6 +76,26 @@ func (l *Library) Prune(ctx context.Context, budgetBytes int64) (PruneResult, er
 		info, statErr := dirEntry.Info()
 		if statErr != nil {
 			errs = append(errs, fmt.Errorf("prepared: stat %q: %w", name, statErr))
+			continue
+		}
+		if name == readinessMetadata {
+			if !info.Mode().IsRegular() {
+				errs = append(errs, fmt.Errorf("%w: %q", ErrUnknownEntry, name))
+			}
+			continue
+		}
+		if isReadinessTemporary(name) {
+			if !info.Mode().IsRegular() {
+				errs = append(errs, fmt.Errorf("%w: %q", ErrUnknownEntry, name))
+				continue
+			}
+			if now.Sub(info.ModTime()) > preparedStagingGrace {
+				if removeErr := os.Remove(path); removeErr != nil {
+					errs = append(errs, fmt.Errorf("prepared: remove abandoned readiness workspace %q: %w", name, removeErr))
+				} else {
+					result.StagingRemoved++
+				}
+			}
 			continue
 		}
 		if isOwnedStaging(name) {
@@ -98,7 +129,8 @@ func (l *Library) Prune(ctx context.Context, budgetBytes int64) (PruneResult, er
 		if cached, hit := l.cached(name, false); hit && cached.lastUsed.After(lastUsed) {
 			lastUsed = cached.lastUsed
 		}
-		protect := startupProtected || now.Sub(lastUsed) < preparedUseGrace
+		_, scheduled := protectedKeys[name]
+		protect := scheduled || startupProtected || now.Sub(lastUsed) < preparedUseGrace
 		result.TotalBytes += bytes
 		if protect {
 			result.ProtectedBytes += bytes
@@ -186,4 +218,9 @@ func isOwnedStaging(name string) bool {
 	}
 	key, suffix, ok := strings.Cut(remainder, "-")
 	return ok && suffix != "" && validPublicationKey(key)
+}
+
+func isReadinessTemporary(name string) bool {
+	remainder := strings.TrimPrefix(name, ".readiness-")
+	return remainder != name && remainder != ""
 }

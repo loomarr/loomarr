@@ -626,6 +626,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				Pool: encodePool, Now: time.Now, Log: log,
 			}), reason))
 		} else {
+			readiness, readinessErr := prepared.OpenReadiness(preparedLibrary)
+			if readinessErr != nil {
+				log.Warn("playout: prepared readiness index unavailable — live fallback remains active", "err", readinessErr)
+			}
 			packager := prepared.NewFFmpegPackager(
 				set.str("playout.ffmpeg_path"),
 				func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
@@ -636,24 +640,27 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 					return playout.PreparedVideoArgs(encoder, contract)
 				},
 			)
-			preparer := prepared.NewPreparer(preparedLibrary, packager)
-			preparedRuntime := newPreparedRuntimeResolver(
-				st, playoutRes, lib, preparer, time.Now,
-				func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
-				func() string {
+			preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+				Library: preparedLibrary, Packager: packager, Readiness: readiness,
+			})
+			preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
+				Channels: st, Timeline: playoutRes, Inputs: lib, Lookup: preparer,
+				Now: time.Now, Readiness: readiness,
+				PathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+				Policy: func() string {
 					return preparedSourcePolicy(
 						set.str("playout.quality_tier"),
 						set.str("playout.audio_language"),
 						set.str("library.path_map"),
 					)
 				},
-				func() string { return set.str("playout.backend") },
-				func() prepared.RenditionContract {
+				GlobalBackend: func() string { return set.str("playout.backend") },
+				Rendition: func() prepared.RenditionContract {
 					return playout.CanonicalPreparedRendition(
 						playout.TierFor(set.str("playout.quality_tier")),
 					)
 				},
-			)
+			})
 			jobReg.Add(preparedPlayoutJob(
 				prepared.NewPlanner(prepared.PlannerDependencies{
 					Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
