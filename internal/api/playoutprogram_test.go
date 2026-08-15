@@ -132,6 +132,7 @@ func (f *fakeEncoder) args() []string {
 type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
+	font     string
 	noToken  bool
 	sessions api.PlayoutObserver
 	// config overlays LiveConfig, for tests about a setting the handler reads live —
@@ -161,6 +162,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
 		PlayoutObserver: o.sessions,
+		PlayoutFont:     func() string { return o.font },
 		LiveConfig:      func(k string) string { return cfg[k] },
 		ReclaimVRAM:     o.reclaimVRAM,
 	}
@@ -283,6 +285,35 @@ func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 	// player refusing to play.
 	if !strings.Contains(got, "anullsrc") {
 		t.Errorf("the card lost its silent audio track: %q", got)
+	}
+}
+
+// A scheduled filler gap is not an empty Channel. If its pod cannot supply a playable clip,
+// the fallback card must keep that distinction and end at the real programme boundary. A fixed
+// 30-second card started ten seconds before the boundary would otherwise cover the first twenty
+// seconds of the next episode and tell the viewer, incorrectly, that nothing was scheduled.
+func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
+	enc := &fakeEncoder{output: "card"}
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: playout.Airing{
+			Kind: schedule.SlotFiller, Remaining: 10 * time.Second,
+		}},
+		encoder: enc.start,
+		font:    "/font.ttf",
+	})
+
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200 — an unfilled break still gets a card", resp.StatusCode)
+	}
+	_, _ = io.ReadAll(resp.Body)
+
+	got := strings.Join(enc.args(), " ")
+	if !strings.Contains(got, "right back") {
+		t.Errorf("scheduled break was mislabeled as an empty Channel: %q", got)
+	}
+	if !strings.Contains(got, "-t 10.000") {
+		t.Errorf("break card crossed the programme boundary: %q", got)
 	}
 }
 

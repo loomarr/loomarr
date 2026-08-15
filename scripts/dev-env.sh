@@ -61,6 +61,14 @@ FRONTEND_PORT="${LOOMARR_FE_PORT:-$DEFAULT_FRONTEND}"
 STORYBOOK_PORT="${LOOMARR_STORYBOOK_PORT:-$DEFAULT_STORYBOOK}"
 TUNARR_PORT="${TUNARR_DEV_PORT:-$DEFAULT_TUNARR}"
 
+if [ "$ROOT" = "$PRIMARY" ]; then
+	DEFAULT_PUBLIC_URL=
+else
+	# Internal playout's parent ffmpeg re-opens Loomarr's playlist through SERVER_PUBLIC_URL.
+	# A copied primary .env therefore must not send a secondary worktree back to :8080.
+	DEFAULT_PUBLIC_URL="http://localhost:$BACKEND_PORT"
+fi
+
 for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$STORYBOOK_PORT" "$TUNARR_PORT"; do
 	valid_port "$port" || { echo "dev-env: invalid port: $port" >&2; exit 2; }
 done
@@ -70,6 +78,7 @@ ARTIFACT_DIR="$ROOT/.artifacts/$INSTANCE"
 DATABASE_OVERRIDE="${LOOMARR_AGENT_DATABASE_URL:-$DEFAULT_DATABASE}"
 FILLER_OVERRIDE="${LOOMARR_AGENT_FILLER_DIR:-$DEFAULT_FILLER}"
 PREPARED_OVERRIDE="${LOOMARR_AGENT_PREPARED_DIR:-$DEFAULT_PREPARED}"
+PUBLIC_URL_OVERRIDE="${LOOMARR_AGENT_PUBLIC_URL:-$DEFAULT_PUBLIC_URL}"
 
 emit_export() {
 	name="$1"
@@ -94,6 +103,7 @@ case "${1:-show}" in
 		emit_export LOOMARR_AGENT_DATABASE_URL "$DATABASE_OVERRIDE"
 		emit_export LOOMARR_AGENT_FILLER_DIR "$FILLER_OVERRIDE"
 		emit_export LOOMARR_AGENT_PREPARED_DIR "$PREPARED_OVERRIDE"
+		emit_export LOOMARR_AGENT_PUBLIC_URL "$PUBLIC_URL_OVERRIDE"
 		emit_export FILLER_DROP_DIR "${FILLER_DROP_DIR:-$ROOT/.filler-drop}"
 		;;
 	show)
@@ -108,7 +118,8 @@ case "${1:-show}" in
 			'artifacts' "$ARTIFACT_DIR" \
 			'database override' "${DATABASE_OVERRIDE:-<from .env>}" \
 			'filler override' "${FILLER_OVERRIDE:-<from .env>}" \
-			'prepared override' "${PREPARED_OVERRIDE:-<from .env>}"
+			'prepared override' "${PREPARED_OVERRIDE:-<from .env>}" \
+			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}"
 		;;
 	*)
 		echo "usage: scripts/dev-env.sh [show|export]" >&2

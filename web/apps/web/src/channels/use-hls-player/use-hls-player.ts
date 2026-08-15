@@ -35,8 +35,14 @@ interface UseHlsPlayer {
 }
 
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
-  const [status, setStatus] = useState<PlayerStatus>("idle");
-  const [error, setError] = useState<string | undefined>();
+  const [state, setState] = useState<{ channelId: string; status: PlayerStatus; error?: string }>({
+    channelId,
+    status: "idle",
+  });
+  // A channel change is loading immediately, before VideoPlayer's passive attach effect runs. The
+  // previous source's "playing" state must never hide the new attempt's tuning presentation.
+  const status = state.channelId === channelId ? state.status : "loading";
+  const error = state.channelId === channelId ? state.error : undefined;
   // Each attachment gets a generation in addition to its AbortController. Abort stops the fetch;
   // generation guards the small race where a promise has already resolved and queued its callback.
   // A boolean cannot do this: the next attach resets it to false and accidentally re-authorizes an
@@ -51,7 +57,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (firstFrame) return;
         firstFrame = true;
         markTunePhase(attempt, "first-frame");
-        setStatus("playing");
+        setState({ channelId, status: "playing" });
       };
       let frameCallback: number | undefined;
       const requestFrame = video.requestVideoFrameCallback?.bind(video);
@@ -131,8 +137,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.recoverMediaError();
               break;
             default:
-              setStatus("error");
-              setError("The stream stopped. Try again in a moment.");
+              setState({ channelId, status: "error", error: "The stream stopped. Try again in a moment." });
               hls.destroy();
           }
         });
@@ -161,11 +166,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       }
 
       stopFirstFrameWatch();
-      setStatus("error");
-      setError("This browser can't play live channels.");
+      setState({ channelId, status: "error", error: "This browser can't play live channels." });
       return () => undefined;
     },
-    [attempt],
+    [attempt, channelId],
   );
 
   const attach = useCallback(
@@ -173,8 +177,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       const generation = ++generationRef.current;
       const controller = new AbortController();
       const current = () => generationRef.current === generation && !controller.signal.aborted;
-      setStatus("loading");
-      setError(undefined);
+      setState({ channelId, status: "loading" });
 
       // The mint is the STANDALONE client function, not the useChannelPlayUrl() mutation hook, and
       // that choice is load-bearing: the mutation object gets a fresh identity every render, which
@@ -194,16 +197,18 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           // CORS and works when server.public_url is unset.
           const src = body?.url;
           if (!src) {
-            setStatus("error");
-            setError("Couldn't get a stream for this channel.");
+            setState({ channelId, status: "error", error: "Couldn't get a stream for this channel." });
             return;
           }
           teardown = bind(video, src);
         })
         .catch((e) => {
           if (!current()) return;
-          setStatus("error");
-          setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't start this channel.");
+          setState({
+            channelId,
+            status: "error",
+            error: toProblem(e).detail ?? toProblem(e).title ?? "Couldn't start this channel.",
+          });
         });
 
       return () => {

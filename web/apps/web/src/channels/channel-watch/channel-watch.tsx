@@ -42,8 +42,10 @@ interface ChannelWatchProps {
   mediaServerName?: string;
   tuner?: {
     canSurf: boolean;
+    requestedChannel?: ChannelDTO;
     currentTitle?: string;
     attempt?: TuneAttempt;
+    acknowledging?: boolean;
     step: (direction: TuneDirection) => void;
     retry: () => void;
   };
@@ -172,6 +174,7 @@ const ChannelWatch = ({
   // The controls-row time (mock): elapsed / total + "N min left" for the programme airing now, from
   // the schedule (the player has no source for programme time, so channel-watch derives it).
   const timeLeft = programmeTime(airings);
+  const osdChannel = tuner?.requestedChannel ?? channel;
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
@@ -258,10 +261,10 @@ const ChannelWatch = ({
           <div className="flex flex-col gap-3 p-3">
             <div className="relative">
               {playerEl}
-              {player.status === "loading" && tuner && (
+              {(player.status === "loading" || tuner?.acknowledging) && tuner && (
                 <TunerOSD
-                  number={channel.number}
-                  name={channel.name}
+                  number={osdChannel.number}
+                  name={osdChannel.name}
                   currentTitle={tuner.currentTitle}
                   className="absolute top-4 left-4 z-[2]"
                 />

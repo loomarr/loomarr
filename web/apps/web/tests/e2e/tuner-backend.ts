@@ -52,6 +52,7 @@ const channels = Array.from({ length: 100 }, (_, index) => {
 });
 
 interface TunerBackend {
+  delayNextActiveManifest: (channelId: string, delayMs: number) => void;
   readonly state: {
     activeManifests: string[];
     assetRequests: string[];
@@ -61,6 +62,7 @@ interface TunerBackend {
 }
 
 const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
+  const activeManifestDelays = new Map<string, number>();
   const state = {
     activeManifests: [] as string[],
     assetRequests: [] as string[],
@@ -79,7 +81,14 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
     if (master) {
       const id = master[1] ?? "";
       if (url.searchParams.get("mode") === "prepared") state.preparedProbes.push(id);
-      else state.activeManifests.push(id);
+      else {
+        state.activeManifests.push(id);
+        const delay = activeManifestDelays.get(id);
+        if (delay) {
+          activeManifestDelays.delete(id);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/vnd.apple.mpegurl",
@@ -141,7 +150,10 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
     return json(route, {});
   });
 
-  return { state };
+  return {
+    delayNextActiveManifest: (id, delayMs) => activeManifestDelays.set(id, delayMs),
+    state,
+  };
 };
 
 export type { TunerBackend };

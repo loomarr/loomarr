@@ -56,8 +56,9 @@ the ignored `.agent-data/` and `.artifacts/` directories. `BOOTSTRAP_SKIP_FE=1` 
 known Go-only task.
 
 The harness does not copy `.env` by default. `COPY_ENV=1` is an explicit opt-in for integration work;
-the copy is mode `0600`. Even then, secondary worktrees override the local SQLite path and runtime
-ports after sourcing `.env`, preventing two agents from sharing a database or listener accidentally.
+the copy is mode `0600`. Even then, secondary worktrees override the local SQLite path, runtime
+ports, and `server.public_url` after sourcing `.env`, preventing two agents from sharing a database
+or listener and preventing playout's parent ffmpeg from calling the primary backend accidentally.
 
 ## Runtime isolation
 
@@ -68,6 +69,7 @@ secondary worktree derives stable ports and names from its absolute path:
 - Storybook and Tunarr
 - Compose project and volumes
 - SQLite database and filler drop folder
+- the server public URL used by internal playout
 - diagnostic artifact directory
 
 `make dev-be`, `make dev-fe`, `make storybook`, `make dev`, and `make dev-gpu` consume that environment.

@@ -46,6 +46,11 @@ const hlsSegmentDuration = 4
 // stays trivial (window × segment-seconds of video). `delete_segments` prunes past this.
 const hlsWindow = 6
 
+// hlsRelayBuffer is the startup slack between the live session and the HLS ffmpeg child. The
+// relay starts before ffmpeg is spawned, so a warm session's initial burst cannot fill Manager's
+// much smaller viewer buffer and get the remux dropped while process startup is still underway.
+const hlsRelayBuffer = 256
+
 // hlsFirstSegmentTimeout is the UPPER BOUND on waiting for the first playlist to appear — a
 // failsafe, not the expected wait. The normal case returns in a few seconds (the session warms up,
 // ffmpeg writes the first segment + playlist, we serve it). This bound only fires when a channel is
@@ -163,6 +168,14 @@ func (m *HLSManager) Playlist(channelID string, plan EncodePlan) (playlistPath s
 	if r := m.remuxes[key]; r != nil {
 		if p, d, ok := r.addViewer(); ok {
 			m.mu.Unlock()
+			// A shared remux may still be starting. The first caller waits below, but a later HLS
+			// poll can join before ffmpeg has written its first segment. Every caller must cross the
+			// same readiness gate; returning the path here races Origin's read and produces an
+			// immediate 502 even though the remux becomes healthy moments later.
+			if werr := r.awaitPlaylist(m.readyWait()); werr != nil {
+				d()
+				return "", nil, werr
+			}
 			return p, d, nil
 		}
 		// Mid-teardown: drop and start fresh below rather than joining something dying.
@@ -269,6 +282,14 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		onClosed: func() { m.remove(key) },
 	}
 
+	// Start draining the session BEFORE spawning ffmpeg. A warm parent may emit its initial burst
+	// immediately after Attach returns; waiting until after process startup left that burst queued
+	// in Manager's small viewer buffer, which could drop the HLS viewer before it ever read a byte.
+	// The relay is deliberately independent of proc so this ordering has no partially-initialised
+	// process race.
+	buffered := make(chan []byte, hlsRelayBuffer)
+	go r.bufferSession(chunks, buffered)
+
 	// Direct-play: the remux stream-copies the session's bytes into HLS. No renditions, no
 	// transcode — one encode per channel is the SESSION's; the remux only re-containers it.
 	proc, err := m.spawn(ctx, m.ffmpeg, dir, plan, m.log)
@@ -286,9 +307,9 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		m.log.Info("hls: remux ffmpeg spawned", "channel", channelID)
 	}
 
-	// Pump the shared MPEG-TS into ffmpeg's stdin. One goroutine per remux; it ends when the
-	// session channel closes (encoder gone) or the context is cancelled (teardown).
-	go r.pump(chunks)
+	// Feed the already-draining relay into ffmpeg. It ends when the session channel closes
+	// (encoder gone), ffmpeg exits, or teardown cancels the shared lifetime.
+	go r.writeRelay(buffered)
 	return r, nil
 }
 
@@ -437,28 +458,7 @@ func (r *hlsRemux) teardown() {
 // session sends (so the session never blocks on the remux), and a writer goroutine feeds ffmpeg
 // stdin from that buffer at ffmpeg's pace. Backpressure now lives in OUR buffer, invisible to the
 // session's fan-out. A closed session channel or a dead ffmpeg still tears the remux down cleanly.
-func (r *hlsRemux) pump(chunks <-chan []byte) {
-	// Internal hand-off between the session-reader and the ffmpeg-writer. Generously buffered:
-	// this is the slack that absorbs ffmpeg's startup backpressure without the session ever seeing
-	// it. 256 × 64KB ≈ 16MB — a few seconds of a channel at playout bitrates, cheap memory for the
-	// one thing that was breaking every in-app stream.
-	buffered := make(chan []byte, 256)
-
-	// WRITER: drains the internal buffer into ffmpeg stdin at ffmpeg's pace. A write error means
-	// ffmpeg exited — tear down.
-	go func() {
-		defer func() { _ = r.proc.closeStdin() }()
-		for chunk := range buffered {
-			if _, err := r.proc.stdin.Write(chunk); err != nil {
-				go r.teardown() // ffmpeg went away
-				// Drain the rest so the reader below is never blocked sending to us.
-				for range buffered { //nolint:revive // intentional drain
-				}
-				return
-			}
-		}
-	}()
-
+func (r *hlsRemux) bufferSession(chunks <-chan []byte, buffered chan []byte) {
 	// READER: pulls from the session as fast as it arrives so the session NEVER blocks on us. If
 	// our own buffer is full (ffmpeg is catastrophically behind, not just starting up), drop the
 	// OLDEST buffered chunk rather than block the session — a live stream survives a dropped chunk,
@@ -489,6 +489,21 @@ func (r *hlsRemux) pump(chunks <-chan []byte) {
 	close(buffered)
 	if r.log != nil {
 		r.log.Debug("hls: session channel closed", "channel", r.channelID, "totalBytes", total)
+	}
+}
+
+// writeRelay drains the startup relay into ffmpeg at the process's pace. A closed relay means the
+// upstream session ended; a write error means ffmpeg ended. Either way this remux is terminal.
+func (r *hlsRemux) writeRelay(buffered <-chan []byte) {
+	defer func() { _ = r.proc.closeStdin() }()
+	for chunk := range buffered {
+		if _, err := r.proc.stdin.Write(chunk); err != nil {
+			go r.teardown() // ffmpeg went away
+			// Drain the rest so bufferSession is never blocked sending to us.
+			for range buffered { //nolint:revive // intentional drain
+			}
+			return
+		}
 	}
 	go r.teardown()
 }
@@ -525,6 +540,19 @@ func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
 		if body, err := os.ReadFile(r.playlist); err == nil && bytes.Contains(body, []byte("#EXTINF")) {
 			return nil
 		}
+		if r.proc.done != nil {
+			select {
+			case <-r.proc.done:
+				// Remove the dead remux before returning so the client's retry starts a fresh process
+				// instead of rejoining this corpse for the remainder of the grace window.
+				r.teardown()
+				if last := r.proc.LastError(); last != "" {
+					return fmt.Errorf("hls: channel %s remux exited before producing a stream: %s", r.channelID, last)
+				}
+				return fmt.Errorf("hls: channel %s remux exited before producing a stream: %v", r.channelID, r.proc.waitErr)
+			default:
+			}
+		}
 		if time.Now().After(deadline) {
 			// Include ffmpeg's last stderr line — the WHY behind "no stream". Without it this
 			// error is a bare timeout that sends diagnosis in the wrong direction.
@@ -544,13 +572,28 @@ type hlsProcess struct {
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
 	log   *slog.Logger
+	done  chan struct{}
 
-	mu      sync.Mutex
-	lastErr string
+	mu       sync.Mutex
+	lastErr  string
+	waitOnce sync.Once
+	waitErr  error
 }
 
 func (p *hlsProcess) closeStdin() error { return p.stdin.Close() }
-func (p *hlsProcess) wait() error       { return p.cmd.Wait() }
+func (p *hlsProcess) wait() error {
+	p.waitOnce.Do(func() { p.waitErr = p.cmd.Wait() })
+	return p.waitErr
+}
+
+func newHLSProcess(cmd *exec.Cmd, stdin io.WriteCloser, log *slog.Logger) *hlsProcess {
+	p := &hlsProcess{cmd: cmd, stdin: stdin, log: log, done: make(chan struct{})}
+	go func() {
+		_ = p.wait()
+		close(p.done)
+	}()
+	return p
+}
 
 // LastError returns ffmpeg's most recent stderr line — the actionable reason a remux produced no
 // stream ("Device creation failed", a filter parse error). Retained like Process.LastError does,
@@ -599,11 +642,11 @@ func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *
 		return nil, fmt.Errorf("hls: stderr pipe: %w", err)
 	}
 
-	p := &hlsProcess{cmd: cmd, stdin: stdin, log: log}
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
 		return nil, fmt.Errorf("hls: start ffmpeg: %w", err)
 	}
+	p := newHLSProcess(cmd, stdin, log)
 	go p.readStderr(stderr)
 	return p, nil
 }

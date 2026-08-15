@@ -530,6 +530,9 @@ jobs:
       - name: Wizard e2e smoke vs a mocked backend
         if: matrix.shard == 1
         run: make e2e
+      - name: Tuner controller matrix in Chromium, Firefox, and WebKit
+        if: matrix.shard == 1
+        run: make tuner-e2e
       # ⚠ WITHOUT THIS, A RED VISUAL RUN TELLS YOU ALMOST NOTHING. Playwright writes an
       # `-actual.png`, `-expected.png` and `-diff.png` for every failed screenshot, and this
       # job used to throw all three away — the log kept only "N pixels (ratio X) are

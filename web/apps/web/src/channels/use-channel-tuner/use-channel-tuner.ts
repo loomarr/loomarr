@@ -24,9 +24,12 @@ const adjacentChannel = (
   return channels[(current + direction + channels.length) % channels.length];
 };
 
-const afterNextPaint = (fn: () => void) => {
+const acrossNextPaint = (beforePaint: () => void, afterPaint: () => void) => {
   if (typeof requestAnimationFrame !== "function") return;
-  requestAnimationFrame(() => requestAnimationFrame(fn));
+  requestAnimationFrame(() => {
+    beforePaint();
+    requestAnimationFrame(afterPaint);
+  });
 };
 
 // useChannelTuner owns intent ordering, not media transport. The route mirrors its target, while
@@ -40,9 +43,15 @@ const useChannelTuner = ({
   warmChannel = warmPreparedChannel,
 }: UseChannelTunerOptions): UseChannelTuner => {
   const catalog = useMemo(() => surfableCatalog(channels), [channels]);
-  const [request, setRequest] = useState<{ channel: ChannelDTO; attempt: ReturnType<typeof beginTune> }>();
+  const [request, setRequest] = useState<{
+    channel: ChannelDTO;
+    attempt: ReturnType<typeof beginTune>;
+    phase: "acknowledging" | "tuning";
+  }>();
+  const [activeId, setActiveId] = useState(currentId);
   const pendingId = useRef(currentId);
   const requestedId = useRef<string | undefined>(undefined);
+  const latestAttemptId = useRef<number | undefined>(undefined);
   const warmed = useRef(new Map<string, WarmedChannel>());
 
   useEffect(() => {
@@ -51,10 +60,11 @@ const useChannelTuner = ({
     pendingId.current = currentId;
     if (requestedId.current === currentId) return;
     requestedId.current = undefined;
+    setActiveId(currentId);
     setRequest(undefined);
   }, [currentId]);
 
-  const current = request?.channel ?? catalog.find((channel) => channel.id === currentId);
+  const current = catalog.find((channel) => channel.id === activeId);
 
   useEffect(() => {
     if (!current) return;
@@ -86,11 +96,24 @@ const useChannelTuner = ({
       if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
       const warm = warmed.current.get(target.id);
       const attempt = beginTune(true, warm?.warmed, warm?.url);
+      latestAttemptId.current = attempt.id;
       pendingId.current = target.id;
       requestedId.current = target.id;
-      setRequest({ channel: target, attempt });
-      afterNextPaint(() => markTunePhase(attempt, "osd"));
-      onTune(target);
+      setRequest({ channel: target, attempt, phase: "acknowledging" });
+      acrossNextPaint(
+        () => {
+          if (latestAttemptId.current !== attempt.id) return;
+          markTunePhase(attempt, "osd");
+        },
+        () => {
+          if (latestAttemptId.current !== attempt.id) return;
+          setActiveId(target.id);
+          setRequest((candidate) =>
+            candidate?.attempt.id === attempt.id ? { ...candidate, phase: "tuning" } : candidate,
+          );
+          onTune(target);
+        },
+      );
     },
     [catalog, onTune],
   );
@@ -99,20 +122,35 @@ const useChannelTuner = ({
     if (!current) return;
     const warm = warmed.current.get(current.id);
     const attempt = beginTune(false, warm?.warmed, warm?.url);
+    latestAttemptId.current = attempt.id;
     pendingId.current = current.id;
     requestedId.current = current.id;
-    setRequest({ channel: current, attempt });
-    afterNextPaint(() => markTunePhase(attempt, "osd"));
+    setRequest({ channel: current, attempt, phase: "acknowledging" });
+    acrossNextPaint(
+      () => {
+        if (latestAttemptId.current !== attempt.id) return;
+        markTunePhase(attempt, "osd");
+      },
+      () => {
+        if (latestAttemptId.current !== attempt.id) return;
+        setRequest((candidate) =>
+          candidate?.attempt.id === attempt.id ? { ...candidate, phase: "tuning" } : candidate,
+        );
+      },
+    );
   }, [current]);
 
-  const currentTitle = current
-    ? nowNext.find((entry) => entry.channelId === current.id)?.now?.title
+  const titledChannel = request?.channel ?? current;
+  const currentTitle = titledChannel
+    ? nowNext.find((entry) => entry.channelId === titledChannel.id)?.now?.title
     : undefined;
 
   return {
     channel: current,
+    requestedChannel: request?.channel,
     currentTitle,
-    attempt: request?.attempt,
+    attempt: request?.phase === "tuning" ? request.attempt : undefined,
+    acknowledging: request?.phase === "acknowledging",
     canSurf: catalog.length > 1,
     step,
     retry,

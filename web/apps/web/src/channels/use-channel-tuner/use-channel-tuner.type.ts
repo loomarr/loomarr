@@ -14,8 +14,10 @@ interface UseChannelTunerOptions {
 
 interface UseChannelTuner {
   channel?: ChannelDTO;
+  requestedChannel?: ChannelDTO;
   currentTitle?: string;
   attempt?: TuneAttempt;
+  acknowledging: boolean;
   canSurf: boolean;
   step: (direction: TuneDirection) => void;
   retry: () => void;

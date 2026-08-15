@@ -124,6 +124,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
 | `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` |
 | `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` |
+| `make tuner-e2e` | ✅ | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` |
 
 ## Maintainer smoke (NOT CI)
 
@@ -138,7 +139,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

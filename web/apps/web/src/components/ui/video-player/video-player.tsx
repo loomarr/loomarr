@@ -31,6 +31,35 @@ const mmss = (seconds: number): string => {
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
 
+// Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
+// This is a poster, not a hidden player or decoder: transport teardown can release immediately,
+// while the viewer keeps the last honest frame until the replacement produces its first one.
+const holdDecodedFrame = (video: HTMLVideoElement) => {
+  if (
+    video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+    video.videoWidth < 1 ||
+    video.videoHeight < 1
+  ) {
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  try {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    video.poster = canvas.toDataURL("image/png");
+  } catch {
+    // A cross-origin source without canvas permission cannot be captured. Leave the element's
+    // existing poster alone; source replacement still proceeds normally.
+  }
+};
+
+const clearHeldFrame = (video: HTMLVideoElement) => {
+  if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
+};
+
 const VideoPlayer = ({
   src,
   title,
@@ -78,7 +107,18 @@ const VideoPlayer = ({
     if (!attach) return;
     const el = videoRef.current;
     if (!el) return;
-    return attach(el);
+    const release = attach(el);
+    const requestFrame = el.requestVideoFrameCallback?.bind(el);
+    const onReplacementFrame = () => clearHeldFrame(el);
+    let frameCallback: number | undefined;
+    if (requestFrame) frameCallback = requestFrame(onReplacementFrame);
+    else el.addEventListener("playing", onReplacementFrame, { once: true });
+    return () => {
+      if (frameCallback !== undefined) el.cancelVideoFrameCallback?.(frameCallback);
+      el.removeEventListener("playing", onReplacementFrame);
+      holdDecodedFrame(el);
+      release();
+    };
   }, [attach]);
 
   // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows

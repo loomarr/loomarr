@@ -17,10 +17,13 @@ func TestPruneEvictsWholeColdPublicationsOldestFirst(t *testing.T) {
 	}
 
 	oldest := publishSized(t, lib, "oldest", 600<<10)
+	setPublicationTime(t, oldest, now)
 	now = now.Add(time.Hour)
 	protected := publishSized(t, lib, "protected", 600<<10)
+	setPublicationTime(t, protected, now)
 	now = now.Add(time.Hour)
 	newest := publishSized(t, lib, "newest", 600<<10)
+	setPublicationTime(t, newest, now)
 	now = now.Add(time.Hour)
 	if _, ok, err := lib.Lookup(baselineSpec("protected")); err != nil || !ok {
 		t.Fatalf("touch protected publication = (_, %v, %v)", ok, err)
@@ -213,6 +216,13 @@ func publishSized(t *testing.T, lib *Library, source string, size int) Publicati
 		t.Fatal(err)
 	}
 	return pub
+}
+
+func setPublicationTime(t *testing.T, publication Publication, at time.Time) {
+	t.Helper()
+	if err := os.Chtimes(publication.Directory, at, at); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func baselineSpec(source string) Specification {

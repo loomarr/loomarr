@@ -40,8 +40,10 @@ const WatchScreen = () => {
         onSavePolicy={savePolicy}
         tuner={{
           canSurf: tuner.canSurf,
+          requestedChannel: tuner.requestedChannel,
           currentTitle: tuner.currentTitle,
           attempt: tuner.attempt,
+          acknowledging: tuner.acknowledging,
           step: tuner.step,
           retry: tuner.retry,
         }}

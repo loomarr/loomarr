@@ -11,6 +11,9 @@ const p95 = (samples: number[]): number => {
 
 const installFrameClock = async (page: Page) => {
   await page.addInitScript(() => {
+    // The 100-Channel scenario intentionally creates hundreds of API/HLS resource entries. Keep
+    // Chromium's default 250-entry buffer from truncating the manifest timing evidence.
+    performance.setResourceTimingBufferSize?.(2_000);
     const frames: number[] = [];
     Object.defineProperty(window, "__loomarrDecodedFrames", { value: frames, configurable: true });
     const original = HTMLVideoElement.prototype.requestVideoFrameCallback;
@@ -29,21 +32,36 @@ const installFrameClock = async (page: Page) => {
 
 const waitForDecodedFrame = async (page: Page) => {
   const play = page.getByRole("button", { name: "Play" });
-  if (await play.isVisible()) await play.click();
-  await page.waitForFunction(
+  const decoded = page.waitForFunction(
     () =>
       ((window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0) > 0,
+    undefined,
+    { timeout: 10_000 },
   );
+
+  // Firefox can reject autoplay only after the manifest has loaded. Checking the control once,
+  // immediately after navigation, races that decision: the button is still hidden then appears
+  // later while the test waits forever for a frame that cannot decode until a user gesture. Race
+  // the real decoded frame against the fallback control and click it once if the browser asks.
+  await Promise.race([decoded, play.waitFor({ state: "visible", timeout: 9_000 }).then(() => play.click())]);
+  await decoded;
 };
 
 test("100-channel tuner meets surf latency and latest-request-wins gates", async ({ page }) => {
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
 
+  // Prove the engine can cold-start and decode the representative H.264 stream, but keep decoder
+  // bootstrap out of the surf percentile. The real-runtime gate owns cold boot timing; this gate
+  // owns an already-running tuner and never retries a black start.
+  await page.goto(`/channels/${channelId(1)}/watch`);
+  await waitForDecodedFrame(page);
+  await expect(page.locator("video")).toHaveCount(1);
+
   // Arbitrary prepared tune: a deep link is the platform-neutral form of selecting a non-adjacent
   // channel. Measure navigation request to a genuinely decoded frame, including SPA/API/HLS work.
   const arbitrary: number[] = [];
-  for (const number of [3, 17, 29, 41, 53, 67, 79, 91, 8, 50]) {
+  for (const number of [3, 17, 29, 41, 53, 67, 79, 91, 8, 50, 62, 74, 86, 98, 12, 24, 36, 48, 60, 72]) {
     await page.goto(`/channels/${channelId(number)}/watch`);
     await waitForDecodedFrame(page);
     arbitrary.push(
@@ -66,11 +84,30 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     .toEqual(expect.arrayContaining([channelId(49), channelId(51)]));
   expect(backend.state.activeManifests.slice(-1)).toEqual([channelId(50)]);
 
+  // A slow replacement must leave the last decoded picture behind the target OSD. This is one
+  // video element and one decoder: the outgoing frame is held as a poster while transport swaps.
+  const video = page.locator("video");
+  backend.delayNextActiveManifest(channelId(51), 500);
+  const heldFrameCount = await page.evaluate(
+    () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
+  );
+  await page.getByRole("button", { name: "Channel up" }).click();
+  await expect(page.getByRole("status")).toContainText("CH 51");
+  await expect(video).toHaveAttribute("poster", /^data:image\/png;base64,/);
+  await page.waitForFunction(
+    (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
+    heldFrameCount,
+  );
+  await expect(video).not.toHaveAttribute("poster", /^data:image\/png;base64,/);
+
+  // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
+  await page.goto(`/channels/${channelId(50)}/watch`);
+  await waitForDecodedFrame(page);
+
   await page.evaluate(() => {
     performance.clearMeasures("loomarr:tune:request-to-osd");
     performance.clearMeasures("loomarr:tune:request-to-first-frame");
   });
-
   const osd: number[] = [];
   const adjacentFrames: number[] = [];
   let current = 50;

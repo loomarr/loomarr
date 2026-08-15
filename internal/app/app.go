@@ -446,9 +446,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//      VRAM can no longer host (~1 hardware encode per few GiB held). Reactive to the model
 		//      loading/unloading, so headroom grows back when it evicts.
 		playoutBudget := func() int {
-			measured := 0
-			if playoutRes != nil {
-				measured = playoutRes.maxChannels // set async by Detect at adapter start; stable after
+			// Until the background capability probe publishes its result, admit one software
+			// transcode. Zero would turn the non-blocking probe into a different cold-start failure:
+			// the very first viewer would be rejected before Profile could start the probe.
+			measured := 1
+			if playoutRes != nil && playoutRes.detectReady.Load() {
+				// detectReady is the publication fence for maxChannels: never read the field while
+				// the background probe may still be writing it.
+				measured = playoutRes.maxChannels
 			}
 			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
 			// measured capacity is a conservative estimate that can under-count a capable GPU (the
@@ -485,6 +490,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		)
 		playoutRes = &playoutResolver{
 			engine: engine, lib: lib, now: time.Now,
+			detectContext: rootCtx,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 			// state and must not be able to change it.
 			titles: st,

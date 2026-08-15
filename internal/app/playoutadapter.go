@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -150,14 +151,19 @@ type playoutResolver struct {
 	// don't store", never to a failed bind.
 	codecs codecWriter
 	cycles *cycleCache
-	// detectOnce / detected cache the measured encoder choice (detectedEncoder).
+	// detectOnce / detected cache the measured encoder choice (detectedEncoder). detectStart lets
+	// the first tune kick that work off without waiting for it; detectReady publishes the completed
+	// fields atomically so later programme boundaries use the measured hardware result.
 	//
 	// Cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far too
 	// slow on the per-program path. NOT a plain field set at construction: probing eagerly
 	// would add ~20s to every boot for a value most installs never override.
-	detectOnce  sync.Once
-	detected    playout.Encoder
-	maxChannels int
+	detectOnce    sync.Once
+	detectStart   sync.Once
+	detectReady   atomic.Bool
+	detectContext context.Context
+	detected      playout.Encoder
+	maxChannels   int
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -641,9 +647,9 @@ func (r *playoutResolver) airingFiller(
 	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
 	if r.pods == nil || r.fillerDir == nil {
-		// Filler unconfigured: the break becomes the offline card rather than an error. A
-		// channel with no commercials should still play.
-		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+		// Filler unconfigured: the break becomes a bounded break card rather than an error. Keep
+		// the gap itself so the handler knows this is scheduled airtime and where it ends.
+		return gap, "", nil
 	}
 
 	// PreviewAt, not Preview: the pod is seeded from THIS break's start, so consecutive
@@ -657,7 +663,7 @@ func (r *playoutResolver) airingFiller(
 		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
 		// bottoms out at "nothing matched", and a channel must not fail to tune because it has
 		// no ads.
-		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+		return gap, "", nil
 	}
 
 	// Walk the pod to the instant we are at INSIDE the break. gap.Offset is how far into the
@@ -671,13 +677,13 @@ func (r *playoutResolver) airingFiller(
 		if into < d {
 			// The embedded fallback bumper card has no file — it is generated, not played.
 			if e.Path == "" {
-				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+				return gap, "", nil
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
 			full, perr := filler.ClipPath(r.fillerDir(), e.Path, "")
 			if perr != nil {
-				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+				return gap, "", nil
 			}
 			// Count the airing (V28). THIS is the honest write point, and the two
 			// tempting alternatives are both wrong:
@@ -721,7 +727,7 @@ func (r *playoutResolver) airingFiller(
 	// The pod is shorter than the break gap. Real: a 30s break with 20s of clips. The remainder
 	// is the offline card rather than a repeat, because repeating would mean the same ad twice
 	// in one break — worse than a moment of card.
-	return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+	return gap, "", nil
 }
 
 // Profile is the encode profile for the next program, resolved against live load.
@@ -836,7 +842,9 @@ func (r *playoutResolver) PlanFor(
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
-		// No operator override ⇒ ASK THE HARDWARE, once.
+		// No operator override ⇒ warm the measured answer once, but NEVER make this viewer wait
+		// for the machine benchmark. Until it completes, software is the conservative encoder that
+		// is immediately available; later programme boundaries switch to the cached hardware result.
 		//
 		// This used to fall straight through to libx264 with a comment claiming the
 		// capability prober's choice "was stored at wizard time" — but nothing ever stored
@@ -845,17 +853,35 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 		// measured rather than inferred from `ffmpeg -encoders` (which lists encoders the
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
-		enc = r.detectedEncoder(ctx)
+		r.warmEncoderDetection(ctx)
+		enc = playout.EncoderSoftware
+		if r.detectReady.Load() {
+			enc = r.detected
+		}
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
 }
 
-// detectedEncoder returns the best encoder that actually WORKS here, probing once.
+// warmEncoderDetection starts the expensive host probe once without putting it on a viewer's
+// critical path. The composition root's lifetime wins over an individual request context so one
+// TV disconnecting cannot discard the result every later tune needs.
+func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
+	r.detectStart.Do(func() {
+		ctx := r.detectContext
+		if ctx == nil {
+			ctx = context.WithoutCancel(fallback)
+		}
+		go r.detectedEncoder(ctx)
+	})
+}
+
+// detectedEncoder returns the best encoder that actually WORKS here, probing once. Control-plane
+// callers may wait for it; Profile deliberately uses warmEncoderDetection + detectReady instead.
 //
 // Lazily and exactly once, which is the only workable timing: Detect trial-encodes every
 // candidate (~5s each), so it is far too slow for the per-program path and would add ~20s to
-// every boot if done eagerly — for a value most installs never need. The first program to need
-// it pays; everything after reads the cached answer.
+// every boot if done eagerly — for a value most installs never need. The first demand starts it
+// asynchronously; everything after completion reads the cached answer.
 //
 // An operator who changes their hardware (adds GPU passthrough, which is a compose change and
 // needs a restart anyway) gets a fresh probe on the next start.
@@ -886,6 +912,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 				"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
 				"skipped", skipped)
 		}
+		r.detectReady.Store(true)
 	})
 	return r.detected
 }

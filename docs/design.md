@@ -1055,6 +1055,11 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
   **browser or a native app** plays — a `<video>` element cannot consume raw MPEG-TS, so the same
   channel is *repackaged*, not re-encoded: a `-c copy` remux hangs off the channel encoder and fans
   its already-keyframe-aligned bytes into a rolling playlist.
+- **Scheduled break fallback is not an empty Channel.** If a filler pod has no playable clip, the
+  synthetic card says “We'll be right back,” preserves the break's wall-clock identity, and is
+  bounded by the time remaining in that break so it cannot cover the next programme. “Nothing
+  scheduled” is reserved for a genuinely empty/unairable lineup; transient source failures remain
+  “Program unavailable.”
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
 
@@ -1119,6 +1124,11 @@ if it does not, that one live child takes the existing software fallback rather 
 maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
 does not guess and it does not consume the only live slot. This priority contract is shared code;
 adding a second semaphore around ffmpeg is forbidden.
+
+The host capability benchmark is control-plane warming, never tune-time work. With no explicit
+encoder override, the first demand starts one process-lifetime probe in the background and plays
+immediately with the software fallback while it runs; later programme boundaries use the cached
+measured encoder and capacity. A viewer may not inherit the multi-second trial-encode benchmark.
 
 Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
 is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
@@ -1276,6 +1286,8 @@ The **controller matrix** runs the same 100-Channel catalog through Playwright C
 and WebKit. Every engine must preserve latest-request-wins, one video element, exact warmed-URL reuse,
 prepared-only adjacent probes, and a genuinely decoded H.264 frame. Latency budgets remain measured
 per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox or WebKit sample.
+Each engine must complete one bounded cold decode before the surf samples begin; those samples measure
+an already-running tuner, while the real-runtime gate and shipping-browser soak own cold boot timing.
 These projects certify browser engines in the pinned Linux image. WebKit is useful compatibility
 evidence, but only a run on shipping Safari may be called Safari certification.
 
@@ -1285,7 +1297,10 @@ API and its library) may be test doubles, and they serve pinned representative m
 prebuilt HLS responses. The browser must bootstrap/authenticate through the real API, tune a real
 Channel, receive an HLS manifest produced by Loomarr, and report a decoded frame. A process restart
 then repeats the tune from the durable readiness index, proving cold boot and prepared reuse rather
-than only a warm in-process path. Missing and corrupt representative inputs must reach the designed
+than only a warm in-process path. A secondary worktree overrides `server.public_url` to its own
+isolated backend after sourcing shared integration credentials; otherwise the parent ffmpeg re-opens
+the primary port, emits zero bytes, and every HLS request hides that routing error behind its
+45-second readiness timeout. Missing and corrupt representative inputs must reach the designed
 offline/retry state instead of an unexplained black frame.
 
 The **shipping-browser and hardware soak** is maintainer-run evidence: current Chrome, Firefox, and

@@ -44,6 +44,32 @@ describe("channel tuner", () => {
     expect(result.current.attempt?.id).toBeGreaterThan(0);
   });
 
+  it("acknowledges the requested channel before replacing the active presentation", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const onTune = vi.fn();
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
+    );
+
+    act(() => result.current.step(1));
+
+    expect(result.current.channel?.id).toBe("ch-10");
+    expect(result.current.requestedChannel?.id).toBe("ch-30");
+    expect(result.current.acknowledging).toBe(true);
+    expect(onTune).not.toHaveBeenCalled();
+
+    act(() => frames.shift()?.(16));
+    act(() => frames.shift()?.(32));
+
+    expect(result.current.channel?.id).toBe("ch-30");
+    expect(result.current.acknowledging).toBe(false);
+    expect(onTune).toHaveBeenCalledWith(expect.objectContaining({ id: "ch-30" }));
+  });
+
   it("pairs the selected channel with the already-loaded now row", () => {
     const nowNext: ChannelNowNext[] = [
       { channelId: "ch-10", now: { title: "The First Feature", gap: false, startMs: 1, stopMs: 2 } },
