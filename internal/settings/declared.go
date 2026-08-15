@@ -52,6 +52,17 @@ func positiveLimit(v any) error {
 	return nil
 }
 
+func positiveWholeNumber(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number")
+	}
+	if n < 1 {
+		return fmt.Errorf("want 1 or more (got %d)", n)
+	}
+	return nil
+}
+
 func declared() []Setting {
 	return []Setting{
 		// --- Connections: media server (§15, Phase 5) ---
@@ -245,6 +256,14 @@ func declared() []Setting {
 			Key: "playout.prepared_dir", Label: "Prepared media library", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, Default: "/data/prepared", Advanced: true,
 			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
+		},
+		{
+			// A soft cap rather than a quota: active HLS publications win when their protected
+			// bytes exceed it. Hot-applied because it changes only the next retention decision;
+			// publication identity and keyed asset paths do not move.
+			Key: "playout.prepared_budget_gb", Label: "Prepared media budget", EnvVar: "PLAYOUT_PREPARED_BUDGET_GB", Group: GroupPlayout,
+			Kind: KindInt, Default: 512, Advanced: true, Validate: positiveWholeNumber,
+			Doc: "Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart.",
 		},
 		{
 			Key: "playout.max_channels", Label: "Maximum live transcodes", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
