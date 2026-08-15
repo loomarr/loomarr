@@ -16,6 +16,7 @@ func baseline(source string) prepared.Specification {
 		SourceFingerprint: source,
 		Rendition: prepared.RenditionContract{
 			VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080,
+			FrameRate: 25, VideoBitrateKbps: 5000, AudioBitrateKbps: 160,
 			SegmentDurationMS: 2000, PackagingVersion: 1,
 		},
 	}

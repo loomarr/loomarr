@@ -1039,8 +1039,9 @@ a private schedule. A tune resolves in this order:
 
 1. Resolve the authoritative Airing window and the client's canonical EncodePlan.
 2. Look up a complete prepared publication by `(source fingerprint, rendition contract, packaging
-   version)`. A publication is visible only after all of its immutable fragments and metadata have
-   validated and been atomically committed.
+   version)`. Tune-time lookup may use only a fingerprint warmed by the readiness control plane; it
+   must never hash source media or start preparation on demand. A publication is visible only after
+   all of its immutable fragments and metadata have validated and been atomically committed.
 3. On a hit, render the short wall-clock manifest over those shared fragments. Starting an encoder or
    per-Channel packager on this path is a contract violation.
 4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
@@ -1057,7 +1058,8 @@ because it is a second playout. Its small interface accepts a source plus rendit
 returns the resulting publication. It hides probing, copy-versus-transcode, staging paths, fragment
 validation, retries, and atomic rename. The readiness planner submits work from the accepted schedule;
 it cannot write that schedule. Prepared identity is transport-independent: codec/profile/level,
-pixel format/HDR, audio codec/layout, dimensions, segment cadence, and packaging version are data.
+pixel format/HDR, audio codec/layout, dimensions, frame rate, video/audio bitrate, segment cadence,
+and packaging version are data. Changing any output property produces a different publication key.
 There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
 compatible renditions and render/fetch their transport; they do not redefine preparation identity.
 

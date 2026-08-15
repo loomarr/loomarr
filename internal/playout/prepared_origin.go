@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	preparedManifestName     = "media.m3u8"
 	preparedManifestSegments = 4
 )
 
@@ -63,7 +62,7 @@ func (o *PreparedOrigin) Tune(ctx context.Context, request TuneRequest) (Present
 	if err != nil || !ok {
 		return Presentation{}, false, err
 	}
-	asset, ok, err := o.library.Open(pub.Key, preparedManifestName)
+	asset, ok, err := o.library.Open(pub.Key, prepared.MediaManifestName)
 	if err != nil || !ok {
 		if err == nil {
 			err = prepared.ErrIncomplete
