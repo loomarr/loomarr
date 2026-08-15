@@ -19,7 +19,7 @@ describe("tuner timing", () => {
     expect(mark).toHaveBeenCalledWith(`loomarr:tune:${attempt.id}:request`);
     expect(measure).toHaveBeenCalledWith(
       "loomarr:tune:request-to-osd",
-      expect.objectContaining({ detail: { attemptId: attempt.id, adjacent: true } }),
+      expect.objectContaining({ detail: { attemptId: attempt.id, adjacent: true, warmed: false } }),
     );
   });
 });

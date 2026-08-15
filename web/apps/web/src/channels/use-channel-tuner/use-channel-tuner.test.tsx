@@ -10,6 +10,8 @@ const channels = [
   channel({ id: "ch-20", number: 20, name: "Twenty", inAppPlayable: false }),
 ];
 
+const noWarm = vi.fn().mockResolvedValue(undefined);
+
 describe("channel tuner", () => {
   beforeEach(() => {
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -28,7 +30,7 @@ describe("channel tuner", () => {
   it("bases a rapid burst on the last REQUESTED channel before the route catches up", () => {
     const onTune = vi.fn();
     const { result } = renderHook(() =>
-      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune }),
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
     );
 
     act(() => {
@@ -47,8 +49,24 @@ describe("channel tuner", () => {
       { channelId: "ch-10", now: { title: "The First Feature", gap: false, startMs: 1, stopMs: 2 } },
     ];
     const { result } = renderHook(() =>
-      useChannelTuner({ currentId: "ch-10", channels, nowNext, onTune: vi.fn() }),
+      useChannelTuner({ currentId: "ch-10", channels, nowNext, onTune: vi.fn(), warmChannel: noWarm }),
     );
     expect(result.current.currentTitle).toBe("The First Feature");
+  });
+
+  it("reuses the exact signed URL and warmed state when tuning to a prepared neighbor", async () => {
+    const warmChannel = vi.fn().mockResolvedValue({
+      url: "/v1/playout/hls/ch-30/master.m3u8?sig=one",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      warmed: true,
+    });
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
+    );
+    await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-30", expect.any(AbortSignal)));
+    await act(async () => Promise.resolve());
+    act(() => result.current.step(1));
+    expect(result.current.attempt?.warmed).toBe(true);
+    expect(result.current.attempt?.playURL).toContain("sig=one");
   });
 });
