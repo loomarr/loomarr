@@ -23,7 +23,7 @@ func TestLiveTVReconnectUsesSerializedTransitionWithoutTunarr(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	resp := do(t, srv, http.MethodPost, "/v1/setup/livetv-reconnect", adminToken, "")
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST /v1/setup/livetv-reconnect = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
