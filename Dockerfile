@@ -361,7 +361,10 @@ COPY --from=build /out/loomarr /loomarr
 # zero-env first run the very first thing to touch this path is a background job. Without the
 # pre-create it writes into a root-owned volume, fails, and reports the failure on the Tasks page
 # once a minute forever, with nothing connecting it to a directory nobody created.
-RUN install -d -o 65532 -g 65532 /data /data/filler /data/images
+# /data/prepared is the persistent playout publication root (§9.1 V56). Unlike the live HLS
+# scratch directory it survives viewers and restarts, so a fresh named volume must make it writable
+# before the readiness job runs for the first time.
+RUN install -d -o 65532 -g 65532 /data /data/filler /data/images /data/prepared
 VOLUME /data
 # These paths are what the `ingest` feature gate probes for. Set here rather than
 # discovered, so the gate is a config question with an operator override (§10).
