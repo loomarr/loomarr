@@ -257,9 +257,15 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64, out string) error {
 	// Stream copy (§10 — no re-encode): fast, lossless, and the boundaries being
 	// cut at are scene changes, which is where keyframes cluster.
+	//
+	// ⚠ Do NOT add `-avoid_negative_ts make_zero`. An input seek with stream copy begins at the
+	// preceding keyframe; MP4's edit list hides that preroll and presents the requested span. Forcing
+	// timestamps to zero makes the preroll visible instead: measured on a sparse-GOP compilation, a
+	// requested 31s segment became 40.683s. The next probe then persisted the inflated duration and
+	// a clip that fit a break no longer did. `TestCut_MP4DoesNotExposeKeyframePreroll` pins this.
 	if combined, err := exec.CommandContext(ctx, t.FFmpegPath,
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
-		"-i", file, "-c", "copy", "-avoid_negative_ts", "make_zero", "-y", out).CombinedOutput(); err != nil {
+		"-i", file, "-c", "copy", "-y", out).CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg cut %s: %w: %s", out, err, combined)
 	}
 	return nil
