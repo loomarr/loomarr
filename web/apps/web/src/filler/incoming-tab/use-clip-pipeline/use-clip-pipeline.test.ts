@@ -61,9 +61,14 @@ const frame = (over: Partial<FillerClipEvent> = {}): FillerClipEvent => ({
 
 const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
   clips,
+  clipsTotal: clips.length,
+  decisionsTotal: clips.filter((clip) => clip.needsDecision).length,
   reels: [],
+  reelsTotal: 0,
   rejected: [],
+  rejectedTotal: 0,
   recentlyFiled: [],
+  recentlyFiledTotal: 0,
   stageOrder: ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"],
   total: 0,
 });

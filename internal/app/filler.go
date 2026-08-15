@@ -950,8 +950,17 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // complete and conformant and reachable by nothing — the same built-but-unimported shape as
 // `filler_sources` (V33) and the eight instances before it. Worth naming, because the
 // function looking finished is exactly what made it easy to leave unwired.
-func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
-	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
+func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+	discoverer := clipfetch.NewArchiveDownloader(false)
+	var (
+		res clipfetch.DiscoveryResult
+		err error
+	)
+	if strings.TrimSpace(query) == "" {
+		res, err = discoverer.DiscoverCollection(ctx, ref, limit)
+	} else {
+		res, err = discoverer.SearchCollection(ctx, ref, query, limit)
+	}
 	if err != nil {
 		return nil, 0, err
 	}

@@ -164,7 +164,10 @@ const stubReachable = () => {
           needsDecision: true,
         },
       ],
+      clipsTotal: 1,
+      decisionsTotal: 1,
       reels: [],
+      reelsTotal: 0,
       // V38's audit half — what was filed with nobody looking.
       recentlyFiled: [
         {
@@ -178,7 +181,9 @@ const stubReachable = () => {
           autoFiled: true,
         },
       ],
+      recentlyFiledTotal: 1,
       rejected: [],
+      rejectedTotal: 0,
       stageOrder: [],
       total: 1,
     }),

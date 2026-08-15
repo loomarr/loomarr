@@ -263,6 +263,49 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 	}
 	defer func() { _ = rows.Close() }()
 
+	return collectReadyOrAllSplitProposals(rows, 0, false)
+}
+
+// ListReadySplitProposals returns at most limit proposals that have finished detection. It scans
+// checkpoint documents without retaining them, so a large detection backlog cannot become an
+// equally large Incoming payload.
+func (s *sqlStore) ListReadySplitProposals(ctx context.Context, limit int) ([]filler.SplitProposal, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
+	if err != nil {
+		return nil, fmt.Errorf("list ready split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return collectReadyOrAllSplitProposals(rows, limit, true)
+}
+
+// CountReadySplitProposals counts reviewable reels without retaining their JSON documents.
+func (s *sqlStore) CountReadySplitProposals(ctx context.Context) (int, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
+	if err != nil {
+		return 0, fmt.Errorf("count ready split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		var (
+			p         filler.SplitProposal
+			raw       string
+			createdAt int64
+		)
+		if err := rows.Scan(&p.ID, &p.ClipHash, &raw, &createdAt); err != nil {
+			return 0, fmt.Errorf("scan split proposal: %w", err)
+		}
+		if err := unmarshalSplitProposal(raw, &p); err != nil {
+			return 0, fmt.Errorf("split proposal %s document corrupt: %w", p.ID, err)
+		}
+		if p.Ready() {
+			n++
+		}
+	}
+	return n, rows.Err()
+}
+
+func collectReadyOrAllSplitProposals(rows *sql.Rows, limit int, readyOnly bool) ([]filler.SplitProposal, error) {
 	var out []filler.SplitProposal
 	for rows.Next() {
 		var (
@@ -280,7 +323,13 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 			return nil, fmt.Errorf("split proposal %s document corrupt: %w", p.ID, err)
 		}
 		p.CreatedAt = fromEpoch(createdAt)
+		if readyOnly && !p.Ready() {
+			continue
+		}
 		out = append(out, p)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	return out, rows.Err()
 }

@@ -1,6 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api";
 import {
   getAddFillerSourceMockHandler,
+  getDiscoverFillerMockHandler,
   getListFillerSourcesMockHandler,
   getMeMockHandler,
   getSetFillerSourceEnabledMockHandler,
@@ -46,6 +47,7 @@ const makeWrapper = () => {
 const stubSources = () => {
   const adds: unknown[] = [];
   const enables: { id: string; body: unknown }[] = [];
+  const discoveries: URL[] = [];
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
     getAddFillerSourceMockHandler(async ({ request }) => {
@@ -58,8 +60,12 @@ const stubSources = () => {
       return { id: String(params.id), enabled: false };
     }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+    getDiscoverFillerMockHandler(({ request }) => {
+      discoveries.push(new URL(request.url));
+      return { items: [], total: 0, licenceNote: "Check licences." };
+    }),
   );
-  return { adds, enables };
+  return { adds, enables, discoveries };
 };
 
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
@@ -163,9 +169,22 @@ describe("SourcesPanel", () => {
 // puts several collections on screen at once.
 describe("SourcesPanel per-source search", () => {
   const twoCollections = [
-    source({ kind: "archive", id: "archive:classic", target: "Classic TV Commercials", searchable: true }),
-    source({ kind: "archive", id: "archive:psas", target: "Vintage PSAs", searchable: true }),
+    source({ kind: "archive", id: "archive:classic", uri: "classic_tv", target: "Classic TV Commercials", searchable: true }),
+    source({ kind: "archive", id: "archive:psas", uri: "vintage_psas", target: "Vintage PSAs", searchable: true }),
   ];
+
+  it("scopes a row search to that source's collection URI", async () => {
+    const { discoveries } = stubSources();
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+
+    await waitFor(() => expect(discoveries).toHaveLength(1));
+    expect(discoveries[0]?.searchParams.get("q")).toBe("cereal");
+    expect(discoveries[0]?.searchParams.get("collection")).toBe("classic_tv");
+  });
 
   it("opens the search on the row that was clicked, and only that row", async () => {
     stubSources();

@@ -1739,18 +1739,38 @@ components:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        clipsTotal:
+          description: All clips on the conveyor; clips is capped to one page
+          format: int64
+          type: integer
+        decisionsTotal:
+          description: All conveyor clips waiting on a person, including rows beyond this page
+          format: int64
+          type: integer
         recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        recentlyFiledTotal:
+          description: All automatically filed audit rows; recentlyFiled is capped to one page
+          format: int64
+          type: integer
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
           type: array
+        reelsTotal:
+          description: All reviewable reels; reels is capped to one page
+          format: int64
+          type: integer
         rejected:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
           type: array
+        rejectedTotal:
+          description: All rejected audit rows; rejected is capped to one page
+          format: int64
+          type: integer
         stageOrder:
           description: Every pipeline stage id, in run order
           items:
@@ -1762,10 +1782,15 @@ components:
           type: integer
       required:
         - clips
+        - clipsTotal
+        - decisionsTotal
         - reels
+        - reelsTotal
         - rejected
+        - rejectedTotal
         - stageOrder
         - recentlyFiled
+        - recentlyFiledTotal
         - total
       type: object
     FillerIngestEvent:
@@ -1865,6 +1890,8 @@ components:
         switchable:
           type: boolean
         target:
+          type: string
+        uri:
           type: string
       required:
         - id
@@ -6970,20 +6997,20 @@ paths:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no tags, no licence (see below), and no duration or quality — those cost a metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
       operationId: discover-filler
       parameters:
-        - description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+        - description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
           explode: false
           in: query
           name: q
           schema:
-            description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+            description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
             minLength: 2
             type: string
-        - description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+        - description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
           explode: false
           in: query
           name: collection
           schema:
-            description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+            description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
             type: string
         - description: Max results (default 25)
           explode: false
@@ -7127,7 +7154,7 @@ paths:
         - filler
   /v1/filler/incoming:
     get:
-      description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
+      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
       operationId: filler-incoming
       responses:
         "200":
