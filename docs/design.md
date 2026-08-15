@@ -1174,6 +1174,68 @@ are unreachable; a failed publish leaves the previous complete publication reada
 plus store conformance remain green. Safari Web activation and later native-TV adapters are later
 delivery gates and do not change this module shape.
 
+### Tuning is a latest-request-wins state machine, not route churn (V57)
+
+The Watch surface must support the ordinary television gesture: press Channel Up or Channel Down
+repeatedly and see the last requested Channel begin playing without waiting for every Channel in
+between. The playback state is therefore owned by one **Tuner controller**, not by route mounting.
+The URL follows the selected Channel so refresh and deep-linking stay honest, but a route transition
+is an output of a tune request, never the mechanism that sequences playback.
+
+The controller consumes one surfable catalog, ordered by Channel number with wraparound. Whether a
+Channel can play in-app is server-derived from its **effective** playout backend; clients do not
+reimplement global-default-plus-Channel-override precedence. Paused, detached, empty, and
+Tunarr-backed Channels remain visible in the Guide but are absent from the surfable catalog. The
+catalog includes the already-computed now/next row, so accepting a tune request requires no network
+round trip before it can name the target.
+
+Every request receives a monotonically increasing attempt id. A newer request synchronously aborts
+the older play-URL mint, prepared-manifest fetch, and HLS attachment. Completion callbacks compare
+their attempt id before changing state, so an older slow response cannot replace the newest Channel.
+At most one `<video>` element and one attached decoder exist: tuning swaps the presentation on that
+element; prefetch never creates a hidden player, `MediaSource`, or decoder. This controller contract
+is platform-neutral. The Web adapter binds hls.js or native Safari HLS; later Android TV, Roku, and
+Apple TV adapters bind their native player while preserving the same catalog, attempt, cancellation,
+and telemetry vocabulary.
+
+Channel Up/Down are visible, focusable controls in the live player. On Web, `ArrowUp`/`ArrowDown`,
+`PageUp`/`PageDown`, and the media-key values `ChannelUp`/`ChannelDown` invoke the same actions when
+focus is not inside a control that owns those keys. The OSD changes immediately to the requested
+Channel number, name, current programme, and `Tuning…`; it stays over the existing frame until the
+replacement produces a decoded frame, then fades. A failed tune keeps the target identity visible
+with a retry action rather than silently snapping back to the previous Channel.
+
+Adjacent warming is deliberately **prepared-only**. The client keeps signed play URLs for the
+previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
+least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
+presentation, but on a miss the handler returns `204 No Content` and MUST NOT attach a live session,
+start an encoder, or enqueue preparation. It is safe for the parameter to remain unsigned because it
+can only remove the live fallback. This is not a second endpoint, task, or cache.
+
+On a prepared hit, the Web adapter parses the short manifest and fetches its init map (when present)
+plus the first useful media fragment. Prepared assets are publication-keyed immutable files, so they
+may be served `private, max-age=31536000, immutable`; live-remux assets remain `no-store`. The
+prepared-only flag is omitted from asset URLs in the returned manifest while the signature, plan,
+and quality remain, making the warmed asset URL byte-identical to the subsequent real tune. The
+manifest itself remains `no-store` because its media sequence and live edge follow wall clock.
+
+The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
+request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
+`playing` event as a compatibility fallback). It also records whether the request was adjacent,
+whether its assets were warmed, and whether an older attempt was cancelled. Channel ids and media
+names are not placed in measure names. The product gates on a 100-Channel catalog are:
+
+- OSD acknowledgement p95 below **100 ms**.
+- prepared adjacent request-to-first-frame p95 below **750 ms**.
+- prepared arbitrary request-to-first-frame p95 below **1.5 s**.
+- prepared manifest response p95 below **50 ms** on the local server.
+- a burst of twenty mixed Up/Down requests plays only the final target, leaves one video element,
+  and starts no live fallback for either adjacent prefetch.
+
+V57 ships in reviewable checkpoints: first the controller, cancellation, controls, OSD, and timing;
+then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel
+Playwright surf gate. No checkpoint adds a second player stack or a platform-named backend type.
+
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
 The consumers above do **not** have the same codec tolerance, and pretending they do is a black
