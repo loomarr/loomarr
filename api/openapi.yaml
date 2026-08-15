@@ -160,7 +160,7 @@ components:
           readOnly: true
           type: string
         channelId:
-          description: The channel this approval created or patched (§7). Empty only if channel creation failed — the approval itself still stands.
+          description: The channel atomically created or patched by this approval (§7)
           type: string
         enqueued:
           description: Acquisitions enqueued as wanted titles
@@ -171,6 +171,7 @@ components:
       required:
         - status
         - enqueued
+        - channelId
       type: object
     AudiencePolicy:
       additionalProperties: false

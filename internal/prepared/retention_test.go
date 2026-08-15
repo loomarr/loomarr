@@ -212,6 +212,12 @@ func publishSized(t *testing.T, lib *Library, source string, size int) Publicati
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Retention deliberately falls back to the publication directory's mtime after a restart.
+	// Keep that durable timestamp on the same injected clock as the in-memory LRU; using the
+	// host clock makes a fixed-date test start failing once wall time passes its fake `now`.
+	if err := os.Chtimes(pub.Directory, lib.now(), lib.now()); err != nil {
+		t.Fatal(err)
+	}
 	return pub
 }
 

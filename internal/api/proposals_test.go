@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -57,6 +58,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	log := slog.New(slog.DiscardHandler)
+	chBinder := binder.New(st, nil, nil, log)
 	h := api.Router(log, api.Options{
 		Store:   st,
 		Auth:    testAuthorizer{},
@@ -67,7 +69,8 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the
 		// channel row and just skips the immediate Tunarr reconcile push.
-		Binder: binder.New(st, nil, nil, log),
+		Approver: suggest.NewApprover(st, chBinder, time.Now),
+		Binder:   chBinder,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -486,7 +489,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	}
 }
 
-// TestRefine_NewestApprovedWins is the binding regression for the refine flow (§7).
+// TestRefine_NewerApprovalPatchesChannel is the binding regression for the refine flow (§7).
 // A refine re-runs the channel's OWN job, so over its life a single job accumulates
 // several APPROVED proposals — the original lineup and each refined one. The channel
 // binds on IntentRef (== JobID), and approvedProposalForJob must resolve the *newest*
@@ -497,7 +500,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 // approves sequentially and never leaves two APPROVED rows to choose between): here
 // BOTH proposals are approved and coexist, so the test actually exercises the
 // created_at DESC ordering that the binding leans on.
-func TestRefine_NewestApprovedWins(t *testing.T) {
+func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	ctx := context.Background()
 
@@ -560,7 +563,7 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 	if ch.IntentRef != job {
 		t.Errorf("IntentRef = %q, want %q (binding must survive refine)", ch.IntentRef, job)
 	}
-	// The load-bearing assertion: the lineup is the NEWEST approved proposal's, so the
+	// The load-bearing assertion: the lineup is the newer approved proposal's, so the
 	// refine's change actually took. A single Predator entry, no Matrix.
 	if len(ch.Lineup) != 1 {
 		t.Fatalf("lineup has %d entries, want 1 (the refined pick)", len(ch.Lineup))
@@ -569,6 +572,53 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 	if got != "movie:tmdb:106" {
 		t.Errorf("channel bound to %q — want the REFINED pick movie:tmdb:106 (Predator), "+
 			"not the original Matrix; approvedProposalForJob picked the wrong proposal", got)
+	}
+}
+
+func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	ctx := context.Background()
+	const job = "job-stale-refine"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(id, tmdb, name string, created time.Time) {
+		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
+			`"tmdbId":` + tmdb + `,"name":"` + name + `","inLibrary":true,"libraryItemId":"lib-` + tmdb + `"}]}`
+		if err := st.CreateProposal(ctx, store.Proposal{
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("p-older", "603", "The Matrix", base)
+	mk("p-newer", "106", "Predator", base.Add(time.Hour))
+
+	newer := do(t, srv, http.MethodPost, "/v1/proposals/p-newer/approve", adminToken, "")
+	if newer.StatusCode != http.StatusOK {
+		t.Fatalf("approve newer -> %d", newer.StatusCode)
+	}
+	var approved struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(newer.Body).Decode(&approved)
+	_ = newer.Body.Close()
+
+	older := do(t, srv, http.MethodPost, "/v1/proposals/p-older/approve", adminToken, "")
+	if older.StatusCode != http.StatusConflict {
+		t.Fatalf("approve superseded proposal -> %d, want 409", older.StatusCode)
+	}
+	ch, err := st.GetChannel(ctx, approved.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != "movie:tmdb:106" {
+		t.Fatalf("stale approval rolled channel back: %+v", ch.Lineup)
+	}
+	p, err := st.GetProposal(ctx, "p-older")
+	if err != nil || p.Status != "submitted" {
+		t.Fatalf("superseded proposal = (%+v, %v), want submitted", p, err)
+	}
+	if _, err := st.GetTitle(ctx, "movie:tmdb:603"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("superseded approval inserted title: %v", err)
 	}
 }
 
@@ -852,9 +902,10 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	var out struct {
 		Approved int `json:"approved"`
 		Results  []struct {
-			ID       string `json:"id"`
-			OK       bool   `json:"ok"`
-			Enqueued int    `json:"enqueued"`
+			ID        string `json:"id"`
+			OK        bool   `json:"ok"`
+			Enqueued  int    `json:"enqueued"`
+			ChannelID string `json:"channelId"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -862,6 +913,19 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	}
 	if out.Approved != 2 {
 		t.Fatalf("approved = %d, want 2 (results: %+v)", out.Approved, out.Results)
+	}
+	channelIDs := map[string]bool{}
+	for _, result := range out.Results {
+		if !result.OK || result.ChannelID == "" {
+			t.Errorf("bulk result lacks committed channel: %+v", result)
+		}
+		channelIDs[result.ChannelID] = true
+	}
+	if len(channelIDs) != 2 {
+		t.Errorf("bulk approvals committed %d distinct channels, want 2", len(channelIDs))
+	}
+	if channels, err := st.ListChannels(context.Background()); err != nil || len(channels) != 2 {
+		t.Errorf("persisted channels = %d, %v; want 2", len(channels), err)
 	}
 
 	for _, id := range []string{"p1", "p2"} {
@@ -962,7 +1026,7 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 	body := fmt.Sprintf(
 		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
 	err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 	})
 	if err != nil {
 		t.Fatal(err)

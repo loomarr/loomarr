@@ -17,6 +17,7 @@ import (
 type ProposalApproval struct {
 	Proposal Proposal
 	Titles   []provision.Record
+	Channel  Channel
 }
 
 type encodedApprovalTitle struct {
@@ -29,6 +30,9 @@ type encodedApprovalTitle struct {
 func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error) {
 	if commit.Proposal.Status != "approved" {
 		return 0, fmt.Errorf("approve proposal %s: terminal status is %q", commit.Proposal.ID, commit.Proposal.Status)
+	}
+	if err := validateApprovalChannel(commit.Proposal, commit.Channel); err != nil {
+		return 0, fmt.Errorf("approve proposal %s: %w", commit.Proposal.ID, err)
 	}
 	// Deduplicate before sorting so the caller's first candidate for a key still wins
 	// (available lineup records intentionally precede acquisition copies). Sorting the
@@ -93,10 +97,44 @@ func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalAp
 			enqueued++
 		}
 	}
+	if err := s.upsertChannel(ctx, tx, commit.Channel); err != nil {
+		if isConstraintViolation(err) {
+			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+		}
+		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
+}
+
+// isConstraintViolation recognizes the portable driver contracts without coupling the
+// store to either concrete error package. Postgres exposes SQLSTATE 23505; modernc SQLite
+// exposes extended result codes whose low byte is SQLITE_CONSTRAINT (19).
+func isConstraintViolation(err error) bool {
+	var state interface{ SQLState() string }
+	if errors.As(err, &state) && state.SQLState() == "23505" {
+		return true
+	}
+	var coded interface{ Code() int }
+	return errors.As(err, &coded) && coded.Code()&0xff == 19
+}
+
+func validateApprovalChannel(p Proposal, ch Channel) error {
+	if err := ch.Validate(); err != nil {
+		return fmt.Errorf("invalid channel: %w", err)
+	}
+	if err := ch.Policy.Validate(); err != nil {
+		return fmt.Errorf("invalid channel policy: %w", err)
+	}
+	if ch.IntentRef == "" {
+		return fmt.Errorf("channel %s has no intent ref", ch.ID)
+	}
+	if ch.IntentRef != p.JobID {
+		return fmt.Errorf("channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+	}
+	return nil
 }
 
 func validateApprovalTitle(rec provision.Record) error {

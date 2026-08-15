@@ -266,7 +266,7 @@ type createChannelInput struct {
 func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
 	ch := store.Channel{}
 	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
-	// id, or omit it and let the server mint one — same `ch_…` scheme binder.BindApprovedChannel
+	// id, or omit it and let the server mint one — same `ch_…` scheme approval planning
 	// uses, so a hand-made channel is indistinguishable from an approved one. This is what
 	// lets the "New channel" UI action create without a client-side id scheme.
 	ch.ID = in.Body.ID
@@ -280,6 +280,16 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	ch.Strategy = schedule.Strategy(in.Body.Strategy)
 	ch.IntentRef = in.Body.IntentRef
 	ch.Status = schedule.StatusBuilding
+	// A non-empty intent has exactly one local channel. Approval now enforces this at the
+	// database boundary, so the legacy explicit create path must surface the same invariant as
+	// a clean conflict instead of leaking a unique-index error as a 500.
+	if ch.IntentRef != "" {
+		if _, err := s.store.GetChannelByIntentRef(ctx, ch.IntentRef); err == nil {
+			return nil, errConflict("Channel already exists", "That approved suggestion is already bound to a channel.")
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+	}
 	// Bind the approved proposal's lineup (§7/§9: "create a channel from an
 	// approved proposal"). Empty intentRef ⇒ hand-made channel, no lineup yet.
 	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
@@ -313,7 +323,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	}
 	ch.Lineup = lineup
 	// Due NOW, so the sweep owns this channel from the moment it exists (§9 V54) — the same
-	// stamp `binder.BindApprovedChannel` applies, for the same reason: the immediate reconcile
+	// stamp approval planning applies, for the same reason: the immediate reconcile
 	// below is best-effort, and without a deadline the retry that is supposed to cover it never
 	// comes. A hand-made channel and an approved one must not differ in their recovery story.
 	ch.ReconcileDeadline = time.Now().UTC()
@@ -332,6 +342,9 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 		return nil, err
 	}
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+		if errors.Is(err, store.ErrChannelConflict) {
+			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
+		}
 		return nil, err
 	}
 	// Kick an initial reconcile so the channel goes live immediately (§9 "live
@@ -468,6 +481,9 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+		if errors.Is(err, store.ErrChannelConflict) {
+			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
+		}
 		return nil, err
 	}
 

@@ -72,7 +72,7 @@ type HostedLanguage struct {
 	// that needs a restart.
 	//
 	// Returning nil ⇒ LangUndetermined, so an install that selected `hosted` without configuring
-	// a key is inert rather than broken.
+	// a service URL is inert rather than broken. A key is optional for Custom endpoints.
 	Asker func() AudioAsker
 	// Model is read per call for the same reason.
 	Model func() string

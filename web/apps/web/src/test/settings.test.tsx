@@ -315,6 +315,130 @@ describe("Settings page footers", () => {
   });
 });
 
+describe("Settings honesty", () => {
+  it("prefills the backend-owned OpenRouter API base instead of asking the operator to guess", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "llm.provider",
+            label: "Lineup AI provider",
+            group: "ai",
+            kind: "enum",
+            value: "openai",
+            enumOptions: [
+              { value: "ollama", label: "Ollama" },
+              { value: "openai", label: "OpenAI-compatible" },
+            ],
+          }),
+          setting({
+            key: "llm.url",
+            label: "AI service address",
+            group: "ai",
+            kind: "url",
+            value: "",
+          }),
+          setting({ key: "llm.model", group: "ai", value: "" }),
+          setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+        ],
+      }),
+      getSystemLlmStatusMockHandler({
+        provider: "openai",
+        local: false,
+        reachable: false,
+        model: "",
+        catalog: [],
+        hosted: [
+          {
+            key: "openrouter",
+            label: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            keysUrl: "https://openrouter.ai/keys",
+            keyConfigured: false,
+            active: false,
+            modelsLive: false,
+            models: [],
+          },
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/settings/ai");
+
+    expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
+    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
+    expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
+  });
+
+  it("disables the spoken-language filter with the reason when its local model is missing", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "filler.language",
+            label: "Expected spoken language",
+            group: "filler",
+            presentation: "language",
+            value: "en",
+            advanced: true,
+          }),
+          setting({ key: "filler.language_provider", group: "filler", value: "whisper", advanced: true }),
+          setting({ key: "filler.language_model", group: "filler", value: "", advanced: true }),
+          setting({ key: "ingest.whisper_path", group: "filler", value: "/usr/bin/whisper", advanced: true }),
+          setting({ key: "playout.ffmpeg_path", group: "playout", value: "/usr/bin/ffmpeg", advanced: true }),
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/filler/settings");
+    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
+    for (const button of advancedButtons) await userEvent.click(button);
+
+    expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Language filtering is off because no multilingual detection model is configured",
+    );
+  });
+
+  it("keeps hosted language filtering available for a configured keyless endpoint", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "filler.language",
+            label: "Expected spoken language",
+            group: "filler",
+            presentation: "language",
+            value: "en",
+            advanced: true,
+          }),
+          setting({ key: "filler.language_provider", group: "filler", value: "hosted", advanced: true }),
+          setting({ key: "llm.url", group: "ai", value: "http://ai.internal/v1" }),
+          setting({ key: "llm.model", group: "ai", value: "audio-model" }),
+          setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+          setting({ key: "playout.ffmpeg_path", group: "playout", value: "/usr/bin/ffmpeg", advanced: true }),
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/filler/settings");
+    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
+    for (const button of advancedButtons) await userEvent.click(button);
+
+    expect(await screen.findByLabelText("Expected spoken language")).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 // Wiring (Tunarr → the guide; Tunarr → the library) is no longer a manual button on
 // Connections: it's an idempotent effect the server runs on save (config-design §5). So the
 // Connections page must NOT show wiring actions, and saving a connection must just PATCH

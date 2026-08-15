@@ -67,6 +67,7 @@ const SettingField = ({
   compact,
   labelledBy,
   onEnvOverride,
+  disabledReason,
   className,
 }: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
@@ -81,8 +82,13 @@ const SettingField = ({
   // the key, and the surface must have supplied a handler.
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
-  // Compact mode renders no doc element, so pointing at one would be a dangling reference.
-  const describedBy = compact ? undefined : `${id}-doc`;
+  // Compact mode renders neither explanatory element, so pointing at one would be a dangling
+  // reference. Full fields associate both the ordinary help and any unavailable reason.
+  const describedBy = compact
+    ? undefined
+    : [entry.doc ? `${id}-doc` : undefined, disabledReason ? `${id}-unavailable` : undefined]
+        .filter(Boolean)
+        .join(" ") || undefined;
 
   // A stored secret renders as its masked tail until the operator opts into replacing it.
   const secretLocked = entry.secret && entry.set && !replacing;
@@ -93,7 +99,7 @@ const SettingField = ({
         <Checkbox
           id={id}
           checked={value === "true"}
-          disabled={pinned}
+          disabled={pinned || disabledReason !== undefined}
           aria-describedby={describedBy}
           aria-labelledby={labelledBy}
           onChange={(e) => onChange(String(e.target.checked))}
@@ -102,7 +108,7 @@ const SettingField = ({
     }
     if (entry.kind === "enum") {
       return (
-        <Select value={value} disabled={pinned} onValueChange={onChange}>
+        <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
           <SelectTrigger
             id={id}
             aria-describedby={describedBy}
@@ -134,7 +140,7 @@ const SettingField = ({
             min={0}
             step="any"
             value={current.amount}
-            disabled={pinned}
+            disabled={pinned || disabledReason !== undefined}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
             aria-invalid={invalid ? "true" : undefined}
@@ -142,7 +148,7 @@ const SettingField = ({
           />
           <Select
             value={current.unit}
-            disabled={pinned}
+            disabled={pinned || disabledReason !== undefined}
             onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
           >
             <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
@@ -169,7 +175,7 @@ const SettingField = ({
             min={0}
             step="any"
             value={current.amount}
-            disabled={pinned}
+            disabled={pinned || disabledReason !== undefined}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
             aria-invalid={invalid ? "true" : undefined}
@@ -188,7 +194,7 @@ const SettingField = ({
         id={id}
         type={entry.secret ? "password" : inputTypeFor(entry.kind)}
         value={value}
-        disabled={pinned}
+        disabled={pinned || disabledReason !== undefined}
         autoComplete={entry.secret ? "new-password" : "off"}
         placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
         aria-describedby={describedBy}
@@ -355,6 +361,13 @@ const SettingField = ({
         <p className="flex items-center gap-1 text-onair-300 text-xs">
           <TriangleAlert className="size-3" aria-hidden />
           The stored value was invalid and has been reset to the default.
+        </p>
+      )}
+
+      {disabledReason && (
+        <p id={`${id}-unavailable`} role="alert" className="flex items-start gap-1 text-onair-300 text-xs">
+          <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+          {disabledReason}
         </p>
       )}
 
