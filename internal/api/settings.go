@@ -46,13 +46,13 @@ func (s *Server) registerSettings(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
-		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
+		Summary: "Reveal a generated token", Description: "Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretReveal)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
-		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
+		Summary: "Regenerate a generated token", Description: "Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretRegenerate)
 }
@@ -321,15 +321,12 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 }
 
 type secretRevealInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to reveal."`
+	Name string `path:"name" enum:"api_token,playout_token" doc:"Which generated token to reveal."`
 }
 
 type secretRevealOutput struct {
 	Body struct {
-		// Value is present only for a displayable secret (API_TOKEN). SESSION_SECRET
-		// has nothing to paste anywhere, so it is never returned (§4).
-		Value       string `json:"value,omitempty"`
-		Displayable bool   `json:"displayable" doc:"Whether the value is returned (config-design §4)."`
+		Value string `json:"value" doc:"The current generated token."`
 	}
 }
 
@@ -340,29 +337,22 @@ func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secr
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	value, displayable, err := s.settings.RevealSecret(ctx, in.Name)
+	value, err := s.settings.RevealSecret(ctx, in.Name)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal secret", "This secret can't be shown. It may not be a viewable secret.", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal token", "This token's current value couldn't be loaded.", err)
 	}
 	out := &secretRevealOutput{}
-	out.Body.Displayable = displayable
-	if displayable {
-		out.Body.Value = value
-	}
+	out.Body.Value = value
 	return out, nil
 }
 
 type secretRegenerateInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to rotate."`
+	Name string `path:"name" enum:"api_token,playout_token" doc:"Which generated token to rotate."`
 }
 
 type secretRegenerateOutput struct {
 	Body struct {
-		// Value is the new secret, returned ONLY for displayable secrets (API_TOKEN).
-		// For SESSION_SECRET it is withheld (§4) — Regenerate is the
-		// only affordance and there is nothing to paste.
-		Value       string `json:"value,omitempty"`
-		Displayable bool   `json:"displayable" doc:"Whether the new value is returned (config-design §4)."`
+		Value string `json:"value" doc:"The newly generated token."`
 	}
 }
 
@@ -371,10 +361,9 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	var value string
-	var displayable bool
 	var mutationErr error
 	err := s.mutateLiveTVSettings(ctx, in.Name == "playout_token", func(mutationCtx context.Context) bool {
-		value, displayable, mutationErr = s.settings.RegenerateSecret(mutationCtx, in.Name)
+		value, mutationErr = s.settings.RegenerateSecret(mutationCtx, in.Name)
 		return mutationErr == nil
 	})
 	if err != nil {
@@ -385,10 +374,7 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
 	}
 	out := &secretRegenerateOutput{}
-	out.Body.Displayable = displayable
-	if displayable {
-		out.Body.Value = value
-	}
+	out.Body.Value = value
 	return out, nil
 }
 

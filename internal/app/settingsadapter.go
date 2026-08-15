@@ -138,34 +138,27 @@ func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 	}
 }
 
-func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (string, bool, error) {
+func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (string, error) {
 	g := settings.GeneratedSecret(name)
 	value, err := a.secrets.Regenerate(ctx, g)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
-	if !g.Displayable() {
-		return "", false, nil
-	}
-	return value, true, nil
+	return value, nil
 }
 
-// RevealSecret returns a displayable generated secret's current value (§4 eye
-// toggle). Reading never rotates — that distinction is the whole point of this
-// route: the §13 webhook panel shows the URL already pasted into Sonarr/Radarr.
-func (a settingsAdapter) RevealSecret(ctx context.Context, name string) (string, bool, error) {
+// RevealSecret returns a generated token's current value (§4 eye toggle).
+// Reading never rotates: the Live TV step must show the URL already pasted into
+// the media server, not silently invalidate it.
+func (a settingsAdapter) RevealSecret(ctx context.Context, name string) (string, error) {
 	g := settings.GeneratedSecret(name)
-	if !g.Displayable() {
-		return "", false, nil // SESSION_SECRET: nothing to paste anywhere (§4)
-	}
 	if a.readSecret != nil {
-		value, err := a.readSecret(ctx, g)
-		return value, err == nil, err
+		return a.readSecret(ctx, g)
 	}
-	return a.secrets.Value(g), true, nil
+	return a.secrets.Value(g), nil
 }
 
 func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) {

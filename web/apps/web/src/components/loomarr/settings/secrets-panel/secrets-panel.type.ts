@@ -1,6 +1,6 @@
-// The generated secrets (config-design §4). Their display policy differs by
-// PURPOSE, which is why this is a closed set rather than a generic list.
-type SecretName = "api_token" | "session_secret" | "playout_token";
+// The generated credentials exposed to operators (config-design §4). This is a closed set
+// so retired or internal-only secrets cannot accidentally acquire frontend affordances.
+type SecretName = "api_token" | "playout_token";
 
 interface SecretRow {
   name: SecretName;
@@ -9,9 +9,6 @@ interface SecretRow {
   purpose: string;
   // What regenerating it breaks, stated BEFORE the click (§4 side-effects).
   consequence: string;
-  // SESSION_SECRET has nothing to paste anywhere, so it is never displayed (§4) —
-  // Regenerate is its only affordance.
-  displayable: boolean;
 }
 
 interface SecretsPanelProps {

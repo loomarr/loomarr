@@ -122,13 +122,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       return json(route, { ok: true });
     }
 
-    // --- the webhook panel's secret (revealed, never rotated — §4) ---------------
+    // --- operator-facing generated credentials (§4) ------------------------------
     if (path.startsWith("/v1/settings/secrets/")) {
-      const name = path.split("/").pop() ?? "";
-      return json(
-        route,
-        name === "session_secret" ? { displayable: false } : { value: "s3cr3t", displayable: true },
-      );
+      return json(route, { value: "s3cr3t" });
     }
 
     // --- users --------------------------------------------------------------------

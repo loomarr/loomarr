@@ -10,14 +10,12 @@ const SECRETS: SecretRow[] = [
     label: "API token",
     purpose: "Break-glass admin access for scripts and automation.",
     consequence: "The current token stops working immediately; scripts must be updated with the new one.",
-    displayable: true,
   },
   {
-    name: "session_secret",
-    label: "Session secret",
-    purpose: "Signs session cookies.",
-    consequence: "Every session is revoked, including yours.",
-    displayable: false,
+    name: "playout_token",
+    label: "Playback token",
+    purpose: "Lets a media server read Live TV endpoints.",
+    consequence: "Existing tuner and guide URLs stop working immediately.",
   },
 ];
 
@@ -27,10 +25,9 @@ const render_ = (over = {}) =>
   );
 
 describe("SecretsPanel", () => {
-  it("never offers to reveal a secret with nothing to paste (§4)", () => {
+  it("offers reveal for both operator-facing credentials", () => {
     render_();
-    // One reveal button — the API token. SESSION_SECRET has no value affordance.
-    expect(screen.getAllByRole("button", { name: /reveal/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /reveal/i })).toHaveLength(2);
   });
 
   it("states the consequence BEFORE regenerating, and needs a second confirm", async () => {

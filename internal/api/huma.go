@@ -243,13 +243,12 @@ type SettingsService interface {
 	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
-	// RegenerateSecret rotates a generated secret and returns the new value if it
-	// is displayable (config-design §4); displayable=false ⇒ value withheld.
-	RegenerateSecret(ctx context.Context, name string) (value string, displayable bool, err error)
-	// RevealSecret returns a generated secret's CURRENT value if it is displayable
-	// (config-design §4's eye-toggle). Reading must never rotate — the §13 webhook
-	// panel shows the URL an operator already pasted into Sonarr/Radarr.
-	RevealSecret(ctx context.Context, name string) (value string, displayable bool, err error)
+	// RegenerateSecret rotates a generated API or playout token and returns the new
+	// value (config-design §4).
+	RegenerateSecret(ctx context.Context, name string) (value string, err error)
+	// RevealSecret returns a generated API or playout token's CURRENT value
+	// (config-design §4's eye-toggle). Reading must never rotate.
+	RevealSecret(ctx context.Context, name string) (value string, err error)
 	// Test runs one named connection check (config-design §8, powers Test buttons).
 	Test(ctx context.Context, check string) (ok bool, hint string)
 }

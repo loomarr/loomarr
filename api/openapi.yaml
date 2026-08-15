@@ -4381,13 +4381,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the new value is returned (config-design §4).
-          type: boolean
         value:
+          description: The newly generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SecretRevealOutputBody:
       additionalProperties: false
@@ -4399,13 +4397,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the value is returned (config-design §4).
-          type: boolean
         value:
+          description: The current generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SeparationPolicy:
       additionalProperties: false
@@ -8642,17 +8638,16 @@ paths:
         - settings
   /v1/settings/secrets/{name}:
     get:
-      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
+      description: Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.
       operationId: secret-reveal
       parameters:
-        - description: Which generated secret to reveal.
+        - description: Which generated token to reveal.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to reveal.
+            description: Which generated token to reveal.
             enum:
-              - session_secret
               - api_token
               - playout_token
             type: string
@@ -8669,22 +8664,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Reveal a generated secret
+      summary: Reveal a generated token
       tags:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.
       operationId: secret-regenerate
       parameters:
-        - description: Which generated secret to rotate.
+        - description: Which generated token to rotate.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to rotate.
+            description: Which generated token to rotate.
             enum:
-              - session_secret
               - api_token
               - playout_token
             type: string
@@ -8701,7 +8695,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Regenerate a generated secret
+      summary: Regenerate a generated token
       tags:
         - settings
   /v1/settings/{key}:

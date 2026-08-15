@@ -39,7 +39,7 @@ next. For each: find the code, cite `file:line`, decide.
 - **Read the code, not the identifier.** A field named `autoCurate` proves the field
   exists, not that it works or that anything calls it.
 - **A comment is a claim too.** `declared.go:10` asserts `WEBHOOK_SECRET` lives in
-  `secrets.go`; `secrets.go` declares only `session_secret` and `playout_token`. Code
+  `secrets.go`; `secrets.go` declares only the generated API and playout tokens. Code
   comments drift exactly like prose and are read as authoritative more often.
 - **Aspirational prose is not drift.** "Track T will own airtimes" is a plan. "Loomarr
   computes airtimes" when Tunarr computes them is drift. When a doc marks something as

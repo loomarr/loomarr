@@ -25,7 +25,7 @@ Loomarr's model is the *arr convention with one addition:
 - **Env still wins.** A GitOps pin is never overridden by something the wizard wrote; the wizard reports the key as pinned instead, the same contract the registry's `pinned` provenance already gives the Settings UI.
 - **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
-- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
+- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
 
 **The per-channel tier (added with `programming-design.md`):** a policy instance is channel
@@ -172,14 +172,17 @@ exactly the old contract.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
-- `SESSION_SECRET` has nothing to paste anywhere — **never displayed**; the only affordance is Regenerate.
 - Integration secrets you *entered* (Emby token, Seerr key, TMDB, LLM key) — masked after save (`set · …a1b2` preview), replace-only. The API returns `{set: true, preview, provenance}` — never the value. (The §8.1 hosted `llm.api_key.<provider>` keys follow this exact rule: stored, previewed, never echoed by any GET.)
+
+Authentication sessions have no generated signing secret. A session token is an opaque random
+credential stored only as a SHA-256 hash in the database; cookie authentication resolves that hash
+and the owning user on every request. Session revocation therefore happens through the session row
+or user-disable workflow, never by rotating unrelated application configuration.
 
 **Regeneration side-effects (typed-confirmation dialogs, effects stated up front):**
 
 | Secret | Immediate effect | UX contract |
 | --- | --- | --- |
-| `SESSION_SECRET` | **All sessions revoked — including yours** | Confirm → regen → redirect to login. `API_TOKEN` remains as break-glass, so you cannot lock yourself out. |
 | `API_TOKEN` | Old token dead instantly | Show the new token once prominently; remind that machine clients/scripts must update. |
 | `PLAYOUT_TOKEN` | Existing device and signed URLs stop authorizing; the durable Live TV workflow republishes the tuner/listing pair with the new token | Show the new `/playout/tuner.m3u?token=…` URL for manual consumers; automatic wiring is repaired through the backend-transition coordinator. |
 
@@ -431,14 +434,14 @@ does not exist.
   A committed mutation remains successful when a later transition phase fails; the transition stays
   pending for maintenance retry.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
-- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
+- `GET /v1/settings/secrets/{name}` → reveal a generated token's value (`{value}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating
   `PLAYOUT_TOKEN` invokes the same durable publication repair because internal tuner/guide URLs
   embed it; the publisher reads the durable token inside the workflow lock, and Postgres request
   authorization reads that same row so every replica admits the new device URL and rejects the old
   one immediately. A repair failure leaves the rotation successful and the transition pending.
   `API_TOKEN` bearer authorization uses the same replica-coherent read (SQLite remains cache-only);
-  rotating `SESSION_SECRET` or `API_TOKEN` has no Live TV consequence.
+  rotating `API_TOKEN` has no Live TV consequence.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.
 
@@ -470,6 +473,6 @@ does not exist.
 
 - **Phase 1 (built as a cross-phase retrofit, 2026-07-15):** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target. The settings table gains its `updated_at`/`updated_by` audit columns (§3) via **forward-only migration `00008`** (an `ALTER TABLE settings ADD COLUMN …`, the second real ALTER after `00007`'s `policy_json`; the bare `(key,value)` KV from `00001` never drops). The proposed registry middle tier for ChannelPolicy was later retired in V55 because no production scheduling path consumed it; channel policy now resolves directly to the scheduler's documented built-ins.
 - **Phase 8:** the §8 API surface.
-- **Phase 9:** generated secrets + regeneration side-effects (auth interplay).
+- **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.

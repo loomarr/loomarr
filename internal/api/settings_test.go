@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -77,8 +78,8 @@ func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T)
 		}
 	}
 	// Rotating the device token repairs internal URLs because they embed it. Other
-	// generated secrets have no Live TV consequence.
-	for _, name := range []string{"playout_token", "api_token", "session_secret"} {
+	// generated tokens have no Live TV consequence.
+	for _, name := range []string{"playout_token", "api_token"} {
 		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("regenerate %s = %d", name, resp.StatusCode)
@@ -250,21 +251,14 @@ func (f *fakeSettings) Features(context.Context) map[string]bool {
 	return map[string]bool{"suggestions": false, "acquisition": true, "filler": false}
 }
 
-func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string, bool, error) {
+func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string, error) {
 	f.regen = name
-	if name == "session_secret" {
-		return "", false, nil // never displayable
-	}
-	return "brand-new-token-value", true, nil
+	return "brand-new-token-value", nil
 }
 
-// RevealSecret mirrors the display policy: session_secret is never displayable.
-func (f *fakeSettings) RevealSecret(_ context.Context, name string) (string, bool, error) {
+func (f *fakeSettings) RevealSecret(_ context.Context, name string) (string, error) {
 	f.revealed = name
-	if name == "session_secret" {
-		return "", false, nil
-	}
-	return "current-secret-value", true, nil
+	return "current-secret-value", nil
 }
 
 func (f *fakeSettings) Test(_ context.Context, check string) (bool, string) {
@@ -366,34 +360,21 @@ func TestSettings_PatchResults(t *testing.T) {
 	}
 }
 
-// Regenerating SESSION_SECRET withholds the value (config-design §4); a
-// displayable secret returns it.
-func TestSettings_SecretRegenerationDisplayPolicy(t *testing.T) {
+func TestSettings_GeneratedTokenRegenerationReturnsValue(t *testing.T) {
 	srv, _ := newSettingsServer(t)
-
-	// session_secret → withheld.
-	resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/session_secret/regenerate", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("regen session → %d", resp.StatusCode)
-	}
-	var s struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&s)
-	if s.Displayable || s.Value != "" {
-		t.Errorf("session secret must be withheld: %+v", s)
-	}
-
-	// api_token → returned.
-	resp = do(t, srv, http.MethodPost, "/v1/settings/secrets/api_token/regenerate", adminToken, "")
-	var a struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&a)
-	if !a.Displayable || a.Value == "" {
-		t.Errorf("api_token should return the new value: %+v", a)
+	for _, name := range []string{"api_token", "playout_token"} {
+		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("regenerate %s → %d", name, resp.StatusCode)
+		}
+		var body struct {
+			Value       string `json:"value"`
+			Displayable *bool  `json:"displayable"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		if body.Value == "" || body.Displayable != nil {
+			t.Errorf("%s should return the new value: %+v", name, body)
+		}
 	}
 }
 
@@ -459,39 +440,49 @@ func TestSettings_EnvOverrideOutcomes(t *testing.T) {
 	}
 }
 
-// GET /v1/settings/secrets/{name} is §4's eye toggle: a displayable secret returns
-// its CURRENT value, SESSION_SECRET withholds — and crucially, reading never rotates.
+// GET /v1/settings/secrets/{name} is §4's eye toggle and never rotates.
 func TestSettings_SecretReveal(t *testing.T) {
 	srv, fs := newSettingsServer(t)
 
-	// Displayable → value returned (API_TOKEN is the operational, viewable secret).
-	resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/api_token", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("reveal api_token → %d", resp.StatusCode)
-	}
-	var w struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&w)
-	if !w.Displayable || w.Value == "" {
-		t.Errorf("api_token should be revealable: %+v", w)
-	}
-
-	// SESSION_SECRET has nothing to paste anywhere — withheld (§4).
-	resp = do(t, srv, http.MethodGet, "/v1/settings/secrets/session_secret", adminToken, "")
-	var s struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&s)
-	if s.Displayable || s.Value != "" {
-		t.Errorf("session_secret must stay withheld: %+v", s)
+	for _, name := range []string{"api_token", "playout_token"} {
+		resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/"+name, adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("reveal %s → %d", name, resp.StatusCode)
+		}
+		var body struct {
+			Value       string `json:"value"`
+			Displayable *bool  `json:"displayable"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		if body.Value == "" || body.Displayable != nil {
+			t.Errorf("%s should be revealable: %+v", name, body)
+		}
 	}
 
 	// The point of the route: revealing must NOT rotate.
 	if fs.regen != "" {
 		t.Errorf("reveal rotated %q — reading a secret must never change it", fs.regen)
+	}
+}
+
+func TestSettings_RetiredSessionSecretRoutesAreRejected(t *testing.T) {
+	srv, fs := newSettingsServer(t)
+	const oldName = "session_secret" // retired-ok: rejected compatibility probe for the removed setting
+	for _, path := range []string{
+		"/v1/settings/secrets/" + oldName,
+		"/v1/settings/secrets/" + oldName + "/regenerate",
+	} {
+		method := http.MethodGet
+		if strings.HasSuffix(path, "/regenerate") {
+			method = http.MethodPost
+		}
+		resp := do(t, srv, method, path, adminToken, "")
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("%s %s = %d, want 422", method, path, resp.StatusCode)
+		}
+	}
+	if fs.regen != "" || fs.revealed != "" {
+		t.Fatalf("retired secret reached settings adapter: regen=%q reveal=%q", fs.regen, fs.revealed)
 	}
 }
 

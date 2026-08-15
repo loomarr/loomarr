@@ -36,7 +36,12 @@ RETIRED=(
   'NonTerminalOnly|V51e: PipelineFilter.ConveyorOnly returns running AND review — the two halves of one belt'
   'body.Asks|V51e: the response carries clips; a clip appears exactly once, whichever end it is at'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
-  'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
+  'WEBHOOK_SECRET|never existed as a generated secret; generated credentials are API_TOKEN and PLAYOUT_TOKEN'
+  # Sessions are opaque random database credentials, hashed at rest and resolved per request.
+  # There is no cookie-signing configuration; preserving either spelling would recreate a control
+  # that cannot revoke or validate any session. Historical migration rows may remain inert.
+  'SESSION_SECRET|retired: opaque database-backed sessions do not use a signing secret'
+  'session_secret|retired: opaque database-backed sessions do not use a signing secret'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'
   # The packaging question §10 says "keeps being re-decided": sidecar → opt-in tag → single
   # image. Both intermediate answers left instructions behind that read as current — a

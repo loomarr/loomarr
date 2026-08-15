@@ -12,7 +12,7 @@ import (
 //
 // Env-only bootstrap keys (DATABASE_URL, AUTO_MIGRATE, LISTEN_ADDR, LOG_LEVEL, TZ)
 // are NOT here — they stay in config.Config (config-design §1 classification).
-// Generated secrets (SESSION_SECRET, API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
+// Generated tokens (API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
 // (minted, not demanded — §4), not the app-managed registry.
 
 // autoFileConfidenceRange bounds `filler.autofile.min_confidence` to 50–95 (§10 V38).

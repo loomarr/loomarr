@@ -6,7 +6,7 @@ import type { SecretName, SecretRow } from "@/components/loomarr/settings/secret
 import { SecretsPanel } from "@/components/loomarr/settings/secrets-panel";
 
 // The generated-secrets panel (config-design §4/§5). Consequences are spelled out per
-// secret because they differ sharply: one breaks integrations, one signs everybody out.
+// credential because rotating either one immediately breaks its current consumers.
 const SECRETS: SecretRow[] = [
   {
     name: "api_token",
@@ -16,15 +16,6 @@ const SECRETS: SecretRow[] = [
       // Paired parenthetical: commas here gave "Anything using it, scripts, automation, must
       // be updated", where the aside reads as a list of subjects. Moved to the end instead.
       "The current token stops working immediately. Anything using it must be updated with the new one: scripts, automation.",
-    displayable: true,
-  },
-  {
-    name: "session_secret",
-    label: "Session secret",
-    purpose: "Signs session cookies. There is nothing to paste anywhere, so it is never displayed.",
-    consequence:
-      "Every session is revoked, including yours. You will be signed out immediately. The API token still works as break-glass, so you cannot lock yourself out.",
-    displayable: false,
   },
   {
     name: "playout_token",
@@ -32,7 +23,6 @@ const SECRETS: SecretRow[] = [
     purpose: "Lets your media server read Loomarr's tuner, guide, and channel streams without admin access.",
     consequence:
       "Existing tuner and guide URLs stop working immediately. Reconnect Live TV or replace the token in every manually configured URL.",
-    displayable: true,
   },
 ];
 
@@ -57,7 +47,7 @@ const SecretsSettings = () => {
     queryClient
       .fetchQuery(settingsApi.getSecretRevealQueryOptions(name))
       .then((res) => {
-        if (res.status === 200 && res.data.displayable) {
+        if (res.status === 200 && res.data.value) {
           setRevealed((p) => ({ ...p, [name]: res.data.value }));
         }
       })
@@ -71,9 +61,9 @@ const SecretsSettings = () => {
       { name },
       {
         onSuccess: (res) => {
-          // Show the new value straight away for the ones you must paste elsewhere —
-          // this is the one moment the operator can copy it without another round trip.
-          if (res.status === 200 && res.data.displayable && res.data.value) {
+          // Show the new value straight away — this is the one moment the operator can
+          // copy it without another round trip.
+          if (res.status === 200 && res.data.value) {
             setRevealed((p) => ({ ...p, [name]: res.data.value }));
           }
           setBusy(undefined);

@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// GeneratedSecret is one of the three secrets Loomarr MINTS rather than demands
+// GeneratedSecret is one of the two tokens Loomarr MINTS rather than demands
 // (config-design §4): they are created idempotently at first run, env-overridable,
 // and displayed per their purpose. They are NOT registry settings (those are
 // entered/pinned) — they live here so "generated, never demanded" is a distinct
@@ -16,8 +16,7 @@ import (
 type GeneratedSecret string
 
 const (
-	SecretSession GeneratedSecret = "session_secret" // signs session cookies (§11); never displayed
-	SecretAPI     GeneratedSecret = "api_token"      // machine + break-glass admin; viewable
+	SecretAPI GeneratedSecret = "api_token" // machine + break-glass admin; viewable
 	// SecretPlayout signs every internal-playout segment request (§9.1), so only the
 	// operator's media server can pull a stream. Viewable BECAUSE it must be pasted
 	// into a tuner/listings URL by hand when auto-wiring isn't used.
@@ -35,8 +34,6 @@ func (g GeneratedSecret) dbKey() string { return "secret." + string(g) }
 // envVar is the env pin that overrides a generated secret (config-design §15).
 func (g GeneratedSecret) envVar() string {
 	switch g {
-	case SecretSession:
-		return "SESSION_SECRET"
 	case SecretAPI:
 		return "API_TOKEN"
 	case SecretPlayout:
@@ -46,12 +43,6 @@ func (g GeneratedSecret) envVar() string {
 	}
 }
 
-// Displayable reports whether an admin may view the secret's value (§4). The
-// session secret has nothing to paste anywhere → never displayed (Regenerate is
-// the only affordance); the API token is an operational value pasted into machine
-// clients → viewable.
-func (g GeneratedSecret) Displayable() bool { return g != SecretSession }
-
 // SecretStore is the persistence the secrets lifecycle needs (accept-interfaces;
 // no store import). The composition root adapts store.Store to it.
 type SecretStore interface {
@@ -59,7 +50,7 @@ type SecretStore interface {
 	Set(ctx context.Context, key, value string) error
 }
 
-// Secrets manages the three generated secrets (config-design §4). Values resolve
+// Secrets manages the two generated tokens (config-design §4). Values resolve
 // env > db (a generated secret is never "default" — it's always minted if unset).
 // It also feeds the Redactor so no secret value is ever logged.
 type Secrets struct {
@@ -72,7 +63,7 @@ type Secrets struct {
 
 // allGenerated is the fixed set, in display order.
 func allGenerated() []GeneratedSecret {
-	return []GeneratedSecret{SecretSession, SecretAPI, SecretPlayout}
+	return []GeneratedSecret{SecretAPI, SecretPlayout}
 }
 
 // NewSecrets resolves (env) or generates+persists (idempotent) each secret, then
@@ -114,8 +105,7 @@ func (s *Secrets) resolveOrMint(ctx context.Context, g GeneratedSecret) (string,
 	return fresh, nil
 }
 
-// Value returns a generated secret's live value (for wiring — session signer,
-// webhook verifier, token authorizer). Never log this.
+// Value returns a generated token's live value for authorization and URL wiring. Never log this.
 func (s *Secrets) Value(g GeneratedSecret) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -162,10 +152,13 @@ func (s *Secrets) cache(g GeneratedSecret, value string) {
 }
 
 // Regenerate mints a fresh value, persists it, updates the live cache, and
-// returns the new value (config-design §4). The CALLER performs the side-effects
-// (revoke sessions for SESSION_SECRET, etc.) — this only rotates the value.
+// returns the new value (config-design §4). The caller performs token-specific
+// publication side-effects; this method only rotates the value.
 // An env-pinned secret cannot be regenerated (the env wins on next read).
 func (s *Secrets) Regenerate(ctx context.Context, g GeneratedSecret) (string, error) {
+	if g.envVar() == "" {
+		return "", fmt.Errorf("regenerate %s: unknown generated secret", g)
+	}
 	if v, ok := s.env(g.envVar()); ok && v != "" {
 		return "", fmt.Errorf("%s is pinned by %s and cannot be regenerated", g, g.envVar())
 	}

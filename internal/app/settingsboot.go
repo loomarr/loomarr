@@ -12,8 +12,8 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// envLookup is the process env accessor the secrets lifecycle uses to honor an
-// env-pinned SESSION_SECRET/API_TOKEN (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
+// envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
+// tokens (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
 // never existed as a generated secret, and the arm webhook it named was deleted.
 var envLookup = os.LookupEnv
 
