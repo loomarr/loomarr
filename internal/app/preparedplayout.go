@@ -122,9 +122,13 @@ func (r *preparedRuntimeResolver) Plan(
 	}
 
 	keys := make([]prepared.BindingKey, 0, len(needed))
+	channelReady := make(map[string]bool)
 	for key := range needed {
 		keys = append(keys, key)
+		channelReady[key.ChannelID] = true
 	}
+	plan.Summary.Channels = len(channelReady)
+	plan.Summary.ScheduledBindings = len(keys)
 	sort.Slice(keys, func(i, j int) bool {
 		if needed[keys[i]].Equal(needed[keys[j]]) {
 			if keys[i].LibraryItemID == keys[j].LibraryItemID {
@@ -144,12 +148,14 @@ func (r *preparedRuntimeResolver) Plan(
 		request, bound := r.readiness.Binding(key, policy, channelPolicy)
 		if !bound {
 			if resolutionAttempts >= preparedCandidateBatch {
+				channelReady[key.ChannelID] = false
 				continue
 			}
 			resolutionAttempts++
 			var resolved bool
 			request, resolved = r.resolveSource(ctx, key)
 			if !resolved {
+				channelReady[key.ChannelID] = false
 				continue
 			}
 			resolvedBindings[key] = prepared.Binding{
@@ -159,15 +165,18 @@ func (r *preparedRuntimeResolver) Plan(
 		specification, ready, lookupErr := r.lookup.Lookup(request)
 		if lookupErr != nil {
 			errs = append(errs, lookupErr)
+			channelReady[key.ChannelID] = false
 			continue
 		}
 		if ready {
+			plan.Summary.ReadyBindings++
 			if _, exists := protected[specification]; !exists {
 				protected[specification] = struct{}{}
 				plan.Protected = append(plan.Protected, specification)
 			}
 			continue
 		}
+		channelReady[key.ChannelID] = false
 		if len(plan.Candidates) >= preparedCandidateBatch {
 			continue
 		}
@@ -182,6 +191,13 @@ func (r *preparedRuntimeResolver) Plan(
 		plan.Candidates = nil
 		errs = append(errs, rememberErr)
 	}
+	for _, ready := range channelReady {
+		if ready {
+			plan.Summary.ReadyChannels++
+		}
+	}
+	plan.Summary.MissingBindings = plan.Summary.ScheduledBindings - plan.Summary.ReadyBindings
+	plan.Summary.QueuedPublications = len(plan.Candidates)
 	return plan, errors.Join(errs...)
 }
 

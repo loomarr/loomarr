@@ -207,7 +207,7 @@ flowchart TD
 
 - **`metrics`** · 6 importers · → `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §18).
-- **`prepared`** · 2 importers · → `media`
+- **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
 - **`schedule`** · 12 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
@@ -285,7 +285,7 @@ flowchart TD
 
 **Layer 9**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 10**
@@ -1103,10 +1103,12 @@ one burst. Completed warmed publications are skipped on the next pass, so the fr
 Only readable local files are eligible for preparation. An item that resolves only to the media
 server's HTTP stream remains a live fallback; a reusable immutable publication must not pretend a
 remote response is a stable source file. The planner owns path mapping, preferred-audio probing,
-fingerprinting, and ffmpeg. It warms an in-memory `(library item, active source policy) -> Request`
-index as it does so. Tune reads that index and `Preparer.Lookup` only; an absent entry, changed tier,
-audio preference, path map, file stat, or publication is an immediate prepared miss. Tune never
-contacts the media server, probes audio, hashes bytes, or waits for the scheduler.
+fingerprinting, and ffmpeg. Each pass writes one atomic, versioned readiness index under the
+persistent prepared root. The index binds a Channel, library item, active source policy, selected
+audio track, source fingerprint, and immutable publication; startup loads it into memory before the
+minute scheduler runs. Tune reads that memory index and `Preparer.Lookup` only. An absent entry,
+changed tier, audio preference, path map, file stat, or publication is an immediate prepared miss.
+Tune never contacts the media server, probes audio, hashes bytes, or waits for the scheduler.
 
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
 upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
@@ -1384,6 +1386,17 @@ safe to poll and safe to hand a support request. It is the in-app twin of `scrip
 `GET /v1/playout/sessions` reports raw per-encoder telemetry, the doctor adds the *verdict and the
 context* — the GPU/LLM picture and the ok/degraded/stalled judgement — so "why is it black?" has an
 answer without shelling into the box.
+
+The same response includes one **prepared-readiness summary** from the readiness planner; this is
+not a parallel endpoint, task, or cache. It reports whether preparation is available, whether a pass
+is currently running, the last completed pass time and error, Channels and scheduled bindings ready
+within the accepted six-hour window, work still warming, and the prepared store's remaining,
+protected, and budgeted bytes. Counts describe the most recently resolved accepted schedule window;
+an absent completion time means **the planner has not completed a pass**, not that all Channels are
+ready. The existing live encoder rows remain the immediate fallback-demand signal: a prepared HLS
+hit creates no live encoder row. System > Playback renders both halves together so an operator can
+distinguish an unprepared frontier from an encoder that is already failing to keep up. The API only
+projects a planner-owned snapshot; it never rescans schedules or the filesystem on request.
 
 ### Consequences recorded honestly
 

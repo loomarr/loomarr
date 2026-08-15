@@ -3311,6 +3311,8 @@ components:
           type: array
         gpu:
           $ref: "#/components/schemas/PlayoutGPU"
+        prepared:
+          $ref: "#/components/schemas/PreparedReadiness"
         running:
           description: Internal playout is wired (false on a Tunarr-only install)
           type: boolean
@@ -3318,6 +3320,7 @@ components:
         - running
         - gpu
         - channels
+        - prepared
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -3502,6 +3505,67 @@ components:
         - eligible
         - untagged
         - channels
+      type: object
+    PreparedReadiness:
+      additionalProperties: false
+      properties:
+        available:
+          description: Whether durable prepared playout is available
+          type: boolean
+        budgetBytes:
+          format: int64
+          type: integer
+        channels:
+          description: Channels with scheduled programmes in the resolved window
+          format: int64
+          type: integer
+        lastError:
+          type: string
+        lastRunAt:
+          description: Last completed readiness pass; absent means no pass has completed
+          format: date-time
+          type: string
+        missingBindings:
+          format: int64
+          type: integer
+        protectedBytes:
+          format: int64
+          type: integer
+        queuedPublications:
+          description: Deduplicated publications exposed to the bounded warming frontier
+          format: int64
+          type: integer
+        readyBindings:
+          format: int64
+          type: integer
+        readyChannels:
+          description: Channels whose scheduled bindings are all prepared
+          format: int64
+          type: integer
+        remainingBytes:
+          format: int64
+          type: integer
+        running:
+          description: Whether a readiness pass is currently running
+          type: boolean
+        scheduledBindings:
+          description: Channel and library-item bindings in the resolved window
+          format: int64
+          type: integer
+        unavailableReason:
+          type: string
+      required:
+        - available
+        - running
+        - channels
+        - readyChannels
+        - scheduledBindings
+        - readyBindings
+        - missingBindings
+        - queuedPublications
+        - remainingBytes
+        - budgetBytes
+        - protectedBytes
       type: object
     PreviewCycleOutputBody:
       additionalProperties: false

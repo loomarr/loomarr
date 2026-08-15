@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/prepared"
 )
 
 // Playout status (§9.1 V47) — the one endpoint the dashboard's Playout panel reads: the live
@@ -84,11 +85,36 @@ type PlayoutGPU struct {
 	Contended  bool    `json:"contended" doc:"A model is resident AND channels are transcoding on hardware"`
 }
 
+// PreparedReadiness is the planner's most recently completed six-hour schedule window plus the
+// current pass flag. It is copied from memory; this API never scans schedules or media storage.
+type PreparedReadiness struct {
+	Available          bool       `json:"available" doc:"Whether durable prepared playout is available"`
+	UnavailableReason  string     `json:"unavailableReason,omitempty"`
+	Running            bool       `json:"running" doc:"Whether a readiness pass is currently running"`
+	LastRunAt          *time.Time `json:"lastRunAt,omitempty" doc:"Last completed readiness pass; absent means no pass has completed"`
+	LastError          string     `json:"lastError,omitempty"`
+	Channels           int        `json:"channels" doc:"Channels with scheduled programmes in the resolved window"`
+	ReadyChannels      int        `json:"readyChannels" doc:"Channels whose scheduled bindings are all prepared"`
+	ScheduledBindings  int        `json:"scheduledBindings" doc:"Channel and library-item bindings in the resolved window"`
+	ReadyBindings      int        `json:"readyBindings"`
+	MissingBindings    int        `json:"missingBindings"`
+	QueuedPublications int        `json:"queuedPublications" doc:"Deduplicated publications exposed to the bounded warming frontier"`
+	RemainingBytes     int64      `json:"remainingBytes"`
+	BudgetBytes        int64      `json:"budgetBytes"`
+	ProtectedBytes     int64      `json:"protectedBytes"`
+}
+
+// PreparedObserver supplies the planner-owned readiness snapshot to the operational projection.
+type PreparedObserver interface {
+	Status() prepared.PlannerStatus
+}
+
 // PlayoutStatus is the whole health picture.
 type PlayoutStatus struct {
-	Running  bool            `json:"running" doc:"Internal playout is wired (false on a Tunarr-only install)"`
-	GPU      PlayoutGPU      `json:"gpu"`
-	Channels []ChannelHealth `json:"channels"`
+	Running  bool              `json:"running" doc:"Internal playout is wired (false on a Tunarr-only install)"`
+	GPU      PlayoutGPU        `json:"gpu"`
+	Channels []ChannelHealth   `json:"channels"`
+	Prepared PreparedReadiness `json:"prepared"`
 }
 
 type playoutStatusOutput struct {
@@ -115,8 +141,9 @@ func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutSta
 // probe that fails degrades to an empty header, never a failed request, because the channel health
 // (the load-bearing part) does not depend on it.
 func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
+	status := PlayoutStatus{Channels: []ChannelHealth{}, Prepared: preparedReadinessFrom(s.preparedObserver)}
 	if s.playoutObserver == nil {
-		return PlayoutStatus{Channels: []ChannelHealth{}} // Tunarr-only: not our job
+		return status // Tunarr-only: not our job
 	}
 
 	// Resolve channel id → human identity (number + name) once, from the store — the playout layer
@@ -143,7 +170,30 @@ func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus
 	// (§8.2) — worth flagging distinctly from "a model happens to be loaded" (harmless when idle).
 	gpu.Contended = gpu.LLMVRAMGiB > 0 && hwTranscoding
 
-	return PlayoutStatus{Running: true, GPU: gpu, Channels: channels}
+	status.Running, status.GPU, status.Channels = true, gpu, channels
+	return status
+}
+
+func preparedReadinessFrom(observer PreparedObserver) PreparedReadiness {
+	if observer == nil {
+		return PreparedReadiness{UnavailableReason: "the prepared playout planner is not wired"}
+	}
+	status := observer.Status()
+	out := PreparedReadiness{
+		Available: status.Available, UnavailableReason: status.UnavailableReason,
+		Running: status.Running, LastError: status.LastError,
+		Channels: status.Readiness.Channels, ReadyChannels: status.Readiness.ReadyChannels,
+		ScheduledBindings: status.Readiness.ScheduledBindings,
+		ReadyBindings:     status.Readiness.ReadyBindings, MissingBindings: status.Readiness.MissingBindings,
+		QueuedPublications: status.Readiness.QueuedPublications,
+		RemainingBytes:     status.Retention.RemainingBytes, BudgetBytes: status.Retention.BudgetBytes,
+		ProtectedBytes: status.Retention.ProtectedBytes,
+	}
+	if !status.LastRunAt.IsZero() {
+		completed := status.LastRunAt
+		out.LastRunAt = &completed
+	}
+	return out
 }
 
 // channelIdentity is a channel's human-facing labels for a playout row.
