@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { BrandLockup } from "../../shell";
+import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry

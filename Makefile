@@ -396,7 +396,7 @@ FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck \
+	cd $(WEB) && pnpm biome check && pnpm lint:boundaries && pnpm codegen && pnpm -r --parallel typecheck \
 	  && pnpm --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook

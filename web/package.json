@@ -18,10 +18,12 @@
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
     "dev": "pnpm --filter @loomarr/web dev",
     "lint": "biome check",
+    "lint:boundaries": "depcruise apps/web/src packages/*/*.ts packages/*/src packages/*/tests",
     "lint:fix": "biome check --write",
     "format": "biome format --write"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.4"
+    "@biomejs/biome": "^2.5.4",
+    "dependency-cruiser": "17.4.3"
   }
 }

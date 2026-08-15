@@ -324,7 +324,7 @@ verify_changed() {
 		( cd "$ROOT" && go test -race $packages )
 	fi
 	if printf '%s\n' "$changed" | grep -q '^web/'; then
-		( cd "$ROOT/web" && pnpm codegen && pnpm biome check && pnpm -r --parallel typecheck )
+		( cd "$ROOT/web" && pnpm codegen && pnpm biome check && pnpm lint:boundaries && pnpm -r --parallel typecheck )
 	fi
 }
 
