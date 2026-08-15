@@ -23,7 +23,7 @@ import (
 // The adapter that makes internal playout work (§9.1) — where three separately-verified pieces
 // finally compose:
 //
-//	channels.CyclePreview  → what this channel airs (the SAME call reconcile and the UI use)
+//	store.Channel.Desired  → the accepted cycle reconciliation committed for broadcast
 //	playout.AiringAt       → which program that puts on right now, and at what offset
 //	library.StreamURL      → the URL ffmpeg can actually read
 //
@@ -64,9 +64,10 @@ type airingRecorder interface {
 	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
 }
 
-// channelReader is the one store method the arranged-cycle cache needs: the channel whose
-// lineup and policy the cache fingerprints (see cyclecache.go). Narrowed like the readers above
-// — fingerprinting is a READ, and the cache must not be able to mutate what it is keyed on.
+// channelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
+// the accepted cycle reconciliation committed; guide also fingerprints Lineup and Policy when it
+// forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
+// are reads, and neither path may mutate the channel it observes.
 type channelReader interface {
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
 }
@@ -169,17 +170,15 @@ type playoutResolver struct {
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
 //
-// It asks the SAME CyclePreview the reconciler and the UI's cycle preview call, which is the
-// whole point: what plays cannot drift from what the preview promised. A private "what should
-// playout air" path would be the §10 shared-assembler mistake in a new place — two answers to one
-// question, guaranteed to disagree eventually.
+// It reads the persisted Desired cycle that reconciliation ACCEPTED. CyclePreview is an authoring
+// and forecasting surface: it includes mutable availability and airing-history inputs, so invoking
+// it here would let the deck change at a programme EOF. Desired is also what makes the answer
+// survive a process restart; the deterministic channel epoch supplies the matching wall-clock
+// position.
 func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
 	now := r.now()
 
-	// `at` is `now`, not zero: CyclePreview treats a zero time as "now" via its own injected
-	// clock, and passing our clock explicitly keeps this resolvable in tests without reaching
-	// into the engine's.
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, now)
+	slots, err := r.acceptedCycle(ctx, channelID)
 	if err != nil {
 		return playout.Airing{}, "", err
 	}
@@ -243,6 +242,20 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, src.URL, nil
+}
+
+// acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
+// current guide own reads. Keeping the seam here makes it impossible for a programme boundary to
+// accidentally call the mutable authoring preview again.
+func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) ([]schedule.Slot, error) {
+	if r.channels == nil {
+		return nil, errors.New("read accepted channel schedule: channel reader is not configured")
+	}
+	ch, err := r.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("read accepted channel schedule %s: %w", channelID, err)
+	}
+	return ch.Desired, nil
 }
 
 // ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
@@ -408,9 +421,8 @@ func majorityBroadcastCodec(codecs []string) string {
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
 //
-// Deliberately on the SAME type as AiringNow, reading the SAME CyclePreview: the guide and the
-// encoder must agree, and the cheapest way to guarantee that is to give them one source rather
-// than two that happen to match today.
+// Deliberately on the SAME type as AiringNow. The rolling window containing now reads the SAME
+// persisted Desired cycle as the encoder; only other windows use CyclePreview as a forecast.
 //
 // `at` is the window's START, not `now`. CyclePreview evaluates curation rules at an instant —
 // a rule that switches the channel to horror at 21:00 changes the lineup — and a guide built at
@@ -437,7 +449,14 @@ func (r *playoutResolver) cycleAt(
 ) ([]schedule.Slot, time.Duration, error) {
 	if r.cycles == nil || r.channels == nil {
 		_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, window, err
+		if err != nil || r.channels == nil {
+			return slots, window, err
+		}
+		ch, cerr := r.channels.GetChannel(ctx, channelID)
+		if cerr == nil && ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+			return ch.Desired, window, nil
+		}
+		return slots, window, nil
 	}
 
 	ch, err := r.channels.GetChannel(ctx, channelID)
@@ -459,6 +478,9 @@ func (r *playoutResolver) cycleAt(
 	}
 
 	if slots, window, hit := r.cycles.get(key); hit {
+		if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+			return ch.Desired, window, nil
+		}
 		return slots, window, nil
 	}
 
@@ -467,7 +489,24 @@ func (r *playoutResolver) cycleAt(
 		return nil, 0, err
 	}
 	r.cycles.put(key, slots, window)
+	if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+		return ch.Desired, window, nil
+	}
 	return slots, window, nil
+}
+
+// sameRollingWindow identifies the one forecast segment that is observed state: the segment that
+// contains the resolver's current wall clock. An unbounded cycle has only one window. Window
+// boundaries use Unix time, matching schedule.windowIndex and segmentedBroadcasts.
+func sameRollingWindow(a, b time.Time, window time.Duration) bool {
+	if window <= 0 {
+		return true
+	}
+	seconds := int64(window / time.Second)
+	if seconds <= 0 {
+		return true
+	}
+	return a.Unix()/seconds == b.Unix()/seconds
 }
 
 // maxGuideSegments bounds how many rolling windows one guide request will re-resolve.
@@ -486,10 +525,10 @@ const maxGuideSegments = 8
 //
 // The scheduler ROTATES: windowSlice advances its start by the window index, so day 0 airs one
 // slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
-// airs"). The encoder sees that, because AiringNow resolves the cycle at NOW — every programme it
-// spawns asks again. The guide did not: it resolved ONE cycle at `from` and looped it across the
-// whole requested span, so everything past the first window boundary was a forecast of a
-// rotation that will never happen.
+// airs"). Reconciliation commits that rotation into Desired at the new window; AiringNow reads the
+// accepted value. A multi-day guide still has to forecast the later windows: resolving ONE cycle
+// at `from` and looping it across the whole requested span would advertise a rotation that will
+// never happen.
 //
 // Measured on a 27-title channel at the same instant 24h out: the guide advertised RoboCop / The
 // Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon / Lethal

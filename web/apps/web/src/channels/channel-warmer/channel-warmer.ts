@@ -26,24 +26,29 @@ const warmableAssets = (manifest: string): string[] => {
   return [...new Set([targetMap, targetMedia].filter((value): value is string => Boolean(value)))];
 };
 
-// warmPreparedChannel never creates a player, MediaSource, decoder, or server-side live session.
-// It mints one normal signed URL, adds the least-privilege mode only to the probe, and fetches the
-// immutable bytes named by a prepared hit into the browser's HTTP cache.
-const warmPreparedChannel = async (
-  channelId: string,
-  signal: AbortSignal,
-): Promise<WarmedChannel | undefined> => {
+// warmChannel never creates a player, MediaSource, or decoder. It tries the durable prepared origin
+// first; on a clean miss it fetches one normal HLS snapshot so the server's existing bounded live
+// origin can establish the adjacent remux during the current channel's tune-in. The exact normal
+// signed URL is retained for the real tune, and capacity/errors remain harmless speculative misses.
+const warmChannel = async (channelId: string, signal: AbortSignal): Promise<WarmedChannel | undefined> => {
   const source = await mintChannelPlaySource(channelId, signal);
   if (!source) return undefined;
-  const response = await fetch(preparedURL(source.url), {
+  let response = await fetch(preparedURL(source.url), {
     signal,
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (response.status === 204) return { ...source, warmed: false };
+  let manifestURL = response.url || preparedURL(source.url);
+  if (response.status === 204) {
+    response = await fetch(source.url, {
+      signal,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    manifestURL = response.url || new URL(source.url, window.location.href).toString();
+  }
   if (!response.ok) return { ...source, warmed: false };
 
-  const manifestURL = response.url || preparedURL(source.url);
   const manifest = await response.text();
   const assets = warmableAssets(manifest);
   const fetched = await Promise.all(
@@ -58,4 +63,4 @@ const warmPreparedChannel = async (
   return { ...source, warmed: assets.length > 0 && fetched.every(Boolean) };
 };
 
-export { preparedURL, warmableAssets, warmPreparedChannel };
+export { preparedURL, warmableAssets, warmChannel };

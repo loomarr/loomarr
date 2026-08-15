@@ -49,7 +49,7 @@ func TestHLSPreparedModeReturnsNoContentWithoutLiveFallback(t *testing.T) {
 
 func TestHLSPreparedModeIsNotCopiedOntoImmutableAssetURLs(t *testing.T) {
 	probe := &preparedProbePlayout{presentation: playout.Presentation{
-		Manifest: []byte("#EXTM3U\npublication/seg-0.m4s\n"), Release: func() {},
+		Manifest: []byte("#EXTM3U\np-publication-segment\n"), Release: func() {},
 	}}
 	s := &Server{playout: probe}
 	req := httptest.NewRequest(http.MethodGet,
@@ -84,9 +84,9 @@ func TestHLSPreparedAssetsArePrivateImmutable(t *testing.T) {
 		Content: file, Modified: time.Unix(1_000, 0), Immutable: true,
 	}, assetOK: true}
 	s := &Server{playout: probe}
-	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/publication/seg-0.m4s", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/p-publication-segment", nil)
 	req.SetPathValue("id", "ch-one")
-	req.SetPathValue("asset", "publication/seg-0.m4s")
+	req.SetPathValue("asset", "p-publication-segment")
 	w := httptest.NewRecorder()
 
 	s.hlsAssetHandler(w, req)

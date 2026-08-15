@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type WarmedChannel, warmPreparedChannel } from "../channel-warmer";
+import { type WarmedChannel, warmChannel as warmAdjacentChannel } from "../channel-warmer";
 import { beginTune, markTunePhase } from "../tuner-timing";
 import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";
 
@@ -62,7 +62,7 @@ const useChannelTuner = ({
   channels,
   nowNext,
   onTune,
-  warmChannel = warmPreparedChannel,
+  warmChannel = warmAdjacentChannel,
 }: UseChannelTunerOptions): UseChannelTuner => {
   const catalog = useMemo(() => surfableCatalog(channels), [channels]);
   const [request, setRequest] = useState<{

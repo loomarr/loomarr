@@ -937,6 +937,14 @@ Turns an approved proposal + live availability into an actual, filled Tunarr cha
 ### Scheduler domain (persisted in the same store, §5)
 - `Channel`: id, intent ref, Tunarr channel id/number, strategy, filler-list ref, status.
 - `DesiredLineup`: ordered `Slot`s referencing external ids (some not-yet-available).
+- `DesiredLineup` is also the **accepted broadcast snapshot**. Reconciliation persists it in the
+  channel row before it becomes observable; internal playout and the guide segment containing
+  `now` read that persisted value directly. `CyclePreview` remains the authoring/forecast surface
+  for unsaved drafts and future rolling windows, never a runtime substitute for the accepted
+  snapshot. This distinction is load-bearing: preview includes mutable airing-history and live
+  availability inputs, so recomputing it at a finite ffmpeg child's EOF can reorder the deck and
+  put the same wall clock in the middle of an unrelated episode. Persisted Desired plus the stable
+  per-channel epoch also means a process restart resumes the same schedule position.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; the downstream Tunarr programming push requires it.
 - **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.
@@ -1053,6 +1061,13 @@ This ladder only applies to a **transcode** — a `-c copy` that produces nothin
 which no encoder change fixes, so a copy fails straight through. And it fires **only on the failure**:
 the common case (hardware works first try) pays nothing, and the eviction in step 2 happens only when
 an encode genuinely could not fit.
+
+Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
+**tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an
+Airing and more than ten seconds remain. A child opened near the start of an Airing, or for its short
+remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the concat parent asks
+“what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
+return from a commercial block appear roughly ten seconds late.
 
 **This removes the old uniform-profile constraint.** Playout previously concatenated programs with a
 single `-c copy` parent that REQUIRED every program to share one profile (codec/resolution/fps/pixel
@@ -1261,7 +1276,7 @@ Channel number, name, current programme, and `Tuning…`; it stays over the exis
 replacement produces a decoded frame, then fades. A failed tune keeps the target identity visible
 with a retry action rather than silently snapping back to the previous Channel.
 
-Adjacent warming is deliberately **prepared-only**. The client keeps signed play URLs for the
+Adjacent warming begins with a **prepared-only probe**. The client keeps signed play URLs for the
 previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
 least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
 presentation, but on a miss the handler returns `204 No Content` and MUST NOT attach a live session,
@@ -1274,6 +1289,28 @@ may be served `private, max-age=31536000, immutable`; live-remux assets remain `
 prepared-only flag is omitted from asset URLs in the returned manifest while the signature, plan,
 and quality remain, making the warmed asset URL byte-identical to the subsequent real tune. The
 manifest itself remains `no-store` because its media sequence and live edge follow wall clock.
+Prepared manifests name every immutable file with one opaque URL-safe `{asset}` path segment. The
+token binds the publication key and validated relative filename; its visible suffix retains the
+correct media content type. The Origin decodes that token and still applies the publication
+library's declared-file and containment checks before opening bytes.
+
+Adjacent warming is **prepared-first, bounded-live on a miss**. The controller first performs the
+read-only prepared probe described above. A hit warms its immutable init/media bytes. A `204` miss
+then fetches one normal signed HLS snapshot for only the previous and next surfable Channels. That
+snapshot may establish the existing bounded live Origin and its normal grace lease, but it never
+creates a browser player, MediaSource, or decoder; live admission remains authoritative and a
+capacity rejection is a harmless cold miss. This is the immediate hot-set path while whole-program
+preparation catches up: catalog size does not create work because only `current - 1`, `current`, and
+`current + 1` are requested. A real tune reuses the exact signed URL and the already-ready remux.
+The Watch screen also defers source-backed track probing until the first decoded frame so an
+optional audio/subtitle menu cannot contend with the encoder's cold open and seek.
+
+The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
+viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink
+instead preserves the finite encoder startup burst in a lossless queue capped at 128 MiB; exceeding
+that bound fails and rebuilds only the remux rather than discarding MPEG-TS packets or growing
+without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory
+bound is independent of the full Guide size.
 
 The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
 request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
@@ -1285,8 +1322,9 @@ names are not placed in measure names. The product gates on a 100-Channel catalo
 - prepared adjacent request-to-first-frame p95 below **750 ms**.
 - prepared arbitrary request-to-first-frame p95 below **1.5 s**.
 - prepared manifest response p95 below **50 ms** on the local server.
-- a burst of twenty mixed Up/Down requests plays only the final target, leaves one video element,
-  and starts no live fallback for either adjacent prefetch.
+- a burst of twenty mixed Up/Down requests plays only the final target and leaves one video element;
+  durable prepared hits start no live fallback, while a prepared miss may create only the bounded
+  adjacent live hot set through the same Origin and admission policy as a real tune.
 
 V57 ships in reviewable checkpoints: first the controller, cancellation, controls, OSD, and timing;
 then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel

@@ -9,7 +9,7 @@ vi.mock("../channel-play-url", async (importOriginal) => ({
   mintChannelPlaySource,
 }));
 
-import { preparedURL, warmableAssets, warmPreparedChannel } from "./channel-warmer";
+import { preparedURL, warmableAssets, warmChannel } from "./channel-warmer";
 
 describe("channel warmer", () => {
   it("selects the newest fragment and the map active across its discontinuity", () => {
@@ -55,7 +55,7 @@ new/seg.m4s?sig=x
       }),
     );
 
-    const result = await warmPreparedChannel("ch-2", new AbortController().signal);
+    const result = await warmChannel("ch-2", new AbortController().signal);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -68,7 +68,7 @@ new/seg.m4s?sig=x
     expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
   });
 
-  it("keeps the signed URL but fetches no assets on a prepared miss", async () => {
+  it("warms the bounded live origin when durable preparation misses", async () => {
     mintChannelPlaySource.mockResolvedValue({
       url: "/v1/playout/hls/ch-3/master.m3u8?sig=signed",
       expiresAt: Date.now() + 60_000,
@@ -77,13 +77,22 @@ new/seg.m4s?sig=x
     server.use(
       http.get("*/v1/playout/hls/ch-3/master.m3u8", ({ request }) => {
         requests.push(new URL(request.url));
-        return new HttpResponse(null, { status: 204 });
+        if (new URL(request.url).searchParams.get("mode") === "prepared") {
+          return new HttpResponse(null, { status: 204 });
+        }
+        return new HttpResponse("#EXTM3U\n#EXTINF:4,\nseg-0.ts?sig=signed\n");
+      }),
+      http.get("*/v1/playout/hls/ch-3/seg-0.ts", ({ request }) => {
+        requests.push(new URL(request.url));
+        return new HttpResponse(new Uint8Array([0]));
       }),
     );
 
-    await expect(warmPreparedChannel("ch-3", new AbortController().signal)).resolves.toEqual(
-      expect.objectContaining({ warmed: false }),
+    await expect(warmChannel("ch-3", new AbortController().signal)).resolves.toEqual(
+      expect.objectContaining({ warmed: true }),
     );
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(3);
+    expect(requests[0]?.searchParams.get("mode")).toBe("prepared");
+    expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
   });
 });

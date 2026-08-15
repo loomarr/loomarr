@@ -46,10 +46,11 @@ const hlsSegmentDuration = 4
 // stays trivial (window × segment-seconds of video). `delete_segments` prunes past this.
 const hlsWindow = 6
 
-// hlsRelayBuffer is the startup slack between the live session and the HLS ffmpeg child. The
-// relay starts before ffmpeg is spawned, so a warm session's initial burst cannot fill Manager's
-// much smaller viewer buffer and get the remux dropped while process startup is still underway.
-const hlsRelayBuffer = 256
+// hlsRelayMaxBytes bounds the lossless startup queue. Only the current channel and its two adjacent
+// warm candidates use HLS remuxes, so this does not scale with the guide's channel count. 128 MiB
+// covers the ten-second readrate burst at more than 100 Mbit/s; if a child remains stalled beyond
+// that, failing this remux cleanly is safer than either corrupting MPEG-TS or growing without bound.
+const hlsRelayMaxBytes = 128 << 20
 
 // hlsFirstSegmentTimeout is the UPPER BOUND on waiting for the first playlist to appear — a
 // failsafe, not the expected wait. The normal case returns in a few seconds (the session warms up,
@@ -73,13 +74,13 @@ const hlsFirstSegmentTimeout = 45 * time.Second
 // that the request returns promptly once ffmpeg writes it, not so short it spins the CPU.
 const firstSegmentPoll = 100 * time.Millisecond
 
-// HLSAttacher is the slice of Manager an HLS remux needs: attach to a channel's byte stream for an
-// EncodePlan. Exactly Manager.Attach, named so hls.go depends on a capability, not the whole Manager,
-// and so tests can drive the remux with a fake stream. The remux attaches at the CLIENT's resolved
+// HLSAttacher is the slice of Manager an HLS remux needs: register its bounded lossless sink for an
+// EncodePlan. Named so hls.go depends on a capability, not the whole Manager, and so tests can drive
+// the remux without a process. The remux attaches at the CLIENT's resolved
 // plan (§9.1 V48): a baseline `<video>` gets HEVC/AC3 transcoded to h264/aac, while an HEVC-capable
 // client gets it copied — the plan the Watch handler resolved from the DeviceProfile decides which.
 type HLSAttacher interface {
-	Attach(ctx context.Context, channelID string, plan EncodePlan) (<-chan []byte, func(), error)
+	AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (func(), error)
 }
 
 // hlsSpawner starts the repackaging ffmpeg for a channel dir. A field on the manager
@@ -246,6 +247,7 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 	if err != nil {
 		return nil, fmt.Errorf("hls: channel dir: %w", err)
 	}
+	relay := newHLSRelay()
 
 	// context.Background, NOT a viewer's request — the remux outlives whoever started it, like
 	// the session it wraps. Teardown cancels this explicitly.
@@ -260,9 +262,10 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 	// this costs no extra encode there — only genuinely incompatible content pays, and only while
 	// watched. The remux ffmpeg is `-c copy` regardless of plan — it re-containers whatever the
 	// session hands it (HEVC-in-TS included; hls.js ≥1.6 transmuxes that client-side).
-	chunks, sessDetach, err := m.attacher.Attach(ctx, channelID, plan)
+	sessDetach, err := m.attacher.AttachSink(ctx, channelID, plan, relay)
 	if err != nil {
 		cancel()
+		relay.abort(err)
 		_ = os.RemoveAll(dir)
 		if m.log != nil {
 			m.log.Warn("hls: attach failed", "channel", channelID, "plan", plan.String(), "err", err)
@@ -278,17 +281,10 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		channelID: channelID, dir: dir,
 		playlist: filepath.Join(dir, hlsPlaylistName),
 		cancel:   cancel, sessDetach: sessDetach,
+		relay: relay,
 		grace: m.grace, log: m.log,
 		onClosed: func() { m.remove(key) },
 	}
-
-	// Start draining the session BEFORE spawning ffmpeg. A warm parent may emit its initial burst
-	// immediately after Attach returns; waiting until after process startup left that burst queued
-	// in Manager's small viewer buffer, which could drop the HLS viewer before it ever read a byte.
-	// The relay is deliberately independent of proc so this ordering has no partially-initialised
-	// process race.
-	buffered := make(chan []byte, hlsRelayBuffer)
-	go r.bufferSession(chunks, buffered)
 
 	// Direct-play: the remux stream-copies the session's bytes into HLS. No renditions, no
 	// transcode — one encode per channel is the SESSION's; the remux only re-containers it.
@@ -296,6 +292,7 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 	if err != nil {
 		cancel()
 		sessDetach()
+		relay.abort(err)
 		_ = os.RemoveAll(dir)
 		if m.log != nil {
 			m.log.Warn("hls: spawn ffmpeg failed", "channel", channelID, "err", err)
@@ -307,9 +304,9 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		m.log.Info("hls: remux ffmpeg spawned", "channel", channelID)
 	}
 
-	// Feed the already-draining relay into ffmpeg. It ends when the session channel closes
-	// (encoder gone), ffmpeg exits, or teardown cancels the shared lifetime.
-	go r.writeRelay(buffered)
+	// Feed the registered relay into ffmpeg. It ends when the session closes the sink (encoder
+	// gone), ffmpeg exits, or teardown cancels the shared lifetime.
+	go r.writeRelay()
 	return r, nil
 }
 
@@ -361,6 +358,7 @@ type hlsRemux struct {
 	cancel     context.CancelFunc
 	sessDetach func() // release the session refcount — MUST run exactly once on teardown
 	proc       *hlsProcess
+	relay      *hlsRelay
 	log        *slog.Logger
 	grace      time.Duration
 	onClosed   func()
@@ -433,17 +431,18 @@ func (r *hlsRemux) teardown() {
 	}
 	r.mu.Unlock()
 
-	r.cancel()        // stops the ffmpeg (context-bound, like every playout process)
-	r.sessDetach()    // decrement the SESSION refcount — the channel's encoder can now idle out
-	_ = r.proc.wait() // reap before removing the dir so nothing writes into it after
+	r.relay.abort(context.Canceled) // wakes either side of the queue before process teardown
+	r.cancel()                      // stops the ffmpeg (context-bound, like every playout process)
+	r.sessDetach()                  // decrement the SESSION refcount — the channel's encoder can now idle out
+	_ = r.proc.wait()               // reap before removing the dir so nothing writes into it after
 	_ = os.RemoveAll(r.dir)
 	if r.onClosed != nil {
 		r.onClosed()
 	}
 }
 
-// pump copies the shared MPEG-TS chunks into ffmpeg's stdin, DECOUPLING the session read from the
-// ffmpeg write so the session never sees the remux "fall behind".
+// The relay decouples the shared MPEG-TS producer from ffmpeg's stdin so the session never sees the
+// remux "fall behind" during its finite startup burst.
 //
 // ⚠ THE BUG THIS FIXES (found live, and it cost real time): the pump used to read a chunk from the
 // session channel and SYNCHRONOUSLY write it to ffmpeg's stdin. But the remux ffmpeg's stdin pipe
@@ -454,58 +453,116 @@ func (r *hlsRemux) teardown() {
 // a black frame. The remux is not a slow client; it is a pipe with normal backpressure, and it
 // must not be dropped for it.
 //
-// The fix: a reader goroutine drains the session channel into an internal buffer as fast as the
-// session sends (so the session never blocks on the remux), and a writer goroutine feeds ffmpeg
-// stdin from that buffer at ffmpeg's pace. Backpressure now lives in OUR buffer, invisible to the
-// session's fan-out. A closed session channel or a dead ffmpeg still tears the remux down cleanly.
-func (r *hlsRemux) bufferSession(chunks <-chan []byte, buffered chan []byte) {
-	// READER: pulls from the session as fast as it arrives so the session NEVER blocks on us. If
-	// our own buffer is full (ffmpeg is catastrophically behind, not just starting up), drop the
-	// OLDEST buffered chunk rather than block the session — a live stream survives a dropped chunk,
-	// but a blocked session drops the whole channel.
-	var total int64
-	for chunk := range chunks {
-		if total == 0 && r.log != nil {
-			r.log.Debug("hls: first bytes from session", "channel", r.channelID, "n", len(chunk))
-		}
-		total += int64(len(chunk))
-		select {
-		case buffered <- chunk:
-		default:
-			// Our buffer is full — make room by discarding the oldest, then enqueue. Never block
-			// the session's fan-out.
-			select {
-			case <-buffered:
-			default:
-			}
-			select {
-			case buffered <- chunk:
-			default:
-			}
-		}
-	}
-	// The session ended (channel stopped or encoder died). Close the internal buffer so the writer
-	// finishes, then tear down.
-	close(buffered)
-	if r.log != nil {
-		r.log.Debug("hls: session channel closed", "channel", r.channelID, "totalBytes", total)
-	}
-}
-
 // writeRelay drains the startup relay into ffmpeg at the process's pace. A closed relay means the
 // upstream session ended; a write error means ffmpeg ended. Either way this remux is terminal.
-func (r *hlsRemux) writeRelay(buffered <-chan []byte) {
+func (r *hlsRemux) writeRelay() {
 	defer func() { _ = r.proc.closeStdin() }()
-	for chunk := range buffered {
+	for {
+		chunk, err := r.relay.next()
+		if err != nil {
+			go r.teardown()
+			return
+		}
 		if _, err := r.proc.stdin.Write(chunk); err != nil {
+			r.relay.abort(err)
 			go r.teardown() // ffmpeg went away
-			// Drain the rest so bufferSession is never blocked sending to us.
-			for range buffered { //nolint:revive // intentional drain
-			}
 			return
 		}
 	}
-	go r.teardown()
+}
+
+// hlsRelay is a private, bounded lossless queue between the session fan-out and ffmpeg's stdin. A warm
+// session can release several seconds of media before the child has finished starting; buffering
+// that burst in a fixed-size Go channel either blocks Manager (which drops the viewer) or discards
+// MPEG-TS packets (which corrupts the remux). offer only appends a slice under a mutex, so Manager
+// installs and feeds this sink synchronously without a scheduler-sized mailbox race.
+type hlsRelay struct {
+	mu   sync.Mutex
+	cond *sync.Cond
+
+	queue    [][]byte
+	bytes    int64
+	closed   bool
+	err      error
+	maxBytes int64
+}
+
+func newHLSRelay() *hlsRelay {
+	relay := &hlsRelay{maxBytes: hlsRelayMaxBytes}
+	relay.cond = sync.NewCond(&relay.mu)
+	return relay
+}
+
+func (q *hlsRelay) offer(chunk []byte) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return false
+	}
+	if int64(len(chunk)) > q.maxBytes-q.bytes {
+		q.abortLocked(fmt.Errorf("hls: startup queue exceeded %d bytes", q.maxBytes))
+		return false
+	}
+	q.queue = append(q.queue, chunk)
+	q.bytes += int64(len(chunk))
+	q.cond.Signal()
+	return true
+}
+
+func (q *hlsRelay) next() ([]byte, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for len(q.queue) == 0 && !q.closed {
+		q.cond.Wait()
+	}
+	if q.err != nil {
+		return nil, q.terminalError()
+	}
+	if len(q.queue) == 0 {
+		return nil, io.EOF
+	}
+	chunk := q.queue[0]
+	q.queue[0] = nil
+	q.queue = q.queue[1:]
+	q.bytes -= int64(len(chunk))
+	if len(q.queue) == 0 {
+		q.queue = nil
+	}
+	return chunk, nil
+}
+
+func (q *hlsRelay) close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return
+	}
+	q.closed = true
+	q.cond.Broadcast()
+}
+
+func (q *hlsRelay) abort(err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return
+	}
+	q.abortLocked(err)
+}
+
+func (q *hlsRelay) abortLocked(err error) {
+	q.closed = true
+	q.err = err
+	q.queue = nil
+	q.bytes = 0
+	q.cond.Broadcast()
+}
+
+func (q *hlsRelay) terminalError() error {
+	if q.err != nil {
+		return q.err
+	}
+	return io.EOF
 }
 
 // awaitPlaylist blocks until the media playlist lists at least one SEGMENT, or the timeout elapses.

@@ -527,19 +527,18 @@ func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
-// hlsAssetHandler serves an HLS asset under a channel — a variant media playlist
-// (`720p/stream.m3u8`) or a segment (`720p/seg-12.ts`) — for the ABR ladder (§9.1 Watch, V46).
-// Same dual auth as the master playlist. The asset path (captured as a trailing wildcard) is
-// validated against traversal here AND again in AssetPath (defence in depth).
+// hlsAssetHandler serves an HLS asset under a channel: a live-remux filename or one opaque,
+// publication-bound prepared token. It uses the same dual auth as the master playlist. The asset
+// identifier is validated against traversal here and again by the owning Origin (defence in depth).
 func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playout == nil {
 		http.NotFound(w, r)
 		return
 	}
 	channelID := r.PathValue("id")
-	rel := r.PathValue("asset") // the trailing "<variant>/<file>" path
-	// Reject a parent ref up front — the asset paths are all "<variant>/<file>" and never need
-	// to climb. AssetPath re-checks containment after cleaning, so this is the outer of two gates.
+	rel := r.PathValue("asset")
+	// Reject a parent ref up front. Live assets are bare filenames and prepared assets are opaque
+	// single-segment tokens, so neither form ever needs to climb.
 	if channelID == "" || rel == "" || strings.Contains(rel, "..") {
 		http.NotFound(w, r)
 		return
@@ -635,8 +634,8 @@ func (s *Server) registerPlayout(api huma.API) {
 		"application/vnd.apple.mpegurl")
 	hlsMaster.Responses["204"] = &huma.Response{Description: "No prepared presentation is currently available; live playout was not started."}
 	streamOp[playoutHLSInput](s, api, hlsMaster, s.hlsPlaylistHandler)
-	// A segment is a bare file beside the master (`seg-N.ts`) — direct play is one playlist, no
-	// variant subdirs, so a single `{asset}` segment (not a trailing wildcard) is enough.
+	// A live segment is a bare file beside the master (`seg-N.ts`); a prepared file is represented
+	// by one opaque publication-bound token. Both fit a single `{asset}` segment.
 	//
 	// Two content types because this one route genuinely serves both: `{asset}` is a segment
 	// (video/mp2t) or the media playlist beside the master (vnd.apple.mpegurl), decided by the

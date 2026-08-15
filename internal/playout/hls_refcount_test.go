@@ -1,35 +1,75 @@
 package playout
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// eagerAttacher models a warm live session whose initial burst starts as soon as Attach returns.
-// The unbuffered handoff makes the ordering deterministic: HLS must begin draining the session
-// before it waits for the remux process to spawn, or that initial burst has nowhere to go.
+// eagerAttacher models a warm live session whose initial burst arrives as the sink is attached.
 type eagerAttacher struct {
 	drained chan struct{}
 }
 
-func (a *eagerAttacher) Attach(ctx context.Context, _ string, _ EncodePlan) (<-chan []byte, func(), error) {
-	ch := make(chan []byte)
-	go func() {
-		select {
-		case ch <- []byte("initial session burst"):
-			close(a.drained)
-		case <-ctx.Done():
+func (a *eagerAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
+	if !sink.offer([]byte("initial session burst")) {
+		return nil, errors.New("sink rejected initial burst")
+	}
+	close(a.drained)
+	return func() { sink.close() }, nil
+}
+
+// burstAttacher models the larger-than-memory startup burst a warm session produces when its
+// readrate initial burst is released. It deliberately keeps the sink open after the burst so
+// the remux stays alive while the test inspects what reached ffmpeg's stdin.
+type burstAttacher struct {
+	chunks [][]byte
+	sent   chan struct{}
+}
+
+func (a *burstAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
+	for _, chunk := range a.chunks {
+		if !sink.offer(chunk) {
+			return nil, errors.New("sink rejected startup burst")
 		}
-	}()
-	return ch, func() {}, nil
+	}
+	close(a.sent)
+	return func() { sink.close() }, nil
+}
+
+type recordingWriteCloser struct {
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	wakeup chan struct{}
+}
+
+func (w *recordingWriteCloser) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	select {
+	case w.wakeup <- struct{}{}:
+	default:
+	}
+	return n, err
+}
+
+func (w *recordingWriteCloser) Close() error { return nil }
+
+func (w *recordingWriteCloser) bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return bytes.Clone(w.buf.Bytes())
 }
 
 // fakeAttacher stands in for the session Manager, counting how many times Attach is called so a
@@ -38,16 +78,18 @@ type fakeAttacher struct {
 	attaches atomic.Int32
 	detaches atomic.Int32
 	mu       sync.Mutex
-	chans    []chan []byte
+	sinks    []sessionSink
 }
 
-func (f *fakeAttacher) Attach(ctx context.Context, channelID string, target EncodePlan) (<-chan []byte, func(), error) {
+func (f *fakeAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
 	f.attaches.Add(1)
-	ch := make(chan []byte)
 	f.mu.Lock()
-	f.chans = append(f.chans, ch)
+	f.sinks = append(f.sinks, sink)
 	f.mu.Unlock()
-	return ch, func() { f.detaches.Add(1) }, nil
+	return func() {
+		f.detaches.Add(1)
+		sink.close()
+	}, nil
 }
 
 // newTestHLSManager builds a manager whose ffmpeg spawn is faked: it writes a stub master
@@ -259,6 +301,77 @@ func TestHLSManager_DrainsSessionWhileRemuxSpawns(t *testing.T) {
 		t.Fatalf("warm session burst was lost during HLS startup: %v", err)
 	}
 	detach()
+}
+
+// Draining early is not enough: the relay must preserve EVERY MPEG-TS byte in order while ffmpeg
+// starts. Dropping an arbitrary oldest chunk corrupts PAT/PMT or a reference frame; the real ffmpeg
+// then exits with decoder errors, and the client follows stale segment URLs into a 404/retry loop.
+func TestHLSManager_PreservesStartupBurstWhileRemuxSpawns(t *testing.T) {
+	const chunkCount = 320 // larger than the removed 256-chunk lossy relay
+	chunks := make([][]byte, 0, chunkCount)
+	var want bytes.Buffer
+	for i := range chunkCount {
+		chunk := []byte(fmt.Sprintf("chunk-%04d\n", i))
+		chunks = append(chunks, chunk)
+		_, _ = want.Write(chunk)
+	}
+
+	att := &burstAttacher{chunks: chunks, sent: make(chan struct{})}
+	m, err := NewHLSManager(att, "ffmpeg", t.TempDir(), 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.readyTimeout = time.Second
+	recorded := &recordingWriteCloser{wakeup: make(chan struct{}, 1)}
+	m.spawn = func(ctx context.Context, _ string, dir string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
+		select {
+		case <-att.sent:
+		case <-time.After(time.Second):
+			return nil, errors.New("session burst was not drained while the remux spawned")
+		}
+		stub := []byte("#EXTM3U\n#EXTINF:4.0,\nseg-0.ts\n")
+		if err := os.WriteFile(filepath.Join(dir, hlsPlaylistName), stub, 0o644); err != nil {
+			return nil, err
+		}
+		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return &hlsProcess{cmd: cmd, stdin: recorded}, nil
+	}
+	t.Cleanup(m.Stop)
+
+	_, detach, err := m.Playlist("ch1", PlanBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+
+	deadline := time.Now().Add(time.Second)
+	for len(recorded.bytes()) < want.Len() && time.Now().Before(deadline) {
+		select {
+		case <-recorded.wakeup:
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	got := recorded.bytes()
+	if !bytes.Equal(got, want.Bytes()) {
+		t.Fatalf("ffmpeg received %d startup bytes, want %d byte-for-byte in order", len(got), want.Len())
+	}
+}
+
+func TestHLSRelay_FailsCleanlyAtItsMemoryBound(t *testing.T) {
+	relay := newHLSRelay()
+	relay.maxBytes = 4
+	if relay.offer([]byte("1234")) != true {
+		t.Fatal("relay rejected bytes within its bound")
+	}
+	if relay.offer([]byte("5")) {
+		t.Fatal("relay accepted bytes beyond its bound")
+	}
+	if _, err := relay.next(); err == nil || !strings.Contains(err.Error(), "startup queue exceeded") {
+		t.Fatalf("overflow next error = %v, want explicit bounded failure", err)
+	}
 }
 
 // A second manifest poll can arrive while the first request is still waiting for ffmpeg to write

@@ -5,14 +5,20 @@ import {
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import { ChannelWatch } from "./channel-watch";
+
+const hls = vi.hoisted(() => ({ status: "playing", attach: vi.fn(() => () => undefined) }));
+
+vi.mock("../use-hls-player", () => ({
+  useHlsPlayer: () => ({ status: hls.status, attach: hls.attach }),
+}));
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -59,6 +65,9 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
 const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: "live" });
 
 describe("ChannelWatch pickers", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+  });
   // The audio control lives IN the player's bar (V47), so the player must be running
   // before they render.
   //
@@ -70,6 +79,21 @@ describe("ChannelWatch pickers", () => {
   const startWatching = async () => {
     expect(await screen.findByRole("button", { name: "Audio" })).toBeInTheDocument();
   };
+
+  it("does not probe the network-mounted source until the first frame is playing", async () => {
+    const { wasProbed } = stubTracks();
+    hls.status = "loading";
+
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(await screen.findByText("Tuning in…")).toBeInTheDocument();
+    expect(wasProbed()).toBe(false);
+    hls.status = "playing";
+    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+    await waitFor(() => expect(wasProbed()).toBe(true));
+  });
 
   it("builds the Audio menu from the AIRING media's tracks, not a hardcoded list", async () => {
     // The airing programme carries English + Russian audio — so those, and only those (plus Auto),

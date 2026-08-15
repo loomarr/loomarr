@@ -134,7 +134,9 @@ const ChannelWatch = ({
 
   // The pickers' options are the tracks the airing programme actually carries — fetched, never
   // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
-  const tracks = channelsApi.useChannelTracks(channel.id, { query: { enabled: !paused, retry: false } });
+  const tracks = channelsApi.useChannelTracks(channel.id, {
+    query: { enabled: !paused && player.status === "playing", retry: false },
+  });
   const tracksBody = unwrap(tracks.data);
 
   // The mini-guide scrubber's data — the channel's schedule strip (now + next few + the commercial

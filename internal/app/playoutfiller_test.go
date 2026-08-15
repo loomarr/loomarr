@@ -68,12 +68,16 @@ func clipAt(name string) string {
 
 func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	t.Helper()
+	slots := []schedule.Slot{
+		{Kind: schedule.SlotFiller},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	accepted := &stubChannels{}
+	accepted.ch.Desired = slots
 	return &playoutResolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
-		engine: stubCycle{slots: []schedule.Slot{
-			{Kind: schedule.SlotFiller},
-			{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
-		}},
+		engine:         stubCycle{slots: slots},
+		channels:       accepted,
 		now:            func() time.Time { return playoutEpoch("ch1") },
 		tier:           func() string { return "balanced" },
 		encoder:        func() string { return "" },
@@ -81,6 +85,36 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		activeChannels: func() int { return 0 },
 		pods:           stubPods{pod: pod},
 		fillerDir:      func() string { return dir },
+	}
+}
+
+// THE DEFECT THIS CLOSES: the finite ffmpeg child asks AiringNow again at every programme EOF.
+// AiringNow used to rebuild the authoring preview on each request, after recording the outgoing
+// programme in airing history. Recency then produced a different deck, so the same wall clock
+// landed in the middle of an unrelated episode. The reconciler had already persisted the accepted
+// deck; playout simply was not reading it.
+func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
+	preview := &countingCycle{slots: []schedule.Slot{{
+		Kind: schedule.SlotProgram, Title: "mutable preview", LibraryItemID: "preview", DurationMs: 60000,
+	}}}
+	accepted := &stubChannels{}
+	accepted.ch.Desired = []schedule.Slot{{
+		Kind: schedule.SlotFlex, Title: "accepted broadcast", DurationMs: 60000,
+	}}
+	r := &playoutResolver{
+		engine: preview, channels: accepted,
+		now: func() time.Time { return playoutEpoch("ch1") },
+	}
+
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Title != "accepted broadcast" {
+		t.Fatalf("airing = %q, want persisted accepted broadcast", airing.Title)
+	}
+	if got := preview.count(); got != 0 {
+		t.Fatalf("CyclePreview called %d times, want 0 on the broadcast path", got)
 	}
 }
 
