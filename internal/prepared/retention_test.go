@@ -209,6 +209,12 @@ func publishSized(t *testing.T, lib *Library, source string, size int) Publicati
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Publish uses the real filesystem clock for the directory mtime, while these tests deliberately
+	// drive Library with an injected clock. Keep both sides of the retention comparison on that same
+	// clock so the fixture does not become date-dependent when wall time passes its fixed test date.
+	if err := os.Chtimes(pub.Directory, lib.now(), lib.now()); err != nil {
+		t.Fatal(err)
+	}
 	return pub
 }
 
