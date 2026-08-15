@@ -192,6 +192,7 @@ func TestRegistry_FillerBreakBounds(t *testing.T) {
 	r := NewRegistry()
 	for key, invalid := range map[string]string{
 		"filler.breaks_per_hour": "-1",
+		"filler.break_duration":  "29s",
 		"filler.pod_max":         "0",
 	} {
 		s, ok := r.Get(key)
@@ -201,6 +202,11 @@ func TestRegistry_FillerBreakBounds(t *testing.T) {
 		if _, err := s.parse(invalid); err == nil {
 			t.Errorf("%s accepted invalid value %s", key, invalid)
 		}
+	}
+
+	duration, _ := r.Get("filler.break_duration")
+	if got, err := duration.parse("30s"); err != nil || got != 30*time.Second {
+		t.Errorf("30s minimum should be accepted: got %#v, err %v", got, err)
 	}
 
 	breaks, _ := r.Get("filler.breaks_per_hour")

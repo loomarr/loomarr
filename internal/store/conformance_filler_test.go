@@ -787,6 +787,45 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	if got.ParentHash != comp.Hash {
 		t.Errorf("parent_hash = %q after re-sync, want it PRESERVED — UpsertClip must omit it from DO UPDATE", got.ParentHash)
 	}
+
+	// A completed re-split replaces the old generation atomically. seg2 is explicitly pinned and
+	// therefore survives even though the new detector did not reproduce it; seg1 is retired but
+	// remains recoverable as a tombstoned row. A newly accepted hash is restored if an earlier
+	// generation had already tombstoned it.
+	seg3 := sampleClip("seg3", "better-cut.mp4", filler.Commercial, 1996, filler.General, "drinks")
+	seg3.ParentHash = comp.Hash
+	if err := s.UpsertClip(ctx, seg3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{seg3.Path}, now); err != nil {
+		t.Fatal(err)
+	}
+	ch := sampleChannel("pinned-split-child", 809, time.Time{})
+	ch.Policy.Filler = &schedule.FillerSelection{Pinned: []string{seg2.Hash}}
+	if _, err := s.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := s.ReplaceSplitChildren(ctx, comp.Hash, []string{seg3.Hash}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired != 1 {
+		t.Errorf("retired = %d, want only superseded unpinned seg1", retired)
+	}
+	active, err := s.ListClips(ctx, ClipFilter{ParentHash: comp.Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsHash(active, seg1.Hash) || !containsHash(active, seg2.Hash) || !containsHash(active, seg3.Hash) {
+		t.Errorf("active replacement generation = %+v, want pinned seg2 + new seg3", active)
+	}
+	all, err := s.ListClips(ctx, ClipFilter{ParentHash: comp.Hash, IncludeRemoved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsHash(all, seg1.Hash) {
+		t.Error("superseded seg1 row was deleted instead of tombstoned")
+	}
 }
 
 func containsHash(clips []Clip, hash string) bool {
@@ -1818,7 +1857,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
 
-	// --- UpdateSplitProposalSegments: grounding accumulates across passes (§10 V54) ---
+	// --- UpdateSplitProposal: grounding and partial output accumulate across passes (§10 V54) ---
 	//
 	// Split-time grounding is a read-modify-write spanning MINUTES of vision calls, so the write
 	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
@@ -1840,7 +1879,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
 		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); err != nil {
+	p3.Segments = grounded
+	p3.Spawned = []string{"new-child"}
+	if err := s.UpdateSplitProposal(ctx, p3); err != nil {
 		t.Fatal(err)
 	}
 	got3, err := s.GetSplitProposal(ctx, "sp_3")
@@ -1856,6 +1897,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if !got3.Segments[1].Looked || got3.Segments[1].Category != "" {
 		t.Errorf("segment 1 = %+v, want Looked with NO category — 'looked and found nothing'", got3.Segments[1])
 	}
+	if len(got3.Spawned) != 1 || got3.Spawned[0] != "new-child" {
+		t.Errorf("partial-confirm output lost in round-trip: %+v", got3.Spawned)
+	}
 	// ⚠ `created_at` must be untouched: ListSplitProposals orders by it, so writing it would let a
 	// reel jump the review queue merely for having been grounded.
 	if !got3.CreatedAt.Equal(p3.CreatedAt) {
@@ -1868,13 +1912,14 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteSplitProposal(ctx, "sp_3"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateSplitProposal(ctx, p3); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update after delete = %v, want ErrNotFound", err)
 	}
 	if _, err := s.GetSplitProposal(ctx, "sp_3"); !errors.Is(err, ErrNotFound) {
 		t.Error("a grounding write RESURRECTED a confirmed proposal — the reel would be reviewed twice")
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_never_existed", grounded); !errors.Is(err, ErrNotFound) {
+	p3.ID = "sp_never_existed"
+	if err := s.UpdateSplitProposal(ctx, p3); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update of an unknown id = %v, want ErrNotFound", err)
 	}
 

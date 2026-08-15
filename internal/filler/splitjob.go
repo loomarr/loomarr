@@ -42,6 +42,9 @@ type SplitStore interface {
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 	UpsertClip(ctx context.Context, c StoreClip) error
+	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
+	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
+	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
@@ -61,9 +64,9 @@ type SplitStore interface {
 	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposalSegments writes grounding back onto an existing proposal without
+	// UpdateSplitProposal writes grounding and partial-confirm state onto an existing proposal without
 	// re-detecting. Must NOT insert — a write landing after Confirm would resurrect the proposal.
-	UpdateSplitProposalSegments(ctx context.Context, id string, segs []SplitSegment) error
+	UpdateSplitProposal(ctx context.Context, p SplitProposal) error
 }
 
 // Splitter runs compilation splitting. provider may be nil: rescue and
@@ -107,7 +110,7 @@ func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []
 		return SplitProposal{}, err
 	}
 	current.Segments = mergeGrounding(current.Segments, grounded)
-	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, current.Segments); err != nil {
+	if err := sp.store.UpdateSplitProposal(ctx, current); err != nil {
 		return SplitProposal{}, err
 	}
 	return current, nil
@@ -512,10 +515,10 @@ func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached 
 	return hashes, true
 }
 
-// Confirm writes the operator's reviewed cut list to the catalog (§10): each
-// kept segment is cut with stream copy into the drop-folder and becomes a clip
-// row; the compilation's file AND row are removed — its identity is a path that
-// now means twenty clips, not one. The proposal is consumed.
+// Confirm writes the operator's reviewed cut list to the catalog (§10): each kept segment is cut
+// with stream copy into the clip folder and becomes a child row. The compilation remains as a
+// non-airable composite for lineage and future re-splitting; the proposal is consumed. On a
+// re-split, final confirmation tombstones the superseded child generation without deleting bytes.
 //
 // The segments arrive operator-edited and are re-validated: inside the clip,
 // start<end, non-overlapping. Anything else is an error, not a best effort —
@@ -560,6 +563,20 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	if err := validateConfirmedSegments(segments, clip.DurationMs, sp.floor()); err != nil {
 		return nil, err
+	}
+	// A re-split must not make its new generation air beside the old one while a partial proposal
+	// is still unresolved. New hashes are inserted tombstoned below and atomically restored only
+	// when the proposal is fully consumed. Exact reused hashes are already active and harmless.
+	replacing := false
+	if catalog, listErr := sp.store.ListClips(ctx); listErr != nil {
+		return nil, listErr
+	} else {
+		for _, existing := range catalog {
+			if existing.ParentHash == clip.Hash {
+				replacing = true
+				break
+			}
+		}
 	}
 
 	// ⚠ The LOCATION comes from the row, not from the proposal — the same rule (and the same
@@ -645,6 +662,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// re-split when detection improves, and broadcast-context inheritance. `clip.Hash` is the
 		// composite's identity (the parent is kept, below, not deleted).
 		nc.ParentHash = clip.Hash
+		if replacing {
+			// A catalog tombstone is stronger than Held here: the pipeline can process and auto-file
+			// held clips before the proposal is finished. Removed clips cannot air or advance, and
+			// ReplaceSplitChildren restores this generation atomically at final confirmation.
+			nc.RemovedAt = now
+		}
 		// Persist the transcript the rescue step already produced (§10 V44). Pre-V44 this was
 		// computed to find ad boundaries and then thrown away; it is the richest metadata signal a
 		// split segment has — a segment with no source description still SAYS its brand — so it
@@ -684,7 +707,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// segments merged — so nothing in it need match what was stored. The gate is saying "cut these,
 	// keep the rest for a human". Diffing the stored segments against the confirmed ones would read
 	// the operator's edits as leftovers and resurrect a reel they had just finished.
+	currentGeneration := appendUniqueStrings(p.Spawned, spawned...)
 	if len(hold) == 0 {
+		if _, err := sp.store.ReplaceSplitChildren(ctx, clip.Hash, currentGeneration, now); err != nil {
+			return nil, err
+		}
 		if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
 			return nil, err
 		}
@@ -697,7 +724,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	for i := range remaining {
 		remaining[i].Index = i
 	}
-	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, remaining); err != nil {
+	p.Segments = remaining
+	p.Spawned = currentGeneration
+	if err := sp.store.UpdateSplitProposal(ctx, p); err != nil {
 		// ⚠ Already gone means the operator confirmed or rejected the whole reel while this pass
 		// was cutting. The cuts we just made are real and enrolled; there is simply no proposal
 		// left to shrink, which is the other path having finished the job.
@@ -707,6 +736,25 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, err
 	}
 	return spawned, nil
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	out := append([]string(nil), existing...)
+	seen := make(map[string]struct{}, len(out)+len(values))
+	for _, value := range out {
+		seen[value] = struct{}{}
+	}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 // validateConfirmedSegments enforces the invariants the write path needs:

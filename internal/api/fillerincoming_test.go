@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -51,8 +52,11 @@ type incomingBody struct {
 		Reason     string `json:"reason"`
 		Restorable bool   `json:"restorable"`
 	} `json:"rejected"`
-	StageOrder []string `json:"stageOrder"`
-	Total      int      `json:"total"`
+	StageOrder     []string `json:"stageOrder"`
+	ClipsTotal     int      `json:"clipsTotal"`
+	DecisionsTotal int      `json:"decisionsTotal"`
+	ReelsTotal     int      `json:"reelsTotal"`
+	Total          int      `json:"total"`
 }
 
 func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody) {
@@ -247,6 +251,32 @@ func TestFillerIncoming_TotalCoversBothHalves(t *testing.T) {
 		t.Errorf("total = %d, want 2 — it must cover asks AND reels", body.Total)
 	}
 }
+
+func TestFillerIncoming_CapsRowsButKeepsTheFullTotals(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for i := 0; i < incomingListLimitForTest+7; i++ {
+		path := fmt.Sprintf("incoming-%03d.mp4", i)
+		putClip(t, st, filler.Clip{
+			Path: path, Name: path, Kind: filler.Commercial, DurationMs: 30_000, Held: true,
+		})
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Clips) != incomingListLimitForTest {
+		t.Fatalf("clips = %d, want bounded page of %d", len(body.Clips), incomingListLimitForTest)
+	}
+	if body.ClipsTotal != incomingListLimitForTest+7 {
+		t.Errorf("clipsTotal = %d, want all %d conveyor clips", body.ClipsTotal, incomingListLimitForTest+7)
+	}
+	if body.Total != incomingListLimitForTest+7 {
+		t.Errorf("total = %d, want all decisions rather than the page length", body.Total)
+	}
+	if body.DecisionsTotal != incomingListLimitForTest+7 {
+		t.Errorf("decisionsTotal = %d, want all decisions", body.DecisionsTotal)
+	}
+}
+
+const incomingListLimitForTest = 100
 
 // Empty is an array, never null: a null makes every consumer guard before iterating, and "nothing
 // needs you" is a real answer the tab renders as its all-clear state.

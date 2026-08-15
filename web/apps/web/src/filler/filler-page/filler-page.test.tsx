@@ -72,9 +72,14 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
     // either way, which is why this survived the rename as a pure field swap.)
     getFillerIncomingMockHandler({
       clips: [],
+      clipsTotal: 0,
+      decisionsTotal: over.incomingTotal ?? 3,
       reels: [],
+      reelsTotal: 0,
       recentlyFiled: [],
+      recentlyFiledTotal: 0,
       rejected: [],
+      rejectedTotal: 0,
       stageOrder: [],
       total: over.incomingTotal ?? 3,
     }),

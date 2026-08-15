@@ -321,7 +321,9 @@ type FillerService interface {
 	//
 	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
 	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
-	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
+	// When query is non-empty, results are filtered within the named collection. An empty query
+	// lists the collection, preserving the starter-pack browse path.
+	DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]DiscoveredClip, int, error)
 	// EnrichDiscovered fills in duration + quality for specific results, ON DEMAND.
 	//
 	// ⚠ Separate from Discover because it is a DIFFERENT cost, measured: a listing is one

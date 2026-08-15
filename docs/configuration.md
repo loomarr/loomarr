@@ -166,7 +166,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
 | `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |
-| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips Loomarr may assemble into any channel's commercial break. |
+| `filler.break_duration` (`FILLER_BREAK_DURATION`) | duration | `5m` | How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off. |
+| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |

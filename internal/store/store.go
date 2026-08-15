@@ -221,6 +221,9 @@ type ClipStore interface {
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// ReplaceSplitChildren makes one completed re-split generation airable and tombstones older
+	// children of the same composite. It never deletes files and preserves channel-pinned clips.
+	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
 	// SetClipLanguage records the detected language (§10 V40).
 	//
 	// ⚠ The ONLY writer of that column, like the tombstone above: UpsertClip omits it, which is
@@ -328,9 +331,9 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
-	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
-	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
+	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
+	// Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
 	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)

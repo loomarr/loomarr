@@ -373,9 +373,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			Policy:               schedule.PodFill,
 			ReconcileTTL:         set.dur("channel.reconcile_every"),
 			BreaksPerHour:        set.intv("filler.breaks_per_hour"),
+			BreakDuration:        set.dur("filler.break_duration"),
 			DefaultWindow:        set.dur("sched.window_hours"),
 			ResolveReconcileTTL:  func() time.Duration { return set.dur("channel.reconcile_every") },
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
+			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the

@@ -1,6 +1,9 @@
 package settings
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
@@ -70,6 +73,17 @@ func nonNegativeWholeNumber(v any) error {
 	}
 	if n < 0 {
 		return fmt.Errorf("want 0 or more (got %d)", n)
+	}
+	return nil
+}
+
+func breakDuration(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d < 30*time.Second {
+		return fmt.Errorf("want at least 30s (got %s) — shorter values are clamped by Tunarr and would make playout backends disagree", d)
 	}
 	return nil
 }
@@ -796,9 +810,14 @@ func declared() []Setting {
 			Doc: "Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency.",
 		},
 		{
+			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
+			Kind: KindDuration, Default: "5m", Validate: breakDuration,
+			Doc: "How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+		},
+		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
 			Kind: KindInt, Default: 4, Validate: positiveWholeNumber,
-			Doc: "Maximum clips Loomarr may assemble into any channel's commercial break.",
+			Doc: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
