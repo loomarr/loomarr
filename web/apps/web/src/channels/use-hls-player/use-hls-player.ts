@@ -1,6 +1,10 @@
 import { toProblem } from "@loomarr/api/mutator";
 import type Hls from "hls.js";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  LivePlaybackState,
+  LivePlaybackTransport,
+} from "@/components/ui/video-player/live-playback-transport.type";
 import { mintChannelPlaySource } from "../channel-play-url";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 
@@ -23,10 +27,12 @@ import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 // server only decides which renditions to OFFER, hinted by the device signals below.
 
 type PlayerStatus = "idle" | "loading" | "playing" | "error";
+const LIVE_DVR_HORIZON_MS = 15 * 60_000;
 
 interface UseHlsPlayer {
   status: PlayerStatus;
   error?: string;
+  liveTransport: LivePlaybackTransport;
   /**
    * Bind live playback to a <video>. Pass to VideoPlayer's `attach` prop. Mints a signed URL,
    * attaches via native HLS or hls.js, and returns a cleanup that tears both down.
@@ -35,6 +41,36 @@ interface UseHlsPlayer {
 }
 
 let cachedHlsController: typeof Hls | undefined;
+
+interface LiveClock {
+  channelId: string;
+  mode: LivePlaybackState["mode"];
+  lagMs: number;
+  viewerTimeMs: number;
+  pausedMediaTime?: number;
+  noticeRevision: number;
+}
+
+const liveStateAt = (clock: LiveClock, now: number): LivePlaybackState => {
+  const viewerTimeMs =
+    clock.mode === "live" ? now : clock.mode === "paused" ? clock.viewerTimeMs : now - clock.lagMs;
+  return {
+    mode: clock.mode,
+    lagSeconds: clock.mode === "live" ? 0 : Math.max(0, Math.round((now - viewerTimeMs) / 1000)),
+    viewerTimeMs,
+    noticeRevision: clock.noticeRevision,
+  };
+};
+
+const containsMediaTime = (ranges: TimeRanges, point: number): boolean => {
+  // An empty TimeRanges means the native/MSE pipeline has not published its window yet. Treat it as
+  // unknown rather than expired; the server is authoritative and may still serve the paused point.
+  if (ranges.length === 0) return true;
+  for (let index = 0; index < ranges.length; index++) {
+    if (point >= ranges.start(index) - 0.1 && point <= ranges.end(index) + 0.1) return true;
+  }
+  return false;
+};
 
 const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["transferMedia"]>>) => {
   for (const track of Object.values(transferred.tracks)) {
@@ -171,10 +207,12 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
     liveSyncDurationCount: 2,
     // Keep corrective live-edge seeks well above the sync target so a slow transcode can drift and
     // let its buffer absorb a dip rather than causing another visible stall.
-    liveMaxLatencyDurationCount: 10,
-    // Build a forward cushion after fast start; keep enough back buffer for a short viewer rewind.
+    // The shared DVR window, not hls.js's latency correction, decides when an intentional pause
+    // expires. Keep this above the complete fifteen-minute server horizon.
+    liveMaxLatencyDurationCount: 10_000,
+    // Build a forward cushion after fast start and retain the complete shared DVR horizon.
     maxBufferLength: 60,
-    backBufferLength: 30,
+    backBufferLength: 900,
   });
 
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
@@ -212,7 +250,138 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
     standbyFresh?: boolean;
     destroyTimer?: number;
   }>({});
+  const now = Date.now();
+  const clockRef = useRef<LiveClock>({
+    channelId,
+    mode: "live",
+    lagMs: 0,
+    viewerTimeMs: now,
+    noticeRevision: 0,
+  });
+  const activeRef = useRef<{
+    video?: HTMLVideoElement;
+    hls?: Hls;
+    sourceURL?: string;
+    lastKeepaliveMs: number;
+  }>({ lastKeepaliveMs: 0 });
+  const [transportState, setTransportState] = useState<{ channelId: string; value: LivePlaybackState }>({
+    channelId,
+    value: liveStateAt(clockRef.current, now),
+  });
   const warmedPlayURL = playbackAttempt?.playURL;
+
+  const publishTransport = useCallback(() => {
+    const at = Date.now();
+    const clock = clockRef.current;
+    if (clock.channelId !== channelId) return;
+    setTransportState({ channelId, value: liveStateAt(clock, at) });
+  }, [channelId]);
+
+  const returnLive = useCallback(
+    async (video: HTMLVideoElement, expired: boolean) => {
+      const clock = clockRef.current;
+      if (clock.channelId !== channelId) return;
+      clock.mode = "live";
+      clock.lagMs = 0;
+      clock.viewerTimeMs = Date.now();
+      clock.pausedMediaTime = undefined;
+      if (expired) clock.noticeRevision++;
+
+      const hls = activeRef.current.video === video ? activeRef.current.hls : undefined;
+      hls?.startLoad(-1);
+      const liveEdge = hls?.liveSyncPosition;
+      if (liveEdge !== null && liveEdge !== undefined && Number.isFinite(liveEdge)) {
+        video.currentTime = liveEdge;
+      } else if (video.seekable.length > 0) {
+        video.currentTime = video.seekable.end(video.seekable.length - 1);
+      }
+      publishTransport();
+      await video.play().catch(() => undefined);
+    },
+    [channelId, publishTransport],
+  );
+
+  const pauseLive = useCallback(
+    (video: HTMLVideoElement) => {
+      const at = Date.now();
+      const clock = clockRef.current;
+      if (clock.channelId !== channelId) return;
+      clock.viewerTimeMs = clock.mode === "behind" ? at - clock.lagMs : at;
+      clock.mode = "paused";
+      clock.pausedMediaTime = video.currentTime;
+      video.pause();
+      publishTransport();
+    },
+    [channelId, publishTransport],
+  );
+
+  const playLive = useCallback(
+    async (video: HTMLVideoElement) => {
+      const clock = clockRef.current;
+      if (clock.channelId !== channelId || clock.mode !== "paused") {
+        await video.play().catch(() => undefined);
+        return;
+      }
+      const pausedMediaTime = clock.pausedMediaTime;
+      if (
+        Date.now() - clock.viewerTimeMs >= LIVE_DVR_HORIZON_MS ||
+        pausedMediaTime === undefined ||
+        !containsMediaTime(video.seekable, pausedMediaTime)
+      ) {
+        await returnLive(video, true);
+        return;
+      }
+      clock.mode = "behind";
+      clock.lagMs = Math.max(0, Date.now() - clock.viewerTimeMs);
+      const hls = activeRef.current.video === video ? activeRef.current.hls : undefined;
+      hls?.startLoad(pausedMediaTime);
+      video.currentTime = pausedMediaTime;
+      publishTransport();
+      await video.play().catch(() => undefined);
+    },
+    [channelId, publishTransport, returnLive],
+  );
+
+  useEffect(() => {
+    const clock = clockRef.current;
+    if (clock.channelId !== channelId) {
+      const at = Date.now();
+      clockRef.current = {
+        channelId,
+        mode: "live",
+        lagMs: 0,
+        viewerTimeMs: at,
+        noticeRevision: 0,
+      };
+      setTransportState({ channelId, value: liveStateAt(clockRef.current, at) });
+    }
+
+    const timer = window.setInterval(() => {
+      publishTransport();
+      const current = clockRef.current;
+      const active = activeRef.current;
+      if (current.channelId !== channelId || current.mode !== "paused" || !active.video) return;
+
+      if (
+        Date.now() - current.viewerTimeMs >= LIVE_DVR_HORIZON_MS ||
+        (current.pausedMediaTime !== undefined &&
+          !containsMediaTime(active.video.seekable, current.pausedMediaTime))
+      ) {
+        void returnLive(active.video, true);
+        return;
+      }
+
+      // Native HLS implementations may stop playlist polling while the element is paused. A cheap
+      // manifest read keeps the one shared server remux leased; it never creates a viewer encoder.
+      const at = Date.now();
+      if (!active.sourceURL || at - active.lastKeepaliveMs < 10_000) return;
+      active.lastKeepaliveMs = at;
+      void fetch(active.sourceURL, { cache: "no-store" })
+        .then((response) => response.arrayBuffer())
+        .catch(() => undefined);
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [channelId, publishTransport, returnLive]);
 
   const bind = useCallback(
     async (video: HTMLVideoElement, url: string, current: () => boolean): Promise<() => void> => {
@@ -331,6 +500,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hlsRef.current.instance = hls;
         hlsRef.current.standby = previous;
         hlsRef.current.standbyFresh = false;
+        activeRef.current = { video, hls, sourceURL: url, lastKeepaliveMs: Date.now() };
         replenishAfterFirstFrame = () => {
           if (!current() || hlsRef.current.instance !== hls) return;
           const retired = hlsRef.current.standby;
@@ -341,7 +511,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         let manifestParsed = false;
         let replacementAttached = false;
         const playReplacement = () => {
-          if (!replacementAttached) return;
+          // Fragment-buffered continues throughout a live session. It may finish after the viewer
+          // deliberately pauses, so only the initial/live join is allowed to drive autoplay.
+          if (
+            !replacementAttached ||
+            clockRef.current.channelId !== channelId ||
+            clockRef.current.mode === "paused"
+          ) {
+            return;
+          }
           void video.play().catch(() => {
             /* autoplay policy — the control handles it */
           });
@@ -371,7 +549,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           // genuinely unrecoverable error (or one that keeps recurring) surfaces to the viewer.
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad(); // re-fetch the manifest/segments — the fix for warmup 404s/empties
+              if (clockRef.current.mode === "live") {
+                hls.startLoad(); // re-fetch the manifest/segments — the fix for warmup 404s/empties
+              } else {
+                void returnLive(video, true);
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
@@ -383,6 +565,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
                 hlsRef.current.instance = undefined;
                 hlsRef.current.standby = undefined;
                 hlsRef.current.standbyFresh = false;
+                activeRef.current = { lastKeepaliveMs: 0 };
                 if (standby && standby !== hls) standby.destroy();
               }
               hls.destroy();
@@ -442,6 +625,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             hlsRef.current.instance = undefined;
             hlsRef.current.standby = undefined;
             hlsRef.current.standbyFresh = false;
+            activeRef.current = { lastKeepaliveMs: 0 };
           }
           return () => undefined;
         }
@@ -484,6 +668,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           if (hlsRef.current.instance !== hls) return;
+          if (activeRef.current.hls === hls) activeRef.current = { lastKeepaliveMs: 0 };
           hls.stopLoad();
           hlsRef.current.destroyTimer = window.setTimeout(() => {
             if (hlsRef.current.instance !== hls) return;
@@ -493,6 +678,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             hlsRef.current.instance = undefined;
             hlsRef.current.standby = undefined;
             hlsRef.current.standbyFresh = false;
+            activeRef.current = { lastKeepaliveMs: 0 };
             hlsRef.current.destroyTimer = undefined;
           }, 0);
         };
@@ -502,6 +688,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // itself, doing its own ABR. Only reached when MSE is absent, so this is a genuine native-HLS
       // browser, not a Chromium false-positive.
       if (nativeHLS || video.canPlayType("application/vnd.apple.mpegurl")) {
+        activeRef.current = { video, sourceURL: url, lastKeepaliveMs: Date.now() };
         const onManifest = () => markTunePhase(playbackAttempt, "manifest");
         // Native HLS has no transport controller to detach the previous URL for us.
         video.removeAttribute("src");
@@ -516,6 +703,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         return () => {
           stopFirstFrameWatch();
           video.removeEventListener("loadedmetadata", onManifest);
+          if (activeRef.current.video === video) activeRef.current = { lastKeepaliveMs: 0 };
           video.removeAttribute("src");
           video.load();
         };
@@ -525,7 +713,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       setState({ channelId, status: "error", error: "This browser can't play live channels." });
       return () => undefined;
     },
-    [channelId, playbackAttempt],
+    [channelId, playbackAttempt, returnLive],
   );
 
   const attach = useCallback(
@@ -538,6 +726,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       const controller = new AbortController();
       const current = () => generationRef.current === generation && !controller.signal.aborted;
       setState({ channelId, status: "loading" });
+      const at = Date.now();
+      clockRef.current = {
+        channelId,
+        mode: "live",
+        lagMs: 0,
+        viewerTimeMs: at,
+        noticeRevision: 0,
+      };
+      setTransportState({ channelId, value: liveStateAt(clockRef.current, at) });
 
       // The mint is the STANDALONE client function, not the useChannelPlayUrl() mutation hook, and
       // that choice is load-bearing: the mutation object gets a fresh identity every render, which
@@ -586,7 +783,20 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
     [channelId, bind, warmedPlayURL],
   );
 
-  return { status, error, attach };
+  const liveTransport = useMemo<LivePlaybackTransport>(
+    () => ({
+      state:
+        transportState.channelId === channelId
+          ? transportState.value
+          : { mode: "live", lagSeconds: 0, viewerTimeMs: Date.now(), noticeRevision: 0 },
+      play: playLive,
+      pause: pauseLive,
+      goLive: (video) => returnLive(video, false),
+    }),
+    [channelId, pauseLive, playLive, returnLive, transportState],
+  );
+
+  return { status, error, attach, liveTransport };
 }
 
 export type { PlayerStatus, UseHlsPlayer };

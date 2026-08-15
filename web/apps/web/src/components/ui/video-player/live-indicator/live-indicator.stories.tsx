@@ -16,4 +16,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {};
+export const Default: Story = {
+  args: {
+    state: { mode: "live", lagSeconds: 0, viewerTimeMs: Date.now(), noticeRevision: 0 },
+    onGoLive: () => undefined,
+  },
+};

@@ -8,12 +8,46 @@
 // (the `bg-onair-tint-15 text-onair-300` chip, as channel-card's error state does): a colored label
 // on a translucent tint, contrast validated by the token generator. Same red read, legible.
 //
-// A named component, not inline JSX — the player's top bar composes it (its own folder/story/test).
-const LiveIndicator = () => (
-  <span className="inline-flex shrink-0 items-center gap-1.5 rounded bg-onair-tint-15 px-2 py-0.5 font-mono text-[10px] text-onair-300 uppercase tracking-wide">
-    <span className="size-1.5 rounded-full bg-onair-300 motion-safe:animate-pulse" aria-hidden />
-    Live
-  </span>
-);
+import type { LivePlaybackState } from "../live-playback-transport.type";
 
-export { LiveIndicator };
+interface LiveIndicatorProps {
+  state: LivePlaybackState;
+  onGoLive: () => void;
+}
+
+const lagLabel = (seconds: number): string => {
+  const total = Math.max(0, Math.round(seconds));
+  if (total < 60) return `${total}s`;
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
+};
+
+// A named component, not inline JSX — the player's top bar composes it (its own folder/story/test).
+const LiveIndicator = ({ state, onGoLive }: LiveIndicatorProps) => {
+  if (state.mode === "live") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded bg-onair-tint-15 px-2 py-0.5 font-mono text-[10px] text-onair-300 uppercase tracking-wide">
+        <span className="size-1.5 rounded-full bg-onair-300 motion-safe:animate-pulse" aria-hidden />
+        Live
+      </span>
+    );
+  }
+
+  return (
+    <span className="pointer-events-auto inline-flex shrink-0 items-center gap-2">
+      <span className="rounded bg-static-800/90 px-2 py-0.5 font-mono text-[10px] text-static-100 uppercase tracking-wide">
+        {state.mode === "paused" ? "Paused · " : ""}
+        {lagLabel(state.lagSeconds)} behind
+      </span>
+      <button
+        type="button"
+        onClick={onGoLive}
+        className="rounded bg-onair-tint-15 px-2 py-0.5 font-mono text-[10px] text-onair-300 uppercase tracking-wide outline-none hover:bg-onair-tint-25 focus-visible:ring-2 focus-visible:ring-onair-300"
+      >
+        Go live
+      </button>
+    </span>
+  );
+};
+
+export type { LiveIndicatorProps };
+export { LiveIndicator, lagLabel };

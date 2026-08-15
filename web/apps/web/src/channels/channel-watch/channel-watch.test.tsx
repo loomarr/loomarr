@@ -8,16 +8,32 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import type { LivePlaybackState } from "@/components/ui/video-player";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import { ChannelWatch } from "./channel-watch";
 
-const hls = vi.hoisted(() => ({ status: "playing", attach: vi.fn(() => () => undefined) }));
+const hls = vi.hoisted(() => ({
+  status: "playing",
+  attach: vi.fn(() => () => undefined),
+  liveTransport: {
+    state: {
+      mode: "live",
+      lagSeconds: 0,
+      viewerTimeMs: 1_000_000,
+      noticeRevision: 0,
+    } as LivePlaybackState,
+    play: vi.fn(),
+    pause: vi.fn(),
+    goLive: vi.fn(),
+  },
+}));
 
 vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: () => ({ status: hls.status, attach: hls.attach }),
+  useHlsPlayer: () => ({ status: hls.status, attach: hls.attach, liveTransport: hls.liveTransport }),
 }));
 
 const makeWrapper = () => {
@@ -67,6 +83,12 @@ const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: 
 describe("ChannelWatch pickers", () => {
   beforeEach(() => {
     hls.status = "playing";
+    hls.liveTransport.state = {
+      mode: "live",
+      lagSeconds: 0,
+      viewerTimeMs: 1_000_000,
+      noticeRevision: 0,
+    };
   });
   // The audio control lives IN the player's bar (V47), so the player must be running
   // before they render.
@@ -153,5 +175,40 @@ describe("ChannelWatch pickers", () => {
     await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
     await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  it("keeps programme context on the viewer's paused broadcast time", async () => {
+    stubTracks();
+    hls.liveTransport.state = {
+      mode: "paused",
+      lagSeconds: 30,
+      viewerTimeMs: 1_030_000,
+      noticeRevision: 0,
+    };
+    server.use(
+      getChannelTimelineMockHandler({
+        airings: [{ kind: "program", title: "Paused Programme", startMs: 1_000_000, stopMs: 1_090_000 }],
+      }),
+    );
+
+    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("0:30")).toBeInTheDocument();
+    expect(screen.getByText("1m left")).toBeInTheDocument();
+  });
+
+  it("explains when an expired paused point returns the viewer live", async () => {
+    stubTracks();
+    const notice = vi.spyOn(toast, "info");
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+    hls.liveTransport.state = { ...hls.liveTransport.state, noticeRevision: 1 };
+
+    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+
+    await waitFor(() =>
+      expect(notice).toHaveBeenCalledWith("That paused point is no longer available, so you're back live."),
+    );
   });
 });

@@ -57,6 +57,27 @@ describe("usePlaybackState", () => {
     expect(playingEl.current.pause).toHaveBeenCalledOnce();
   });
 
+  it("delegates live pause and resume to the shared live transport", () => {
+    const transport = {
+      state: { mode: "live" as const, lagSeconds: 0, viewerTimeMs: 1_000, noticeRevision: 0 },
+      play: vi.fn(),
+      pause: vi.fn(),
+      goLive: vi.fn(),
+    };
+    const paused = { current: fakeVideo({ paused: true }) };
+    const playing = { current: fakeVideo({ paused: false }) };
+    const { result: pausedResult } = renderHook(() => usePlaybackState(paused, {}, transport));
+    const { result: playingResult } = renderHook(() => usePlaybackState(playing, {}, transport));
+
+    act(() => pausedResult.current.toggle());
+    act(() => playingResult.current.toggle());
+
+    expect(transport.play).toHaveBeenCalledWith(paused.current);
+    expect(transport.pause).toHaveBeenCalledWith(playing.current);
+    expect(paused.current.play).not.toHaveBeenCalled();
+    expect(playing.current.pause).not.toHaveBeenCalled();
+  });
+
   it("seekTo clamps to [0, duration]", () => {
     const el = fakeVideo({ duration: 100, currentTime: 0 });
     const ref = { current: el };

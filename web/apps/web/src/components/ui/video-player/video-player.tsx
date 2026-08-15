@@ -30,6 +30,7 @@ const mmss = (seconds: number): string => {
 
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
+const LIVE_EDGE_STATE = { mode: "live" as const, lagSeconds: 0, viewerTimeMs: 0, noticeRevision: 0 };
 
 // Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
 // This is a poster, not a hidden player or decoder: transport teardown can release immediately,
@@ -68,6 +69,7 @@ const VideoPlayer = ({
   endAt,
   leading,
   live,
+  liveTransport,
   scrubber,
   topBar,
   timeLeft,
@@ -96,7 +98,7 @@ const VideoPlayer = ({
     mediaHandlers,
     // ⚠ The window is dropped in LIVE mode: a live duration is Infinity, so there is nothing to
     // clamp and a stray `endAt` would pause the stream at a number that means nothing.
-  } = usePlaybackState(videoRef, live ? {} : { startAt, endAt });
+  } = usePlaybackState(videoRef, live ? {} : { startAt, endAt }, liveTransport);
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
@@ -220,7 +222,13 @@ const VideoPlayer = ({
           >
             {live ? (
               <>
-                <LiveIndicator />
+                <LiveIndicator
+                  state={liveTransport?.state ?? LIVE_EDGE_STATE}
+                  onGoLive={() => {
+                    const video = videoRef.current;
+                    if (video && liveTransport) void liveTransport.goLive(video);
+                  }}
+                />
                 <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5">{topBar}</div>
               </>
             ) : (
