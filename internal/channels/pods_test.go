@@ -95,9 +95,11 @@ func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	pods := &fakePods{ids: []string{"local-clip"}}
 	e := channels.New(st, nil, avail, nil, channels.Config{
-		ReconcileTTL:          10 * time.Minute,
-		BreaksPerHour:         30,
-		ResolvePlayoutBackend: func() string { return schedule.PlayoutBackendInternal },
+		ReconcileTTL:  10 * time.Minute,
+		BreaksPerHour: 30,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).WithPods(pods)
 	seedChannel(t, st, "internal-pods", 5,
 		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))

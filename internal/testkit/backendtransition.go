@@ -5,14 +5,46 @@ import (
 	"sync"
 )
 
-// BackendTransition is the shared in-memory double for the settings consequence seam.
+// BackendTransition is the shared in-memory double for the settings consequence and repair seam.
+// It runs the supplied mutation before recording the resolved desired target, mirroring the
+// production interface without reproducing any prepare/publish phases in API tests.
 type BackendTransition struct {
-	mu      sync.Mutex
-	Err     error
-	targets []string
+	mu                sync.Mutex
+	Err               error
+	BeforeMutationErr error
+	Desired           func() string
+	targets           []string
+	reconnects        int
+	TunersReset       int
+	ReconnectErr      error
 }
 
-func (t *BackendTransition) Apply(_ context.Context, desired string) error {
+// Reconnect satisfies the API's serialized Live TV repair seam.
+func (t *BackendTransition) Reconnect(context.Context) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.reconnects++
+	return t.TunersReset, t.ReconnectErr
+}
+
+// Reconnects reports how many force-repair operations were requested.
+func (t *BackendTransition) Reconnects() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.reconnects
+}
+
+func (t *BackendTransition) ApplyMutation(ctx context.Context, mutation func(context.Context) bool) error {
+	if t.BeforeMutationErr != nil {
+		return t.BeforeMutationErr
+	}
+	if mutation == nil || !mutation(ctx) {
+		return nil
+	}
+	desired := ""
+	if t.Desired != nil {
+		desired = t.Desired()
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.targets = append(t.targets, desired)
@@ -64,6 +96,12 @@ func (p *BackendTransitionProbe) Refresh(ctx context.Context, target string) err
 // RetireStale satisfies backendtransition.Publisher.
 func (p *BackendTransitionProbe) RetireStale(ctx context.Context, target string) error {
 	return p.publisherPhase(ctx, target, false)
+}
+
+// Reconnect satisfies backendtransition.Publisher. The concurrency probe treats it as one
+// publisher phase; controller tests that need force-repair result details use a local recorder.
+func (p *BackendTransitionProbe) Reconnect(ctx context.Context, target string) (int, error) {
+	return 1, p.publisherPhase(ctx, target, false)
 }
 
 func (p *BackendTransitionProbe) publisherPhase(ctx context.Context, target string, mayBlock bool) error {

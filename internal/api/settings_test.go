@@ -45,7 +45,12 @@ func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T)
 			}
 		},
 	}
-	transition := &testkit.BackendTransition{Err: context.DeadlineExceeded}
+	transition := &testkit.BackendTransition{
+		Err: context.DeadlineExceeded,
+		Desired: func() string {
+			return cfg["playout.backend"]
+		},
+	}
 	live := &fakeConnector{}
 	st := openTestStore(t, t.TempDir()+"/transition.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -86,6 +91,54 @@ func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T)
 	}
 	if live.calls != 0 || live.wiredChecks != 0 {
 		t.Fatalf("legacy Live TV path ran with durable transition: calls=%d checks=%d", live.calls, live.wiredChecks)
+	}
+	if settings.patched["playout.backend"] != schedule.PlayoutBackendTunarr {
+		t.Fatalf("post-save transition failure lost durable PATCH result: %v", settings.patched)
+	}
+}
+
+func TestSettings_BackendTransitionLockFailureDoesNotRunMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, body string
+		mutated                  func(*fakeSettings) bool
+	}{
+		{
+			name: "patch", method: http.MethodPatch, path: "/v1/settings",
+			body:    `{"edits":{"playout.backend":"internal"}}`,
+			mutated: func(s *fakeSettings) bool { return s.patched != nil },
+		},
+		{
+			name: "clear", method: http.MethodDelete, path: "/v1/settings/playout.backend",
+			mutated: func(s *fakeSettings) bool { return s.cleared != "" },
+		},
+		{
+			name: "environment hand-back", method: http.MethodPut,
+			path: "/v1/settings/playout.backend/env-override", body: `{"enabled":false}`,
+			mutated: func(s *fakeSettings) bool { return s.envOverride != "" },
+		},
+		{
+			name: "playout token rotation", method: http.MethodPost,
+			path:    "/v1/settings/secrets/playout_token/regenerate",
+			mutated: func(s *fakeSettings) bool { return s.regen != "" },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := &fakeSettings{}
+			transition := &testkit.BackendTransition{BeforeMutationErr: context.DeadlineExceeded}
+			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings, BackendTransition: transition,
+			})
+			srv := httptest.NewServer(h)
+			t.Cleanup(srv.Close)
+
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("request with unavailable transition lock = %d, want 503", resp.StatusCode)
+			}
+			if tc.mutated(settings) {
+				t.Fatal("mutation ran without transition lock")
+			}
+		})
 	}
 }
 
@@ -461,16 +514,18 @@ func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cf
 		Channels:      channelSvc,
 		LiveTV:        live,
 		TunarrConnect: mediaSourceAdapter{inner: source},
-		LiveConfig:    func(k string) string { return cfg[k] },
+		BackendTransition: &testkit.BackendTransition{Desired: func() string {
+			return cfg["playout.backend"]
+		}},
+		LiveConfig: func(k string) string { return cfg[k] },
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv, st
 }
 
-// Saving a connection auto-wires Tunarr into the guide + library — no manual button
-// (config-design §5). Both connectors are idempotent, so running them on every
-// connection save is safe; the operator just saves and it's wired.
+// Saving a connection enters the durable transition seam and independently wires the Tunarr
+// media source. Live TV itself must never be wired by a duplicate HTTP-layer algorithm.
 func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 	configured := map[string]string{"tunarr.url": "http://tunarr:8000", "library.url": "http://emby:8096"}
 
@@ -482,8 +537,8 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("patch → %d", resp.StatusCode)
 		}
-		if live.calls != 1 || source.calls != 1 {
-			t.Errorf("auto-wire didn't fire both: live=%d source=%d", live.calls, source.calls)
+		if live.calls != 0 || source.calls != 1 {
+			t.Errorf("wiring ownership drifted: legacy-live=%d source=%d", live.calls, source.calls)
 		}
 	})
 
@@ -511,8 +566,8 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		// Only Tunarr configured — livetv needs just tunarr.url; media source needs both.
 		srv := newAutoWireServer(t, live, source, map[string]string{"tunarr.url": "http://tunarr:8000"})
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
-		if live.calls != 1 {
-			t.Errorf("live TV should wire with only tunarr.url set: %d", live.calls)
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
 		}
 		if source.calls != 0 {
 			t.Errorf("media source should wait for library.url: %d", source.calls)
@@ -531,8 +586,8 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("patch → %d", resp.StatusCode)
 		}
-		if live.calls != 1 {
-			t.Errorf("internal Live TV should wire without tunarr.url: %d", live.calls)
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
 		}
 		if source.calls != 0 {
 			t.Errorf("playout.backend must not trigger Tunarr media-source wiring: %d", source.calls)
@@ -548,8 +603,8 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		srv := newAutoWireServer(t, live, source, cfg)
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"server.public_url":"http://loomarr-new:8080"}}`)
-		if live.calls != 1 {
-			t.Errorf("server.public_url should rewire internal Live TV: %d", live.calls)
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
 		}
 		if source.calls != 0 {
 			t.Errorf("server.public_url must not trigger Tunarr media-source wiring: %d", source.calls)
@@ -577,7 +632,7 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 	})
 }
 
-func TestSettings_BackendTransitionConvergesInheritedChannelsBeforeWiring(t *testing.T) {
+func TestSettings_BackendTransitionDoesNotUseLegacyHTTPReconcileOrWiring(t *testing.T) {
 	cfg := map[string]string{
 		"playout.backend":   schedule.PlayoutBackendInternal,
 		"server.public_url": "http://loomarr:8080",
@@ -601,18 +656,18 @@ func TestSettings_BackendTransitionConvergesInheritedChannelsBeforeWiring(t *tes
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d", resp.StatusCode)
 	}
-	if reconciledBeforeWire != 1 {
-		t.Fatalf("inherited reconciles before Live TV wiring = %d, want 1", reconciledBeforeWire)
+	if reconciledBeforeWire != -1 {
+		t.Fatalf("legacy Live TV wiring ran: before=%d", reconciledBeforeWire)
 	}
-	if len(channelSvc.reconciledIDs) != 1 || channelSvc.reconciledIDs[0] != "inherits" {
-		t.Fatalf("reconciled channels = %v, want only inherited channel", channelSvc.reconciledIDs)
+	if len(channelSvc.reconciledIDs) != 0 {
+		t.Fatalf("HTTP layer reconciled channels outside transition module: %v", channelSvc.reconciledIDs)
 	}
-	if live.calls != 1 {
-		t.Fatalf("Live TV connects = %d, want 1", live.calls)
+	if live.calls != 0 {
+		t.Fatalf("HTTP layer wired Live TV outside transition module: %d", live.calls)
 	}
 }
 
-func TestSettings_BackendTransitionKeepsOldTunerUntilConvergenceSucceeds(t *testing.T) {
+func TestSettings_BackendTransitionFailureRemainsPostSaveAndRetryable(t *testing.T) {
 	cfg := map[string]string{
 		"playout.backend":   schedule.PlayoutBackendInternal,
 		"server.public_url": "http://loomarr:8080",
@@ -633,12 +688,11 @@ func TestSettings_BackendTransitionKeepsOldTunerUntilConvergenceSucceeds(t *test
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
 	}
-	if live.calls != 0 {
-		t.Fatalf("Live TV rewired before convergence: %d calls", live.calls)
+	if len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+		t.Fatalf("HTTP layer performed legacy transition: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
 	}
 
-	// The effective value is already tunarr, but the failed transition remains pending.
-	// Retrying the same save must cross the reconcile barrier before it can wire.
+	// Retrying the same save remains successful and still crosses only the deep transition seam.
 	channelSvc.err = nil
 	channelSvc.reconciledIDs = nil
 	resp = do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
@@ -646,12 +700,12 @@ func TestSettings_BackendTransitionKeepsOldTunerUntilConvergenceSucceeds(t *test
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("retry patch → %d", resp.StatusCode)
 	}
-	if len(channelSvc.reconciledIDs) != 1 || live.calls != 1 {
-		t.Fatalf("retry did not converge then wire: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
+	if len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+		t.Fatalf("retry performed legacy transition: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
 	}
 }
 
-func TestSettings_LiveTVWiringIsDerivedFromCurrentRegistration(t *testing.T) {
+func TestSettings_LiveTVRegistrationChecksAreOwnedByTransitionModule(t *testing.T) {
 	configured := map[string]string{
 		"playout.backend":   schedule.PlayoutBackendInternal,
 		"server.public_url": "http://loomarr:8080",
@@ -668,8 +722,8 @@ func TestSettings_LiveTVWiringIsDerivedFromCurrentRegistration(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("patch → %d", resp.StatusCode)
 		}
-		if live.wiredChecks != 1 || live.calls != 0 || channelSvc.reconciles != 0 {
-			t.Fatalf("matching wiring performed effects: checks=%d connects=%d reconciles=%d",
+		if live.wiredChecks != 0 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("HTTP layer performed registration effects: checks=%d connects=%d reconciles=%d",
 				live.wiredChecks, live.calls, channelSvc.reconciles)
 		}
 	})
@@ -685,8 +739,8 @@ func TestSettings_LiveTVWiringIsDerivedFromCurrentRegistration(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
 		}
-		if live.wiredChecks != 1 || live.calls != 0 || channelSvc.reconciles != 0 {
-			t.Fatalf("failed lookup performed effects: checks=%d connects=%d reconciles=%d",
+		if live.wiredChecks != 0 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("HTTP layer performed registration effects: checks=%d connects=%d reconciles=%d",
 				live.wiredChecks, live.calls, channelSvc.reconciles)
 		}
 	})
@@ -715,8 +769,9 @@ func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("clear → %d", resp.StatusCode)
 		}
-		if seenBeforeWire != 1 || live.calls != 1 {
-			t.Fatalf("clear did not converge then wire: before=%d live=%d", seenBeforeWire, live.calls)
+		if seenBeforeWire != -1 || len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+			t.Fatalf("clear used legacy transition: before=%d reconciled=%v live=%d",
+				seenBeforeWire, channelSvc.reconciledIDs, live.calls)
 		}
 	})
 
@@ -743,8 +798,9 @@ func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("env hand-back → %d", resp.StatusCode)
 		}
-		if seenBeforeWire != 1 || live.calls != 1 {
-			t.Fatalf("env hand-back did not converge then wire: before=%d live=%d", seenBeforeWire, live.calls)
+		if seenBeforeWire != -1 || len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+			t.Fatalf("env hand-back used legacy transition: before=%d reconciled=%v live=%d",
+				seenBeforeWire, channelSvc.reconciledIDs, live.calls)
 		}
 	})
 }

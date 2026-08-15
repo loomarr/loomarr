@@ -99,11 +99,11 @@ type Engine struct {
 	log  *slog.Logger
 
 	policy            schedule.PendingPolicy
-	reconcileTTLFor   func() time.Duration // live minimum delay before the next sweep eligibility
-	breaksPerHourFor  func() int           // live §10 commercial-break default
-	breakDurationFor  func() time.Duration // live §10 commercial-break length default
-	defaultWindowFor  func() time.Duration // live §6.5 rolling-window default
-	playoutBackendFor func() string        // live §9.1 global backend; channel policy may override
+	reconcileTTLFor   func() time.Duration                  // live minimum delay before the next sweep eligibility
+	breaksPerHourFor  func() int                            // live §10 commercial-break default
+	breakDurationFor  func() time.Duration                  // live §10 commercial-break length default
+	defaultWindowFor  func() time.Duration                  // live §6.5 rolling-window default
+	playoutBackendFor func(context.Context) (string, error) // durable §9.1 transition target
 	now               func() time.Time
 
 	mu    sync.Mutex
@@ -132,10 +132,9 @@ type Config struct {
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
 	DefaultWindow        time.Duration
 	ResolveDefaultWindow func() time.Duration
-	// ResolvePlayoutBackend reads the live global playout.backend setting (§9.1).
-	// A channel's policy override still wins through schedule.PlaysInternally. Nil
-	// preserves the pre-internal-playout behavior: project channels to Tunarr.
-	ResolvePlayoutBackend func() string
+	// ResolvePlayoutBackendContext reads the durable transition checkpoint once per reconcile
+	// attempt so Postgres replicas observe Prepared. Nil fails closed through the empty backend.
+	ResolvePlayoutBackendContext func(context.Context) (string, error)
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -159,8 +158,8 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 	if cfg.ResolveDefaultWindow == nil {
 		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
 	}
-	if cfg.ResolvePlayoutBackend == nil {
-		cfg.ResolvePlayoutBackend = func() string { return "" }
+	if cfg.ResolvePlayoutBackendContext == nil {
+		cfg.ResolvePlayoutBackendContext = func(context.Context) (string, error) { return "", nil }
 	}
 	if now == nil {
 		now = time.Now
@@ -176,7 +175,7 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		breaksPerHourFor:  cfg.ResolveBreaksPerHour,
 		breakDurationFor:  cfg.ResolveBreakDuration,
 		defaultWindowFor:  cfg.ResolveDefaultWindow,
-		playoutBackendFor: cfg.ResolvePlayoutBackend,
+		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
 		now:               now,
 		locks:             map[string]*sync.Mutex{},
 	}

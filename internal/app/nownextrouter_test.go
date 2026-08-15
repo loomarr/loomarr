@@ -70,6 +70,41 @@ func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
 	}
 }
 
+func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	reads := 0
+	r := nowNextRouter{
+		internal: stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels: routerChannels{list: []store.Channel{
+			{Channel: schedule.Channel{ID: "one", Status: schedule.StatusLive}},
+			{Channel: schedule.Channel{ID: "two", Status: schedule.StatusLive}},
+		}},
+		appliedBackend: func(context.Context) (string, error) {
+			reads++
+			return schedule.PlayoutBackendInternal, nil
+		},
+		window: 2 * time.Hour,
+	}
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 1 || len(got) != 2 {
+		t.Fatalf("now/next = %d channels with %d checkpoint reads, want 2/1", len(got), reads)
+	}
+}
+
+func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
+	want := errors.New("checkpoint unavailable")
+	r := nowNextRouter{
+		channels:       routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "one"}}}},
+		appliedBackend: func(context.Context) (string, error) { return "", want },
+	}
+	if _, err := r.NowNext(context.Background(), time.Now()); !errors.Is(err, want) {
+		t.Fatalf("NowNext error = %v, want checkpoint failure", err)
+	}
+}
+
 // `playout.backend` is per-channel overridable (§15), so a MIXED install must be right — this is
 // the case a global on/off switch would get wrong.
 func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
@@ -195,7 +230,7 @@ func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 	}
 }
 
-func TestNowNextRouter_OmitsPausedAndDetachedChannels(t *testing.T) {
+func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	guide := &countingGuide{}
 	r := nowNextRouter{
@@ -206,6 +241,7 @@ func TestNowNextRouter_OmitsPausedAndDetachedChannels(t *testing.T) {
 		channels: routerChannels{list: []store.Channel{
 			{Channel: schedule.Channel{ID: "paused", Status: schedule.StatusPaused}},
 			{Channel: schedule.Channel{ID: "detached", TunarrID: "tun-detached", Status: schedule.StatusDetached}},
+			{Channel: schedule.Channel{ID: "empty", TunarrID: "tun-empty", Status: schedule.StatusEmpty}},
 		}},
 		internalFor: func(ch store.Channel) bool { return ch.ID == "paused" },
 		window:      2 * time.Hour,
@@ -221,7 +257,7 @@ func TestNowNextRouter_OmitsPausedAndDetachedChannels(t *testing.T) {
 	if guide.calls != 0 {
 		t.Fatalf("Tunarr guide calls = %d, want none for detached channels", guide.calls)
 	}
-	for _, id := range []string{"paused", "detached"} {
+	for _, id := range []string{"paused", "detached", "empty"} {
 		upcoming, uerr := r.Upcoming(context.Background(), id, now, 6)
 		if uerr != nil {
 			t.Fatalf("Upcoming(%s): %v", id, uerr)

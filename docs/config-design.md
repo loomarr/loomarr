@@ -348,7 +348,7 @@ action. Being closer to the affected clips is not permission to introduce an unc
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 
-**Wiring is an effect of saving, not a manual action.** Registering Tunarr as a tuner/guide source in the media server (`livetv`) and pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from the saved connection values* — there is no decision to make and re-running is a no-op. So a Connections save runs them server-side automatically (`settingsPatch` → both connectors, best-effort and non-fatal: a wiring failure never fails the save and surfaces on the relevant connection's own status). The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the Tunarr connection (the Connections step) already auto-wires the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the Tunarr connection's own verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
+**Wiring is an effect of saving, not a manual action.** Registering the durably applied internal-or-Tunarr tuner/guide pair in the media server (`livetv`) and, on the Tunarr path, pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from saved connection values* — there is no decision to make and re-running is a no-op. Relevant saves run publication through the durable backend-transition coordinator; a later effect failure never rolls back the saved setting and surfaces on the relevant connection's own status. The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the selected backend's connection settings already publishes the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the media-server verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
 
 ---
 
@@ -394,9 +394,11 @@ does not exist.
 - `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
-- **Backend hot-apply is a durable prepare → publish → retire transition, not merely an immediate
-  callback.** PATCH, clear, and environment takeover save the desired value first, then invoke one
-  coordinator. Guide/now-next and in-app routing continue to read the durable `applied` backend while
+- **Backend hot-apply is a durable mutate → prepare → publish → retire transition, not merely an
+  immediate callback.** PATCH, clear, environment takeover/hand-back, and `PLAYOUT_TOKEN` rotation
+  enter one coordinator before their durable mutation. The coordinator holds the same workflow lock
+  across that mutation and every follow-on phase. Guide/now-next and in-app routing continue to read
+  the durable `applied` backend while
   active inherited channels are prepared for the target; ordinary reconcile reads non-empty
   `prepared` first (then `applied`) so concurrent maintenance cannot undo partially converged target
   state. Explicitly pinned, paused, and detached channels do not join that fleet barrier. The target
@@ -411,19 +413,30 @@ does not exist.
   later relevant settings write and channel maintenance resume it (including URL-only repair when
   the backend name did not change). Desired is re-read inside the coordinator's serialization
   boundary, so an older maintenance retry cannot publish after a newer save. On Postgres that
-  boundary is a store-owned, database-scoped advisory lock held across checkpoint load, every
-  external publisher phase, and checkpoint save; separate replicas therefore cannot interleave
-  tuner publication. Only after acquiring it does a replica refresh its settings snapshot from the
-  durable store and resolve desired, so a stale process cannot reverse a newer save when its queued
-  work finally runs. SQLite uses the same interface with its single-process mutex, consistent with
-  SQLite's one-replica contract. The setting mutation remains successful when this follow-on
-  transition is pending.
+  boundary is a store-owned, database-scoped advisory lock held across the relevant setting write,
+  checkpoint load, every external publisher phase, and checkpoint save; separate replicas therefore
+  cannot insert a newer desired write midway through an older publication. Only after acquiring it
+  does a replica refresh both setting values and provenance, then mutate and resolve desired. The
+  refresh precedes even a mutation that becomes a no-op: whether a PATCH is environment-pinned, or
+  whether an env-override handoff made it writable, must be decided from the durable snapshot rather
+  than stale process memory. A queued process therefore cannot reject or reverse a newer ownership
+  handoff when its work finally runs. SQLite uses the same interface with
+  its single-process mutex, consistent with SQLite's one-replica contract. Failure to acquire the
+  workflow lock means the mutation did not run and the write request returns unavailable. Once the
+  durable checkpoint is initialized, each reconcile attempt and routing request reads it once rather
+  than trusting the controller's process-local mirror; this makes `prepared` transport and `applied`
+  routing visible immediately on every Postgres replica. These reads are lock-free and fail closed.
+  A committed mutation remains successful when a later transition phase fails; the transition stays
+  pending for maintenance retry.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
 - `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating
   `PLAYOUT_TOKEN` invokes the same durable publication repair because internal tuner/guide URLs
-  embed it; a repair failure leaves the rotation successful and the transition pending. Rotating
-  `SESSION_SECRET` or `API_TOKEN` has no Live TV consequence.
+  embed it; the publisher reads the durable token inside the workflow lock, and Postgres request
+  authorization reads that same row so every replica admits the new device URL and rejects the old
+  one immediately. A repair failure leaves the rotation successful and the transition pending.
+  `API_TOKEN` bearer authorization uses the same replica-coherent read (SQLite remains cache-only);
+  rotating `SESSION_SECRET` or `API_TOKEN` has no Live TV consequence.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.
 

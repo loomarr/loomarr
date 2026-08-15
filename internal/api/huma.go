@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -107,15 +106,11 @@ type Server struct {
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
-	// backendTransition owns the durable prepare -> publish -> retire workflow for
-	// playout backend and URL changes. Settings writes trigger it only after their
-	// effective value has been saved; failures are follow-on wiring failures and do
-	// not roll back the successful setting mutation.
+	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
+	// workflow for playout backend and URL changes. It serializes that entire workflow
+	// across replicas; failures after mutation remain non-fatal follow-on failures.
 	backendTransition BackendTransitioner
-	// settingsApplyMu serializes a settings mutation with its derived wiring effects.
-	// Without it, two concurrent playout.backend writes can each converge correctly and
-	// still wire the media server in the opposite order from the values they committed.
-	settingsApplyMu sync.Mutex
+	backendCheckpoint func(context.Context) (BackendCheckpoint, error)
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
@@ -132,12 +127,6 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
-	// appliedBackend is the durable backend currently published to ordinary request
-	// paths. publishedInternal additionally opens Loomarr's device transport while
-	// internal is prepared, before the media server is cut over to it.
-	appliedBackend    func() string
-	publishedInternal func() bool
-
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready ReadyFunc
@@ -165,6 +154,10 @@ type Server struct {
 	// an operator action the UI offers, and a cached value would keep authorizing the old
 	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
 	playoutSecret func() string
+	// playoutSecretCurrent is the durable Postgres-replica read. Production prefers it at
+	// request security boundaries so a rotation handled by another process invalidates the
+	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
+	playoutSecretCurrent func(context.Context) (string, error)
 	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
 	// sequencing layer the concat demuxer re-opens per program. nil ⇒ the route 501s.
 	playoutResolver PlayoutResolver
@@ -261,10 +254,14 @@ type SettingsService interface {
 	Test(ctx context.Context, check string) (ok bool, hint string)
 }
 
-// BackendTransitioner is the one deep settings consequence for playout publication.
-// Implemented by backendtransition.Controller; the API deliberately does not know its phases.
+// BackendTransitioner is the one deep settings consequence for playout publication. The
+// implementation holds its cross-replica lock while invoking mutation and all publication phases.
+// mutation returns whether it durably changed a transition input; false skips transition repair.
 type BackendTransitioner interface {
-	Apply(ctx context.Context, desired string) error
+	ApplyMutation(ctx context.Context, mutation func(context.Context) bool) error
+	// Reconnect force-repairs the durably applied tuner/listing target under the same
+	// cross-replica serialization boundary as ordinary backend publication.
+	Reconnect(ctx context.Context) (tunersReset int, err error)
 }
 
 // SettingEntry is the API view of one setting (config-design §8). For a secret,
@@ -633,14 +630,9 @@ type ChannelService interface {
 		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
 }
 
-// LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and
-// the "wired?" status check. Implemented by setup.LiveTVConnector.
+// LiveTVService backs the Live TV setup status check (§6/§7). Mutating repair belongs to
+// BackendTransitioner so it cannot bypass durable publication ordering.
 type LiveTVService interface {
-	Connect(ctx context.Context) (tunerAdded, listingAdded bool, err error)
-	// Reconnect force-re-wires the tuner (remove + re-add + re-scan) to clear a stale
-	// channel→stream binding — the media server streaming a since-deleted channel id
-	// ("guide right, plays wrong"). Returns how many tuners were reset.
-	Reconnect(ctx context.Context) (tunersReset int, err error)
 	Wired(ctx context.Context) (bool, error)
 }
 
@@ -789,13 +781,14 @@ type Options struct {
 	Restart RestartService
 	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
 	BootstrapDrift    func() []string
-	Jobs              JobService          // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings          SettingsService     // /v1/settings* (config-design §8); nil ⇒ routes 501
-	BackendTransition BackendTransitioner // durable backend prepare/publish/retire coordinator
-	Guide             GuideReader         // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision         Provisioner         // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Approver          ProposalApprover    // atomic proposal + titles + channel gate (§7); required for approval
-	Binder            ChannelBinder       // explicit channel intent/number helpers; not the approval gate
+	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
+	BackendCheckpoint func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
+	Guide             GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision         Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver          ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
+	Binder            ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.
@@ -803,6 +796,9 @@ type Options struct {
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
+	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
+	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
+	PlayoutSecretCurrent func(context.Context) (string, error)
 	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
@@ -840,10 +836,6 @@ type Options struct {
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
 	LiveConfig func(key string) string
-	// AppliedBackend and PublishedInternal are durable runtime checkpoint readers.
-	// Explicit per-channel pins still take precedence at the API boundary.
-	AppliedBackend    func() string
-	PublishedInternal func() bool
 	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
 	// string, because settings.String PANICS on a non-string key — an int setting read
 	// through the string seam took down GET /v1/users in the quota work, and only a run

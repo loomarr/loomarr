@@ -105,6 +105,49 @@ func TestSecrets_Regenerate(t *testing.T) {
 	}
 }
 
+func TestSecrets_CurrentObservesRotationFromAnotherReplica(t *testing.T) {
+	store := newMemSecretStore()
+	ctx := context.Background()
+	first, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := second.Value(SecretPlayout)
+	fresh, err := first.Regenerate(ctx, SecretPlayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Value(SecretPlayout) != old {
+		t.Fatal("a process-local cache changed without a durable read")
+	}
+	got, err := second.Current(ctx, SecretPlayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != fresh || second.Value(SecretPlayout) != fresh {
+		t.Fatalf("Current = %q, cache = %q, want rotated %q", got, second.Value(SecretPlayout), fresh)
+	}
+}
+
+func TestSecrets_CurrentFailsClosedWhenDurableValueDisappears(t *testing.T) {
+	store := newMemSecretStore()
+	ctx := context.Background()
+	secrets, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	delete(store.m, SecretPlayout.dbKey())
+	store.mu.Unlock()
+	if _, err := secrets.Current(ctx, SecretPlayout); err == nil {
+		t.Fatal("Current minted or returned a cached value after the durable secret disappeared")
+	}
+}
+
 // Display policy (config-design §4): the session secret is never displayable; the
 // API token is.
 func TestSecrets_DisplayPolicy(t *testing.T) {

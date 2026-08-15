@@ -150,19 +150,14 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 	return out
 }
 
-// channelDTO adds server-owned presentation facts to the pure persisted-channel projection.
-// `inAppPlayable` needs the durable applied global backend, which deliberately does not belong in
-// channelToDTO: that mapper is also used in domain-shape tests and must not read runtime state.
-func (s *Server) channelDTO(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
+func (s *Server) channelDTOAt(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, checkpoint BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
-	out.InAppPlayable = s.inAppPlayable(ch)
+	out.InAppPlayable = inAppPlayableAt(ch, checkpoint)
 	return out
 }
 
-// inAppPlayable is the one server-side definition of the V57 surfable catalog. Guide-only states
-// remain visible through the normal list but Channel Up/Down must never land on them.
-func (s *Server) inAppPlayable(ch store.Channel) bool {
-	if !s.playsInternally(ch) {
+func inAppPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	if !playsInternallyAt(ch, checkpoint) {
 		return false
 	}
 	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {

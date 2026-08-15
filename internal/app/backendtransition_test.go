@@ -14,29 +14,49 @@ import (
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
-func TestTransitionReconcileBackendUsesDurablePreparedTarget(t *testing.T) {
+func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
 	st := testkit.SQLiteStore(t)
-	fleetErr := errors.New("fleet interrupted")
-	controller := backendtransition.NewController(
-		st, failingTransitionFleet{err: fleetErr}, nil, nil,
-	)
+	fleetErr := errors.New("fleet remains pending")
+	controller := backendtransition.NewController(st, failingCurrentTransitionFleet{err: fleetErr}, nil, nil)
 	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
 		return backendtransition.BackendTunarr, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.Apply(context.Background(), backendtransition.BackendInternal); !errors.Is(err, fleetErr) {
-		t.Fatalf("Apply error = %v, want fleet interruption", err)
+	desired := backendtransition.BackendTunarr
+	refreshed := false
+	transition := currentBackendTransition{
+		controller: controller,
+		refresh: func(context.Context) error {
+			refreshed = true
+			return nil
+		},
+		desired: func(context.Context) (string, error) {
+			return desired, nil
+		},
 	}
-
-	if got := transitionReconcileBackend(controller.Runtime(), func() string { return backendtransition.BackendTunarr }); got != backendtransition.BackendInternal {
-		t.Fatalf("reconcile backend during preparation = %q, want internal", got)
+	mutated := false
+	err := transition.ApplyMutation(context.Background(), func(context.Context) bool {
+		if !refreshed {
+			t.Fatal("mutation ran before settings provenance refresh")
+		}
+		mutated = true
+		desired = backendtransition.BackendInternal
+		return true
+	})
+	if !mutated || !errors.Is(err, fleetErr) {
+		t.Fatalf("ApplyMutation = mutated %v, err %v; want mutation followed by fleet error", mutated, err)
+	}
+	if got := controller.Runtime().Snapshot().Prepared; got != backendtransition.BackendInternal {
+		t.Fatalf("prepared backend = %q, want mutation's desired internal", got)
 	}
 }
 
-type failingTransitionFleet struct{ err error }
+type failingCurrentTransitionFleet struct{ err error }
 
-func (f failingTransitionFleet) PrepareInheritedBackend(context.Context, string) error { return f.err }
+func (f failingCurrentTransitionFleet) PrepareInheritedBackend(context.Context, string) error {
+	return f.err
+}
 
 func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
@@ -44,12 +64,12 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	resolves := 0
 	publisher := &backendPublisher{
 		connector: connector,
-		urls: func(string) setup.TunarrURLs {
+		urls: func(context.Context, string) (setup.TunarrURLs, error) {
 			resolves++
 			if resolves == 1 {
-				return setup.TunarrURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
+				return setup.TunarrURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
 			}
-			return setup.TunarrURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}
+			return setup.TunarrURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
 		},
 	}
 	ctx := context.Background()
@@ -69,6 +89,27 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 		if strings.Contains(call, "http://b/") {
 			t.Fatalf("later phase re-read changed settings: %v", liveTV.Calls())
 		}
+	}
+}
+
+func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
+	liveTV := testkit.NewLiveTV()
+	connector := setup.NewLiveTVConnectorFixed(liveTV,
+		setup.TunarrURLsFrom("http://applied-tunarr:8000"))
+	target := setup.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
+	rescanner := transportTunerRescanner{
+		c: connector,
+		urls: func(context.Context) (setup.TunarrURLs, error) {
+			return target, nil
+		},
+	}
+
+	if err := rescanner.RescanTuner(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := "rescan-tuner:" + target.M3U
+	if calls := liveTV.Calls(); len(calls) != 1 || calls[0] != want {
+		t.Fatalf("calls = %v, want [%s]", calls, want)
 	}
 }
 

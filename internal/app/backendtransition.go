@@ -16,55 +16,61 @@ import (
 // transition prepare one target and refresh or retire against another.
 type backendPublisher struct {
 	connector      *setup.LiveTVConnector
-	urls           func(target string) setup.TunarrURLs
+	urls           func(context.Context, string) (setup.TunarrURLs, error)
 	mu             sync.Mutex
 	preparedTarget string
 	preparedURLs   setup.TunarrURLs
 }
 
-// currentBackendTransition keeps desired resolution inside Controller's serialization
-// boundary. The API argument describes the save that triggered the work, but a maintenance
-// retry may already be queued; resolving here prevents that older waiter from publishing after
-// a newer saved value.
+// currentBackendTransition refreshes the settings snapshot, then keeps the mutation and desired
+// resolution inside the Controller's distributed serialization boundary. That prevents an older
+// replica from deciding a write against stale value or provenance state, or publishing after a
+// newer desired value was durably saved by another.
 type currentBackendTransition struct {
 	controller *backendtransition.Controller
+	refresh    func(context.Context) error
 	desired    func(context.Context) (string, error)
 }
 
-// transitionReconcileBackend keeps ordinary channel maintenance on the same durable target as
-// an in-progress fleet barrier. Request routing continues to use Applied; reconcile must use
-// Prepared when present or it can overwrite channels the barrier has already moved.
-func transitionReconcileBackend(runtime *backendtransition.Runtime, fallback func() string) string {
-	if runtime != nil {
-		snapshot := runtime.Snapshot()
-		if snapshot.Prepared != "" {
-			return snapshot.Prepared
-		}
-		if snapshot.Applied != "" {
-			return snapshot.Applied
-		}
-	}
-	if fallback == nil {
-		return ""
-	}
-	return fallback()
-}
-
-func (t currentBackendTransition) Apply(ctx context.Context, _ string) error {
+func (t currentBackendTransition) ApplyMutation(
+	ctx context.Context,
+	mutation func(context.Context) bool,
+) error {
 	if t.controller == nil {
 		return fmt.Errorf("backend transition controller is unavailable")
 	}
-	return t.controller.ApplyCurrent(ctx, t.desired)
+	return t.controller.MutateAndApplyCurrent(ctx, t.refresh, mutation, t.desired)
+}
+
+func (t currentBackendTransition) Reconnect(ctx context.Context) (int, error) {
+	if t.controller == nil {
+		return 0, fmt.Errorf("backend transition controller is unavailable")
+	}
+	if t.desired == nil {
+		return 0, fmt.Errorf("desired backend resolver is unavailable")
+	}
+	return t.controller.ReconnectCurrent(ctx, func(lockCtx context.Context) (string, error) {
+		if t.refresh == nil {
+			return "", fmt.Errorf("settings refresh is unavailable")
+		}
+		if err := t.refresh(lockCtx); err != nil {
+			return "", err
+		}
+		return t.desired(lockCtx)
+	})
 }
 
 func (p *backendPublisher) Prepare(ctx context.Context, target string) (bool, error) {
 	if p.connector == nil || p.urls == nil {
 		return false, fmt.Errorf("live TV publisher is unavailable")
 	}
+	urls, err := p.urls(ctx, target)
+	if err != nil {
+		return false, err
+	}
 	p.mu.Lock()
 	p.preparedTarget = target
-	p.preparedURLs = p.urls(target)
-	urls := p.preparedURLs
+	p.preparedURLs = urls
 	p.mu.Unlock()
 	result, err := p.connector.Prepare(ctx, urls)
 	return result.TunerAdded || result.ListingAdded, err
@@ -85,6 +91,18 @@ func (p *backendPublisher) RetireStale(ctx context.Context, target string) error
 	}
 	_, err = p.connector.RetireStale(ctx, urls)
 	return err
+}
+
+func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, error) {
+	if p == nil || p.connector == nil || p.urls == nil {
+		return 0, fmt.Errorf("live TV publisher is unavailable")
+	}
+	urls, err := p.urls(ctx, target)
+	if err != nil {
+		return 0, err
+	}
+	result, err := p.connector.ReconnectTarget(ctx, urls)
+	return result.TunerRemoved, err
 }
 
 func (p *backendPublisher) prepared(target string) (setup.TunarrURLs, error) {

@@ -145,7 +145,10 @@ func (e *Engine) reconcileOnce(
 	// row-versioned; resolving once prevents one attempt from straddling two backends.
 	globalBackend := opts.globalBackend
 	if !opts.inheritedOnly {
-		globalBackend = e.playoutBackendFor()
+		globalBackend, err = e.playoutBackendFor(ctx)
+		if err != nil {
+			return fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
+		}
 	}
 	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
 
@@ -198,8 +201,6 @@ func (e *Engine) reconcileOnce(
 	// desired changes on an already-settled channel affect only guide data. These facts
 	// stay attempt-local so a stale SaveChannel publishes no freshness; the retry
 	// recomputes them from the winning row.
-	channelListChangedLocally := ch.Status == schedule.StatusBuilding ||
-		(playsInternally && ch.Status == schedule.StatusEmpty && desired.ProgramCount() > 0)
 	desiredChangedLocally := !slices.Equal(ch.Desired, desired.Slots)
 
 	// Record the relaxation-ladder steps this pass applied (§7) back onto the
@@ -220,6 +221,15 @@ func (e *Engine) reconcileOnce(
 	staleCount := staleProgramCount(ch.Desired, desired.EligibleKeys)
 	drifted := staleCount > 0
 	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
+	nextStatus := e.statusFor(desired, drifted)
+	// Empty internal channels are absent from the tuner M3U. Crossing that membership
+	// edge in either direction therefore needs the stronger tuner re-scan, not merely a
+	// guide refresh. The reverse edge matters when a policy change filters a live channel
+	// down to no playable programs: without it, the media server retains a dead channel
+	// until its own periodic tuner scan.
+	internalCatalogMembershipChanged := playsInternally &&
+		(ch.Status == schedule.StatusEmpty) != (nextStatus == schedule.StatusEmpty)
+	channelListChangedLocally := ch.Status == schedule.StatusBuilding || internalCatalogMembershipChanged
 
 	// 4–5 are the optional Tunarr PROJECTION. Internal playout consumes the local
 	// schedule directly through CyclePreview and must not touch Programmer, including a
@@ -304,7 +314,7 @@ func (e *Engine) reconcileOnce(
 
 	// 6: persist. Status reflects drift; a channel with any real program is live.
 	ch.Desired = desired.Slots
-	ch.Status = e.statusFor(desired, drifted)
+	ch.Status = nextStatus
 	reconcileTTL := e.reconcileTTLFor()
 	if reconcileTTL <= 0 {
 		reconcileTTL = 10 * time.Minute

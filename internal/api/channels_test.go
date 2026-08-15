@@ -1255,8 +1255,12 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
 		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		AppliedBackend:    func() string { return schedule.PlayoutBackendTunarr },
-		PublishedInternal: func() bool { return true },
+		BackendCheckpoint: func(context.Context) (api.BackendCheckpoint, error) {
+			return api.BackendCheckpoint{
+				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
+				PublishedInternal: true,
+			}, nil
+		},
 	}))
 	t.Cleanup(srv.Close)
 
@@ -1643,7 +1647,7 @@ func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
 // --- setup routes ---
 
 // Live TV wiring is no longer a standalone endpoint (config-design §6): it auto-runs on a
-// Connections save (settings.autoWireAfterSave) and its status surfaces via the `livetv`
+// Connections save (settings.mutateLiveTVSettings) and its status surfaces via the `livetv`
 // setup check. The idempotent Connect/Wired behavior is exercised through the settings
 // auto-wire path (see settings_test.go) and the connector's own tests; here we only assert
 // the check reflects the wired state.

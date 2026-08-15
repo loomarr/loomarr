@@ -371,6 +371,7 @@ func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *tes
 	); err != nil {
 		t.Fatal(err)
 	}
+	checkpointReads := 0
 	r := newPreparedRuntimeResolver(preparedRuntimeDependencies{
 		Channels: preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
 		Timeline: &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
@@ -380,14 +381,22 @@ func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *tes
 			request: {SourceFingerprint: "prepared-internal", Rendition: render},
 		}},
 		Now: func() time.Time { return now }, Policy: func() string { return "policy" },
-		GlobalBackend:    func() string { return schedule.PlayoutBackendTunarr },
-		TransportBackend: func() string { return schedule.PlayoutBackendInternal },
-		Rendition:        func() prepared.RenditionContract { return render }, Readiness: readiness,
+		GlobalBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendTunarr, nil
+		},
+		TransportBackendContext: func(context.Context) (string, error) {
+			checkpointReads++
+			return schedule.PlayoutBackendInternal, nil
+		},
+		Rendition: func() prepared.RenditionContract { return render }, Readiness: readiness,
 	})
 
 	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
 	if err != nil || !ok || window.Current.Specification.SourceFingerprint != "prepared-internal" {
 		t.Fatalf("prepared transport before cutover = (%+v, %v, %v)", window, ok, err)
+	}
+	if checkpointReads != 1 {
+		t.Fatalf("prepared tune checkpoint reads = %d, want one", checkpointReads)
 	}
 }
 

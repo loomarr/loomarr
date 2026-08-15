@@ -80,6 +80,84 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 	}
 }
 
+func TestControllerReconnectRepairsAppliedBackendWithoutPublishingPrepared(t *testing.T) {
+	st := initializedStore(t, BackendTunarr)
+	state, err := Load(context.Background(), st, BackendInternal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err = state.MarkPrepared(BackendInternal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(context.Background(), st, state); err != nil {
+		t.Fatal(err)
+	}
+	record := &phaseRecorder{}
+	publisher := newPublisherAdapter(record)
+	controller := NewController(st, &fleetAdapter{record: record}, publisher, nil)
+
+	reset, err := controller.ReconnectCurrent(context.Background(), func(context.Context) (string, error) {
+		return BackendInternal, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reset != 1 {
+		t.Fatalf("tuners reset = %d, want 1", reset)
+	}
+	if got := record.snapshot(); !slices.Equal(got, []string{"publisher.reconnect:tunarr"}) {
+		t.Fatalf("reconnect phases = %v, want applied Tunarr only", got)
+	}
+	assertDurableState(t, st, BackendTunarr, BackendInternal)
+}
+
+func TestControllerReconnectSerializesWithAnotherControllerCutover(t *testing.T) {
+	st := initializedStore(t, BackendTunarr)
+	probe := testkit.NewBackendTransitionProbe()
+	cutover := NewController(st, probe, probe, nil)
+	repair := NewController(st, probe, probe, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cutoverDone := make(chan error, 1)
+	go func() { cutoverDone <- cutover.Apply(ctx, BackendInternal) }()
+	select {
+	case <-probe.PublisherEntered():
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	repairDone := make(chan error, 1)
+	go func() {
+		_, err := repair.ReconnectCurrent(ctx, func(context.Context) (string, error) {
+			return BackendInternal, nil
+		})
+		repairDone <- err
+	}()
+	select {
+	case err := <-repairDone:
+		t.Fatalf("reconnect completed inside another controller's cutover: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	probe.ReleasePublisher()
+	if err := <-cutoverDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-repairDone; err != nil {
+		t.Fatal(err)
+	}
+	if got := probe.MaxPublisherConcurrency(); got != 1 {
+		t.Fatalf("publisher concurrency = %d, want 1", got)
+	}
+	targets := probe.PublisherTargets()
+	if len(targets) == 0 || targets[len(targets)-1] != BackendInternal {
+		t.Fatalf("publisher targets = %v, want reconnect of newly applied internal", targets)
+	}
+	assertDurableState(t, st, BackendInternal, "")
+}
+
 func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 	crash := errors.New("simulated process interruption")
 	for _, phase := range []string{
@@ -359,6 +437,99 @@ func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *
 	assertDurableState(t, base, BackendTunarr, "")
 }
 
+func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testing.T) {
+	base := initializedStore(t, BackendTunarr)
+	record := &phaseRecorder{}
+	controller := NewController(
+		&faultSettingStore{Store: base, record: record},
+		&fleetAdapter{record: record},
+		newPublisherAdapter(record),
+		&cutoverAdapter{record: record},
+	)
+	desired := BackendTunarr
+	refreshed := false
+	err := controller.MutateAndApplyCurrent(context.Background(), func(context.Context) error {
+		record.add("refresh")
+		refreshed = true
+		return nil
+	}, func(context.Context) bool {
+		if !refreshed {
+			t.Fatal("mutation ran before settings refresh")
+		}
+		record.add("mutation")
+		desired = BackendInternal
+		return true
+	}, func(context.Context) (string, error) {
+		record.add("resolve")
+		return desired, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"refresh",
+		"mutation",
+		"resolve",
+		"save:tunarr/internal",
+		"fleet:internal",
+		"publisher.prepare:internal",
+		"publisher.refresh:internal",
+		"cutover:tunarr->internal",
+		"save:internal/",
+		"publisher.retire:internal",
+	}
+	if got := record.snapshot(); !slices.Equal(got, want) {
+		t.Fatalf("mutation transition order = %v, want %v", got, want)
+	}
+	assertDurableState(t, base, BackendInternal, "")
+}
+
+func TestControllerMutateAndApplyCurrentSkipsRepairAfterIneffectiveMutation(t *testing.T) {
+	base := initializedStore(t, BackendTunarr)
+	record := &phaseRecorder{}
+	controller := NewController(base, &fleetAdapter{record: record}, newPublisherAdapter(record), nil)
+	resolved := false
+	refreshed := false
+	err := controller.MutateAndApplyCurrent(context.Background(), func(context.Context) error {
+		refreshed = true
+		return nil
+	}, func(context.Context) bool {
+		if !refreshed {
+			t.Fatal("ineffective mutation evaluated stale settings")
+		}
+		return false
+	}, func(context.Context) (string, error) {
+		resolved = true
+		return BackendTunarr, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved || len(record.snapshot()) != 0 {
+		t.Fatalf("ineffective mutation resolved or repaired: resolved=%v phases=%v", resolved, record.snapshot())
+	}
+}
+
+func TestControllerMutateAndApplyCurrentStopsBeforeMutationWhenRefreshFails(t *testing.T) {
+	refreshErr := errors.New("refresh durable settings")
+	controller := NewController(initializedStore(t, BackendTunarr), nil, nil, nil)
+	mutated := false
+	err := controller.MutateAndApplyCurrent(context.Background(), func(context.Context) error {
+		return refreshErr
+	}, func(context.Context) bool {
+		mutated = true
+		return true
+	}, func(context.Context) (string, error) {
+		return BackendInternal, nil
+	})
+	if !errors.Is(err, refreshErr) {
+		t.Fatalf("refresh failure = %v, want %v", err, refreshErr)
+	}
+	if mutated {
+		t.Fatal("mutation ran after settings refresh failed")
+	}
+}
+
 func initializedStore(t testing.TB, applied string) store.Store {
 	t.Helper()
 	st := testkit.SQLiteStore(t)
@@ -494,9 +665,10 @@ type publisherAdapter struct {
 	needsRepair bool
 	changes     []bool
 
-	prepareCalls int
-	refreshCalls int
-	retireCalls  int
+	prepareCalls   int
+	refreshCalls   int
+	retireCalls    int
+	reconnectCalls int
 
 	prepareFailOnce error
 	refreshFailOnce error
@@ -553,6 +725,14 @@ func (p *publisherAdapter) RetireStale(_ context.Context, target string) error {
 		}
 	}
 	return nil
+}
+
+func (p *publisherAdapter) Reconnect(_ context.Context, target string) (int, error) {
+	p.record.add("publisher.reconnect:" + target)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.reconnectCalls++
+	return 1, nil
 }
 
 func (p *publisherAdapter) prepareChanges() []bool {

@@ -2,14 +2,9 @@ package api
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
-
-	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 // registerSettings mounts /v1/settings* (config-design §8): the typed settings
@@ -97,18 +92,17 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	s.settingsApplyMu.Lock()
-	defer s.settingsApplyMu.Unlock()
 	out := &settingsPatchOutput{}
-	out.Body.Results = s.settings.Patch(ctx, in.Body.Edits, auditActor(ctx))
-	// Wiring the selected playout backend into the TV guide, and pointing Tunarr at the
-	// library when selected, are pure consequences of settings rather than separate
-	// operator decisions. They are idempotent and fully derived, so saving an input IS
-	// the intent to wire it. Run them automatically here instead of
-	// making the operator find and click a button (config-design §5). Non-fatal —
-	// the save already succeeded; a wiring failure is not the save's failure, and
-	// it surfaces on the relevant connection's own status check.
-	s.autoWireAfterSave(ctx, savedEdits(in.Body.Edits, out.Body.Results))
+	var saved map[string]string
+	err := s.mutateLiveTVSettings(ctx, touchesAny(in.Body.Edits, liveTVWiringKeys), func(mutationCtx context.Context) bool {
+		out.Body.Results = s.settings.Patch(mutationCtx, in.Body.Edits, auditActor(mutationCtx))
+		saved = savedEdits(in.Body.Edits, out.Body.Results)
+		return touchesAny(saved, liveTVWiringKeys) || settingsPersistenceFailed(out.Body.Results)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.autoWireMediaSourceAfterSave(ctx, saved)
 	return out, nil
 }
 
@@ -132,23 +126,10 @@ var mediaSourceWiringKeys = map[string]struct{}{
 	"library.flavor": {},
 }
 
-// autoWireAfterSave runs the derived Live TV transition + Tunarr media-source wiring when a
-// save touched their inputs. Both are follow-on effects: failure is logged and never changes a
-// setting result that already committed. The production backend transition owns prerequisite
-// validation and durable retries; the media-source connector retains its independent gates.
-func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string) {
-	if len(edits) == 0 {
-		return
-	}
-
-	// The durable coordinator separates desired from applied, prepares inherited channels and
-	// target transport, then publishes and retires in order. URL/credential-only changes still
-	// enter the same seam so steady-state repair cannot be skipped.
-	liveTVTouched := touchesAny(edits, liveTVWiringKeys)
-	if liveTVTouched {
-		s.applyLiveTVAfterSave(ctx)
-	}
-
+// autoWireMediaSourceAfterSave retains the independent Tunarr media-source consequence. Live TV
+// publication is intentionally absent: mutateLiveTVSettings owns that complete distributed
+// workflow, so there is no second transition algorithm in the HTTP layer.
+func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
 	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
 		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
@@ -159,41 +140,33 @@ func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string)
 	}
 }
 
-func (s *Server) applyLiveTVAfterSave(ctx context.Context) {
-	if s.backendTransition != nil {
-		desired := schedule.PlayoutBackendTunarr
-		if s.liveConfig != nil {
-			desired = s.liveConfig("playout.backend")
-		}
-		if err := s.backendTransition.Apply(ctx, desired); err != nil {
-			s.logw("playout backend transition remains pending after save", err)
-		}
-		return
+// mutateLiveTVSettings runs a transition-affecting setting mutation under the transition module's
+// cross-replica lock. If lock acquisition fails, mutation never ran and the request must fail. Once
+// mutation ran, its result is authoritative: later convergence/publication errors are logged and
+// retried by maintenance rather than misreported as a failed save.
+func (s *Server) mutateLiveTVSettings(
+	ctx context.Context,
+	affectsLiveTV bool,
+	mutation func(context.Context) bool,
+) error {
+	if !affectsLiveTV || s.backendTransition == nil {
+		mutation(ctx)
+		return nil
 	}
-	if s.livetv != nil && s.liveTVWireable() {
-		// Legacy unit/embedded seam. Production always supplies BackendTransition.
-		s.autoWireLiveTV(ctx)
+	mutationRan := false
+	err := s.backendTransition.ApplyMutation(ctx, func(lockCtx context.Context) bool {
+		mutationRan = true
+		return mutation(lockCtx)
+	})
+	if err == nil {
+		return nil
 	}
-}
-
-func (s *Server) autoWireLiveTV(ctx context.Context) {
-	wired, err := s.livetv.Wired(ctx)
-	if err != nil {
-		s.logw("couldn't verify the current Live TV wiring after save; keeping the existing tuner", err)
-		return
+	if !mutationRan {
+		return apiErrWithCause(http.StatusServiceUnavailable, "Couldn't save settings",
+			"The settings workflow couldn't be started. Try again in a moment.", err)
 	}
-	if wired {
-		return
-	}
-	if err := s.convergeInheritedChannels(ctx); err != nil {
-		s.logw("Live TV wiring differs but inherited channels have not converged; keeping the existing tuner", err)
-		return
-	}
-	if tunerAdded, listingAdded, err := s.livetv.Connect(ctx); err != nil {
-		s.logw("auto-wire live TV failed after save", err)
-	} else if tunerAdded || listingAdded {
-		s.logi("auto-wired the selected playout backend into the TV guide after save")
-	}
+	s.logw("playout backend transition remains pending after save", err)
+	return nil
 }
 
 // savedEdits filters PATCH's requested values to the keys the settings service actually
@@ -208,32 +181,16 @@ func savedEdits(edits map[string]string, results []SettingResult) map[string]str
 	return saved
 }
 
-// convergeInheritedChannels is the ordering barrier for a fleet-wide backend transition.
-// Explicitly pinned channels do not move with the global. Detached and paused channels are
-// outside reconciliation by lifecycle contract, so they cannot block the active fleet.
-func (s *Server) convergeInheritedChannels(ctx context.Context) error {
-	if s.store == nil {
-		return errors.New("channel store unavailable")
-	}
-	channels, err := s.store.ListChannels(ctx)
-	if err != nil {
-		return fmt.Errorf("list channels for backend transition: %w", err)
-	}
-	for _, ch := range channels {
-		if ch.Policy.Playout != nil && strings.TrimSpace(ch.Policy.Playout.Backend) != "" {
-			continue
-		}
-		if !ch.Status.Reconcilable() {
-			continue
-		}
-		if s.channels == nil {
-			return errors.New("channel reconciliation unavailable")
-		}
-		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			return fmt.Errorf("converge inherited channel %s: %w", ch.ID, err)
+// settingsPersistenceFailed identifies the adapter's synthetic batch failure. A PATCH can have
+// committed an earlier key before a later store write fails, so a transition-affecting batch must
+// conservatively repair from current durable desired even when no per-key saved result survived.
+func settingsPersistenceFailed(results []SettingResult) bool {
+	for _, result := range results {
+		if result.Key == "" && result.Status == "invalid" {
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 func touchesAny(edits map[string]string, keys map[string]struct{}) bool {
@@ -243,16 +200,6 @@ func touchesAny(edits map[string]string, keys map[string]struct{}) bool {
 		}
 	}
 	return false
-}
-
-func (s *Server) liveTVWireable() bool {
-	if s.liveConfig == nil {
-		return true // preserve wired test/embedded callers with no settings resolver
-	}
-	if strings.TrimSpace(s.liveConfig("playout.backend")) == schedule.PlayoutBackendInternal {
-		return !s.unconfigured("server.public_url")
-	}
-	return !s.unconfigured("tunarr.url")
 }
 
 // logw / logi guard against a nil logger (unit tests wire deps directly).
@@ -279,15 +226,21 @@ func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*st
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	s.settingsApplyMu.Lock()
-	defer s.settingsApplyMu.Unlock()
-	switch res := s.settings.Clear(ctx, in.Key); res.Status {
+	var res SettingResult
+	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
+		res = s.settings.Clear(mutationCtx, in.Key)
+		return res.Status == "saved"
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch res.Status {
 	case "invalid":
 		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "pinned":
 		return nil, errConflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
 	}
-	s.autoWireAfterSave(ctx, map[string]string{in.Key: ""})
+	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
 }
 
@@ -308,9 +261,15 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	s.settingsApplyMu.Lock()
-	defer s.settingsApplyMu.Unlock()
-	switch res := s.settings.SetEnvOverride(ctx, in.Key, in.Body.Enabled, auditActor(ctx)); res.Status {
+	var res SettingResult
+	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
+		res = s.settings.SetEnvOverride(mutationCtx, in.Key, in.Body.Enabled, auditActor(mutationCtx))
+		return res.Status == "applied"
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch res.Status {
 	case "unknown":
 		// Bootstrap keys land here too: they are read before the database opens, so a flag
 		// stored in that database could not affect them, and they are not in the registry.
@@ -319,7 +278,7 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 		return nil, errConflict("Not set by environment",
 			"No environment variable is setting this, so there's nothing to take over. You can edit it directly.")
 	}
-	s.autoWireAfterSave(ctx, map[string]string{in.Key: ""})
+	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
 }
 
@@ -407,11 +366,17 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	if in.Name == "playout_token" {
-		s.settingsApplyMu.Lock()
-		defer s.settingsApplyMu.Unlock()
+	var value string
+	var displayable bool
+	var mutationErr error
+	err := s.mutateLiveTVSettings(ctx, in.Name == "playout_token", func(mutationCtx context.Context) bool {
+		value, displayable, mutationErr = s.settings.RegenerateSecret(mutationCtx, in.Name)
+		return mutationErr == nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	value, displayable, err := s.settings.RegenerateSecret(ctx, in.Name)
+	err = mutationErr
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
 	}
@@ -420,10 +385,10 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	if displayable {
 		out.Body.Value = value
 	}
-	if in.Name == "playout_token" {
-		// Internal tuner/listing URLs embed this credential. The rotation is already durable;
-		// publication repair is non-fatal and retryable just like a settings write.
-		s.applyLiveTVAfterSave(ctx)
-	}
 	return out, nil
+}
+
+func hasKey(keys map[string]struct{}, key string) bool {
+	_, ok := keys[key]
+	return ok
 }

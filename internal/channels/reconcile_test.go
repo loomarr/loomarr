@@ -68,8 +68,8 @@ func newEngineForBackend(
 	backend func() string,
 ) *channels.Engine {
 	return channels.New(st, tun, avail, guide, channels.Config{
-		ReconcileTTL:          10 * time.Minute,
-		ResolvePlayoutBackend: backend,
+		ReconcileTTL:                 10 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return backend(), nil },
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
 }
 
@@ -252,6 +252,48 @@ func TestReconcile_InternalEmptyBecomesPlayableRescansTuner(t *testing.T) {
 	}
 	if guide.rescans != 1 || guide.pokes != 0 {
 		t.Fatalf("unchanged live reconcile touched freshness: %d rescans/%d pokes",
+			guide.rescans, guide.pokes)
+	}
+}
+
+// Empty internal channels leave the tuner catalog. A policy edit can filter an otherwise
+// available live lineup to nothing without changing the channel identity, so the reconciler
+// itself must recognize live -> empty as M3U membership removal rather than an EPG-only edit.
+func TestReconcile_InternalLiveBecomesEmptyRescansTuner(t *testing.T) {
+	st := newStore(t)
+	guide := &fakeGuide{}
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-live", 9, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "internal-live"); err != nil {
+		t.Fatal(err)
+	}
+	guide.rescans, guide.pokes = 0, 0
+
+	ch, err := st.GetChannel(context.Background(), "internal-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"halloween"}, OffSeason: schedule.OffSeasonDark,
+	}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Reconcile(context.Background(), "internal-live"); err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err = st.GetChannel(context.Background(), "internal-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusEmpty || programCount(ch) != 0 {
+		t.Fatalf("filtered internal channel = status %s desired %+v, want empty", ch.Status, ch.Desired)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("live to empty freshness = %d rescans/%d pokes, want 1/0",
 			guide.rescans, guide.pokes)
 	}
 }
@@ -1111,9 +1153,9 @@ func TestReconcile_SkipsPausedAndDetachedWithoutMutation(t *testing.T) {
 			}
 			guide := &fakeGuide{}
 			e := channels.New(st, nil, nil, guide, channels.Config{
-				ResolvePlayoutBackend: func() string {
+				ResolvePlayoutBackendContext: func(context.Context) (string, error) {
 					t.Fatal("inactive reconcile resolved the playout backend")
-					return ""
+					return "", nil
 				},
 			}, nil, testkit.Logger())
 
@@ -1132,6 +1174,39 @@ func TestReconcile_SkipsPausedAndDetachedWithoutMutation(t *testing.T) {
 					guide.rescans, guide.pokes)
 			}
 		})
+	}
+}
+
+func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
+	st := newStore(t)
+	seedChannel(t, st, "active", 5, entry("movie:tmdb:1", "A"))
+	before, err := st.GetChannel(context.Background(), "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("checkpoint unavailable")
+	reads := 0
+	tun := testkit.NewTunarr()
+	e := channels.New(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			reads++
+			return "", want
+		},
+	}, nil, testkit.Logger())
+
+	if err := e.Reconcile(context.Background(), "active"); !errors.Is(err, want) {
+		t.Fatalf("Reconcile error = %v, want checkpoint failure", err)
+	}
+	if reads != 1 {
+		t.Fatalf("checkpoint reads = %d, want one per attempt", reads)
+	}
+	after, err := st.GetChannel(context.Background(), "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Revision != before.Revision || tun.Creates != 0 || tun.Pushes != 0 {
+		t.Fatalf("checkpoint failure caused effects: revision %d -> %d, creates=%d pushes=%d",
+			before.Revision, after.Revision, tun.Creates, tun.Pushes)
 	}
 }
 

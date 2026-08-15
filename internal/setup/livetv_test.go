@@ -61,6 +61,30 @@ func TestConnect_IdempotentSecondCallNoOp(t *testing.T) {
 	}
 }
 
+func TestReconnectTargetUsesExplicitAppliedBackendURLs(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://tunarr:8000")
+	target := setup.InternalPlayoutURLs("http://loomarr:8080", "current-token")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	connector := setup.NewLiveTVConnectorFixed(lib, oldURLs)
+
+	result, err := connector.ReconnectTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TunerRemoved != 1 || !lib.HasTuner(target.M3U) || lib.HasTuner(oldURLs.M3U) {
+		t.Fatalf("reconnect result = %+v, target=%v old=%v", result,
+			lib.HasTuner(target.M3U), lib.HasTuner(oldURLs.M3U))
+	}
+	if lib.Rescans != 1 || lib.Refreshes != 1 {
+		t.Fatalf("repair pokes = rescans %d refreshes %d, want 1 each", lib.Rescans, lib.Refreshes)
+	}
+}
+
 // If the tuner exists but the guide is missing (a half-wired state), connect adds
 // only the missing half.
 func TestConnect_AddsOnlyMissingHalf(t *testing.T) {
@@ -382,6 +406,22 @@ func TestConnect_URLChange_Pokes(t *testing.T) {
 	if !res.Poked || lib.Rescans != 1 || lib.Refreshes != 1 {
 		t.Errorf("URL change should poke rescan+refresh, got Poked=%v rescans=%d refreshes=%d",
 			res.Poked, lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestRescanTargetUsesExplicitPreparedURL(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	applied := setup.TunarrURLsFrom("http://tunarr:8000")
+	prepared := setup.InternalPlayoutURLs("http://loomarr:8080", "device-token")
+	c := setup.NewLiveTVConnectorFixed(lib, applied)
+
+	if err := c.RescanTarget(context.Background(), prepared); err != nil {
+		t.Fatal(err)
+	}
+	calls := lib.Calls()
+	want := "rescan-tuner:" + prepared.M3U
+	if len(calls) != 1 || calls[0] != want {
+		t.Fatalf("calls = %v, want [%s]", calls, want)
 	}
 }
 

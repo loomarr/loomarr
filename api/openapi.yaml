@@ -8786,7 +8786,7 @@ paths:
         - setup
   /v1/setup/livetv-reconnect:
     post:
-      description: Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).
+      description: Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9).
       operationId: livetv-reconnect
       responses:
         "200":
@@ -8801,7 +8801,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Force-re-wire the Tunarr tuner
+      summary: Force-re-wire the Live TV tuner
       tags:
         - setup
   /v1/setup/state:

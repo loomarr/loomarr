@@ -122,6 +122,45 @@ func (s *Secrets) Value(g GeneratedSecret) string {
 	return s.values[g]
 }
 
+// Current returns the generated secret currently authoritative in the durable
+// store and updates this process's cache before returning it. Postgres replicas
+// use this at security and publication boundaries: Regenerate updates the
+// handling process immediately, but another replica cannot otherwise observe the
+// new value until restart. Environment pins remain authoritative and never touch
+// the database.
+//
+// Unlike resolveOrMint, Current never creates a missing value. NewSecrets owns
+// generation during boot; silently minting on a request path would let a
+// transient/missing row rotate a credential without running its required side
+// effects.
+func (s *Secrets) Current(ctx context.Context, g GeneratedSecret) (string, error) {
+	if s == nil || s.store == nil {
+		return "", fmt.Errorf("read %s: secret store is unavailable", g)
+	}
+	if g.envVar() == "" {
+		return "", fmt.Errorf("read %s: unknown generated secret", g)
+	}
+	if v, ok := s.env(g.envVar()); ok && v != "" {
+		s.cache(g, v)
+		return v, nil
+	}
+	v, ok, err := s.store.Get(ctx, g.dbKey())
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", g, err)
+	}
+	if !ok || v == "" {
+		return "", fmt.Errorf("read %s: durable value is missing", g)
+	}
+	s.cache(g, v)
+	return v, nil
+}
+
+func (s *Secrets) cache(g GeneratedSecret, value string) {
+	s.mu.Lock()
+	s.values[g] = value
+	s.mu.Unlock()
+}
+
 // Regenerate mints a fresh value, persists it, updates the live cache, and
 // returns the new value (config-design §4). The CALLER performs the side-effects
 // (revoke sessions for SESSION_SECRET, etc.) — this only rotates the value.
@@ -137,9 +176,7 @@ func (s *Secrets) Regenerate(ctx context.Context, g GeneratedSecret) (string, er
 	if err := s.store.Set(ctx, g.dbKey(), fresh); err != nil {
 		return "", fmt.Errorf("persist regenerated %s: %w", g, err)
 	}
-	s.mu.Lock()
-	s.values[g] = fresh
-	s.mu.Unlock()
+	s.cache(g, fresh)
 	return fresh, nil
 }
 

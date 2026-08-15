@@ -24,6 +24,10 @@ type Publisher interface {
 	Prepare(ctx context.Context, target string) (changed bool, err error)
 	Refresh(ctx context.Context, target string) error
 	RetireStale(ctx context.Context, target string) error
+	// Reconnect force-replaces the currently applied tuner registration. It is the
+	// operator repair for a media server that cached a stale channel-to-stream binding.
+	// The controller calls it only while holding the same workflow lock as Apply.
+	Reconnect(ctx context.Context, target string) (tunersReset int, err error)
 }
 
 // Cutover performs the last local action immediately before publication, such as stopping live
@@ -40,9 +44,9 @@ type Snapshot struct {
 	PublishedInternal bool
 }
 
-// Runtime exposes the checkpoint to hot request paths without a store read. Its zero value is
-// safe. The controller publishes only states it loaded from durable storage or successfully saved;
-// a failed checkpoint write never leaks an uncommitted transport decision into runtime behavior.
+// Runtime exposes this controller's process-local mirror. It is useful for SQLite and local
+// observation, but Postgres routing and reconciliation use DurableView because another replica can
+// advance the checkpoint. The controller publishes only durable states; failed writes never leak.
 type Runtime struct {
 	mu       sync.RWMutex
 	snapshot Snapshot
@@ -60,11 +64,7 @@ func (r *Runtime) Snapshot() Snapshot {
 
 func (r *Runtime) publish(state State) {
 	r.mu.Lock()
-	r.snapshot = Snapshot{
-		Applied:           state.Applied(),
-		Prepared:          state.Prepared(),
-		PublishedInternal: state.PublishedInternal(),
-	}
+	r.snapshot = snapshotFor(state)
 	r.mu.Unlock()
 }
 
@@ -144,6 +144,92 @@ func (c *Controller) ApplyCurrent(ctx context.Context, desired func(context.Cont
 		return fmt.Errorf("backend transition: desired resolver is unavailable")
 	}
 	return c.applyResolved(ctx, desired)
+}
+
+// ReconnectCurrent force-repairs the tuner registration for the durably applied backend.
+// It resolves desired inside the workflow lock only so Load can safely initialize an absent
+// checkpoint; a pending target is deliberately not exposed early. Holding the complete
+// store-owned lock prevents this destructive remove-and-readd operation from interleaving with
+// another replica's prepare, publish, or retire phases.
+func (c *Controller) ReconnectCurrent(
+	ctx context.Context,
+	desired func(context.Context) (string, error),
+) (int, error) {
+	if c == nil || c.store == nil {
+		return 0, fmt.Errorf("backend transition: store is unavailable")
+	}
+	if desired == nil {
+		return 0, fmt.Errorf("backend transition: desired resolver is unavailable")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var reset int
+	err := c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+		target, err := desired(lockCtx)
+		if err != nil {
+			return fmt.Errorf("resolve desired backend before reconnect: %w", err)
+		}
+		state, err := c.load(lockCtx, target)
+		if err != nil {
+			return err
+		}
+		if c.publisher == nil {
+			return fmt.Errorf("reconnect publisher for %q: publisher is unavailable", state.Applied())
+		}
+		reset, err = c.publisher.Reconnect(lockCtx, state.Applied())
+		if err != nil {
+			return fmt.Errorf("reconnect published backend %q: %w", state.Applied(), err)
+		}
+		return nil
+	})
+	return reset, err
+}
+
+// MutateAndApplyCurrent serializes one desired-setting mutation with the complete transition it
+// triggers. After both the process mutex and store lock are held, refresh runs before mutation so
+// the mutation sees the latest durable values and provenance from another replica. This ordering
+// applies even when mutation returns false: whether a PATCH is environment-pinned is itself a
+// decision that must be made from the refreshed snapshot. False means it made no effective
+// transition-related write, so desired is not resolved and no repair effects run.
+//
+// A mutation that returns true is already durable. Any later error is therefore a retryable
+// transition error, not a failed setting save; callers must preserve the mutation's successful
+// result. This method keeps that otherwise subtle ordering contract behind the controller seam.
+func (c *Controller) MutateAndApplyCurrent(
+	ctx context.Context,
+	refresh func(context.Context) error,
+	mutate func(context.Context) bool,
+	desired func(context.Context) (string, error),
+) error {
+	if c == nil || c.store == nil {
+		return fmt.Errorf("backend transition: store is unavailable")
+	}
+	if mutate == nil {
+		return fmt.Errorf("backend transition: mutation is unavailable")
+	}
+	if refresh == nil {
+		return fmt.Errorf("backend transition: settings refresh is unavailable")
+	}
+	if desired == nil {
+		return fmt.Errorf("backend transition: desired resolver is unavailable")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+		if err := refresh(lockCtx); err != nil {
+			return fmt.Errorf("refresh settings before backend mutation: %w", err)
+		}
+		if !mutate(lockCtx) {
+			return nil
+		}
+		target, err := desired(lockCtx)
+		if err != nil {
+			return fmt.Errorf("resolve desired backend after setting mutation: %w", err)
+		}
+		return c.applyLocked(lockCtx, target)
+	})
 }
 
 func (c *Controller) applyResolved(ctx context.Context, resolveDesired func(context.Context) (string, error)) error {

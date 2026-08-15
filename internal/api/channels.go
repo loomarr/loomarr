@@ -160,6 +160,10 @@ type listChannelsOutput struct {
 }
 
 func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	all, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
@@ -176,12 +180,16 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	logoImage := s.logoImageResolver(ctx, logos)
 	for _, ch := range all {
 		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, s.channelDTO(ch, nil, logoImage))
+		out.Body.Channels = append(out.Body.Channels, s.channelDTOAt(ch, nil, logoImage, checkpoint))
 	}
 	return out, nil
 }
 
 func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -189,7 +197,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -264,6 +272,10 @@ type createChannelInput struct {
 }
 
 func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch := store.Channel{}
 	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
 	// id, or omit it and let the server mint one — same `ch_…` scheme approval planning
@@ -368,7 +380,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -405,6 +417,10 @@ type updateChannelInput struct {
 // pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
 func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -415,8 +431,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, staleChannelConflict()
 	}
 	before := ch
-	wasInternal := s.playsInternally(ch)
-	wasTransportPlayable := s.transportPlayable(ch)
+	wasInternal := playsInternallyAt(ch, checkpoint)
+	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
 
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
@@ -492,8 +508,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	active := ch.Status.Reconcilable()
 	identityChanged := before.Name != ch.Name || before.Number != ch.Number ||
 		before.Group != ch.Group || before.Logo != ch.Logo
-	backendChanged := wasInternal != s.playsInternally(ch)
-	materializingInternal := before.Status == schedule.StatusEmpty && s.playsInternally(ch)
+	backendChanged := wasInternal != playsInternallyAt(ch, checkpoint)
+	materializingInternal := before.Status == schedule.StatusEmpty && playsInternallyAt(ch, checkpoint)
 	if active && (identityChanged || backendChanged || materializingInternal) {
 		ch.Status = schedule.StatusBuilding
 	}
@@ -502,7 +518,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		// value, so an error cannot leave this edit waiting behind an old future deadline.
 		ch.ReconcileDeadline = time.Time{}
 	}
-	isTransportPlayable := s.transportPlayable(ch)
+	isTransportPlayable := transportPlayableAt(ch, checkpoint)
 
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
@@ -535,7 +551,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
 }
 
 type refineChannelInput struct {
@@ -607,6 +623,10 @@ func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if s.channels == nil {
 		return nil, errNotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 	}
@@ -623,7 +643,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: s.channelDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &reconcileOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
 }
 
 type deleteChannelInput struct {
@@ -633,6 +653,10 @@ type deleteChannelInput struct {
 type deleteChannelOutput struct{}
 
 func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*deleteChannelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -640,7 +664,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	wasTransportPlayable := s.transportPlayable(ch)
+	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
 	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
 	// Tunarr projection through the channel service. This includes a historical projection
 	// preserved after switching the channel to internal playout.

@@ -58,6 +58,9 @@ type nowNextRouter struct {
 	channels channelLister
 	// internalFor reports whether a channel is served by internal playout.
 	internalFor func(store.Channel) bool
+	// appliedBackend reads the durable checkpoint once per router operation. Production uses this
+	// seam so a request on any Postgres replica routes from the published backend.
+	appliedBackend func(context.Context) (string, error)
 	// window is how far ahead to look for the NEXT programme. Long enough to contain one, and
 	// no longer: this is a read on a list view, not a guide.
 	window time.Duration
@@ -90,13 +93,17 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 	if err != nil {
 		return nil, err
 	}
+	applied, err := r.resolveApplied(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// Tunarr's guide is ONE upstream call for every channel, so it is read once up front rather
 	// than per channel — the property the original adapter was built around, preserved. A
 	// failure is not fatal: internal channels can still be answered, and the Tunarr-backed ones
 	// degrade to no entry exactly as they did when the guide was unreachable.
 	var fromTunarr map[string]api.ChannelNowNext
-	if r.tunarr != nil && r.anyOnTunarr(channels) {
+	if r.tunarr != nil && r.anyOnTunarr(channels, applied) {
 		if g, gerr := r.tunarr.NowNext(ctx, now); gerr == nil {
 			fromTunarr = g
 		}
@@ -104,10 +111,10 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 
 	out := make(map[string]api.ChannelNowNext, len(channels))
 	for _, ch := range channels {
-		if !ch.Status.Reconcilable() {
+		if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 			continue // paused/detached channels are deliberately off Loomarr's guide surfaces
 		}
-		if !r.internalFor(ch) {
+		if !r.isInternal(ch, applied) {
 			if ch.TunarrID == "" {
 				continue // Tunarr-backed but not yet created there: nothing can be airing.
 			}
@@ -128,9 +135,10 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 // An install that has moved every channel to internal playout should not pay a round trip to
 // Tunarr on every list render — and, more importantly, should not have its list view degraded by
 // a Tunarr that is slow or down when nothing on screen depends on it.
-func (r nowNextRouter) anyOnTunarr(channels []store.Channel) bool {
+func (r nowNextRouter) anyOnTunarr(channels []store.Channel, applied string) bool {
 	for _, ch := range channels {
-		if ch.Status.Reconcilable() && ch.TunarrID != "" && !r.internalFor(ch) {
+		if ch.Status.Reconcilable() && ch.Status != schedule.StatusEmpty &&
+			ch.TunarrID != "" && !r.isInternal(ch, applied) {
 			return true
 		}
 	}
@@ -184,16 +192,37 @@ func (r nowNextRouter) Upcoming(
 	if err != nil {
 		return []api.NowNextEntry{}, nil
 	}
-	if !ch.Status.Reconcilable() {
+	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 		return []api.NowNextEntry{}, nil
 	}
-	if r.internalFor(ch) {
+	applied, err := r.resolveApplied(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.isInternal(ch, applied) {
 		return r.internalUpcoming(ctx, ch, now, limit)
 	}
 	if r.tunarr == nil || ch.TunarrID == "" {
 		return []api.NowNextEntry{}, nil
 	}
 	return r.tunarr.Upcoming(ctx, ch.TunarrID, now, limit)
+}
+
+func (r nowNextRouter) resolveApplied(ctx context.Context) (string, error) {
+	if r.appliedBackend != nil {
+		return r.appliedBackend(ctx)
+	}
+	return "", nil
+}
+
+func (r nowNextRouter) isInternal(ch store.Channel, applied string) bool {
+	if r.appliedBackend != nil {
+		return schedule.PlaysInternally(ch.Policy, applied)
+	}
+	if r.internalFor != nil {
+		return r.internalFor(ch)
+	}
+	return false
 }
 
 func (r nowNextRouter) internalUpcoming(
