@@ -23,7 +23,8 @@ describe("LiveIndicator", () => {
       />,
     );
 
-    expect(screen.getByText("Paused · 23s behind")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByText("23s behind")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Go live" }));
     expect(goLive).toHaveBeenCalledOnce();
   });

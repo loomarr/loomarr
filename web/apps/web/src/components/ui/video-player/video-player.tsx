@@ -210,9 +210,9 @@ const VideoPlayer = ({
           controls stay operable. pointer-events-none so it never eats a click on the frame. */}
         {overlay && <div className="pointer-events-none absolute inset-0 z-0">{overlay}</div>}
 
-        {/* TOP BAR — over a scrim, fading with the controls. Live: LiveIndicator (left) + the caller's
-          `topBar` (CH + encoder line), matching the mock. Non-live: `leading` (left) + `title`
-          (right), the clip player's existing chrome. */}
+        {/* TOP BAR — over a scrim, fading with the controls. Live keeps this focused on Channel
+          identity; live-edge transport belongs beside Play below. Non-live uses `leading` (left) +
+          `title` (right), the clip player's existing chrome. */}
         {(live ? topBar : title || leading) && (
           <div
             className={cn(
@@ -221,16 +221,7 @@ const VideoPlayer = ({
             )}
           >
             {live ? (
-              <>
-                <LiveIndicator
-                  state={liveTransport?.state ?? LIVE_EDGE_STATE}
-                  onGoLive={() => {
-                    const video = videoRef.current;
-                    if (video && liveTransport) void liveTransport.goLive(video);
-                  }}
-                />
-                <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5">{topBar}</div>
-              </>
+              <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5">{topBar}</div>
             ) : (
               <>
                 <div className="pointer-events-auto shrink-0">{leading}</div>
@@ -257,7 +248,8 @@ const VideoPlayer = ({
 
           {/* Row 2 — the mock's control row: LEFT-PACKED play → volume → time, with only fullscreen
             pushed to the far right (ml-auto). No stretching spacer: everything sits next to play. */}
-          <div className="flex items-center gap-3">
+          <fieldset className="flex min-w-0 items-center gap-2 border-0 p-0 sm:gap-3">
+            <legend className="sr-only">Playback controls</legend>
             <PlayToggle playing={playing} onToggle={toggle} />
             <VolumeControl
               volume={volume}
@@ -265,12 +257,23 @@ const VideoPlayer = ({
               onVolumeChange={setVolume}
               onMutedChange={setMuted}
             />
+            {live && (
+              <LiveIndicator
+                state={liveTransport?.state ?? LIVE_EDGE_STATE}
+                onGoLive={() => {
+                  const video = videoRef.current;
+                  if (video && liveTransport) void liveTransport.goLive(video);
+                }}
+              />
+            )}
 
             {/* Time, right after volume (mock order). Live: the caller's programme time (schedule);
               non-live (a clip): the video's own elapsed / total. */}
             {live
               ? timeLeft && (
-                  <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">{timeLeft}</span>
+                  <span className="hidden shrink-0 font-mono text-static-300 text-xs tabular-nums lg:inline-flex">
+                    {timeLeft}
+                  </span>
                 )
               : ready && (
                   <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
@@ -284,7 +287,7 @@ const VideoPlayer = ({
               {barControls}
               <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
             </div>
-          </div>
+          </fieldset>
         </div>
       </div>
     </HoldControlsContext.Provider>

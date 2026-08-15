@@ -288,19 +288,14 @@ const ChannelWatch = ({
               )}
             </div>
 
-            {/* The tune-in status line under the player — the player's own control bar carries the
-                LIVE badge, scrubber, controls and fullscreen, so this is just the join note. */}
-            <p className="px-1 text-muted-foreground text-xs">
-              {player.status === "error"
-                ? (player.error ?? "The stream stopped.")
-                : player.status === "loading"
-                  ? "Tuning in…"
-                  : player.liveTransport.state.mode === "paused"
-                    ? "Paused — press play to resume from this point, or choose Go live."
-                    : player.liveTransport.state.mode === "behind"
-                      ? `You're ${Math.max(1, Math.round(player.liveTransport.state.lagSeconds))}s behind live.`
-                      : "You're joining live, mid-programme."}
-            </p>
+            {/* Loading/error needs prose outside the frame. Once media is ready, the compact live
+                control in the playback bar owns live/paused/behind state without duplicating it in
+                a second status line below the picture. */}
+            {player.status !== "playing" && (
+              <p className="px-1 text-muted-foreground text-xs">
+                {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
+              </p>
+            )}
             {player.status === "error" && tuner && (
               <Button variant="outline" size="sm" onClick={tuner.retry} className="self-start">
                 Retry channel
