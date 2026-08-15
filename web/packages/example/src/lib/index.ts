@@ -1,0 +1,1 @@
+export { greetingFor } from "./lib";

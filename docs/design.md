@@ -205,37 +205,47 @@ flowchart TD
 
 **Layer 1**
 
-- **`metrics`** · 6 importers · → `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §18).
 - **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
 - **`schedule`** · 13 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
+- **`scheduler`** · 6 importers · → `store`
+  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
 **Layer 2**
 
-- **`httpx`** · 5 importers · → `metrics`
-  Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`images`** · 4 importers · → `scheduler`
+  One pipeline every image in Loomarr travels (§22).
 - **`playout`** · 4 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
 
-- **`llm`** · 5 importers · → `httpx`, `metrics`
-  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`mediatools`** · 2 importers · → `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+- **`metrics`** · 6 importers · → `images`, `provision`
+  Loomarr's Prometheus surface (design §7 /metrics, §18).
+
+**Layer 4**
+
+- **`httpx`** · 5 importers · → `metrics`
+  Shared outbound HTTP client factory (design §6, §21 phase 1).
+
+**Layer 5**
+
+- **`llm`** · 5 importers · → `httpx`, `metrics`
+  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`requester`** · 2 importers · → `httpx`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
-**Layer 4**
+**Layer 6**
 
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
-**Layer 5**
+**Layer 7**
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
@@ -244,7 +254,7 @@ flowchart TD
 - **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
-**Layer 6**
+**Layer 8**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
@@ -254,29 +264,27 @@ flowchart TD
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`scheduler`** · 6 importers · → `store`
-  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`setup`** · 1 importer · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-
-**Layer 7**
-
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
-- **`devbootstrap`** · → `auth`, `store`
-  Prepares an isolated agent worktree for UI development.
-- **`images`** · 3 importers · → `scheduler`
-  One pipeline every image in Loomarr travels (§22).
-- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
-  Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`setup`** · 1 importer · → `library`
+  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
+- **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+
+**Layer 9**
+
+- **`devbootstrap`** · → `auth`, `store`
+  Prepares an isolated agent worktree for UI development.
+- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
+  Provisioning backstop (design §4, §7, §18).
 - **`suggest`** · 5 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
-**Layer 8**
+**Layer 10**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -284,15 +292,13 @@ flowchart TD
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
-**Layer 9**
+**Layer 11**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 10**
+**Layer 12**
 
 - **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
@@ -4318,6 +4324,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
 | Wire schemas for validation | **`orval` `client: "zod"`**, a second output block over the same spec → `@loomarr/api/zod` | The form schemas in `packages/core` used to MIRROR wire field names by hand, and it shipped a bug: `intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` (and `runtimeTarget` for `runtimeTargetMin`), so a user's acquisition cap serialized into JSON the server ignored and silently vanished. Each schema is now `.pick()`ed off its generated wire schema, making a lookalike name a **compile error at the schema definition** (`Type 'true' is not assignable to type 'never'`). ⚠ This replaces a hand-written contract test that covered **one** of three schemas with a guarantee that covers all three and every future one — the same "a grep beats a convention" reasoning as `check-retired.sh`. ⚠ **Generation carries names and types, NOT rules:** the spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` in ~9k lines and `maxAcquisitions` has no bounds at all, and OpenAPI has nowhere to put a user-facing message — so trims, lengths, the 0–200 cap and all copy stay hand-authored in `.extend()`, and `confirm` (form-only, never sent) is added there too. Zod stays on v3; `zod@3.25.76` exposes the `./v4` bridge subpath, so v4 remains a separate decision. ⚠ **This row said the mock generator was rejected outright; that was true at V53a and is no longer.** It was rejected for its DATA because it targets OpenAPI 3.0 idioms while this spec is 3.1 — it degraded `type: ["array","null"]` to `arrayElement([[], null])` without descending into `items` (137 never-populated list fields), and `useExamples` reads singular `.example` where Huma emits plural `examples:` (0 of 53 tags used). **V53b removed the first half** by making arrays non-nullable, taking never-populated list mocks to 0; the `useExamples` half remains, which is why it stays unset. See the MSW row below for what is adopted and what is still not trusted. |
 | FE test mocking | **`msw`** + **`@faker-js/faker`** (devDeps), handlers generated by `orval` `mock: { type: "msw" }` → `@loomarr/api/msw` | Before V53d, **31 test files each hand-rolled a local `stubFetch`**, so 31 places independently encoded what the wire looks like — the FE doing exactly what the Go side bans ("Phases do not invent private mocks; extend the testkit"). This is that shared layer. ⚠ **What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so a renamed route is fixed by a regenerate where a hand-written path would silently stop matching and its test keep passing against nothing — `/v1/suggestions` → `/v1/proposals` (V41) is the case this repo has lived (named here as the historical example, not as a live route — retired-ok). ⚠ **The generated DATA is never trusted and every test passes an override:** optional fields emit as `arrayElement([value, undefined])` so presence varies per CALL, and nothing is seeded, which is flaky rather than merely arbitrary. `useExamples` stays UNSET — it reads singular `example` and Huma emits 3.1 plural `examples:`, so setting it would imply a guarantee that does not hold. ⚠ **`onUnhandledRequest: "error"` is NOT used**, because it does not fail a test: MSW's docs define it as "print an error and halt request execution", and the maintainer confirms (mswjs/msw#946) that the interceptor swallows the exception so the runner never sees it. `src/test/msw/server.ts` records unhandled requests and throws in `afterEach` instead — which is what makes a moved route go red. Fixtures are parsed through their generated zod response schema (`validated()`), catching fixture drift where orval cannot: its `runtimeValidation` is absent in 7.21.0, and in 8.x the only `.parse()` injection is the Angular path while the custom-mutator branch returns before it (orval PR #3226, open). `faker` is a transitive requirement of the generated handlers, imported at module scope even though its values are always overridden. `msw`'s build script is denied in `pnpm-workspace.yaml` — it installs a browser service worker, and `setupServer` (Node) needs none. |
+| Package dependency seams | **`dependency-cruiser` 17** + analyzer-only **TypeScript 6** (pnpm package extension) | Each `web/packages/<name>/` package is a deep module: root TypeScript files are the small public interface and nested folders are private implementation. Focused `@loomarr/api/{models,endpoints,zod}/*` and `@loomarr/core/*` exports still preserve the route-payload boundary in frontend-design §4.4; they resolve to focused root entry files rather than exposing generated or `src/` paths. Orval regenerates the API entry files with its client. A static import-graph gate prevents app code and sibling packages from bypassing those entry points and rejects cycles; this turns package locality into an enforced property instead of a review convention. Version 17 preserves Loomarr's Node 22.5 floor but its parser rejects TypeScript 7, so pnpm supplies TypeScript 6 only beside dependency-cruiser; each workspace package continues compiling with its own TypeScript 7. Neither tool ships in browser code. |
 | Routing | **`@tanstack/react-router`** (file-based; `@tanstack/router-plugin` + `-cli` generate `routeTree.gen.ts`) | End-to-end type-safe routing (typed params/search/links) matching the orval-contract ethos; shares the TanStack Query client via router `context` + loader-based auth guards (`beforeLoad` → `redirect`, no guard-flash). Web-only — routing was always the per-platform seam (frontend-build-plan §), mobile keeps Expo Router; `react-router` v6 replaced 13.3a |
 | Styling / components | **Tailwind CSS + shadcn/ui** on **`@base-ui/react`** (one package; per-component subpath exports) | Fast, decent defaults, copy-in components. The headless primitive library is the runtime piece shadcn wraps. **Every reason below for adopting a primitive still holds — only the vendor changed (V50a).** The enum control is a themed listbox, not a native `<select>`: native first shipped (accessible, mobile-correct, zero-dep) but renders an **unstyleable OS option list** (light popup on some platforms, off-theme), and richer selects (search, groups, icons) are planned that native can't do. Supersedes the earlier native-only choice recorded in `select.tsx`. **Tooltip** serves icon-only-button labels: the app has many icon-only affordances (sidebar search/sign-out, the channel-detail back arrow, row actions) whose meaning needs a hover/focus label, and the native `title=` attribute is unstyled, ~1s-delayed, and keyboard/touch-hostile. **Slider** backs the video scrubber (V39): a seek bar is a slider, and the hand-rolled `role="slider"` it replaced had to re-implement the WAI-ARIA keyboard contract (arrow steps, Home/End, `aria-valuetext`) by hand — semantics that rot silently, because nothing fails when they drift. **Menu** backs the video player's in-bar audio/subtitle controls (V47): these are icon-triggered MENUS (a speaker/CC glyph opens a list of language/mode choices), not a form `<select>`, and need the roving-focus/typeahead/Escape contract a menu has. ⚠ **The vendor change is Radix → Base UI (V50a), and it is a consolidation, not a preference.** Radix was six separately-versioned packages (`react-slot`, `react-select`, `react-tooltip`, `react-slider`, `react-dropdown-menu`, `react-dialog`) plus ~27 transitive `@radix-ui/*`; Base UI is one MIT package covering all of them and 30 more, so the primitives the app still hand-rolls (combobox, toggle-group, meter) stop needing a §14 conversation each. ⚠ **That list shrank twice and the removals are the record:** `menu` left it in V50b (the channel row's ⋮ menu), and `collapsible` in V50c. **Collapsible** backs `CollapsibleSection`, and it was adopted for `hiddenUntilFound` specifically — a closed section's text stays reachable by the browser's find-in-page, where the old `overflow:hidden` clip made it findable by nothing. ⚠ Its MOTION stayed hand-rolled: Base UI measures the panel (`scrollHeight` → `--collapsible-panel-height`) to transition `height`, while `styles.css`'s `.reveal` grid-rows 0fr→1fr trick is height-agnostic and cannot desync from a stale measurement, so the primitive owns state and semantics while the stylesheet still owns motion. **`combobox` remains hand-rolled deliberately, not by omission** — see `search-command.tsx`, which records why Autocomplete's Portal→Positioner→Popup shape does not fit an always-visible panel embedded in six layouts. shadcn ships a Base UI variant of all 57 relevant registry components, so the copy-in philosophy survives. Two API deltas are load-bearing and are recorded where they bite: `asChild` becomes a `render` prop (`useRender`/`mergeProps` replace `Slot`), and Portal→**Positioner**→Popup replaces Radix's single `Content`. ⚠ **One behavioural difference is NOT cosmetic:** Base UI's Tooltip is visual-only by design — no `role="tooltip"`, no `aria-describedby` — where Radix wired that association. Harmless everywhere the trigger's `aria-label` restates the tooltip, but `FieldHelp` renders each setting's `doc` prose and nothing else in the DOM carries it, so that component declares an explicit `sr-only` description. See §12 and `field-help.tsx`. *(This row names the retired vendor and its composition prop deliberately, to record what moved and why — retired-ok.)* |
 | Drag-and-drop (lineup reorder) | **`@dnd-kit`** (`@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`) | Reordering a channel's lineup (§7 PATCH, §12) is a sortable list. `@dnd-kit` is the current-gen, React-18/StrictMode-safe choice (`react-beautiful-dnd` is archived); it is headless (~10kb core, no runtime deps of its own, CSP-safe for the embedded assets) and ships **keyboard + screen-reader reordering** built in (arrow-key sort + live-region announcements), which is the accessibility cost that would otherwise make drag worse than up/down buttons. The reorder still commits through the same `PATCH /v1/channels/{id}` whole-list replace — DnD is presentation only. |
@@ -5211,3 +5218,46 @@ without validating forwards traversal.
 per row, so a lookup inside the mapper is an N+1 — pre-resolve the distinct hashes for the whole
 page. A failed lookup is an absent record, never an error: an image row lost with `/data/images` (see
 *Durability*) must still let its channel render.
+
+### Runtime certification
+
+The required worker is release infrastructure, so its gate is broader than unit codec coverage.
+`make image-cert` drives the installed `loomarr-image` executable through the same bounded protocol
+and manifest validation used by the application, then writes a machine-readable report under this
+worktree's `.artifacts/<instance>/` directory. It has two corpus modes:
+
+- With no arguments, it uses the repository's deterministic certification corpus. That corpus
+  covers opaque JPEG, transparent PNG, static WebP, animated GIF, APNG and WebP, finite and infinite
+  loops, fractional and zero frame delays, a one-frame animated container, corrupt input, and every
+  resource ceiling whose refusal is observable without allocating the forbidden resource.
+- `make image-cert IMAGE_CERT_CORPUS=/absolute/read-only/path` scans an operator's existing raster
+  corpus. It never modifies source files, follows no symlinks, performs no network I/O, and treats a
+  supported-looking file that cannot complete inspection plus the requested ladder as a failure.
+  Unsupported files are reported as skipped; stable budget refusals are reported separately from
+  crashes, malformed manifests, and I/O failures.
+
+Every accepted case produces an inspection plus a 320-pixel JPEG/WebP/AVIF ladder. Motion-preserving
+WebP is required for an animated source; JPEG and AVIF must be the first composited presentation
+frame. The certifier independently verifies the source hash, output signatures, dimensions, hashes,
+motion flag, and that staging is empty after each case. A run fails on a worker crash, protocol or
+manifest violation, unexpected refusal, leaked staging file, incorrect visible timeline, or a
+resource ceiling breach.
+
+The deterministic gate is intentionally generous enough to survive shared CI hardware while still
+catching runaway work: each static case must complete within 10 seconds, each animated case within
+30 seconds, and a worker process must remain below 768 MiB peak resident memory. The report records
+per-case wall time, source and output bytes, peak RSS where the host exposes it, plus p50/p95/max
+summaries. These are certification ceilings, not product SLOs; lowering them requires corpus evidence
+and raising them is a design change.
+
+Production exposes the same boundary at `/metrics`: worker operations and stable outcomes, wall
+time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are bounded vocabulary
+(`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
+caller, or free-form error text.
+
+The consumer half of the gate is observable through public seams. Guide programme art, Watch
+timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
+render through the shared frontend `Image` primitive. An animated filler hover must offer an
+animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
+responses and rendered elements; querying image tables or asserting private renderer calls is not
+certification evidence.

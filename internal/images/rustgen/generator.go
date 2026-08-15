@@ -179,7 +179,23 @@ func Open(executable string, expected Contract) (*Generator, error) {
 
 // Generate runs exactly one bounded worker process and accepts only the complete requested target
 // set. Files remain unpublished in StagingDir; package images is the sole publication authority.
-func (g *Generator) Generate(ctx context.Context, req Request) (Manifest, error) {
+func (g *Generator) Generate(ctx context.Context, req Request) (manifest Manifest, err error) {
+	kind := "render"
+	if len(req.Targets) == 0 {
+		kind = "inspect"
+	}
+	observation := Observation{Kind: kind, Result: "protocol_error"}
+	if info, statErr := os.Stat(req.Source.Path); statErr == nil {
+		observation.InputBytes = info.Size()
+	}
+	started := time.Now()
+	if observe := observerFrom(ctx); observe != nil {
+		defer func() {
+			observation.Duration = time.Since(started)
+			observe(observation)
+		}()
+	}
+
 	req.Protocol = g.contract.Protocol
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -194,6 +210,7 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Manifest, error)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	runErr := cmd.Run()
+	observation.PeakRSSBytes = processPeakRSSBytes(cmd.ProcessState)
 	if stdout.exceeded || stderr.exceeded {
 		return Manifest{}, fmt.Errorf("images: worker output exceeded protocol limit")
 	}
@@ -201,18 +218,27 @@ func (g *Generator) Generate(ctx context.Context, req Request) (Manifest, error)
 		var failure errorManifest
 		if json.Unmarshal(stdout.Bytes(), &failure) == nil && failure.Protocol == g.contract.Protocol &&
 			failure.Status == "error" && failure.RequestID == req.RequestID && failure.Error.Code != "" {
+			observation.Result = "refused"
 			return Manifest{}, &WorkerError{Code: failure.Error.Code, Message: failure.Error.Message}
+		}
+		if ctx.Err() != nil {
+			observation.Result = "canceled"
+		} else {
+			observation.Result = "process_error"
 		}
 		return Manifest{}, fmt.Errorf("images: worker generate: %w: %s", runErr, strings.TrimSpace(stderr.String()))
 	}
 
-	var manifest Manifest
 	if err := json.Unmarshal(stdout.Bytes(), &manifest); err != nil {
 		return Manifest{}, fmt.Errorf("images: worker result JSON: %w", err)
 	}
 	if err := g.validateManifest(req, manifest); err != nil {
 		return Manifest{}, err
 	}
+	for _, output := range manifest.Outputs {
+		observation.OutputBytes += output.Bytes
+	}
+	observation.Result = "success"
 	return manifest, nil
 }
 

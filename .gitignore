@@ -43,6 +43,10 @@ coverage.txt
 # Node / FE (web/ added in Phase 13)
 node_modules/
 web/apps/web/dist/
+# Orval's tracked client is the source for these generated package-root interfaces.
+/web/packages/api/endpoint-*.ts
+/web/packages/api/model-*.ts
+/web/packages/api/zod-*.ts
 
 # The embedded SPA build output — `make fe` fills this; only .gitkeep is tracked
 # so `//go:embed all:dist` compiles on a Go-only checkout (internal/web/embed.go).
