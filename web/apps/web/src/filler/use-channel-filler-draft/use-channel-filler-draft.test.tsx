@@ -75,10 +75,11 @@ const stubDraft = (opts: { previewStatus?: number } = {}) => {
   return { previews, saves };
 };
 
-const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
+const policy = (filler?: ChannelPolicy["filler"], breaksPerHour?: number): ChannelPolicy => ({
   ordering: "shuffle",
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
+  ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
 });
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
@@ -109,6 +110,32 @@ describe("useChannelFillerDraft", () => {
     });
     expect(result.current.draft.audience).toBe("kids");
     expect(result.current.isDirty).toBe(false);
+  });
+
+  it("seeds the three-state break frequency and includes it in dirty/discard", () => {
+    stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 3)), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.breaksPerHour).toBe(3);
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => result.current.setBreaksPerHour(0));
+    expect(result.current.isDirty).toBe(true);
+    act(() => result.current.discard());
+    expect(result.current.breaksPerHour).toBe(3);
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  it("does not reassemble the clip preview when only break frequency changes", async () => {
+    const { previews } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(1));
+
+    act(() => result.current.setBreaksPerHour(0));
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    expect(previews).toHaveLength(1);
   });
 
   it("fires a debounced preview POST with the canonical draft, and renders its result", async () => {
@@ -170,6 +197,23 @@ describe("useChannelFillerDraft", () => {
     expect(saves[0]).toMatchObject({ policy: { filler: { audience: "family", pinned: ["p9"] } } });
     // …and the rest of the policy is carried, not wiped (PATCH replaces policy whole).
     expect(saves[0]).toMatchObject({ policy: { ordering: "shuffle", scope: { era: { from: 1990 } } } });
+  });
+
+  it("apply can disable breaks or clear an override back to inherited", async () => {
+    const { saves } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4)), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.setBreaksPerHour(0));
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toMatchObject({ policy: { breaksPerHour: 0 } });
+
+    act(() => result.current.setBreaksPerHour(undefined));
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(2));
+    expect((saves[1] as { policy: Record<string, unknown> }).policy).not.toHaveProperty("breaksPerHour");
   });
 
   it("discard resets the draft to saved", () => {

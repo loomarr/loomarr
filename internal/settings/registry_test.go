@@ -188,6 +188,27 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	}
 }
 
+func TestRegistry_FillerBreakBounds(t *testing.T) {
+	r := NewRegistry()
+	for key, invalid := range map[string]string{
+		"filler.breaks_per_hour": "-1",
+		"filler.pod_max":         "0",
+	} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if _, err := s.parse(invalid); err == nil {
+			t.Errorf("%s accepted invalid value %s", key, invalid)
+		}
+	}
+
+	breaks, _ := r.Get("filler.breaks_per_hour")
+	if got, err := breaks.parse("0"); err != nil || got != 0 {
+		t.Errorf("zero breaks should disable the inherited default: got %#v, err %v", got, err)
+	}
+}
+
 func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
 	r := NewRegistry()
 	for _, key := range []string{"guide.timezone", "guide.retention_hours"} {
