@@ -56,6 +56,7 @@ than letting it describe something finished.
 
 | Workstream | State | Branch | Plan / evidence |
 | --- | --- | --- | --- |
+| V59a · Rust image runtime certification | contract + baseline green | `rust-image-certification` | Deterministic and operator-supplied corpus reports, bounded worker/queue metrics, and public-seam Guide/Watch/Filler certification. Plan: [`docs/engineering/plans/v59a-image-runtime-certification.md`](docs/engineering/plans/v59a-image-runtime-certification.md). |
 | V58 · tuner browser/runtime certification | checkpoint 1 ready | `tuner-browser-cert` | §9.1 three-layer gate: isolated prepared-capable agent runtime → Chromium/Firefox/WebKit controller matrix → real composition-root + ffmpeg media gate and maintainer shipping-browser/GPU soak. First real `make dev-be` run found prepared playout disabled because the worktree inherited container-only `/data/prepared`; the harness now owns `.agent-data/prepared`, and the original startup repro is green. Gate fallout also removed a wall-clock date bomb from the prepared-retention probe test. Evidence: focused retention test 20/20, `make agent-verify`, `make docs-lint`, and `make check` green. |
 | Docs overhaul | this PR | `docs-overhaul` | `make check` + `make docs-lint` + all four `*-verify` targets green. Adds `docs/claims_test.go` and the generated `docs/dev/commands.md`. |
 

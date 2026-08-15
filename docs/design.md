@@ -5124,3 +5124,46 @@ without validating forwards traversal.
 per row, so a lookup inside the mapper is an N+1 — pre-resolve the distinct hashes for the whole
 page. A failed lookup is an absent record, never an error: an image row lost with `/data/images` (see
 *Durability*) must still let its channel render.
+
+### Runtime certification
+
+The required worker is release infrastructure, so its gate is broader than unit codec coverage.
+`make image-cert` drives the installed `loomarr-image` executable through the same bounded protocol
+and manifest validation used by the application, then writes a machine-readable report under this
+worktree's `.artifacts/<instance>/` directory. It has two corpus modes:
+
+- With no arguments, it uses the repository's deterministic certification corpus. That corpus
+  covers opaque JPEG, transparent PNG, static WebP, animated GIF, APNG and WebP, finite and infinite
+  loops, fractional and zero frame delays, a one-frame animated container, corrupt input, and every
+  resource ceiling whose refusal is observable without allocating the forbidden resource.
+- `make image-cert IMAGE_CERT_CORPUS=/absolute/read-only/path` scans an operator's existing raster
+  corpus. It never modifies source files, follows no symlinks, performs no network I/O, and treats a
+  supported-looking file that cannot complete inspection plus the requested ladder as a failure.
+  Unsupported files are reported as skipped; stable budget refusals are reported separately from
+  crashes, malformed manifests, and I/O failures.
+
+Every accepted case produces an inspection plus a 320-pixel JPEG/WebP/AVIF ladder. Motion-preserving
+WebP is required for an animated source; JPEG and AVIF must be the first composited presentation
+frame. The certifier independently verifies the source hash, output signatures, dimensions, hashes,
+motion flag, and that staging is empty after each case. A run fails on a worker crash, protocol or
+manifest violation, unexpected refusal, leaked staging file, incorrect visible timeline, or a
+resource ceiling breach.
+
+The deterministic gate is intentionally generous enough to survive shared CI hardware while still
+catching runaway work: each static case must complete within 10 seconds, each animated case within
+30 seconds, and a worker process must remain below 768 MiB peak resident memory. The report records
+per-case wall time, source and output bytes, peak RSS where the host exposes it, plus p50/p95/max
+summaries. These are certification ceilings, not product SLOs; lowering them requires corpus evidence
+and raising them is a design change.
+
+Production exposes the same boundary at `/metrics`: worker operations and stable outcomes, wall
+time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are bounded vocabulary
+(`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
+caller, or free-form error text.
+
+The consumer half of the gate is observable through public seams. Guide programme art, Watch
+timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
+render through the shared frontend `Image` primitive. An animated filler hover must offer an
+animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
+responses and rendered elements; querying image tables or asserting private renderer calls is not
+certification evidence.
