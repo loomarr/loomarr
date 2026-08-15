@@ -61,6 +61,20 @@ func TestHostedCatalog_OpenRouterAndCustomOnly(t *testing.T) {
 	}
 }
 
+func TestHostedCatalog_OpenRouterFallbackExplainsTheSafeDefault(t *testing.T) {
+	hp, ok := HostedProviderByKey("openrouter")
+	if !ok {
+		t.Fatal("openrouter should be in the curated catalog")
+	}
+	if len(hp.Fallback) != 1 {
+		t.Fatalf("openrouter fallback = %+v, want one deliberate safe default", hp.Fallback)
+	}
+	model := hp.Fallback[0]
+	if !model.Recommended || !model.Tools || model.Why == "" {
+		t.Errorf("fallback = %+v, want recommended + tools + a plain-English rationale", model)
+	}
+}
+
 // RICH provider (OpenRouter-shape): LiveModels ranks for the USE CASE — a curated
 // quality FAMILY tier beats a cheaper-but-lower-tier model, and an untiered model
 // (even if cheapest + tool-capable) is shown but NOT recommended. This is the
