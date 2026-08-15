@@ -257,7 +257,8 @@ flowchart TD
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`setup`** · 1 importer · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
+  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
+
 **Layer 7**
 
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
@@ -283,7 +284,7 @@ flowchart TD
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
+- **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
