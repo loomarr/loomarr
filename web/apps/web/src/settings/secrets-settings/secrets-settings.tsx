@@ -25,6 +25,14 @@ const SECRETS: SecretRow[] = [
       "Every session is revoked, including yours. You will be signed out immediately. The API token still works as break-glass, so you cannot lock yourself out.",
     displayable: false,
   },
+  {
+    name: "playout_token",
+    label: "Playback token",
+    purpose: "Lets your media server read Loomarr's tuner, guide, and channel streams without admin access.",
+    consequence:
+      "Existing tuner and guide URLs stop working immediately. Reconnect Live TV or replace the token in every manually configured URL.",
+    displayable: true,
+  },
 ];
 
 const SecretsSettings = () => {

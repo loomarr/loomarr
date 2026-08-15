@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 // fakeAVIF returns an encoder that writes plausible bytes and records what it was asked for.
@@ -146,38 +145,6 @@ func TestAVIFJobDoesNotRecordAnEncoderThatWroteNothing(t *testing.T) {
 		if d.Format == FormatAVIF {
 			t.Fatalf("recorded a zero-byte AVIF rendition at w%d — it would be served as a broken image", d.Width)
 		}
-	}
-}
-
-// `images.formats` is the operator's CPU switch, and it must be read per run.
-func TestAVIFJobHonoursTheFormatsSetting(t *testing.T) {
-	fs := newFakeStore()
-	formats := []Format{FormatWebP, FormatJPEG} // avif dropped
-	svc := New(Config{
-		Dir:            t.TempDir(),
-		MaxUploadBytes: func() int64 { return 2 << 20 },
-		Formats:        func() []Format { return formats },
-	}, fs, func() time.Time { return fixedNow })
-
-	var calls []encodeCall
-	job := NewAVIFJob(svc, fs, fakeAVIF(&calls, []byte("x")), nil)
-	ctx := context.Background()
-	seedWithWebP(t, svc, RolePoster)
-
-	if _, err := job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 0 {
-		t.Fatalf("images.formats excludes avif and the job still encoded %d rungs", len(calls))
-	}
-
-	// Turned back on, the SAME job instance starts working — hot-apply, not restart.
-	formats = append(formats, FormatAVIF)
-	if _, err := job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) == 0 {
-		t.Error("re-enabling avif needed a restart — the setting is captured at construction")
 	}
 }
 

@@ -29,6 +29,36 @@ const inputTypeFor = (kind: string): string => {
   return "text";
 };
 
+type DurationUnit = "days" | "hours" | "minutes" | "seconds";
+
+const durationParts = (raw: string): { amount: number; unit: DurationUnit } => {
+  const factors: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0.001 };
+  let seconds = 0;
+  let matched = false;
+  for (const match of raw.matchAll(/(-?\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
+    const factor = factors[match[2] ?? ""];
+    if (factor === undefined) continue;
+    matched = true;
+    seconds += Number(match[1]) * factor;
+  }
+  if (!matched || !Number.isFinite(seconds)) return { amount: 0, unit: "hours" };
+  if (seconds !== 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
+  if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: "hours" };
+  if (seconds % 60 === 0) return { amount: seconds / 60, unit: "minutes" };
+  return { amount: seconds, unit: "seconds" };
+};
+
+const durationRaw = (amount: number, unit: DurationUnit): string => {
+  const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
+  return `${Number(seconds.toFixed(3))}s`;
+};
+
+const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
+  const bytes = Number(raw);
+  if (!Number.isFinite(bytes)) return { amount: 0, unit: "MiB" };
+  return { amount: Number((bytes / 1024 ** 2).toFixed(2)), unit: "MiB" };
+};
+
 const SettingField = ({
   entry,
   value,
@@ -41,6 +71,7 @@ const SettingField = ({
 }: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
   const id = `setting-${entry.key}`;
+  const label = entry.label || humanizeSettingKey(entry.key);
   // `pinned` is the LOCK STATE, which is no longer the same question as "is this env's key".
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
@@ -93,6 +124,65 @@ const SettingField = ({
         </Select>
       );
     }
+    if (entry.kind === "duration") {
+      const current = durationParts(value);
+      return (
+        <div className="flex gap-2">
+          <Input
+            id={id}
+            type="number"
+            min={0}
+            step="any"
+            value={current.amount}
+            disabled={pinned}
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            aria-invalid={invalid ? "true" : undefined}
+            onChange={(e) => onChange(durationRaw(Number(e.target.value), current.unit))}
+          />
+          <Select
+            value={current.unit}
+            disabled={pinned}
+            onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
+          >
+            <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(["days", "hours", "minutes", "seconds"] as const).map((unit) => (
+                <SelectItem key={unit} value={unit}>
+                  {unit}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+    }
+    if (entry.presentation === "bytes") {
+      const current = byteParts(value);
+      return (
+        <div className="flex gap-2">
+          <Input
+            id={id}
+            type="number"
+            min={0}
+            step="any"
+            value={current.amount}
+            disabled={pinned}
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            aria-invalid={invalid ? "true" : undefined}
+            onChange={(e) => {
+              onChange(String(Math.round(Number(e.target.value) * 1024 ** 2)));
+            }}
+          />
+          <span className="flex h-9 w-16 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground text-sm">
+            {current.unit}
+          </span>
+        </div>
+      );
+    }
     return (
       <Input
         id={id}
@@ -127,14 +217,14 @@ const SettingField = ({
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
     <div className={cn("group flex flex-col gap-1.5", className)}>
       <div className="flex items-center gap-2">
-        <Label htmlFor={id}>{humanizeSettingKey(entry.key)}</Label>
+        <Label htmlFor={id}>{label}</Label>
         {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
             so the form isn't a wall of helper paragraphs. It stays programmatically associated
             via the sr-only doc below (aria-describedby), so screen readers still get it. */}
         {entry.doc && (
           // `describedById` points at the sr-only doc this component already renders below, so the
           // help prose lives in the DOM ONCE rather than once per carrier.
-          <FieldHelp label={humanizeSettingKey(entry.key)} describedById={describedBy}>
+          <FieldHelp label={label} describedById={describedBy}>
             {entry.doc}
           </FieldHelp>
         )}
@@ -153,7 +243,7 @@ const SettingField = ({
               onClick={() => onEnvOverride(true)}
               // The visible text is the STATE; the action belongs in the accessible name, or
               // a screen-reader user hears "set via environment, button" and has to guess.
-              aria-label={`Unlock ${humanizeSettingKey(entry.key)} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
+              aria-label={`Unlock ${label} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
               className="group/unlock cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-2"
             >
               {/* The hover/focus tell: the chip warms from inert grey to `signal`, and the
@@ -214,7 +304,7 @@ const SettingField = ({
             <button
               type="button"
               onClick={() => onEnvOverride(false)}
-              aria-label={`Hand ${humanizeSettingKey(entry.key)} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
+              aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
               <Badge variant="caution" className="gap-1">

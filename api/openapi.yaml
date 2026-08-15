@@ -3294,8 +3294,6 @@ components:
           type: string
         backend:
           type: string
-        subtitles:
-          type: string
       type: object
     PlayoutStatus:
       additionalProperties: false
@@ -4445,6 +4443,12 @@ components:
         key:
           type: string
         kind:
+          type: string
+        label:
+          description: Registry-owned human label for workflow forms.
+          type: string
+        presentation:
+          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
           type: string
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
@@ -8406,6 +8410,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
@@ -8425,7 +8430,7 @@ paths:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.
       operationId: secret-regenerate
       parameters:
         - description: Which generated secret to rotate.
@@ -8437,6 +8442,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":

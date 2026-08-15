@@ -60,7 +60,7 @@ type Story = StoryObj<typeof meta>;
 
 // ⚠ **The DEFAULT is "no AVIF yet", because that is the ordinary state of an image.** AVIF is
 // produced by a background job, so for up to an hour after an image lands there is no AVIF
-// rendition — and forever, if an operator drops `avif` from `images.formats`. `<picture>` takes
+// rendition. `<picture>` takes
 // WebP and nothing waits. The baseline should show the 342w WebP colour: at `sizes="320px"` and
 // DPR 1, 320 CSS px selects the 342w rung.
 const AwaitingAvif: Story = { args: { image: poster() } };

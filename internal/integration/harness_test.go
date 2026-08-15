@@ -137,7 +137,6 @@ func (h *harness) seedConnections() {
 	set("llm.model", "qwen3:8b")
 	set("tunarr.url", h.tunarrStub.URL) // gate only; real pushes hit the injected tun
 	set("filler.dir", h.t.TempDir())
-	set("reconcile.every", "9999h")
 	set("channel.reconcile_every", "9999h")
 	set("filler.sync_every", "9999h")
 	if h.seerr != nil {
@@ -150,13 +149,13 @@ func (h *harness) seedConnections() {
 // sourced .env in the dev shell can't override the seeded db settings.
 func clearLoomarrEnv(t *testing.T) {
 	keys := []string{
-		"LIBRARY_FLAVOR", "LIBRARY_URL", "LIBRARY_TOKEN", "SEASON_PRECISION",
+		"LIBRARY_FLAVOR", "LIBRARY_URL", "LIBRARY_TOKEN",
 		"SEERR_URL", "SEERR_API_KEY", "SONARR_URL", "SONARR_API_KEY", "RADARR_URL", "RADARR_API_KEY",
 		"TUNARR_URL", "TUNARR_TRANSCODE_CONFIG_ID",
 		"LLM_PROVIDER", "LLM_URL", "LLM_MODEL", "LLM_API_KEY", "TMDB_API_KEY",
 		"FILLER_DIR", "FILLER_AI_TAGGING", "SESSION_SECRET", "API_TOKEN",
-		"RECONCILE_EVERY", "CHANNEL_RECONCILE_EVERY", "FILLER_SYNC_EVERY",
-		"JOB_WORKERS", "SUGGEST_MAX_ACQUISITIONS", "SUGGEST_AUTO_APPROVE",
+		"CHANNEL_RECONCILE_EVERY", "FILLER_SYNC_EVERY",
+		"JOB_WORKERS", "SUGGEST_MAX_ACQUISITIONS",
 	}
 	for _, k := range keys {
 		if old, ok := os.LookupEnv(k); ok {

@@ -56,32 +56,7 @@ func newImageService(st store.Store, set resolved) *images.Service {
 		Dir:            set.str("images.dir"),
 		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
 		PublicBaseURL:  func() string { return set.str("server.public_url") },
-		Formats:        func() []images.Format { return imageFormats(set) },
 	}, imageStore{st}, nil)
-}
-
-// imageFormats reads `images.formats`, falling back to the declared ladder.
-//
-// ⚠ Unknown entries are DROPPED rather than passed through. Format is a closed set that decides
-// which encoder runs and which MIME type is served; a typo like "webm" reaching the AVIF job as a
-// format would be a work-list that never empties. Silently ignoring it degrades to a smaller
-// ladder, which is a supported configuration.
-func imageFormats(set resolved) []images.Format {
-	raw := set.strlist("images.formats")
-	if len(raw) == 0 {
-		return images.DefaultFormats()
-	}
-	out := make([]images.Format, 0, len(raw))
-	for _, s := range raw {
-		switch f := images.Format(s); f {
-		case images.FormatAVIF, images.FormatWebP, images.FormatJPEG:
-			out = append(out, f)
-		}
-	}
-	if len(out) == 0 {
-		return images.DefaultFormats()
-	}
-	return out
 }
 
 // imageStore adapts store.Store to images.Store.

@@ -56,9 +56,8 @@ func NewAVIFJob(svc *Service, st AVIFStore, enc AVIFEncoder, log *slog.Logger) *
 
 // Run encodes one batch.
 func (j *AVIFJob) Run(ctx context.Context) (AVIFResult, error) {
-	// ⚠ Both gates are read per run rather than at construction. `images.formats` hot-applies, so
-	// an operator dropping `avif` to save CPU on a struggling NAS expects the next tick to stop
-	// encoding — not the next restart.
+	// Encoder support is the only gate: AVIF is part of the fixed compatibility ladder, while a
+	// build without an AV1 encoder degrades cleanly to WebP/JPEG.
 	if j.enc == nil || !j.svc.Produces(FormatAVIF) {
 		return AVIFResult{}, nil
 	}

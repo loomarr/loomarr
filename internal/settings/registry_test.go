@@ -130,19 +130,24 @@ func TestRegistry_Invariants(t *testing.T) {
 	}
 }
 
-// The AI provider keys are the conditional-field showcase (config-design §5): url + key
-// are hidden for Ollama (local, no key), shown for a hosted OpenAI-compatible service.
+// The hosted key is conditional, while the endpoint remains visible for both providers:
+// non-default/remote Ollama hosts must be configurable too.
 func TestRegistry_AIConditionalFields(t *testing.T) {
 	reg := NewRegistry()
-	for _, key := range []string{"llm.url", "llm.api_key"} {
-		s, ok := reg.Get(key)
-		if !ok {
-			t.Fatalf("%s not declared", key)
-		}
-		allowed := s.ShowWhen["llm.provider"]
-		if len(allowed) != 1 || allowed[0] != "openai" {
-			t.Errorf("%s should ShowWhen llm.provider=openai, got %v", key, s.ShowWhen)
-		}
+	url, ok := reg.Get("llm.url")
+	if !ok {
+		t.Fatal("llm.url not declared")
+	}
+	if len(url.ShowWhen) != 0 {
+		t.Errorf("llm.url must be visible for Ollama and hosted providers, got %v", url.ShowWhen)
+	}
+	key, ok := reg.Get("llm.api_key")
+	if !ok {
+		t.Fatal("llm.api_key not declared")
+	}
+	allowed := key.ShowWhen["llm.provider"]
+	if len(allowed) != 1 || allowed[0] != "openai" {
+		t.Errorf("llm.api_key should ShowWhen llm.provider=openai, got %v", key.ShowWhen)
 	}
 }
 
@@ -163,13 +168,10 @@ func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
 func TestRegistry_MovedDefaults(t *testing.T) {
 	r := NewRegistry()
 	cases := map[string]string{
-		"request.ttl":      "48h",
-		"session.ttl":      "720h",
-		"reconcile.every":  "5m",
-		"job.workers":      "2",
-		"season.precision": "series",
-		"llm.provider":     "ollama",
-		"sched.ordering":   "syndication",
+		"request.ttl":  "48h",
+		"session.ttl":  "720h",
+		"job.workers":  "2",
+		"llm.provider": "ollama",
 	}
 	for key, want := range cases {
 		s, ok := r.Get(key)
