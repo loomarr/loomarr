@@ -51,6 +51,7 @@ Everything lives on one volume:
 | `/data/loomarr.db` | Database — accounts, channels, settings, secrets |
 | `/data/filler/` | Commercial and bumper clips |
 | `/data/images/` | Cached artwork |
+| `/data/prepared/` | Reusable prepared programme media for instant channel changes |
 
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.

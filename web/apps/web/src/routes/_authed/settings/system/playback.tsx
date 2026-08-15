@@ -40,7 +40,7 @@ const PlaybackSettings = () => {
         {
           group: "playout",
           title: "Playback paths",
-          keys: ["playout.ffmpeg_path", "playout.hls_dir"],
+          keys: ["playout.ffmpeg_path", "playout.hls_dir", "playout.prepared_dir"],
         },
       ]}
       footer={<PlayoutPanel status={unwrap(status.data)} loading={status.isLoading} />}
