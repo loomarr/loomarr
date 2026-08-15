@@ -12,7 +12,7 @@ import (
 // pausableJob is a job that counts its executions.
 func pausableJob(ran *atomic.Int64) Job {
 	return Job{
-		Name: "reconcile", Title: "Reconcile", Description: "test job reconcile.",
+		Name: "reconcile", Group: GroupSystem, Title: "Reconcile", Description: "test job reconcile.",
 		DefaultCron: everyMinute,
 		Run:         func(context.Context) error { ran.Add(1); return nil },
 	}

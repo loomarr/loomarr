@@ -57,7 +57,7 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	out := make([]api.JobView, 0, len(st))
 	for _, j := range st {
 		out = append(out, api.JobView{
-			Name: j.Name, Title: j.Title, Description: j.Description,
+			Name: j.Name, Group: string(j.Group), Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
 			NextRun: j.NextRun, Running: j.Running, Paused: j.Paused,

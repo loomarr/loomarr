@@ -79,7 +79,7 @@ func TestJobs_RequiresAdmin(t *testing.T) {
 func TestJobs_ListReturnsJobs(t *testing.T) {
 	svc := &fakeJobs{list: []api.JobView{
 		{Name: "reconcile", Title: "Reconcile downloads", Schedule: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule", LastResult: "ok"},
-		{Name: "channel-sweep", Title: "Reconcile channels with Tunarr", Schedule: "0 */10 * * * *"},
+		{Name: "channel-maintenance", Group: "channels", Title: "Maintain live channels", Schedule: "0 */10 * * * *"},
 	}}
 	srv := serverWithJobs(t, svc)
 

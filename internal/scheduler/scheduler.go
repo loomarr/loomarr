@@ -25,6 +25,7 @@ import (
 // back to DefaultCron — matching how Sonarr/Overseerr expose per-task schedules.
 type Job struct {
 	Name  string // stable id, e.g. "reconcile" — the API/UI key
+	Group JobGroup
 	Title string // human label for the Tasks page, e.g. "Reconcile acquisitions"
 	// Description is one plain sentence saying what running this job actually DOES, in the
 	// operator's terms rather than the code's ("Checks in-flight downloads and moves finished
@@ -81,6 +82,7 @@ func (j Job) Disabled() bool { return j.DisabledReason != "" }
 // JobStatus is the read model the Tasks API/UI renders.
 type JobStatus struct {
 	Name        string    `json:"name"`
+	Group       JobGroup  `json:"group"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Schedule    string    `json:"schedule"`    // effective cron expression (settings override or default)
@@ -109,6 +111,29 @@ type JobStatus struct {
 	// but it is per-process: on a multi-replica Postgres install it would confidently name the
 	// wrong job. A fact that is sometimes a lie is worse than a fact that is merely coarse.
 	Overdue bool `json:"overdue,omitempty"`
+}
+
+// JobGroup is an operator outcome, not an implementation package. Keep this closed set in
+// the scheduler so every API client receives stable grouping semantics.
+type JobGroup string
+
+const (
+	GroupAcquisitions JobGroup = "acquisitions"
+	GroupChannels     JobGroup = "channels"
+	GroupFiller       JobGroup = "filler"
+	GroupArtwork      JobGroup = "artwork"
+	GroupPlayout      JobGroup = "playout"
+	GroupSystem       JobGroup = "system"
+	GroupBackup       JobGroup = "backup"
+)
+
+func (g JobGroup) valid() bool {
+	switch g {
+	case GroupAcquisitions, GroupChannels, GroupFiller, GroupArtwork, GroupPlayout, GroupSystem, GroupBackup:
+		return true
+	default:
+		return false
+	}
 }
 
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
@@ -434,7 +459,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		j := s.jobs[name]
 		st := state[name]
 		status := JobStatus{
-			Name: j.Name, Title: j.Title, Description: j.Description,
+			Name: j.Name, Group: j.Group, Title: j.Title, Description: j.Description,
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),

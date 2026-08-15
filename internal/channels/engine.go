@@ -546,7 +546,7 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	// channel spent 1ms.
 	//
 	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by series-episode-refresh (§18.1)
+	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
 	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
 	//	                      behaving exactly like today rather than emptying channels
 	now := s.clock()

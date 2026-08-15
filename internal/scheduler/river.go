@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -12,6 +13,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 	"github.com/riverqueue/river/riverdriver/riversqlite"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
 	"github.com/robfig/cron/v3"
 
 	"github.com/mantonx/loomarr/internal/store"
@@ -39,7 +41,8 @@ var cronParser = cron.NewParser(
 // jobArgs is the River job payload. One kind per registered job name, so River's own history
 // is readable ("kind: library-scan") rather than a single opaque "run" kind.
 type jobArgs struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Manual bool   `json:"manual,omitempty"`
 }
 
 func (a jobArgs) Kind() string { return "loomarr_job" }
@@ -89,7 +92,7 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if j.Disabled() {
 		return nil
 	}
-	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused {
+	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
 		return nil
 	}
 	w.s.execute(ctx, j)
@@ -244,7 +247,7 @@ func queueFor(j Job) string {
 // ⚠ **This is the companion the 30-minute ceiling had to arrive with.** `Job.Timeout` fixed jobs
 // being SIGKILLed at 60s, and by doing so let one job hold the single SQLite worker for half an
 // hour. Measured 2026-08-12: a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other
-// job was starved for its whole duration — `channel-sweep`, `images-fetch` and `seerr-queue-poll`
+// job was starved for its whole duration — channel maintenance, `images-fetch` and `seerr-queue-poll`
 // all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered
 // `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage
 // for everything that shares it.
@@ -275,6 +278,62 @@ func maxWorkersFor(st store.Store) int {
 	return 1
 }
 
+const liveCronPollInterval = 15 * time.Second
+
+// liveCronGate gives River a short, fixed wake-up while deciding from the current cron whether
+// that wake-up represents a real scheduled tick. River otherwise computes a cron's next time
+// once and sleeps until it, so changing a daily schedule to every minute would still wait until
+// the old daily target. The gate keeps settings hot without rebuilding leader-only River state.
+type liveCronGate struct {
+	scheduler *Scheduler
+	job       Job
+	mu        sync.Mutex
+	lastTick  time.Time
+}
+
+func (*liveCronGate) Next(current time.Time) time.Time { return current.Add(liveCronPollInterval) }
+
+func (g *liveCronGate) due(now time.Time) bool {
+	parsed, err := cronParser.Parse(g.scheduler.effectiveCron(g.job))
+	if err != nil {
+		g.scheduler.log.Error("scheduler: live cron parse", "job", g.job.Name, "err", err)
+		return false
+	}
+	// Two poll widths tolerate an enqueuer waking slightly late. lastTick prevents the overlap
+	// from inserting the same cron occurrence twice even when the preceding job finished fast.
+	tick := parsed.Next(now.Add(-2 * liveCronPollInterval))
+	if tick.After(now) {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !tick.After(g.lastTick) {
+		return false
+	}
+	g.lastTick = tick
+	return true
+}
+
+// periodicInsertOpts coalesces scheduled ticks for one named job while preserving explicit
+// Run-now requests. River's periodic constructor uses these uniqueness options; TriggerRiver
+// deliberately does not. Completed/discarded rows are excluded, so the next real tick is free
+// to insert as soon as the previous run is finished.
+func periodicInsertOpts(j Job) *river.InsertOpts {
+	return &river.InsertOpts{
+		Queue: queueFor(j),
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
 // periodicJobs turns the registry into River periodic jobs, one per enabled job.
 //
 // A DISABLED job gets no periodic entry at all: it stays listed on the Tasks page carrying its
@@ -286,7 +345,7 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 		if j.Disabled() {
 			continue
 		}
-		sched, err := cronParser.Parse(s.effectiveCron(j))
+		_, err := cronParser.Parse(s.effectiveCron(j))
 		if err != nil {
 			// effectiveCron already falls back to the code default, so reaching here means the
 			// DEFAULT is invalid — a programming error worth failing the boot for, not a bad
@@ -294,15 +353,16 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 			return nil, fmt.Errorf("scheduler: job %q has an invalid default cron %q: %w", j.Name, j.DefaultCron, err)
 		}
 		name := name // captured by the constructor below
-		// ⚠ Resolved HERE, not inside the closure: the constructor is called on every tick, and
-		// `j` is the loop variable.
-		queue := queueFor(j)
+		gate := &liveCronGate{scheduler: s, job: j}
 		out = append(out, river.NewPeriodicJob(
-			sched,
+			gate,
 			// ⚠ Routed onto the job's own queue, so a media job cannot occupy the slot the cheap
 			// sweeps share. Derived from the Job, never hand-set — see `queueFor`.
 			func() (river.JobArgs, *river.InsertOpts) {
-				return jobArgs{Name: name}, &river.InsertOpts{Queue: queue}
+				if !gate.due(s.now()) {
+					return nil, nil
+				}
+				return jobArgs{Name: name}, periodicInsertOpts(j)
 			},
 			// ⚠ RunOnStart is deliberately OFF. It fires on every leadership election, so a
 			// restart loop would re-run every job each time — and these include a full library
@@ -337,6 +397,6 @@ func (s *Scheduler) TriggerRiver(ctx context.Context, name string) error {
 	//
 	// An unregistered name resolves to the zero Job and therefore `default`; it has no worker
 	// either way, so the queue it lands on is immaterial.
-	_, err := s.river.Insert(ctx, jobArgs{Name: name}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
+	_, err := s.river.Insert(ctx, jobArgs{Name: name, Manual: true}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
 	return err
 }
