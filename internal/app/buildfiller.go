@@ -248,7 +248,8 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		//
 		// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
 		// That is the honest state for an install that selected `hosted` without configuring
-		// a key: inert, not broken, and not silently deleting things.
+		// a service URL: inert, not broken, and not silently deleting things. A key is not a
+		// universal prerequisite because a Custom OpenAI-compatible endpoint may be keyless.
 		// ⚠ **CLOSURES, not resolved values.** The first cut called `set.str(...)` here and
 		// baked the URL, model and key into a client at boot — so changing `llm.model` in
 		// Settings did nothing, the detector kept calling whatever was configured at startup,
@@ -259,13 +260,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		// Everything else in this feature reads live; the one setting that decides whether the
 		// backend can work at all must too.
 		langDetect = filler.NewHostedLanguage(
-			func() filler.AudioAsker {
-				url := set.str("llm.url")
-				if url == "" {
-					return nil // not configured ⇒ the gate keeps every clip
-				}
-				return audioAskerAdapter{llm.NewOpenAI(url, set.str("llm.model"), set.str("llm.api_key"))}
-			},
+			func() filler.AudioAsker { return hostedLanguageAsker(set) },
 			func() string { return set.str("llm.model") },
 			set.str("playout.ffmpeg_path"), "")
 	} else {
@@ -418,6 +413,19 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
 		"autosplit", set.boolv("filler.autosplit.enabled"))
 	return fillerPipeline
+}
+
+// hostedLanguageAsker resolves the canonical active selection on every call. Hosted credentials
+// are stored per provider (llm.api_key.openrouter, llm.api_key.custom, …), so reading the legacy
+// base key here made the main picker work while the filler language request was sent without the
+// selected provider's key. Custom OpenAI-compatible endpoints may legitimately need no key; URL,
+// not credential presence, is therefore the availability boundary.
+func hostedLanguageAsker(set resolved) filler.AudioAsker {
+	sel := resolveSelection(set)
+	if sel.URL == "" {
+		return nil // not configured ⇒ the gate keeps every clip
+	}
+	return audioAskerAdapter{llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)}
 }
 
 // buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a

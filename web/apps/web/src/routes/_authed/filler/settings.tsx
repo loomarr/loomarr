@@ -1,12 +1,44 @@
+import type { SettingEntry } from "@loomarr/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { NavTabs } from "@/components/ui";
 import { SettingsEditsProvider, SettingsPage, SettingsSaveBarHost, useSettingsEntries } from "@/settings";
 
-const FillerOperations = () => (
-  <SettingsPage
+const settingValue = (entries: SettingEntry[], key: string): string =>
+  entries.find((entry) => entry.key === key)?.value ?? "";
+
+// The language stage already skips with these same configuration facts. Mirror them at the
+// decision point so `en` cannot look active while every clip is actually passing unchecked.
+const languageUnavailableReason = (entries: SettingEntry[]): string | undefined => {
+  const provider = settingValue(entries, "filler.language_provider") || "whisper";
+  if (provider === "hosted") {
+    if (settingValue(entries, "llm.url") === "") {
+      return "Language filtering is off because the hosted AI service address is not configured. Set it under Settings → AI.";
+    }
+    if (settingValue(entries, "llm.model") === "") {
+      return "Language filtering is off because the hosted language model is not configured. Set it under Settings → AI.";
+    }
+  } else {
+    if (settingValue(entries, "ingest.whisper_path") === "") {
+      return "Language filtering is off because the local language engine is not configured. Set the whisper executable under Processing tools.";
+    }
+    if (settingValue(entries, "filler.language_model") === "") {
+      return "Language filtering is off because no multilingual detection model is configured. Add one under Settings → AI.";
+    }
+  }
+  if (settingValue(entries, "playout.ffmpeg_path") === "") {
+    return "Language filtering is off because audio extraction is not configured. Set the ffmpeg executable under System → Playback.";
+  }
+  return undefined;
+};
+
+const FillerOperations = () => {
+  const entries = useSettingsEntries();
+  const languageReason = languageUnavailableReason(entries);
+  return (
+    <SettingsPage
     title="Filler settings"
     description="Where clips arrive, how breaks are assembled, and the limits that keep background processing bounded. Per-channel frequency and clip matching live on each channel's Filler page."
-    entries={useSettingsEntries()}
+    entries={entries}
     blocks={[
       {
         group: "filler",
@@ -50,6 +82,7 @@ const FillerOperations = () => (
       {
         group: "filler",
         title: "Clip eligibility and sound",
+        disabledReasons: languageReason ? { "filler.language": languageReason } : undefined,
         keys: [
           "filler.cooldown_seconds",
           "filler.min_quality",
@@ -88,8 +121,9 @@ const FillerOperations = () => (
         ],
       },
     ]}
-  />
-);
+    />
+  );
+};
 
 const FillerSettingsScreen = () => (
   <SettingsEditsProvider>

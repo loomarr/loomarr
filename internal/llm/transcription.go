@@ -100,8 +100,8 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 		return nil, fmt.Errorf("audio transcription: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 	}
 	var out transcriptionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode transcription response: %w", err)
+	if err := decodeOpenAIJSON(resp, &out, "transcription response"); err != nil {
+		return nil, err
 	}
 	if out.Error != nil {
 		return nil, fmt.Errorf("audio transcription: %s", out.Error.Message)
