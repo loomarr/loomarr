@@ -510,6 +510,13 @@ State accumulates; the daily **housekeeping** task enforces retention so a year-
 - **Activity:** feed rows purged after `activity.retention` (default 30d) by the `housekeeping` job (§18.1, V32).
 - **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `housekeeping` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
 - **Proposals:** `denied` purged after `PROPOSALS_RETENTION` (default 90d). ⚠ **`approved` and `submitted` are kept indefinitely**, for different reasons: an approved proposal is the audit trail behind `approved_by` (the record of a decision that spent real resources), and a `submitted` one is a member still waiting for an answer — ageing it out would silently discard a request rather than decline it.
+  - **A terminal decision is a compare-and-swap from `submitted`.** Approval writes the final
+    audited proposal and every newly tracked `available`/`wanted` title in one database
+    transaction; denial uses the same expected-state guard. A concurrent approve, deny, or
+    retry therefore has exactly one winner. A failed approval leaves both the proposal and the
+    title catalog unchanged — there is no valid state in which acquisitions exist because of a
+    proposal that still says `submitted`, and a denial can never overwrite an approval that
+    already spent resources.
   - ⚠ **Purge order is proposals, then jobs.** `proposals.job_id` has no foreign key, so the constraint is ours to keep: removing a job first would leave a proposal pointing at nothing. Verified that no read path joins the two (`job_id` is diagnostic provenance; the proposal endpoint does not resolve it), so an orphan is cosmetic rather than broken — but a purge that creates one on every run is a purge that makes the data harder to reason about for no gain.
   - These two keys were declared before the purge existed; `housekeeping` is now their single consumer and operator control.
 - Filler catalog sync (§10) already removes clips that vanished from the media server.

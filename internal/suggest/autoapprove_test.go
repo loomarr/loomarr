@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ type quotaStore struct {
 	users     map[string]store.User
 	titles    map[provision.Key]provision.Record
 	proposals map[string]store.Proposal
+	titleErr  error
 }
 
 func newQuotaStore() *quotaStore {
@@ -37,6 +39,9 @@ func (q *quotaStore) GetUser(_ context.Context, id string) (store.User, error) {
 }
 
 func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.Record, error) {
+	if q.titleErr != nil {
+		return provision.Record{}, q.titleErr
+	}
 	r, ok := q.titles[key]
 	if !ok {
 		return provision.Record{}, store.ErrNotFound
@@ -44,14 +49,26 @@ func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.R
 	return r, nil
 }
 
-func (q *quotaStore) UpsertTitle(_ context.Context, rec provision.Record) error {
-	q.titles[rec.Key] = rec
-	return nil
-}
-
-func (q *quotaStore) UpdateProposal(_ context.Context, p store.Proposal) error {
-	q.proposals[p.ID] = p
-	return nil
+func (q *quotaStore) CommitProposalApproval(_ context.Context, commit store.ProposalApproval) (int, error) {
+	p, ok := q.proposals[commit.Proposal.ID]
+	if !ok {
+		return 0, store.ErrNotFound
+	}
+	if p.Status != "submitted" {
+		return 0, store.ErrProposalNotSubmitted
+	}
+	q.proposals[p.ID] = commit.Proposal
+	enqueued := 0
+	for _, rec := range commit.Titles {
+		if _, exists := q.titles[rec.Key]; exists {
+			continue
+		}
+		q.titles[rec.Key] = rec
+		if rec.State == provision.Wanted {
+			enqueued++
+		}
+	}
+	return enqueued, nil
 }
 
 func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([]store.Proposal, error) {
@@ -262,6 +279,37 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 		p := proposalWith("p1", "", "submitted", 101)
 		if d, _ := autoApprover(st, 99).Consider(ctx, p); d.Approved {
 			t.Error("auto-approved a proposal with no requester")
+		}
+	})
+
+	t.Run("quota title read fails", func(t *testing.T) {
+		st := newQuotaStore()
+		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.proposals["old"] = proposalWith("old", "grace", "approved", 201)
+		p := proposalWith("p1", "grace", "submitted", 101)
+		st.proposals[p.ID] = p
+		st.titleErr = errors.New("database unavailable")
+		d, err := autoApprover(st, 99).Consider(ctx, p)
+		if err == nil || d.Approved {
+			t.Fatalf("quota read failure = (%+v, %v), want closed with error", d, err)
+		}
+		if st.proposals[p.ID].Status != "submitted" {
+			t.Errorf("proposal status = %q, want submitted", st.proposals[p.ID].Status)
+		}
+	})
+
+	t.Run("approved audit is malformed", func(t *testing.T) {
+		st := newQuotaStore()
+		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.proposals["old"] = store.Proposal{ID: "old", CreatedBy: "grace", Status: "approved", ProposalJSON: `{`}
+		p := proposalWith("p1", "grace", "submitted", 101)
+		st.proposals[p.ID] = p
+		d, err := autoApprover(st, 99).Consider(ctx, p)
+		if err == nil || d.Approved {
+			t.Fatalf("malformed approved audit = (%+v, %v), want closed with error", d, err)
+		}
+		if st.proposals[p.ID].Status != "submitted" {
+			t.Errorf("proposal status = %q, want submitted", st.proposals[p.ID].Status)
 		}
 	})
 }

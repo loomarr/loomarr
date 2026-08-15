@@ -212,6 +212,51 @@ func TestDeny_RequiresAdmin(t *testing.T) {
 	}
 }
 
+func TestDeny_AlreadyApproved409AndPreservesAudit(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	approved := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
+	if approved.StatusCode != http.StatusOK {
+		t.Fatalf("approve -> %d", approved.StatusCode)
+	}
+	before, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"too late"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("deny approved proposal -> %d, want 409", resp.StatusCode)
+	}
+	after, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != "approved" || after.ApprovedBy != before.ApprovedBy || after.DenyReason != before.DenyReason {
+		t.Errorf("denial overwrote approval: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestDeny_StampsDecisionUpdateTime(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	before, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"not a fit"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("deny -> %d", resp.StatusCode)
+	}
+	after, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != "denied" || after.DenyReason != "not a fit" || !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Errorf("denied proposal = %+v; before updatedAt=%v", after, before.UpdatedAt)
+	}
+}
+
 func TestListProposals_ApprovalQueue(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
