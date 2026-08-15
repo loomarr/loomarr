@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/testkit"
 )
@@ -17,13 +18,18 @@ func TestCertifyReportsARealStaticLadder(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	limits := DefaultCertificationLimits()
+	// make check exercises the intentionally unoptimized debug worker while Go packages run in
+	// parallel. This test owns report correctness; the isolated make image-cert release-profile
+	// gate owns the design's 10-second static ceiling.
+	limits.StaticMaxDuration = time.Minute
 	report, err := Certify(context.Background(), CertificationOptions{
 		CorpusDir: corpus,
 		Renderer:  testkit.RustImageRenderer(t),
-		Limits:    DefaultCertificationLimits(),
+		Limits:    limits,
 	})
 	if err != nil {
-		t.Fatalf("Certify: %v", err)
+		t.Fatalf("Certify: %v; report = %+v", err, report)
 	}
 	if !report.Passed || report.Summary.Passed != 1 || report.Summary.Failed != 0 {
 		t.Fatalf("report summary = %+v, want one passed case", report.Summary)
