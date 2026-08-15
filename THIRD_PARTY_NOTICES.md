@@ -29,6 +29,16 @@ The Apache-2.0 components (`prometheus/client_golang` and its transitive
 `prometheus/*`) carry a NOTICE requirement; their upstream NOTICE files are
 reproduced in the release SBOM.
 
+## Rust image worker (compiled into the required worker binary)
+
+The exact resolved inventory is [`Cargo.lock`](Cargo.lock) and the release SBOM. Direct crates are
+permissively licensed: `serde`, `serde_json`, `sha2`, `base64`, `image`, `fast_image_resize`,
+`webp`, and `webp-animation` are MIT and/or Apache-2.0; `thumbhash` is MIT. The AVIF stack
+(`ravif`, `rav1e`, `avif-serialize`) is BSD-2-Clause/BSD-3-Clause. The two WebP wrappers compile
+upstream libwebp into the worker; those bindings and libwebp are MIT/BSD-3-Clause. These terms are
+compatible with Loomarr's MIT redistribution, and the complete license texts remain represented in
+the machine-readable SBOM.
+
 ## Vendored binaries — the published image
 
 **Revised (design §9.1/§16): there is now ONE image.** Loomarr previously published a

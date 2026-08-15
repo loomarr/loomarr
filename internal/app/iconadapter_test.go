@@ -28,7 +28,7 @@ func tmdbPoster(path string) string { return "https://image.tmdb.org/t/p/origina
 
 // iconPosterURL is the image-service URL a warm suggestion carries.
 func iconPosterURL(hash string) string {
-	return iconTestBase + "/v1/images/" + hash + "/w" + strconv.Itoa(iconLogoWidth) + ".jpg"
+	return iconTestBase + "/v1/images/" + hash + "/w" + strconv.Itoa(iconLogoWidth) + ".jpg?r=loomarr-rendition-v1"
 }
 
 // newIconAdapter wires an iconAdapter over a real image service, pre-seeding `warm` source URLs as
@@ -42,7 +42,7 @@ func iconPosterURL(hash string) string {
 func newIconAdapter(t *testing.T, st store.Store, client *tmdb.Client, warm ...string) (iconAdapter, map[string]string) {
 	t.Helper()
 	ims := newMemImageStore()
-	svc := newTestImageService(t.TempDir(), iconTestBase, ims)
+	svc := newTestImageService(t, t.TempDir(), iconTestBase, ims)
 
 	const hexDigits = "abcdef0123456789"
 	hashes := make(map[string]string, len(warm))

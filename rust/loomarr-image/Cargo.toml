@@ -1,0 +1,20 @@
+[package]
+name = "loomarr-image"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+fast_image_resize.workspace = true
+image.workspace = true
+sha2.workspace = true
+thumbhash.workspace = true
+webp.workspace = true
+webp-animation.workspace = true
+
+[dev-dependencies]
+png.workspace = true

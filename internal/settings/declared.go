@@ -1150,10 +1150,9 @@ func declared() []Setting {
 		},
 		{
 			// At :20, clear of the filler media cluster (:15/:30/:45/:50) and of the two 04:xx
-			// backup/retention jobs. AVIF encoding forks a multithreaded ffmpeg per image, so this
-			// is the one image job that genuinely contends for the box — the reason §22 makes AVIF
-			// a job at all is concurrency, not latency (a cold grid of 50 posters would otherwise
-			// fork 50 encoders at once).
+			// backup/retention jobs. AVIF encoding is CPU-intensive, so this is the image job that
+			// genuinely contends for the box — §22 keeps it off request latency so a cold grid of
+			// 50 posters cannot launch 50 encodes at once.
 			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 20 * * * *",
 			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",

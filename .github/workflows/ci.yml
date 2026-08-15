@@ -84,7 +84,7 @@ jobs:
           # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
           # the Makefile and this workflow — already trigger the job, but a hand-edit to the
           # generated file itself would otherwise sail past the only check that reads it.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -127,7 +127,7 @@ jobs:
           # spend that on every workflow tweak. The rule for the others ("they define how
           # every job runs, so prove them against everything") does not apply to a job
           # whose only input is the Dockerfile itself.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
@@ -180,6 +180,8 @@ jobs:
           # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
           # very cache the rolling key was added to keep fresh.
           cache: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
       # ONE cache for the whole Go toolchain: module downloads, build objects, and
       # golangci's analysis cache. `make lint` runs golangci-lint via `go run …@v2.12.2`,
       # whose dependencies are NOT in go.sum, so nothing keyed on go.sum alone ever covers
@@ -220,15 +222,18 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
           # a shared key would have them overwrite each other's build objects every run — each
           # shard restoring a cache built for the other's packages and recompiling its own.
           # It also makes the save well-defined: without it both shards race to write one key
           # and whichever lost simply skipped, so half the objects were never cached at all.
-          key: go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
+            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-
+            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
       # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
       # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
       # silence guard, artwork rendering and the clip scan's probe. Measured on this runner

@@ -64,13 +64,13 @@ transcode, or if you already run it. You choose in the wizard, and can override 
 
 ## Develop
 
-Go 1.26+, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
+Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
 test suites.
 
 ```bash
 make doctor         # toolchain and local-state diagnostics
-make bootstrap      # frontend dependencies + codegen
-make dev-be         # isolated backend with live reload
+make bootstrap      # Rust worker + frontend dependencies + codegen
+make dev-be         # isolated Go/Rust backend with live reload
 make dev-fe         # isolated frontend pointed at that backend
 ```
 

@@ -152,10 +152,14 @@ type Image struct {
 	Height int
 	Bytes  int64
 
-	// Animated marks an image whose original carries motion (the clip hover loop). Such images
-	// have exactly one rendition and skip the ladder — resizing an animation per breakpoint
-	// costs far more than it saves, and the hover asset is already sized for its card.
+	// Animated marks an image whose original carries motion (the clip hover loop). The required
+	// worker preserves its timeline while producing the bounded responsive WebP ladder.
 	Animated bool
+	// FrameCount, DurationMS and LoopCount preserve the source timeline semantics reported by the
+	// worker. LoopCount is nil for a still, 0 for infinite animation, and positive for finite play.
+	FrameCount int
+	DurationMS int64
+	LoopCount  *int
 
 	// Placeholder is a ThumbHash, base64-encoded (~25 bytes raw). Rendered as an LQIP while the
 	// real image loads. ThumbHash over BlurHash because it carries ALPHA — channel logos are
@@ -204,10 +208,12 @@ type Ref struct {
 // Derivative is one encoded rendition on disk. Regenerable by construction: nothing here is
 // worth backing up, and deleting one costs a re-encode, never data.
 type Derivative struct {
-	ImageHash string
-	Format    Format
-	Width     int
-	Bytes     int64
+	ImageHash  string
+	Recipe     string
+	Format     Format
+	Width      int
+	Bytes      int64
+	OutputHash string
 	// Path is where the file actually is — `images.dir` included, as blobStore.DerivativePath
 	// builds it.
 	//
@@ -216,6 +222,7 @@ type Derivative struct {
 	// to be re-joined with a directory the collector does not hold would delete nothing while
 	// reporting success, and the budget would never come down.
 	Path      string
+	Animated  bool
 	CreatedAt time.Time
 }
 
