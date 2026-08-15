@@ -4,6 +4,7 @@ import {
   getGetFillerSplitMockHandler,
   getListFillerMockHandler,
   getMeMockHandler,
+  getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -73,6 +74,7 @@ const stubSplit = (me: MeBody = ADMIN) => {
   };
   server.use(
     getMeMockHandler({ ...me }),
+    getSettingsListMockHandler({ settings: [], features: {} }),
     getGetFillerSplitMockHandler(() => {
       fetchedProposal = true;
       return PROPOSAL;

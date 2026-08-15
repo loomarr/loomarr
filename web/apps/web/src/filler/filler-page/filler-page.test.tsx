@@ -147,6 +147,14 @@ describe("FillerPage shell", () => {
     expect(sourcesTab).toHaveTextContent(/^Sources$/);
   });
 
+  it("treats section links as navigation without an orphan tabpanel role", async () => {
+    stubFillerPage();
+    renderPage("catalog");
+
+    await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+  });
+
   // ⚠ The pool strip is hidden on Sources (the mock's `showPool: fillerTab !== 'sources'`): it
   // answers "can my catalog fill a break", which is context for reading CLIPS. Above the source
   // list it invites the reading that a source is at fault for weak coverage.
@@ -164,6 +172,57 @@ describe("FillerPage shell", () => {
     // Wait for the tab to be up, so this cannot pass merely by asserting before the render.
     await screen.findByRole("link", { name: /sources/i });
     expect(screen.queryByLabelText("Catalog health")).not.toBeInTheDocument();
+  });
+
+  it("moves and selects the clip view with radio-group arrow keys", async () => {
+    stubFillerPage();
+    renderPage("catalog");
+
+    const grid = await screen.findByRole("radio", { name: "Grid" });
+    const list = screen.getByRole("radio", { name: "List" });
+    grid.focus();
+    await userEvent.keyboard("{ArrowRight}");
+
+    await waitFor(() => expect(list).toHaveAttribute("aria-checked", "true"));
+    expect(list).toHaveFocus();
+    expect(list).toHaveAttribute("tabindex", "0");
+    expect(grid).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("renders compilations as expandable containers and opens their airable segments", async () => {
+    stubFillerPage();
+    const requests: URL[] = [];
+    const composite = { ...clip("parent-hash", "Saturday Morning Reel"), isComposite: true };
+    const children = [
+      { ...clip("child-a", "Cereal ad"), parentHash: composite.hash },
+      { ...clip("child-b", "Toy ad"), parentHash: composite.hash },
+    ];
+    server.use(
+      getListFillerMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        if (url.searchParams.has("parentHash")) return { clips: children, total: children.length };
+        if (url.searchParams.has("hashes")) return { clips: [composite], total: 1 };
+        return { clips: [composite], total: 1 };
+      }),
+    );
+
+    renderPage("catalog");
+    await waitFor(() => {
+      const top = requests.find(
+        (url) => !url.searchParams.has("parentHash") && !url.searchParams.has("hashes"),
+      );
+      expect(top?.searchParams.get("includeComposites")).toBe("true");
+      expect(top?.searchParams.get("topLevel")).toBe("true");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /show segments from saturday morning reel/i }));
+    expect(await screen.findByText("Cereal ad")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage 2 segments" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage 2 segments" }));
+    expect(await screen.findByText("Airable clips filed from this compilation.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /back to top-level catalog/i })).toBeInTheDocument();
   });
 });
 

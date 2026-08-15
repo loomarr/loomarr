@@ -1,4 +1,4 @@
-import { fillerApi, isOk, toProblem, unwrap } from "@loomarr/api";
+import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -6,6 +6,13 @@ import { useAuth } from "@/auth";
 import { EmptyState, ErrorState, SplitReviewEditor } from "@/components/loomarr";
 import { useDocumentTitle } from "@/lib";
 import type { SplitReviewPageProps } from "./split-review-page.type";
+
+const durationSettingMs = (value: string | undefined): number | undefined => {
+  if (!value) return undefined;
+  const match = /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$/.exec(value);
+  if (!match || (!match[1] && !match[2] && !match[3])) return undefined;
+  return (Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) * 1000;
+};
 
 // SplitReviewPage — the /filler/splits/$proposalId screen (§10 V34). Detection persisted
 // a proposal; this page reads it back (the GET is the truth — the SSE frame was only the
@@ -20,6 +27,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
   // Admin-gated as a courtesy — every split route 403s for a member server-side anyway
   // (§11, §19); the gate turns a page of failed requests into an explanation.
   const proposal = fillerApi.useGetFillerSplit(proposalId, { query: { enabled: isAdmin } });
+  const settings = settingsApi.useSettingsList({ query: { enabled: isAdmin, retry: false } });
   const persistedProposal = unwrap(proposal.data);
   // Resolve the composite through the existing exact-hash catalog read. Composites are deliberately
   // absent from the airable catalog by default, so omitting includeComposites would turn a valid
@@ -63,6 +71,12 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
   const p = persistedProposal;
   if (!p) return <p className="text-muted-foreground text-sm">Loading the proposal…</p>;
   const parentName = unwrap(parent.data, (body) => body.clips[0]?.name) || "this compilation";
+  const minClipDurationMs = durationSettingMs(
+    unwrap(
+      settings.data,
+      (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
+    ),
+  );
 
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
@@ -78,6 +92,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       </div>
       <SplitReviewEditor
         proposal={p}
+        {...(minClipDurationMs !== undefined ? { minClipDurationMs } : {})}
         confirming={confirm.isPending}
         onConfirm={(segments) => confirm.mutate({ proposalId, data: { segments } })}
         onBack={() => void navigate({ to: "/filler" })}
