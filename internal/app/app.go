@@ -69,6 +69,13 @@ type Overrides struct {
 	// only main owns the generation loop. It must NOT block: the handler calls it while
 	// responding, and the drain it triggers cannot begin until that response is written.
 	Restart func()
+	// DatabaseMigration asks the process-owned generation loop to drain the current
+	// handler and perform a SQLite→Postgres migration after every old-generation
+	// writer has stopped. nil keeps the database service fail-closed in embedded tests.
+	DatabaseMigration func(string) error
+	// DatabaseMigrationError carries a failed attempt into the replacement SQLite
+	// generation, where the database status endpoint can explain why it stayed put.
+	DatabaseMigrationError string
 }
 
 // flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
@@ -1256,14 +1263,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobsSvc = jobsAdapter{s: sched}
 	}
 
-	// Database migration stepper (§18, V11). Wired only for a SQLite install: the
-	// service reports CanMigrate=false on Postgres, but there is no reason to hold the
-	// state machine at all there. backup.dir is read at call time so a hot-applied
-	// change takes effect without a restart.
+	// Database migration stepper (§18, V11). Keep the status service on Postgres so the
+	// browser polling across an atomic cutover can observe the new backend. Mutations
+	// fail closed there, while backup.dir remains hot-applied for SQLite.
 	var databaseSvc api.DatabaseService
-	if st != nil && store.DialectOf(st) == store.DialectSQLite {
-		databaseSvc = newDatabaseService(st, filepath.Dir(store.SQLitePath(st)),
-			func() string { return set.str("backup.dir") }, eventBus)
+	if st != nil {
+		dataDir := ""
+		if store.DialectOf(st) == store.DialectSQLite {
+			dataDir = filepath.Dir(store.SQLitePath(st))
+		}
+		databaseSvc = newDatabaseService(st, dataDir,
+			func() string { return set.str("backup.dir") }, eventBus).
+			WithMigrationRequest(ov.DatabaseMigration).
+			WithLastError(ov.DatabaseMigrationError)
 	}
 
 	// residentLLMVRAMFn — the TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is
@@ -1323,6 +1335,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Icons:         iconSvc,
 		Images:        imageService(imageSvc),
 		Events:        eventBus,
+		Shutdown:      rootCtx.Done(),
 		Filler:        fillerSvc,
 		Pods:          podPreview,
 		SystemLLM:     systemLLM,

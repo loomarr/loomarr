@@ -37,9 +37,9 @@ import (
 //   - Absent file = the current behaviour, exactly. This tier adds a lookup, never
 //     a requirement.
 
-// BootstrapFileName is the file's fixed name. It lives beside the SQLite database in
-// the data directory, so the documented `-v loomarr-data:/data` volume carries it and
-// a backup that captures /data captures the bootstrap answer too.
+// BootstrapFileName is the file's fixed name. New process-level cutovers write it in
+// the conventional /data directory so both SQLite and Postgres boots discover the same
+// authority; the reader still supports legacy files beside a relocated SQLite database.
 const BootstrapFileName = "bootstrap.json"
 
 // bootstrapFile is the on-disk shape. Deliberately a flat map of the SAME env-var
@@ -129,6 +129,23 @@ func WriteBootstrapFile(dir string, values map[string]string) error {
 		return fmt.Errorf("replace %s: %w", BootstrapFileName, err)
 	}
 	return nil
+}
+
+// UpdateBootstrapFile atomically merges a narrow set of bootstrap values into the
+// existing file. Database cutover must preserve unrelated boot choices such as listen
+// address and timezone; replacing the file with only DATABASE_URL silently resets them.
+func UpdateBootstrapFile(dir string, updates map[string]string) error {
+	values, err := LoadBootstrapFile(dir)
+	if err != nil {
+		return err
+	}
+	if values == nil {
+		values = map[string]string{}
+	}
+	for key, value := range updates {
+		values[key] = value
+	}
+	return WriteBootstrapFile(dir, values)
 }
 
 // ConventionalDataDir is the well-known data directory — the documented

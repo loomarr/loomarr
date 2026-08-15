@@ -13,15 +13,8 @@ const base: DatabaseStatus = {
   parity: "unknown",
 };
 
-const TABLES = [
-  { table: "channels", source: 12, copied: 12 },
-  { table: "clips", source: 9, copied: 9 },
-  { table: "titles", source: 1204, copied: 731 },
-  { table: "users", source: 4, copied: 4 },
-];
-
 // One story per state that changes what the operator can DO — which, for a stepper, is the
-// only useful axis. The stages that merely display copy (restart) are covered by the tests.
+// only useful axis.
 const meta = {
   title: "Settings/DatabaseMigration",
   component: DatabaseMigration,
@@ -36,7 +29,6 @@ const meta = {
     onPreflight: noop,
     onBackup: noop,
     onMigrate: noop,
-    onSwitchover: noop,
   },
   decorators: [widthFrame(760)],
 } satisfies Meta<typeof DatabaseMigration>;
@@ -68,33 +60,25 @@ const BackupRequired: Story = {
   args: { step: "backup" },
 };
 
-const Migrating: Story = {
+const Reconnecting: Story = {
   args: {
-    step: "migrate",
-    status: { ...base, phase: "migrating", tables: TABLES },
-  },
-};
-
-// Parity matched, so switchover is offered — and only now.
-const Verified: Story = {
-  args: {
-    step: "verify",
-    status: {
-      ...base,
-      phase: "verified",
-      parity: "match",
-      tables: TABLES.map((t) => ({ ...t, copied: t.source })),
-    },
+    step: "reconnect",
+    status: { ...base, phase: "migrating" },
   },
 };
 
 // The failure that matters most: what was NOT lost.
 const Failed: Story = {
   args: {
-    step: "verify",
-    status: { ...base, phase: "failed", parity: "mismatch", tables: TABLES },
+    step: null,
+    status: {
+      ...base,
+      phase: "failed",
+      error:
+        "Row counts did not match. Loomarr restarted on SQLite; clear the PostgreSQL target before retrying.",
+    },
     error:
-      "Copying stopped on titles: the target ran out of disk after 731 of 1,204 rows. Your SQLite database was only read from, so Loomarr is still running on it — nothing was lost.",
+      "Row counts did not match. Loomarr restarted on SQLite; clear the PostgreSQL target before retrying.",
   },
 };
 
@@ -109,4 +93,4 @@ const AlreadyPostgres: Story = {
 };
 
 export default meta;
-export { AlreadyPostgres, BackupRequired, EnvPinned, Failed, Idle, Migrating, PreflightFailed, Verified };
+export { AlreadyPostgres, BackupRequired, EnvPinned, Failed, Idle, PreflightFailed, Reconnecting };
