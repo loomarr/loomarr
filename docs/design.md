@@ -1048,10 +1048,14 @@ a private schedule. A tune resolves in this order:
    accepted Lineup, `AiringAt`, or guide.
 
 The rendered manifest derives its media sequence from the Airing start, segment cadence, and current
-offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset.
-Every init/segment URI is namespaced by the immutable publication key. Follow-up requests therefore
-stay bound to the publication that authored the manifest even when the Channel crosses a programme
-boundary; there is no mutable per-Channel “current directory” for prepared media.
+offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset. Its
+live edge is the segment containing that offset: the short window carries prior segments and the
+current segment, never future media. At an Airing boundary it carries the previous publication's
+tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`; this is the exact shape
+the V55 Chromium/Firefox spike validated. Every init/segment URI is namespaced by the immutable
+publication key. Follow-up requests therefore stay bound to the publication that authored the
+manifest even when the Channel crosses a programme boundary; there is no mutable per-Channel
+“current directory” for prepared media.
 
 Preparation is a separate control-plane module because it has a different caller and lifetime, not
 because it is a second playout. Its small interface accepts a source plus rendition contract and

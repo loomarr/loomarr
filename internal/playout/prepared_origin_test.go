@@ -68,7 +68,9 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	pub := publishHLS(t, lib, spec)
 	started := time.Unix(1_000, 0).UTC()
 	preparedOrigin := newPreparedOrigin(lib, fixedPreparedResolver{
-		window: PreparedWindow{Specification: spec, StartedAt: started, Offset: 5 * time.Second}, ok: true,
+		window: PreparedWindow{Current: PreparedAiring{
+			Specification: spec, StartedAt: started, Offset: 5 * time.Second,
+		}}, ok: true,
 	})
 
 	presentation, hit, err := preparedOrigin.Tune(t.Context(), TuneRequest{
@@ -79,14 +81,15 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	}
 	manifest := string(presentation.Manifest)
 	for _, want := range []string{
-		"#EXT-X-MEDIA-SEQUENCE:502", "#EXT-X-DISCONTINUITY-SEQUENCE:1000",
-		fmt.Sprintf(`#EXT-X-MAP:URI="%s/init.mp4"`, pub.Key), pub.Key + "/seg-2.m4s",
+		"#EXT-X-MEDIA-SEQUENCE:500", "#EXT-X-PROGRAM-DATE-TIME:1970-01-01T00:16:40Z",
+		fmt.Sprintf(`#EXT-X-MAP:URI="%s/init.mp4"`, pub.Key),
+		pub.Key + "/seg-0.m4s", pub.Key + "/seg-1.m4s", pub.Key + "/seg-2.m4s",
 	} {
 		if !strings.Contains(manifest, want) {
 			t.Errorf("manifest missing %q:\n%s", want, manifest)
 		}
 	}
-	for _, unwanted := range []string{pub.Key + "/seg-0.m4s", pub.Key + "/seg-1.m4s", "#EXT-X-ENDLIST"} {
+	for _, unwanted := range []string{pub.Key + "/seg-3.m4s", "#EXT-X-ENDLIST"} {
 		if strings.Contains(manifest, unwanted) {
 			t.Errorf("manifest contains %q:\n%s", unwanted, manifest)
 		}
@@ -117,7 +120,9 @@ func TestOriginPreparedHitBypassesLiveAndMissFallsBack(t *testing.T) {
 	}
 
 	hitOrigin := newOrigin(newPreparedOrigin(lib, fixedPreparedResolver{
-		window: PreparedWindow{Specification: spec, StartedAt: time.Unix(1_000, 0), Offset: 0}, ok: true,
+		window: PreparedWindow{Current: PreparedAiring{
+			Specification: spec, StartedAt: time.Unix(1_000, 0), Offset: 0,
+		}}, ok: true,
 	}), nil, hls)
 	got, err := hitOrigin.Tune(t.Context(), TuneRequest{ChannelID: "prepared", Plan: PlanBaseline, Delivery: DeliveryHLS})
 	if err != nil || string(got.Manifest) == "live" || hls.channel != "" {
@@ -140,9 +145,45 @@ func TestOriginPreparedHitBypassesLiveAndMissFallsBack(t *testing.T) {
 func TestPreparedManifestCannotReferenceOutsideItsPublication(t *testing.T) {
 	t.Parallel()
 	spec := preparedSpec("source-a")
-	window := PreparedWindow{Specification: spec, StartedAt: time.Unix(1_000, 0)}
+	window := PreparedAiring{Specification: spec, StartedAt: time.Unix(1_000, 0)}
 	manifest := []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\n../outside.m4s\n")
-	if _, err := renderPreparedManifest(manifest, strings.Repeat("a", 64), []string{"media.m3u8"}, window); err == nil {
+	if _, err := parsePreparedManifest(manifest, strings.Repeat("a", 64), []string{"media.m3u8"}, window); err == nil {
 		t.Fatal("renderPreparedManifest accepted an asset outside the publication")
+	}
+}
+
+func TestPreparedOriginCarriesThePreviousAiringAcrossADiscontinuity(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousSpec := preparedSpec("episode-a")
+	currentSpec := preparedSpec("episode-b")
+	previous := publishHLS(t, lib, previousSpec)
+	current := publishHLS(t, lib, currentSpec)
+	started := time.Unix(1_004, 0).UTC()
+	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+		Previous: []PreparedAiring{{Specification: previousSpec, StartedAt: started.Add(-8 * time.Second)}},
+		Current:  PreparedAiring{Specification: currentSpec, StartedAt: started, Offset: 500 * time.Millisecond},
+	}})
+
+	presentation, hit, err := origin.Tune(t.Context(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+	if err != nil || !hit {
+		t.Fatalf("Tune = (_, %v, %v), want prepared hit", hit, err)
+	}
+	manifest := string(presentation.Manifest)
+	wantOrder := []string{
+		previous.Key + "/seg-2.m4s", previous.Key + "/seg-3.m4s",
+		"#EXT-X-DISCONTINUITY", fmt.Sprintf(`#EXT-X-MAP:URI="%s/init.mp4"`, current.Key),
+		current.Key + "/seg-0.m4s",
+	}
+	position := 0
+	for _, want := range wantOrder {
+		next := strings.Index(manifest[position:], want)
+		if next < 0 {
+			t.Fatalf("manifest missing %q after byte %d:\n%s", want, position, manifest)
+		}
+		position += next + len(want)
 	}
 }
