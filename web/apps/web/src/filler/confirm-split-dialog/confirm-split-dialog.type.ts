@@ -1,4 +1,4 @@
-import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { ClipDTO } from "@loomarr/api";
 
 interface ConfirmSplitDialogProps {
   // The clip awaiting confirmation, or undefined when nothing is pending. ⚠ Nullable rather than

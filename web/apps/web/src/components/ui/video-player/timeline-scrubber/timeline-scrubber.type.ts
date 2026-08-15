@@ -1,4 +1,4 @@
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideAiring } from "@loomarr/api";
 
 interface TimelineScrubberProps {
   /** The schedule blocks to draw, in airtime order — programmes and the commercial breaks between. */

@@ -1,4 +1,4 @@
-import type { IncomingPipelineDTO } from "@loomarr/api/models/incomingPipelineDTO";
+import type { IncomingPipelineDTO } from "@loomarr/api";
 
 /** `strip` is the 8-pip summary for a collapsed row; `list` is the named, explained ladder. */
 type ClipPipelineVariant = "strip" | "list";

@@ -1,4 +1,4 @@
-import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { ClipDTO } from "@loomarr/api";
 
 // The clip data is the orval-generated ClipDTO (§12) — no hand-written mirror.
 interface ClipRowProps {

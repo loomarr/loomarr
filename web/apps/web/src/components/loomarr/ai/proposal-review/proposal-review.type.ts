@@ -1,5 +1,4 @@
-import type { Proposal } from "@loomarr/api/models/proposal";
-import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { Proposal, ProposalItem } from "@loomarr/api";
 
 // The proposal shape is the orval-generated `Proposal` (from the BE's typed
 // suggest.Proposal — 1:1, §12). Only the review UI's own status and prop interface

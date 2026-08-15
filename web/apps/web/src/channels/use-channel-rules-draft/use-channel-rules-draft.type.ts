@@ -1,5 +1,4 @@
-import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
-import type { PreviewProgrammingOutputBody } from "@loomarr/api/models/previewProgrammingOutputBody";
+import type { ChannelPolicy, PreviewProgrammingOutputBody } from "@loomarr/api";
 
 interface ChannelRulesDraft {
   // The policy being edited. Seeded from the channel's saved policy, resynced when THAT

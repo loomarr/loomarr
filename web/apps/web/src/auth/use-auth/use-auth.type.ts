@@ -1,4 +1,4 @@
-import type { MeBody } from "@loomarr/api/models/meBody";
+import type { MeBody } from "@loomarr/api";
 
 // The interpreted session identity every guard + role-gated surface reads (§11).
 interface AuthState {

@@ -1,4 +1,4 @@
-import type { ChannelFitDTO } from "@loomarr/api/models/channelFitDTO";
+import type { ChannelFitDTO } from "@loomarr/api";
 
 interface ChannelOverridePickerProps {
   /** The clip being placed — its name is what the picker is about. */

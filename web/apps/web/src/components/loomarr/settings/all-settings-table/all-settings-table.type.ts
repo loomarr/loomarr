@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import type { SettingEntry } from "@loomarr/api";
 
 interface AllSettingsTableProps {
   entries: SettingEntry[];

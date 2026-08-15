@@ -1,4 +1,4 @@
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideAiring } from "@loomarr/api";
 
 interface GuideDetailCardProps {
   // The block being inspected. Null renders nothing — the caller can mount this

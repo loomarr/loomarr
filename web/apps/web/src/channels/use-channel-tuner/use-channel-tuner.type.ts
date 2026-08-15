@@ -1,5 +1,4 @@
-import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
+import type { ChannelDTO, ChannelNowNext } from "@loomarr/api";
 import type { WarmedChannel } from "../channel-warmer";
 import type { TuneAttempt } from "../tuner-timing";
 

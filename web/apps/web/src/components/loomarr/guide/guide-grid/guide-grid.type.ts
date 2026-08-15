@@ -1,5 +1,4 @@
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
-import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
+import type { GuideAiring, GuideChannelTimeline } from "@loomarr/api";
 import type { ReactNode } from "react";
 
 interface GuideGridProps {

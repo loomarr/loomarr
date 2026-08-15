@@ -1,5 +1,4 @@
-import type { SettingEntry } from "@loomarr/api/models/settingEntry";
-import type { SettingResult } from "@loomarr/api/models/settingResult";
+import type { SettingEntry, SettingResult } from "@loomarr/api";
 
 interface SettingsFieldsProps {
   // One registry group's entries (config-design §5).

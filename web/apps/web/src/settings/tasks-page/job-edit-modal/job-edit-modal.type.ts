@@ -1,4 +1,4 @@
-import type { JobView } from "@loomarr/api/models/jobView";
+import type { JobView } from "@loomarr/api";
 
 interface JobEditModalProps {
   job: JobView;

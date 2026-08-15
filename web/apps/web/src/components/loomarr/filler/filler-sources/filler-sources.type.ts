@@ -1,4 +1,4 @@
-import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import type { FillerSourceDTO } from "@loomarr/api";
 import type { ReactNode } from "react";
 
 interface FillerSourcesProps {

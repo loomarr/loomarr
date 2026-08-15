@@ -1,4 +1,4 @@
-import type { EventHandlers } from "@loomarr/core/events";
+import type { EventHandlers } from "@loomarr/core";
 import type { ReactNode } from "react";
 
 // Subscribers get the same frames the app-wide stream already receives; unsubscribing

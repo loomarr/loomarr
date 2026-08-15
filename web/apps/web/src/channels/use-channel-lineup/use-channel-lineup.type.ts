@@ -1,4 +1,4 @@
-import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import type { LineupEntryDTO } from "@loomarr/api";
 
 interface ChannelLineup {
   // The live lineup as the hook believes it to be — `current` until a commit lands,

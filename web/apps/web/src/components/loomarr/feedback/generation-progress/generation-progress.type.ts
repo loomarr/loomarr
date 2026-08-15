@@ -1,4 +1,4 @@
-import type { SuggestionPhase } from "@loomarr/core/events";
+import type { SuggestionPhase } from "@loomarr/core";
 
 interface GenerationProgressProps {
   phase: SuggestionPhase;

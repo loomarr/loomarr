@@ -1,4 +1,4 @@
-import type { SetupCheck } from "@loomarr/api/models/setupCheck";
+import type { SetupCheck } from "@loomarr/api";
 
 interface TunarrLibraryStepProps {
   // The `tunarr_library` check from setup/status — its own check precisely because a

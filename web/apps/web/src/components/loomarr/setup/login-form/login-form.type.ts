@@ -1,4 +1,4 @@
-import type { LoginInputBody } from "@loomarr/api/models/loginInputBody";
+import type { LoginInputBody } from "@loomarr/api";
 
 interface LoginFormProps {
   // The generated request DTO (§12, 1:1 contract) — never a hand-mirrored shape.

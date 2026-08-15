@@ -1,4 +1,4 @@
-import type { ImageDTO } from "@loomarr/api/models/imageDTO";
+import type { ImageDTO } from "@loomarr/api";
 
 interface ChannelIconFieldProps {
   // Which channel this is for — drives the icon-suggestions fetch and the upload URL.

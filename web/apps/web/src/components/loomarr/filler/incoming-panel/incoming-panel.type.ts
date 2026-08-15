@@ -1,6 +1,4 @@
-import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
-import type { IncomingReelDTO } from "@loomarr/api/models/incomingReelDTO";
-import type { IncomingRejectDTO } from "@loomarr/api/models/incomingRejectDTO";
+import type { IncomingClipDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
 
 interface IncomingPanelProps {
   /**

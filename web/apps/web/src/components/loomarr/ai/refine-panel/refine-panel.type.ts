@@ -1,4 +1,4 @@
-import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { ChannelPolicy } from "@loomarr/api";
 import type { CurrentLineupItem } from "../refine-review";
 
 interface RefinePanelProps {

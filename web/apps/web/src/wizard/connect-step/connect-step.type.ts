@@ -1,4 +1,4 @@
-import type { SetupCheck } from "@loomarr/api/models/setupCheck";
+import type { SetupCheck } from "@loomarr/api";
 import type { ReactNode } from "react";
 
 interface ConnectStepProps {

@@ -1,4 +1,4 @@
-import type { SessionBody } from "@loomarr/api/models/sessionBody";
+import type { SessionBody } from "@loomarr/api";
 
 interface SessionListProps {
   userName: string;

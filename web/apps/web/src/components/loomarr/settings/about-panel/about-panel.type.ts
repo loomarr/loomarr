@@ -1,4 +1,4 @@
-import type { SystemVersionOutputBody } from "@loomarr/api/models/systemVersionOutputBody";
+import type { SystemVersionOutputBody } from "@loomarr/api";
 
 interface AboutPanelProps {
   /**

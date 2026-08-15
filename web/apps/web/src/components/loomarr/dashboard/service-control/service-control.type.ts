@@ -1,4 +1,4 @@
-import type { RestartCost } from "@loomarr/api/models/restartCost";
+import type { RestartCost } from "@loomarr/api";
 
 interface ServiceControlProps {
   /** What a restart would cost right now, from GET /v1/system/restart. */

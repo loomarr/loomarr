@@ -1,4 +1,4 @@
-import type { Intent } from "@loomarr/api/models/intent";
+import type { Intent } from "@loomarr/api";
 
 interface IntentFormProps {
   // Prefills the description — the wizard's guided first channel hands off a template

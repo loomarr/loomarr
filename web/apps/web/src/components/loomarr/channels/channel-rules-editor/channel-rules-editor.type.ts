@@ -1,5 +1,4 @@
-import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
-import type { Vocabulary } from "@loomarr/api/models/vocabulary";
+import type { ChannelPolicy, Vocabulary } from "@loomarr/api";
 
 interface ChannelRulesEditorProps {
   policy: ChannelPolicy;

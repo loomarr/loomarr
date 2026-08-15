@@ -1,5 +1,4 @@
-import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
-import type { DatabaseStatus } from "@loomarr/api/models/databaseStatus";
+import type { DatabaseCheck, DatabaseStatus } from "@loomarr/api";
 
 // The browser owns only the decisions before the process-level operation and the
 // reconnect wait after it. Copy, verification, switchover and restart are one atomic

@@ -1,4 +1,4 @@
-import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
+import type { DiscoverModelView } from "@loomarr/api";
 
 interface ModelDiscoverProps {
   // The compatible downloadable models, sized + fit-ranked for THIS machine by the BE
