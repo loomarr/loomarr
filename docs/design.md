@@ -192,10 +192,8 @@ flowchart TD
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`media`** · 2 importers
+- **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
-- **`prepared`** · 1 importer
-  Owns immutable, reusable playout publications.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`settings`** · 1 importer
@@ -209,6 +207,8 @@ flowchart TD
 
 - **`metrics`** · 6 importers · → `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §18).
+- **`prepared`** · 2 importers · → `media`
+  Owns immutable, reusable playout publications.
 - **`schedule`** · 12 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -290,7 +290,7 @@ flowchart TD
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1087,6 +1087,30 @@ if it does not, that one live child takes the existing software fallback rather 
 maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
 does not guess and it does not consume the only live slot. This priority contract is shared code;
 adding a second semaphore around ffmpeg is forbidden.
+
+Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
+is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
+once a minute by default with the long media timeout and looks six hours ahead across Channels whose
+effective backend is internal. It orders unique library items by earliest need, so all currently
+airing items precede later programmes and two Channels scheduling one movie still submit one source
+rendition. A pass exposes at most sixteen new misses to path/audio resolution before it starts media
+work; this bounds a cold 100-Channel install instead of issuing hundreds of media-server calls in
+one burst. Completed warmed publications are skipped on the next pass, so the frontier advances.
+
+Only readable local files are eligible for preparation. An item that resolves only to the media
+server's HTTP stream remains a live fallback; a reusable immutable publication must not pretend a
+remote response is a stable source file. The planner owns path mapping, preferred-audio probing,
+fingerprinting, and ffmpeg. It warms an in-memory `(library item, active source policy) -> Request`
+index as it does so. Tune reads that index and `Preparer.Lookup` only; an absent entry, changed tier,
+audio preference, path map, file stat, or publication is an immediate prepared miss. Tune never
+contacts the media server, probes audio, hashes bytes, or waits for the scheduler.
+
+The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
+upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
+arguments from output arguments because ffmpeg hardware-device setup placed after `-i` silently
+applies to nothing. Software-only or explicitly-software installs do not run background preparation,
+because spare CPU capacity is not measured and guessing would move the cold start from the viewer to
+every other subsystem. Both cases keep the live fallback.
 
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
@@ -4051,6 +4075,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
+| `PLAYOUT_PREPARED_DIR` | `/data/prepared` — persistent immutable prepared publications shared across Channels and restarts. Separate from `PLAYOUT_HLS_DIR`, which is viewer-scoped scratch. Read at construction; changing it requires restart so keyed assets cannot split across roots. |
 | `PLAYOUT_MAX_CHANNELS` | `4` — concurrent encodes. The wizard's transcode check measures a realistic figure; a test pattern encodes cheaper than film grain, so treat any measurement as a starting estimate. |
 | `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
 
@@ -4074,6 +4099,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `IMAGES_CACHE_BUDGET_MB` | `2048` — soft cap on the derivative cache before the GC job evicts least-recently-used renditions. Derivatives are always regenerable, so eviction costs latency, never data. |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
+| `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |

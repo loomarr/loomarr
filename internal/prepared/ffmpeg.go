@@ -25,22 +25,39 @@ var ErrUnsupportedRendition = errors.New("prepared: unsupported rendition")
 // FFmpegPackager is the real prepared-media driver. It produces finite fMP4 HLS as fast as the
 // machine allows; it is control-plane work and deliberately carries no realtime pacing flags.
 type FFmpegPackager struct {
-	path string
+	path      string
+	videoArgs VideoArgs
 }
 
-func NewFFmpegPackager(path string) *FFmpegPackager {
+// VideoPlan separates arguments that ffmpeg requires before its input from filters and encoder
+// arguments that belong after it. That positional split is required by hardware device setup.
+type VideoPlan struct {
+	InputArgs  []string
+	OutputArgs []string
+}
+
+// VideoArgs returns the ffmpeg plan that implements a rendition. It lets the playout policy supply
+// the already-detected host encoder without prepared importing the live playout package (which
+// would create an import cycle).
+type VideoArgs func(RenditionContract) (VideoPlan, error)
+
+func NewFFmpegPackager(path string, videoArgs ...VideoArgs) *FFmpegPackager {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		path = "ffmpeg"
 	}
-	return &FFmpegPackager{path: path}
+	args := softwareVideoArgs
+	if len(videoArgs) > 0 && videoArgs[0] != nil {
+		args = videoArgs[0]
+	}
+	return &FFmpegPackager{path: path, videoArgs: args}
 }
 
 func (p *FFmpegPackager) Package(ctx context.Context, workspace string, source Source, rendition RenditionContract) (Output, error) {
 	if p == nil {
 		return Output{}, ErrPackagerUnavailable
 	}
-	args, err := ffmpegPackageArgs(workspace, source, rendition)
+	args, err := ffmpegPackageArgsWith(workspace, source, rendition, p.videoArgs)
 	if err != nil {
 		return Output{}, err
 	}
@@ -52,29 +69,24 @@ func (p *FFmpegPackager) Package(ctx context.Context, workspace string, source S
 }
 
 func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]string, error) {
+	return ffmpegPackageArgsWith(workspace, source, r, softwareVideoArgs)
+}
+
+func ffmpegPackageArgsWith(
+	workspace string, source Source, r RenditionContract, videoArgs VideoArgs,
+) ([]string, error) {
 	if strings.TrimSpace(workspace) == "" || strings.TrimSpace(source.Path) == "" || source.AudioTrack < 0 ||
 		r.Width <= 0 || r.Height <= 0 || r.FrameRate <= 0 || r.VideoBitrateKbps <= 0 ||
-		r.AudioBitrateKbps <= 0 || r.SegmentDurationMS <= 0 || r.PackagingVersion != CurrentPackagingVersion {
+		r.AudioBitrateKbps <= 0 || r.SegmentDurationMS <= 0 || r.PackagingVersion != CurrentPackagingVersion ||
+		videoArgs == nil {
 		return nil, ErrUnsupportedRendition
 	}
-	videoEncoder := ""
-	switch strings.ToLower(r.VideoCodec) {
-	case "h264":
-		videoEncoder = "libx264"
-	case "hevc", "h265":
-		videoEncoder = "libx265"
-	default:
-		return nil, ErrUnsupportedRendition
-	}
-	if !strings.EqualFold(r.AudioCodec, "aac") {
-		return nil, ErrUnsupportedRendition
-	}
-	pixelFormat := strings.ToLower(r.PixelFormat)
-	if pixelFormat == "" {
-		pixelFormat = "yuv420p"
-	}
-	if pixelFormat != "yuv420p" && pixelFormat != "yuv420p10le" {
-		return nil, ErrUnsupportedRendition
+	video, err := videoArgs(r)
+	if err != nil || len(video.OutputArgs) == 0 {
+		if err == nil {
+			err = ErrUnsupportedRendition
+		}
+		return nil, err
 	}
 	audioChannels := 2
 	switch strings.ToLower(r.AudioLayout) {
@@ -84,8 +96,44 @@ func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]
 	default:
 		return nil, ErrUnsupportedRendition
 	}
-	if r.HDR != "" && !strings.EqualFold(r.HDR, "sdr") {
+	if !strings.EqualFold(r.AudioCodec, "aac") {
 		return nil, ErrUnsupportedRendition
+	}
+	segmentSeconds := float64(r.SegmentDurationMS) / 1000
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
+	args = append(args, video.InputArgs...)
+	args = append(args, "-i", source.Path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", source.AudioTrack))
+	args = append(args, video.OutputArgs...)
+	args = append(args,
+		"-c:a", "aac", "-b:a", fmt.Sprintf("%dk", r.AudioBitrateKbps), "-ac", strconv.Itoa(audioChannels),
+		"-f", "hls", "-hls_time", fmt.Sprintf("%.3f", segmentSeconds),
+		"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+		"-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
+		"-hls_segment_filename", filepath.Join(workspace, "segment-%06d.m4s"),
+		filepath.Join(workspace, MediaManifestName),
+	)
+	return args, nil
+}
+
+func softwareVideoArgs(r RenditionContract) (VideoPlan, error) {
+	videoEncoder := ""
+	switch strings.ToLower(r.VideoCodec) {
+	case "h264":
+		videoEncoder = "libx264"
+	case "hevc", "h265":
+		videoEncoder = "libx265"
+	default:
+		return VideoPlan{}, ErrUnsupportedRendition
+	}
+	pixelFormat := strings.ToLower(r.PixelFormat)
+	if pixelFormat == "" {
+		pixelFormat = "yuv420p"
+	}
+	if pixelFormat != "yuv420p" && pixelFormat != "yuv420p10le" {
+		return VideoPlan{}, ErrUnsupportedRendition
+	}
+	if r.HDR != "" && !strings.EqualFold(r.HDR, "sdr") {
+		return VideoPlan{}, ErrUnsupportedRendition
 	}
 
 	segmentSeconds := float64(r.SegmentDurationMS) / 1000
@@ -94,12 +142,7 @@ func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]
 		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1",
 		r.Width, r.Height, r.Width, r.Height,
 	)
-	args := []string{
-		"-hide_banner", "-loglevel", "error", "-nostdin", "-i", source.Path,
-		"-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", source.AudioTrack),
-		"-vf", filter,
-		"-c:v", videoEncoder,
-	}
+	args := []string{"-vf", filter, "-c:v", videoEncoder}
 	if r.VideoProfile != "" {
 		args = append(args, "-profile:v", r.VideoProfile)
 	}
@@ -120,15 +163,7 @@ func ffmpegPackageArgs(workspace string, source Source, r RenditionContract) ([]
 	} else {
 		args = append(args, "-sc_threshold", "0")
 	}
-	args = append(args,
-		"-c:a", "aac", "-b:a", fmt.Sprintf("%dk", r.AudioBitrateKbps), "-ac", strconv.Itoa(audioChannels),
-		"-f", "hls", "-hls_time", fmt.Sprintf("%.3f", segmentSeconds),
-		"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
-		"-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
-		"-hls_segment_filename", filepath.Join(workspace, "segment-%06d.m4s"),
-		filepath.Join(workspace, MediaManifestName),
-	)
-	return args, nil
+	return VideoPlan{OutputArgs: args}, nil
 }
 
 func collectPackagedOutput(workspace string) (Output, error) {

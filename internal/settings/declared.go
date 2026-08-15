@@ -266,6 +266,15 @@ func declared() []Setting {
 			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching.",
 		},
 		{
+			// Persistent and deliberately separate from playout.hls_dir: those live fragments are
+			// scratch bytes deleted when viewing stops; these publications are reusable across channels
+			// and restarts. Read once at composition because moving an active publication library while
+			// clients hold keyed asset URLs would split one origin across two roots.
+			Key: "playout.prepared_dir", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
+			Kind: KindString, Default: "/data/prepared", Advanced: true,
+			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
+		},
+		{
 			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
 			Kind: KindInt, Default: "4",
 			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
@@ -1093,6 +1102,11 @@ func declared() []Setting {
 			Key: "job.channel_sweep.schedule", EnvVar: "JOB_CHANNEL_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */10 * * * *",
 			Doc: "How often Loomarr reconciles channels with Tunarr (cron).",
+		},
+		{
+			Key: "job.playout_prepare.schedule", EnvVar: "JOB_PLAYOUT_PREPARE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *", Advanced: true,
+			Doc: "How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available.",
 		},
 		{
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,

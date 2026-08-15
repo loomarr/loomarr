@@ -29,6 +29,7 @@ import (
 	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
@@ -567,10 +568,6 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				hlsMgr.Stop()
 			}()
 		}
-		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
-			LiveSessions: playoutMgr,
-			LiveHLS:      liveHLS,
-		})
 		playoutResolverSvc = playoutRes
 
 		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
@@ -610,7 +607,59 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Info("playout: hardware encode admission", "hw_slots", n)
 			return n
 		}
-		encodePool = media.NewEncodePool(func() int { return hwEncodeSlots(rootCtx) })
+		encodePool = media.NewEncodePool(func() int {
+			if playout.Encoder(set.str("playout.encoder")) == playout.EncoderSoftware {
+				return 0 // an explicit software choice must not start hardware preparation.
+			}
+			return hwEncodeSlots(rootCtx)
+		})
+
+		// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
+		// fallback. Construction may fail on an unwritable volume without taking live TV down; the
+		// task remains visible with the exact reason instead of silently disappearing.
+		var preparedOrigin *playout.PreparedOrigin
+		preparedLibrary, preparedErr := prepared.NewLibrary(set.str("playout.prepared_dir"))
+		if preparedErr != nil {
+			reason := "the prepared media directory is unavailable: " + preparedErr.Error()
+			log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
+			jobReg.Add(preparedPlayoutJob(prepared.NewPlanner(nil, nil, encodePool, time.Now), reason))
+		} else {
+			packager := prepared.NewFFmpegPackager(
+				set.str("playout.ffmpeg_path"),
+				func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
+					encoder := playout.Encoder(set.str("playout.encoder"))
+					if encoder == "" {
+						encoder = playoutRes.detectedEncoder(rootCtx)
+					}
+					return playout.PreparedVideoArgs(encoder, contract)
+				},
+			)
+			preparer := prepared.NewPreparer(preparedLibrary, packager)
+			preparedRuntime := newPreparedRuntimeResolver(
+				st, playoutRes, lib, preparer, time.Now,
+				func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+				func() string {
+					return preparedSourcePolicy(
+						set.str("playout.quality_tier"),
+						set.str("playout.audio_language"),
+						set.str("library.path_map"),
+					)
+				},
+				func() string { return set.str("playout.backend") },
+				func() prepared.RenditionContract {
+					return playout.CanonicalPreparedRendition(
+						playout.TierFor(set.str("playout.quality_tier")),
+					)
+				},
+			)
+			jobReg.Add(preparedPlayoutJob(
+				prepared.NewPlanner(preparedRuntime, preparer, encodePool, time.Now), "",
+			))
+			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
+		}
+		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+		})
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by

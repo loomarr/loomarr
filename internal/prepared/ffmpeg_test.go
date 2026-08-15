@@ -54,6 +54,37 @@ func TestFFmpegPackageArgsEncodeHEVCForCompatibleRendition(t *testing.T) {
 	}
 }
 
+func TestFFmpegPackagerUsesInjectedHardwareVideoArgs(t *testing.T) {
+	t.Parallel()
+	called := false
+	videoArgs := func(r RenditionContract) (VideoPlan, error) {
+		called = true
+		if r != baselineRendition() {
+			t.Fatalf("video args received %+v, want the rendition unchanged", r)
+		}
+		return VideoPlan{
+			InputArgs:  []string{"-hwaccel", "cuda"},
+			OutputArgs: []string{"-vf", "format=yuv420p", "-c:v", "h264_nvenc", "-preset", "p7"},
+		}, nil
+	}
+	args, err := ffmpegPackageArgsWith(
+		t.TempDir(), Source{Path: "/media/movie.mkv"}, baselineRendition(), videoArgs,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("injected video argument policy was not called")
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-c:v h264_nvenc -preset p7") || strings.Contains(joined, "-c:v libx264") {
+		t.Fatalf("injected hardware encoder not used: %s", joined)
+	}
+	if !strings.Contains(joined, "-hwaccel cuda -i /media/movie.mkv") {
+		t.Fatalf("hardware input args are not before -i: %s", joined)
+	}
+}
+
 func TestFFmpegPackageArgsRejectUnidentifiedOutputProperties(t *testing.T) {
 	t.Parallel()
 	for name, mutate := range map[string]func(*RenditionContract){
