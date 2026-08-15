@@ -15,9 +15,9 @@ import (
 // page for normal operation.
 func (r *Runner) Job() scheduler.Job {
 	return scheduler.Job{
-		Name: "channel-sweep", Title: "Reconcile channels with Tunarr",
-		Description: "Rebuilds each live channel's upcoming schedule and pushes it to Tunarr, so the guide stays filled and newly available titles start airing.",
-		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_sweep.schedule",
+		Name: "channel-maintenance", Group: scheduler.GroupChannels, Title: "Maintain live channels",
+		Description: "Rebuilds upcoming schedules and sends them to Tunarr to keep the guide filled.",
+		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_maintenance.schedule",
 		Run: func(ctx context.Context) error { r.Sweep(ctx); return nil },
 	}
 }

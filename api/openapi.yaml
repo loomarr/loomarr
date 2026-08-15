@@ -2652,6 +2652,84 @@ components:
       required:
         - name
       type: object
+    JobExecutionView:
+      additionalProperties: false
+      properties:
+        durationMs:
+          description: Execution duration in milliseconds
+          format: int64
+          type: integer
+        error:
+          description: Failure detail when result is error
+          type: string
+        finishedAt:
+          description: When this execution finished
+          format: date-time
+          type: string
+        result:
+          description: Loomarr task outcome
+          enum:
+            - ok
+            - error
+          type: string
+        startedAt:
+          description: When this execution started
+          format: date-time
+          type: string
+        trigger:
+          description: Whether the schedule or an operator started the execution
+          enum:
+            - scheduled
+            - manual
+          type: string
+      required:
+        - startedAt
+        - finishedAt
+        - durationMs
+        - result
+        - trigger
+      type: object
+    JobHistoryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/JobHistoryView.json
+          format: uri
+          readOnly: true
+          type: string
+        averageDurationMs:
+          description: Mean completed execution duration in milliseconds
+          format: int64
+          type: integer
+        failureCount:
+          description: Failed executions in the window
+          format: int64
+          type: integer
+        recent:
+          description: Five latest trustworthy executions, newest first
+          items:
+            $ref: "#/components/schemas/JobExecutionView"
+          type: array
+        runCount:
+          description: Completed executions in the window
+          format: int64
+          type: integer
+        truncated:
+          description: True when the count reached the safety scan limit
+          type: boolean
+        windowStart:
+          description: Start of the summarized execution window
+          format: date-time
+          type: string
+      required:
+        - windowStart
+        - runCount
+        - failureCount
+        - averageDurationMs
+        - recent
+      type: object
     JobView:
       additionalProperties: false
       properties:
@@ -2660,6 +2738,17 @@ components:
           type: string
         disabledReason:
           description: Why this job cannot run here; empty when it can
+          type: string
+        group:
+          description: Operator outcome used to group tasks
+          enum:
+            - acquisitions
+            - channels
+            - filler
+            - artwork
+            - playout
+            - system
+            - backup
           type: string
         lastError:
           description: Error detail when lastResult is error
@@ -2698,6 +2787,7 @@ components:
           type: string
       required:
         - name
+        - group
         - title
         - description
         - schedule
@@ -7764,6 +7854,34 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List background jobs
+      tags:
+        - jobs
+  /v1/jobs/{name}/history:
+    get:
+      description: Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).
+      operationId: jobs-history
+      parameters:
+        - description: The job's stable id (from GET /v1/jobs)
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The job's stable id (from GET /v1/jobs)
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHistoryView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get recent job executions
       tags:
         - jobs
   /v1/jobs/{name}/pause:

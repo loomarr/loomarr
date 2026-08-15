@@ -12,8 +12,8 @@ type preparedRunner interface{ Run(context.Context) error }
 // imports store, whose filler media pipeline reaches playout and would close an import cycle.
 func preparedPlayoutJob(runner preparedRunner, disabledReason string) scheduler.Job {
 	return scheduler.Job{
-		Name: "playout-prepare", Title: "Prepare upcoming channel programmes",
-		Description: "Prepares the next programmes shared across your channels so changing channels starts at the live point without waiting for a new encoder. Afterwards it keeps prepared storage within its soft cap without removing recently played programmes.",
+		Name: "playout-prepare", Group: scheduler.GroupPlayout, Title: "Prepare upcoming programmes",
+		Description: "Pre-encodes upcoming programmes for immediate playback and keeps prepared media within its storage budget.",
 		DefaultCron: "0 * * * * *", ScheduleKey: "job.playout_prepare.schedule",
 		Timeout: scheduler.LongJobTimeout, DisabledReason: disabledReason,
 		Run: runner.Run,

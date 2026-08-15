@@ -166,7 +166,31 @@ RETIRED=(
   'SEASONAL_MODE|V55: seasonal behaviour is per-channel policy, not a consumed global default'
   'PLAYOUT_SUBTITLES|V55: subtitle burn-in is not implemented by the encoder'
   'user.sync_every|V55: user import is explicit until a scheduled consumer exists'
-  'USER_SYNC_EVERY|V55: user import is explicit until a scheduled consumer exists'
+	'USER_SYNC_EVERY|V55: user import is explicit until a scheduled consumer exists'
+	# Scheduler task deepening: these implementation-stage rows and schedule knobs were folded
+	# into operator outcomes. Persisted scheduled_jobs rows/settings are harmless legacy data;
+	# reintroducing the identifiers would recreate duplicate controls.
+	'activity-purge|scheduler task deepening: folded into housekeeping'
+	'retention-purge|scheduler task deepening: folded into housekeeping'
+	'session-sweep|scheduler task deepening: folded into housekeeping'
+	'series-episode-refresh|scheduler task deepening: folded into channel-maintenance'
+	'channel-sweep|scheduler task deepening: replaced by channel-maintenance'
+	'images-rehydrate|scheduler task deepening: folded into images-maintenance'
+	'images-gc|scheduler task deepening: folded into images-maintenance'
+	'job.activity_purge.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_ACTIVITY_PURGE_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.retention_purge.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_RETENTION_PURGE_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.session_sweep.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_SESSION_SWEEP_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.series_episode_refresh.schedule|scheduler task deepening: one channel-maintenance schedule'
+	'JOB_SERIES_EPISODE_REFRESH_SCHEDULE|scheduler task deepening: one channel-maintenance schedule'
+	'job.channel_sweep.schedule|scheduler task deepening: replaced by channel-maintenance schedule'
+	'JOB_CHANNEL_SWEEP_SCHEDULE|scheduler task deepening: replaced by channel-maintenance schedule'
+	'job.images_rehydrate.schedule|scheduler task deepening: one image-maintenance schedule'
+	'JOB_IMAGES_REHYDRATE_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
+	'job.images_gc.schedule|scheduler task deepening: one image-maintenance schedule'
+	'JOB_IMAGES_GC_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

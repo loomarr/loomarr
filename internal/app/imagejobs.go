@@ -28,7 +28,7 @@ const (
 // way and look identical from inside every test that constructs them directly, which is why the
 // guard for this lives in jobset_test.go, against the real BuildHandler.
 
-// registerImageJobs constructs the four jobs and adds them to the registry.
+// registerImageJobs constructs the artwork jobs and adds them to the registry.
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
 // an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
@@ -40,7 +40,6 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 		log)
 
 	reg.Add(images.FetchJob(fetcher))
-	reg.Add(images.RehydrateJob(fetcher))
 
 	// ⚠ The AVIF encoder is PROBED, not assumed. `HasAVIFEncoder` runs `ffmpeg -encoders` once at
 	// boot because a build whose ffmpeg carries no libaom-av1 produces an install where every pass
@@ -78,7 +77,7 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 	if rec != nil {
 		notify = rec
 	}
-	reg.Add(images.GCJob(images.NewGC(svc, st,
+	reg.Add(images.MaintenanceJob(fetcher, images.NewGC(svc, st,
 		func() time.Duration { return imageRemoteTTL },
 		func() int { return set.intv("images.cache_budget_mb") },
 		notify, log)))

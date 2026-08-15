@@ -329,7 +329,7 @@ func declared() []Setting {
 			// documented volume carries it — but with a consequence neither of those has: the
 			// application backup is a DATABASE backup, and no image bytes are in the database
 			// (§22). Everything here is regenerable or re-fetchable EXCEPT operator uploads, which
-			// is why `images-gc` counts unrecoverable-missing rows as a warning rather than
+			// is why image maintenance counts unrecoverable-missing rows as a warning rather than
 			// pretending it can repair them.
 			Key: "images.dir", Label: "Image library location", EnvVar: "IMAGES_DIR", Group: GroupImages,
 			Kind: KindString, Presentation: PresentationPath, Default: "/data/images",
@@ -1028,9 +1028,9 @@ func declared() []Setting {
 			Doc: "How often Loomarr checks on in-progress downloads (cron).",
 		},
 		{
-			Key: "job.channel_sweep.schedule", EnvVar: "JOB_CHANNEL_SWEEP_SCHEDULE", Group: GroupAdvanced,
+			Key: "job.channel_maintenance.schedule", EnvVar: "JOB_CHANNEL_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */10 * * * *",
-			Doc: "How often Loomarr reconciles channels with Tunarr (cron).",
+			Doc: "How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron).",
 		},
 		{
 			Key: "job.playout_prepare.schedule", EnvVar: "JOB_PLAYOUT_PREPARE_SCHEDULE", Group: GroupAdvanced,
@@ -1105,13 +1105,7 @@ func declared() []Setting {
 			Kind: KindCron, Default: "0 5 * * * *",
 			Doc: "How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled.",
 		},
-		{
-			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 * * * *",
-			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",
-		},
-
-		// --- The image service's four jobs (§22, V52) ---
+		// --- The image service jobs (§22, V52) ---
 		//
 		// ⚠ Every job needs its schedule key declared or the settings service PANICS at startup on
 		// `Resolve` of an undeclared key, so all four land with the jobs themselves.
@@ -1146,18 +1140,9 @@ func declared() []Setting {
 			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
 		},
 		{
-			// Daily, not hourly: this is the POST-RESTORE path (§22 durability). A restored
-			// database has rows whose files are gone, and this re-fetches everything recoverable.
-			// On a healthy install it finds nothing, which is exactly why it does not need to run
-			// often — and why it must exist at all, since nothing else notices a missing file.
-			Key: "job.images_rehydrate.schedule", EnvVar: "JOB_IMAGES_REHYDRATE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 45 4 * * *",
-			Doc: "How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder.",
-		},
-		{
-			Key: "job.images_gc.schedule", EnvVar: "JOB_IMAGES_GC_SCHEDULE", Group: GroupAdvanced,
+			Key: "job.images_maintenance.schedule", EnvVar: "JOB_IMAGES_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 0 5 * * *",
-			Doc: "How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork.",
+			Doc: "When Loomarr restores recoverable artwork, enforces retention, and cleans up image storage.",
 		},
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
@@ -1173,11 +1158,6 @@ func declared() []Setting {
 			Key: "job.library_scan.lookback", EnvVar: "JOB_LIBRARY_SCAN_LOOKBACK", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "1h",
 			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
-		},
-		{
-			Key: "job.series_episode_refresh.schedule", EnvVar: "JOB_SERIES_EPISODE_REFRESH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 * * * *",
-			Doc: "How often Loomarr re-reads the episode lists of shows used by channels, so the guide doesn't have to ask the media server on every load (cron).",
 		},
 		{
 			Key: "episodes.max_age", EnvVar: "EPISODES_MAX_AGE", Group: GroupAdvanced,
@@ -1220,14 +1200,9 @@ func declared() []Setting {
 			Doc: "How long the Dashboard's recent-activity entries are kept before they're cleaned up.",
 		},
 		{
-			Key: "job.retention_purge.schedule", EnvVar: "JOB_RETENTION_PURGE_SCHEDULE", Group: GroupAdvanced,
+			Key: "job.housekeeping.schedule", EnvVar: "JOB_HOUSEKEEPING_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 30 4 * * *",
-			Doc: "When to clean up finished suggestion jobs and declined requests.",
-		},
-		{
-			Key: "job.activity_purge.schedule", EnvVar: "JOB_ACTIVITY_PURGE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 15 4 * * *",
-			Doc: "When to clean up old recent-activity entries.",
+			Doc: "When Loomarr removes expired sessions and operational records beyond their retention periods.",
 		},
 		{
 			Key: "setup.completed", EnvVar: "SETUP_COMPLETED", Group: GroupAdvanced,

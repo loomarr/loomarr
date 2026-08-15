@@ -54,38 +54,38 @@ func (s *LibraryScan) WithActivity(r *activity.Recorder) *LibraryScan { s.activi
 // Incremental confirms availability for in-flight titles added to the library within the
 // lookback window — the frequent (5-minute) job. Returns the number of titles confirmed.
 func (s *LibraryScan) Incremental(ctx context.Context) (int, error) {
+	inflight, err := s.inflightByKey(ctx)
+	if err != nil || len(inflight) == 0 {
+		return 0, err
+	}
 	since := s.now().Add(-s.lookback)
 	items, err := s.scanner.RecentlyAdded(ctx, since)
 	if err != nil {
 		return 0, err
 	}
-	return s.confirm(ctx, items)
+	return s.confirm(ctx, items, inflight)
 }
 
 // Full confirms availability against the ENTIRE library — the periodic safety net (daily) for
 // anything the incremental window missed (Loomarr down across a scan, a late-attached provider
 // id on an older item). Returns the number of titles confirmed.
 func (s *LibraryScan) Full(ctx context.Context) (int, error) {
+	inflight, err := s.inflightByKey(ctx)
+	if err != nil || len(inflight) == 0 {
+		return 0, err
+	}
 	items, err := s.scanner.AllItems(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return s.confirm(ctx, items)
+	return s.confirm(ctx, items, inflight)
 }
 
 // confirm correlates scanned library items against the in-flight title set and applies
 // LibraryConfirmed to any match. It indexes the (small) in-flight set by provision.Key, then
 // probes it with each (potentially many) scanned item's key — the key parity guarantee (same
 // Key from a Title, a webhook, or a scan item) makes the match exact. O(items) probes.
-func (s *LibraryScan) confirm(ctx context.Context, items []library.SearchResult) (int, error) {
-	inflight, err := s.inflightByKey(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(inflight) == 0 {
-		return 0, nil // nothing awaiting the library; skip the correlation entirely
-	}
-
+func (s *LibraryScan) confirm(ctx context.Context, items []library.SearchResult, inflight map[provision.Key]provision.Record) (int, error) {
 	now := s.now()
 	confirmed := 0
 	seen := make(map[provision.Key]bool, len(inflight)) // one confirm per title per scan
