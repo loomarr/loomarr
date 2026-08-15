@@ -19,6 +19,7 @@ interface UseChannelTuner {
   attempt?: TuneAttempt;
   acknowledging: boolean;
   canSurf: boolean;
+  ready: (channelId: string) => void;
   step: (direction: TuneDirection) => void;
   retry: () => void;
 }

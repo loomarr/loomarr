@@ -1301,9 +1301,11 @@ snapshot may establish the existing bounded live Origin and its normal grace lea
 creates a browser player, MediaSource, or decoder; live admission remains authoritative and a
 capacity rejection is a harmless cold miss. This is the immediate hot-set path while whole-program
 preparation catches up: catalog size does not create work because only `current - 1`, `current`, and
-`current + 1` are requested. A real tune reuses the exact signed URL and the already-ready remux.
-The Watch screen also defers source-backed track probing until the first decoded frame so an
-optional audio/subtitle menu cannot contend with the encoder's cold open and seek.
+`current + 1` are requested. **The current Channel wins the network:** adjacent warming begins only
+after its first decoded frame, and a replacement tune aborts the previous warmers before attaching
+its source. A real tune reuses the exact signed URL and the already-ready remux. The Watch screen
+also defers source-backed track probing until the first decoded frame so optional work cannot
+contend with the active Channel's cold open and seek.
 
 The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
 viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink

@@ -34,7 +34,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node_modules/.bin/http-server ../../../internal/web/dist -p ${PORT} -s -c-1 --proxy http://127.0.0.1:${PORT}?`,
+    command: "node --experimental-strip-types tests/e2e/tuner-backend.ts",
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

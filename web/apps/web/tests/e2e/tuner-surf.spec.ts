@@ -14,7 +14,7 @@ const installFrameClock = async (page: Page) => {
     // The 100-Channel scenario intentionally creates hundreds of API/HLS resource entries. Keep
     // Chromium's default 250-entry buffer from truncating the manifest timing evidence.
     performance.setResourceTimingBufferSize?.(2_000);
-    const frames: number[] = [];
+    const frames: Array<{ at: number; src: string }> = [];
     Object.defineProperty(window, "__loomarrDecodedFrames", { value: frames, configurable: true });
     const original = HTMLVideoElement.prototype.requestVideoFrameCallback;
     if (!original) return;
@@ -22,7 +22,7 @@ const installFrameClock = async (page: Page) => {
       configurable: true,
       value(this: HTMLVideoElement, callback: VideoFrameRequestCallback) {
         return original.call(this, (now, metadata) => {
-          frames.push(performance.now());
+          frames.push({ at: performance.now(), src: this.currentSrc });
           callback(now, metadata);
         });
       },
@@ -60,9 +60,14 @@ const waitForDecodedFrame = async (page: Page) => {
 // in the same TanStack Router path as an in-app Link without coupling this transport test to the
 // Guide's virtualized row layout.
 const tuneInApp = async (page: Page, id: string): Promise<number> => {
-  const before = await page.evaluate(
-    () => (window as Window & { __loomarrDecodedFrames: number[] }).__loomarrDecodedFrames.length,
-  );
+  const before = await page.locator("video").evaluate((video) => ({
+    src: video.currentSrc,
+    count: (
+      window as Window & {
+        __loomarrDecodedFrames: Array<{ at: number; src: string }>;
+      }
+    ).__loomarrDecodedFrames.length,
+  }));
   const started = await page.evaluate(() => performance.now());
   await page.evaluate((path) => {
     window.history.pushState({}, "", path);
@@ -70,19 +75,59 @@ const tuneInApp = async (page: Page, id: string): Promise<number> => {
   }, `/channels/${id}/watch`);
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
   await page.waitForFunction(
-    (count) =>
-      ((window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0) >
-      count,
+    ({ count, src }) =>
+      (
+        window as Window & {
+          __loomarrDecodedFrames?: Array<{ at: number; src: string }>;
+        }
+      ).__loomarrDecodedFrames
+        ?.slice(count)
+        .some((frame) => frame.src !== src) ?? false,
     before,
     { timeout: 10_000 },
   );
   const decodedAt = await page.evaluate(
-    () =>
-      (window as Window & { __loomarrDecodedFrames: number[] }).__loomarrDecodedFrames.at(-1) ??
-      Number.POSITIVE_INFINITY,
+    ({ count, src }) =>
+      (
+        window as Window & {
+          __loomarrDecodedFrames: Array<{ at: number; src: string }>;
+        }
+      ).__loomarrDecodedFrames
+        .slice(count)
+        .find((frame) => frame.src !== src)?.at ?? Number.POSITIVE_INFINITY,
+    before,
   );
   return decodedAt - started;
 };
+
+const adjacentNumbers = (number: number): [number, number] => [
+  number === 1 ? 100 : number - 1,
+  number === 100 ? 1 : number + 1,
+];
+
+const waitForAdjacentWarm = async (
+  backend: Awaited<ReturnType<typeof installTunerBackend>>,
+  number: number,
+  after: ReadonlyMap<string, number> = new Map(),
+) => {
+  for (const neighbor of adjacentNumbers(number)) {
+    const asset = `${channelId(neighbor)}/segment.m4s`;
+    await expect
+      .poll(() => backend.state.assetRequests.filter((candidate) => candidate === asset).length)
+      .toBeGreaterThan(after.get(asset) ?? 0);
+  }
+};
+
+const adjacentWarmCounts = (
+  backend: Awaited<ReturnType<typeof installTunerBackend>>,
+  number: number,
+): ReadonlyMap<string, number> =>
+  new Map(
+    adjacentNumbers(number).map((neighbor) => {
+      const asset = `${channelId(neighbor)}/segment.m4s`;
+      return [asset, backend.state.assetRequests.filter((candidate) => candidate === asset).length];
+    }),
+  );
 
 test("100-channel tuner meets surf latency and latest-request-wins gates", async ({ page }) => {
   await installFrameClock(page);
@@ -94,6 +139,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await page.goto(`/channels/${channelId(1)}/watch`);
   await waitForDecodedFrame(page);
   await expect(page.locator("video")).toHaveCount(1);
+  await waitForAdjacentWarm(backend, 1);
 
   // Arbitrary prepared tune: navigate the already-running app to a non-adjacent Channel. Measure
   // route request to a genuinely decoded frame, including SPA/API/HLS work but excluding the cold
@@ -102,6 +148,9 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   for (const number of [3, 17, 29, 41, 53, 67, 79, 91, 8, 50, 62, 74, 86, 98, 12, 24, 36, 48, 60, 72]) {
     arbitrary.push(await tuneInApp(page, channelId(number)));
     await expect(page.locator("video")).toHaveCount(1);
+    // Keep arbitrary samples independent. Rapid sequential intent has its own adjacent and burst
+    // gates below; this percentile starts after the previous Channel's bounded hot set has settled.
+    await waitForAdjacentWarm(backend, number);
   }
   expect(p95(arbitrary), `arbitrary prepared p95: ${p95(arbitrary).toFixed(1)}ms`).toBeLessThan(1_500);
 
@@ -117,7 +166,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // A slow replacement must leave the last decoded picture behind the target OSD. This is one
   // video element and one decoder: the outgoing frame is held as a poster while transport swaps.
   const video = page.locator("video");
-  backend.delayNextActiveManifest(channelId(51), 500);
+  await backend.delayNextActiveManifest(channelId(51), 500);
   const heldFrameCount = await page.evaluate(
     () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
   );
@@ -131,8 +180,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await expect(video).not.toHaveAttribute("poster", /^data:image\/png;base64,/);
 
   // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
+  const resetWarmCounts = adjacentWarmCounts(backend, 50);
   await page.goto(`/channels/${channelId(50)}/watch`);
   await waitForDecodedFrame(page);
+  await waitForAdjacentWarm(backend, 50, resetWarmCounts);
 
   await page.evaluate(() => {
     performance.clearMeasures("loomarr:tune:request-to-osd");
@@ -145,9 +196,11 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     const target = current === 100 ? 1 : current + 1;
     const id = channelId(target);
     const targetMints = backend.state.playURLMints.filter((candidate) => candidate === id).length;
-    await expect
-      .poll(() => backend.state.assetRequests.filter((asset) => asset === `${id}/segment.m4s`).length)
-      .toBeGreaterThan(0);
+    const next = target === 100 ? 1 : target + 1;
+    const nextAsset = `${channelId(next)}/segment.m4s`;
+    const nextAssetRequests = backend.state.assetRequests.filter(
+      (candidate) => candidate === nextAsset,
+    ).length;
 
     const previousFrames = await page.evaluate(
       () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
@@ -175,6 +228,12 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     adjacentFrames.push(timing.frame);
     expect(backend.state.playURLMints.filter((candidate) => candidate === id)).toHaveLength(targetMints);
     await expect(page.locator("video")).toHaveCount(1);
+    // The frame makes this Channel active; its post-frame warmer must finish the next Channel
+    // before the following measured click. Count from this iteration so an identical request made
+    // during the arbitrary phase cannot masquerade as the current controller's warm.
+    await expect
+      .poll(() => backend.state.assetRequests.filter((candidate) => candidate === nextAsset).length)
+      .toBeGreaterThan(nextAssetRequests);
     current = target;
   }
 

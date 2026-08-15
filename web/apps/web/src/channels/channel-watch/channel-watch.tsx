@@ -7,7 +7,7 @@ import {
   unwrap,
 } from "@loomarr/api";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { TunerLoader } from "@/components/loomarr/shell";
@@ -46,6 +46,7 @@ interface ChannelWatchProps {
     currentTitle?: string;
     attempt?: TuneAttempt;
     acknowledging?: boolean;
+    ready: (channelId: string) => void;
     step: (direction: TuneDirection) => void;
     retry: () => void;
   };
@@ -115,6 +116,9 @@ const ChannelWatch = ({
   tuner,
 }: ChannelWatchProps) => {
   const player = useHlsPlayer(channel.id, tuner?.attempt);
+  useEffect(() => {
+    if (player.status === "playing") tuner?.ready(channel.id);
+  }, [channel.id, player.status, tuner?.ready]);
   // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
   // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
   // second click makes "open the channel" a two-step act to do the obvious thing.

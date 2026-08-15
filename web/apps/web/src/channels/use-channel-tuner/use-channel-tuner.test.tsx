@@ -110,6 +110,8 @@ describe("channel tuner", () => {
     const { result } = renderHook(() =>
       useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
     );
+    expect(warmChannel).not.toHaveBeenCalled();
+    act(() => result.current.ready("ch-10"));
     await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-30", expect.any(AbortSignal)));
     await act(async () => Promise.resolve());
     act(() => result.current.step(1));

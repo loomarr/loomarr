@@ -60,14 +60,28 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         setState({ channelId, status: "playing" });
       };
       let frameCallback: number | undefined;
-      const requestFrame = video.requestVideoFrameCallback?.bind(video);
-      if (requestFrame) {
-        frameCallback = requestFrame(() => onFirstFrame());
-      } else {
-        video.addEventListener("playing", onFirstFrame, { once: true });
-      }
+      let firstFrameWatchArmed = false;
+      const requestFrame = (
+        video as Partial<Pick<HTMLVideoElement, "requestVideoFrameCallback">>
+      ).requestVideoFrameCallback?.bind(video);
+      const armFirstFrameWatch = () => {
+        if (firstFrameWatchArmed) return;
+        firstFrameWatchArmed = true;
+        if (requestFrame) frameCallback = requestFrame(() => onFirstFrame());
+        else video.addEventListener("playing", onFirstFrame, { once: true });
+      };
+      const onLoadedData = () => armFirstFrameWatch();
+      // Detaching MediaSource can leave its last decoded picture retained. Clear that source before
+      // watching the replacement: WebKit otherwise reports the retained picture through a newly
+      // registered callback and attributes it to the next Channel. The poster captured by the tuner
+      // continues to hold the outgoing picture while the element itself becomes source-empty.
+      video.removeAttribute("src");
+      video.load();
+      if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
+      else armFirstFrameWatch();
       const stopFirstFrameWatch = () => {
         if (frameCallback !== undefined) video.cancelVideoFrameCallback?.(frameCallback);
+        video.removeEventListener("loadeddata", onLoadedData);
         video.removeEventListener("playing", onFirstFrame);
       };
 

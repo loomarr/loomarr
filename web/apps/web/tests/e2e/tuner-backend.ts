@@ -1,4 +1,8 @@
-import type { Page, Route } from "@playwright/test";
+import { createReadStream, promises as fs } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { extname, join, normalize, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import type { Page } from "@playwright/test";
 
 const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
 
@@ -27,9 +31,6 @@ segment.m4s?sig=${sig}
 #EXT-X-ENDLIST
 `;
 
-const json = (route: Route, body: unknown, status = 200) =>
-  route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-
 const channelId = (number: number) => `ch-${String(number).padStart(3, "0")}`;
 
 const channels = Array.from({ length: 100 }, (_, index) => {
@@ -52,7 +53,7 @@ const channels = Array.from({ length: 100 }, (_, index) => {
 });
 
 interface TunerBackend {
-  delayNextActiveManifest: (channelId: string, delayMs: number) => void;
+  delayNextActiveManifest: (channelId: string, delayMs: number) => Promise<void>;
   readonly state: {
     activeManifests: string[];
     assetRequests: string[];
@@ -62,99 +63,173 @@ interface TunerBackend {
 }
 
 const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
-  const activeManifestDelays = new Map<string, number>();
   const state = {
     activeManifests: [] as string[],
     assetRequests: [] as string[],
     playURLMints: [] as string[],
     preparedProbes: [] as string[],
   };
-  const now = Date.now();
-
-  await page.route("**/v1/events**", (route) => route.abort());
-  await page.route("**/v1/**", async (route) => {
-    const request = route.request();
+  page.on("request", (request) => {
     const url = new URL(request.url());
     const path = url.pathname;
-
     const master = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/master\.m3u8$/);
     if (master) {
       const id = master[1] ?? "";
       if (url.searchParams.get("mode") === "prepared") state.preparedProbes.push(id);
-      else {
-        state.activeManifests.push(id);
-        const delay = activeManifestDelays.get(id);
-        if (delay) {
-          activeManifestDelays.delete(id);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: "application/vnd.apple.mpegurl",
-        headers: { "cache-control": "no-store" },
-        body: manifest(url.searchParams.get("sig") ?? id),
-      });
+      else state.activeManifests.push(id);
     }
-
     const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s)$/);
-    if (asset) {
-      state.assetRequests.push(`${asset[1]}/${asset[2]}`);
-      return route.fulfill({
-        status: 200,
-        contentType: "video/mp4",
-        headers: { "cache-control": "private, max-age=31536000, immutable" },
-        body: Buffer.from(asset[2] === "init.mp4" ? INIT_MP4 : MEDIA_FRAGMENT, "base64"),
-      });
-    }
-
-    if (path === "/v1/auth/me") return json(route, ADMIN);
-    if (path === "/v1/setup/state") return json(route, { bootstrapped: true });
-    if (path === "/v1/settings") return json(route, { features: {}, settings: [] });
-    if (path === "/v1/channels") return json(route, { channels });
-    if (path === "/v1/channels/now-next") {
-      return json(route, {
-        channels: channels.map((channel) => ({
-          channelId: channel.id,
-          now: {
-            title: `Programme ${channel.number}`,
-            gap: false,
-            startMs: now - 10 * 60_000,
-            stopMs: now + 50 * 60_000,
-          },
-        })),
-      });
-    }
-
+    if (asset) state.assetRequests.push(`${asset[1]}/${asset[2]}`);
     const playURL = path.match(/^\/v1\/channels\/(ch-\d+)\/play-url$/);
-    if (playURL && request.method() === "POST") {
-      const id = playURL[1] ?? "";
-      state.playURLMints.push(id);
-      return json(route, {
-        url: "",
-        relativeUrl: `/v1/playout/hls/${id}/master.m3u8?sig=${id}`,
-        expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
-      });
-    }
-
-    const timeline = path.match(/^\/v1\/channels\/(ch-\d+)\/timeline$/);
-    if (timeline) return json(route, { airings: [] });
-    const tracks = path.match(/^\/v1\/channels\/(ch-\d+)\/tracks$/);
-    if (tracks) return json(route, { audio: [], subtitles: [] });
-    const detail = path.match(/^\/v1\/channels\/(ch-\d+)$/);
-    if (detail) {
-      const found = channels.find((channel) => channel.id === detail[1]);
-      return found ? json(route, found) : json(route, { title: "Not found" }, 404);
-    }
-
-    return json(route, {});
+    if (playURL && request.method() === "POST") state.playURLMints.push(playURL[1] ?? "");
   });
 
   return {
-    delayNextActiveManifest: (id, delayMs) => activeManifestDelays.set(id, delayMs),
+    delayNextActiveManifest: async (id, delayMs) => {
+      const response = await fetch(`${TUNER_ORIGIN}/__tuner/delay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channelId: id, delayMs }),
+      });
+      if (!response.ok) throw new Error(`fixture delay control failed: ${response.status}`);
+    },
     state,
   };
 };
+
+const PORT = 6009;
+const TUNER_ORIGIN = `http://127.0.0.1:${PORT}`;
+
+const send = (
+  response: ServerResponse,
+  status: number,
+  contentType: string,
+  body: string | Buffer,
+  headers: Record<string, string> = {},
+) => {
+  response.writeHead(status, { "content-type": contentType, ...headers });
+  response.end(body);
+};
+
+const sendJSON = (response: ServerResponse, body: unknown, status = 200) =>
+  send(response, status, "application/json", JSON.stringify(body));
+
+const readJSON = async (request: IncomingMessage): Promise<Record<string, unknown>> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+};
+
+const contentType = (path: string): string =>
+  ({
+    ".css": "text/css",
+    ".html": "text/html",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".woff2": "font/woff2",
+  })[extname(path)] ?? "application/octet-stream";
+
+const startTunerServer = () => {
+  const activeManifestDelays = new Map<string, number>();
+  const now = Date.now();
+  const staticRoot = resolve(process.cwd(), "../../../internal/web/dist");
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url ?? "/", TUNER_ORIGIN);
+      const path = url.pathname;
+
+      if (path === "/__tuner/delay" && request.method === "POST") {
+        const body = await readJSON(request);
+        activeManifestDelays.set(String(body.channelId), Number(body.delayMs));
+        return sendJSON(response, {});
+      }
+      if (path === "/v1/events") return send(response, 204, "text/plain", "");
+
+      const master = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/master\.m3u8$/);
+      if (master) {
+        const id = master[1] ?? "";
+        if (url.searchParams.get("mode") !== "prepared") {
+          const delay = activeManifestDelays.get(id);
+          if (delay) {
+            activeManifestDelays.delete(id);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+        return send(
+          response,
+          200,
+          "application/vnd.apple.mpegurl",
+          manifest(url.searchParams.get("sig") ?? id),
+          { "cache-control": "no-store" },
+        );
+      }
+
+      const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s)$/);
+      if (asset) {
+        return send(
+          response,
+          200,
+          "video/mp4",
+          Buffer.from(asset[2] === "init.mp4" ? INIT_MP4 : MEDIA_FRAGMENT, "base64"),
+          { "cache-control": "private, max-age=31536000, immutable" },
+        );
+      }
+
+      if (path === "/v1/auth/me") return sendJSON(response, ADMIN);
+      if (path === "/v1/setup/state") return sendJSON(response, { bootstrapped: true });
+      if (path === "/v1/settings") return sendJSON(response, { features: {}, settings: [] });
+      if (path === "/v1/channels") return sendJSON(response, { channels });
+      if (path === "/v1/channels/now-next") {
+        return sendJSON(response, {
+          channels: channels.map((channel) => ({
+            channelId: channel.id,
+            now: {
+              title: `Programme ${channel.number}`,
+              gap: false,
+              startMs: now - 10 * 60_000,
+              stopMs: now + 50 * 60_000,
+            },
+          })),
+        });
+      }
+
+      const playURL = path.match(/^\/v1\/channels\/(ch-\d+)\/play-url$/);
+      if (playURL && request.method === "POST") {
+        const id = playURL[1] ?? "";
+        return sendJSON(response, {
+          url: "",
+          relativeUrl: `/v1/playout/hls/${id}/master.m3u8?sig=${id}`,
+          expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        });
+      }
+      if (/^\/v1\/channels\/ch-\d+\/timeline$/.test(path)) return sendJSON(response, { airings: [] });
+      if (/^\/v1\/channels\/ch-\d+\/tracks$/.test(path)) {
+        return sendJSON(response, { audio: [], subtitles: [] });
+      }
+      const detail = path.match(/^\/v1\/channels\/(ch-\d+)$/);
+      if (detail) {
+        const found = channels.find((channel) => channel.id === detail[1]);
+        return found ? sendJSON(response, found) : sendJSON(response, { title: "Not found" }, 404);
+      }
+      if (path.startsWith("/v1/")) return sendJSON(response, {});
+
+      const relative = normalize(path).replace(/^\/+/, "");
+      const candidate = join(staticRoot, relative || "index.html");
+      const file = candidate.startsWith(staticRoot) ? candidate : join(staticRoot, "index.html");
+      const target = await fs
+        .stat(file)
+        .then((info) => (info.isFile() ? file : join(staticRoot, "index.html")))
+        .catch(() => join(staticRoot, "index.html"));
+      response.writeHead(200, { "content-type": contentType(target), "cache-control": "no-store" });
+      createReadStream(target).pipe(response);
+    } catch (error) {
+      sendJSON(response, { error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+  server.listen(PORT, "127.0.0.1");
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) startTunerServer();
 
 export type { TunerBackend };
 export { channelId, installTunerBackend };

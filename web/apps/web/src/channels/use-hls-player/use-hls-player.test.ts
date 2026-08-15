@@ -137,8 +137,14 @@ describe("useHlsPlayer", () => {
   it("keeps the tuning overlay up until the replacement produces a decoded frame", async () => {
     channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/master.m3u8" });
     let firstFrame!: () => void;
+    let loadedMetadata!: () => void;
+    let loadedData!: () => void;
     const video = {
       ...videoEl("application/vnd.apple.mpegurl"),
+      addEventListener: vi.fn((event: string, callback: () => void) => {
+        if (event === "loadedmetadata") loadedMetadata = callback;
+        if (event === "loadeddata") loadedData = callback;
+      }),
       requestVideoFrameCallback: vi.fn((callback: () => void) => {
         firstFrame = callback;
         return 1;
@@ -152,7 +158,11 @@ describe("useHlsPlayer", () => {
     });
     await waitFor(() => expect(channelPlayUrl).toHaveBeenCalledOnce());
     expect(result.current.status).toBe("loading");
+    expect(video.requestVideoFrameCallback).not.toHaveBeenCalled();
 
+    act(() => loadedMetadata());
+    expect(video.requestVideoFrameCallback).not.toHaveBeenCalled();
+    act(() => loadedData());
     act(() => firstFrame());
     expect(result.current.status).toBe("playing");
   });
