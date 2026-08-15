@@ -150,7 +150,7 @@ const policy = (filler?: ChannelPolicy["filler"], breaksPerHour?: number): Chann
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
     // transition, so the content isn't in the DOM on the first synchronous pass).
@@ -169,7 +169,7 @@ describe("ChannelFiller", () => {
   it("offers inherited, disabled, and custom break frequency without re-previewing the clip mix", async () => {
     const user = userEvent.setup();
     const { patches, previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
     await user.click(screen.getByRole("combobox", { name: "Break frequency" }));
@@ -185,7 +185,7 @@ describe("ChannelFiller", () => {
   it("editing a criterion re-previews and reveals Apply", async () => {
     const user = userEvent.setup();
     const { previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
     await user.click(await screen.findByRole("button", { name: /choose categories/i }));
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
@@ -207,7 +207,7 @@ describe("ChannelFiller", () => {
   it("Apply PATCHes the draft merged onto the saved policy; Discard clears the dirty state", async () => {
     const user = userEvent.setup();
     const { patches } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ audience: "kids" })} />);
 
     await user.click(await screen.findByRole("button", { name: /choose categories/i }));
     await user.click(await screen.findByRole("button", { name: "Candy" }));
@@ -246,7 +246,7 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
 
@@ -272,7 +272,7 @@ describe("ChannelFiller", () => {
       // the settings read too — the pin list asks for `filler.pod_max` (#237).
       getSettingsListMockHandler({ features: {}, settings: [] }),
     );
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
   });
 });

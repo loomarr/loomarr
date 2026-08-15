@@ -383,7 +383,7 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	if ch.IntentRef != jobID {
 		t.Errorf("channel intentRef = %q, want %q", ch.IntentRef, jobID)
 	}
-	if len(channels.Committed) != 1 || channels.Committed[0].ID != ch.ID {
+	if len(channels.Committed) != 1 || channels.Committed[0] != ch.ID {
 		t.Errorf("post-commit channels = %+v, want %q", channels.Committed, ch.ID)
 	}
 	if curator.calls != 0 {

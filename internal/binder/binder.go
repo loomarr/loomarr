@@ -34,6 +34,7 @@ type Store interface {
 	// ListChannels backs nextFreeChannelNumber ONLY — that genuinely needs every number in
 	// use. Looking a channel up BY something is GetChannelByIntentRef below.
 	ListChannels(ctx context.Context) ([]store.Channel, error)
+	GetChannel(ctx context.Context, id string) (store.Channel, error)
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
@@ -227,34 +228,35 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 // building + due-now, so the channel sweep is the durable reconcile retry and the
 // stored codec's h264 default is always safe. External or derived work must never
 // retroactively turn a successful local approval into an error.
-func (b *Binder) AfterApprovalCommitted(ctx context.Context, ch store.Channel) {
+func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 	// Compute + store the channel's uniform broadcast codec from the just-bound content (§9.1 V50):
 	// the majority codec of the lineup's landed programs, which the timeline normalizes to. Runs here
 	// so the codec is set BEFORE the first play (no default-h264 window). Best-effort — a probe
 	// failure logs and leaves the stored codec at its current value (h264 default on a first bind),
 	// never failing the bind: the channel must go on air even if the codec measurement can't.
 	if b.codec != nil {
-		if _, cerr := b.codec.ComputeChannelCodec(ctx, ch.ID); cerr != nil && b.log != nil {
+		if _, cerr := b.codec.ComputeChannelCodec(ctx, channelID); cerr != nil && b.log != nil {
 			b.log.Warn("broadcast codec not computed (channel keeps stored codec)",
-				"channel", ch.ID, "err", cerr)
+				"channel", channelID, "err", cerr)
 		}
 	}
 
 	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries — which is true
 	// only because the channel was stamped due-now above. See the ⚠ on `sqliteChannelClaimSQL`.
 	if b.rec != nil {
-		if err := b.rec.Reconcile(ctx, ch.ID); err != nil {
+		if err := b.rec.Reconcile(ctx, channelID); err != nil {
+			ch, _ := b.store.GetChannel(ctx, channelID)
 			// ⚠ ERROR, not Warn, and it names the CONSEQUENCE. This leaves a channel that exists,
 			// has a lineup and shows a full schedule in the guide, but has never been pushed to
 			// Tunarr — an operator reading "warning" would reasonably scroll past the one line
 			// explaining why their new channel is stuck on "Creating".
 			if b.log != nil {
 				b.log.Error("initial reconcile of an approved channel FAILED — it is not on Tunarr yet; the next channel sweep will retry",
-					"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
+					"channel", channelID, "name", ch.Name, "number", ch.Number, "err", err)
 			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
-				b.acts.Error(ctx, "channel.reconcile", ch.ID,
+				b.acts.Error(ctx, "channel.reconcile", channelID,
 					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}

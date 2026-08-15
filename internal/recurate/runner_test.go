@@ -51,7 +51,7 @@ func seedChannelStatus(t *testing.T, st store.Store, id, jobID string, status sc
 	ch.Strategy = schedule.Sequential
 	ch.Status = status
 	ch.Policy = schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac}}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }

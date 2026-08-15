@@ -30,7 +30,7 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 		}
 	}
 	for _, ch := range chans {
-		if err := st.UpsertChannel(ctx, ch); err != nil {
+		if _, err := st.SaveChannel(ctx, ch); err != nil {
 			t.Fatal(err)
 		}
 	}

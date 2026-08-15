@@ -85,6 +85,16 @@ func seedForMigration(t *testing.T, s Store) {
 	if err := s.SetSetting(ctx, "setup.completed", "true"); err != nil {
 		t.Fatalf("seed setting: %v", err)
 	}
+
+	// The copier discovers the destination's live column set. Saving twice gives
+	// revision a non-default value, proving it is copied rather than merely filled
+	// by Postgres's migration default.
+	channel := mustSaveChannel(t, s, sampleChannel("migration-revision", 701, time.Time{}))
+	channel.Name = "revision two"
+	channel = mustSaveChannel(t, s, channel)
+	if channel.Revision != 2 {
+		t.Fatalf("migration source channel revision = %d, want 2", channel.Revision)
+	}
 }
 
 // TestMigrateSQLiteToPostgres is the phase gate itself.
@@ -111,6 +121,14 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	// re-counted both sides inside the source snapshot.
 	if bad := ParityMismatches(prog.Tables); len(bad) > 0 {
 		t.Fatalf("row-count parity failed: %+v", bad)
+	}
+	migratedChannel, err := dst.GetChannel(ctx, "migration-revision")
+	if err != nil {
+		t.Fatalf("get migrated channel: %v", err)
+	}
+	if migratedChannel.Revision != 2 || migratedChannel.Name != "revision two" {
+		t.Fatalf("migrated channel revision = %d name=%q, want 2/revision two",
+			migratedChannel.Revision, migratedChannel.Name)
 	}
 
 	// Parity alone would pass if every value were mangled identically, so assert the

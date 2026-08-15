@@ -7,6 +7,7 @@ import { ChannelAdvanced } from "./-channel-advanced";
 // A minimal channel — only the fields ChannelAdvanced reads. `applied` is reconcile-owned
 // (§9), so the tests assert it survives a playout edit untouched.
 const CHANNEL: ChannelDTO = {
+  revision: 1,
   id: "ch1",
   name: "Saturday Cartoons",
   number: 42,

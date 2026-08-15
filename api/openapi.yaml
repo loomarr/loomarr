@@ -515,6 +515,11 @@ components:
           description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
+        revision:
+          description: Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition.
+          format: int64
+          minimum: 1
+          type: integer
         slotCount:
           description: Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics.
           format: int64
@@ -540,6 +545,7 @@ components:
           type: string
       required:
         - id
+        - revision
         - name
         - number
         - strategy
@@ -5585,6 +5591,11 @@ components:
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
           description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+        revision:
+          description: Revision returned by the channel read this edit was based on. A stale revision is rejected with 409.
+          format: int64
+          minimum: 1
+          type: integer
         status:
           description: Pause (off air, keep the channel) or resume.
           enum:
@@ -5597,6 +5608,8 @@ components:
             - shuffle
             - time_slot
           type: string
+      required:
+        - revision
       type: object
     UploadIconOutputBody:
       additionalProperties: false

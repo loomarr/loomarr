@@ -18,6 +18,8 @@ type ApprovalStore struct {
 	Enqueued     int
 	Latest       store.Proposal
 	LatestError  error
+	LatestFunc   func(call int) (store.Proposal, error)
+	LatestCalls  int
 }
 
 func (*ApprovalStore) GetTitle(context.Context, provision.Key) (provision.Record, error) {
@@ -25,6 +27,10 @@ func (*ApprovalStore) GetTitle(context.Context, provision.Key) (provision.Record
 }
 
 func (s *ApprovalStore) NewestProposalByStatusForJob(context.Context, string, string) (store.Proposal, error) {
+	s.LatestCalls++
+	if s.LatestFunc != nil {
+		return s.LatestFunc(s.LatestCalls)
+	}
 	if s.LatestError != nil {
 		return store.Proposal{}, s.LatestError
 	}
@@ -53,7 +59,7 @@ func (s *ApprovalStore) CommitProposalApproval(_ context.Context, commit store.P
 // the default valid channel when a test needs a particular snapshot or mutation.
 type ApprovalChannels struct {
 	Plans     []store.Proposal
-	Committed []store.Channel
+	Committed []string
 	PlanError error
 	PlanFunc  func(store.Proposal, int) store.Channel
 }
@@ -77,6 +83,6 @@ func (c *ApprovalChannels) PlanApprovedChannel(_ context.Context, p store.Propos
 	return ch, nil
 }
 
-func (c *ApprovalChannels) AfterApprovalCommitted(_ context.Context, ch store.Channel) {
-	c.Committed = append(c.Committed, ch)
+func (c *ApprovalChannels) AfterApprovalCommitted(_ context.Context, channelID string) {
+	c.Committed = append(c.Committed, channelID)
 }

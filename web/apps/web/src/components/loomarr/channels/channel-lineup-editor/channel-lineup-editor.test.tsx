@@ -48,7 +48,7 @@ const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
 describe("ChannelLineupEditor", () => {
   it("renders the current lineup with drag handles and remove buttons", () => {
     stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -60,7 +60,7 @@ describe("ChannelLineupEditor", () => {
 
   it("shows an empty state when the lineup is empty", () => {
     stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[]} />, { wrapper: makeWrapper() });
     expect(screen.getByText(/nothing in the lineup yet/i)).toBeInTheDocument();
   });
 
@@ -72,6 +72,7 @@ describe("ChannelLineupEditor", () => {
     render(
       <ChannelLineupEditor
         channelId="ch-1"
+        revision={1}
         lineup={[
           { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
           { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "pending" },
@@ -94,7 +95,7 @@ describe("ChannelLineupEditor", () => {
     const { patches } = stubEditor({
       candidates: [{ mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true }],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -108,6 +109,7 @@ describe("ChannelLineupEditor", () => {
     // The added entry carries an optimistic `state` seeded from the candidate's inLibrary
     // (here true ⇒ "available"); the backend re-derives the authoritative value on refetch.
     expect(patches[0]).toEqual({
+      revision: 1,
       lineup: [heat, pointBreak, { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "available" }],
     });
   });
@@ -118,7 +120,7 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "series", tvdbId: 81189, name: "Breaking Bad", year: 2008, inLibrary: false },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "breaking");
@@ -127,6 +129,7 @@ describe("ChannelLineupEditor", () => {
     await waitFor(() => expect(patches).toHaveLength(1));
     // A candidate the search marked !inLibrary is added with an optimistic state "pending".
     expect(patches[0]).toEqual({
+      revision: 1,
       lineup: [heat, { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008, state: "pending" }],
     });
     // The add closed the palette and returned to the populated list, where the new
@@ -137,14 +140,14 @@ describe("ChannelLineupEditor", () => {
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ lineup: [pointBreak] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [pointBreak] });
   });
 
   it("a candidate whose key is already in the lineup is not offered", async () => {
@@ -154,7 +157,7 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "he");
@@ -178,7 +181,7 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "film");
@@ -192,7 +195,7 @@ describe("ChannelLineupEditor", () => {
 
   it("cancelling the add palette closes it without committing", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     expect(screen.getByLabelText("Search")).toBeInTheDocument();
