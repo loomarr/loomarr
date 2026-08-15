@@ -953,6 +953,10 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 	if err != nil {
 		return nil, err
 	}
+	if !p.Ready() {
+		return nil, errNotFound("Split proposal not found",
+			"Detection is still running; the proposal will appear here when its cut list is ready.")
+	}
 	return &getFillerSplitOutput{Body: p}, nil
 }
 

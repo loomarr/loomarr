@@ -184,6 +184,50 @@ type visionOutput struct {
 	Era         int    `json:"era"`
 }
 
+// UnmarshalJSON salvages independently valid fields from a model answer. Vision models
+// occasionally use a numeric sentinel for one optional string field (measured live:
+// `category: 0`); the default decoder rejected the whole object and discarded valid visible text
+// beside it. Dropping only the malformed field is the safe direction because groundVisionTags
+// still applies every evidence and taxonomy constraint afterwards.
+func (v *visionOutput) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		return fmt.Errorf("vision output must be a JSON object")
+	}
+	v.VisibleText = decodeVisionString(fields["visibleText"])
+	v.Brand = decodeVisionString(fields["brand"])
+	v.Category = decodeVisionString(fields["category"])
+	v.Era = decodeVisionInt(fields["era"])
+	return nil
+}
+
+func decodeVisionString(raw json.RawMessage) string {
+	var value string
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return value
+}
+
+func decodeVisionInt(raw json.RawMessage) int {
+	var value int
+	if len(raw) == 0 {
+		return 0
+	}
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0
+	}
+	value, _ = strconv.Atoi(strings.TrimSpace(text))
+	return value
+}
+
 // groundVisionTags is the grounding pass for the vision tier — validateTags, but the signal a tag
 // must appear in is the model's OWN visibleText rather than the clip's text signals (§10 V44).
 //

@@ -32,9 +32,10 @@ import (
 // (clips are a synced cache, and deleting the shadowing file resolves it); intolerable to leave
 // unstated, which is the whole reason for this paragraph.
 //
-// ⚠ **A re-encoded or trimmed file is a DIFFERENT clip and loses its tags.** Correct — it is a
-// different file — but "I only changed the bitrate" does not feel like "I replaced the clip", so
-// §10 says so out loud too.
+// ⚠ **A re-encoded or trimmed file is a DIFFERENT content identity.** A file changed outside
+// Loomarr and re-entered through intake is a new clip. An ingest transform also computes a new
+// identity, but atomically moves the existing clip's metadata and references to it; it must never
+// rewrite bytes under the old hash.
 
 // hashWindow is how much is read from each end. 64 KB comfortably covers container headers
 // (moov/ftyp boxes, Matroska headers) without making the read itself the cost.

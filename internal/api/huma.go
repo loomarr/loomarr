@@ -136,6 +136,8 @@ type Server struct {
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
 	playoutObserver PlayoutObserver
+	// preparedObserver supplies the readiness planner's immutable operational snapshot.
+	preparedObserver PreparedObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -755,6 +757,8 @@ type Options struct {
 	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
+	// PreparedObserver supplies prepared readiness and retention status without rescanning.
+	PreparedObserver PreparedObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string

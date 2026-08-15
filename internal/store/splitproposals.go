@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -18,13 +19,41 @@ import (
 
 const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FROM filler_split_proposals`
 
+// splitProposalDocument evolves the original bare segment array without a coordination-column
+// migration. Detection checkpoints are implementation state, not independently queryable data;
+// keeping them in the proposal's one authored/read document preserves that ownership.
+type splitProposalDocument struct {
+	Version   int                            `json:"version"`
+	Segments  []filler.SplitSegment          `json:"segments,omitempty"`
+	Detection *filler.SplitDetectionProgress `json:"detection,omitempty"`
+}
+
+func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
+	return json.Marshal(splitProposalDocument{Version: 1, Segments: p.Segments, Detection: p.Detection})
+}
+
+func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
+	trimmed := bytes.TrimSpace([]byte(raw))
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		// V34–V54 stored the segment array directly. Absence of detector state means those rows
+		// are complete proposals, so upgrades need no migration or queue rewrite.
+		return json.Unmarshal(trimmed, &p.Segments)
+	}
+	var doc splitProposalDocument
+	if err := json.Unmarshal(trimmed, &doc); err != nil {
+		return err
+	}
+	p.Segments, p.Detection = doc.Segments, doc.Detection
+	return nil
+}
+
 // UpsertSplitProposal writes a proposal. ONE proposal per compilation clip:
 // re-running detection replaces the pending one (clip_hash is UNIQUE), because
 // two competing cut-lists for one file is a review bug, not a choice.
 func (s *sqlStore) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
-	raw, err := json.Marshal(p.Segments)
+	raw, err := marshalSplitProposal(p)
 	if err != nil {
-		return fmt.Errorf("marshal split segments: %w", err)
+		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_split_proposals (id, clip_hash, segments_json, created_at)
@@ -54,8 +83,8 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	if err != nil {
 		return filler.SplitProposal{}, fmt.Errorf("get split proposal %s: %w", id, err)
 	}
-	if err := json.Unmarshal([]byte(raw), &p.Segments); err != nil {
-		return filler.SplitProposal{}, fmt.Errorf("split proposal %s segments corrupt: %w", id, err)
+	if err := unmarshalSplitProposal(raw, &p); err != nil {
+		return filler.SplitProposal{}, fmt.Errorf("split proposal %s document corrupt: %w", id, err)
 	}
 	p.CreatedAt = fromEpoch(createdAt)
 	return p, nil
@@ -247,8 +276,8 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 		// Reported rather than silently skipped: a proposal whose segments will not decode is
 		// a compilation the operator can never review, and dropping it from the list makes it
 		// invisible instead of fixable.
-		if err := json.Unmarshal([]byte(raw), &p.Segments); err != nil {
-			return nil, fmt.Errorf("split proposal %s segments corrupt: %w", p.ID, err)
+		if err := unmarshalSplitProposal(raw, &p); err != nil {
+			return nil, fmt.Errorf("split proposal %s document corrupt: %w", p.ID, err)
 		}
 		p.CreatedAt = fromEpoch(createdAt)
 		out = append(out, p)

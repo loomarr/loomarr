@@ -13,11 +13,12 @@ import (
 type fixedCandidates struct {
 	items     []Candidate
 	protected []Specification
+	summary   ReadinessSummary
 	err       error
 }
 
 func (f fixedCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
-	return ReadinessPlan{Candidates: f.items, Protected: f.protected}, f.err
+	return ReadinessPlan{Candidates: f.items, Protected: f.protected, Summary: f.summary}, f.err
 }
 
 type recordingPreparation struct {
@@ -171,5 +172,81 @@ func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
 	}
 	if retainer.calls != 1 || retainer.budget != 512 || len(retainer.protected) != 1 || retainer.protected[0] != protected {
 		t.Fatalf("retention calls = %d at %d bytes, want one at 512", retainer.calls, retainer.budget)
+	}
+}
+
+func TestPlannerStatusReportsResolvedReadinessAndRetentionAfterYield(t *testing.T) {
+	now := time.Unix(20_000, 0)
+	retainer := &recordingRetainer{result: PruneResult{
+		RemainingBytes: 700, BudgetBytes: 512, ProtectedBytes: 400,
+		PublicationsEvicted: 2, BytesEvicted: 100,
+	}}
+	wantReadiness := ReadinessSummary{
+		Channels: 100, ReadyChannels: 84,
+		ScheduledBindings: 300, ReadyBindings: 260, MissingBindings: 40,
+		QueuedPublications: 16,
+	}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{summary: wantReadiness, items: []Candidate{{
+			Request: Request{Source: Source{Path: "/warming"}, Rendition: baselineRendition()},
+		}}},
+		Preparation: &recordingPreparation{},
+		Pool:        media.NewEncodePool(func() int { return 1 }), // no background slot: a normal yield
+		Retainer:    retainer,
+		BudgetBytes: func() int64 { return 512 },
+		Now:         func() time.Time { return now },
+	})
+
+	if got := p.Status(); !got.Available || got.Running || !got.LastRunAt.IsZero() {
+		t.Fatalf("initial status = %+v, want available but not yet run", got)
+	}
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	want := PlannerStatus{
+		Available: true, LastRunAt: now, Readiness: wantReadiness,
+		Retention: RetentionStatus{
+			RemainingBytes: 700, BudgetBytes: 512, ProtectedBytes: 400,
+			PublicationsEvicted: 2, BytesEvicted: 100,
+		},
+	}
+	if got := p.Status(); got != want {
+		t.Fatalf("status = %+v, want %+v", got, want)
+	}
+}
+
+func TestPlannerStatusReportsPassInProgress(t *testing.T) {
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: []Candidate{{
+			Request: Request{Source: Source{Path: "/warming"}, Rendition: baselineRendition()},
+		}}},
+		Preparation: &recordingPreparation{run: func(context.Context, Request) error {
+			close(started)
+			<-finish
+			return nil
+		}},
+		Pool: media.NewEncodePool(func() int { return 2 }), Now: time.Now,
+	})
+	done := make(chan error, 1)
+	go func() { done <- p.Run(t.Context()) }()
+	<-started
+	if got := p.Status(); !got.Running || !got.LastRunAt.IsZero() {
+		t.Fatalf("in-progress status = %+v", got)
+	}
+	close(finish)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Status(); got.Running || got.LastRunAt.IsZero() {
+		t.Fatalf("completed status = %+v", got)
+	}
+}
+
+func TestPlannerStatusPreservesUnavailableReason(t *testing.T) {
+	p := NewPlanner(PlannerDependencies{UnavailableReason: "prepared volume is read-only"})
+	if got := p.Status(); got.Available || got.UnavailableReason != "prepared volume is read-only" {
+		t.Fatalf("status = %+v", got)
 	}
 }

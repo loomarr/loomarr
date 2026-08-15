@@ -53,6 +53,12 @@ Turns your sentence into a lineup. Must support tool-calling.
 - **Hosted** (OpenAI, Gemini, Groq, OpenRouter): `LLM_PROVIDER=openai`, `LLM_URL` = the
   base ending in `/v1`, `LLM_MODEL`, `LLM_API_KEY`.
 
+OpenRouter can run every filler AI capability with that same key. In Filler settings, choose
+**Hosted AI service** for language detection and transcription, set the transcription model
+(the default is `openai/whisper-large-v3`), and enable vision with an image-capable model. The
+chat, vision, and speech-to-text model ids remain separate because they accept different inputs;
+the credential and provider are shared.
+
 Switching models takes effect immediately — no restart.
 
 **What leaves your network.** With local Ollama, nothing. With a hosted provider, Loomarr sends
@@ -60,7 +66,8 @@ your intent plus titles and metadata from your library, so the model picks among
 TMDB always receives title searches.
 
 Two optional filler features send more and are off by default: vision tagging sends video
-keyframes, and hosted transcription sends audio.
+keyframes, and hosted transcription sends audio in sub-minute chunks. Hosted language detection
+also sends a short audio sample when selected.
 
 ## TMDB
 

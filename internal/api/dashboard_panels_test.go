@@ -25,11 +25,11 @@ func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, store.S
 	return srv, st
 }
 
-// §19 negative: both panels expose machine state (what is broken, what the install has been
-// doing), which §11 keeps to admins.
+// §19 negative: these operational projections expose machine state (what is broken, what the
+// install has been doing), which §11 keeps to admins.
 func TestDashboardPanels_RequireAdmin(t *testing.T) {
 	srv, _ := serverWithPanels(t, api.Options{})
-	for _, path := range []string{"/v1/system/services", "/v1/activity"} {
+	for _, path := range []string{"/v1/system/services", "/v1/activity", "/v1/playout/status"} {
 		resp := do(t, srv, http.MethodGet, path, "", "") // no token
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("GET %s without admin → %d, want 401", path, resp.StatusCode)

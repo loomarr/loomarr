@@ -509,12 +509,26 @@ func declared() []Setting {
 		},
 		{
 			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
-			// the language gate (~341s per clip under QEMU), so it is a deliberate opt-in, not a
-			// silent background cost. The job is SELECTIVE even when on — it only transcribes clips
-			// whose source described them thinly, never the whole catalog.
+			// the language gate on the local path (~341s per clip under QEMU), and spends provider
+			// credit on the hosted path, so it is a deliberate opt-in either way. The job is
+			// SELECTIVE even when on — it only transcribes clips whose source described them thinly,
+			// never the whole catalog.
 			Key: "filler.transcribe.enabled", Label: "Transcribe unclear clips", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection.",
+			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the transcription provider selected below.",
+		},
+		{
+			Key: "filler.transcribe.provider", Label: "Transcription service", EnvVar: "FILLER_TRANSCRIBE_PROVIDER", Group: GroupFiller,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
+			},
+			Default: "whisper", Advanced: true,
+			Doc: "Where timed transcripts come from: the bundled local Whisper engine, or the hosted AI provider configured under AI. OpenRouter supports this with the same key used for text and vision.",
+		},
+		{
+			Key: "filler.transcribe.model", Label: "Transcription model", EnvVar: "FILLER_TRANSCRIBE_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "openai/whisper-large-v3", Advanced: true,
+			Doc: "Speech-to-text model used for hosted transcription. This is separate from the chat and vision models because it must return timed transcript segments.",
 		},
 		{
 			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
@@ -649,9 +663,10 @@ func declared() []Setting {
 			// said: off, because cutting is destructive in a way tagging is not — a mis-cut clip
 			// plays HALF AN ADVERT and the source is consumed either way. That reasoning was
 			// sound and the risk has not changed; what changed is the evidence. The gate is
-			// strict — the whole reel qualifies or none of it does, an ungrounded era disqualifies
-			// at every threshold, and any segment the detector admits it could not resolve sends
-			// the whole reel to a human — and the measured failure mode is the gate REFUSING good
+			// strict — after known duplicates and short fragments are removed, the remaining reel
+			// qualifies as a whole or none of it does; an ungrounded era disqualifies at every
+			// threshold, and any segment the detector admits it could not resolve sends the
+			// remaining reel to a human — and the measured failure mode is the gate REFUSING good
 			// reels, not admitting bad ones. Off by default meant every compilation waited for a
 			// click that the design says should be unnecessary.
 			Key: "filler.autosplit.enabled", Label: "Accept confident cuts automatically", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
@@ -716,9 +731,8 @@ func declared() []Setting {
 			// the live catalog holds proposals of 235, 222, 142 and 133 segments, so an unbounded
 			// per-segment pass is exactly the shape that burned 377s against a 120s budget.
 			//
-			// A reel with more segments than this does not auto-confirm — the gate is
-			// all-or-nothing, so an ungrounded tail sends it to review, which is where a reel
-			// nobody could judge belongs.
+			// A reel with more segments than this continues on the next pass. The proposal persists
+			// Looked per segment, so this is a resource budget rather than a review threshold.
 			Key: "filler.pipeline.max_split_vision", Label: "Compilation segments inspected per pass", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 60, Advanced: true,
 			Doc: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",

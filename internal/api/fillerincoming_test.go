@@ -158,6 +158,7 @@ func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "clean"},
 			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "dup", DupOf: "old/ad.mp4"},
 			{Index: 2, StartMs: 61_000, EndMs: 149_000, Name: "stuck", Unsplittable: true},
+			{Index: 3, StartMs: 149_000, EndMs: 179_000, Name: "unknown", Looked: true},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -168,17 +169,32 @@ func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 	if len(body.Reels) != 1 {
 		t.Fatalf("reels = %d, want 1", len(body.Reels))
 	}
-	if body.Reels[0].Segments != 3 {
-		t.Errorf("segments = %d, want 3", body.Reels[0].Segments)
+	if body.Reels[0].Segments != 4 {
+		t.Errorf("segments = %d, want 4", body.Reels[0].Segments)
 	}
-	if body.Reels[0].NeedsAttention != 2 {
-		t.Errorf("needsAttention = %d, want 2 (a duplicate and an unsplittable stretch)", body.Reels[0].NeedsAttention)
+	if body.Reels[0].NeedsAttention != 3 {
+		t.Errorf("needsAttention = %d, want 3 (legacy duplicate, unsplittable, and examined-but-unclassified)", body.Reels[0].NeedsAttention)
 	}
 	// ⚠ No clip backs this proposal, so the name falls back to the identity rather than rendering
 	// blank. A reel whose compilation has been deleted is a real state an operator must still be
 	// able to see and dismiss.
 	if body.Reels[0].ClipName != "hash-of-comps/1987.mp4" {
 		t.Errorf("clipName = %q, want the hash as the fallback for a missing clip", body.Reels[0].ClipName)
+	}
+}
+
+func TestFillerIncoming_HidesBoundaryDetectionCheckpointFromReview(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Reels) != 0 {
+		t.Fatalf("detector checkpoint appeared as work owed by the operator: %+v", body.Reels)
 	}
 }
 
@@ -354,9 +370,14 @@ func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
 		Hash: "hash-review", Path: "review.mp4", Name: "Machine gave up",
 		Kind: filler.Commercial, DurationMs: 30_000, Held: true,
 	})
+	now := time.Now().UTC()
 	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
 		ClipHash: "hash-review", Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionReview, UpdatedAt: time.Now().UTC(),
+		Disposition: filler.DispositionReview, UpdatedAt: now,
+		Stages: []filler.StageRecord{{
+			Stage: filler.StageScore, Status: filler.StatusDone,
+			Note: "The picture is unchanged for 12.0s; this may be intentional.", At: now,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -371,6 +392,9 @@ func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
 	}
 	if body.Total != 1 {
 		t.Errorf("total = %d, want 1", body.Total)
+	}
+	if body.Clips[0].Reason != "The picture is unchanged for 12.0s; this may be intentional." {
+		t.Errorf("review reason = %q, want the stage's measured explanation", body.Clips[0].Reason)
 	}
 }
 
