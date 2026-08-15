@@ -440,7 +440,6 @@ const GuideGrid = ({
           {virtualRows.map((vr) => {
             const ch = channels[vr.index];
             if (!ch) return null;
-            const rowIndex = vr.index;
             const health = healthOf(ch);
             const chip = health ? HEALTH_CHIP[health] : null;
             const onAir = onAirOf(ch);
@@ -547,12 +546,11 @@ const GuideGrid = ({
                         key={`${ch.channelId}-${a.startMs}`}
                         data-kind={a.kind}
                         data-airing={airing || undefined}
-                        // The anchor is the block's own left edge + its row, so the caller can
-                        // open the detail card beside what is being inspected instead of in a
-                        // fixed corner — and flip it when the block is near an edge.
-                        onMouseEnter={() => onInspect?.(a, ch.channelId, { leftPct: left, rowIndex })}
+                        // The real element is the anchor: unlike a row-index estimate, its
+                        // bounding box stays truthful through scrolling, zoom and virtualization.
+                        onMouseEnter={(event) => onInspect?.(a, ch.channelId, event.currentTarget)}
                         onMouseLeave={() => onInspect?.(null)}
-                        onFocus={() => onInspect?.(a, ch.channelId, { leftPct: left, rowIndex })}
+                        onFocus={(event) => onInspect?.(a, ch.channelId, event.currentTarget)}
                         onBlur={() => onInspect?.(null)}
                         // Clicking a block opens ITS CHANNEL — the same destination the rail's
                         // channel button goes to. There is no per-programme page to open (a

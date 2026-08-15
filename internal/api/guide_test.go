@@ -10,12 +10,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -33,14 +36,16 @@ type guideBody struct {
 		Name      string `json:"name"`
 		Number    int    `json:"number"`
 		Airings   []struct {
-			Kind       string `json:"kind"`
-			Title      string `json:"title"`
-			Series     string `json:"series"`
-			StartMs    int64  `json:"startMs"`
-			StopMs     int64  `json:"stopMs"`
-			Nominal    bool   `json:"nominal"`
-			RuntimeMs  int64  `json:"runtimeMs"`
-			Provenance string `json:"provenance"`
+			Kind       string        `json:"kind"`
+			Title      string        `json:"title"`
+			Series     string        `json:"series"`
+			StartMs    int64         `json:"startMs"`
+			StopMs     int64         `json:"stopMs"`
+			Nominal    bool          `json:"nominal"`
+			RuntimeMs  int64         `json:"runtimeMs"`
+			Provenance string        `json:"provenance"`
+			ThumbURL   string        `json:"thumbUrl"`
+			ThumbImage *api.ImageDTO `json:"thumbImage"`
 			Pod        *struct {
 				MatchLevel string `json:"matchLevel"`
 				TotalMs    int64  `json:"totalMs"`
@@ -57,6 +62,62 @@ type guideBody struct {
 			} `json:"pod"`
 		} `json:"airings"`
 	} `json:"channels"`
+}
+
+type fixedGuideThumbs struct {
+	hash string
+}
+
+func (f fixedGuideThumbs) ThumbFor(_ context.Context, key string, _, _ int) (string, string) {
+	if key == "" {
+		return "", ""
+	}
+	return "/v1/images/" + f.hash + "/w300.jpg", f.hash
+}
+
+// slowGuideThumbs makes serial artwork resolution visible without involving the network. The real
+// implementation performs one or two TMDB metadata calls and possibly an image download here; a
+// single channel resolving those calls one after another was the Guide's first-paint regression.
+type slowGuideThumbs struct {
+	delay time.Duration
+
+	mu        sync.Mutex
+	active    int
+	maxActive int
+	calls     map[string]int
+}
+
+func (f *slowGuideThumbs) ThumbFor(_ context.Context, key string, season, episode int) (string, string) {
+	id := key + "/" + strconv.Itoa(season) + "/" + strconv.Itoa(episode)
+	f.mu.Lock()
+	f.active++
+	if f.active > f.maxActive {
+		f.maxActive = f.active
+	}
+	f.calls[id]++
+	f.mu.Unlock()
+
+	time.Sleep(f.delay)
+
+	f.mu.Lock()
+	f.active--
+	f.mu.Unlock()
+	return "/v1/images/" + id + "/w300.jpg", ""
+}
+
+func newGridServerWithArtwork(
+	t *testing.T, g api.PlayoutGuide, p api.PodPreviewer, thumbs api.TimelineThumbResolver, imgs api.ImageService,
+) (*httptest.Server, store.Store) {
+	t.Helper()
+	st := openTestStore(t, t.TempDir()+"/grid-artwork.db")
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log, PlayoutGuide: g, Pods: p,
+		TimelineThumbs: thumbs, Images: imgs,
+	}))
+	t.Cleanup(srv.Close)
+	return srv, st
 }
 
 func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
@@ -402,6 +463,117 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	}
 	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
 		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	}
+}
+
+// The Guide hover card is the public inspection surface for BOTH schedule shapes. A programme
+// gets its episode still/movie backdrop; a filler block gets artwork from the actual pod it carries,
+// preferring the clip's animated hover image over its still. The Watch timeline already resolved
+// programme artwork, but /v1/guide used the shared DTO without populating either shape.
+func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
+	now := time.Now()
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			{
+				Kind: schedule.SlotProgram, Key: "movie:tmdb:89", Title: "Indiana Jones",
+				Start: now, Stop: now.Add(2 * time.Hour),
+			},
+			{
+				Kind: schedule.SlotFiller, Start: now.Add(2 * time.Hour),
+				Stop: now.Add(2*time.Hour + 2*time.Minute),
+			},
+		},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		MatchLevel: filler.MatchExact,
+		TotalMs:    30_000,
+		Entries: []filler.PodEntry{{
+			Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial",
+			Kind: filler.Commercial, DurationMs: 30_000,
+		}},
+	}}
+	img := newFakeImageService()
+	img.records["program-art"] = images.Image{
+		Hash: "program-art", Role: images.RoleBackdrop, Width: 320, Height: 180,
+		Visibility: images.VisibilityMember,
+	}
+	img.records["filler-still"] = images.Image{
+		Hash: "filler-still", Role: images.RoleThumb, Width: 320, Height: 240,
+		Visibility: images.VisibilityMember,
+	}
+	img.records["filler-hover"] = images.Image{
+		Hash: "filler-hover", Role: images.RoleThumb, Width: 320, Height: 240, Animated: true,
+		Visibility: images.VisibilityMember,
+	}
+
+	srv, st := newGridServerWithArtwork(t, g, fp, fixedGuideThumbs{hash: "program-art"}, img)
+	seedGridChannel(t, st, "ch1", 1)
+	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Kind: filler.Commercial,
+		DurationMs: 30_000, ThumbImageHash: "filler-still", HoverImageHash: "filler-hover",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	airings := getGuide(t, srv, "?from="+ms(now.Add(-time.Minute).UnixMilli())+
+		"&to="+ms(now.Add(3*time.Hour).UnixMilli())).Channels[0].Airings
+	if len(airings) != 2 {
+		t.Fatalf("got %d airings, want programme + filler", len(airings))
+	}
+	if got := airings[0].ThumbImage; got == nil || got.Hash != "program-art" {
+		t.Errorf("programme hover image = %+v, want program-art", got)
+	}
+	if got := airings[1].ThumbImage; got == nil || got.Hash != "filler-hover" || !got.Animated {
+		t.Errorf("filler hover image = %+v, want animated filler-hover (preferred over still)", got)
+	}
+}
+
+// Programme artwork is interactive but it must not serialize first paint. A four-hour window can
+// repeat the same movie or episode and can expose several distinct programmes in one channel; the
+// Guide resolves the UNIQUE set as one bounded concurrent batch. This is deliberately a timing
+// test as well as a call-shape test: eight 60ms calls in series reproduce the user-visible pause,
+// while four unique calls in parallel leave ample margin beneath the threshold.
+func TestGuide_BatchesProgrammeArtworkWithoutSerializingFirstPaint(t *testing.T) {
+	const delay = 60 * time.Millisecond
+	now := time.Now()
+	blocks := make([]playout.Broadcast, 0, 8)
+	for i := range 8 {
+		// Four identities, each repeated once. Dedupe is across airings, not merely adjacent blocks.
+		identity := i % 4
+		blocks = append(blocks, playout.Broadcast{
+			Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:" + strconv.Itoa(100+identity)),
+			Title: "Movie " + strconv.Itoa(identity), Start: now.Add(time.Duration(i) * time.Hour),
+			Stop: now.Add(time.Duration(i+1) * time.Hour),
+		})
+	}
+	thumbs := &slowGuideThumbs{delay: delay, calls: map[string]int{}}
+	srv, st := newGridServerWithArtwork(t,
+		&fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": blocks}},
+		nil, thumbs, nil,
+	)
+	seedGridChannel(t, st, "ch1", 1)
+
+	started := time.Now()
+	airings := getGuide(t, srv, "?from="+ms(now.Add(-time.Minute).UnixMilli())+
+		"&to="+ms(now.Add(9*time.Hour).UnixMilli())).Channels[0].Airings
+	elapsed := time.Since(started)
+
+	if len(airings) != len(blocks) {
+		t.Fatalf("got %d airings, want %d", len(airings), len(blocks))
+	}
+	if len(thumbs.calls) != 4 {
+		t.Errorf("resolved %d unique programme identities, want 4", len(thumbs.calls))
+	}
+	for id, calls := range thumbs.calls {
+		if calls != 1 {
+			t.Errorf("programme %s resolved %d times, want one deduplicated call", id, calls)
+		}
+	}
+	if thumbs.maxActive < 2 {
+		t.Errorf("maximum concurrent artwork resolutions = %d, want at least 2", thumbs.maxActive)
+	}
+	if elapsed >= 4*delay {
+		t.Errorf("Guide took %v for four unique %v artwork calls; they were serialized", elapsed, delay)
 	}
 }
 

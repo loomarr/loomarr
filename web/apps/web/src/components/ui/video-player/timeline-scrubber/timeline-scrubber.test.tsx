@@ -1,6 +1,6 @@
 import type { GuideAiring } from "@loomarr/api";
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { TimelineScrubber } from "./timeline-scrubber";
 
 const NOW = 1_700_000_000_000;
@@ -66,5 +66,38 @@ describe("TimelineScrubber", () => {
     // The playhead is the absolutely-positioned tick with a left percentage.
     const playhead = container.querySelector("[aria-hidden][style*='left']");
     expect(playhead).not.toBeNull();
+  });
+
+  it("shows a movie backdrop without cropping it in the landscape preview frame", () => {
+    const movie: GuideAiring = {
+      kind: "program",
+      title: "Indiana Jones and the Temple of Doom",
+      startMs: NOW - min(60),
+      stopMs: NOW + min(60),
+      thumbUrl: "/movie.jpg",
+      thumbImage: {
+        hash: "movie-backdrop",
+        role: "backdrop",
+        width: 320,
+        height: 180,
+        placeholder: "",
+        dominantHex: "#111111",
+        animated: false,
+        srcSetAvif: "",
+        srcSetWebp: "/movie.webp 320w",
+        src: "/movie.jpg",
+      },
+    };
+    const { container } = render(<TimelineScrubber airings={[movie]} nowMs={NOW} />);
+    const track = container.querySelector<HTMLElement>(".group");
+    expect(track).not.toBeNull();
+    vi.spyOn(track as HTMLElement, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 200, 8));
+
+    fireEvent.pointerMove(track as HTMLElement, { clientX: 100 });
+
+    const image = document.querySelector<HTMLImageElement>('img[src="/movie.jpg"]');
+    expect(image).not.toBeNull();
+    expect(image).toHaveClass("object-contain");
+    expect(image).not.toHaveClass("object-cover");
   });
 });
