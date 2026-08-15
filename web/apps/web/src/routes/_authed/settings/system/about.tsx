@@ -2,6 +2,7 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { createFileRoute } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { AboutPanel } from "@/components/loomarr/settings/about-panel";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 
 // Settings → System → About (§16, V12) — what the operator quotes in a bug report.
 //
@@ -18,8 +19,14 @@ const AboutPage = () => {
   if (version.data?.status !== 200) return null;
 
   return (
-    <div className="overflow-y-auto p-6">
-      <AboutPanel version={version.data.data} />
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        title="About"
+        description="Version, runtime, and storage details for this Loomarr install."
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        <AboutPanel version={version.data.data} />
+      </div>
     </div>
   );
 };

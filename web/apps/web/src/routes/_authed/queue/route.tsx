@@ -109,7 +109,6 @@ const QueueLayout = () => {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Queue"
-        className="border-border border-b px-6 py-4"
         description={
           rows.length > 0
             ? `${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed. Channels play what's ready and fill the rest, improving as more arrives.`
