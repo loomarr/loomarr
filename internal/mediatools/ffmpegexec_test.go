@@ -162,6 +162,50 @@ func TestCut_LateSpanUsesDurationNotAbsoluteEnd(t *testing.T) {
 	}
 }
 
+// A stream-copy input seek lands on the preceding keyframe. MP4 hides that preroll with an edit
+// list, but `-avoid_negative_ts make_zero` defeats the edit and makes the preroll visible. The
+// production symptom was a 31s compilation segment becoming 41-51s after the next probe, with the
+// exact inflation depending on where the preceding GOP began. A WAV has no GOP, so the duration
+// test above could never catch this class.
+func TestCut_MP4DoesNotExposeKeyframePreroll(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "sparse-gop.mp4")
+	// 12fps with a 250-frame GOP puts keyframes about 20.8s apart. Starting at 30.489s therefore
+	// has roughly 9.7s of preroll available — large enough that this fails unmistakably if exposed.
+	cmd := exec.Command("ffmpeg", "-nostdin", "-v", "error",
+		"-f", "lavfi", "-i", "testsrc2=size=160x120:rate=12:duration=70",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=70",
+		"-c:v", "libx264", "-preset", "ultrafast", "-g", "250", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-shortest", "-y", src)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build sparse-GOP source: %v: %s", err, out)
+	}
+
+	dst := filepath.Join(dir, "segment.mp4")
+	tools := NewFFmpegTools("ffmpeg", "ffprobe", "", "", "")
+	if err := tools.Cut(context.Background(), src, 30_489, 61_489, dst); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1", dst).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration < 30.5 || duration > 31.5 {
+		t.Fatalf("31s MP4 cut duration = %.3fs; keyframe preroll became visible", duration)
+	}
+}
+
 // ⚠ A negative duration must not reach ffmpeg. `extractSpanWAV` passes `endMs-startMs`, so an
 // inverted span is a subtraction away — and ffmpeg given a negative `-t` writes nothing while
 // exiting 0, which the caller reads as a successful extraction of silence.
