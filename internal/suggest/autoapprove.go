@@ -2,8 +2,8 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -32,13 +32,13 @@ type GrantStore interface {
 // the request, and denying would lose work a human might well approve.
 type AutoApprover struct {
 	store    autoStore
+	approver *Approver
 	defaults func(ctx context.Context) int // suggest.max_acquisitions
-	now      func() time.Time
 	log      *slog.Logger
 }
 
 type autoStore interface {
-	ApproveStore
+	TitleReader
 	QuotaStore
 	GrantStore
 }
@@ -47,14 +47,11 @@ type autoStore interface {
 // read per call so a settings change takes effect without a restart (config-design §3).
 func NewAutoApprover(
 	st autoStore,
+	approver *Approver,
 	defaultLimit func(ctx context.Context) int,
-	now func() time.Time,
 	log *slog.Logger,
 ) *AutoApprover {
-	if now == nil {
-		now = time.Now
-	}
-	return &AutoApprover{store: st, defaults: defaultLimit, now: now, log: log}
+	return &AutoApprover{store: st, approver: approver, defaults: defaultLimit, log: log}
 }
 
 // Decision records what the grant did, for the caller to log and for tests to assert on.
@@ -107,9 +104,12 @@ func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (Decision
 	// nil edit: an auto-approval takes the proposal exactly as the model produced it. There is
 	// no approver to make a judgement, which is the point of the grant — and it runs the SAME
 	// Approve as the manual path, so the two cannot drift on what approving means (§8).
-	enqueued, err := Approve(ctx, a.store, p, nil, AutoApprovedBy, a.now)
+	if a.approver == nil {
+		return Decision{Reason: "approval unavailable"}, errors.New("auto-approve: approval gate is not configured")
+	}
+	result, err := a.approver.Approve(ctx, p, nil, AutoApprovedBy)
 	if err != nil {
 		return Decision{Reason: "approval failed"}, err
 	}
-	return Decision{Approved: true, Enqueued: enqueued}, nil
+	return Decision{Approved: true, Enqueued: result.Enqueued}, nil
 }

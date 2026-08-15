@@ -19,7 +19,7 @@ type fakeRefiner struct {
 	err     error
 }
 
-func (f *fakeRefiner) Refine(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
+func (f *fakeRefiner) Recurate(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
@@ -261,8 +262,32 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 	if j.Status != "queued" {
 		t.Errorf("refined job status = %q, want queued (re-run)", j.Status)
 	}
+	if j.Kind != "suggest" {
+		t.Errorf("manual refine kind = %q, want suggest", j.Kind)
+	}
 	if !strings.Contains(j.IntentJSON, "add more Schwarzenegger") {
 		t.Errorf("refined job intent = %q, want the refine text swapped in", j.IntentJSON)
+	}
+}
+
+func TestRecurate_ReQueuesWithServerOwnedOrigin(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM())
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-orig", Kind: "suggest", Status: "done", IntentJSON: `{"description":"90s action"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Recurate(ctx, "job-orig", suggest.Intent{Description: "90s action", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:603"}}}); err != nil {
+		t.Fatal(err)
+	}
+	j, err := st.GetJob(ctx, "job-orig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Kind != "recurate" || j.Status != "queued" {
+		t.Fatalf("recurated job = kind %q status %q", j.Kind, j.Status)
 	}
 }
 
@@ -276,30 +301,21 @@ func TestRefine_MissingJob(t *testing.T) {
 	}
 }
 
-// fakeBinder records every proposal it was asked to bind — a fake, not a mock: the
-// assertion is about what it was CALLED WITH, not about verifying call order/count
-// beyond "did it happen".
-type fakeBinder struct {
-	calls []store.Proposal
-	err   error
+type recordingCurator struct {
+	calls    int
+	decision suggest.Decision
+	err      error
 }
 
-func (f *fakeBinder) BindApprovedChannel(_ context.Context, p store.Proposal) (string, error) {
-	f.calls = append(f.calls, p)
-	if f.err != nil {
-		return "", f.err
-	}
-	return "ch_bound", nil
+func (c *recordingCurator) Consider(context.Context, store.Proposal) (suggest.Decision, error) {
+	c.calls++
+	return c.decision, c.err
 }
 
-// TestWorker_AutoApproveRebindsChannel is the regression test for the gap this
-// extraction closes: previously, an auto-approved proposal (the §11 per-user
-// grant) enqueued its acquisitions via suggest.Approve but NEVER rebound the
-// channel — only the manual-approve HTTP handler did that. A per-user
-// auto-approved REFINE would therefore enqueue acquisitions and leave the
-// channel's lineup stale. With WithChannelBinder wired, a successful
-// auto-approval must also call BindApprovedChannel for that exact proposal.
-func TestWorker_AutoApproveRebindsChannel(t *testing.T) {
+// TestWorker_AutoApproveCommitsChannel proves the worker reaches the same deep approval gate as
+// manual approval: its observable outcome is one approved proposal with its local channel, not a
+// second best-effort binder call whose failure could strand the proposal.
+func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 
@@ -313,10 +329,11 @@ func TestWorker_AutoApproveRebindsChannel(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
-	fb := &fakeBinder{}
-	svc = svc.
-		WithAutoApprove(suggest.NewAutoApprover(st, func(context.Context) int { return 100 }, time.Now, testkit.Logger())).
-		WithChannelBinder(fb)
+	channels := &testkit.ApprovalChannels{}
+	approver := suggest.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: suggest.Decision{Approved: true}}
+	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).WithAutoCurate(curator)
 
 	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
 	if err != nil {
@@ -349,28 +366,89 @@ func TestWorker_AutoApproveRebindsChannel(t *testing.T) {
 		t.Fatalf("approved proposal's job = %q, want %q", approved[0].JobID, jobID)
 	}
 
-	// ...AND the binder must have been called for that SAME proposal. This is the
-	// fix: before WithChannelBinder existed, nothing rebuilt the channel here.
-	if len(fb.calls) != 1 {
-		t.Fatalf("binder called %d times, want 1", len(fb.calls))
+	if len(channels.Plans) != 1 {
+		t.Fatalf("channel plans = %d, want 1", len(channels.Plans))
 	}
-	if fb.calls[0].ID != approved[0].ID {
-		t.Errorf("binder called with proposal %q, want the auto-approved one %q", fb.calls[0].ID, approved[0].ID)
+	if channels.Plans[0].ID != approved[0].ID {
+		t.Errorf("planned proposal = %q, want %q", channels.Plans[0].ID, approved[0].ID)
 	}
-	// The binder must receive the APPROVED proposal (re-read from the store), NOT the stale
-	// pre-approval local copy. The pre-approval copy has Status "submitted" + ApprovedBy "";
-	// binding that would make the binder mis-detect the approval path (e.g. skip the §8.2
-	// auto-curate additive lineup merge, which keys on ApprovedBy). Guards that regression.
-	if fb.calls[0].Status != "approved" || fb.calls[0].ApprovedBy == "" {
-		t.Errorf("binder got a stale proposal (status=%q approvedBy=%q) — must be the re-read approved one",
-			fb.calls[0].Status, fb.calls[0].ApprovedBy)
+	if channels.Plans[0].Status != "approved" || channels.Plans[0].ApprovedBy == "" {
+		t.Errorf("planner got an ineffective proposal (status=%q approvedBy=%q)",
+			channels.Plans[0].Status, channels.Plans[0].ApprovedBy)
+	}
+	ch, err := st.GetChannel(ctx, "ch_"+approved[0].ID)
+	if err != nil {
+		t.Fatalf("approved proposal has no committed channel: %v", err)
+	}
+	if ch.IntentRef != jobID {
+		t.Errorf("channel intentRef = %q, want %q", ch.IntentRef, jobID)
+	}
+	if len(channels.Committed) != 1 || channels.Committed[0].ID != ch.ID {
+		t.Errorf("post-commit channels = %+v, want %q", channels.Committed, ch.ID)
+	}
+	if curator.calls != 0 {
+		t.Errorf("ordinary user proposal reached auto-curate grant %d times", curator.calls)
 	}
 }
 
-// A binder failure must not fail the job or unwind the approval — the approval
-// (and its enqueued acquisitions) is durable regardless of whether the channel
-// could be rebuilt, mirroring the manual-approve HTTP handler's contract.
-func TestWorker_AutoApproveBinderFailureDoesNotFailJob(t *testing.T) {
+func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-recurate", Kind: "suggest", Status: "done", CreatedBy: "grace",
+		IntentJSON: `{"description":"sci-fi"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	svc := buildService(t, st, llmMock)
+	channels := &testkit.ApprovalChannels{}
+	approver := suggest.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: suggest.Decision{Reason: "below auto-curate quality bar"}}
+	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).WithAutoCurate(curator)
+	if _, err := svc.Recurate(ctx, "job-recurate", suggest.Intent{
+		Description: "sci-fi", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:603"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		j, _ := st.GetJob(ctx, "job-recurate")
+		if j.Status == "done" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if curator.calls != 1 {
+		t.Fatalf("auto-curate calls = %d, want 1", curator.calls)
+	}
+	approved, _ := st.ListProposalsByStatus(ctx, "approved")
+	if len(approved) != 0 {
+		t.Fatalf("requester grant bypassed auto-curate thresholds: %+v", approved)
+	}
+	submitted, _ := st.ListProposalsByStatus(ctx, "submitted")
+	if len(submitted) != 1 {
+		t.Fatalf("submitted proposals = %d, want 1 for review", len(submitted))
+	}
+	if len(channels.Plans) != 0 {
+		t.Fatalf("requester auto-approver planned %d channels for a recurate job", len(channels.Plans))
+	}
+}
+
+// A local channel-plan failure is an approval failure. The generation job still completes and
+// leaves the proposal for an admin, but neither approval nor acquisitions may leak through.
+func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
@@ -381,10 +459,10 @@ func TestWorker_AutoApproveBinderFailureDoesNotFailJob(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
-	fb := &fakeBinder{err: fmt.Errorf("tunarr unreachable")}
-	svc = svc.
-		WithAutoApprove(suggest.NewAutoApprover(st, func(context.Context) int { return 100 }, time.Now, testkit.Logger())).
-		WithChannelBinder(fb)
+	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}
+	approver := suggest.NewApprover(st, channels, time.Now)
+	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+		st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 
 	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
 	if err != nil {
@@ -404,10 +482,20 @@ func TestWorker_AutoApproveBinderFailureDoesNotFailJob(t *testing.T) {
 	}
 	j, _ := st.GetJob(ctx, jobID)
 	if j.Status != "done" {
-		t.Fatalf("a binder failure must not fail the job: status=%s err=%s", j.Status, j.LastError)
+		t.Fatalf("a failed auto-approval must leave the proposal for review, not fail generation: status=%s err=%s", j.Status, j.LastError)
 	}
 	approved, _ := st.ListProposalsByStatus(ctx, "approved")
-	if len(approved) != 1 {
-		t.Fatalf("the approval must stand even though binding failed: approved = %d, want 1", len(approved))
+	if len(approved) != 0 {
+		t.Fatalf("plan failure approved %d proposals, want 0", len(approved))
+	}
+	submitted, _ := st.ListProposalsByStatus(ctx, "submitted")
+	if len(submitted) != 1 {
+		t.Fatalf("submitted proposals = %d, want 1 for admin review", len(submitted))
+	}
+	if titles, _ := st.ListTitlesByState(ctx, provision.Wanted); len(titles) != 0 {
+		t.Fatalf("plan failure enqueued %d titles, want 0", len(titles))
+	}
+	if all, _ := st.ListChannels(ctx); len(all) != 0 {
+		t.Fatalf("plan failure created %d channels, want 0", len(all))
 	}
 }

@@ -15,6 +15,11 @@ import (
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
 var ErrNotSubmitted = store.ErrProposalNotSubmitted
 
+// ErrSuperseded reports an older proposal for a job whose newer proposal has already been
+// approved. Spending the stale acquisitions and rolling the channel backward is not a valid
+// approval; the older row remains submitted for an explicit deny/audit decision.
+var ErrSuperseded = errors.New("suggest: proposal was superseded by a newer approval")
+
 // ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
 //
 // ⚠ THE EDIT IS A PARAMETER TO Approve, not something a caller applies first, and that is the
@@ -40,17 +45,60 @@ func (e *ApprovalEdit) isEmpty() bool {
 	return e == nil || (len(e.DropKeys) == 0 && len(e.Add) == 0)
 }
 
-// ApproveStore is the slice of the store approval needs.
-type ApproveStore interface {
-	// GetTitle is read-only quota input. The approval write itself is deliberately
-	// exposed only as the atomic commit below.
+// TitleReader is the read-only title lookup shared by approval quota checks.
+type TitleReader interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
+// ApproveStore is the slice of the store the approval transaction needs.
+type ApproveStore interface {
+	TitleReader
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	CommitProposalApproval(ctx context.Context, commit store.ProposalApproval) (int, error)
 }
 
+// ChannelBinder plans the local channel mutation that approval commits, then runs the
+// best-effort work that is only legal after that commit. *binder.Binder implements this
+// structurally; suggest declares the seam so it never imports binder back.
+type ChannelBinder interface {
+	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is
+	// about to commit, including edits and its approvedBy stamp, so it never has to discover
+	// the decision through a stale or not-yet-visible store read.
+	PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error)
+	// AfterApprovalCommitted may probe codecs and reconcile with Tunarr. Those are remote or
+	// derived consequences, not part of the local transaction; failures are recorded and
+	// retried by the channel sweep rather than unwinding an approval that already committed.
+	AfterApprovalCommitted(ctx context.Context, ch store.Channel)
+}
+
+// ApprovalResult is the complete observable result of the approval gate.
+type ApprovalResult struct {
+	Enqueued  int
+	ChannelID string
+}
+
+// Approver owns the one proposal-approval gate. Its interface is deliberately one operation;
+// the plan -> local transaction -> post-commit ordering is implementation detail that callers
+// cannot accidentally duplicate or rearrange.
+type Approver struct {
+	store    ApproveStore
+	channels ChannelBinder
+	now      func() time.Time
+}
+
+// NewApprover constructs the shared approval gate used by manual approval, the per-user grant,
+// and auto-curate. A nil channel binder is rejected by Approve: approval is not allowed to
+// create acquisitions without creating or patching their local channel in the same commit.
+func NewApprover(st ApproveStore, channels ChannelBinder, now func() time.Time) *Approver {
+	if now == nil {
+		now = time.Now
+	}
+	return &Approver{store: st, channels: channels, now: now}
+}
+
 // Approve turns a submitted proposal into real state: in-library picks become `available`
-// records so the scheduler can place them, and missing titles become `wanted` ones the
-// provisioner will acquire. Returns how many acquisitions were newly enqueued.
+// records so the scheduler can place them, missing titles become `wanted` ones the provisioner
+// will acquire, and the proposal's local channel is created or patched in the same transaction.
 //
 // THE APPROVAL GATE HAS ONE IMPLEMENTATION. Both the admin's manual approval (§7) and
 // the auto-approve grant (§8, §11) call this, so the two paths cannot drift on what
@@ -58,24 +106,32 @@ type ApproveStore interface {
 //
 // `approvedBy` is the audit record (§11): an admin's user id, or "auto" for the grant,
 // so the trail distinguishes a machine decision from a human one.
-func Approve(
+func (a *Approver) Approve(
 	ctx context.Context,
-	st ApproveStore,
 	p store.Proposal,
 	edit *ApprovalEdit,
 	approvedBy string,
-	now func() time.Time,
-) (enqueued int, err error) {
+) (ApprovalResult, error) {
 	if p.Status != "submitted" {
-		return 0, ErrNotSubmitted
+		return ApprovalResult{}, ErrNotSubmitted
 	}
-	if now == nil {
-		now = time.Now
+	if a == nil || a.store == nil {
+		return ApprovalResult{}, errors.New("approve: store is not configured")
+	}
+	if a.channels == nil {
+		return ApprovalResult{}, errors.New("approve: channel binder is not configured")
+	}
+	latest, err := a.store.NewestProposalByStatusForJob(ctx, p.JobID, "approved")
+	if err == nil && latest.CreatedAt.After(p.CreatedAt) {
+		return ApprovalResult{}, ErrSuperseded
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return ApprovalResult{}, fmt.Errorf("approve: read latest decision: %w", err)
 	}
 
 	var body Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return 0, fmt.Errorf("approve: stored proposal is malformed: %w", err)
+		return ApprovalResult{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
 	}
 
 	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
@@ -84,7 +140,7 @@ func Approve(
 	// originally proposed — otherwise the audit trail describes a lineup that never existed.
 	summary, editedJSON, aerr := applyEdit(&body, edit)
 	if aerr != nil {
-		return 0, aerr
+		return ApprovalResult{}, aerr
 	}
 	if summary != "" {
 		p.ModSummary = summary
@@ -119,7 +175,7 @@ func Approve(
 		})
 	}
 
-	decisionAt := now()
+	decisionAt := a.now()
 	for _, a := range body.Acquisitions {
 		key, kerr := acquisitionKey(a)
 		if kerr != nil {
@@ -144,7 +200,42 @@ func Approve(
 	// time. `now` is injected, so the stamp is deterministic under test rather than wall-clock.
 	p.ApprovedAt = decisionAt
 	p.UpdatedAt = decisionAt
-	return st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: p, Titles: titles})
+
+	// Plan before beginning the store transaction. Planning is read-only and may fail; if it
+	// does, the proposal stays submitted and no acquisition is visible. A concurrent first
+	// approval can claim the same lowest-free number (or intent binding) between plan and commit.
+	// The unique indexes arbitrate that race; because the whole transaction rolled back, reload +
+	// replan is safe and keeps a transient household-scale collision out of the HTTP contract.
+	const maxChannelPlanAttempts = 4
+	var ch store.Channel
+	var enqueued int
+	for attempt := 0; attempt < maxChannelPlanAttempts; attempt++ {
+		var err error
+		ch, err = a.channels.PlanApprovedChannel(ctx, p)
+		if err != nil {
+			return ApprovalResult{}, fmt.Errorf("approve: plan channel: %w", err)
+		}
+		enqueued, err = a.store.CommitProposalApproval(ctx, store.ProposalApproval{
+			Proposal: p,
+			Titles:   titles,
+			Channel:  ch,
+		})
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, store.ErrChannelConflict) || attempt == maxChannelPlanAttempts-1 {
+			return ApprovalResult{}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return ApprovalResult{}, err
+		}
+	}
+
+	// Codec probing and the immediate Tunarr push are explicitly post-commit. The planned channel
+	// is already due for the durable sweep, so this best-effort continuation can never turn a
+	// successful local approval into an error or strand an approved proposal without a channel.
+	a.channels.AfterApprovalCommitted(ctx, ch)
+	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
 }
 
 // applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
@@ -215,7 +306,7 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 // NewAcquisitions counts the acquisitions in a proposal that do NOT already exist as
 // titles — the number that would actually be spent by approving it. Used by the quota
 // gate, which must not charge a user for a title someone else already caused.
-func NewAcquisitions(ctx context.Context, st ApproveStore, p store.Proposal) (int, error) {
+func NewAcquisitions(ctx context.Context, st TitleReader, p store.Proposal) (int, error) {
 	var body Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return 0, fmt.Errorf("quota: stored proposal is malformed: %w", err)

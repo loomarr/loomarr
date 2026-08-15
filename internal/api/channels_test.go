@@ -201,6 +201,32 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 	}
 }
 
+func TestCreateChannelDuplicateIntentRef(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	ctx := context.Background()
+	if err := st.UpsertChannel(ctx, store.Channel{
+		Channel: schedule.Channel{
+			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
+			IntentRef: "job-bound", Status: schedule.StatusBuilding,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
+	}
+	channels, err := st.ListChannels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 1 || channels[0].ID != "bound" {
+		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
+	}
+}
+
 func TestListAndGetChannel(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
