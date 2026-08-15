@@ -127,6 +127,9 @@ func TestEncodeWebPRoundTrips(t *testing.T) {
 	if mime := SniffType(buf.Bytes()); mime != "image/webp" {
 		t.Fatalf("encoded bytes sniff as %q, want image/webp", mime)
 	}
+	if isAnimatedWebP(buf.Bytes(), "image/webp") {
+		t.Fatal("single-frame WebP was classified as animated")
+	}
 
 	back, _, err := Decode(buf.Bytes())
 	if err != nil {
@@ -134,6 +137,21 @@ func TestEncodeWebPRoundTrips(t *testing.T) {
 	}
 	if back.Bounds().Dx() != 320 || back.Bounds().Dy() != 480 {
 		t.Errorf("round-tripped dimensions = %v, want 320x480", back.Bounds().Size())
+	}
+}
+
+func TestIsAnimatedWebPReadsRIFFChunks(t *testing.T) {
+	data := animatedWebPBytes(t)
+	if !isAnimatedWebP(data, SniffType(data)) {
+		t.Fatal("two-frame WebP was classified as static")
+	}
+
+	// Truncating inside the first chunk must fail closed without walking beyond the buffer.
+	if isAnimatedWebP(data[:18], "image/webp") {
+		t.Fatal("truncated WebP was classified as animated")
+	}
+	if isAnimatedWebP(data, "image/jpeg") {
+		t.Fatal("WebP bytes were classified as animated under a different MIME type")
 	}
 }
 

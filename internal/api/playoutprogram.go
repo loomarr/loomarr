@@ -304,8 +304,8 @@ func (s *Server) streamProgram(
 	// does no encoding); a box with no hardware encoder reports zero slots and always lands here on
 	// software. The reactive evict-and-retry below stays only as a safety net for a slot-holder whose
 	// hardware encode still fails.
-	if wantsHardware && s.hwEncodeGate != nil {
-		if release, ok := s.hwEncodeGate.tryAcquire(); ok {
+	if wantsHardware && s.encodePool != nil {
+		if release, ok := s.encodePool.AcquireForeground(r.Context()); ok {
 			defer release()
 		} else {
 			s.log.Info("playout: GPU encode slots full — using software for this program",

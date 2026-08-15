@@ -3,7 +3,9 @@ package images
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +95,20 @@ func newTestService(t *testing.T) (*Service, *fakeStore) {
 	return svc, fs
 }
 
+// Two 16x16 lossless frames (red, then blue), generated once with libwebp_anim. Keeping the
+// fixture inline makes this a normal unit test: ffmpeg is not available in every `go test` build,
+// and the behaviour under test is ingesting the bytes it produced, not invoking the renderer.
+func animatedWebPBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := base64.StdEncoding.DecodeString(
+		"UklGRoQAAABXRUJQVlA4WAoAAAACAAAADwAADwAAQU5JTQYAAAD/////AABBTk1GKAAAAAAAAAAAAA8AAA8AAMgAAAJWUDhMDwAAAC8PwAMABxD1j/4HIqL/AQBBTk1GKAAAAAAAAAAAAA8AAA8AAMgAAABWUDhMDwAAAC8PwAMABxDR//4HIqL/AQA=",
+	)
+	if err != nil {
+		t.Fatalf("decode animated WebP fixture: %v", err)
+	}
+	return data
+}
+
 func TestIngestStoresAndDescribes(t *testing.T) {
 	ctx := context.Background()
 	svc, fs := newTestService(t)
@@ -125,6 +141,54 @@ func TestIngestStoresAndDescribes(t *testing.T) {
 	}
 	if len(fs.refs) != 1 || fs.refs[0].OwnerID != "ch_1" {
 		t.Errorf("expected one ref for ch_1, got %+v", fs.refs)
+	}
+}
+
+// Regression: clip hover loops reached Ingest as valid animated WebP bytes and were copied to the
+// image store intact, but the row said animated=false. Rendition generation then decoded frame 0
+// and silently replaced the loop with a still image on every Filler-card hover.
+func TestIngestDetectsAnimatedWebP(t *testing.T) {
+	svc, _ := newTestService(t)
+	rec, err := svc.Ingest(context.Background(), bytes.NewReader(animatedWebPBytes(t)),
+		IngestRequest{Role: RoleThumb, Origin: OriginExtracted})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if !rec.Animated {
+		t.Error("animated WebP was recorded as static; the filler hover loop will be flattened")
+	}
+}
+
+// An animated image has one rendition: its original WebP. Passing it through the still-image
+// encoder preserves only frame 0 even when the record correctly says it carries motion.
+func TestAnimatedWebPRenditionPreservesOriginalFrames(t *testing.T) {
+	ctx := context.Background()
+	svc, fs := newTestService(t)
+	want := animatedWebPBytes(t)
+	rec, err := svc.Ingest(ctx, bytes.NewReader(want),
+		IngestRequest{Role: RoleThumb, Origin: OriginExtracted})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	// Isolate the rendition half of the regression from the detection test above.
+	rec.Animated = true
+	if err := fs.PutImage(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	rend, err := svc.Rendition(ctx, rec.Hash, FormatWebP, 300)
+	if err != nil {
+		t.Fatalf("Rendition: %v", err)
+	}
+	got, err := os.ReadFile(rend.Path)
+	if err != nil {
+		t.Fatalf("read rendition: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("animated WebP rendition differs from the original; a still-image encode dropped its frames")
+	}
+	if len(fs.derivatives[rec.Hash]) != 0 {
+		t.Error("animated WebP was recorded as a derivative; its one rendition should be the original")
 	}
 }
 
@@ -326,13 +390,22 @@ func TestURLForAndSrcSet(t *testing.T) {
 	svc, _ := newTestService(t)
 	hash := strings.Repeat("a", 64)
 
+	path := svc.PathFor(hash, 342, FormatWebP)
+	wantPath := "/v1/images/" + hash + "/w342.webp"
+	if path != wantPath {
+		t.Errorf("PathFor = %q, want %q", path, wantPath)
+	}
+
 	got := svc.URLFor(hash, 342, FormatWebP)
-	want := "https://loomarr.example.test/v1/images/" + hash + "/w342.webp"
+	want := "https://loomarr.example.test" + wantPath
 	if got != want {
 		t.Errorf("URLFor = %q, want %q", got, want)
 	}
 
 	set := svc.SrcSet(hash, RolePoster, FormatAVIF)
+	if strings.Contains(set, "loomarr.example.test") {
+		t.Errorf("SrcSet = %q, want same-origin paths for the in-app browser", set)
+	}
 	for _, w := range RolePoster.Widths() {
 		if !strings.Contains(set, ".avif "+strconv.Itoa(w)+"w") {
 			t.Errorf("srcset missing the %dw descriptor: %s", w, set)

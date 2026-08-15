@@ -300,6 +300,7 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	rec.MIME = mime
 	rec.Width, rec.Height = bounds.Dx(), bounds.Dy()
 	rec.Bytes = int64(len(data))
+	rec.Animated = isAnimatedWebP(data, mime)
 	rec.Placeholder = Placeholder(decoded)
 	rec.DominantHex = DominantHex(decoded)
 	rec.OriginFetchedAt = now

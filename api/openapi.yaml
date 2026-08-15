@@ -2045,9 +2045,9 @@ components:
           type: integer
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: The preview image's record, for srcset and placeholder rendering
+          description: The preview image's record, for srcset, animation and placeholder rendering
         thumbUrl:
-          description: Image-service preview URL (episode still or poster); empty for breaks or when unavailable
+          description: Same-origin image-service preview path; empty when unavailable
           type: string
         title:
           description: The episode's name for a series, or the film's name
@@ -2309,13 +2309,13 @@ components:
           description: poster | backdrop | icon | thumb — decides the width ladder
           type: string
         src:
-          description: A single JPEG URL for the <img> fallback
+          description: A same-origin JPEG path for the <img> fallback
           type: string
         srcSetAvif:
-          description: srcset for AVIF; empty until the AVIF job has run
+          description: Same-origin srcset for AVIF; empty until the AVIF job has run
           type: string
         srcSetWebp:
-          description: srcset for WebP
+          description: Same-origin srcset for WebP
           type: string
         width:
           description: The original's width in pixels

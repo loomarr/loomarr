@@ -58,20 +58,19 @@ type GuideAiring struct {
 	Year        int      `json:"year,omitempty"`
 	Rating      string   `json:"rating,omitempty"`
 	ItemID      string   `json:"itemId,omitempty" doc:"Media-server item id, when the content is available"`
-	// ThumbURL is a preview image for this block (§9.1 Watch timeline, V47): an episode still for a
-	// series, a poster for a movie, resolved server-side from the provisioning key. Empty for a
-	// break/flex block or when no image is available — the client renders a fallback. Only the Watch
-	// timeline populates it (the main grid's hover card does not need per-block images); it is
-	// omitempty so the grid's payload is unchanged.
+	// ThumbURL is a preview image for this block: an episode still for a series, a backdrop for a
+	// movie, or the first artwork-bearing clip in an actual filler pod. Empty for pending/flex or
+	// when no image is available — the client renders a fallback. Both the Guide hover card (§12)
+	// and Watch timeline (§9.1 V47) populate it.
 	//
 	// ⚠ **It points at THIS instance's image service, not TMDB, since V52 phase 7.** The image
 	// still originates on TMDB; it is adopted, fetched server-side and served from our own disk, so
 	// the Watch timeline stops loading third-party images in the operator's browser (§22).
-	ThumbURL string `json:"thumbUrl,omitempty" doc:"Image-service preview URL (episode still or poster); empty for breaks or when unavailable"`
+	ThumbURL string `json:"thumbUrl,omitempty" doc:"Same-origin image-service preview path; empty when unavailable"`
 	// ThumbImage is the image record behind ThumbURL — width/height, ThumbHash and both srcsets.
-	// Absent while the image is still being fetched, in which case ThumbURL is empty too and the
-	// strip shows its fallback; the every-minute fetch job fills it in.
-	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset and placeholder rendering"`
+	// A programme's bounded interactive fetch returns real bytes before this is emitted; failure
+	// omits both fields cleanly rather than exposing an adopted placeholder row.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset, animation and placeholder rendering"`
 	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
 	// occupies the schedule). They normally agree; where they differ — a 22m episode in a 30m
 	// slot — the difference is what makes padding visible.
@@ -88,6 +87,16 @@ type GuideAiring struct {
 	// uses for THIS break, so the hover card lists the clips that will really air here rather
 	// than a representative sample. Absent for non-filler blocks.
 	Pod *PodPoolDTO `json:"pod,omitempty"`
+}
+
+// guideArtworkRef is request-local plumbing between schedule projection and the one batched image
+// lookup after every row has resolved. Programme images already arrive as image hashes from the
+// TMDB adopter; filler entries carry clip identities, which are resolved to their hover/still image
+// hashes in one store query rather than one query per break.
+type guideArtworkRef struct {
+	program          timelineThumbKey
+	programImageHash string
+	fillerClipHashes []string
 }
 
 // GuideChannelTimeline is one channel's row in the grid.
@@ -224,6 +233,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 	// order is the channel order the store returned (number-sorted), and an append-as-you-
 	// finish would reorder the guide by whichever channel happened to compute fastest.
 	rows := make([]GuideChannelTimeline, len(channels))
+	artworkRefs := make([][]guideArtworkRef, len(channels))
 	sem := make(chan struct{}, guideConcurrency)
 	var wg sync.WaitGroup
 
@@ -232,8 +242,12 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		// internal backend because a media server must not see two tuners offering the same
 		// channel — but this is Loomarr's own UI, where a Tunarr-backed channel is still one of
 		// the user's channels and hiding it would look like it had been deleted.
+		logo := ch.Logo
+		if s.images != nil {
+			logo = browserLogoURL(ch.Logo, s.images.PathFor)
+		}
 		rows[i] = GuideChannelTimeline{
-			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Logo: ch.Logo,
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Logo: logo,
 			Status: string(ch.Status),
 			// The SAME derivation the channel list uses (DesiredLineup.PendingCount), so a
 			// channel cannot read "Filling in" on one surface and healthy on the other.
@@ -256,8 +270,15 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 				return
 			}
 			airings := make([]GuideAiring, 0, len(bs))
+			refs := make([]guideArtworkRef, 0, len(bs))
 			for _, b := range bs {
 				a := guideAiringOf(b)
+				ref := guideArtworkRef{}
+				if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
+					ref.program = timelineThumbKey{
+						key: string(b.Key), season: b.Season, episode: b.Episode,
+					}
+				}
 				// A break's composition, resolved per-airing. Only for filler, and only when the
 				// assembler is wired: an install without filler configured shows breaks with no
 				// hover detail rather than failing the request.
@@ -265,16 +286,110 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 					if pod, perr := s.pods.PreviewAt(ctx, ch.ID, b.Start.UnixMilli()); perr == nil && len(pod.Entries) > 0 {
 						dto := podToPoolDTO(pod)
 						a.Pod = &dto
+						for _, entry := range pod.Entries {
+							if entry.Hash != "" {
+								ref.fillerClipHashes = append(ref.fillerClipHashes, entry.Hash)
+							}
+						}
 					}
 				}
 				airings = append(airings, a)
+				refs = append(refs, ref)
 			}
 			// The only cross-goroutine write, and it is to this goroutine's OWN index — no two
 			// goroutines share an element, so this needs no mutex.
 			rows[i].Airings = airings
+			artworkRefs[i] = refs
 		}(i, ch)
 	}
 	wg.Wait()
+
+	// TMDB has no multi-title endpoint. Resolve one deduplicated, bounded-concurrent work set for
+	// the whole Guide instead of serializing provider latency inside every channel row. Projection
+	// back onto the parallel refs preserves repeated airings without repeating their lookup/fetch.
+	programmeKeys := []timelineThumbKey{}
+	for _, refs := range artworkRefs {
+		for _, ref := range refs {
+			if ref.program.key != "" {
+				programmeKeys = append(programmeKeys, ref.program)
+			}
+		}
+	}
+	programmeThumbs := s.resolveTimelineThumbs(ctx, programmeKeys)
+	for i := range rows {
+		for j := range rows[i].Airings {
+			thumb := programmeThumbs[artworkRefs[i][j].program]
+			rows[i].Airings[j].ThumbURL = thumb.url
+			artworkRefs[i][j].programImageHash = thumb.hash
+		}
+	}
+
+	// Resolve filler clip identities to artwork in ONE catalog query for the entire Guide. A
+	// four-hour window may contain dozens of two-minute pods; looking each clip up inside the
+	// airing loop would turn a hover enhancement into a large N+1 on every page load.
+	clipHashes := []string{}
+	seenClipHashes := map[string]struct{}{}
+	for _, refs := range artworkRefs {
+		for _, ref := range refs {
+			for _, hash := range ref.fillerClipHashes {
+				if _, seen := seenClipHashes[hash]; seen {
+					continue
+				}
+				seenClipHashes[hash] = struct{}{}
+				clipHashes = append(clipHashes, hash)
+			}
+		}
+	}
+	clipsByHash := map[string]store.Clip{}
+	if s.images != nil && len(clipHashes) > 0 {
+		clips, clipErr := s.store.ListClips(ctx, store.ClipFilter{Hashes: clipHashes})
+		if clipErr != nil {
+			s.log.Warn("guide: filler artwork lookup failed", "err", clipErr)
+		} else {
+			for _, clip := range clips {
+				clipsByHash[clip.Hash] = clip
+			}
+		}
+	}
+
+	// Pick one preview per airing, preserving pod order. A filler clip's animation is the richest
+	// hover preview; its still is the honest fallback when no loop was rendered.
+	selectedHashes := make([][]string, len(rows))
+	allImageHashes := []string{}
+	for i, refs := range artworkRefs {
+		selectedHashes[i] = make([]string, len(refs))
+		for j, ref := range refs {
+			hash := ref.programImageHash
+			if hash == "" {
+				for _, clipHash := range ref.fillerClipHashes {
+					clip, ok := clipsByHash[clipHash]
+					if !ok {
+						continue
+					}
+					hash = clip.HoverImageHash
+					if hash == "" {
+						hash = clip.ThumbImageHash
+					}
+					if hash != "" {
+						break
+					}
+				}
+			}
+			selectedHashes[i][j] = hash
+			allImageHashes = append(allImageHashes, hash)
+		}
+	}
+	byHash := s.imageDTOsByHash(ctx, allImageHashes)
+	for i := range rows {
+		for j := range rows[i].Airings {
+			if image := byHash[selectedHashes[i][j]]; image != nil {
+				rows[i].Airings[j].ThumbImage = image
+				if rows[i].Airings[j].ThumbURL == "" {
+					rows[i].Airings[j].ThumbURL = image.Src
+				}
+			}
+		}
+	}
 
 	out.Body.Channels = rows
 	return out, nil

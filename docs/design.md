@@ -192,6 +192,8 @@ flowchart TD
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`media`** · 2 importers
+  Owns host-wide resources shared by live and background media work.
 - **`prepared`** · 1 importer
   Owns immutable, reusable playout publications.
 - **`provision`** · 16 importers
@@ -283,12 +285,12 @@ flowchart TD
 
 **Layer 9**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1042,27 +1044,52 @@ a private schedule. A tune resolves in this order:
 
 1. Resolve the authoritative Airing window and the client's canonical EncodePlan.
 2. Look up a complete prepared publication by `(source fingerprint, rendition contract, packaging
-   version)`. A publication is visible only after all of its immutable fragments and metadata have
-   validated and been atomically committed.
+   version)`. Tune-time lookup may use only a fingerprint warmed by the readiness control plane; it
+   must never hash source media or start preparation on demand. A publication is visible only after
+   all of its immutable fragments and metadata have validated and been atomically committed.
 3. On a hit, render the short wall-clock manifest over those shared fragments. Starting an encoder or
    per-Channel packager on this path is a contract violation.
 4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
    accepted Lineup, `AiringAt`, or guide.
 
 The rendered manifest derives its media sequence from the Airing start, segment cadence, and current
-offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset.
-Every init/segment URI is namespaced by the immutable publication key. Follow-up requests therefore
-stay bound to the publication that authored the manifest even when the Channel crosses a programme
-boundary; there is no mutable per-Channel “current directory” for prepared media.
+offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset. Its
+live edge is the segment containing that offset: the short window carries prior segments and the
+current segment, never future media. At an Airing boundary it carries the previous publication's
+tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`; this is the exact shape
+the V55 Chromium/Firefox spike validated. Every init/segment URI is namespaced by the immutable
+publication key. Follow-up requests therefore stay bound to the publication that authored the
+manifest even when the Channel crosses a programme boundary; there is no mutable per-Channel
+“current directory” for prepared media.
 
 Preparation is a separate control-plane module because it has a different caller and lifetime, not
 because it is a second playout. Its small interface accepts a source plus rendition contract and
 returns the resulting publication. It hides probing, copy-versus-transcode, staging paths, fragment
 validation, retries, and atomic rename. The readiness planner submits work from the accepted schedule;
 it cannot write that schedule. Prepared identity is transport-independent: codec/profile/level,
-pixel format/HDR, audio codec/layout, dimensions, segment cadence, and packaging version are data.
+pixel format/HDR, audio codec/layout, dimensions, frame rate, video/audio bitrate, segment cadence,
+and packaging version are data. Changing any output property produces a different publication key.
 There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
 compatible renditions and render/fetch their transport; they do not redefine preparation identity.
+
+The first production contract is one **portable baseline rendition**, derived from the TOP rung of
+the existing `playout.quality_tier` ladder: H.264 High 4.1, 8-bit SDR `yuv420p`, AAC stereo, and
+two-second fMP4 fragments. Width, height, frame rate, and bitrate come from that ladder rather than a
+second preparation-only quality table. This is deliberately a media contract, not a promise that
+every device gets only one rendition forever: Web (Safari/Firefox/Chrome), Android TV, Roku, and
+Apple TV can all consume it, while a later capable-client adapter may select an additional HEVC
+publication without changing the identity or scheduler model. A tier change creates a different
+immutable publication; it never rewrites bytes under an existing key.
+
+Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
+One measured encode pool admits both classes. Live program children take foreground leases and may
+use every slot. The readiness planner may hold at most one background lease, only when measured
+capacity leaves at least one separate slot for a cold live tune. If foreground demand reaches that
+last slot, the pool cancels the background encode and gives it a short bounded opportunity to exit;
+if it does not, that one live child takes the existing software fallback rather than waiting behind
+maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
+does not guess and it does not consume the only live slot. This priority contract is shared code;
+adding a second semaphore around ffmpeg is forbidden.
 
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
@@ -3568,7 +3595,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
 ### Stack & delivery
 - **React 18 + TypeScript** (Vite SPA); **TanStack Router** (file-based, typed); **TanStack Query** for server state; **Tailwind CSS + shadcn/ui** (full stack rationale in §14).
-- **Typed hooks generated by `orval` from committed `api/openapi.yaml`** — the payoff of §7.1: no hand-written types or fetch glue; contract changes become TypeScript compile errors.
+- **Typed hooks generated by `orval` from committed `api/openapi.yaml`** — the payoff of §7.1: no hand-written types or fetch glue; contract changes become TypeScript compile errors. The `@loomarr/api` root barrel exposes generated DTOs through a **type-only** star export and explicitly re-exports only the generated enum objects the UI uses as runtime values. A normal DTO import must not make Vite fetch every generated model module before auth and the Guide can start; this is a development first-paint invariant, not merely bundle tidiness.
 - **Decided: embed** built assets in the Go binary (`embed.FS`), served at `/` → single self-contained container (§16), same-origin (no CORS). A separate SSR container is future work if ever needed.
 - **Live updates** via SSE `/v1/events` (native `EventSource` hook).
 
@@ -3576,13 +3603,15 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 - **Login** — local or imported-media-server credentials (§11); first-run flows into the **setup wizard** (§13): create the owning admin (bootstrap) → **choose who plays your channels** (`playout.backend`, internal by default — §9.1) → connection checklist → **connect Tunarr to your library** *(Tunarr path only:* `tunarr-connect` *wires + scans Tunarr's media source so channels get real programs not dead-air — §6; internal playout reads the library directly)* → import media-server users → guided first channel.
 - **Guide** (route `/guide`) — headed **"Channels"**, this is the single channels surface: a cross-channel time grid answering both *"what do I have"* and *"what is on"*. **Origination** (how a channel is born) is a header action on this surface: the everyday door is **"✦ Add a channel" → describe it** (the §13 describe→review→approve flow, inlined below the header), and an empty install shows the **"Dead air"** state whose one action opens the same panel. **Evolution** (shaping a live channel) happens on the detail page (`/channels/{id}`) and never re-originates it.
 
+  Hovering or focusing an airing opens its detail card with a compact, unframed, same-origin image-service thumbnail beside the title. A programme uses the same 16:9 episode still or movie backdrop as the Watch timeline, so films and episodes have one consistent preview shape rather than rendering portrait posters as narrow slivers. A filler block previews the first clip in that actual pod with available artwork, preferring its animated hover image and falling back to its still. These previews preserve the whole source image (`contain`, never a forced crop): programme art is landscape and filler loops may be landscape or 4:3. Their ThumbHash is confined to an inner frame with the source's own aspect ratio, never exposed as a matte around the real image. Programme previews are an **interactive fetch exception**: when the Guide or Watch timeline first discovers one, its bounded request synchronously warms the adopted image and returns only real bytes, rather than displaying a gray/blurred placeholder until the next scheduled image-fetch pass. That interactive work is deduplicated by programme identity across the response and resolved through one bounded concurrent batch: TMDB has no multi-title endpoint, so serial per-airing calls would put the sum of every upstream round trip on first paint, while unbounded fan-out would trade latency for provider abuse. The card is anchored to the actual airing block and collision-positioned against the viewport, so its size and the row's virtualized index can never push it beyond a browser edge.
+
   The **hand-made seeds** (single-series / empty via `POST /v1/channels`) have **no UI door and that is deliberate** — see the §12 surface-map row. They remain an API-only express door into the same object for scripted and restore use; the everyday way to make a channel is to describe one.
 
   ✅ **The Channels/Guide fold is DONE** (2026-07-26). It was blocked for several phases on one thing — the grid had no origination affordance, so removing the card list would have stranded the everyday way a channel gets made. The v2 mock settles it: its **Guide screen is headed "Channels"** and carries the `✦ Add a channel` button in its header, with the inline describe panel and the "Dead air" empty state beneath. The affordance moved to the grid; `/channels` and `/suggest` are now **redirects** to `/guide`, kept so existing bookmarks and deep links do not 404. `/channels/{id}` is untouched — evolution still lives there.
 
   The **channel detail page is five surfaces, organized by intent, with two audiences** — the everyday **Overview and Watch are viewer surfaces; the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
   - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
-  - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** is **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so it re-picks the track for the shared stream (§9.1 — a member sees the current value, only an admin changes it). Subtitle discovery is read-only until the encoder implements an actual subtitle path. "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
+  - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. The live timeline is inspectable rather than seekable; its hover card uses landscape episode stills and movie backdrops so every programme preview matches the 16:9 frame, preserving the complete artwork rather than cropping it. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** is **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so it re-picks the track for the shared stream (§9.1 — a member sees the current value, only an admin changes it). Subtitle discovery is read-only until the encoder implements an actual subtitle path. "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
   - **Programming** (admin) — *"What plays, and when?"* One surface with a visible hierarchy: **what plays** (the lineup + scope: era, genres, audience ceiling + unrated, runtimeMax, and the *only these shows* series picker) → **how it's ordered** (ordering, separation) → **when it changes** (the wall-clock curation rules, `programming-design.md` §6.5, plus **seasonal**/holiday behaviour on the calendar clock). The `GET …/cycle` **cycle preview docks here** as the shared verification pane ("what airs Saturday 9am, and which rule wins"). **Refine-with-AI is a verb on this surface, not a separate place** — a header action opens the describe→review→apply loop (§8) acting on the *same* object the manual controls edit; the review shows a diff including **policy deltas** (so a refine can't silently change era/ceiling — §8.2 ownership).
   - **Filler** (admin) — *"What plays between shows?"* The per-channel selection (era/audience/category/kinds + pin/exclude) with a **live sandbox** — every change re-assembles the actual break against an unsaved draft (`POST …/pods/preview`, §7/§10) so you see exactly what airs before you **Apply**.
   - **Danger zone** (admin) — *"Stop or remove this channel."* Pause/resume and a typed-confirm **delete**. Deliberately narrow: a tab headed by an irreversible action is the wrong home for anything an operator edits routinely, so identity and growth settings live where they are used rather than being grouped here as "lifecycle".
@@ -3912,7 +3941,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **37 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **38 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -3959,6 +3988,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
+| `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
@@ -4469,6 +4499,13 @@ dependency row in §14 says the image must *contain* an AV1 encoder; this says w
 
 Three formats are emitted: **AVIF** (smallest), **WebP** (near-universal), and **JPEG** (the floor).
 
+**Animated WebP is the deliberate exception to the still-image ladder.** Clip hover loops are
+already rendered at card size, so ingest identifies motion from the WebP RIFF chunk table and the
+serve path returns the original bytes as its one WebP rendition. It is never decoded and re-encoded:
+Go's `image.Image` represents one frame, so sending a loop through the otherwise-correct resize path
+silently turns it into frame zero. Animated records advertise one honest-width WebP source, no AVIF,
+while the JPEG fallback may remain a still for clients that cannot decode WebP at all.
+
 ⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at
 ~95% and WebP ~97% global support, and a general web app could reasonably drop the fallback. The
 missing few percent are concentrated in old iOS and legacy Android WebViews — which is precisely the
@@ -4516,8 +4553,13 @@ The properties the channel-icon path already established are carried forward, no
 - `X-Content-Type-Options: nosniff` on every serve.
 - Path containment by resolving to absolute form and testing with `filepath.Rel`, because a `..`
   component in the result is the only reliable containment test however the input was spelled.
-- Serve URLs derive from `server.public_url`, **never** from request headers — `Host` and
-  `X-Forwarded-Host` are attacker-controllable, and these URLs are stored and fetched downstream.
+- Machine-client URLs (channel icons handed to Tunarr, and native/off-origin consumers) derive
+  from `server.public_url`, **never** from request headers — `Host` and `X-Forwarded-Host` are
+  attacker-controllable, and these URLs are stored and fetched downstream. **Image records sent
+  to the in-app browser are the same-origin `/v1/images/...` paths instead.** The page already has
+  an origin; making its `src`/`srcset` depend on the separately configured machine-client address
+  strands every image when that address is container-only, VPN-only, or otherwise unreachable
+  from the browser. This is the same browser-vs-native split as §9.1's `relativeUrl`/`url` pair.
 - ⚠ **New with this section: SSRF defence.** Adopting a remote image is a new outbound request driven
   by input, which nothing in the product had before. Host allowlist, `https` only, no redirect into
   private address ranges, a response size cap, and the §6 per-service timeout.

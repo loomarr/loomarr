@@ -1,4 +1,4 @@
-import type { GuideAiring } from "@loomarr/api";
+import type { GuideAiring, ImageDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GuideDetailCard } from "./guide-detail-card";
@@ -7,6 +7,18 @@ const START = Date.UTC(2026, 6, 25, 21, 0, 0);
 const STOP = Date.UTC(2026, 6, 25, 21, 30, 0);
 
 const base: GuideAiring = { kind: "program", title: "Heat", startMs: START, stopMs: STOP };
+const previewImage: ImageDTO = {
+  hash: "preview-art",
+  role: "backdrop",
+  width: 320,
+  height: 180,
+  placeholder: "",
+  dominantHex: "#111111",
+  animated: false,
+  srcSetAvif: "",
+  srcSetWebp: "/preview.webp 320w",
+  src: "/preview.jpg",
+};
 
 describe("GuideDetailCard", () => {
   // Rendering nothing for a null subject lets the caller mount this unconditionally instead of
@@ -32,6 +44,40 @@ describe("GuideDetailCard", () => {
     expect(screen.getByText(/1995/)).toBeInTheDocument();
     expect(screen.getByText(/2h 50m/)).toBeInTheDocument();
     expect(screen.getByText(/professional thieves/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["programme", { ...base, thumbImage: previewImage }, { width: 80, height: 45 }],
+    [
+      "filler",
+      {
+        kind: "filler" as const,
+        title: "Commercials",
+        startMs: START,
+        stopMs: STOP,
+        thumbImage: { ...previewImage, hash: "filler-hover", role: "thumb", height: 240, animated: true },
+        pod: { matchLevel: "exact" as const, totalMs: 30_000, entries: [] },
+      },
+      { width: 74.667, height: 56 },
+    ],
+  ])("shows the %s airing's complete preview image", (_kind, airing, expectedSize) => {
+    render(<GuideDetailCard airing={airing} />);
+    const preview = screen.getByTestId("guide-detail-preview");
+    const frame = screen.getByTestId("guide-detail-preview-frame");
+    const image = screen.getByTestId("guide-detail-card").querySelector("img");
+    // Artwork is context for the title, not a full-width hero that makes the hover card
+    // taller than the available viewport on lower Guide rows.
+    expect(preview).toHaveClass("h-14", "w-20");
+    expect(preview).not.toHaveClass("bg-black");
+    expect(preview).not.toHaveClass("border");
+    expect(frame).toHaveClass("rounded", "overflow-hidden");
+    expect(frame).not.toHaveClass("bg-black", "border");
+    expect(Number.parseFloat(frame.style.width)).toBeCloseTo(expectedSize.width, 2);
+    expect(Number.parseFloat(frame.style.height)).toBeCloseTo(expectedSize.height, 2);
+    expect(image).toHaveAttribute("src", "/preview.jpg");
+    // The ThumbHash background now covers exactly the source-shaped frame, never the empty
+    // space around a poster/backdrop inside the 80×56 allocation.
+    expect(image).toHaveClass("size-full", "object-contain");
   });
 
   // An episode needs BOTH names and its numbering, or the card says less than the block did.

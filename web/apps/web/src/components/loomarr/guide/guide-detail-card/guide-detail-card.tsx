@@ -1,5 +1,5 @@
 import type { PodPoolDTOMatchLevel } from "@loomarr/api";
-import { Badge, Caption } from "@/components/ui";
+import { Badge, Caption, Image } from "@/components/ui";
 import { cn } from "@/lib";
 import type { GuideDetailCardProps } from "./guide-detail-card.type";
 
@@ -66,6 +66,18 @@ const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
   const isBreak = airing.kind === "filler" && pod;
   const chip = pod ? MATCH[pod.matchLevel] : null;
 
+  // The card allocates at most 80×56 for art, then fits a source-shaped inner frame into it.
+  // The ThumbHash belongs on Image itself, so matching that element's box to the source ratio
+  // prevents a blurred matte around narrower art. A role-based fallback keeps legacy records
+  // with unknown 0×0 dimensions visible rather than collapsing an auto-sized image to nothing.
+  const measuredAspect =
+    airing.thumbImage && airing.thumbImage.width > 0 && airing.thumbImage.height > 0
+      ? airing.thumbImage.width / airing.thumbImage.height
+      : 0;
+  const previewAspect = measuredAspect || (airing.kind === "filler" ? 4 / 3 : 16 / 9);
+  const previewWidth = Math.min(80, 56 * previewAspect);
+  const previewHeight = previewWidth / previewAspect;
+
   // A programme's second line: the facts that identify it, minus whatever this item lacks.
   const meta = [
     airing.year ? String(airing.year) : null,
@@ -86,15 +98,38 @@ const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
       data-testid="guide-detail-card"
       className={cn("w-80 rounded-lg border border-border bg-static-900 p-3 shadow-lg", className)}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          {airing.series && <div className="truncate text-static-400 text-xs">{airing.series}</div>}
-          <div className="truncate font-medium text-sm">{airing.title || "Commercials"}</div>
+      <div className="flex items-start gap-2">
+        {(airing.thumbImage || airing.thumbUrl) && (
+          <div
+            data-testid="guide-detail-preview"
+            className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden"
+          >
+            {/* Programme art is a 16:9 episode still or movie backdrop, while filler previews
+                are commonly 4:3 animated WebP. `contain` is the shared rule: a thumbnail identifies
+                what will air, so cropping it to make the frame full defeats its job. */}
+            <div
+              data-testid="guide-detail-preview-frame"
+              className="overflow-hidden rounded"
+              style={{ width: previewWidth, height: previewHeight }}
+            >
+              {airing.thumbImage ? (
+                <Image image={airing.thumbImage} alt="" sizes="5rem" className="size-full object-contain" />
+              ) : (
+                <img src={airing.thumbUrl} alt="" className="size-full object-contain" />
+              )}
+            </div>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+          <div className="min-w-0">
+            {airing.series && <div className="truncate text-static-400 text-xs">{airing.series}</div>}
+            <div className="truncate font-medium text-sm">{airing.title || "Commercials"}</div>
+          </div>
+          {/* State, not decoration: a pending slot is the case a viewer most needs named. */}
+          <Badge variant={airing.kind === "pending" ? "caution" : "neutral"}>
+            {airing.kind === "pending" ? "Pending slot" : airing.kind === "filler" ? "Break" : "Scheduled"}
+          </Badge>
         </div>
-        {/* State, not decoration: a pending slot is the case a viewer most needs named. */}
-        <Badge variant={airing.kind === "pending" ? "caution" : "neutral"}>
-          {airing.kind === "pending" ? "Pending slot" : airing.kind === "filler" ? "Break" : "Scheduled"}
-        </Badge>
       </div>
 
       <div className="mt-1 font-mono text-static-400 text-xs">

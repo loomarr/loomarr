@@ -3,6 +3,7 @@ package images
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -79,6 +80,38 @@ func Decode(data []byte) (image.Image, string, error) {
 		return nil, mime, fmt.Errorf("images: decode %s: %w", mime, err)
 	}
 	return img, mime, nil
+}
+
+// isAnimatedWebP reports whether data is a RIFF WebP carrying animation chunks.
+//
+// image.Decode intentionally returns only frame zero, so successful decode cannot answer this
+// question. Walking the RIFF chunk table does: ANIM declares the loop and ANMF carries a frame.
+// Parse chunk boundaries rather than bytes.Contains so pixel data that happens to contain the
+// four letters "ANIM" cannot turn a still into an animation record.
+func isAnimatedWebP(data []byte, mime string) bool {
+	if mime != "image/webp" || len(data) < 20 || string(data[:4]) != "RIFF" || string(data[8:12]) != "WEBP" {
+		return false
+	}
+
+	riffSize := uint64(binary.LittleEndian.Uint32(data[4:8])) + 8
+	end := min(riffSize, uint64(len(data)))
+	for offset := uint64(12); offset+8 <= end; {
+		chunkSize := uint64(binary.LittleEndian.Uint32(data[offset+4 : offset+8]))
+		// RIFF chunks are padded to an even byte boundary. Check the addition before advancing so
+		// a corrupt size cannot wrap around and turn this validation loop infinite.
+		next := offset + 8 + chunkSize + chunkSize%2
+		if next <= offset || next > end {
+			return false
+		}
+		chunk := string(data[offset : offset+4])
+		// ANIM's fixed payload is six bytes; ANMF's is sixteen before its nested frame data. A
+		// matching fourcc with no complete payload is corrupt trailing data, not motion.
+		if (chunk == "ANIM" && chunkSize >= 6) || (chunk == "ANMF" && chunkSize >= 16) {
+			return true
+		}
+		offset = next
+	}
+	return false
 }
 
 // Resize scales img down to exactly width, preserving aspect ratio.
