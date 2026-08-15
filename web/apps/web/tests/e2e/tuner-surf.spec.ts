@@ -16,6 +16,23 @@ const installFrameClock = async (page: Page) => {
     performance.setResourceTimingBufferSize?.(2_000);
     const frames: Array<{ at: number; src: string }> = [];
     Object.defineProperty(window, "__loomarrDecodedFrames", { value: frames, configurable: true });
+    const mediaEvents: Array<{ at: number; currentTime: number; readyState: number; type: string }> = [];
+    Object.defineProperty(window, "__loomarrMediaEvents", { value: mediaEvents, configurable: true });
+    for (const type of ["loadstart", "loadedmetadata", "loadeddata", "canplay", "play", "playing"]) {
+      document.addEventListener(
+        type,
+        (event) => {
+          if (!(event.target instanceof HTMLVideoElement)) return;
+          mediaEvents.push({
+            at: performance.now(),
+            currentTime: event.target.currentTime,
+            readyState: event.target.readyState,
+            type,
+          });
+        },
+        true,
+      );
+    }
     const original = HTMLVideoElement.prototype.requestVideoFrameCallback;
     if (!original) return;
     Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
@@ -43,13 +60,20 @@ const waitForDecodedFrame = async (page: Page) => {
   // BEFORE hls.js attaches MediaSource. Clicking in that empty-source window spends the synthetic
   // user gesture on a play() that cannot start, then leaves the real source paused. Race a normal
   // decoded frame against one fallback click made only after the video has an attached source.
-  const fallbackPlay = Promise.all([
-    play.waitFor({ state: "visible", timeout: 9_000 }),
-    page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
-      timeout: 9_000,
-    }),
-  ]).then(() => play.click());
-  await Promise.race([decoded, fallbackPlay]);
+  await page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
+    timeout: 9_000,
+  });
+  // Give permitted autoplay a brief opportunity. If it produced no frame, activate the actual
+  // Play control with keyboard/remote semantics; this avoids spending the gesture before a source
+  // exists and avoids racing the auto-hidden pointer layer.
+  await Promise.race([decoded, page.waitForTimeout(500)]);
+  const frameCount = await page.evaluate(
+    () => (window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0,
+  );
+  if (frameCount === 0 && (await play.count()) > 0) {
+    await play.focus();
+    await page.keyboard.press("Enter");
+  }
   await decoded;
 };
 
@@ -59,7 +83,7 @@ const waitForDecodedFrame = async (page: Page) => {
 // A popstate navigation is the platform-neutral route input behind browser Back/Forward and lands
 // in the same TanStack Router path as an in-app Link without coupling this transport test to the
 // Guide's virtualized row layout.
-const tuneInApp = async (page: Page, id: string): Promise<number> => {
+const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; trace: string }> => {
   const before = await page.locator("video").evaluate((video) => ({
     src: video.currentSrc,
     count: (
@@ -97,13 +121,40 @@ const tuneInApp = async (page: Page, id: string): Promise<number> => {
         .find((frame) => frame.src !== src)?.at ?? Number.POSITIVE_INFINITY,
     before,
   );
-  return decodedAt - started;
+  const trace = await page.evaluate((since) => {
+    const resources = performance
+      .getEntriesByType("resource")
+      .filter((entry) => entry.startTime >= since)
+      .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+      .map(
+        (entry) =>
+          `${new URL(entry.name).pathname.split("/").at(-1)}@${(entry.responseEnd - since).toFixed(0)}`,
+      );
+    const events = (
+      window as Window & {
+        __loomarrMediaEvents?: Array<{ at: number; readyState: number; type: string }>;
+      }
+    ).__loomarrMediaEvents
+      ?.filter((event) => event.at >= since)
+      .map((event) => `${event.type}${event.readyState}@${(event.at - since).toFixed(0)}`);
+    return [...resources, ...(events ?? [])].join(" ");
+  }, started);
+  return { duration: decodedAt - started, trace };
 };
 
 const adjacentNumbers = (number: number): [number, number] => [
   number === 1 ? 100 : number - 1,
   number === 100 ? 1 : number + 1,
 ];
+
+const channelUp = async (page: Page) => {
+  // Keep the real focusable control as the input seam, but activate it the way a keyboard/remote
+  // does. Pointer activation can race the player's auto-hidden control bar in slow WebKit; focus
+  // holds the chrome open and Enter is the same button action a TV remote will deliver.
+  const button = page.getByRole("button", { name: "Channel up" });
+  await button.focus();
+  await page.keyboard.press("Enter");
+};
 
 const waitForAdjacentWarm = async (
   backend: Awaited<ReturnType<typeof installTunerBackend>>,
@@ -145,8 +196,11 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // route request to a genuinely decoded frame, including SPA/API/HLS work but excluding the cold
   // document + decoder bootstrap proven above and owned by the real-runtime gate.
   const arbitrary: number[] = [];
+  const arbitraryTraces: string[] = [];
   for (const number of [3, 17, 29, 41, 53, 67, 79, 91, 8, 50, 62, 74, 86, 98, 12, 24, 36, 48, 60, 72]) {
-    arbitrary.push(await tuneInApp(page, channelId(number)));
+    const sample = await tuneInApp(page, channelId(number));
+    arbitrary.push(sample.duration);
+    arbitraryTraces.push(`${number}:${sample.duration.toFixed(0)}[${sample.trace}]`);
     await expect(page.locator("video")).toHaveCount(1);
     // Keep arbitrary samples independent. Rapid sequential intent has its own adjacent and burst
     // gates below; this percentile starts after the previous Channel's bounded hot set has settled.
@@ -156,7 +210,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     p95(arbitrary),
     `arbitrary prepared p95: ${p95(arbitrary).toFixed(1)}ms; samples: ${arbitrary
       .map((sample) => sample.toFixed(1))
-      .join(", ")}`,
+      .join(", ")}; traces: ${arbitraryTraces.join(" | ")}`,
   ).toBeLessThan(1_500);
 
   // Start the adjacent run from the middle of the catalog and prove speculative work is prepared-only.
@@ -175,7 +229,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   const heldFrameCount = await page.evaluate(
     () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
   );
-  await page.getByRole("button", { name: "Channel up" }).click();
+  await channelUp(page);
   await expect(page.getByRole("status")).toContainText("CH 51");
   await expect(video).toHaveAttribute("poster", /^data:image\/png;base64,/);
   await page.waitForFunction(
@@ -210,7 +264,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     const previousFrames = await page.evaluate(
       () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
     );
-    await page.getByRole("button", { name: "Channel up" }).click();
+    await channelUp(page);
     await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
     await page.waitForFunction(
       (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
@@ -271,7 +325,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   const beforeBurstFrames = await page.evaluate(
     () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
   );
-  await page.getByRole("button", { name: "Channel up" }).click();
+  await channelUp(page);
   await page.evaluate((remaining) => {
     for (const direction of remaining) {
       const label = direction > 0 ? "Channel up" : "Channel down";
