@@ -67,6 +67,32 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	return out, nil
 }
 
+func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
+	history, err := a.s.History(ctx, name)
+	if err == scheduler.ErrUnknownJob {
+		return api.JobHistoryView{}, api.ErrJobNotFound
+	}
+	if err != nil {
+		return api.JobHistoryView{}, err
+	}
+	out := api.JobHistoryView{
+		WindowStart: history.WindowStart, RunCount: history.RunCount,
+		FailureCount: history.FailureCount, AverageDurationMs: history.AverageDurationMs,
+		Truncated: history.Truncated, Recent: make([]api.JobExecutionView, 0, len(history.Recent)),
+	}
+	for _, run := range history.Recent {
+		trigger := "scheduled"
+		if run.Manual {
+			trigger = "manual"
+		}
+		out.Recent = append(out.Recent, api.JobExecutionView{
+			StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, DurationMs: run.DurationMs,
+			Result: run.Result, Error: run.Error, Trigger: trigger,
+		})
+	}
+	return out, nil
+}
+
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
 	switch err := a.s.SetPaused(ctx, name, paused); err {
 	case scheduler.ErrUnknownJob:

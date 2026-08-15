@@ -2,13 +2,22 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
+
+	"github.com/mantonx/loomarr/internal/store"
 )
+
+type historyNotifier chan string
+
+func (n historyNotifier) JobChanged(name string) { n <- name }
 
 func TestLiveCronGateReadsTheCurrentSettingAndEmitsEachTickOnce(t *testing.T) {
 	cron := "0 */5 * * * *"
@@ -90,5 +99,110 @@ func TestPeriodicInsertOptsCoalescesOnlyActiveScheduledTicks(t *testing.T) {
 		if state == rivertype.JobStateCompleted || state == rivertype.JobStateDiscarded {
 			t.Fatalf("periodic uniqueness includes terminal state %q; the next tick would be swallowed", state)
 		}
+	}
+}
+
+func TestJobArgsUseOneRiverKindPerNamedTask(t *testing.T) {
+	if got, want := (jobArgs{Name: "reconcile"}).Kind(), "loomarr_job:reconcile"; got != want {
+		t.Fatalf("named kind = %q, want %q", got, want)
+	}
+	if got := (jobArgs{}).Kind(); got != legacyJobKind {
+		t.Fatalf("legacy empty-name kind = %q, want %q", got, legacyJobKind)
+	}
+}
+
+func TestSummarizeJobHistoryCountsOnlyTrustworthyRunsInTheWindow(t *testing.T) {
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	row := func(start time.Time, duration time.Duration, result string, manual bool) *rivertype.JobRow {
+		finish := start.Add(duration)
+		args, err := json.Marshal(jobArgs{Name: "probe", Manual: manual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata, err := json.Marshal(map[string]any{"output": jobExecutionOutput{
+			StartedAt: start, FinishedAt: finish, DurationMs: duration.Milliseconds(), Result: result,
+			Error: map[bool]string{true: "probe failed"}[result == "error"],
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &rivertype.JobRow{EncodedArgs: args, Metadata: metadata}
+	}
+
+	rows := []*rivertype.JobRow{
+		row(now.Add(-time.Hour), 3*time.Second, "error", true),
+		row(now.Add(-2*time.Hour), time.Second, "ok", false),
+		{EncodedArgs: []byte(`{"name":"probe"}`), Metadata: []byte(`{}`)}, // old row: no outcome
+		row(now.Add(-25*time.Hour), 9*time.Second, "error", false),        // outside the window
+	}
+	history := summarizeJobHistory(now, rows, false)
+
+	if history.RunCount != 2 || history.FailureCount != 1 || history.AverageDurationMs != 2000 {
+		t.Fatalf("summary = %+v, want 2 runs, 1 failure, 2000ms average", history)
+	}
+	if len(history.Recent) != 2 || !history.Recent[0].Manual || history.Recent[0].Error != "probe failed" {
+		t.Fatalf("recent = %+v, want newest manual failure first", history.Recent)
+	}
+	if !history.WindowStart.Equal(now.Add(-24 * time.Hour)) {
+		t.Fatalf("window start = %v, want %v", history.WindowStart, now.Add(-24*time.Hour))
+	}
+}
+
+func TestRiverHistoryRecordsTheLoomarrOutcome(t *testing.T) {
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/history.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	log := slog.New(slog.DiscardHandler)
+	ran := make(chan struct{}, 1)
+	changed := make(historyNotifier, 1)
+	s := New(st, NewRegistry().Add(Job{
+		Name: "probe", Group: GroupSystem, Title: "Probe", Description: "Runs the probe.",
+		DefaultCron: "0 0 5 1 1 *",
+		Run: func(context.Context) error {
+			ran <- struct{}{}
+			return errors.New("media server unavailable")
+		},
+	}), nil, time.Now, log).WithNotifier(changed)
+	s.SeedRegistry(ctx)
+	wait, err := s.StartRiver(ctx, st, store.PoolOf(st), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cancel()
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer waitCancel()
+		_ = wait(waitCtx)
+		_ = st.Close()
+	})
+
+	if err := s.Trigger(ctx, "probe"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ran:
+	case <-time.After(20 * time.Second):
+		t.Fatal("triggered job did not run")
+	}
+	select {
+	case name := <-changed:
+		if name != "probe" {
+			t.Fatalf("completion notification = %q, want probe", name)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("completed job did not notify the Tasks page")
+	}
+
+	// The notification is deliberately post-finalization: history must contain the run by
+	// the time an SSE consumer reacts to this signal and refetches.
+	history, err := s.History(ctx, "probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history.RunCount != 1 || history.FailureCount != 1 || len(history.Recent) != 1 ||
+		!history.Recent[0].Manual || history.Recent[0].Error != "media server unavailable" {
+		t.Fatalf("history after completion notification = %+v, want one manual failure", history)
 	}
 }

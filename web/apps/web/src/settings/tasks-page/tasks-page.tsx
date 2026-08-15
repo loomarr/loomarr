@@ -1,5 +1,5 @@
-import { type JobView, jobsApi, toProblem, unwrap } from "@loomarr/api";
-import { formatRelative, formatUntil } from "@loomarr/core";
+import { type JobHistoryView, type JobView, jobsApi, toProblem, unwrap } from "@loomarr/api";
+import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pause, Pencil, Play } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -53,6 +53,75 @@ const COLUMNS = [
 
 const zero = "0001-01-01T00:00:00Z";
 const isZero = (t?: string) => !t || t.startsWith("0001-01-01");
+
+const executionDuration = (ms: number) => (ms < 3_600_000 ? formatClipDuration(ms) : formatDuration(ms));
+
+const ExecutionHistory = ({ name }: { name: string }) => {
+  const query = jobsApi.useJobsHistory(name, { query: { retry: false } });
+  const history = unwrap(query.data) as JobHistoryView | undefined;
+
+  if (query.isLoading) {
+    return <p className="mt-4 text-muted-foreground text-xs">Loading execution history…</p>;
+  }
+  if (query.error) {
+    return (
+      <div className="mt-4 flex items-center gap-2 text-destructive text-xs" role="alert">
+        <span>Couldn’t load execution history.</span>
+        <Button variant="ghost" size="sm" onClick={() => query.refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+  if (!history) return null;
+
+  return (
+    <section className="mt-4 border-border border-t pt-3" aria-label="Execution history">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h3 className="font-medium text-xs">Past 24 hours</h3>
+        {history.runCount === 0 ? (
+          <p className="text-muted-foreground text-xs">No completed runs.</p>
+        ) : (
+          <dl className="flex flex-wrap gap-x-4 text-xs">
+            <div className="flex gap-1">
+              <dt className="text-muted-foreground">Runs</dt>
+              <dd className="font-mono">{history.truncated ? `${history.runCount}+` : history.runCount}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-muted-foreground">Failed</dt>
+              <dd className={cn("font-mono", history.failureCount > 0 && "text-destructive")}>
+                {history.failureCount}
+              </dd>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-muted-foreground">Average</dt>
+              <dd className="font-mono">{executionDuration(history.averageDurationMs)}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+
+      {history.recent.length > 0 && (
+        <ul className="mt-2 divide-y divide-border rounded-md border border-border bg-background">
+          {history.recent.map((run) => {
+            const failed = run.result === "error";
+            return (
+              <li key={`${run.startedAt}-${run.trigger}`} className="px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
+                  <span className="font-medium">{run.trigger === "manual" ? "Manual" : "Scheduled"}</span>
+                  <span className="text-muted-foreground">{formatRelative(run.startedAt)}</span>
+                  <span className="font-mono text-muted-foreground">{executionDuration(run.durationMs)}</span>
+                </div>
+                {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+};
 
 const TasksPage = () => {
   const queryClient = useQueryClient();
@@ -238,6 +307,7 @@ const TasksPage = () => {
                                   {job.disabledReason && (
                                     <p className="mt-2 text-muted-foreground text-sm">{job.disabledReason}</p>
                                   )}
+                                  <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
                                     <div className="mt-3 flex items-center gap-1">
                                       <Button
