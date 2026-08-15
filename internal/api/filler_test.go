@@ -17,6 +17,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -162,6 +163,10 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 }
 
 func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
+	return newFillerServerWithImages(t, nil)
+}
+
+func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -176,6 +181,7 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 		Auth:   testAuthorizer{},
 		Log:    slog.New(slog.DiscardHandler),
 		Filler: ff,
+		Images: imageService,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -190,6 +196,49 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 	// should ever depend on what 00034 inserts.
 	clearSeededSources(t, st)
 	return srv, st, ff
+}
+
+// The catalog's still and hover loop are both public image-service records. The animated bit and
+// content-addressed source are what let the frontend defer the loop until hover without a private
+// filler artwork route.
+func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
+	imageService := newFakeImageService()
+	imageService.records["still-art"] = images.Image{
+		Hash: "still-art", Role: images.RoleThumb, Width: 320, Height: 180,
+		Visibility: images.VisibilityMember,
+	}
+	imageService.records["hover-art"] = images.Image{
+		Hash: "hover-art", Role: images.RoleThumb, Width: 320, Height: 180, Animated: true,
+		Visibility: images.VisibilityMember,
+	}
+	srv, st, _ := newFillerServerWithImages(t, imageService)
+	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
+		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []api.ClipDTO `json:"clips"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Clips) != 1 {
+		t.Fatalf("got %d clips, want 1", len(body.Clips))
+	}
+	still, hover := body.Clips[0].ThumbImage, body.Clips[0].HoverImage
+	if still == nil || still.Hash != "still-art" || still.Src != "/v1/images/still-art/w780.jpg" {
+		t.Errorf("still image = %+v, want content-addressed image record", still)
+	}
+	if hover == nil || hover.Hash != "hover-art" || !hover.Animated || hover.SrcSetWebP != "/v1/images/hover-art/w320.webp 320w" {
+		t.Errorf("hover image = %+v, want animated image record", hover)
+	}
 }
 
 // clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.

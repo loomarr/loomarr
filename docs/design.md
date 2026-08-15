@@ -205,37 +205,47 @@ flowchart TD
 
 **Layer 1**
 
-- **`metrics`** · 6 importers · → `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §18).
 - **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
 - **`schedule`** · 12 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
+- **`scheduler`** · 6 importers · → `store`
+  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
 **Layer 2**
 
-- **`httpx`** · 5 importers · → `metrics`
-  Shared outbound HTTP client factory (design §6, §21 phase 1).
+- **`images`** · 4 importers · → `scheduler`
+  One pipeline every image in Loomarr travels (§22).
 - **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
 
-- **`llm`** · 5 importers · → `httpx`, `metrics`
-  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`mediatools`** · 2 importers · → `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+- **`metrics`** · 6 importers · → `images`, `provision`
+  Loomarr's Prometheus surface (design §7 /metrics, §18).
+
+**Layer 4**
+
+- **`httpx`** · 5 importers · → `metrics`
+  Shared outbound HTTP client factory (design §6, §21 phase 1).
+
+**Layer 5**
+
+- **`llm`** · 5 importers · → `httpx`, `metrics`
+  LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`programmer`** · 3 importers · → `httpx`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`requester`** · 2 importers · → `httpx`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 
-**Layer 4**
+**Layer 6**
 
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
-**Layer 5**
+**Layer 7**
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
@@ -244,7 +254,7 @@ flowchart TD
 - **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
-**Layer 6**
+**Layer 8**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
@@ -252,29 +262,27 @@ flowchart TD
   Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`scheduler`** · 6 importers · → `store`
-  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`setup`** · 1 importer · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
-
-**Layer 7**
-
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
-- **`devbootstrap`** · → `auth`, `store`
-  Prepares an isolated agent worktree for UI development.
-- **`images`** · 3 importers · → `scheduler`
-  One pipeline every image in Loomarr travels (§22).
-- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
-  Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`setup`** · 1 importer · → `library`
+  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
+- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+
+**Layer 9**
+
+- **`devbootstrap`** · → `auth`, `store`
+  Prepares an isolated agent worktree for UI development.
+- **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
+  Provisioning backstop (design §4, §7, §18).
 - **`suggest`** · 5 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
-**Layer 8**
+**Layer 10**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -282,15 +290,13 @@ flowchart TD
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
-**Layer 9**
+**Layer 11**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 10**
+**Layer 12**
 
 - **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
@@ -5125,3 +5131,46 @@ without validating forwards traversal.
 per row, so a lookup inside the mapper is an N+1 — pre-resolve the distinct hashes for the whole
 page. A failed lookup is an absent record, never an error: an image row lost with `/data/images` (see
 *Durability*) must still let its channel render.
+
+### Runtime certification
+
+The required worker is release infrastructure, so its gate is broader than unit codec coverage.
+`make image-cert` drives the installed `loomarr-image` executable through the same bounded protocol
+and manifest validation used by the application, then writes a machine-readable report under this
+worktree's `.artifacts/<instance>/` directory. It has two corpus modes:
+
+- With no arguments, it uses the repository's deterministic certification corpus. That corpus
+  covers opaque JPEG, transparent PNG, static WebP, animated GIF, APNG and WebP, finite and infinite
+  loops, fractional and zero frame delays, a one-frame animated container, corrupt input, and every
+  resource ceiling whose refusal is observable without allocating the forbidden resource.
+- `make image-cert IMAGE_CERT_CORPUS=/absolute/read-only/path` scans an operator's existing raster
+  corpus. It never modifies source files, follows no symlinks, performs no network I/O, and treats a
+  supported-looking file that cannot complete inspection plus the requested ladder as a failure.
+  Unsupported files are reported as skipped; stable budget refusals are reported separately from
+  crashes, malformed manifests, and I/O failures.
+
+Every accepted case produces an inspection plus a 320-pixel JPEG/WebP/AVIF ladder. Motion-preserving
+WebP is required for an animated source; JPEG and AVIF must be the first composited presentation
+frame. The certifier independently verifies the source hash, output signatures, dimensions, hashes,
+motion flag, and that staging is empty after each case. A run fails on a worker crash, protocol or
+manifest violation, unexpected refusal, leaked staging file, incorrect visible timeline, or a
+resource ceiling breach.
+
+The deterministic gate is intentionally generous enough to survive shared CI hardware while still
+catching runaway work: each static case must complete within 10 seconds, each animated case within
+30 seconds, and a worker process must remain below 768 MiB peak resident memory. The report records
+per-case wall time, source and output bytes, peak RSS where the host exposes it, plus p50/p95/max
+summaries. These are certification ceilings, not product SLOs; lowering them requires corpus evidence
+and raising them is a design change.
+
+Production exposes the same boundary at `/metrics`: worker operations and stable outcomes, wall
+time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are bounded vocabulary
+(`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
+caller, or free-form error text.
+
+The consumer half of the gate is observable through public seams. Guide programme art, Watch
+timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
+render through the shared frontend `Image` primitive. An animated filler hover must offer an
+animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
+responses and rendered elements; querying image tables or asserting private renderer calls is not
+certification evidence.

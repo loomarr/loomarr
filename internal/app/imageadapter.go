@@ -14,6 +14,7 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -72,6 +73,11 @@ func newImageService(st store.Store, set resolved, explicitWorker, release strin
 		Dir:            set.str("images.dir"),
 		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
 		PublicBaseURL:  func() string { return set.str("server.public_url") },
+		Observer: images.Observer{
+			QueueWait: metrics.ImageWorkerQueueWait,
+			InFlight:  metrics.ImageWorkerInFlight,
+			Worker:    metrics.ImageWorkerObserved,
+		},
 	}, imageStore{st}, renderer, nil), nil
 }
 

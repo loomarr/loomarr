@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -175,6 +176,26 @@ func TestImageRoutesAreWired(t *testing.T) {
 	defer func() { _ = avifResp.Body.Close() }()
 	if avifResp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET a cold avif rendition → %d, want 404 (it is job-produced, and absent is normal)", avifResp.StatusCode)
+	}
+
+	// --- observe the real worker boundary --------------------------------------------------
+	metricsResp := get(t, srv, "/metrics")
+	defer func() { _ = metricsResp.Body.Close() }()
+	metricsBody, err := io.ReadAll(metricsResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metricsText := string(metricsBody)
+	for _, want := range []string{
+		`loomarr_image_worker_operations_total{kind="inspect",result="success"}`,
+		`loomarr_image_worker_operations_total{kind="render",result="success"}`,
+		`loomarr_image_worker_queue_wait_seconds_count`,
+		`loomarr_image_worker_peak_rss_bytes_count{kind="inspect"}`,
+		`loomarr_image_worker_in_flight 0`,
+	} {
+		if !strings.Contains(metricsText, want) {
+			t.Errorf("/metrics missing %q; image worker telemetry is not wired through the composition root", want)
+		}
 	}
 }
 

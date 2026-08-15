@@ -59,6 +59,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make build` |  | build the cgo-free Go server and required Rust image worker <br>*runs:* `rust-build` |
 | `make rust-build` |  | build the required Rust image worker |
+| `make image-cert` | ✅ | certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
@@ -141,7 +142,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-cert` · `openapi-verify` · `retired-verify` · `test-pg`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the
