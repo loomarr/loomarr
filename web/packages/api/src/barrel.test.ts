@@ -15,6 +15,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 // it. A generated module nobody can import is indistinguishable from an endpoint that
 // was never built.
 describe("@loomarr/api barrel", () => {
+  it("does not load every generated DTO as a runtime module", () => {
+    const barrel = readFileSync(join(here, "index.ts"), "utf8");
+
+    // Orval emits enum-like DTO fields as runtime objects, so its model index is not type-only by
+    // construction. A plain `export *` pulled every one of those files into Vite's startup graph:
+    // opening the Guide waited for unrelated backup, database and filler DTO modules before auth
+    // could even begin. Types disappear after compilation; the few enum objects used at runtime
+    // are re-exported explicitly below the type star.
+    expect(barrel).toContain('export type * from "../generated/model";');
+    expect(barrel).not.toMatch(/^export \* from "\.\.\/generated\/model";$/m);
+  });
+
   it("exports a namespace for every generated endpoint tag", () => {
     const generated = readdirSync(join(here, "../generated/endpoints"), { withFileTypes: true })
       .filter((e) => e.isDirectory())

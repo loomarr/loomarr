@@ -1,4 +1,5 @@
-import type { TitleDTO, TitleDTOState } from "@loomarr/api";
+import type { TitleDTO } from "@loomarr/api/models/titleDTO";
+import type { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import type { JourneyStage } from "./journey.type";
 
 // §13's member framing: a member should read their submission as a JOURNEY —

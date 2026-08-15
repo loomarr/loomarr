@@ -96,6 +96,9 @@ type Channel struct {
 	// Sourced from FILLER_BREAKS_PER_HOUR at channel build; empty breaks fill with
 	// matched pods at reconcile (fillPods), else stay flex (never dead air).
 	BreaksPerHour int
+	// BreakDurationMs is the target duration of each inserted filler slot. Resolved from the
+	// per-channel override or live global setting before this pure scheduler runs.
+	BreakDurationMs int64
 	// LastAired is when each key last aired on THIS channel (§3.1) — the recency signal
 	// placement biases on, loaded from the airings table by the caller.
 	//

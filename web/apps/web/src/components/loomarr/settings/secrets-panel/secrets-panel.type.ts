@@ -1,6 +1,6 @@
 // The generated secrets (config-design §4). Their display policy differs by
 // PURPOSE, which is why this is a closed set rather than a generic list.
-type SecretName = "api_token" | "session_secret";
+type SecretName = "api_token" | "session_secret" | "playout_token";
 
 interface SecretRow {
   name: SecretName;

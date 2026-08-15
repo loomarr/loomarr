@@ -1,4 +1,4 @@
-import type { UserBody } from "@loomarr/api";
+import type { UserBody } from "@loomarr/api/models/userBody";
 
 interface UserRowProps {
   user: UserBody;

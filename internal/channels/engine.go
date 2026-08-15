@@ -102,11 +102,12 @@ type Engine struct {
 	acts ActivityRecorder
 	log  *slog.Logger
 
-	policy        schedule.PendingPolicy
-	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
-	breaksPerHour int           // §10 commercial-break density applied per channel
-	defaultWindow time.Duration // §6.5 global rolling-window horizon (sched.window_hours)
-	now           func() time.Time
+	policy           schedule.PendingPolicy
+	reconcileTTLFor  func() time.Duration // live minimum delay before the next sweep eligibility
+	breaksPerHourFor func() int           // live §10 commercial-break default
+	breakDurationFor func() time.Duration // live §10 commercial-break length default
+	defaultWindowFor func() time.Duration // live §6.5 rolling-window default
+	now              func() time.Time
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex // per-channel-id mutex (§18)
@@ -120,13 +121,20 @@ type Config struct {
 	// sweep (CHANNEL_RECONCILE_EVERY-aligned). The Runner ticks at that cadence;
 	// this is the per-row lease horizon so ClaimDueChannels re-offers the channel.
 	ReconcileTTL time.Duration
+	// ResolveReconcileTTL reads a live settings value when provided. Tests and callers with
+	// immutable configuration can leave it nil and use ReconcileTTL.
+	ResolveReconcileTTL func() time.Duration
 	// BreaksPerHour is the commercial-break density (§10, FILLER_BREAKS_PER_HOUR)
 	// applied to every channel at reconcile time. 0 = no breaks.
-	BreaksPerHour int
+	BreaksPerHour        int
+	ResolveBreaksPerHour func() int
+	BreakDuration        time.Duration
+	ResolveBreakDuration func() time.Duration
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) — how far ahead each channel materializes before it rolls forward.
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
-	DefaultWindow time.Duration
+	DefaultWindow        time.Duration
+	ResolveDefaultWindow func() time.Duration
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -138,21 +146,34 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 	if cfg.ReconcileTTL <= 0 {
 		cfg.ReconcileTTL = 10 * time.Minute
 	}
+	if cfg.ResolveReconcileTTL == nil {
+		cfg.ResolveReconcileTTL = func() time.Duration { return cfg.ReconcileTTL }
+	}
+	if cfg.ResolveBreaksPerHour == nil {
+		cfg.ResolveBreaksPerHour = func() int { return cfg.BreaksPerHour }
+	}
+	if cfg.ResolveBreakDuration == nil {
+		cfg.ResolveBreakDuration = func() time.Duration { return cfg.BreakDuration }
+	}
+	if cfg.ResolveDefaultWindow == nil {
+		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
+	}
 	if now == nil {
 		now = time.Now
 	}
 	return &Engine{
-		store:         st,
-		prog:          prog,
-		avail:         avail,
-		guide:         guide,
-		log:           log,
-		policy:        cfg.Policy,
-		reconcileTTL:  cfg.ReconcileTTL,
-		breaksPerHour: cfg.BreaksPerHour,
-		defaultWindow: cfg.DefaultWindow,
-		now:           now,
-		locks:         map[string]*sync.Mutex{},
+		store:            st,
+		prog:             prog,
+		avail:            avail,
+		guide:            guide,
+		log:              log,
+		policy:           cfg.Policy,
+		reconcileTTLFor:  cfg.ResolveReconcileTTL,
+		breaksPerHourFor: cfg.ResolveBreaksPerHour,
+		breakDurationFor: cfg.ResolveBreakDuration,
+		defaultWindowFor: cfg.ResolveDefaultWindow,
+		now:              now,
+		locks:            map[string]*sync.Mutex{},
 	}
 }
 
@@ -532,7 +553,7 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	// channel spent 1ms.
 	//
 	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by series-episode-refresh (§18.1)
+	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
 	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
 	//	                      behaving exactly like today rather than emptying channels
 	now := s.clock()

@@ -1,6 +1,6 @@
-import type { SuggestionPhase } from "@loomarr/core";
+import type { SuggestionPhase } from "@loomarr/core/events";
 import { Check, Loader2, X } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
 
 // GenerationProgress — the SSE suggester stepper (§3), driven by `suggestion` frames

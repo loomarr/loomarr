@@ -9,6 +9,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Start the session gate in parallel with the module graph. The API mutator adopts
+         this exact Response once, so there is still only one /v1/auth/me request. -->
+    <script>
+      const initialAuthResponse = fetch("/v1/auth/me", { credentials: "include" });
+      initialAuthResponse.catch(() => {});
+      globalThis.__loomarrInitialAuthResponse = initialAuthResponse;
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

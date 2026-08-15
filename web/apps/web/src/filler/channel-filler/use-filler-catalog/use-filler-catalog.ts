@@ -1,4 +1,6 @@
-import { type ClipDTO, fillerApi, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useMemo } from "react";
 
 // useFillerCatalog — a small id→clip lookup so the pin/exclude lists can render a saved id as its

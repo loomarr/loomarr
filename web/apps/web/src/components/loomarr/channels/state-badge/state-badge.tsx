@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ProvisioningState, StateBadgeProps } from "./state-badge.type";
 
 // StateBadge — the provisioning-lifecycle chip (§3), composed from the Badge primitive.

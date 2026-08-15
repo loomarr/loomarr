@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TasksPage } from "@/settings";
+import { TasksPage } from "@/settings/tasks-page";
 
 // Settings → Tasks (§18.1): the scheduler's named background jobs, like Sonarr's
 // System → Tasks. Lists each job with its interval, last/next run, status, and a Run-now

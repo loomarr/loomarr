@@ -309,6 +309,45 @@ type groundPass struct {
 	Pending int
 }
 
+type splitDiscards struct {
+	duplicates int
+	short      int
+}
+
+// discardDeterministic removes outcomes that cannot become useful new clips. Ambiguous or
+// unsplittable spans remain for review; known duplicates and below-floor fragments do not.
+func discardDeterministic(segs []SplitSegment, minClipDuration time.Duration) ([]SplitSegment, splitDiscards) {
+	kept := make([]SplitSegment, 0, len(segs))
+	var discarded splitDiscards
+	for _, seg := range segs {
+		if seg.DupOf != "" {
+			discarded.duplicates++
+			continue
+		}
+		span := time.Duration(seg.EndMs-seg.StartMs) * time.Millisecond
+		if minClipDuration > 0 && span < minClipDuration {
+			discarded.short++
+			continue
+		}
+		seg.Index = len(kept)
+		kept = append(kept, seg)
+	}
+	return kept, discarded
+}
+
+func discardNote(d splitDiscards) string {
+	switch {
+	case d.duplicates > 0 && d.short > 0:
+		return fmt.Sprintf("discarded %d duplicate(s) and %d short fragment(s)", d.duplicates, d.short)
+	case d.duplicates > 0:
+		return fmt.Sprintf("discarded %d duplicate(s)", d.duplicates)
+	case d.short > 0:
+		return fmt.Sprintf("discarded %d short fragment(s)", d.short)
+	default:
+		return ""
+	}
+}
+
 func (s *SplitStage) ID() StageID     { return StageSplit }
 func (s *SplitStage) Cost() StageCost { return CostSplit }
 
@@ -345,10 +384,34 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if err != nil {
 		return StageResult{}, err
 	}
-	if p == nil {
-		if p, err = s.splitter.Propose(ctx, c.Hash); err != nil {
+	if p == nil || !p.Ready() {
+		var complete bool
+		if p, complete, err = s.splitter.advanceProposal(ctx, c.Hash, p); err != nil {
 			return StageResult{}, err
 		}
+		if !complete {
+			return StageResult{}, ErrDeferred
+		}
+	}
+
+	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
+	// restart and the review UI see the same smaller reel.
+	kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
+	if len(kept) != len(p.Segments) {
+		p.Segments = kept
+		if err := s.splitter.saveProposal(ctx, *p); err != nil {
+			return StageResult{}, err
+		}
+	}
+	if len(p.Segments) == 0 {
+		if err := s.splitter.resolveEmpty(ctx, p.ID); err != nil {
+			return StageResult{}, err
+		}
+		note := discardNote(discarded)
+		if note == "" {
+			note = "no usable adverts remained"
+		}
+		return StageResult{Verdict: VerdictContinue, Note: note}, nil
 	}
 
 	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54).
@@ -387,7 +450,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	part := AutoConfirmable(*p, s.autoConfirm, s.minClipFloor())
 	if part.Reject != AutoSplitOK {
 		// A whole-proposal refusal — auto-split switched off, or nothing detected.
-		return StageResult{Verdict: VerdictReview, Note: string(part.Reject)}, nil
+		note := string(part.Reject)
+		if d := discardNote(discarded); d != "" {
+			note += "; " + d
+		}
+		return StageResult{Verdict: VerdictReview, Note: note}, nil
 	}
 	if len(part.Confirm) == 0 {
 		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
@@ -397,7 +464,21 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// ⚠ **With the COUNT, because the bare reason was actively misleading.** The note used to
 		// be one segment's reason presented as the reel's, and on a real reel that was the reason
 		// for 1 cut out of 37 — sending the operator to a threshold that was never consulted.
-		return StageResult{Verdict: VerdictReview, Note: holdNote(part)}, nil
+		note := holdNote(part)
+		if d := discardNote(discarded); d != "" {
+			note += "; " + d
+		}
+		// Persist the per-segment reasons too. The ladder note explains the reel in aggregate, but
+		// the review screen has to tell the operator which cut needs classification, a grounded
+		// era, or a closer look at its boundary. Partial confirmation persists these through
+		// ConfirmSome; the all-held path previously returned before writing them anywhere.
+		if _, err := s.splitter.Reground(ctx, p.ID, part.Hold); err != nil {
+			if errors.Is(err, ErrProposalGone) {
+				return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			}
+			return StageResult{}, err
+		}
+		return StageResult{Verdict: VerdictReview, Note: note}, nil
 	}
 
 	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the
@@ -426,6 +507,9 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if len(spawned) == 1 {
 		note = "cut into one advert"
 	}
+	if d := discardNote(discarded); d != "" {
+		note += "; " + d
+	}
 
 	// ⚠ **A PARTIAL confirm keeps the reel in review, with only the doubtful cuts left.** The
 	// proposal has already been shrunk to `part.Hold` by `Confirm`; the row must follow it there,
@@ -448,4 +532,39 @@ func (s *SplitStage) minClipFloor() time.Duration {
 		return 0
 	}
 	return s.minClipDuration()
+}
+
+// resumableReviewHashes finds older review rows that the current stage can improve without a
+// person: incomplete detection, deterministic discards, or unlooked segments with runnable vision.
+func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]struct{}, error) {
+	proposals, err := s.store.ListSplitProposals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	canGround := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled() &&
+		s.vision != nil && s.vision.Provider != nil && s.vision.Tools != nil
+	if canGround && s.vision.Budget != nil && s.vision.Budget() <= 0 {
+		canGround = false
+	}
+	out := make(map[string]struct{})
+	for _, p := range proposals {
+		if !p.Ready() {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
+		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if canGround {
+			for _, seg := range p.Segments {
+				if !seg.Looked {
+					out[p.ClipHash] = struct{}{}
+					break
+				}
+			}
+		}
+	}
+	return out, nil
 }

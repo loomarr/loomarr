@@ -17,7 +17,7 @@ import (
 // the honest failure.
 func TestRegistry_AddAfterNewPanics(t *testing.T) {
 	reg := scheduler.NewRegistry()
-	reg.Add(scheduler.Job{Name: "early", Title: "Early", Description: "test job early.", DefaultCron: "0 0 * * * *",
+	reg.Add(scheduler.Job{Name: "early", Group: scheduler.GroupSystem, Title: "Early", Description: "test job early.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
 	_ = scheduler.New(nil, reg, nil, nil, nil)
 
@@ -32,7 +32,7 @@ func TestRegistry_AddAfterNewPanics(t *testing.T) {
 			t.Errorf("panic = %q, want it to name the offending job", r)
 		}
 	}()
-	reg.Add(scheduler.Job{Name: "late", Title: "Late", Description: "test job late.", DefaultCron: "0 0 * * * *",
+	reg.Add(scheduler.Job{Name: "late", Group: scheduler.GroupSystem, Title: "Late", Description: "test job late.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
 }
 
@@ -41,10 +41,10 @@ func TestRegistry_AddAfterNewPanics(t *testing.T) {
 func TestRegistry_AddsBeforeNewAllSurvive(t *testing.T) {
 	reg := scheduler.NewRegistry()
 	reg.AddAll([]scheduler.Job{
-		{Name: "a", Title: "A", Description: "test job a.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
-		{Name: "b", Title: "B", Description: "test job b.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
+		{Name: "a", Group: scheduler.GroupSystem, Title: "A", Description: "test job a.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
+		{Name: "b", Group: scheduler.GroupSystem, Title: "B", Description: "test job b.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
 	})
-	reg.Add(scheduler.Job{Name: "c", Title: "C", Description: "test job c.", DefaultCron: "0 0 * * * *",
+	reg.Add(scheduler.Job{Name: "c", Group: scheduler.GroupSystem, Title: "C", Description: "test job c.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
 	_ = scheduler.New(nil, reg, nil, nil, nil)
 
@@ -64,8 +64,9 @@ func TestRegistry_RequiresTitleAndDescription(t *testing.T) {
 		job  scheduler.Job
 		want string
 	}{
-		{"no title", scheduler.Job{Name: "x", Description: "d", DefaultCron: "0 0 * * * *"}, "no Title"},
-		{"no description", scheduler.Job{Name: "x", Title: "X", DefaultCron: "0 0 * * * *"}, "no Description"},
+		{"no group", scheduler.Job{Name: "x", Title: "X", Description: "d", DefaultCron: "0 0 * * * *"}, "invalid Group"},
+		{"no title", scheduler.Job{Name: "x", Group: scheduler.GroupSystem, Description: "d", DefaultCron: "0 0 * * * *"}, "no Title"},
+		{"no description", scheduler.Job{Name: "x", Group: scheduler.GroupSystem, Title: "X", DefaultCron: "0 0 * * * *"}, "no Description"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {

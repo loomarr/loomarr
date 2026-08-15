@@ -57,11 +57,37 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	out := make([]api.JobView, 0, len(st))
 	for _, j := range st {
 		out = append(out, api.JobView{
-			Name: j.Name, Title: j.Title, Description: j.Description,
+			Name: j.Name, Group: string(j.Group), Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
 			NextRun: j.NextRun, Running: j.Running, Paused: j.Paused,
 			DisabledReason: j.DisabledReason, Overdue: j.Overdue,
+		})
+	}
+	return out, nil
+}
+
+func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
+	history, err := a.s.History(ctx, name)
+	if err == scheduler.ErrUnknownJob {
+		return api.JobHistoryView{}, api.ErrJobNotFound
+	}
+	if err != nil {
+		return api.JobHistoryView{}, err
+	}
+	out := api.JobHistoryView{
+		WindowStart: history.WindowStart, RunCount: history.RunCount,
+		FailureCount: history.FailureCount, AverageDurationMs: history.AverageDurationMs,
+		Truncated: history.Truncated, Recent: make([]api.JobExecutionView, 0, len(history.Recent)),
+	}
+	for _, run := range history.Recent {
+		trigger := "scheduled"
+		if run.Manual {
+			trigger = "manual"
+		}
+		out.Recent = append(out.Recent, api.JobExecutionView{
+			StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, DurationMs: run.DurationMs,
+			Result: run.Result, Error: run.Error, Trigger: trigger,
 		})
 	}
 	return out, nil
@@ -313,8 +339,9 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 
 // timelineThumbResolver adapts *tmdb.Client to api.TimelineThumbResolver — the Watch player's
 // schedule strip asks it for a preview image per programme block (§9.1 V47). A series episode gets
-// its OWN still (per-episode), a movie its poster. The image always comes from TMDB, but the KEY may
-// be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges TVDB→TMDB via /find first.
+// its OWN still (per-episode), a movie its landscape backdrop. The image always comes from TMDB,
+// but the KEY may be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges
+// TVDB→TMDB via /find first.
 // Every failure is swallowed to "" so a missing image never fails the strip.
 //
 // ⚠ Since V52 phase 7 the URL it returns is OURS, not TMDB's: the still is adopted into the image
@@ -323,12 +350,25 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 type timelineThumbResolver struct {
 	tmdb   *tmdb.Client
 	images *images.Service
+	fetch  timelineImageFetcher
+}
+
+// Kept as the narrow capability the resolver needs so the cold-image behavior is testable without
+// a network. *images.Fetcher is the production implementation shared with the scheduled job.
+type timelineImageFetcher interface {
+	FetchNow(ctx context.Context, work []images.Image, budget time.Duration) map[string]images.Image
 }
 
 // timelineThumbWidth is the rung the strip's `src` points at. The blocks are small — a strip of
 // preview chips, not hero art — so this is the bottom of the 16:9 ladder; `thumbImage` carries the
 // full srcset for a client that wants a denser rendition.
 const timelineThumbWidth = 300
+
+// A cold programme image is interactive data, not background decoration: the first Guide/Watch
+// response must either carry real bytes or omit it cleanly. This is a ceiling for one source image, and
+// the Guide already resolves channel rows concurrently; a slow TMDB cannot hold the request open
+// without bound.
+const timelineThumbFetchBudget = 3 * time.Second
 
 func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season, episode int) (string, string) {
 	mt, provider, id, ok := provision.ParseKey(provision.Key(key))
@@ -348,8 +388,9 @@ func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season,
 	case mt == provision.Series: // provider == "tmdb"
 		src, err = a.tmdb.EpisodeStillURL(ctx, id, season, episode)
 	case provider == "tmdb": // a movie
-		src, err = a.tmdb.PosterURL(ctx, mt, id)
-		role = images.RolePoster // ⚠ a movie's image is its 2:3 poster, so a different ladder
+		// A backdrop is the movie equivalent of an episode still: landscape art for the same
+		// 16:9 preview frame. A portrait poster made movie cards narrow or forced a crop.
+		src, err = a.tmdb.BackdropURL(ctx, mt, id)
 	default:
 		return "", "" // a tvdb-keyed movie is not a shape we produce
 	}
@@ -369,15 +410,25 @@ func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season,
 	if err != nil {
 		return "", ""
 	}
-	// ⚠ **Adopted but not yet fetched ⇒ no URL.** The row is keyed on a hash of the source URL
-	// until the bytes land, and the fetch then re-keys it and deletes that row — so a URL built
-	// from a placeholder hash would 404 within the minute. The strip renders its fallback and the
-	// every-minute job fills it in. Deliberately NOT a synchronous fetch: a timeline block is a
-	// passive render, and putting TMDB's latency on it is exactly what Adopt refuses to do.
+	// ⚠ **Adopted but not yet fetched ⇒ warm it now, then use the RETURNED row.** FetchNow re-keys
+	// the URL-placeholder hash to the content hash, so continuing to use `rec` would mint a URL
+	// that 404s as soon as the fetch finishes. A failed/over-budget warm-up emits no image, never a
+	// gray placeholder; the scheduled job remains the retry path.
 	if rec.OriginFetchedAt.IsZero() {
-		return "", ""
+		if a.fetch == nil {
+			return "", ""
+		}
+		warm := a.fetch.FetchNow(ctx, []images.Image{rec}, timelineThumbFetchBudget)
+		var ok bool
+		rec, ok = warm[src]
+		if !ok {
+			return "", ""
+		}
 	}
-	return a.images.URLFor(rec.Hash, timelineThumbWidth, images.FormatJPEG), rec.Hash
+	// This URL is consumed only by Loomarr's in-app Watch timeline. Keep it on the page's own
+	// origin; server.public_url is the machine-client address and may be unreachable from the
+	// viewer even while the app itself is open.
+	return a.images.PathFor(rec.Hash, timelineThumbWidth, images.FormatJPEG), rec.Hash
 }
 
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so

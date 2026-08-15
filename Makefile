@@ -9,6 +9,7 @@
 # build on drift. Describe a target once, in its `## ` comment, and let the page follow.
 
 GO      ?= go
+CARGO   ?= cargo
 PKG     := ./...
 BIN_DIR := bin
 
@@ -94,10 +95,10 @@ agent-baseline: ## run make check once per clean commit/toolchain and share the 
 agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
-agent-worktree: ## create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in)
+agent-worktree: ## create + bootstrap a ready-to-use sibling worktree (TOPIC=branch)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" ./scripts/agent.sh worktree "$(TOPIC)"
 
-bootstrap: ## install frontend dependencies, run codegen, and prepare isolated local directories
+bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
 
 doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
@@ -109,7 +110,14 @@ agent-harness-test: ## regression-test worktree isolation and shared-output clai
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## fmt + shellcheck + vet (incl. tagged) + tag-list guard + lint + harness + unit tests (the default gate)
+check: rust-check fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## Rust + Go formatting, lint, harness, and unit tests (the default gate)
+
+.PHONY: rust-check
+rust-check: ## format, lint, and test the required Rust image worker
+	$(CARGO) fmt --all -- --check
+	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
+	$(CARGO) test --workspace --all-features --locked
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -186,9 +194,29 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build
-build: ## build the loomarr binary (static, cgo-free — §16)
-	CGO_ENABLED=0 $(GO) build -o $(BIN_DIR)/loomarr ./cmd/loomarr
+.PHONY: build rust-build image-cert
+build: rust-build ## build the cgo-free Go server and required Rust image worker
+	release="$${LOOMARR_RELEASE:-dev}"; \
+	  CGO_ENABLED=0 $(GO) build \
+	    -ldflags="-X github.com/mantonx/loomarr/internal/buildinfo.version=$$release" \
+	    -o $(BIN_DIR)/loomarr ./cmd/loomarr; \
+	  $(BIN_DIR)/loomarr-image capabilities --protocol 1 --self-test | grep -q "\"release\":\"$$release\""
+
+rust-build: ## build the required Rust image worker
+	LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(CARGO) build --release --locked -p loomarr-image
+	install -d $(BIN_DIR)
+	install -m 0755 target/release/loomarr-image $(BIN_DIR)/loomarr-image
+
+image-cert: rust-build ## certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_CERT_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-certification.json}"; \
+	  if [ -n "$${IMAGE_CERT_CORPUS:-}" ]; then \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report" --corpus "$$IMAGE_CERT_CORPUS"; \
+	  else \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report"; \
+	  fi
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
@@ -208,7 +236,7 @@ test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
 
 .PHONY: dev-be
-dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go change
+dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
 	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
 	@# is how this box spent a session serving a stale binary.
@@ -219,7 +247,7 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_PREPARED_DIR:-.agent-data/prepared}"; \
 	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
 	  sh scripts/dev-be-guard.sh; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
@@ -232,6 +260,10 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
 	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
 	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
+
+.PHONY: rust-dev-build
+rust-dev-build: ## build the required Rust worker for local development
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -370,7 +402,7 @@ fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
 
 .PHONY: fe-lint
 fe-lint: ## Biome lint + format check (web/)
-	cd $(WEB) && pnpm biome check
+	cd $(WEB) && pnpm lint
 
 .PHONY: fe-lint-fix
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
@@ -396,7 +428,7 @@ FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck \
+	cd $(WEB) && pnpm lint && pnpm codegen && pnpm -r --parallel typecheck \
 	  && pnpm --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook

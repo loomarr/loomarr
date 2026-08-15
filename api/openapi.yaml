@@ -160,7 +160,7 @@ components:
           readOnly: true
           type: string
         channelId:
-          description: The channel this approval created or patched (§7). Empty only if channel creation failed — the approval itself still stands.
+          description: The channel atomically created or patched by this approval (§7)
           type: string
         enqueued:
           description: Acquisitions enqueued as wanted titles
@@ -171,6 +171,7 @@ components:
       required:
         - status
         - enqueued
+        - channelId
       type: object
     AudiencePolicy:
       additionalProperties: false
@@ -477,6 +478,9 @@ components:
           examples:
             - ch_abc123
           type: string
+        inAppPlayable:
+          description: True when this channel can be tuned by Loomarr's in-app player
+          type: boolean
         intentRef:
           type: string
         lineup:
@@ -511,6 +515,11 @@ components:
           description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
+        revision:
+          description: Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition.
+          format: int64
+          minimum: 1
+          type: integer
         slotCount:
           description: Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics.
           format: int64
@@ -536,10 +545,12 @@ components:
           type: string
       required:
         - id
+        - revision
         - name
         - number
         - strategy
         - status
+        - inAppPlayable
         - programCount
         - pendingCount
         - breakCount
@@ -685,6 +696,12 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         breaksPerHour:
           format: int64
           type: integer
@@ -1734,18 +1751,38 @@ components:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        clipsTotal:
+          description: All clips on the conveyor; clips is capped to one page
+          format: int64
+          type: integer
+        decisionsTotal:
+          description: All conveyor clips waiting on a person, including rows beyond this page
+          format: int64
+          type: integer
         recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        recentlyFiledTotal:
+          description: All automatically filed audit rows; recentlyFiled is capped to one page
+          format: int64
+          type: integer
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
           type: array
+        reelsTotal:
+          description: All reviewable reels; reels is capped to one page
+          format: int64
+          type: integer
         rejected:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
           type: array
+        rejectedTotal:
+          description: All rejected audit rows; rejected is capped to one page
+          format: int64
+          type: integer
         stageOrder:
           description: Every pipeline stage id, in run order
           items:
@@ -1757,10 +1794,15 @@ components:
           type: integer
       required:
         - clips
+        - clipsTotal
+        - decisionsTotal
         - reels
+        - reelsTotal
         - rejected
+        - rejectedTotal
         - stageOrder
         - recentlyFiled
+        - recentlyFiledTotal
         - total
       type: object
     FillerIngestEvent:
@@ -1860,6 +1902,8 @@ components:
         switchable:
           type: boolean
         target:
+          type: string
+        uri:
           type: string
       required:
         - id
@@ -2045,9 +2089,9 @@ components:
           type: integer
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: The preview image's record, for srcset and placeholder rendering
+          description: The preview image's record, for srcset, animation and placeholder rendering
         thumbUrl:
-          description: Image-service preview URL (episode still or poster); empty for breaks or when unavailable
+          description: Same-origin image-service preview path; empty when unavailable
           type: string
         title:
           description: The episode's name for a series, or the film's name
@@ -2309,13 +2353,13 @@ components:
           description: poster | backdrop | icon | thumb — decides the width ladder
           type: string
         src:
-          description: A single JPEG URL for the <img> fallback
+          description: A same-origin JPEG path for the <img> fallback
           type: string
         srcSetAvif:
-          description: srcset for AVIF; empty until the AVIF job has run
+          description: Same-origin srcset for AVIF; empty until the AVIF job has run
           type: string
         srcSetWebp:
-          description: srcset for WebP
+          description: Same-origin srcset for WebP
           type: string
         width:
           description: The original's width in pixels
@@ -2648,6 +2692,84 @@ components:
       required:
         - name
       type: object
+    JobExecutionView:
+      additionalProperties: false
+      properties:
+        durationMs:
+          description: Execution duration in milliseconds
+          format: int64
+          type: integer
+        error:
+          description: Failure detail when result is error
+          type: string
+        finishedAt:
+          description: When this execution finished
+          format: date-time
+          type: string
+        result:
+          description: Loomarr task outcome
+          enum:
+            - ok
+            - error
+          type: string
+        startedAt:
+          description: When this execution started
+          format: date-time
+          type: string
+        trigger:
+          description: Whether the schedule or an operator started the execution
+          enum:
+            - scheduled
+            - manual
+          type: string
+      required:
+        - startedAt
+        - finishedAt
+        - durationMs
+        - result
+        - trigger
+      type: object
+    JobHistoryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/JobHistoryView.json
+          format: uri
+          readOnly: true
+          type: string
+        averageDurationMs:
+          description: Mean completed execution duration in milliseconds
+          format: int64
+          type: integer
+        failureCount:
+          description: Failed executions in the window
+          format: int64
+          type: integer
+        recent:
+          description: Five latest trustworthy executions, newest first
+          items:
+            $ref: "#/components/schemas/JobExecutionView"
+          type: array
+        runCount:
+          description: Completed executions in the window
+          format: int64
+          type: integer
+        truncated:
+          description: True when the count reached the safety scan limit
+          type: boolean
+        windowStart:
+          description: Start of the summarized execution window
+          format: date-time
+          type: string
+      required:
+        - windowStart
+        - runCount
+        - failureCount
+        - averageDurationMs
+        - recent
+      type: object
     JobView:
       additionalProperties: false
       properties:
@@ -2656,6 +2778,17 @@ components:
           type: string
         disabledReason:
           description: Why this job cannot run here; empty when it can
+          type: string
+        group:
+          description: Operator outcome used to group tasks
+          enum:
+            - acquisitions
+            - channels
+            - filler
+            - artwork
+            - playout
+            - system
+            - backup
           type: string
         lastError:
           description: Error detail when lastResult is error
@@ -2694,6 +2827,7 @@ components:
           type: string
       required:
         - name
+        - group
         - title
         - description
         - schedule
@@ -3294,8 +3428,6 @@ components:
           type: string
         backend:
           type: string
-        subtitles:
-          type: string
       type: object
     PlayoutStatus:
       additionalProperties: false
@@ -3313,6 +3445,8 @@ components:
           type: array
         gpu:
           $ref: "#/components/schemas/PlayoutGPU"
+        prepared:
+          $ref: "#/components/schemas/PreparedReadiness"
         running:
           description: Internal playout is wired (false on a Tunarr-only install)
           type: boolean
@@ -3320,6 +3454,7 @@ components:
         - running
         - gpu
         - channels
+        - prepared
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -3505,6 +3640,67 @@ components:
         - untagged
         - channels
       type: object
+    PreparedReadiness:
+      additionalProperties: false
+      properties:
+        available:
+          description: Whether durable prepared playout is available
+          type: boolean
+        budgetBytes:
+          format: int64
+          type: integer
+        channels:
+          description: Channels with scheduled programmes in the resolved window
+          format: int64
+          type: integer
+        lastError:
+          type: string
+        lastRunAt:
+          description: Last completed readiness pass; absent means no pass has completed
+          format: date-time
+          type: string
+        missingBindings:
+          format: int64
+          type: integer
+        protectedBytes:
+          format: int64
+          type: integer
+        queuedPublications:
+          description: Deduplicated publications exposed to the bounded warming frontier
+          format: int64
+          type: integer
+        readyBindings:
+          format: int64
+          type: integer
+        readyChannels:
+          description: Channels whose scheduled bindings are all prepared
+          format: int64
+          type: integer
+        remainingBytes:
+          format: int64
+          type: integer
+        running:
+          description: Whether a readiness pass is currently running
+          type: boolean
+        scheduledBindings:
+          description: Channel and library-item bindings in the resolved window
+          format: int64
+          type: integer
+        unavailableReason:
+          type: string
+      required:
+        - available
+        - running
+        - channels
+        - readyChannels
+        - scheduledBindings
+        - readyBindings
+        - missingBindings
+        - queuedPublications
+        - remainingBytes
+        - budgetBytes
+        - protectedBytes
+      type: object
     PreviewCycleOutputBody:
       additionalProperties: false
       properties:
@@ -3548,6 +3744,12 @@ components:
             - https://example.com/v1/schemas/PreviewDraftPodsInputBody.json
           format: uri
           readOnly: true
+          type: string
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
           type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
@@ -4445,6 +4647,12 @@ components:
         key:
           type: string
         kind:
+          type: string
+        label:
+          description: Registry-owned human label for workflow forms.
+          type: string
+        presentation:
+          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
           type: string
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
@@ -5395,6 +5603,11 @@ components:
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
           description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+        revision:
+          description: Revision returned by the channel read this edit was based on. A stale revision is rejected with 409.
+          format: int64
+          minimum: 1
+          type: integer
         status:
           description: Pause (off air, keep the channel) or resume.
           enum:
@@ -5407,6 +5620,8 @@ components:
             - shuffle
             - time_slot
           type: string
+      required:
+        - revision
       type: object
     UploadIconOutputBody:
       additionalProperties: false
@@ -6807,20 +7022,20 @@ paths:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no tags, no licence (see below), and no duration or quality — those cost a metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
       operationId: discover-filler
       parameters:
-        - description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+        - description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
           explode: false
           in: query
           name: q
           schema:
-            description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+            description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
             minLength: 2
             type: string
-        - description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+        - description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
           explode: false
           in: query
           name: collection
           schema:
-            description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+            description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
             type: string
         - description: Max results (default 25)
           explode: false
@@ -6964,7 +7179,7 @@ paths:
         - filler
   /v1/filler/incoming:
     get:
-      description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
+      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
       operationId: filler-incoming
       responses:
         "200":
@@ -7694,6 +7909,34 @@ paths:
       summary: List background jobs
       tags:
         - jobs
+  /v1/jobs/{name}/history:
+    get:
+      description: Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).
+      operationId: jobs-history
+      parameters:
+        - description: The job's stable id (from GET /v1/jobs)
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The job's stable id (from GET /v1/jobs)
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHistoryView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get recent job executions
+      tags:
+        - jobs
   /v1/jobs/{name}/pause:
     post:
       description: "Admin only. Pausing stops a job running on its schedule (§18.1); it stays listed, keeps its cron, and reports no next run. Run now still works on a paused job — pause stops the schedule, not the task. A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference."
@@ -7823,6 +8066,15 @@ paths:
             examples:
               - ch_abc123
             type: string
+        - description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+          explode: false
+          in: query
+          name: mode
+          schema:
+            description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+            enum:
+              - prepared
+            type: string
       responses:
         "200":
           content:
@@ -7832,12 +8084,8 @@ paths:
                 format: binary
                 type: string
           description: The HLS master playlist for the in-app and native players.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
+        "204":
+          description: No prepared presentation is currently available; live playout was not started.
       summary: Channel HLS master playlist (signed-URL authed)
       tags:
         - playout
@@ -8406,6 +8654,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
@@ -8425,7 +8674,7 @@ paths:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.
       operationId: secret-regenerate
       parameters:
         - description: Which generated secret to rotate.
@@ -8437,6 +8686,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":

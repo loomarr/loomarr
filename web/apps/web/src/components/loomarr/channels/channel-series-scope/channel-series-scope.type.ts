@@ -1,4 +1,4 @@
-import type { ChannelPolicy } from "@loomarr/api";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 
 interface ChannelSeriesScopeProps {
   policy: ChannelPolicy;

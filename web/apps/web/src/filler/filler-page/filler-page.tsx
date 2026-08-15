@@ -1,34 +1,31 @@
-import type { ClipDTO } from "@loomarr/api";
-import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
-import { formatRelative, pluralize } from "@loomarr/core";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { isOk, unwrap } from "@loomarr/api/unwrap";
+import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import {
-  ClipCard,
-  ClipPlayer,
-  ClipRow,
-  EmptyState,
-  ErrorState,
-  PoolHealth,
-  WatchPill,
-} from "@/components/loomarr";
-import {
-  Button,
-  Card,
-  Input,
-  Label,
-  NavTabs,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ClipCard } from "@/components/loomarr/filler/clip-card";
+import { ClipPlayer } from "@/components/loomarr/filler/clip-player";
+import { ClipRow } from "@/components/loomarr/filler/clip-row";
+import { PoolHealth } from "@/components/loomarr/filler/pool-health";
+import { WatchPill } from "@/components/loomarr/filler/watch-pill";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
@@ -89,6 +86,65 @@ const VIEWS = [
   { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
 ] as const;
 
+interface CompositeCatalogGroupProps {
+  clip: ClipDTO;
+  onManage: () => void;
+  renderParent: (clip: ClipDTO) => ReactNode;
+  renderChild: (clip: ClipDTO) => ReactNode;
+}
+
+const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: CompositeCatalogGroupProps) => {
+  const [open, setOpen] = useState(false);
+  const children = fillerApi.useListFiller(
+    { parentHash: clip.hash, limit: 500 },
+    { query: { enabled: open } },
+  );
+  const rows = unwrap(children.data, (body) => body.clips) ?? [];
+  const total = unwrap(children.data, (body) => body.total) ?? 0;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
+          preview, tag, era and split controls as every other catalog item; replacing it with a
+          bespoke group heading made those established actions disappear. The disclosure below
+          adds hierarchy without creating a second, weaker representation of the parent. */}
+      {renderParent(clip)}
+      <Disclosure open={open} onOpenChange={setOpen}>
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-3 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">Compilation segments</p>
+              <p className="font-mono text-muted-foreground text-xs">
+                {formatClipDuration(clip.durationMs)} source reel
+              </p>
+            </div>
+            {open && children.isFetching ? (
+              <span className="text-muted-foreground text-xs">Loading segments…</span>
+            ) : null}
+            {open && !children.isFetching ? (
+              <Button variant="outline" size="sm" onClick={onManage}>
+                Manage {pluralize(total, "segment")}
+              </Button>
+            ) : null}
+            <Disclosure.Trigger label={`${open ? "Hide" : "Show"} segments from ${clip.name}`} />
+          </div>
+          <Disclosure.Panel className="border-border border-t p-3">
+            {children.error ? (
+              <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
+            ) : rows.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border">{rows.map(renderChild)}</div>
+            ) : children.isFetching ? null : (
+              <p className="text-muted-foreground text-sm">
+                No filed segments remain under this compilation.
+              </p>
+            )}
+          </Disclosure.Panel>
+        </Card>
+      </Disclosure>
+    </div>
+  );
+};
+
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
 // ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
 // on their own schedule and a button for work that already happens invites the reading that it
@@ -120,7 +176,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     untagged = false,
     view = "grid",
     page = 1,
+    parent: parentHash,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
+  const filtered = Boolean(q || kind || audience || untagged);
   // ⚠ **Every filter change RESETS the page, and this is the single highest-risk line on the
   // page** (§10 V51d). `setFilters` merges blindly; without the reset, typing in the search box
   // while on page 7 lands on an empty page 7 of a two-page result and renders "No clips match"
@@ -134,6 +192,23 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       search: (prev) => ({ ...prev, page: undefined, ...next }),
       replace: true,
     });
+  const viewRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const chooseView = (next: (typeof VIEWS)[number]["id"]) =>
+    setFilters({ view: next === "grid" ? undefined : next });
+  const onViewKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % VIEWS.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+      next = (index - 1 + VIEWS.length) % VIEWS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = VIEWS.length - 1;
+    else return;
+
+    event.preventDefault();
+    viewRefs.current[next]?.focus();
+    const nextView = VIEWS[next];
+    if (nextView) chooseView(nextView.id);
+  };
 
   // What the Catalog tab's link carries back.
   //
@@ -151,6 +226,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     // ⚠ The page rides back too: returning to Catalog from Incoming should land where you left,
     // not silently on page one of a catalog you were seven pages into.
     ...(page > 1 ? { page } : {}),
+    ...(parentHash ? { parent: parentHash } : {}),
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
@@ -174,9 +250,14 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(kind ? { kind: kind as never } : {}),
     ...(audience ? { audience: audience as never } : {}),
     ...(untagged ? { untagged: true } : {}),
+    ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
     limit: CATALOG_PAGE_SIZE,
     ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
   });
+  const parent = fillerApi.useListFiller(
+    { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
+    { query: { enabled: Boolean(parentHash) } },
+  );
 
   // Resolving the clip the tag dialog is about (§10 V54). The dialog is SHARED with the Incoming
   // tab — one clip, one editor, wherever you reached it from — and Incoming's rows are held, so
@@ -420,20 +501,22 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   if (!fillerConfigured) {
     return (
-      <div className="flex flex-col gap-6 p-6">
-        <PageHeading />
-        <EmptyState
-          title="No filler folder configured"
-          description="Add a folder of commercials, bumpers, and station IDs under Settings → Defaults. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
-          {...(isAdmin
-            ? {
-                action: {
-                  label: "Open filler defaults",
-                  onClick: () => navigate({ to: "/settings/defaults" }),
-                },
-              }
-            : {})}
-        />
+      <div className="flex h-full min-h-0 flex-col">
+        <PageHeader title="Filler" description={<FillerDescription />} />
+        <div className="min-h-0 flex-1 overflow-auto p-6">
+          <EmptyState
+            title="No filler folder configured"
+            description="Add a folder of commercials, bumpers, and station IDs under Settings → Defaults. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
+            {...(isAdmin
+              ? {
+                  action: {
+                    label: "Open filler defaults",
+                    onClick: () => navigate({ to: "/filler/settings" }),
+                  },
+                }
+              : {})}
+          />
+        </div>
       </div>
     );
   }
@@ -449,7 +532,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const firstOnPage = (page - 1) * CATALOG_PAGE_SIZE + 1;
   const lastOnPage = (page - 1) * CATALOG_PAGE_SIZE + clipList.length;
 
-  const filtered = Boolean(q || kind || audience || untagged);
+  const parentName = unwrap(parent.data, (body) => body.clips[0]?.name);
+  const selectableRows = clipList.filter((clip) => !clip.isComposite);
 
   // The header's at-a-glance line (the mock's `watchLine`), rendered entirely from
   // `GET /v1/filler/watch`.
@@ -478,12 +562,44 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       ].join(" · ")
     : "";
 
+  const renderCatalogRow = (clip: ClipDTO) => (
+    <ClipRow
+      key={clip.hash}
+      clip={clip}
+      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+      selected={selected.has(clip.hash)}
+    />
+  );
+  const renderCatalogCard = (clip: ClipDTO) => (
+    <ClipCard
+      key={clip.hash}
+      clip={clip}
+      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
+      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
+      {...(isAdmin && !clip.isComposite ? { onPin: () => setPinning(clip.hash) } : {})}
+      {...(isAdmin && clip.suggestedEra
+        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
+        : {})}
+      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
+      {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
+      splitPending={Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"}
+      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+      selected={selected.has(clip.hash)}
+      onPlay={() => setPlaying(clip.hash)}
+    />
+  );
+  const renderComposite = (clip: ClipDTO) => (
+    <CompositeCatalogGroup
+      key={clip.hash}
+      clip={clip}
+      onManage={() => setFilters({ parent: clip.hash })}
+      renderParent={view === "list" ? renderCatalogRow : renderCatalogCard}
+      renderChild={(child) => <ClipRow key={child.hash} clip={child} />}
+    />
+  );
+
   return (
-    // ⚠ p-6 — the page owns its own gutter. Without it this page rendered flush against the
-    // sidebar and the right edge (heading at x=224 where every other page sits at 248), so
-    // the tab rule and every card ran edge to edge. The shell deliberately adds no padding
-    // (a full-bleed page like the Guide needs none), which makes it each page's job.
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex h-full min-h-0 flex-col">
       {/* ⚠ The Sync and AI-tag buttons were HERE and are deliberately gone (V38c, maintainer).
           Neither was work an operator should have to remember to start: the sync runs on its own
           schedule and drains the watch folder every pass, and tagging runs after it. A button for
@@ -493,22 +609,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
           The header is now the mock's `watchLine` pill alone: what is on, what is held, when
           anything last arrived. */}
-      {/* ⚠ `items-start` and a 16px gap, matching the mock: the pill aligns to the TOP of the
-          heading block, not to its baseline or centre. The heading takes the remaining width so
-          the pill sits hard against the right edge. */}
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <PageHeading />
-        </div>
-        {/* ⚠ Everything here comes from `GET /v1/filler/watch` — the counts AND the verdict.
+      <PageHeader
+        title="Filler"
+        description={<FillerDescription />}
+        actions={
+          /* ⚠ Everything here comes from `GET /v1/filler/watch` — the counts AND the verdict.
             An earlier pass derived the health in the browser from `/v1/filler/sources`, which
             was wrong twice: that route is admin-only, so a member's dot sat permanently grey on
             a working install, and the rule ("every source dark", "nothing for days") is domain
-            logic that belongs where it can be tested against the store. */}
-        {watch && <WatchPill status={statusLine} health={watch.health} />}
-      </div>
+            logic that belongs where it can be tested against the store. */
+          watch && <WatchPill status={statusLine} health={watch.health} />
+        }
+      />
 
-      {/* Catalog health, above the tabs rather than inside one (V35).
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+        {/* Catalog health, above the tabs rather than inside one (V35).
           ⚠ A strip, not a tab: what the catalog holds is the CONTEXT the other tabs are read
           in, and as its own tab it was the thing nobody clicked — which is how an install ends
           up with four hundred clips and channels still falling back to the bumper card.
@@ -516,415 +631,407 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           strip answers "what does my catalog hold and can it fill a break" — which is the context
           for reading CLIPS. The Sources tab is about where clips come from, and a coverage strip
           above it invites the reading that a source is at fault for a channel's weak coverage. */}
-      {pool && tab !== "sources" && (
-        <PoolHealth
-          pool={pool}
-          {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
-          proposing={proposePull.isPending}
-        />
-      )}
+        {pool && tab !== "sources" && (
+          <PoolHealth
+            pool={pool}
+            {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
+            proposing={proposePull.isPending}
+          />
+        )}
 
-      {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
+        {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
           ⚠ There is no Discover tab any more. Finding clips used to be its own destination; it
           is now something you do TO a source, which is the only place the answer differs. */}
-      {/* ⚠ Real LINKS, not buttons calling `navigate()`. Each tab is its own PATH now
+        {/* ⚠ Real LINKS, not buttons calling `navigate()`. Each tab is its own PATH now
           (V-nav-paths: `/filler`, `/filler/incoming`, `/filler/sources` — it used to be
           `?tab=`), so rendering it as a button would cost middle-click, copy-link and every
           browser affordance for nothing. `NavTabs` is shared with Queue and Settings. */}
-      <NavTabs
-        label="Filler sections"
-        linkComponent={Link}
-        // ⚠ Sources carries NO count. Catalog and Incoming are queues — "how many clips do I
-        // have", "how many need me" — and the number is the reason to look. The Sources tab is a
-        // destination: the count of configured sources is already the header pill's job ("4 of 5
-        // sources on"), and a bare "5" beside the label answers a question nobody asked while
-        // implying the tab is a backlog.
-        tabs={[
-          // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
-          // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
-          // moment the listing started paging.
-          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: total },
-          ...(isAdmin
-            ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
-            : []),
-          { id: "sources", label: "Sources", to: "/filler/sources" },
-        ]}
-        activeId={tab}
-      />
+        <NavTabs
+          label="Filler sections"
+          linkComponent={Link}
+          // ⚠ Sources carries NO count. Catalog and Incoming are queues — "how many clips do I
+          // have", "how many need me" — and the number is the reason to look. The Sources tab is a
+          // destination: the count of configured sources is already the header pill's job ("4 of 5
+          // sources on"), and a bare "5" beside the label answers a question nobody asked while
+          // implying the tab is a backlog.
+          tabs={[
+            // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
+            // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
+            // moment the listing started paging.
+            {
+              id: "catalog",
+              label: "Catalog",
+              to: "/filler",
+              search: catalogSearch,
+              count: total,
+            },
+            ...(isAdmin
+              ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
+              : []),
+            { id: "sources", label: "Sources", to: "/filler/sources" },
+            ...(isAdmin ? [{ id: "settings", label: "Settings", to: "/filler/settings" }] : []),
+          ]}
+          activeId={tab}
+        />
 
-      {tab === "incoming" && isAdmin ? (
-        // ⚠ The tab owns its own query and its four filing mutations — see `incoming-tab.tsx`.
-        // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
-        <IncomingTab onEditTags={setTagging} />
-      ) : tab === "sources" ? (
-        // ⚠ The tab owns its own query. The header does NOT read it — the status line comes
-        // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
-        // out of the shell costs the header nothing.
-        <SourcesTab />
-      ) : (
-        <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
-          {split.error != null && <ErrorState error={split.error} />}
-          {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
+        {tab === "incoming" && isAdmin ? (
+          // ⚠ The tab owns its own query and its four filing mutations — see `incoming-tab.tsx`.
+          // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
+          <IncomingTab onEditTags={setTagging} />
+        ) : tab === "sources" ? (
+          // ⚠ The tab owns its own query. The header does NOT read it — the status line comes
+          // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
+          // out of the shell costs the header nothing.
+          <SourcesTab />
+        ) : (
+          <div className="flex flex-col gap-6">
+            {split.error != null && <ErrorState error={split.error} />}
+            {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
-          {/* The bulk bar, shown only when something is selected. It appears ABOVE the grid
+            {parentHash ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{parentName || "Compilation segments"}</p>
+                  <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setFilters({ parent: undefined })}>
+                  Back to top-level catalog
+                </Button>
+              </div>
+            ) : null}
+
+            {/* The bulk bar, shown only when something is selected. It appears ABOVE the grid
               rather than floating over it: a bar that covers the cards hides the very thing the
               operator is deciding about. */}
-          {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/40 bg-signal/5 p-3">
-              <span className="font-mono text-signal text-xs">
-                {pluralize(selected.size, "clip")} selected
-              </span>
+            {selected.size > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/40 bg-signal/5 p-3">
+                <span className="font-mono text-signal text-xs">
+                  {pluralize(selected.size, "clip")} selected
+                </span>
 
-              {BULK_TAG_FIELDS.map((field) => (
-                <Select
-                  key={field.key}
-                  value=""
-                  onValueChange={(value) =>
-                    bulkTag.mutate({
-                      data: {
-                        // The selection is HASHES (§10 V45a) — the bulk endpoint now keys on hashes,
-                        // matching the single-clip PATCH.
-                        hashes: [...selected],
-                        [field.key]: field.key === "era" ? Number(value) : value,
-                      },
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-auto min-w-32" aria-label={field.label}>
-                    <SelectValue placeholder={field.label} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {field.options.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ))}
+                {BULK_TAG_FIELDS.map((field) => (
+                  <Select
+                    key={field.key}
+                    value=""
+                    onValueChange={(value) =>
+                      bulkTag.mutate({
+                        data: {
+                          // The selection is HASHES (§10 V45a) — the bulk endpoint now keys on hashes,
+                          // matching the single-clip PATCH.
+                          hashes: [...selected],
+                          [field.key]: field.key === "era" ? Number(value) : value,
+                        },
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-auto min-w-32" aria-label={field.label}>
+                      <SelectValue placeholder={field.label} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ))}
 
-              {/* ⚠ "Remove from catalog", not "Delete". The server's action is a TOMBSTONE: the
+                {/* ⚠ "Remove from catalog", not "Delete". The server's action is a TOMBSTONE: the
                   clip stops appearing here and stops being used in breaks, and the file stays
                   exactly where the operator put it. The label has to keep saying catalog. */}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={removeClips.isPending}
-                // ⚠ Same KNOWN GAP as the bulk-tag selects above: `paths` is genuinely path-keyed
-                // server-side and `selected` can only carry `clip.hash` now that `ClipDTO` has no
-                // path. See the comment on the bulk-tag Select's onValueChange.
-                onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
-                title="Stop using these clips. The files stay in your folder."
-              >
-                Remove from catalog
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={removeClips.isPending}
+                  // ⚠ Same KNOWN GAP as the bulk-tag selects above: `paths` is genuinely path-keyed
+                  // server-side and `selected` can only carry `clip.hash` now that `ClipDTO` has no
+                  // path. See the comment on the bulk-tag Select's onValueChange.
+                  onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
+                  title="Stop using these clips. The files stay in your folder."
+                >
+                  Remove from catalog
+                </Button>
 
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={clearSelection}>
-                Clear
-              </Button>
-            </div>
-          )}
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={clearSelection}>
+                  Clear
+                </Button>
+              </div>
+            )}
 
-          {/* Split detection progress (§10 V34) — a job, not a request, so it gets a live
+            {/* Split detection progress (§10 V34) — a job, not a request, so it gets a live
               status line the way ingest does. Success NAVIGATES to the review route; only
               running/error render here. */}
-          {splitJob && (
-            <p
-              role="status"
-              className={
-                splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"
-              }
-            >
-              {splitJob.status === "error"
-                ? (splitJob.error ?? "Split detection failed.")
-                : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
-            </p>
-          )}
+            {splitJob && (
+              <p
+                role="status"
+                className={
+                  splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"
+                }
+              >
+                {splitJob.status === "error"
+                  ? (splitJob.error ?? "Split detection failed.")
+                  : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
+              </p>
+            )}
 
-          {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
+            {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
               their buttons (V38c). Reporting the outcome of work nothing on this page can start
               is a result with no cause — an operator reading it has no way to know what produced
               it or how to produce it again. Per-source outcomes belong on the Sources row that
               did the work. */}
 
-          <Card className="flex flex-wrap items-end gap-3 p-4">
-            {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
+            <Card className="flex flex-wrap items-end gap-3 p-4">
+              {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
                 viewport — a text field far wider than anything typed into it, which reads
                 as a layout bug rather than a generous input. It still grows on narrow
                 screens (min-w-48) and stops being silly on wide ones. */}
-            <div className="min-w-48 max-w-md flex-1">
-              <Label htmlFor="clip-search">Search</Label>
-              <Input
-                id="clip-search"
-                value={q}
-                placeholder="Clip name"
-                onChange={(e) => setFilters({ q: e.target.value || undefined })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="clip-kind">Kind</Label>
-              {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-              <Select
-                value={kind || "any"}
-                onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+              <div className="min-w-48 max-w-md flex-1">
+                <Label htmlFor="clip-search">Search</Label>
+                <Input
+                  id="clip-search"
+                  value={q}
+                  placeholder="Clip name"
+                  onChange={(e) => setFilters({ q: e.target.value || undefined })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="clip-kind">Kind</Label>
+                {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
+                <Select
+                  value={kind || "any"}
+                  onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+                >
+                  <SelectTrigger id="clip-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                    <SelectItem value="bumper">Bumper</SelectItem>
+                    <SelectItem value="station_id">Station ID</SelectItem>
+                    <SelectItem value="psa">PSA</SelectItem>
+                    <SelectItem value="trailer">Trailer</SelectItem>
+                    <SelectItem value="interstitial">Interstitial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="clip-audience">Audience</Label>
+                <Select
+                  value={audience || "any"}
+                  onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
+                >
+                  <SelectTrigger id="clip-audience">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any</SelectItem>
+                    <SelectItem value="kids">Kids</SelectItem>
+                    <SelectItem value="family">Family</SelectItem>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="late_night">Late night</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant={untagged ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilters({ untagged: untagged ? undefined : true })}
+                // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
+                // without era/audience, so they are never counted as needing work (§10).
+                title="Commercials missing era, audience, or category"
               >
-                <SelectTrigger id="clip-kind">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                  <SelectItem value="bumper">Bumper</SelectItem>
-                  <SelectItem value="station_id">Station ID</SelectItem>
-                  <SelectItem value="psa">PSA</SelectItem>
-                  <SelectItem value="trailer">Trailer</SelectItem>
-                  <SelectItem value="interstitial">Interstitial</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="clip-audience">Audience</Label>
-              <Select
-                value={audience || "any"}
-                onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
-              >
-                <SelectTrigger id="clip-audience">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="kids">Kids</SelectItem>
-                  <SelectItem value="family">Family</SelectItem>
-                  <SelectItem value="general">General</SelectItem>
-                  <SelectItem value="late_night">Late night</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              variant={untagged ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilters({ untagged: untagged ? undefined : true })}
-              // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
-              // without era/audience, so they are never counted as needing work (§10).
-              title="Commercials missing era, audience, or category"
-            >
-              Untagged only
-            </Button>
+                Untagged only
+              </Button>
 
-            {/* Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle
+              {/* Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle
                 buttons: these are two states of ONE setting, and a pair of independent
                 buttons announces neither which is active nor that they are alternatives.
                 `ml-auto` puts it at the far end of the toolbar, as the mock draws it. */}
-            <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Clip view">
-              {VIEWS.map((v) => (
-                <Button
-                  key={v.id}
-                  variant={view === v.id ? "default" : "outline"}
-                  size="sm"
-                  role="radio"
-                  aria-checked={view === v.id}
-                  title={v.title}
-                  onClick={() => setFilters({ view: v.id === "grid" ? undefined : v.id })}
-                >
-                  <v.icon className="size-4" aria-hidden />
-                  {v.label}
-                </Button>
-              ))}
-            </div>
-          </Card>
+              <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Clip view">
+                {VIEWS.map((v, index) => (
+                  <Button
+                    key={v.id}
+                    ref={(node) => {
+                      viewRefs.current[index] = node;
+                    }}
+                    variant={view === v.id ? "default" : "outline"}
+                    size="sm"
+                    role="radio"
+                    aria-checked={view === v.id}
+                    tabIndex={view === v.id ? 0 : -1}
+                    title={v.title}
+                    onClick={() => chooseView(v.id)}
+                    onKeyDown={(event) => onViewKeyDown(event, index)}
+                  >
+                    <v.icon className="size-4" aria-hidden />
+                    {v.label}
+                  </Button>
+                ))}
+              </div>
+            </Card>
 
-          {rows === undefined ? (
-            <p className="text-muted-foreground text-sm">Loading clips…</p>
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title={filtered ? "No clips match" : "No clips yet"}
-              description={
-                filtered
-                  ? "Try a wider filter, or clear the search."
-                  : "Anything that lands in the filler folder shows up here on its own. Drop files in, or ask Loomarr to pull some."
-              }
-              {...(filtered
-                ? {
-                    action: {
-                      label: "Clear filters",
-                      onClick: () =>
-                        setFilters({
-                          q: undefined,
-                          kind: undefined,
-                          audience: undefined,
-                          untagged: undefined,
-                        }),
-                    },
-                  }
-                : // An empty catalog is exactly when an operator needs the way OUT of it, so the
-                  // empty state carries the same action the health strip does.
-                  //
-                  // ⚠ It used to read "Find clips" and navigate to `tab: "discover"` — a tab this
-                  // phase RETIRED. `validateSearch` drops the unknown value, so the button landed
-                  // back on the empty catalog it was offered from: a control that looked like the
-                  // way out and did nothing. Two independent reviewers found it, which is the
-                  // useful lesson — deleting a destination is not done until every route TO it is
-                  // gone, and a nav target is not type-checked.
-                  isAdmin
+            {rows === undefined ? (
+              <p className="text-muted-foreground text-sm">Loading clips…</p>
+            ) : rows.length === 0 ? (
+              <EmptyState
+                title={filtered ? "No clips match" : "No clips yet"}
+                description={
+                  filtered
+                    ? "Try a wider filter, or clear the search."
+                    : "Anything that lands in the filler folder shows up here on its own. Drop files in, or ask Loomarr to pull some."
+                }
+                {...(filtered
                   ? {
                       action: {
-                        label: "Propose a pull",
-                        onClick: () => proposePull.mutate({ data: {} }),
+                        label: "Clear filters",
+                        onClick: () =>
+                          setFilters({
+                            q: undefined,
+                            kind: undefined,
+                            audience: undefined,
+                            untagged: undefined,
+                          }),
                       },
                     }
-                  : {})}
-            />
-          ) : (
-            <>
-              {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
+                  : // An empty catalog is exactly when an operator needs the way OUT of it, so the
+                    // empty state carries the same action the health strip does.
+                    //
+                    // ⚠ It used to read "Find clips" and navigate to `tab: "discover"` — a tab this
+                    // phase RETIRED. `validateSearch` drops the unknown value, so the button landed
+                    // back on the empty catalog it was offered from: a control that looked like the
+                    // way out and did nothing. Two independent reviewers found it, which is the
+                    // useful lesson — deleting a destination is not done until every route TO it is
+                    // gone, and a nav target is not type-checked.
+                    isAdmin
+                    ? {
+                        action: {
+                          label: "Propose a pull",
+                          onClick: () => proposePull.mutate({ data: {} }),
+                        },
+                      }
+                    : {})}
+              />
+            ) : (
+              <>
+                {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
                   ("what's next?") — never both in one place. */}
-              <div className="flex items-center gap-3">
-                <p className="text-muted-foreground text-sm">
-                  {pageCount > 1
-                    ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
-                    : pluralize(total, "clip")}
-                </p>
-                {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
+                <div className="flex items-center gap-3">
+                  <p className="text-muted-foreground text-sm">
+                    {pageCount > 1
+                      ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
+                      : pluralize(total, "clip")}
+                  </p>
+                  {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                     what is on screen — not the whole catalog. Selecting rows the operator
                     cannot see, then offering "Remove from catalog", is how a bulk action
                     surprises someone. The label says so when a filter is active.
                     ⚠ Paging sharpened that: "on screen" is now one PAGE, so the label says
                     "Select this page" whenever there is more than one — and `goToPage` clears
                     the selection, or a Remove would reach rows from a page nobody is looking at. */}
-                {isAdmin && (
-                  <Button variant="ghost" size="sm" onClick={() => selectAll(rows)}>
-                    {allSelected(rows)
-                      ? "Clear selection"
-                      : pageCount > 1
-                        ? "Select this page"
-                        : filtered
-                          ? "Select these"
-                          : "Select all"}
-                  </Button>
+                  {isAdmin && (
+                    <Button variant="ghost" size="sm" onClick={() => selectAll(selectableRows)}>
+                      {allSelected(selectableRows)
+                        ? "Clear selection"
+                        : pageCount > 1
+                          ? "Select this page"
+                          : filtered
+                            ? "Select these"
+                            : "Select all"}
+                    </Button>
+                  )}
+                </div>
+                {view === "list" ? (
+                  <div className="overflow-hidden rounded-lg border border-border">
+                    {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {rows.map((clip) =>
+                      clip.isComposite ? (
+                        <div key={clip.hash} className="col-span-full">
+                          {renderComposite(clip)}
+                        </div>
+                      ) : (
+                        renderCatalogCard(clip)
+                      ),
+                    )}
+                  </div>
                 )}
-              </div>
-              {view === "list" ? (
-                <div className="overflow-hidden rounded-lg border border-border">
-                  {rows.map((clip) => (
-                    <ClipRow
-                      key={clip.hash}
-                      clip={clip}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-                      selected={selected.has(clip.hash)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {rows.map((clip) => (
-                    <ClipCard
-                      key={clip.hash}
-                      clip={clip}
-                      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
-                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
-                      {...(isAdmin ? { onPin: () => setPinning(clip.hash) } : {})}
-                      {...(isAdmin && clip.suggestedEra
-                        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
-                        : {})}
-                      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                      // ⚠ **Offered only on a COMPILATION, and only behind a confirmation (§10
-                      // V54 A8).** It used to render on every card and fire on the first click —
-                      // including on a 15-second commercial, where a full-decode search for
-                      // adverts inside one advert is minutes of GPU spent to find nothing.
-                      //
-                      // `isComposite` is the pipeline's OWN answer to "is this a recording of
-                      // several adverts", set by the probe rung at measurement time (§10 V45), so
-                      // gating on it invents no threshold and duplicates no setting.
-                      //
-                      // ⚠ Known gap, deliberately accepted: `looksComposite` swallows a
-                      // BlackSilence failure and returns false, so a genuine compilation whose
-                      // scan errored is unmarked and loses its manual split here. The BE still
-                      // accepts the call, so nothing is permanently lost — but re-probing is the
-                      // only route back to the button. Worth revisiting if it is ever seen.
-                      {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
-                      splitPending={
-                        Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"
-                      }
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-                      selected={selected.has(clip.hash)}
-                      // ⚠ NOT gated on isAdmin, unlike every other action on this card. Watching
-                      // a clip mutates nothing, and `/v1/filler/media` is member-readable by
-                      // design — these are the same commercials the household's channels play at
-                      // them. Gating it would hide a safe capability from exactly the people who
-                      // would want to check what is airing.
-                      onPlay={() => setPlaying(clip.hash)}
-                    />
-                  ))}
-                </div>
-              )}
 
-              {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
+                {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
                   "did my filter work?". Rendered only when there is more than one page, so the
                   common household catalog never grows a control it does not need.
 
                   ⚠ Prev/Next plus a position, not a numbered page strip. A strip is the V51e
                   catalog redesign's call to make; what this must not do is leave the clips past
                   row 60 unreachable, which is what a page size with no pager would be. */}
-              {pageCount > 1 && (
-                <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
-                    Previous
-                  </Button>
-                  {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
+                {pageCount > 1 && (
+                  <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => goToPage(page - 1)}
+                    >
+                      Previous
+                    </Button>
+                    {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
                       announcement a screen-reader user gets a silently different list. */}
-                  <p aria-live="polite" className="text-muted-foreground text-sm">
-                    Page {page.toLocaleString()} of {pageCount.toLocaleString()}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= pageCount}
-                    onClick={() => goToPage(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </nav>
-              )}
-            </>
-          )}
+                    <p aria-live="polite" className="text-muted-foreground text-sm">
+                      Page {page.toLocaleString()} of {pageCount.toLocaleString()}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= pageCount}
+                      onClick={() => goToPage(page + 1)}
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                )}
+              </>
+            )}
 
-          {pinning && rows && (
-            <PinClipDialog
-              clip={rows.find((c) => c.hash === pinning)}
-              onClose={() => setPinning(undefined)}
-            />
-          )}
+            {pinning && rows && (
+              <PinClipDialog
+                clip={rows.find((c) => c.hash === pinning)}
+                onClose={() => setPinning(undefined)}
+              />
+            )}
 
-          {/* The split confirmation (§10 V54 A8). Resolved from the CURRENT page like its
+            {/* The split confirmation (§10 V54 A8). Resolved from the CURRENT page like its
               siblings, so a clip that vanishes under a filter closes the dialog rather than
               confirming a hash that is no longer on screen. */}
-          {splitting && rows && (
-            <ConfirmSplitDialog
-              clip={rows.find((c) => c.hash === splitting)}
-              onConfirm={() => {
-                const clip = rows.find((c) => c.hash === splitting);
-                setSplitting(undefined);
-                if (!clip) return;
-                pendingSplitName.current = clip.name;
-                split.mutate({ data: { hash: clip.hash } });
-              }}
-              onClose={() => setSplitting(undefined)}
-            />
-          )}
+            {splitting && rows && (
+              <ConfirmSplitDialog
+                clip={rows.find((c) => c.hash === splitting)}
+                onConfirm={() => {
+                  const clip = rows.find((c) => c.hash === splitting);
+                  setSplitting(undefined);
+                  if (!clip) return;
+                  pendingSplitName.current = clip.name;
+                  split.mutate({ data: { hash: clip.hash } });
+                }}
+                onClose={() => setSplitting(undefined)}
+              />
+            )}
 
-          {/* The player (V39). ⚠ `?? null` rather than a `&&` guard like its siblings above: this
+            {/* The player (V39). ⚠ `?? null` rather than a `&&` guard like its siblings above: this
               dialog takes a NULLABLE clip and derives `open` from it, so handing it `undefined`
               would be a type error and handing it nothing at all would leave it permanently
               closed. A row that has vanished under a filter closes the player, which is the
               honest outcome — the clip it was showing is no longer in the list. */}
-          <ClipPlayer
-            clip={rows?.find((c) => c.hash === playing) ?? null}
-            onClose={() => setPlaying(undefined)}
-          />
-        </div>
-      )}
+            <ClipPlayer
+              clip={rows?.find((c) => c.hash === playing) ?? null}
+              onClose={() => setPlaying(undefined)}
+            />
+          </div>
+        )}
 
-      {/* The tag editor sits OUTSIDE the tab branches (§10 V54), because both Catalog and Incoming
+        {/* The tag editor sits OUTSIDE the tab branches (§10 V54), because both Catalog and Incoming
           open it and it used to be mounted only under Catalog — so on Incoming the buttons took a
           click and nothing appeared.
 
@@ -936,41 +1043,36 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           ⚠ `key` on the hash for the same reason from the other direction: switching to a second
           clip while the dialog is open would otherwise reuse the instance and keep the first
           clip's form state. */}
-      {taggingClip && (
-        <ClipTagDialog
-          key={taggingClip.hash}
-          clip={taggingClip}
-          onClose={() => setTagging(undefined)}
-          // ⚠ `invalidateLifecycle`, not `invalidateCatalog` alone: the Incoming rows render the
-          // audience and category badges this dialog edits, so a catalog-only invalidation leaves
-          // the queue showing the tags the operator just changed. It already includes the catalog.
-          onSaved={() => {
-            setTagging(undefined);
-            invalidateLifecycle();
-          }}
-        />
-      )}
+        {taggingClip && (
+          <ClipTagDialog
+            key={taggingClip.hash}
+            clip={taggingClip}
+            onClose={() => setTagging(undefined)}
+            // ⚠ `invalidateLifecycle`, not `invalidateCatalog` alone: the Incoming rows render the
+            // audience and category badges this dialog edits, so a catalog-only invalidation leaves
+            // the queue showing the tags the operator just changed. It already includes the catalog.
+            onSaved={() => {
+              setTagging(undefined);
+              invalidateLifecycle();
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 };
 
-// PageHeading — orients the two-surface model the per-channel filler feature introduced:
-// this page is the CATALOG (every clip, its tags), while each channel CHOOSES from it on
-// its own Filler section (theme + pin/exclude, with a live preview). Tagging here is what
-// makes a clip matchable there; the link makes that relationship navigable rather than
-// implicit — the cohesion gap that made filler feel "disjointed".
-const PageHeading = () => (
-  <div>
-    <h1 className="font-semibold text-xl">Filler</h1>
-    <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-      Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
-      the scheduler match a clip to a channel. Each channel then{" "}
-      <Link to="/guide" className="text-signal underline-offset-2 hover:underline">
-        picks and previews its own filler
-      </Link>{" "}
-      from this catalog.
-    </p>
-  </div>
+// Orients the two-surface filler model without re-implementing the page title. The catalog
+// owns tags; a channel's Filler section owns selection and preview.
+const FillerDescription = () => (
+  <>
+    Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
+    the scheduler match a clip to a channel. Each channel then{" "}
+    <Link to="/guide" className="text-signal underline-offset-2 hover:underline">
+      picks and previews its own filler
+    </Link>{" "}
+    from this catalog.
+  </>
 );
 
 export { FillerPage };

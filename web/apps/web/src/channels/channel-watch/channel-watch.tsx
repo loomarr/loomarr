@@ -1,19 +1,21 @@
-import {
-  type ChannelDTO,
-  type ChannelPolicy,
-  channelsApi,
-  type GuideAiring,
-  type TrackDTO,
-  unwrap,
-} from "@loomarr/api";
-import { Captions, Play, Volume2 } from "lucide-react";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { TrackDTO } from "@loomarr/api/models/trackDTO";
+import { unwrap } from "@loomarr/api/unwrap";
+import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
-import { TunerLoader } from "@/components/loomarr/shell";
-import { Button, VideoPlayer } from "@/components/ui";
+import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
+import { Button } from "@/components/ui/button";
+import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
+import { TunerOSD } from "../tuner-osd";
+import type { TuneAttempt } from "../tuner-timing";
+import type { TuneDirection } from "../use-channel-tuner";
 import { languageLabel } from "./language-label";
 
 // ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
@@ -24,7 +26,7 @@ import { languageLabel } from "./language-label";
 // §9.1 V47), so the control bar shows where you are in the schedule. This component owns the
 // surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater, the channel controls.
 //
-// ⚠ Audio and Subtitles are CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
+// ⚠ Audio is CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
 // is one encoder per channel fanned to every viewer, so a per-viewer track would fork the encode —
 // the one thing that model forbids. So these pickers write `policy.playout.*` for the whole
 // channel; a member sees the current values read-only. Quality is the ONLY per-viewer control, and
@@ -33,10 +35,17 @@ import { languageLabel } from "./language-label";
 interface ChannelWatchProps {
   channel: ChannelDTO;
   isAdmin: boolean;
-  /** Save a whole policy (channel-level audio/subtitle overrides). */
+  /** Save a whole policy (channel-level audio override). */
   onSavePolicy: (policy: ChannelPolicy) => void;
   /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
   mediaServerName?: string;
+  tuner?: {
+    canSurf: boolean;
+    currentTitle?: string;
+    attempt?: TuneAttempt;
+    step: (direction: TuneDirection) => void;
+    retry: () => void;
+  };
 }
 
 // withSaved keeps the currently-saved value present in an options list even when the airing does
@@ -63,22 +72,6 @@ const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] =>
     if (!lang || seen.has(lang)) continue;
     seen.add(lang);
     opts.push({ value: lang, label: t.title ? `${languageLabel(lang)} · ${t.title}` : languageLabel(lang) });
-  }
-  return opts;
-};
-
-// subtitleOptions builds the Subtitle picker's choices. The policy is a MODE (off | burn) — burn-in
-// uses the preferred-language subtitle track (§9.1) — so the picker offers Off always, and Burn in
-// only when the airing media actually HAS a subtitle track to burn. Offering "Burn in" for media
-// with no subtitles would be a control that does nothing.
-const subtitleOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
-  const opts = [{ value: "off", label: "Off" }];
-  if (tracks.length > 0) {
-    const langs = [...new Set(tracks.map((t) => t.language).filter(Boolean))].map((l) =>
-      languageLabel(l ?? ""),
-    );
-    const detail = langs.length > 0 ? ` (${langs.join(", ")})` : "";
-    opts.push({ value: "burn", label: `Burn in${detail}` });
   }
   return opts;
 };
@@ -116,8 +109,9 @@ const ChannelWatch = ({
   isAdmin,
   onSavePolicy,
   mediaServerName = "your media server",
+  tuner,
 }: ChannelWatchProps) => {
-  const player = useHlsPlayer(channel.id);
+  const player = useHlsPlayer(channel.id, tuner?.attempt);
   // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
   // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
   // second click makes "open the channel" a two-step act to do the obvious thing.
@@ -149,7 +143,6 @@ const ChannelWatch = ({
   });
   const airings = unwrap(timeline.data)?.airings ?? [];
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
-  const subtitleValue = channel.policy?.playout?.subtitles || "off";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
   // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it —
@@ -157,9 +150,8 @@ const ChannelWatch = ({
   // appended to the media-derived options when absent, labelled by its raw code. (Ported from the
   // old footer PolicyPicker.)
   const audioOpts = withSaved(audioOptions(tracksBody?.audio ?? []), audioValue || AUTO_SENTINEL);
-  const subtitleOpts = withSaved(subtitleOptions(tracksBody?.subtitles ?? []), subtitleValue);
 
-  const savePlayout = (patch: { audioLanguage?: string; subtitles?: string }) => {
+  const savePlayout = (patch: { audioLanguage?: string }) => {
     const next: ChannelPolicy = {
       ...channel.policy,
       playout: { ...channel.policy?.playout, ...patch },
@@ -190,11 +182,38 @@ const ChannelWatch = ({
     </>
   );
 
-  // Audio + Subtitle controls IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
+  // Audio control IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
   // move off the old footer pickers. Same channel-wide, admin-scoped semantics: a member sees the
   // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
   const barControls = (
     <>
+      {tuner && (
+        <fieldset className="flex min-w-0 items-center gap-0.5 border-0 p-0">
+          <legend className="sr-only">Channel navigation</legend>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            aria-label="Channel down"
+            disabled={!tuner.canSurf}
+            onClick={() => tuner.step(-1)}
+          >
+            <ChevronDown className="size-4" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            aria-label="Channel up"
+            disabled={!tuner.canSurf}
+            onClick={() => tuner.step(1)}
+          >
+            <ChevronUp className="size-4" aria-hidden />
+          </Button>
+        </fieldset>
+      )}
       <TrackSelectMenu
         icon={Volume2}
         label="Audio"
@@ -203,19 +222,11 @@ const ChannelWatch = ({
         onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
         readOnly={!isAdmin}
       />
-      <TrackSelectMenu
-        icon={Captions}
-        label="Subtitles"
-        options={subtitleOpts}
-        value={subtitleValue}
-        onChange={(v) => savePlayout({ subtitles: v })}
-        readOnly={!isAdmin}
-      />
     </>
   );
 
   // The player. `live` = no seek; `scrubber` = full-width mini-guide; `topBar`/`timeLeft` = the live
-  // chrome; `barControls` = audio/subtitle menus beside fullscreen; `attach` binds hls.js. Fullscreen
+  // chrome; `barControls` = the audio menu beside fullscreen; `attach` binds hls.js. Fullscreen
   // is the player's OWN control. Rendered only when active so the stream is not requested until asked.
   const playerEl = (
     <VideoPlayer
@@ -229,6 +240,7 @@ const ChannelWatch = ({
       // an error shows its own message below, and a playing stream needs no overlay.
       overlay={player.status === "loading" ? <TunerLoader /> : undefined}
       attach={player.attach}
+      onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />
   );
@@ -243,7 +255,17 @@ const ChannelWatch = ({
           />
         ) : active ? (
           <div className="flex flex-col gap-3 p-3">
-            {playerEl}
+            <div className="relative">
+              {playerEl}
+              {player.status === "loading" && tuner && (
+                <TunerOSD
+                  number={channel.number}
+                  name={channel.name}
+                  currentTitle={tuner.currentTitle}
+                  className="absolute top-4 left-4 z-[2]"
+                />
+              )}
+            </div>
 
             {/* The tune-in status line under the player — the player's own control bar carries the
                 LIVE badge, scrubber, controls and fullscreen, so this is just the join note. */}
@@ -254,6 +276,11 @@ const ChannelWatch = ({
                   ? "Tuning in…"
                   : "You're joining live, mid-programme."}
             </p>
+            {player.status === "error" && tuner && (
+              <Button variant="outline" size="sm" onClick={tuner.retry} className="self-start">
+                Retry channel
+              </Button>
+            )}
           </div>
         ) : (
           <button
@@ -272,13 +299,13 @@ const ChannelWatch = ({
           </button>
         )}
 
-        {/* Footer: the "open in your media server" hand-off. Audio/subtitles moved INTO the player's
+        {/* Footer: the "open in your media server" hand-off. Audio lives in the player's
             control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
         <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
           {isAdmin ? (
             <p className="text-muted-foreground text-xs">
-              Audio and subtitles are set for the whole channel — everyone watching sees the same, because one
-              encoder serves them all.
+              Audio is set for the whole channel — everyone watching hears the same track, because one encoder
+              serves them all.
             </p>
           ) : (
             <span />

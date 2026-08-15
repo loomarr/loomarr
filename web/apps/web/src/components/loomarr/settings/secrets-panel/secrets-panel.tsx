@@ -1,7 +1,8 @@
 import { Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui";
-import { cn, useCopied } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { useCopied } from "@/lib/use-copied";
+import { cn } from "@/lib/utils";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 
 // Generated secrets (config-design §4), on Sonarr's model: values you must paste

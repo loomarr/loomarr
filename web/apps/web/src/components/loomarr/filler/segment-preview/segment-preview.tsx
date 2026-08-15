@@ -1,7 +1,8 @@
-import { clipMediaURL, formatMmSs } from "@loomarr/core";
+import { clipMediaURL } from "@loomarr/core/clip-thumb";
+import { formatMmSs } from "@loomarr/core/format";
 import { useRef } from "react";
-import { VideoPlayer } from "@/components/ui";
-import { cn } from "@/lib";
+import { VideoPlayer } from "@/components/ui/video-player";
+import { cn } from "@/lib/utils";
 import type { SegmentPreviewProps } from "./segment-preview.type";
 
 // SegmentPreview — one proposed cut, played in place (§10 V54).

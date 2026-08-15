@@ -47,7 +47,7 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 			return nil, err
 		}
 		if autoMigrate {
-			if err := migrate(s.db, "sqlite", "migrations/sqlite"); err != nil {
+			if err := migrate(ctx, s.db, "sqlite", "migrations/sqlite"); err != nil {
 				_ = s.Close()
 				return nil, err
 			}
@@ -64,7 +64,7 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 			return nil, err
 		}
 		if autoMigrate {
-			if err := migrate(s.db, "postgres", "migrations/postgres"); err != nil {
+			if err := migrate(ctx, s.db, "postgres", "migrations/postgres"); err != nil {
 				_ = s.Close()
 				return nil, err
 			}
@@ -82,4 +82,20 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 		}
 		return nil, fmt.Errorf("unknown DATABASE_URL scheme %q (want sqlite:// or postgres://)", scheme)
 	}
+}
+
+// openPostgresForDataMigration builds only the SQL schema. Unlike a normal boot it
+// deliberately does not run seedAfterMigrate: the SQLite source owns every application
+// row, including the taxonomy, and seeding Go-owned rows into the target would make the
+// target non-empty before the copy begins.
+func openPostgresForDataMigration(ctx context.Context, dsn string) (*sqlStore, error) {
+	s, err := openPostgres(ctx, dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := migrate(ctx, s.db, "postgres", "migrations/postgres"); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
+	return s, nil
 }

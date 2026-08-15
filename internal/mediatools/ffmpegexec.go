@@ -13,7 +13,7 @@ import (
 // package execs ffmpeg/ffprobe from several places, and most of those calls only look alike:
 // they pass different flags because they ask different questions. `ffprobeWith` reads
 // duration + stream height (`-show_entries`), `FFmpegTools.Chapters` reads chapter markers
-// (`-show_chapters`), `BlackSilence` runs two detection filters into a null muxer. A helper
+// (`-show_chapters`), `Boundaries` runs two detection filters into a null muxer. A helper
 // parameterised by every flag would save no code and would hide what each caller is actually
 // asking the binary for.
 //

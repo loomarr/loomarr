@@ -3,12 +3,18 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/images"
+	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -51,37 +57,64 @@ func imageService(s *images.Service) api.ImageService {
 // at runtime would orphan every file already written, while the public base URL genuinely must
 // hot-apply (an operator who sets `server.public_url` in the wizard needs absolute icon URLs on
 // the next request, because Tunarr fetches them machine-to-machine).
-func newImageService(st store.Store, set resolved) *images.Service {
+func newImageService(st store.Store, set resolved, explicitWorker, release string) (*images.Service, error) {
+	worker, err := resolveImageWorker(explicitWorker)
+	if err != nil {
+		return nil, err
+	}
+	renderer, err := rustgen.Open(worker, rustgen.Contract{
+		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v1",
+		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return images.New(images.Config{
 		Dir:            set.str("images.dir"),
 		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
 		PublicBaseURL:  func() string { return set.str("server.public_url") },
-		Formats:        func() []images.Format { return imageFormats(set) },
-	}, imageStore{st}, nil)
+		Observer: images.Observer{
+			QueueWait: metrics.ImageWorkerQueueWait,
+			InFlight:  metrics.ImageWorkerInFlight,
+			Worker:    metrics.ImageWorkerObserved,
+		},
+	}, imageStore{st}, renderer, nil), nil
 }
 
-// imageFormats reads `images.formats`, falling back to the declared ladder.
-//
-// ⚠ Unknown entries are DROPPED rather than passed through. Format is a closed set that decides
-// which encoder runs and which MIME type is served; a typo like "webm" reaching the AVIF job as a
-// format would be a work-list that never empties. Silently ignoring it degrades to a smaller
-// ladder, which is a supported configuration.
-func imageFormats(set resolved) []images.Format {
-	raw := set.strlist("images.formats")
-	if len(raw) == 0 {
-		return images.DefaultFormats()
+func resolveImageWorker(explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
 	}
-	out := make([]images.Format, 0, len(raw))
-	for _, s := range raw {
-		switch f := images.Format(s); f {
-		case images.FormatAVIF, images.FormatWebP, images.FormatJPEG:
-			out = append(out, f)
+	if configured := os.Getenv("LOOMARR_IMAGE_WORKER"); configured != "" {
+		return configured, nil
+	}
+	if self, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(self), "loomarr-image")
+		if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() {
+			return candidate, nil
 		}
 	}
-	if len(out) == 0 {
-		return images.DefaultFormats()
+	for _, candidate := range []string{
+		filepath.Join("target", "debug", "loomarr-image"),
+		filepath.Join("bin", "loomarr-image"),
+	} {
+		if absolute, err := filepath.Abs(candidate); err == nil {
+			if info, statErr := os.Stat(absolute); statErr == nil && info.Mode().IsRegular() {
+				return absolute, nil
+			}
+		}
 	}
-	return out
+	if _, source, _, ok := runtime.Caller(0); ok {
+		root := filepath.Clean(filepath.Join(filepath.Dir(source), "..", ".."))
+		candidate := filepath.Join(root, "target", "debug", "loomarr-image")
+		if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() {
+			return candidate, nil
+		}
+	}
+	if found, err := exec.LookPath("loomarr-image"); err == nil {
+		return found, nil
+	}
+	return "", fmt.Errorf("images: required loomarr-image worker not found")
 }
 
 // imageStore adapts store.Store to images.Store.
@@ -122,12 +155,15 @@ func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
 
 func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) error {
 	return a.st.PutImageDerivative(ctx, store.ImageDerivative{
-		ImageHash: d.ImageHash,
-		Format:    string(d.Format),
-		Width:     d.Width,
-		Bytes:     d.Bytes,
-		Path:      d.Path,
-		CreatedAt: d.CreatedAt,
+		ImageHash:  d.ImageHash,
+		Recipe:     d.Recipe,
+		Format:     string(d.Format),
+		Width:      d.Width,
+		Bytes:      d.Bytes,
+		OutputHash: d.OutputHash,
+		Path:       d.Path,
+		Animated:   d.Animated,
+		CreatedAt:  d.CreatedAt,
 	})
 }
 
@@ -173,8 +209,8 @@ func (a imageStore) ListUnrecoverable(ctx context.Context, limit int) ([]images.
 	return fromStoreImages(rows), err
 }
 
-func (a imageStore) ListMissingFormat(ctx context.Context, f images.Format, limit int) ([]images.Image, error) {
-	rows, err := a.st.ListImagesMissingFormat(ctx, string(f), limit)
+func (a imageStore) ListMissingFormat(ctx context.Context, recipe string, f images.Format, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesMissingFormat(ctx, recipe, string(f), limit)
 	return fromStoreImages(rows), err
 }
 
@@ -190,8 +226,8 @@ func (a imageStore) TotalDerivativeBytes(ctx context.Context) (int64, error) {
 	return a.st.TotalImageDerivativeBytes(ctx)
 }
 
-func (a imageStore) DeleteDerivative(ctx context.Context, hash string, f images.Format, width int) error {
-	return a.st.DeleteImageDerivative(ctx, hash, string(f), width)
+func (a imageStore) DeleteDerivative(ctx context.Context, hash, recipe string, f images.Format, width int) error {
+	return a.st.DeleteImageDerivative(ctx, hash, recipe, string(f), width)
 }
 
 func (a imageStore) DeleteDerivatives(ctx context.Context, hash string) error {
@@ -210,12 +246,15 @@ func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
 	out := make([]images.Derivative, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, images.Derivative{
-			ImageHash: d.ImageHash,
-			Format:    images.Format(d.Format),
-			Width:     d.Width,
-			Bytes:     d.Bytes,
-			Path:      d.Path,
-			CreatedAt: d.CreatedAt,
+			ImageHash:  d.ImageHash,
+			Recipe:     d.Recipe,
+			Format:     images.Format(d.Format),
+			Width:      d.Width,
+			Bytes:      d.Bytes,
+			OutputHash: d.OutputHash,
+			Path:       d.Path,
+			Animated:   d.Animated,
+			CreatedAt:  d.CreatedAt,
 		})
 	}
 	return out
@@ -257,6 +296,9 @@ func toStoreImage(img images.Image) store.Image {
 		Height:          img.Height,
 		Bytes:           img.Bytes,
 		Animated:        img.Animated,
+		FrameCount:      img.FrameCount,
+		DurationMS:      img.DurationMS,
+		LoopCount:       img.LoopCount,
 		Placeholder:     img.Placeholder,
 		DominantHex:     img.DominantHex,
 		Meta:            img.Meta,
@@ -279,6 +321,9 @@ func fromStoreImage(rec store.Image) images.Image {
 		Height:          rec.Height,
 		Bytes:           rec.Bytes,
 		Animated:        rec.Animated,
+		FrameCount:      rec.FrameCount,
+		DurationMS:      rec.DurationMS,
+		LoopCount:       rec.LoopCount,
 		Placeholder:     rec.Placeholder,
 		DominantHex:     rec.DominantHex,
 		Meta:            rec.Meta,

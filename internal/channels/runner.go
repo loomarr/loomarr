@@ -49,7 +49,7 @@ func NewRunner(e *Engine, st claimer, every, lease time.Duration, batch int, now
 }
 
 // Sweep runs one pass: claim due channels and reconcile each. Returns the number of channels
-// reconciled. Called by the scheduler's channel-sweep job (§18.1). Errors are logged, never
+// reconciled. Called by the scheduler's channel-maintenance job (§18.1). Errors are logged, never
 // fatal — a down Tunarr degrades freshness, never wedges the process (§6).
 func (r *Runner) Sweep(ctx context.Context) int {
 	claimed, err := r.store.ClaimDueChannels(ctx, r.now(), r.lease, r.batch)

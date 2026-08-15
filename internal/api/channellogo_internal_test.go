@@ -1,6 +1,11 @@
 package api
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+
+	"github.com/mantonx/loomarr/internal/images"
+)
 
 // imageHashFromLogo is the seam between an operator-controlled string and an image-store lookup
 // key, which is why it validates rather than merely extracts. `PATCH /v1/channels/{id}` accepts
@@ -38,5 +43,23 @@ func TestImageHashFromLogo(t *testing.T) {
 				t.Errorf("imageHashFromLogo(%q) = %q, want %q", tc.logo, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBrowserLogoURLUsesThePageOriginForServiceImages(t *testing.T) {
+	const hash = "9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503"
+	pathFor := func(hash string, width int, format images.Format) string {
+		return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
+	}
+
+	got := browserLogoURL("http://machine-client-only.invalid:8080/v1/images/"+hash+"/w500.jpg", pathFor)
+	want := "/v1/images/" + hash + "/w500.jpg"
+	if got != want {
+		t.Errorf("browserLogoURL(service image) = %q, want %q", got, want)
+	}
+
+	external := "https://operator.example/icon.jpg"
+	if got := browserLogoURL(external, pathFor); got != external {
+		t.Errorf("browserLogoURL(external image) = %q, want the operator URL preserved", got)
 	}
 }

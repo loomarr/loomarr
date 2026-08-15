@@ -1,0 +1,72 @@
+import type { ChannelNowNext } from "@loomarr/api";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { channel } from "@/test/fixtures/channels";
+import { adjacentChannel, surfableCatalog, useChannelTuner } from "./use-channel-tuner";
+
+const channels = [
+  channel({ id: "ch-30", number: 30, name: "Thirty", inAppPlayable: true }),
+  channel({ id: "ch-10", number: 10, name: "Ten", inAppPlayable: true }),
+  channel({ id: "ch-20", number: 20, name: "Twenty", inAppPlayable: false }),
+];
+
+const noWarm = vi.fn().mockResolvedValue(undefined);
+
+describe("channel tuner", () => {
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+  });
+
+  it("sorts only the server-declared surfable channels and wraps", () => {
+    const catalog = surfableCatalog(channels);
+    expect(catalog.map((entry) => entry.id)).toEqual(["ch-10", "ch-30"]);
+    expect(adjacentChannel(catalog, "ch-30", 1)?.id).toBe("ch-10");
+    expect(adjacentChannel(catalog, "ch-10", -1)?.id).toBe("ch-30");
+  });
+
+  it("bases a rapid burst on the last REQUESTED channel before the route catches up", () => {
+    const onTune = vi.fn();
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
+    );
+
+    act(() => {
+      result.current.step(1); // 10 → 30
+      result.current.step(1); // 30 → 10, while currentId is still 10
+      result.current.step(-1); // 10 → 30
+    });
+
+    expect(onTune.mock.calls.map(([target]) => target.id)).toEqual(["ch-30", "ch-10", "ch-30"]);
+    expect(result.current.channel?.id).toBe("ch-30");
+    expect(result.current.attempt?.id).toBeGreaterThan(0);
+  });
+
+  it("pairs the selected channel with the already-loaded now row", () => {
+    const nowNext: ChannelNowNext[] = [
+      { channelId: "ch-10", now: { title: "The First Feature", gap: false, startMs: 1, stopMs: 2 } },
+    ];
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext, onTune: vi.fn(), warmChannel: noWarm }),
+    );
+    expect(result.current.currentTitle).toBe("The First Feature");
+  });
+
+  it("reuses the exact signed URL and warmed state when tuning to a prepared neighbor", async () => {
+    const warmChannel = vi.fn().mockResolvedValue({
+      url: "/v1/playout/hls/ch-30/master.m3u8?sig=one",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      warmed: true,
+    });
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
+    );
+    await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-30", expect.any(AbortSignal)));
+    await act(async () => Promise.resolve());
+    act(() => result.current.step(1));
+    expect(result.current.attempt?.warmed).toBe(true);
+    expect(result.current.attempt?.playURL).toContain("sig=one");
+  });
+});

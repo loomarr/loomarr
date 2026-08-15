@@ -1,5 +1,6 @@
-import type { ChannelDTO } from "@loomarr/api";
-import type { ChannelHealth, OnAirState } from "@/components/loomarr";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelHealth } from "@/components/loomarr/channels/channel-card";
+import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 
 // The API's `status` and the card's `health` are deliberately different vocabularies
 // (channel-card.type.ts): status is Loomarr's lifecycle (building/live/drifted/detached),

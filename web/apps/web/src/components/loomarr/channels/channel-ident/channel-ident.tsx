@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ChannelIdentProps } from "./channel-ident.type";
 
 // ChannelIdent — a channel's mark in the guide rail (§12, the v2 mock's rail icon).

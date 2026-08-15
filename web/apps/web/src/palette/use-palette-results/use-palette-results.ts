@@ -1,5 +1,8 @@
-import { channelsApi, fillerApi, helpApi, searchApi } from "@loomarr/api";
-import type { SearchResult } from "@loomarr/core";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as helpApi from "@loomarr/api/endpoints/help";
+import * as searchApi from "@loomarr/api/endpoints/search";
+import type { SearchResult } from "@loomarr/core/contracts";
 
 // usePaletteResults fans out across the corpora the ⌘K palette spans (§12: "over
 // /v1/search scopes + channels + help").

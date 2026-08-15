@@ -1,11 +1,14 @@
-import type { DatabaseCheck } from "@loomarr/api";
-import { systemApi, unwrap } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
-import type { MigrationStep } from "@/components/loomarr";
-import { DatabaseMigration, ErrorState } from "@/components/loomarr";
-import { useLoomarrEventListener } from "@/events";
+import { useCallback, useEffect, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import type { MigrationStep } from "@/components/loomarr/settings/database-migration";
+import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 // Settings → System → Database (§18, V11) — the SQLite → PostgreSQL migration stepper.
 //
@@ -15,12 +18,15 @@ import { useLoomarrEventListener } from "@/events";
 // standing, which is genuinely client state.
 const DatabasePage = () => {
   const queryClient = useQueryClient();
-  const status = systemApi.useSystemDatabaseStatus();
-
   const [step, setStep] = useState<MigrationStep | null>(null);
   const [dsn, setDsn] = useState("");
   const [checks, setChecks] = useState<DatabaseCheck[]>([]);
   const [passed, setPassed] = useState(false);
+  // After migrate acknowledges, a dropped connection is expected rather than an error
+  // screen. Poll until the fresh generation answers on PostgreSQL or carries a failure.
+  const status = systemApi.useSystemDatabaseStatus({
+    query: { refetchInterval: step === "reconnect" ? 1_000 : false },
+  });
 
   // A `database` frame means the migration moved. Refetch rather than patching from the
   // payload: the frame is a latency optimization and GET is the source of truth (§8), and
@@ -52,65 +58,65 @@ const DatabasePage = () => {
     mutation: {
       onSuccess: () => {
         refetchStatus();
-        // Straight to verify: the call returns only once the copy AND the parity check
-        // have finished, so there is no window where "migrating" is still true.
-        setStep("verify");
+        // The request only queues the process-level operation. Losing the connection
+        // after this point is success-shaped; wait for the fresh generation.
+        setStep("reconnect");
       },
       onError: refetchStatus,
     },
   });
 
-  const switchover = systemApi.useSystemDatabaseSwitchover({
-    mutation: { onSuccess: () => setStep("restart") },
-  });
-
-  if (status.error) return <ErrorState error={status.error} onRetry={() => status.refetch()} />;
   const view = unwrap(status.data);
+  useEffect(() => {
+    if (step !== "reconnect" || view?.phase !== "failed") return;
+    // The failed generation deliberately forgets its preflight/backup authorization.
+    // Return to the beginning so a retry proves the target is empty again.
+    setStep(null);
+    setChecks([]);
+    setPassed(false);
+  }, [step, view?.phase]);
+
+  if (status.error && step !== "reconnect") {
+    return <ErrorState error={status.error} onRetry={() => status.refetch()} />;
+  }
   if (view == null) return null;
 
-  // A pinned DATABASE_URL is reported by the switchover refusing, but the stepper should
-  // say so BEFORE the operator has taken a backup and copied every row — so the page
-  // treats a switchover failure mentioning the pin as the env-pinned state.
-  const envPinned = switchover.error?.detail?.includes("pinned") ?? false;
+  // No schema change is needed to surface an env pin: Migrate rejects it before queueing,
+  // and the existing problem detail gives the page the permanent explanation state.
+  const envPinned = migrate.error?.detail?.includes("pinned") ?? false;
 
   const pending =
     (preflight.isPending && "preflight") ||
     (backup.isPending && "backup") ||
     (migrate.isPending && "migrate") ||
-    (switchover.isPending && "switchover") ||
     null;
 
   const error =
-    migrate.error?.detail ??
-    backup.error?.detail ??
-    switchover.error?.detail ??
-    preflight.error?.detail ??
-    null;
+    view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <div className="h-full overflow-auto p-6">
-      <div className="mb-4">
-        <h1 className="font-semibold text-xl">Database</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Which database Loomarr stores everything in, and how to move to another one.
-        </p>
-      </div>
-      <DatabaseMigration
-        status={view}
-        step={step}
-        onStepChange={setStep}
-        dsn={dsn}
-        onDsnChange={setDsn}
-        checks={checks}
-        preflightPassed={passed}
-        onPreflight={() => preflight.mutate({ data: { dsn } })}
-        onBackup={() => backup.mutate()}
-        onMigrate={() => migrate.mutate({ data: { dsn } })}
-        onSwitchover={() => switchover.mutate({ data: { dsn } })}
-        pending={pending}
-        error={error}
-        envPinned={envPinned}
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        title="Database"
+        description="Which database Loomarr stores everything in, and how to move to another one."
       />
+      <div className="min-h-0 flex-1 overflow-auto p-6">
+        <DatabaseMigration
+          status={view}
+          step={step}
+          onStepChange={setStep}
+          dsn={dsn}
+          onDsnChange={setDsn}
+          checks={checks}
+          preflightPassed={passed}
+          onPreflight={() => preflight.mutate({ data: { dsn } })}
+          onBackup={() => backup.mutate()}
+          onMigrate={() => migrate.mutate({ data: { dsn } })}
+          pending={pending}
+          error={error}
+          envPinned={envPinned}
+        />
+      </div>
     </div>
   );
 };

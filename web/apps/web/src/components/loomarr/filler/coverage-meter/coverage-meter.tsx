@@ -1,7 +1,9 @@
-import type { CoverageCriterionDTOCriterion, CoverageDTOLevel } from "@loomarr/api";
+import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
+import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
 import { Link } from "@tanstack/react-router";
-import { Caption, StatusDot, type StatusTone } from "@/components/ui";
-import { cn } from "@/lib";
+import { Caption } from "@/components/ui/caption";
+import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
 // CoverageMeter — which rung of the §10 fallback ladder this channel's breaks draw from (V29b).

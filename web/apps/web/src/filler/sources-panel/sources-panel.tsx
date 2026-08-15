@@ -1,22 +1,19 @@
-import { fillerApi, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { ErrorState, FillerSources, SourceSearch } from "@/components/loomarr";
+import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FillerSources } from "@/components/loomarr/filler/filler-sources";
+import { SourceSearch } from "@/components/loomarr/filler/source-search";
 // ⚠ No `Card` and no `Label`. Add-a-source is a plain block under a single top rule (the mock
 // draws no box), and its fields are labelled by their per-kind PLACEHOLDER plus `aria-label` —
 // a static visible label above an input whose meaning changes with the kind would contradict it.
-import {
-  Button,
-  Caption,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SourcesPanelProps } from "./sources-panel.type";
 
 // Per-kind copy for "Add a source" (the mock's `newSourcePlaceholder`).
@@ -125,11 +122,20 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // rude — and the results would flicker under the cursor.
   const [sourceQuery, setSourceQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const searchedSource = sources.find((source) => source.id === searchOpenFor);
   const discover = fillerApi.useDiscoverFiller(
-    { q: submittedQuery },
+    { q: submittedQuery, collection: searchedSource?.uri },
     // Admin-only on the server, and only once something has actually been submitted — an
     // enabled query with an empty q would 422 on mount.
-    { query: { enabled: isAdmin && submittedQuery.trim().length >= 2 } },
+    {
+      query: {
+        enabled:
+          isAdmin &&
+          submittedQuery.trim().length >= 2 &&
+          searchedSource?.kind === "archive" &&
+          Boolean(searchedSource.uri),
+      },
+    },
   );
 
   // Runtime + quality for the rows on screen (V35).
@@ -189,7 +195,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   return (
-    <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <FillerSources
         sources={sources}
         // ⚠ The pending row is tracked by ID. This used to be

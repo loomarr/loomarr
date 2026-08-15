@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -57,6 +58,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	log := slog.New(slog.DiscardHandler)
+	chBinder := binder.New(st, nil, nil, log)
 	h := api.Router(log, api.Options{
 		Store:   st,
 		Auth:    testAuthorizer{},
@@ -67,7 +69,8 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the
 		// channel row and just skips the immediate Tunarr reconcile push.
-		Binder: binder.New(st, nil, nil, log),
+		Approver: suggest.NewApprover(st, chBinder, time.Now),
+		Binder:   chBinder,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -76,10 +79,15 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 
 // seedProposal writes a submitted proposal with one acquisition (Speed).
 func seedProposal(t *testing.T, st store.Store, id string) {
+	seedProposalAt(t, st, id, time.Time{})
+}
+
+func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
 	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		CreatedAt: created,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +217,51 @@ func TestDeny_RequiresAdmin(t *testing.T) {
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", "", `{"reason":"no"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member deny → %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestDeny_AlreadyApproved409AndPreservesAudit(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	approved := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
+	if approved.StatusCode != http.StatusOK {
+		t.Fatalf("approve -> %d", approved.StatusCode)
+	}
+	before, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"too late"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("deny approved proposal -> %d, want 409", resp.StatusCode)
+	}
+	after, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != "approved" || after.ApprovedBy != before.ApprovedBy || after.DenyReason != before.DenyReason {
+		t.Errorf("denial overwrote approval: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestDeny_StampsDecisionUpdateTime(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	before, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"not a fit"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("deny -> %d", resp.StatusCode)
+	}
+	after, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != "denied" || after.DenyReason != "not a fit" || !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Errorf("denied proposal = %+v; before updatedAt=%v", after, before.UpdatedAt)
 	}
 }
 
@@ -389,17 +442,18 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 // ordinary editable fields; silently reverting an edit on re-approve is data loss.
 func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	body := `{"intent":{"description":"90s cartoons"},"lineup":[{"mediaType":"movie",` +
 		`"tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
 		`"acquisitions":[]}`
-	seed := func(id, job string) {
+	seed := func(id, job string, created time.Time) {
 		if err := st.CreateProposal(context.Background(), store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body,
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	seed("p-a", "job-same")
+	seed("p-a", "job-same", base)
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-a/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first approve → %d", resp.StatusCode)
@@ -412,12 +466,12 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	// The operator renames and renumbers it, as §7 says they may.
 	ch, _ := st.GetChannel(context.Background(), first.ChannelID)
 	ch.Name, ch.Number = "Cartoon Corner", 42
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
 	// A second proposal for the SAME intent (a re-run of that job) is approved.
-	seed("p-b", "job-same")
+	seed("p-b", "job-same", base.Add(time.Hour))
 	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-b/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("second approve → %d", resp.StatusCode)
@@ -441,7 +495,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	}
 }
 
-// TestRefine_NewestApprovedWins is the binding regression for the refine flow (§7).
+// TestRefine_NewerApprovalPatchesChannel is the binding regression for the refine flow (§7).
 // A refine re-runs the channel's OWN job, so over its life a single job accumulates
 // several APPROVED proposals — the original lineup and each refined one. The channel
 // binds on IntentRef (== JobID), and approvedProposalForJob must resolve the *newest*
@@ -452,7 +506,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 // approves sequentially and never leaves two APPROVED rows to choose between): here
 // BOTH proposals are approved and coexist, so the test actually exercises the
 // created_at DESC ordering that the binding leans on.
-func TestRefine_NewestApprovedWins(t *testing.T) {
+func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	ctx := context.Background()
 
@@ -515,7 +569,7 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 	if ch.IntentRef != job {
 		t.Errorf("IntentRef = %q, want %q (binding must survive refine)", ch.IntentRef, job)
 	}
-	// The load-bearing assertion: the lineup is the NEWEST approved proposal's, so the
+	// The load-bearing assertion: the lineup is the newer approved proposal's, so the
 	// refine's change actually took. A single Predator entry, no Matrix.
 	if len(ch.Lineup) != 1 {
 		t.Fatalf("lineup has %d entries, want 1 (the refined pick)", len(ch.Lineup))
@@ -527,13 +581,60 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 	}
 }
 
+func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	ctx := context.Background()
+	const job = "job-stale-refine"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(id, tmdb, name string, created time.Time) {
+		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
+			`"tmdbId":` + tmdb + `,"name":"` + name + `","inLibrary":true,"libraryItemId":"lib-` + tmdb + `"}]}`
+		if err := st.CreateProposal(ctx, store.Proposal{
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("p-older", "603", "The Matrix", base)
+	mk("p-newer", "106", "Predator", base.Add(time.Hour))
+
+	newer := do(t, srv, http.MethodPost, "/v1/proposals/p-newer/approve", adminToken, "")
+	if newer.StatusCode != http.StatusOK {
+		t.Fatalf("approve newer -> %d", newer.StatusCode)
+	}
+	var approved struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(newer.Body).Decode(&approved)
+	_ = newer.Body.Close()
+
+	older := do(t, srv, http.MethodPost, "/v1/proposals/p-older/approve", adminToken, "")
+	if older.StatusCode != http.StatusConflict {
+		t.Fatalf("approve superseded proposal -> %d, want 409", older.StatusCode)
+	}
+	ch, err := st.GetChannel(ctx, approved.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != "movie:tmdb:106" {
+		t.Fatalf("stale approval rolled channel back: %+v", ch.Lineup)
+	}
+	p, err := st.GetProposal(ctx, "p-older")
+	if err != nil || p.Status != "submitted" {
+		t.Fatalf("superseded proposal = (%+v, %v), want submitted", p, err)
+	}
+	if _, err := st.GetTitle(ctx, "movie:tmdb:603"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("superseded approval inserted title: %v", err)
+	}
+}
+
 // Channel numbers are auto-allocated as the lowest free one, so the operator never has
 // to think about numbering to get on air — and an approval can never collide with a
 // channel they numbered by hand.
 func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	// A hand-made channel already occupies number 1.
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
 			ID: "ch_manual", Name: "Manual", Number: 1, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,
@@ -807,9 +908,10 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	var out struct {
 		Approved int `json:"approved"`
 		Results  []struct {
-			ID       string `json:"id"`
-			OK       bool   `json:"ok"`
-			Enqueued int    `json:"enqueued"`
+			ID        string `json:"id"`
+			OK        bool   `json:"ok"`
+			Enqueued  int    `json:"enqueued"`
+			ChannelID string `json:"channelId"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -817,6 +919,19 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	}
 	if out.Approved != 2 {
 		t.Fatalf("approved = %d, want 2 (results: %+v)", out.Approved, out.Results)
+	}
+	channelIDs := map[string]bool{}
+	for _, result := range out.Results {
+		if !result.OK || result.ChannelID == "" {
+			t.Errorf("bulk result lacks committed channel: %+v", result)
+		}
+		channelIDs[result.ChannelID] = true
+	}
+	if len(channelIDs) != 2 {
+		t.Errorf("bulk approvals committed %d distinct channels, want 2", len(channelIDs))
+	}
+	if channels, err := st.ListChannels(context.Background()); err != nil || len(channels) != 2 {
+		t.Errorf("persisted channels = %d, %v; want 2", len(channels), err)
 	}
 
 	for _, id := range []string{"p1", "p2"} {
@@ -847,8 +962,9 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 // "approve 3" silently becoming "approved 2" is invisible.
 func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
-	seedProposal(t, st, "p1")
-	seedProposal(t, st, "p2")
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	seedProposalAt(t, st, "p1", base)
+	seedProposalAt(t, st, "p2", base.Add(time.Hour))
 	// p1 is already approved before the bulk call.
 	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
 
@@ -917,7 +1033,7 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 	body := fmt.Sprintf(
 		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
 	err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 	})
 	if err != nil {
 		t.Fatal(err)

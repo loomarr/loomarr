@@ -1,4 +1,5 @@
-import type { GuideAiring, GuideChannelTimeline } from "@loomarr/api";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import type { ReactNode } from "react";
 
 interface GuideGridProps {
@@ -18,19 +19,12 @@ interface GuideGridProps {
   // from Date.now() inside, so stories and tests are deterministic and the caller owns the
   // ticking.
   nowMs?: number;
-  // Where the inspected block sits, so the caller can put the detail card NEXT TO it rather
-  // than in a fixed corner. Percentages of the grid's own box (not pixels) because the grid
-  // scrolls and zooms underneath — the caller converts once, at render.
-  //
-  // `rowIndex` is what makes edge-flipping possible: a card for the last row has to open
-  // UPWARD or it falls off the viewport.
-  anchor?: { leftPct: number; rowIndex: number };
+  // The actual inspected block is the positioning anchor. Passing the element lets a floating
+  // positioner follow horizontal/vertical scrolling and resolve viewport collisions from real
+  // geometry; a percentage + row-index estimate cannot know the card or browser height.
+  anchor?: HTMLElement;
   // Called when a block is hovered/focused — the caller renders the detail card. Null clears.
-  onInspect?: (
-    airing: GuideAiring | null,
-    channelId?: string,
-    anchor?: { leftPct: number; rowIndex: number },
-  ) => void;
+  onInspect?: (airing: GuideAiring | null, channelId?: string, anchor?: HTMLElement) => void;
   onSelectChannel?: (channelId: string) => void;
   // Renders the per-row actions menu (edit / pause / delete). A RENDER PROP rather than a
   // built-in menu: those actions are admin-only mutations that need the store, mutations and

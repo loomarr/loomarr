@@ -30,7 +30,7 @@ func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *fakeIconSvc) 
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
 func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/icons2.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)

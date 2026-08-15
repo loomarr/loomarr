@@ -484,9 +484,7 @@ func programsPerWindow(slots []Slot, budgetMs int64) int {
 	return n
 }
 
-// breakGapMs is the placeholder duration for an inserted commercial break — the
-// pod assembler sizes the actual pod to this gap (§10 default 2-minute break).
-const breakGapMs = 120_000
+const defaultBreakDurationMs = 300_000
 
 // interleaveBreaks inserts SlotFiller break gaps between program slots at the
 // channel's BreaksPerHour density (§10). Runtime-aware and snapped to program
@@ -499,6 +497,10 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 		return slots
 	}
 	thresholdMs := int64(60*60*1000) / int64(ch.BreaksPerHour) // ms of runtime per break
+	breakDurationMs := ch.BreakDurationMs
+	if breakDurationMs < 30_000 {
+		breakDurationMs = defaultBreakDurationMs
+	}
 	out := make([]Slot, 0, len(slots)+len(slots)/2)
 	var acc int64
 	for i, s := range slots {
@@ -516,7 +518,7 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 			}
 		}
 		if acc >= thresholdMs && hasLater {
-			out = append(out, Slot{Kind: SlotFiller, DurationMs: breakGapMs})
+			out = append(out, Slot{Kind: SlotFiller, DurationMs: breakDurationMs})
 			acc = 0
 		}
 	}

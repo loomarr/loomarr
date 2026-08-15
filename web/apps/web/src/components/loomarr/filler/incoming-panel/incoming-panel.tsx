@@ -1,9 +1,11 @@
-import type { IncomingClipDTO } from "@loomarr/api";
-import { formatClipDuration, pluralize } from "@loomarr/core";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import { formatClipDuration, pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { Badge, Button, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { IncomingPanelProps } from "./incoming-panel.type";
 // ⚠ Private siblings, deliberately absent from the filler barrel. `story-coverage.test.ts`
 // enumerates the barrel's runtime exports, so exporting these would demand a story file each for
@@ -154,10 +156,15 @@ const AskRow = ({
 
 const IncomingPanel = ({
   clips,
+  clipsTotal,
+  decisionsTotal,
   reels,
+  reelsTotal,
   recentlyFiled,
+  recentlyFiledTotal,
   stageOrder,
   rejected,
+  rejectedTotal,
   onConfirmEra,
   onEditTags,
   onDismiss,
@@ -173,6 +180,12 @@ const IncomingPanel = ({
   // never a second list: a clip appears exactly once, in whichever half `needsDecision` puts it.
   const decisions = clips.filter((c) => c.needsDecision);
   const preparing = clips.filter((c) => !c.needsDecision);
+  const allClips = clipsTotal ?? clips.length;
+  const allDecisions = decisionsTotal ?? decisions.length;
+  const allPreparing = Math.max(0, allClips - allDecisions);
+  const allReels = reelsTotal ?? reels.length;
+  const allRejected = rejectedTotal ?? rejected?.length ?? 0;
+  const allRecentlyFiled = recentlyFiledTotal ?? recentlyFiled?.length ?? 0;
   const nothingIncoming = clips.length === 0 && reels.length === 0;
   const ladder = stageOrder ?? [];
   // "File all as suggested" only means something when something HAS a suggestion — otherwise it
@@ -203,9 +216,9 @@ const IncomingPanel = ({
                 still owns, so "85 clips need a decision" over a belt where 84 are mid-transcode
                 would be the same lie the two-list version told, moved into a string. */}
             <h2 className="font-medium text-sm">
-              {decisions.length > 0
-                ? `${pluralize(decisions.length, "clip")} ${decisions.length === 1 ? "needs" : "need"} a decision`
-                : `Loomarr is preparing ${pluralize(preparing.length, "clip")}`}
+              {allDecisions > 0
+                ? `${pluralize(allDecisions, "clip")} ${allDecisions === 1 ? "needs" : "need"} a decision`
+                : `Loomarr is preparing ${pluralize(allPreparing, "clip")}`}
             </h2>
             {onFileAllAsSuggested && anyGuessed && (
               <Button
@@ -215,12 +228,17 @@ const IncomingPanel = ({
                 onClick={onFileAllAsSuggested}
                 title="File each of these, confirming the era Loomarr proposed for it"
               >
-                File all as suggested
+                {allDecisions > decisions.length ? "File shown as suggested" : "File all as suggested"}
               </Button>
             )}
           </div>
-          {decisions.length > 0 && preparing.length > 0 && (
-            <Caption>{pluralize(preparing.length, "more clip")} still being prepared, further down.</Caption>
+          {allDecisions > 0 && allPreparing > 0 && (
+            <Caption>{pluralize(allPreparing, "more clip")} still being prepared, further down.</Caption>
+          )}
+          {allClips > clips.length && (
+            <Caption>
+              Showing the first {clips.length} of {allClips} incoming clips.
+            </Caption>
           )}
 
           {/* ⚠ ONE live region for the whole belt, carrying only the most recent transition. A
@@ -262,11 +280,16 @@ const IncomingPanel = ({
       {recentlyFiled && recentlyFiled.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="font-medium text-sm">
-            Loomarr filed {pluralize(recentlyFiled.length, "clip")} without asking
+            Loomarr filed {pluralize(allRecentlyFiled, "clip")} without asking
           </h2>
           <Caption>
             These are already playing. Least-confident first — send any of them back if they look wrong.
           </Caption>
+          {allRecentlyFiled > recentlyFiled.length && (
+            <Caption>
+              Showing {recentlyFiled.length} of {allRecentlyFiled} filed clips.
+            </Caption>
+          )}
           <ul className="flex flex-col gap-2">
             {recentlyFiled.map((clip) => (
               <li
@@ -300,16 +323,28 @@ const IncomingPanel = ({
       {/* The audit half of REFUSAL (§10 V51b) — sibling of the section above. Both answer "what
           did Loomarr decide without me", from opposite ends. */}
       {rejected && rejected.length > 0 && (
-        <RejectedSection
-          rows={rejected}
-          {...(onRestore ? { onRestore } : {})}
-          {...(busyPath ? { busyHash: busyPath } : {})}
-        />
+        <div className="flex flex-col gap-2">
+          <RejectedSection
+            rows={rejected}
+            {...(onRestore ? { onRestore } : {})}
+            {...(busyPath ? { busyHash: busyPath } : {})}
+          />
+          {allRejected > rejected.length && (
+            <Caption>
+              Showing the newest {rejected.length} of {allRejected} rejected clips.
+            </Caption>
+          )}
+        </div>
       )}
 
       {reels.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-medium text-sm">{pluralize(reels.length, "compilation")} to review</h2>
+          <h2 className="font-medium text-sm">{pluralize(allReels, "compilation")} to review</h2>
+          {allReels > reels.length && (
+            <Caption>
+              Showing the oldest {reels.length} of {allReels} compilations.
+            </Caption>
+          )}
           <ul className="flex flex-col gap-2">
             {reels.map((reel) => (
               <li

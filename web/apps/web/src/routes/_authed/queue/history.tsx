@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ApprovalHistory } from "@/queue";
+import { ApprovalHistory } from "@/queue/approval-history";
 
 // History — a record of other people's decisions is not a member's to read (§11), so the
 // layout only offers this tab's link to an admin. As before the split, `ApprovalHistory`'s own

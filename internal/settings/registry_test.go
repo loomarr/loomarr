@@ -130,19 +130,155 @@ func TestRegistry_Invariants(t *testing.T) {
 	}
 }
 
-// The AI provider keys are the conditional-field showcase (config-design §5): url + key
-// are hidden for Ollama (local, no key), shown for a hosted OpenAI-compatible service.
+// The hosted key is conditional, while the endpoint remains visible for both providers:
+// non-default/remote Ollama hosts must be configurable too.
 func TestRegistry_AIConditionalFields(t *testing.T) {
 	reg := NewRegistry()
-	for _, key := range []string{"llm.url", "llm.api_key"} {
-		s, ok := reg.Get(key)
+	url, ok := reg.Get("llm.url")
+	if !ok {
+		t.Fatal("llm.url not declared")
+	}
+	if len(url.ShowWhen) != 0 {
+		t.Errorf("llm.url must be visible for Ollama and hosted providers, got %v", url.ShowWhen)
+	}
+	key, ok := reg.Get("llm.api_key")
+	if !ok {
+		t.Fatal("llm.api_key not declared")
+	}
+	allowed := key.ShowWhen["llm.provider"]
+	if len(allowed) != 1 || allowed[0] != "openai" {
+		t.Errorf("llm.api_key should ShowWhen llm.provider=openai, got %v", key.ShowWhen)
+	}
+}
+
+func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
+	r := NewRegistry()
+	for _, s := range r.All() {
+		if s.Group != GroupFiller {
+			continue
+		}
+		if s.Label == "" {
+			t.Errorf("%s: filler workflow controls need a human label", s.Key)
+		}
+	}
+
+	for _, key := range []string{"filler.dir", "filler.watch_dir", "ingest.ytdlp_path", "ingest.ffmpeg_path", "ingest.whisper_path", "ingest.whisper_model", "filler.language_model"} {
+		s, ok := r.Get(key)
 		if !ok {
 			t.Fatalf("%s not declared", key)
 		}
-		allowed := s.ShowWhen["llm.provider"]
-		if len(allowed) != 1 || allowed[0] != "openai" {
-			t.Errorf("%s should ShowWhen llm.provider=openai, got %v", key, s.ShowWhen)
+		if s.Presentation != PresentationPath {
+			t.Errorf("%s presentation = %q, want path", key, s.Presentation)
 		}
+	}
+
+	for child, controller := range map[string]string{
+		"filler.autofile.min_confidence":     "filler.autofile.enabled",
+		"filler.autofile.normalize_loudness": "filler.autofile.enabled",
+		"filler.autosplit.min_confidence":    "filler.autosplit.enabled",
+	} {
+		s, ok := r.Get(child)
+		if !ok {
+			t.Fatalf("%s not declared", child)
+		}
+		allowed := s.ShowWhen[controller]
+		if len(allowed) != 1 || allowed[0] != "true" {
+			t.Errorf("%s should ShowWhen %s=true, got %v", child, controller, s.ShowWhen)
+		}
+	}
+}
+
+func TestRegistry_FillerBreakBounds(t *testing.T) {
+	r := NewRegistry()
+	for key, invalid := range map[string]string{
+		"filler.breaks_per_hour": "-1",
+		"filler.break_duration":  "29s",
+		"filler.pod_max":         "0",
+	} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if _, err := s.parse(invalid); err == nil {
+			t.Errorf("%s accepted invalid value %s", key, invalid)
+		}
+	}
+
+	duration, _ := r.Get("filler.break_duration")
+	if got, err := duration.parse("30s"); err != nil || got != 30*time.Second {
+		t.Errorf("30s minimum should be accepted: got %#v, err %v", got, err)
+	}
+
+	breaks, _ := r.Get("filler.breaks_per_hour")
+	if got, err := breaks.parse("0"); err != nil || got != 0 {
+		t.Errorf("zero breaks should disable the inherited default: got %#v, err %v", got, err)
+	}
+}
+
+func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{"guide.timezone", "guide.retention_hours"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Advanced {
+			t.Errorf("%s should be visible without opening Advanced", key)
+		}
+		if s.Label == "" {
+			t.Errorf("%s needs a human label", key)
+		}
+	}
+}
+
+func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{"playout.backend", "playout.quality_tier", "playout.audio_language", "playout.max_channels"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Advanced {
+			t.Errorf("%s should be visible without opening Advanced", key)
+		}
+	}
+
+	for _, key := range []string{"playout.encoder", "playout.ffmpeg_path", "playout.hls_dir", "playout.prepared_dir", "playout.prepared_budget_gb"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if !s.Advanced {
+			t.Errorf("%s should stay behind Advanced", key)
+		}
+	}
+}
+
+func TestRegistry_ConnectionAndSecurityOverridesStayAdvanced(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{
+		"sonarr.quality_profile",
+		"sonarr.root_folder",
+		"radarr.quality_profile",
+		"radarr.root_folder",
+		"tunarr.transcode_config_id",
+		"cookie.secure",
+	} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if !s.Advanced {
+			t.Errorf("%s should stay behind Advanced", key)
+		}
+	}
+
+	session, ok := r.Get("session.ttl")
+	if !ok {
+		t.Fatal("session.ttl not declared")
+	}
+	if session.Advanced {
+		t.Error("session.ttl should remain an ordinary sign-in preference")
 	}
 }
 
@@ -163,13 +299,10 @@ func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
 func TestRegistry_MovedDefaults(t *testing.T) {
 	r := NewRegistry()
 	cases := map[string]string{
-		"request.ttl":      "48h",
-		"session.ttl":      "720h",
-		"reconcile.every":  "5m",
-		"job.workers":      "2",
-		"season.precision": "series",
-		"llm.provider":     "ollama",
-		"sched.ordering":   "syndication",
+		"request.ttl":  "48h",
+		"session.ttl":  "720h",
+		"job.workers":  "2",
+		"llm.provider": "ollama",
 	}
 	for key, want := range cases {
 		s, ok := r.Get(key)

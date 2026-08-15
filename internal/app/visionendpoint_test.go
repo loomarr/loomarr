@@ -48,6 +48,22 @@ func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
 	}
 }
 
+func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) {
+	v := visionEndpoint(visionSet(t, map[string]string{
+		"llm.provider":           "openai",
+		"llm.hosted_provider":    "openrouter",
+		"llm.url":                "https://openrouter.ai/api/v1",
+		"llm.model":              "openai/gpt-4o-mini",
+		"llm.api_key.openrouter": "provider-secret",
+	}))
+	if v.key != "provider-secret" {
+		t.Errorf("key = %q, want the selected provider's namespaced key", v.key)
+	}
+	if v.provider != "openai" {
+		t.Errorf("wire provider = %q, want openai-compatible", v.provider)
+	}
+}
+
 // ⚠ THE SECURITY PROPERTY. Naming a vision provider must not send the operator's hosted key to
 // the host they just named — here, localhost. Inheriting it would be a credential leak to any
 // address an operator can type.

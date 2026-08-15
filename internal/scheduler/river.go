@@ -3,8 +3,10 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -12,6 +14,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 	"github.com/riverqueue/river/riverdriver/riversqlite"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
 	"github.com/robfig/cron/v3"
 
 	"github.com/mantonx/loomarr/internal/store"
@@ -39,10 +42,29 @@ var cronParser = cron.NewParser(
 // jobArgs is the River job payload. One kind per registered job name, so River's own history
 // is readable ("kind: library-scan") rather than a single opaque "run" kind.
 type jobArgs struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Manual bool   `json:"manual,omitempty"`
 }
 
-func (a jobArgs) Kind() string { return "loomarr_job" }
+const legacyJobKind = "loomarr_job"
+
+// Kind gives each named task its own River kind, making one task's history directly queryable
+// without scanning executions from every other task. The empty-name kind remains registered so
+// jobs queued by an older Loomarr build can drain after an upgrade.
+func (a jobArgs) Kind() string {
+	if a.Name == "" {
+		return legacyJobKind
+	}
+	return legacyJobKind + ":" + a.Name
+}
+
+type jobExecutionOutput struct {
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	DurationMs int64     `json:"durationMs"`
+	Result     string    `json:"result"`
+	Error      string    `json:"error,omitempty"`
+}
 
 // riverWorker executes one registered job by name and records the outcome in `scheduled_jobs`,
 // preserving the exact contract the Tasks page reads: last run, last result, last error.
@@ -89,10 +111,16 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if j.Disabled() {
 		return nil
 	}
-	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused {
+	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
 		return nil
 	}
-	w.s.execute(ctx, j)
+	out := w.s.execute(ctx, j)
+	// River owns the durable execution rows. Recording Loomarr's outcome here lets a failed
+	// task remain a completed queue item (the next cron tick is its retry policy) while still
+	// preserving the operator-visible failure in that execution's history.
+	if err := river.RecordOutput(ctx, out); err != nil {
+		w.s.log.Warn("scheduler: record River job output", "job", j.Name, "err", err)
+	}
 	return nil
 }
 
@@ -148,7 +176,12 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 	}
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &riverWorker{s: s})
+	worker := &riverWorker{s: s}
+	// Keep the old shared kind registered only to drain rows queued before named kinds shipped.
+	river.AddWorker(workers, worker)
+	for _, name := range s.order {
+		river.AddWorkerArgs(workers, jobArgs{Name: name}, worker)
+	}
 
 	periodic, err := s.periodicJobs()
 	if err != nil {
@@ -183,10 +216,35 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: river client: %w", err)
 	}
+	completed, cancelCompleted := client.Subscribe(river.EventKindJobCompleted)
 	if err := client.Start(ctx); err != nil {
+		cancelCompleted()
 		return nil, fmt.Errorf("scheduler: river start: %w", err)
 	}
 	s.river = client
+	// Notify only AFTER River has finalized the row and merged RecordOutput. Emitting from
+	// execute() is too early: the frontend would refetch history while the row was still
+	// running, miss the just-finished execution, and receive no later signal to try again.
+	go func() {
+		defer cancelCompleted()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-completed:
+				if !ok {
+					return
+				}
+				if _, ok := executionFromRiverRow(event.Job); !ok {
+					continue // paused/disabled/legacy rows did not execute work
+				}
+				var args jobArgs
+				if err := json.Unmarshal(event.Job.EncodedArgs, &args); err == nil && args.Name != "" && s.notifier != nil {
+					s.notifier.JobChanged(args.Name)
+				}
+			}
+		}
+	}()
 
 	// ⚠ **Stop on cancellation, and BLOCK until it finishes.** River's shutdown issues queries,
 	// so it must complete while the pool is still open — and the pool is closed by a `defer` in
@@ -244,7 +302,7 @@ func queueFor(j Job) string {
 // ⚠ **This is the companion the 30-minute ceiling had to arrive with.** `Job.Timeout` fixed jobs
 // being SIGKILLed at 60s, and by doing so let one job hold the single SQLite worker for half an
 // hour. Measured 2026-08-12: a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other
-// job was starved for its whole duration — `channel-sweep`, `images-fetch` and `seerr-queue-poll`
+// job was starved for its whole duration — channel maintenance, `images-fetch` and `seerr-queue-poll`
 // all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered
 // `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage
 // for everything that shares it.
@@ -275,6 +333,62 @@ func maxWorkersFor(st store.Store) int {
 	return 1
 }
 
+const liveCronPollInterval = 15 * time.Second
+
+// liveCronGate gives River a short, fixed wake-up while deciding from the current cron whether
+// that wake-up represents a real scheduled tick. River otherwise computes a cron's next time
+// once and sleeps until it, so changing a daily schedule to every minute would still wait until
+// the old daily target. The gate keeps settings hot without rebuilding leader-only River state.
+type liveCronGate struct {
+	scheduler *Scheduler
+	job       Job
+	mu        sync.Mutex
+	lastTick  time.Time
+}
+
+func (*liveCronGate) Next(current time.Time) time.Time { return current.Add(liveCronPollInterval) }
+
+func (g *liveCronGate) due(now time.Time) bool {
+	parsed, err := cronParser.Parse(g.scheduler.effectiveCron(g.job))
+	if err != nil {
+		g.scheduler.log.Error("scheduler: live cron parse", "job", g.job.Name, "err", err)
+		return false
+	}
+	// Two poll widths tolerate an enqueuer waking slightly late. lastTick prevents the overlap
+	// from inserting the same cron occurrence twice even when the preceding job finished fast.
+	tick := parsed.Next(now.Add(-2 * liveCronPollInterval))
+	if tick.After(now) {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !tick.After(g.lastTick) {
+		return false
+	}
+	g.lastTick = tick
+	return true
+}
+
+// periodicInsertOpts coalesces scheduled ticks for one named job while preserving explicit
+// Run-now requests. River's periodic constructor uses these uniqueness options; TriggerRiver
+// deliberately does not. Completed/discarded rows are excluded, so the next real tick is free
+// to insert as soon as the previous run is finished.
+func periodicInsertOpts(j Job) *river.InsertOpts {
+	return &river.InsertOpts{
+		Queue: queueFor(j),
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
 // periodicJobs turns the registry into River periodic jobs, one per enabled job.
 //
 // A DISABLED job gets no periodic entry at all: it stays listed on the Tasks page carrying its
@@ -286,7 +400,7 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 		if j.Disabled() {
 			continue
 		}
-		sched, err := cronParser.Parse(s.effectiveCron(j))
+		_, err := cronParser.Parse(s.effectiveCron(j))
 		if err != nil {
 			// effectiveCron already falls back to the code default, so reaching here means the
 			// DEFAULT is invalid — a programming error worth failing the boot for, not a bad
@@ -294,15 +408,16 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 			return nil, fmt.Errorf("scheduler: job %q has an invalid default cron %q: %w", j.Name, j.DefaultCron, err)
 		}
 		name := name // captured by the constructor below
-		// ⚠ Resolved HERE, not inside the closure: the constructor is called on every tick, and
-		// `j` is the loop variable.
-		queue := queueFor(j)
+		gate := &liveCronGate{scheduler: s, job: j}
 		out = append(out, river.NewPeriodicJob(
-			sched,
+			gate,
 			// ⚠ Routed onto the job's own queue, so a media job cannot occupy the slot the cheap
 			// sweeps share. Derived from the Job, never hand-set — see `queueFor`.
 			func() (river.JobArgs, *river.InsertOpts) {
-				return jobArgs{Name: name}, &river.InsertOpts{Queue: queue}
+				if !gate.due(s.now()) {
+					return nil, nil
+				}
+				return jobArgs{Name: name}, periodicInsertOpts(j)
 			},
 			// ⚠ RunOnStart is deliberately OFF. It fires on every leadership election, so a
 			// restart loop would re-run every job each time — and these include a full library
@@ -337,6 +452,80 @@ func (s *Scheduler) TriggerRiver(ctx context.Context, name string) error {
 	//
 	// An unregistered name resolves to the zero Job and therefore `default`; it has no worker
 	// either way, so the queue it lands on is immaterial.
-	_, err := s.river.Insert(ctx, jobArgs{Name: name}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
+	_, err := s.river.Insert(ctx, jobArgs{Name: name, Manual: true}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
 	return err
+}
+
+const (
+	jobHistoryWindow      = 24 * time.Hour
+	jobHistoryRecentLimit = 5
+	jobHistoryScanLimit   = 10_000
+)
+
+// History returns the last 24 hours of completed executions for one registered task. It is a
+// separate, lazy read from List because River rows are per execution: the collapsed Tasks page
+// should not query or aggregate them for all jobs.
+func (s *Scheduler) History(ctx context.Context, name string) (JobHistory, error) {
+	if _, ok := s.jobs[name]; !ok {
+		return JobHistory{}, ErrUnknownJob
+	}
+	if s.river == nil {
+		return JobHistory{}, fmt.Errorf("scheduler: River not started")
+	}
+	rows, err := s.river.JobList(ctx, river.NewJobListParams().
+		Kinds(jobArgs{Name: name}.Kind()).
+		States(rivertype.JobStateCompleted).
+		OrderBy(river.JobListOrderByTime, river.SortOrderDesc).
+		First(jobHistoryScanLimit))
+	if err != nil {
+		return JobHistory{}, fmt.Errorf("scheduler: list history for %s: %w", name, err)
+	}
+	return summarizeJobHistory(s.now(), rows.Jobs, len(rows.Jobs) == jobHistoryScanLimit), nil
+}
+
+func summarizeJobHistory(now time.Time, rows []*rivertype.JobRow, truncated bool) JobHistory {
+	history := JobHistory{WindowStart: now.Add(-jobHistoryWindow), Truncated: truncated}
+	var totalDuration int64
+	for _, row := range rows {
+		execution, ok := executionFromRiverRow(row)
+		if !ok {
+			continue // pre-feature rows have no trustworthy Loomarr outcome
+		}
+		if execution.FinishedAt.Before(history.WindowStart) {
+			continue
+		}
+		history.RunCount++
+		totalDuration += execution.DurationMs
+		if execution.Result == "error" {
+			history.FailureCount++
+		}
+		if len(history.Recent) < jobHistoryRecentLimit {
+			history.Recent = append(history.Recent, execution)
+		}
+	}
+	if history.RunCount > 0 {
+		history.AverageDurationMs = totalDuration / int64(history.RunCount)
+	}
+	return history
+}
+
+func executionFromRiverRow(row *rivertype.JobRow) (JobExecution, bool) {
+	var metadata struct {
+		Output *jobExecutionOutput `json:"output"`
+	}
+	if err := json.Unmarshal(row.Metadata, &metadata); err != nil || metadata.Output == nil {
+		return JobExecution{}, false
+	}
+	out := metadata.Output
+	if (out.Result != "ok" && out.Result != "error") || out.StartedAt.IsZero() || out.FinishedAt.IsZero() {
+		return JobExecution{}, false
+	}
+	var args jobArgs
+	if err := json.Unmarshal(row.EncodedArgs, &args); err != nil {
+		return JobExecution{}, false
+	}
+	return JobExecution{
+		StartedAt: out.StartedAt, FinishedAt: out.FinishedAt, DurationMs: out.DurationMs,
+		Result: out.Result, Error: out.Error, Manual: args.Manual,
+	}, true
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -58,10 +59,11 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images ImageService
-	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
-	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	images   ImageService
+	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -103,10 +105,12 @@ type Server struct {
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
-	// binder materializes an approved proposal onto a channel (§7) — the ONE
-	// implementation shared with the suggest worker's auto-approve path (§8/§11).
-	// Implemented by *binder.Binder; declared here as ChannelBinder so the api
-	// package doesn't import internal/binder's concrete type.
+	// approver is the one proposal -> titles + channel gate shared with every
+	// automatic approval path (§7/§8). The API owns authorization and presentation;
+	// the coordinator owns the indivisible domain transition.
+	approver ProposalApprover
+	// binder serves the explicit channel creation helpers. Proposal approval does
+	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
 	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
@@ -133,9 +137,10 @@ type Server struct {
 	liveConfigBoolOn func(key string) bool
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
-	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
-	// "not running" rather than 404, so a half-configured install gets an explanation.
-	playoutSessions PlayoutSessions
+	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
+	playoutObserver PlayoutObserver
+	// preparedObserver supplies the readiness planner's immutable operational snapshot.
+	preparedObserver PreparedObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -147,10 +152,8 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
-	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
-	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
-	// without internal playout wired explains itself rather than 404ing.
-	playoutHLS PlayoutHLS
+	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
@@ -173,10 +176,9 @@ type Server struct {
 	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
 	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
 	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
-	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
-	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
-	hwEncodeGate *hwEncodeGate
+	// encodePool is the one host-wide hardware-encode admission boundary shared with preparation.
+	// Nil preserves the pre-gate behavior for tests and installs without a capability probe.
+	encodePool *media.EncodePool
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -250,26 +252,28 @@ type SettingEnumOption struct {
 }
 
 type SettingEntry struct {
-	Key         string              `json:"key"`
-	Group       string              `json:"group"`
-	Kind        string              `json:"kind"`
-	Value       string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
-	Set         bool                `json:"set" doc:"For secrets: whether a value is stored."`
-	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
-	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
-	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
-	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
-	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
-	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
-	Advanced    bool                `json:"advanced"`
-	Secret      bool                `json:"secret"`
-	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
-	EnumOptions []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
-	ShowWhen    map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
-	RequiredFor string              `json:"requiredFor,omitempty"`
-	Doc         string              `json:"doc"`
-	UpdatedBy   string              `json:"updatedBy,omitempty"`
-	UpdatedAt   string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+	Key          string              `json:"key"`
+	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
+	Group        string              `json:"group"`
+	Kind         string              `json:"kind"`
+	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance   string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution      bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable  bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride  bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar       string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
+	Advanced     bool                `json:"advanced"`
+	Secret       bool                `json:"secret"`
+	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
+	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
+	RequiredFor  string              `json:"requiredFor,omitempty"`
+	Doc          string              `json:"doc"`
+	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
 // SettingResult is one key's PATCH outcome (config-design §8).
@@ -317,7 +321,9 @@ type FillerService interface {
 	//
 	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
 	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
-	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
+	// When query is non-empty, results are filtered within the named collection. An empty query
+	// lists the collection, preserving the starter-pack browse path.
+	DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]DiscoveredClip, int, error)
 	// EnrichDiscovered fills in duration + quality for specific results, ON DEMAND.
 	//
 	// ⚠ Separate from Discover because it is a DIFFERENT cost, measured: a listing is one
@@ -621,17 +627,17 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
-// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
-// first approval, patch it (preserving operator-owned fields) on re-approval or
-// refine. Implemented by *binder.Binder — declared here (not imported concretely)
-// so the api package doesn't couple to the binder package's internals; it only
-// needs these methods.
-//
-// LineupFromIntent/PolicyFromIntent are also used directly by createChannel (§7 POST
-// /v1/channels with an intentRef), sharing the same approved-proposal resolution
-// BindApprovedChannel uses internally — one gate, not two.
+// ProposalApprover is the complete approval gate. Its implementation plans the
+// channel and commits proposal, titles, and channel atomically before post-commit
+// runtime work; a handler cannot reproduce or reorder that choreography.
+type ProposalApprover interface {
+	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
+}
+
+// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
+// shares channel-number occupancy with manually typed channel numbers. Approval
+// uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
@@ -731,11 +737,13 @@ type Options struct {
 	// instance with no store behind it.
 	Images    ImageService
 	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown  <-chan struct{}  // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
-	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
+	// (§18, V11). Production wires it on both backends so a reconnect can observe the
+	// successful cutover; nil is reserved for embeddings without migration status.
 	Database DatabaseService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
@@ -749,14 +757,16 @@ type Options struct {
 	Restart RestartService
 	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
 	BootstrapDrift func() []string
-	Jobs           JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings       SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
-	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
-	// playout.Manager. Nil ⇒ the routes mount but report "not running".
-	PlayoutSessions PlayoutSessions
+	Jobs           JobService       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings       SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Guide          GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision      Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver       ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
+	Binder         ChannelBinder    // explicit channel intent/number helpers; not the approval gate
+	// PlayoutObserver supplies operational snapshots and program progress.
+	PlayoutObserver PlayoutObserver
+	// PreparedObserver supplies prepared readiness and retention status without rescanning.
+	PreparedObserver PreparedObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
@@ -764,9 +774,8 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
-	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
-	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
-	PlayoutHLS PlayoutHLS
+	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
@@ -791,10 +800,9 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
-	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
-	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
-	HWEncodeSlots func(ctx context.Context) int
+	// EncodePool is the one host-wide hardware-encode admission boundary. Live playout uses
+	// foreground leases; the readiness planner uses its preemptible background lease.
+	EncodePool *media.EncodePool
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

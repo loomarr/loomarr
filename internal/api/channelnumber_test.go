@@ -117,11 +117,12 @@ func TestCreateChannel_UnreachableTunarrFallsBackToStoreOnly(t *testing.T) {
 // Renumbering onto a Tunarr-held number is refused the same way creating on one is.
 func TestUpdateChannel_RejectsRenumberOntoANumberOnlyTunarrHolds(t *testing.T) {
 	nums := &fakeNumberSource{taken: map[int]bool{7: true}}
-	srv, _ := newServerWithNumbers(t, nums)
+	srv, st := newServerWithNumbers(t, nums)
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":3,"strategy":"sequential"}`)
 
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"number":7}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"number":7}`))
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("renumber onto a Tunarr-held number → %d, want 409", resp.StatusCode)
 	}

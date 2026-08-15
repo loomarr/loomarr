@@ -1,4 +1,4 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { SETUP_COMPLETED_KEY } from "../setup-completed";

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -31,6 +32,25 @@ type OpenAI struct {
 	apiKey  string
 	model   string
 	http    *http.Client
+}
+
+// decodeOpenAIJSON preserves ordinary JSON syntax errors while turning the common "wrong API
+// base returned an HTML home page" failure into a setting-level diagnosis. Check after decoding:
+// several compatible endpoints and test doubles omit or mislabel Content-Type despite returning
+// valid JSON, and compatibility matters more than policing headers that the payload disproves.
+func decodeOpenAIJSON(resp *http.Response, out any, operation string) error {
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+		mediaType, _, parseErr := mime.ParseMediaType(contentType)
+		if parseErr != nil || mediaType == "" {
+			mediaType = "an unknown content type"
+		}
+		if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
+			return fmt.Errorf("%s: expected JSON, got %s; check llm.url points at the provider API base", operation, mediaType)
+		}
+		return fmt.Errorf("decode %s: %w", operation, err)
+	}
+	return nil
 }
 
 // NewOpenAI builds the provider. baseURL is the OpenAI-compatible base
@@ -145,8 +165,8 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		return Response{}, fmt.Errorf("openai chat: status %d", resp.StatusCode)
 	}
 	var out openaiChatResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return Response{}, fmt.Errorf("decode openai response: %w", err)
+	if err := decodeOpenAIJSON(resp, &out, "openai response"); err != nil {
+		return Response{}, err
 	}
 	if out.Error != nil {
 		return Response{}, fmt.Errorf("openai chat: %s", out.Error.Message)
@@ -278,8 +298,8 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	}
 
 	var out openaiChatResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return Response{}, fmt.Errorf("decode vision response: %w", err)
+	if err := decodeOpenAIJSON(resp, &out, "vision response"); err != nil {
+		return Response{}, err
 	}
 	if out.Error != nil {
 		return Response{}, fmt.Errorf("vision chat: %s", out.Error.Message)

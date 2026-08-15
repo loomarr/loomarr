@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
@@ -76,6 +77,15 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	c.Source = "archive"
 	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()
 	return c
+}
+
+func cachedClipFingerprint(ctx context.Context, s Store, clipHash, algorithm string) ([]uint64, bool, error) {
+	all, err := s.ListClipFingerprints(ctx, algorithm)
+	if err != nil {
+		return nil, false, err
+	}
+	frames, found := all[clipHash]
+	return frames, found, nil
 }
 
 func ids2(clips []Clip) []string {
@@ -529,6 +539,172 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// An internal transform changes the content hash without changing what the clip means to the
+// operator. Every durable reference must follow in one transaction; otherwise a rescan produces
+// a fresh hash-titled row while tags, lineage, pipeline progress and channel overrides stay on an
+// orphan identity.
+func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+
+	old := sampleClip("old-content", "McDonald's 1993", filler.Commercial, 1993, filler.Kids, "fast_food")
+	old.ParentHash = "parent-reel"
+	old.Held = true
+	old.Confidence = 91
+	old.Transcript = "two all beef patties"
+	if err := s.UpsertClip(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, old.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	child := sampleClip("child", "Child", filler.Commercial, 1993, filler.Kids, "toys")
+	child.ParentHash = old.Hash
+	if err := s.UpsertClip(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+
+	taxa, err := s.ListTaxa(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipTags(ctx, old.Hash, []string{"cereal"}, taxonomy.New(taxa), now); err != nil {
+		t.Fatal(err)
+	}
+	pipeline := filler.ClipPipeline{
+		ClipHash: old.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
+		t.Fatal(err)
+	}
+	proposal := filler.SplitProposal{ID: "proposal", ClipHash: old.Hash, CreatedAt: now}
+	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+	channel := sampleChannel("clip-ref", 711, now)
+	channel.Policy.Filler = &schedule.FillerSelection{
+		Pinned: []string{"keep", old.Hash}, Excluded: []string{old.Hash, "other"},
+	}
+	channel, err = s.SaveChannel(ctx, channel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := old
+	replacement.Hash = "new-content"
+	replacement.Path = "ne/wc/new-content.mp4"
+	replacement.DurationMs = 30_033
+	replacement.Quality = "480p"
+	replacement.UpdatedAt = now.Add(time.Minute)
+	if err := s.ReplaceClipIdentity(ctx, old.Hash, replacement); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.GetClip(ctx, old.Hash); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old identity still resolves: %v", err)
+	}
+	got, err := s.GetClip(ctx, replacement.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != old.Name || got.Source != old.Source || got.ParentHash != old.ParentHash ||
+		got.Transcript != old.Transcript || !got.Held || got.Confidence != old.Confidence {
+		t.Errorf("metadata did not follow identity replacement: %+v", got)
+	}
+	if got.Path != replacement.Path || got.DurationMs != replacement.DurationMs || got.Quality != replacement.Quality {
+		t.Errorf("transformed facts were not installed: %+v", got)
+	}
+	if len(got.Tags) == 0 {
+		t.Error("taxonomy tags stayed behind on the old identity")
+	}
+	if row, found, err := s.GetClipPipeline(ctx, replacement.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+		t.Errorf("pipeline did not follow replacement: %+v, %v, %v", row, found, err)
+	}
+	if _, found, err := s.GetClipPipeline(ctx, old.Hash); err != nil || found {
+		t.Errorf("old pipeline row survived: found=%v err=%v", found, err)
+	}
+	proposals, err := s.ListSplitProposals(ctx)
+	if err != nil || len(proposals) != 1 || proposals[0].ClipHash != replacement.Hash {
+		t.Errorf("split proposal did not follow replacement: %+v (%v)", proposals, err)
+	}
+	gotChild, err := s.GetClip(ctx, child.Hash)
+	if err != nil || gotChild.ParentHash != replacement.Hash {
+		t.Errorf("child lineage did not follow replacement: %+v (%v)", gotChild, err)
+	}
+	gotChannel, err := s.GetChannel(ctx, channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChannel.Policy.Filler == nil || gotChannel.Policy.Filler.Pinned[1] != replacement.Hash ||
+		gotChannel.Policy.Filler.Excluded[0] != replacement.Hash {
+		t.Errorf("channel overrides did not follow replacement: %+v", gotChannel.Policy.Filler)
+	}
+	if gotChannel.Revision != channel.Revision+1 {
+		t.Errorf("channel policy rekey revision = %d, want %d", gotChannel.Revision, channel.Revision+1)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, old.Hash, "dhash-v1"); err != nil || found {
+		t.Errorf("old-byte fingerprint survived identity replacement: found=%v err=%v", found, err)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, replacement.Hash, "dhash-v1"); err != nil || found {
+		t.Errorf("old-byte fingerprint was re-keyed onto replacement bytes: found=%v err=%v", found, err)
+	}
+}
+
+// testClipFingerprintCache pins the cache's two correctness properties on both backends: only an
+// exact content+algorithm key hits, and catalog pruning removes sibling-table orphans.
+func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	one := sampleClip("fingerprint-one", "One", filler.Commercial, 1993, filler.General, "")
+	two := sampleClip("fingerprint-two", "Two", filler.Commercial, 1994, filler.General, "")
+	if err := s.UpsertClip(ctx, one); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClip(ctx, two); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", nil); err == nil {
+		t.Fatal("empty fingerprint was persisted")
+	}
+	want := []uint64{0, 1, ^uint64(0)}
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", want); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1")
+	if err != nil || !found || len(got) != len(want) || got[2] != want[2] {
+		t.Fatalf("fingerprint round-trip = (%v, %v, %v), want %v", got, found, err, want)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v2"); err != nil || found {
+		t.Errorf("different algorithm hit the cache: found=%v err=%v", found, err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", []uint64{9}); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1")
+	if err != nil || !found || len(got) != 1 || got[0] != 9 {
+		t.Errorf("idempotent upsert = (%v, %v, %v), want [9]", got, found, err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, two.Hash, "dhash-v1", []uint64{7}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Keep only clip two. The cache has no FK by design, so DeleteClipsNotIn owns this cleanup.
+	if _, err := s.DeleteClipsNotIn(ctx, []string{two.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1"); err != nil || found {
+		t.Errorf("pruned clip left an orphan fingerprint: found=%v err=%v", found, err)
+	}
+	if got, found, err := cachedClipFingerprint(ctx, s, two.Hash, "dhash-v1"); err != nil || !found || len(got) != 1 || got[0] != 7 {
+		t.Errorf("kept clip lost its fingerprint: got=%v found=%v err=%v", got, found, err)
+	}
+}
+
 // testCompositeLineage pins the V45 composite/lineage invariants (§10): a composite is excluded from
 // the default listing (the pod-assembly path), its segments link back via parent_hash, and neither
 // is_composite nor parent_hash is clobbered by a re-sync.
@@ -610,6 +786,45 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	got, _ = s.GetClip(ctx, seg1.Hash)
 	if got.ParentHash != comp.Hash {
 		t.Errorf("parent_hash = %q after re-sync, want it PRESERVED — UpsertClip must omit it from DO UPDATE", got.ParentHash)
+	}
+
+	// A completed re-split replaces the old generation atomically. seg2 is explicitly pinned and
+	// therefore survives even though the new detector did not reproduce it; seg1 is retired but
+	// remains recoverable as a tombstoned row. A newly accepted hash is restored if an earlier
+	// generation had already tombstoned it.
+	seg3 := sampleClip("seg3", "better-cut.mp4", filler.Commercial, 1996, filler.General, "drinks")
+	seg3.ParentHash = comp.Hash
+	if err := s.UpsertClip(ctx, seg3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{seg3.Path}, now); err != nil {
+		t.Fatal(err)
+	}
+	ch := sampleChannel("pinned-split-child", 809, time.Time{})
+	ch.Policy.Filler = &schedule.FillerSelection{Pinned: []string{seg2.Hash}}
+	if _, err := s.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := s.ReplaceSplitChildren(ctx, comp.Hash, []string{seg3.Hash}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired != 1 {
+		t.Errorf("retired = %d, want only superseded unpinned seg1", retired)
+	}
+	active, err := s.ListClips(ctx, ClipFilter{ParentHash: comp.Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsHash(active, seg1.Hash) || !containsHash(active, seg2.Hash) || !containsHash(active, seg3.Hash) {
+		t.Errorf("active replacement generation = %+v, want pinned seg2 + new seg3", active)
+	}
+	all, err := s.ListClips(ctx, ClipFilter{ParentHash: comp.Hash, IncludeRemoved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsHash(all, seg1.Hash) {
+		t.Error("superseded seg1 row was deleted instead of tombstoned")
 	}
 }
 
@@ -1564,7 +1779,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
-			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4"},
+			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
 		},
 	}
@@ -1581,11 +1796,29 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// Every segment field survives the JSON round-trip — including the V34-specific
 	// suggestion, dedup flag, and unsplittable marker the review renders.
 	s1 := got.Segments[1]
-	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || s1.Era != 0 {
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || s1.Era != 0 || !s1.Looked {
 		t.Errorf("segment suggestion/dedup fields lost: %+v", s1)
 	}
 	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
 		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
+	}
+
+	draft := filler.SplitProposal{
+		ID: "sp_draft", ClipHash: clipHashFor("comps/long.mp4"), CreatedAt: now.Add(time.Minute),
+		Detection: &filler.SplitDetectionProgress{
+			ScannedThroughMs: 600_000,
+			Black:            []filler.Interval{{StartMs: 29_900, EndMs: 30_100}},
+		},
+	}
+	if err := s.UpsertSplitProposal(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+	gotDraft, err := s.GetSplitProposal(ctx, draft.ID)
+	if err != nil || gotDraft.Ready() || gotDraft.Detection.ScannedThroughMs != 600_000 || len(gotDraft.Detection.Black) != 1 {
+		t.Fatalf("detector checkpoint round-trip = (%+v, %v)", gotDraft, err)
+	}
+	if err := s.DeleteSplitProposal(ctx, draft.ID); err != nil {
+		t.Fatal(err)
 	}
 
 	// ⚠ Re-detection REPLACES the pending proposal for the same clip — two competing
@@ -1624,7 +1857,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
 
-	// --- UpdateSplitProposalSegments: grounding accumulates across passes (§10 V54) ---
+	// --- UpdateSplitProposal: grounding and partial output accumulate across passes (§10 V54) ---
 	//
 	// Split-time grounding is a read-modify-write spanning MINUTES of vision calls, so the write
 	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
@@ -1646,7 +1879,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
 		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); err != nil {
+	p3.Segments = grounded
+	p3.Spawned = []string{"new-child"}
+	if err := s.UpdateSplitProposal(ctx, p3); err != nil {
 		t.Fatal(err)
 	}
 	got3, err := s.GetSplitProposal(ctx, "sp_3")
@@ -1662,6 +1897,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if !got3.Segments[1].Looked || got3.Segments[1].Category != "" {
 		t.Errorf("segment 1 = %+v, want Looked with NO category — 'looked and found nothing'", got3.Segments[1])
 	}
+	if len(got3.Spawned) != 1 || got3.Spawned[0] != "new-child" {
+		t.Errorf("partial-confirm output lost in round-trip: %+v", got3.Spawned)
+	}
 	// ⚠ `created_at` must be untouched: ListSplitProposals orders by it, so writing it would let a
 	// reel jump the review queue merely for having been grounded.
 	if !got3.CreatedAt.Equal(p3.CreatedAt) {
@@ -1674,13 +1912,14 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteSplitProposal(ctx, "sp_3"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_3", grounded); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateSplitProposal(ctx, p3); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update after delete = %v, want ErrNotFound", err)
 	}
 	if _, err := s.GetSplitProposal(ctx, "sp_3"); !errors.Is(err, ErrNotFound) {
 		t.Error("a grounding write RESURRECTED a confirmed proposal — the reel would be reviewed twice")
 	}
-	if err := s.UpdateSplitProposalSegments(ctx, "sp_never_existed", grounded); !errors.Is(err, ErrNotFound) {
+	p3.ID = "sp_never_existed"
+	if err := s.UpdateSplitProposal(ctx, p3); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update of an unknown id = %v, want ErrNotFound", err)
 	}
 
@@ -2328,5 +2567,59 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got2.CreatedAt.Equal(arrived) {
 		t.Errorf("created_at = %v with none supplied, want the UpdatedAt fallback (%v)", got2.CreatedAt, arrived)
+	}
+}
+
+// testIncomingConveyorCount keeps the bounded Incoming total on the same readiness rule as the
+// list it describes. A split detection checkpoint is private pipeline state, so its composite
+// remains on the conveyor; only a completed proposal claims that composite into the reels list.
+// This runs unchanged against SQLite and Postgres because a backend-specific JSON predicate here
+// would be an easy source of a count that disagrees on one install type.
+func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	counters, ok := s.(interface {
+		CountIncomingConveyor(context.Context) (int, error)
+	})
+	if !ok {
+		t.Fatal("store does not expose the Incoming conveyor counter")
+	}
+
+	for _, c := range []Clip{
+		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+	} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+			ClipHash: c.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp-draft", ClipHash: "draft-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp-ready", ClipHash: "ready-reel", CreatedAt: time.Now().UTC(),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := counters.CountIncomingConveyor(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
 	}
 }

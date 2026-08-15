@@ -1,6 +1,7 @@
-import { channelsApi } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute } from "@tanstack/react-router";
-import { defaultGuideWindow, GuidePage } from "@/channels";
+import { GuidePage } from "@/channels/guide-page";
+import { defaultGuideWindow } from "@/channels/guide-window";
 
 // The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
 // the app's one origination door. Readable by any authenticated user: the guide is

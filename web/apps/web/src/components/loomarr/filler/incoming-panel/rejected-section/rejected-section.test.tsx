@@ -48,6 +48,20 @@ describe("RejectedSection", () => {
     expect(screen.queryByRole("button", { name: /use it anyway/i })).not.toBeInTheDocument();
   });
 
+  it("explains content-silent and black-stream refusals separately from missing streams", () => {
+    render(
+      <RejectedSection
+        rows={[
+          reject({ hash: "black", reason: "black_content", restorable: false }),
+          reject({ hash: "silent", reason: "silent_content", restorable: false }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("the picture is almost entirely black")).toBeInTheDocument();
+    expect(screen.getByText("the audio track is almost entirely silent")).toBeInTheDocument();
+  });
+
   // A code this build has no copy for comes from a NEWER backend. The raw code tells an operator —
   // and a bug report — something; "Unknown reason" tells nobody anything.
   it("falls back to the server's own code rather than inventing a placeholder", () => {

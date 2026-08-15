@@ -14,6 +14,20 @@ const status = (over: Partial<PlayoutStatus>): PlayoutStatus =>
   ({
     running: true,
     gpu: { name: "NVIDIA GeForce RTX 3080 Ti", vramGiB: 12, contended: false },
+    prepared: {
+      available: true,
+      running: false,
+      lastRunAt: "2026-08-14T12:00:00Z",
+      channels: 100,
+      readyChannels: 100,
+      scheduledBindings: 320,
+      readyBindings: 320,
+      missingBindings: 0,
+      queuedPublications: 0,
+      remainingBytes: 180 * 1024 ** 3,
+      budgetBytes: 512 * 1024 ** 3,
+      protectedBytes: 140 * 1024 ** 3,
+    },
     channels: [],
     ...over,
   }) as PlayoutStatus;
@@ -81,7 +95,7 @@ export const Idle: Story = { args: { status: status({ channels: [] }) } };
 
 // A Tunarr-backed install: Loomarr is not the one streaming, which is not the same as a fault.
 export const TunarrBacked: Story = {
-  args: { status: { running: false, gpu: { vramGiB: 0, contended: false }, channels: [] } as PlayoutStatus },
+  args: { status: status({ running: false, gpu: { vramGiB: 0, contended: false }, channels: [] }) },
 };
 
 // Software-only box: no GPU header, channels still play.

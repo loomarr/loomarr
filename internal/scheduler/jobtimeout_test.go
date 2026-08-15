@@ -24,7 +24,7 @@ import (
 
 func timeoutJob(name string, d time.Duration) Job {
 	return Job{
-		Name: name, Title: name, Description: "test job " + name + ".", DefaultCron: everyMinute,
+		Name: name, Group: GroupSystem, Title: name, Description: "test job " + name + ".", DefaultCron: everyMinute,
 		Timeout: d,
 		Run:     func(context.Context) error { return nil },
 	}
@@ -78,7 +78,7 @@ func TestJobTimeout_CancelsTheWorkThatOverruns(t *testing.T) {
 	// Deliberately tiny: the assertion is about the plumbing, not the number.
 	const tiny = 30 * time.Millisecond
 	j := Job{
-		Name: "overrun", Title: "overrun", Description: "test job overrun.", DefaultCron: everyMinute,
+		Name: "overrun", Group: GroupSystem, Title: "overrun", Description: "test job overrun.", DefaultCron: everyMinute,
 		Timeout: tiny,
 		Run: func(ctx context.Context) error {
 			select {

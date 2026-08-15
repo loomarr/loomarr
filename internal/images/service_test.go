@@ -3,11 +3,17 @@ package images
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/images/rustgen"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeStore is an in-memory Store. Small enough to be obviously correct; the real persistence is
@@ -89,8 +95,22 @@ func newTestService(t *testing.T) (*Service, *fakeStore) {
 		Dir:            t.TempDir(),
 		MaxUploadBytes: func() int64 { return 2 << 20 },
 		PublicBaseURL:  func() string { return "https://loomarr.example.test" },
-	}, fs, func() time.Time { return fixedNow })
+	}, fs, testkit.RustImageRenderer(t), func() time.Time { return fixedNow })
 	return svc, fs
+}
+
+// Two 16x16 lossless frames (red, then blue), generated once with libwebp_anim. Keeping the
+// fixture inline makes this a normal unit test: ffmpeg is not available in every `go test` build,
+// and the behaviour under test is ingesting the bytes it produced, not invoking the renderer.
+func animatedWebPBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := base64.StdEncoding.DecodeString(
+		"UklGRoQAAABXRUJQVlA4WAoAAAACAAAADwAADwAAQU5JTQYAAAD/////AABBTk1GKAAAAAAAAAAAAA8AAA8AAMgAAAJWUDhMDwAAAC8PwAMABxD1j/4HIqL/AQBBTk1GKAAAAAAAAAAAAA8AAA8AAMgAAABWUDhMDwAAAC8PwAMABxDR//4HIqL/AQA=",
+	)
+	if err != nil {
+		t.Fatalf("decode animated WebP fixture: %v", err)
+	}
+	return data
 }
 
 func TestIngestStoresAndDescribes(t *testing.T) {
@@ -125,6 +145,90 @@ func TestIngestStoresAndDescribes(t *testing.T) {
 	}
 	if len(fs.refs) != 1 || fs.refs[0].OwnerID != "ch_1" {
 		t.Errorf("expected one ref for ch_1, got %+v", fs.refs)
+	}
+}
+
+func TestIngestObservesTheQueueAndRealWorkerProcess(t *testing.T) {
+	var queueWaits []time.Duration
+	var inFlight []int
+	var worker []rustgen.Observation
+	svc := New(Config{
+		Dir: t.TempDir(),
+		Observer: Observer{
+			QueueWait: func(wait time.Duration) { queueWaits = append(queueWaits, wait) },
+			InFlight:  func(delta int) { inFlight = append(inFlight, delta) },
+			Worker:    func(observation rustgen.Observation) { worker = append(worker, observation) },
+		},
+	}, newFakeStore(), testkit.RustImageRenderer(t), func() time.Time { return fixedNow })
+	data := pngBytes(t, testImage(64, 36))
+
+	if _, err := svc.Ingest(context.Background(), bytes.NewReader(data), IngestRequest{Role: RoleThumb}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(queueWaits) != 1 || queueWaits[0] < 0 {
+		t.Errorf("queue waits = %v", queueWaits)
+	}
+	if !slices.Equal(inFlight, []int{1, -1}) {
+		t.Errorf("in-flight transitions = %v", inFlight)
+	}
+	if len(worker) != 1 || worker[0].Kind != "inspect" || worker[0].Result != "success" ||
+		worker[0].InputBytes != int64(len(data)) || worker[0].Duration <= 0 || worker[0].PeakRSSBytes <= 0 {
+		t.Errorf("worker observations = %+v", worker)
+	}
+}
+
+// Regression: clip hover loops reached Ingest as valid animated WebP bytes and were copied to the
+// image store intact, but the row said animated=false. Rendition generation then decoded frame 0
+// and silently replaced the loop with a still image on every Filler-card hover.
+func TestIngestDetectsAnimatedWebP(t *testing.T) {
+	svc, _ := newTestService(t)
+	rec, err := svc.Ingest(context.Background(), bytes.NewReader(animatedWebPBytes(t)),
+		IngestRequest{Role: RoleThumb, Origin: OriginExtracted})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if !rec.Animated {
+		t.Error("animated WebP was recorded as static; the filler hover loop will be flattened")
+	}
+	if rec.FrameCount != 2 || rec.DurationMS != 400 || rec.LoopCount == nil {
+		t.Errorf("animation metadata = frames %d duration %d loop %v", rec.FrameCount, rec.DurationMS, rec.LoopCount)
+	}
+}
+
+// Animated inputs get responsive WebP renditions without losing their timeline. The worker may
+// re-encode even when the source is already WebP; content equality is not the contract, motion is.
+func TestAnimatedWebPRenditionPreservesOriginalFrames(t *testing.T) {
+	ctx := context.Background()
+	svc, fs := newTestService(t)
+	want := animatedWebPBytes(t)
+	rec, err := svc.Ingest(ctx, bytes.NewReader(want),
+		IngestRequest{Role: RoleThumb, Origin: OriginExtracted})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	// Isolate the rendition half of the regression from the detection test above.
+	rec.Animated = true
+	if err := fs.PutImage(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	rend, err := svc.Rendition(ctx, rec.Hash, FormatWebP, 300)
+	if err != nil {
+		t.Fatalf("Rendition: %v", err)
+	}
+	got, err := os.ReadFile(rend.Path)
+	if err != nil {
+		t.Fatalf("read rendition: %v", err)
+	}
+	if bytes.Equal(got, want) {
+		t.Error("responsive animated rendition reused the original bytes instead of the requested plan")
+	}
+	if !isAnimatedWebP(got, "image/webp") {
+		t.Error("responsive WebP flattened the animation timeline")
+	}
+	ds := fs.derivatives[rec.Hash]
+	if len(ds) != 1 || !ds[0].Animated || ds[0].Recipe != renditionRecipe || ds[0].OutputHash == "" {
+		t.Errorf("animated derivative provenance = %+v", ds)
 	}
 }
 
@@ -168,7 +272,7 @@ func TestIngestRefusesNonImagesWithoutWriting(t *testing.T) {
 func TestIngestEnforcesTheSizeCapOnTheRead(t *testing.T) {
 	ctx := context.Background()
 	fs := newFakeStore()
-	svc := New(Config{Dir: t.TempDir(), MaxUploadBytes: func() int64 { return 100 }}, fs, func() time.Time { return fixedNow })
+	svc := New(Config{Dir: t.TempDir(), MaxUploadBytes: func() int64 { return 100 }}, fs, testkit.RustImageRenderer(t), func() time.Time { return fixedNow })
 
 	data := pngBytes(t, testImage(200, 300)) // comfortably over 100 bytes
 	if _, err := svc.Ingest(ctx, bytes.NewReader(data), IngestRequest{Role: RoleIcon}); err == nil {
@@ -326,15 +430,24 @@ func TestURLForAndSrcSet(t *testing.T) {
 	svc, _ := newTestService(t)
 	hash := strings.Repeat("a", 64)
 
+	path := svc.PathFor(hash, 342, FormatWebP)
+	wantPath := "/v1/images/" + hash + "/w342.webp?r=" + renditionRecipe
+	if path != wantPath {
+		t.Errorf("PathFor = %q, want %q", path, wantPath)
+	}
+
 	got := svc.URLFor(hash, 342, FormatWebP)
-	want := "https://loomarr.example.test/v1/images/" + hash + "/w342.webp"
+	want := "https://loomarr.example.test" + wantPath
 	if got != want {
 		t.Errorf("URLFor = %q, want %q", got, want)
 	}
 
 	set := svc.SrcSet(hash, RolePoster, FormatAVIF)
+	if strings.Contains(set, "loomarr.example.test") {
+		t.Errorf("SrcSet = %q, want same-origin paths for the in-app browser", set)
+	}
 	for _, w := range RolePoster.Widths() {
-		if !strings.Contains(set, ".avif "+strconv.Itoa(w)+"w") {
+		if !strings.Contains(set, ".avif?r="+renditionRecipe+" "+strconv.Itoa(w)+"w") {
 			t.Errorf("srcset missing the %dw descriptor: %s", w, set)
 		}
 	}
@@ -343,56 +456,18 @@ func TestURLForAndSrcSet(t *testing.T) {
 // An empty public base must produce a RELATIVE URL rather than one starting with a stray host —
 // it is the safe fallback when the operator has not set server.public_url.
 func TestURLForFallsBackToRelative(t *testing.T) {
-	svc := New(Config{Dir: t.TempDir()}, newFakeStore(), func() time.Time { return fixedNow })
+	svc := New(Config{Dir: t.TempDir()}, newFakeStore(), nil, func() time.Time { return fixedNow })
 	got := svc.URLFor(strings.Repeat("b", 64), 92, FormatWebP)
 	if !strings.HasPrefix(got, "/v1/images/") {
 		t.Errorf("URLFor with no public base = %q, want a relative /v1/images/… URL", got)
 	}
 }
 
-// `images.formats` must actually decide what this install emits.
-//
-// ⚠ Regression test for a DEAD KNOB, not a hypothetical. Config.Formats existed, New defaulted it,
-// and nothing read it — so an operator dropping `avif` to save CPU, or `jpeg` to save storage,
-// would have changed precisely nothing while docs/configuration.md promised both. A setting with
-// no reader cannot be caught by any test that does not name it, which is why this one does.
-func TestProducesReadsTheFormatsSetting(t *testing.T) {
-	t.Run("the declared default is the full ladder", func(t *testing.T) {
-		svc := New(Config{Dir: t.TempDir()}, newFakeStore(), func() time.Time { return fixedNow })
-		for _, f := range []Format{FormatAVIF, FormatWebP, FormatJPEG} {
-			if !svc.Produces(f) {
-				t.Errorf("Produces(%s) = false with no formats configured, want the full ladder", f)
-			}
+func TestProducesUsesTheCompatibilityLadder(t *testing.T) {
+	svc := New(Config{Dir: t.TempDir()}, newFakeStore(), nil, func() time.Time { return fixedNow })
+	for _, f := range []Format{FormatAVIF, FormatWebP, FormatJPEG} {
+		if !svc.Produces(f) {
+			t.Errorf("Produces(%s) = false, want the fixed compatibility ladder", f)
 		}
-	})
-
-	t.Run("dropping a format stops it being produced", func(t *testing.T) {
-		svc := New(Config{
-			Dir:     t.TempDir(),
-			Formats: func() []Format { return []Format{FormatWebP, FormatJPEG} },
-		}, newFakeStore(), func() time.Time { return fixedNow })
-		if svc.Produces(FormatAVIF) {
-			t.Error("Produces(avif) = true after avif was dropped from images.formats")
-		}
-		if !svc.Produces(FormatWebP) {
-			t.Error("Produces(webp) = false while webp is still configured")
-		}
-	})
-
-	// Hot-apply (config-design §3): the func shape is the whole reason this passes. A plain
-	// []Format field would have frozen the value at construction and this sub-test would fail.
-	t.Run("it is read per call, so a change applies without a restart", func(t *testing.T) {
-		formats := []Format{FormatAVIF, FormatWebP, FormatJPEG}
-		svc := New(Config{
-			Dir:     t.TempDir(),
-			Formats: func() []Format { return formats },
-		}, newFakeStore(), func() time.Time { return fixedNow })
-		if !svc.Produces(FormatAVIF) {
-			t.Fatal("Produces(avif) = false before the change")
-		}
-		formats = []Format{FormatWebP} // the operator saves images.formats=webp
-		if svc.Produces(FormatAVIF) {
-			t.Error("Produces(avif) still true after the setting changed — the value was captured at construction")
-		}
-	})
+	}
 }

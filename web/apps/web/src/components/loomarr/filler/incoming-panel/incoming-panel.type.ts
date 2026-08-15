@@ -1,4 +1,6 @@
-import type { IncomingClipDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import type { IncomingReelDTO } from "@loomarr/api/models/incomingReelDTO";
+import type { IncomingRejectDTO } from "@loomarr/api/models/incomingRejectDTO";
 
 interface IncomingPanelProps {
   /**
@@ -11,7 +13,10 @@ interface IncomingPanelProps {
    * `needsDecision` on the row is what this panel branches on.
    */
   clips: IncomingClipDTO[];
+  clipsTotal?: number;
+  decisionsTotal?: number;
   reels: IncomingReelDTO[];
+  reelsTotal?: number;
   /**
    * The whole stage ladder in run order — the response's `stageOrder`.
    *
@@ -25,6 +30,7 @@ interface IncomingPanelProps {
    * default that can turn down good clips has to show what it caught.
    */
   rejected?: IncomingRejectDTO[];
+  rejectedTotal?: number;
   /**
    * Puts a soft-rejected clip back in the catalog.
    *
@@ -40,6 +46,7 @@ interface IncomingPanelProps {
    * exactly what was filed and send any of it back. Absent renders no section at all.
    */
   recentlyFiled?: IncomingClipDTO[];
+  recentlyFiledTotal?: number;
   // Confirms an era the tagger guessed. ⚠ Confirming is what CLEARS the suggestion (§10 V34),
   // and it goes through the ordinary tag edit so the grounding rule has one implementation.
   onConfirmEra?: (clip: IncomingClipDTO) => void;

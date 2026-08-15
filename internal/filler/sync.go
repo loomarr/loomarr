@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -286,10 +288,11 @@ func (s *Syncer) WithScanSources(srcs ScanSourceStore, libraries *LibraryScanner
 
 // SyncResult reports what a sync did (for the API + logs).
 type SyncResult struct {
-	Total   int // clips in the Tunarr local filler source
-	Added   int // new clips
-	Updated int // existing clips whose server-derived fields changed
-	Pruned  int // clips removed (gone from the source)
+	Total    int // clips in the Tunarr local filler source
+	Added    int // new clips
+	Updated  int // existing clips whose server-derived fields changed
+	Repaired int // legacy stale-hash paths moved to the bytes' canonical identity
+	Pruned   int // clips removed (gone from the source)
 }
 
 // Sync ensures the Tunarr local source exists, then reconciles the catalog (§10):
@@ -357,12 +360,22 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// for every clip under one folder. The moment two watched folders each hold `ads/coke.mp4`
 		// the path stops being unique, one clip overwrites the other, and `keep` prunes a live
 		// row — which is the exact failure V38c moved identity off the path to prevent.
-		keep = append(keep, rc.ID)
-
 		existing, found, err := s.store.GetClip(ctx, rc.ID)
 		if err != nil {
 			return res, fmt.Errorf("get clip %s: %w", rc.ID, err)
 		}
+		rc, nameRepaired, err := s.repairOpaqueDisplayName(rc, existing, found)
+		if err != nil {
+			return res, fmt.Errorf("repair clip %s name: %w", rc.ID, err)
+		}
+		rc, pathRepaired, err := s.repairLegacyContentPath(rc, existing, found)
+		if err != nil {
+			return res, fmt.Errorf("repair clip %s path: %w", rc.ID, err)
+		}
+		if nameRepaired || pathRepaired {
+			res.Repaired++
+		}
+		keep = append(keep, rc.ID)
 
 		merged := StoreClip{UpdatedAt: s.now()}
 		merged.Hash = rc.ID
@@ -470,9 +483,189 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	}
 	res.Pruned = pruned
 	if s.log != nil {
-		s.log.Info("filler catalog synced", "total", res.Total, "added", res.Added, "updated", res.Updated, "pruned", res.Pruned)
+		s.log.Info("filler catalog synced", "total", res.Total, "added", res.Added, "updated", res.Updated, "repaired", res.Repaired, "pruned", res.Pruned)
 	}
 	return res, nil
+}
+
+// repairOpaqueDisplayName removes implementation identifiers from the user-facing title even when
+// the media is already at its canonical path. Both the former 40-character digest and the current
+// 64-character content id are recognised; arbitrary hex-like operator names are left alone.
+func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
+	if !isHashDisplayName(rc.Name) {
+		return rc, false, nil
+	}
+	grounded := Clip{Kind: rc.Kind}
+	if found {
+		grounded = existing.Clip
+	}
+	rc.Name = groundedRepairName(grounded)
+	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
+	tags, _ := ReadSidecarTags(full)
+	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
+		tags.OriginalName = rc.Name
+		if found {
+			tags.Kind = string(existing.Kind)
+			tags.Era = existing.Era
+			tags.Audience = string(existing.Audience)
+			tags.Category = existing.Category
+			tags.Brand = existing.Brand
+			tags.Transcript = existing.Transcript
+			tags.Confidence = existing.Confidence
+			tags.SuggestedEra = existing.SuggestedEra
+		}
+		if err := WriteSidecarTags(full, tags, false); err != nil {
+			return rc, false, err
+		}
+	}
+	return rc, true, nil
+}
+
+// repairLegacyContentPath recognises one old Loomarr state: a full hash-shaped filename whose
+// stem does not match the full hash-shaped identity computed from the bytes. Arbitrary operator
+// filenames are deliberately untouched. The canonical media and sidecar are published without
+// replacement before the stale links are removed, so interruption can only leave a duplicate.
+func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
+	stem := strings.TrimSuffix(filepath.Base(filepath.FromSlash(rc.Path)), filepath.Ext(rc.Path))
+	if !isContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
+		return rc, false, nil
+	}
+	ext := filepath.Ext(rc.Path)
+	canonical := filepath.ToSlash(ClipRelPath(rc.ID, ext))
+	if rc.Path == canonical {
+		return rc, false, nil
+	}
+	oldFull := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
+	newFull := filepath.Join(s.dir, filepath.FromSlash(canonical))
+
+	// If the durable row still has a useful title, put it beside the bytes before moving. This is
+	// the last automatic chance to prevent the next scan from replacing it with the stale hash.
+	repairName := ""
+	if found {
+		repairName = existing.Name
+		if isHashDisplayName(repairName) {
+			repairName = groundedRepairName(existing.Clip)
+		}
+	}
+	if repairName != "" {
+		tags, _ := ReadSidecarTags(oldFull)
+		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
+			tags.OriginalName = repairName
+			tags.Kind = string(existing.Kind)
+			tags.Era = existing.Era
+			tags.Audience = string(existing.Audience)
+			tags.Category = existing.Category
+			tags.Brand = existing.Brand
+			tags.Transcript = existing.Transcript
+			tags.Confidence = existing.Confidence
+			tags.SuggestedEra = existing.SuggestedEra
+			if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+				return rc, false, err
+			}
+			rc.Name = repairName
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(newFull), 0o755); err != nil {
+		return rc, false, err
+	}
+	targetExists := false
+	if _, err := os.Stat(newFull); err == nil {
+		id, hashErr := ClipID(newFull)
+		if hashErr != nil || id != rc.ID {
+			return rc, false, fmt.Errorf("canonical target exists with different content")
+		}
+		targetExists = true
+	} else if os.IsNotExist(err) {
+	} else {
+		return rc, false, err
+	}
+
+	oldSidecar, newSidecar := sidecarPathFor(oldFull), sidecarPathFor(newFull)
+	if _, err := os.Stat(oldSidecar); err == nil {
+		if _, targetErr := os.Stat(newSidecar); os.IsNotExist(targetErr) {
+			if err := os.Link(oldSidecar, newSidecar); err != nil {
+				return rc, false, err
+			}
+		} else if targetErr == nil {
+			// A prior interrupted repair may already have the canonical media/sidecar. Merge our
+			// namespaced facts rather than choosing one file and silently losing the other.
+			if oldTags, ok := ReadSidecarTags(oldFull); ok {
+				if err := WriteSidecarTags(newFull, oldTags, false); err != nil {
+					return rc, false, err
+				}
+			}
+		} else if targetErr != nil {
+			return rc, false, targetErr
+		}
+	} else if !os.IsNotExist(err) {
+		return rc, false, err
+	}
+	// Sidecar first: without media the canonical sidecar is invisible to the scan. Publishing the
+	// media second prevents even a concurrent scan from observing a hash title between the two.
+	if !targetExists {
+		if err := os.Link(oldFull, newFull); err != nil {
+			return rc, false, err
+		}
+	}
+
+	if err := os.Remove(oldFull); err != nil && !os.IsNotExist(err) {
+		return rc, false, err
+	}
+	_ = os.Remove(oldSidecar)
+	rc.Path = canonical
+	return rc, true, nil
+}
+
+// groundedRepairName replaces an opaque title from facts a person or grounded classifier supplied.
+// When there are none, it uses a neutral kind label rather than exposing an implementation id as
+// if that were a title.
+func groundedRepairName(c Clip) string {
+	base := strings.TrimSpace(c.Brand)
+	if base == "" && c.Category != "" {
+		base = strings.ReplaceAll(c.Category, "_", " ")
+		if base != "" {
+			base = strings.ToUpper(base[:1]) + base[1:] + " commercial"
+		}
+	}
+	if base == "" {
+		if c.Era > 0 && c.Kind != "" {
+			return fmt.Sprintf("%d %s", c.Era, strings.ReplaceAll(string(c.Kind), "_", " "))
+		}
+		kind := strings.TrimSpace(strings.ReplaceAll(string(c.Kind), "_", " "))
+		if kind == "" {
+			kind = "filler clip"
+		}
+		return "Untitled " + kind
+	}
+	if c.Era > 0 {
+		return fmt.Sprintf("%s — %d", base, c.Era)
+	}
+	return base
+}
+
+func isHashDisplayName(value string) bool {
+	base := filepath.Base(value)
+	return isOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+func isContentHash(value string) bool {
+	return len(value) == 64 && isLowerHex(value)
+}
+
+func isOpaqueHash(value string) bool {
+	return (len(value) == 40 || len(value) == 64) && isLowerHex(value)
+}
+
+func isLowerHex(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // serverFieldsUnchanged reports whether the SCAN-owned fields match (so a re-sync is a no-op
@@ -490,6 +683,8 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 //
 // The rule for anything added later: if `syncClips` assigns it from `rc`, compare it here.
 func serverFieldsUnchanged(a, b Clip) bool {
-	return a.Name == b.Name && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
+	return a.Path == b.Path && a.TunarrProgramID == b.TunarrProgramID &&
+		a.Name == b.Name && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
+		a.Quality == b.Quality && a.License == b.License &&
 		a.Thumbnail == b.Thumbnail && a.Preview == b.Preview
 }

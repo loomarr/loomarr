@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -23,6 +24,13 @@ func newStore(t *testing.T) store.Store {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	return st
+}
+
+func newCurator(t *testing.T, st store.Store, th fixedThresholds) *recurate.Curator {
+	t.Helper()
+	log := testkit.Logger()
+	approver := suggest.NewApprover(st, binder.New(st, nil, nil, log), time.Now)
+	return recurate.NewCurator(st, approver, th, log)
 }
 
 // fixedThresholds is a Thresholds with constant knobs for deterministic tests.
@@ -42,7 +50,7 @@ func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineu
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusLive
 	ch.Policy = schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac}}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -96,7 +104,7 @@ func TestCurator_QualityBar(t *testing.T) {
 		acqItem(100, "Great Fit", 0.90), // above a 60% bar → requested
 		acqItem(200, "Weak Fit", 0.30),  // below → dropped
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -121,7 +129,7 @@ func TestCurator_InLibraryAddedNoAcquisition(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1",
 		[]suggest.ProposalItem{inLibItem(300, "Already Here", "lib-300")}, // in-library lineup pick
 		nil)
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 99, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 99, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -143,7 +151,7 @@ func TestCurator_NotOptedInNeverRequests(t *testing.T) {
 	// Channel exists + is intent-backed, but AutoCurate is nil (not opted in).
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, nil)
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(100, "Film", 0.99)})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -176,7 +184,7 @@ func TestCurator_TitleCap(t *testing.T) {
 		acqItem(200, "Middle", 0.80), // over cap → dropped
 		acqItem(300, "Good", 0.85),   // over cap → dropped
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 50, maxTitles: 3}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 50, maxTitles: 3})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -199,7 +207,7 @@ func TestCurator_PerChannelOverride(t *testing.T) {
 	// Global bar 60, but this channel overrides to 90 → an 0.80 title is now below the bar.
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{MinScorePct: 90})
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(100, "Film", 0.80)})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {

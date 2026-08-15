@@ -9,8 +9,7 @@
 // This is the test whose ABSENCE let the live smoke find unwired seams. It proves,
 // in one run:
 //   - intent → the REAL suggester grounds picks + extracts a ChannelPolicy;
-//   - approve (the real gate) → in-library picks become `available`, acquisitions `wanted`;
-//   - create(intentRef) → the channel binds the grounded lineup AND policy;
+//   - approve (the real gate) → titles + the grounded channel commit together;
 //   - reconcile → the pushed lineup ENFORCES the policy (an over-ceiling title is
 //     excluded, in-scope titles air) with commercial pod breaks;
 //   - a second reconcile is a no-op.
@@ -117,6 +116,8 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	go svc.Run(ctx)
 
 	log := slog.New(slog.DiscardHandler)
+	chBinder := binder.New(st, engine, nil, log)
+	approver := suggest.NewApprover(st, chBinder, clock)
 	// engine (*channels.Engine) satisfies binder.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
@@ -126,7 +127,8 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
-		Binder:   binder.New(st, engine, nil, log),
+		Approver: approver,
+		Binder:   chBinder,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -319,9 +321,20 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 		t.Fatalf("suggester should have extracted a TV-Y7 ceiling, got %q", prop.Policy.Audience.Ceiling)
 	}
 
-	// 3. APPROVE (the real gate) → in-library picks become `available` titles.
-	if resp := r.do(t, http.MethodPost, "/v1/proposals/"+propID+"/approve", ""); resp.StatusCode != http.StatusOK {
+	// 3. APPROVE (the real gate) → in-library picks and the local channel commit together.
+	resp = r.do(t, http.MethodPost, "/v1/proposals/"+propID+"/approve", "")
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	var approved struct {
+		ChannelID string `json:"channelId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&approved); err != nil {
+		t.Fatalf("decode approve response: %v", err)
+	}
+	_ = resp.Body.Close()
+	if approved.ChannelID == "" {
+		t.Fatal("approve returned no channel id")
 	}
 	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {
 		if rec, err := r.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
@@ -335,15 +348,9 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 		t.Error("the refused TV-MA toon was provisioned — approval must act only on what it offered")
 	}
 
-	// 4. CREATE the channel from the approved intent → binds lineup AND policy, kicks
-	//    a real reconcile through the real engine → the testkit Tunarr.
-	body := `{"id":"cartoons","name":"Saturday Cartoons","number":42,"strategy":"shuffle","intentRef":"` + jobID + `"}`
-	if resp := r.do(t, http.MethodPost, "/v1/channels", body); resp.StatusCode != http.StatusOK {
-		t.Fatalf("create channel → %d, want 200", resp.StatusCode)
-	}
-
+	// 4. The same approval kicked a real reconcile through the real engine → Tunarr.
 	// The grounded policy landed on the channel row (enforcement input).
-	ch, _ := r.store.GetChannel(context.Background(), "cartoons")
+	ch, _ := r.store.GetChannel(context.Background(), approved.ChannelID)
 	if ch.Policy.Audience.Ceiling != "TV-Y7" {
 		t.Fatalf("channel should carry the TV-Y7 policy, got %q", ch.Policy.Audience.Ceiling)
 	}
@@ -399,7 +406,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// 7. IDEMPOTENCY: a second reconcile with nothing changed makes no new Tunarr
 	//    writes (§9/§10) — the enforced lineup is stable, not re-shuffled each sweep.
 	pushesBefore, fillerBefore := r.tun.Pushes, r.tun.FillerWrites
-	if resp := r.do(t, http.MethodPost, "/v1/channels/cartoons/reconcile", ""); resp.StatusCode != http.StatusOK {
+	if resp := r.do(t, http.MethodPost, "/v1/channels/"+approved.ChannelID+"/reconcile", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("reconcile → %d, want 200", resp.StatusCode)
 	}
 	if r.tun.Pushes != pushesBefore {
@@ -422,8 +429,12 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// ⚠ The full policy, not just the ceiling: a policy PATCH REPLACES wholesale, so era/genres
 	// are restated or the tightening would also quietly widen the scope. And era/genres live
 	// under `scope` — the flat shape is the LLM's, which groundPolicy converts.
-	if resp := r.do(t, http.MethodPatch, "/v1/channels/cartoons",
-		`{"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`+
+	current, err := r.store.GetChannel(context.Background(), approved.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp := r.do(t, http.MethodPatch, "/v1/channels/"+approved.ChannelID,
+		fmt.Sprintf(`{"revision":%d,"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`, current.Revision)+
 			`"audience":{"ceiling":"TV-Y"},"ordering":"syndication"}}`,
 	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("tighten ceiling → %d, want 200", resp.StatusCode)

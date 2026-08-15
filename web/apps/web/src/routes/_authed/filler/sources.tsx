@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FillerPage } from "@/filler";
+import { FillerPage } from "@/filler/filler-page";
 
 // Sources — where clips come from, and per-source search. Its own path (V-nav-paths), same
 // as Catalog and Incoming. Carries none of the catalog's filters — see incoming.tsx.

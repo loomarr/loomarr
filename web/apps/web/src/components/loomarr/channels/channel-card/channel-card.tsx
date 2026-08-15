@@ -1,6 +1,7 @@
-import { channelNumber } from "@loomarr/core";
-import { Caption, Card } from "@/components/ui";
-import { cn } from "@/lib";
+import { channelNumber } from "@loomarr/core/format";
+import { Caption } from "@/components/ui/caption";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { NowNextStrip } from "../now-next-strip";
 import { OnAirIndicator } from "../on-air-indicator";
 import type { ChannelCardProps, ChannelHealth } from "./channel-card.type";

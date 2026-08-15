@@ -43,11 +43,11 @@ WITH due AS (
     LIMIT $3
     FOR UPDATE SKIP LOCKED
 )
-UPDATE channels c SET reconcile_deadline = $1
+UPDATE channels c SET reconcile_deadline = $1, revision = c.revision + 1
 FROM due WHERE c.id = due.id
 RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
-          c.broadcast_codec, c.reconcile_deadline, c.updated_at`
+          c.broadcast_codec, c.reconcile_deadline, c.updated_at, c.revision`
 
 // Postgres job claim: FOR UPDATE SKIP LOCKED so replicas never run one job twice
 // (§8/§18). Placeholders: $1=leaseUntil, $2=now, $3=limit.

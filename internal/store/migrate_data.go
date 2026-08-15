@@ -73,15 +73,90 @@ type MigrationProgress struct {
 // carries image BYTEA) doesn't build a multi-hundred-MB statement.
 const copyBatch = 500
 
+// MigrateToPostgres is the complete SQLite-to-Postgres data-copy operation. It opens
+// the source structurally read-only, re-runs target preflight at the point of use,
+// builds the destination schema without application-runtime seeds, copies, verifies,
+// and closes both databases before returning.
+func MigrateToPostgres(ctx context.Context, sourceURL, dsn string, onProgress func(MigrationProgress)) (MigrationProgress, error) {
+	if !strings.HasPrefix(sourceURL, "sqlite://") {
+		return MigrationProgress{}, errors.New("migrate: source URL is not SQLite")
+	}
+	src, err := openSQLiteReadOnly(ctx, strings.TrimPrefix(sourceURL, "sqlite://"))
+	if err != nil {
+		return MigrationProgress{}, err
+	}
+	defer func() { _ = src.Close() }()
+
+	// Serialize Loomarr migration attempts for this target. The session lock closes the
+	// preflight→schema gap between two operators: after the winner releases it, the loser
+	// re-runs preflight and sees the now-populated database instead of copying concurrently.
+	releaseTarget, err := lockPostgresMigrationTarget(ctx, dsn)
+	if err != nil {
+		return MigrationProgress{}, err
+	}
+	defer releaseTarget()
+
+	checks, err := Preflight(ctx, dsn)
+	if err != nil {
+		return MigrationProgress{}, fmt.Errorf("migrate preflight: %w", err)
+	}
+	if !PreflightPassed(checks) {
+		var failed []string
+		for _, check := range checks {
+			if !check.OK {
+				failed = append(failed, check.Name+": "+check.Detail)
+			}
+		}
+		return MigrationProgress{}, fmt.Errorf("migrate preflight failed: %s", strings.Join(failed, "; "))
+	}
+
+	dst, err := openPostgresForDataMigration(ctx, dsn)
+	if err != nil {
+		return MigrationProgress{}, fmt.Errorf("open migration target: %w", err)
+	}
+	defer func() { _ = dst.Close() }()
+	return MigrateData(ctx, src, dst, onProgress)
+}
+
+func lockPostgresMigrationTarget(ctx context.Context, dsn string) (func(), error) {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open target lock connection: %w", err)
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("connect target lock: %w", err)
+	}
+	var acquired bool
+	if err := conn.QueryRowContext(ctx,
+		`SELECT pg_try_advisory_lock(hashtextextended('loomarr:database-migration:' || current_database(), 0))`).Scan(&acquired); err != nil {
+		_ = conn.Close()
+		_ = db.Close()
+		return nil, fmt.Errorf("lock migration target: %w", err)
+	}
+	if !acquired {
+		_ = conn.Close()
+		_ = db.Close()
+		return nil, errors.New("migration target is already owned by another Loomarr migration")
+	}
+	return func() {
+		_, _ = conn.ExecContext(context.Background(),
+			`SELECT pg_advisory_unlock(hashtextextended('loomarr:database-migration:' || current_database(), 0))`)
+		_ = conn.Close()
+		_ = db.Close()
+	}, nil
+}
+
 // MigrateData copies every table from src into dst and verifies row-count parity.
 //
 // dst MUST already be migrated (schema present) and empty of Loomarr rows — Preflight
 // checks both. onProgress, if non-nil, is called as each table starts and finishes; it
 // must not block (the caller publishes to an SSE bus, which drops rather than blocks).
 //
-// On any error the destination is left partially written and the source untouched. The
-// caller's remedy is to wipe the destination and retry — which is exactly what the UI's
-// retry does, and why the failure copy says the SQLite database was only read from.
+// All source reads use one SQLite snapshot and all destination data writes use one
+// Postgres transaction. On any error the destination schema remains migrated, but its
+// data copy is rolled back and the source is untouched.
 func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationProgress)) (MigrationProgress, error) {
 	s, ok := src.(*sqlStore)
 	if !ok {
@@ -96,43 +171,66 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		// this is to change backend.
 		return MigrationProgress{}, fmt.Errorf("migrate: source and destination are both %s", s.dialect)
 	}
+	if s.dialect != DialectSQLite || d.dialect != DialectPostgres {
+		return MigrationProgress{}, fmt.Errorf("migrate: unsupported direction %s to %s", s.dialect, d.dialect)
+	}
 
 	tables, err := userTables(ctx, d)
 	if err != nil {
 		return MigrationProgress{}, err
 	}
 
-	// ⚠ **Clear what the destination's OWN migrations seeded, before copying anything.**
-	//
-	// Preflight refuses a populated target, so the destination was empty when the operator chose
-	// it — but `Open(dsn, true)` then runs goose against it, and some migrations INSERT rows
-	// (`filler_sources` seeds the default sources). The source has those same rows, because it was
-	// seeded by the same migrations when it was created. A plain insert therefore collides on the
-	// primary key, and the copy dies partway through with
-	// `duplicate key value violates unique constraint "filler_sources_pkey"`.
-	//
-	// That was not a hypothetical: it failed for every operator who ever tried to move an
-	// established SQLite install to Postgres, and no test said so because `make test-pg` filtered
-	// to `-run TestPostgresConformance` and never executed this file.
-	//
-	// ⚠ **DELETE rather than upsert-or-ignore, and the choice is about which side is
-	// authoritative.** The SOURCE is: it holds the operator's live data, which began from these
-	// same seeds and may since have been edited or deleted. `ON CONFLICT DO NOTHING` would keep
-	// the destination's pristine seed and silently discard that edit — the worst outcome, because
-	// it looks like success. `ON CONFLICT DO UPDATE` would need per-table primary-key discovery to
-	// express what "start from an empty table" says directly.
-	//
-	// ⚠ **Reverse order, which is what makes it safe with foreign keys.** `tables` is topologically
-	// sorted parents-first so inserts are legal; deleting is the same graph backwards, so a child's
-	// rows always go before the parent's. Doing it in forward order would fail against
-	// `sessions.user_id REFERENCES users(id)` the moment either table carried a seed.
-	for i := len(tables) - 1; i >= 0; i-- {
-		if _, err := d.db.ExecContext(ctx, `DELETE FROM `+quoteIdent(tables[i])); err != nil {
-			return MigrationProgress{}, fmt.Errorf("clear seeded rows from %s: %w", tables[i], err)
+	// One transaction is the source snapshot. Counting every table before the first
+	// progress callback both pins that snapshot and prevents a callback-triggered live
+	// write from leaking into only the tables copied later.
+	srcTx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return MigrationProgress{}, fmt.Errorf("begin source snapshot: %w", err)
+	}
+	defer func() { _ = srcTx.Rollback() }()
+
+	prog := MigrationProgress{Tables: make([]TableStat, len(tables))}
+	for i, table := range tables {
+		n, err := countRows(ctx, srcTx, table)
+		if err != nil {
+			return prog, fmt.Errorf("count %s: %w", table, err)
+		}
+		prog.Tables[i] = TableStat{Table: table, Source: n}
+	}
+
+	// The data copy is one destination transaction. Schema migration is necessarily
+	// outside it (goose owns those transactions), but no failed copy can leave a
+	// misleading prefix of successfully copied tables behind.
+	dstTx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return prog, fmt.Errorf("begin destination copy: %w", err)
+	}
+	defer func() { _ = dstTx.Rollback() }()
+
+	// Hold every destination table exclusively through copy, independent parity, and
+	// commit. Preflight proves the target is empty at admission; these locks ensure an
+	// external writer cannot add an uncounted row between a table's parity query and the
+	// commit that makes the verified snapshot durable.
+	locked := make([]string, 0, len(tables))
+	for _, table := range tables {
+		locked = append(locked, quoteIdent(table))
+	}
+	if len(locked) > 0 {
+		if _, err := dstTx.ExecContext(ctx,
+			`LOCK TABLE `+strings.Join(locked, ", ")+` IN ACCESS EXCLUSIVE MODE`); err != nil {
+			return prog, fmt.Errorf("lock destination tables: %w", err)
 		}
 	}
 
-	prog := MigrationProgress{Tables: make([]TableStat, 0, len(tables))}
+	// SQL migrations seed exactly these six identities. Remove only those rows so the
+	// SQLite source remains authoritative for edits or deletions to the defaults. Never
+	// clear arbitrary target tables: MigrateToPostgres's immediate preflight owns the
+	// empty-target guarantee, and an unexpected row must cause a collision, not deletion.
+	if _, err := dstTx.ExecContext(ctx, `DELETE FROM filler_sources WHERE id IN
+		('folder', 'library', 'archive:classic_tv_commercials', 'archive:vhscommercials', 'archive:tv_ads', 'youtube')`); err != nil {
+		return prog, fmt.Errorf("clear SQL-seeded filler sources: %w", err)
+	}
+
 	report := func() {
 		if onProgress != nil {
 			onProgress(prog)
@@ -140,15 +238,10 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 	}
 
 	for i, table := range tables {
-		n, err := countRows(ctx, s.db, table)
-		if err != nil {
-			return prog, fmt.Errorf("count %s: %w", table, err)
-		}
-		prog.Tables = append(prog.Tables, TableStat{Table: table, Source: n})
 		prog.Current = table
 		report()
 
-		copied, err := copyTable(ctx, s, d, table, func(n int64) {
+		copied, err := copyTable(ctx, srcTx, d, dstTx, table, func(n int64) {
 			prog.Tables[i].Copied = n
 			report()
 		})
@@ -160,7 +253,31 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		prog.Tables[i].Copied = copied
 	}
 
+	// Re-count both sides independently before releasing the source snapshot. The
+	// source tally is not reused from the copy loop, so parity remains evidence rather
+	// than the copy path confirming its own bookkeeping.
+	stats, err := verifyParity(ctx, srcTx, dstTx, tables)
+	if err != nil {
+		prog.Err = err.Error()
+		report()
+		return prog, fmt.Errorf("verify: %w", err)
+	}
+	prog.Tables = stats
 	prog.Current = ""
+	if bad := ParityMismatches(stats); len(bad) > 0 {
+		parts := make([]string, 0, len(bad))
+		for _, st := range bad {
+			parts = append(parts, fmt.Sprintf("%s (%d→%d)", st.Table, st.Source, st.Copied))
+		}
+		prog.Err = "row counts do not match: " + strings.Join(parts, ", ")
+		report()
+		return prog, errors.New(prog.Err)
+	}
+	if err := dstTx.Commit(); err != nil {
+		prog.Err = err.Error()
+		report()
+		return prog, fmt.Errorf("commit destination copy: %w", err)
+	}
 	prog.Done = true
 	report()
 	return prog, nil
@@ -182,13 +299,21 @@ func VerifyParity(ctx context.Context, src, dst Store) ([]TableStat, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verifyParity(ctx, s.db, d.db, tables)
+}
+
+type rowCounter interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func verifyParity(ctx context.Context, src, dst rowCounter, tables []string) ([]TableStat, error) {
 	stats := make([]TableStat, 0, len(tables))
 	for _, table := range tables {
-		sn, err := countRows(ctx, s.db, table)
+		sn, err := countRows(ctx, src, table)
 		if err != nil {
 			return nil, fmt.Errorf("count source %s: %w", table, err)
 		}
-		dn, err := countRows(ctx, d.db, table)
+		dn, err := countRows(ctx, dst, table)
 		if err != nil {
 			return nil, fmt.Errorf("count destination %s: %w", table, err)
 		}
@@ -332,7 +457,7 @@ func topoSort(tables []string, parents map[string][]string) []string {
 	return out
 }
 
-func countRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
+func countRows(ctx context.Context, db rowCounter, table string) (int64, error) {
 	// The table name is an identifier and cannot be a placeholder. It is safe here
 	// because it came from the catalog query above, never from user input — the only
 	// values that reach this are names the database itself reported.
@@ -343,13 +468,13 @@ func countRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
 
 // copyTable streams one table across in batches, coercing each value to what the
 // DESTINATION column expects.
-func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows func(int64)) (int64, error) {
+func copyTable(ctx context.Context, src *sql.Tx, dst *sqlStore, dstTx *sql.Tx, table string, onRows func(int64)) (int64, error) {
 	// ⚠ Both from the DESTINATION — it is authoritative for the column set, the order,
 	// and the types `coerce` targets. Reading types from the source would silently pick
 	// SQLite's BLOB for `channel_icons.bytes` instead of Postgres's BYTEA; that column is retired-ok
 	// binary, and the difference decides whether icons survive as bytes or as mangled
 	// UTF-8.
-	cols, types, err := describe(ctx, dst, table)
+	cols, types, err := describe(ctx, dstTx, table)
 	if err != nil {
 		return 0, err
 	}
@@ -363,17 +488,11 @@ func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows fun
 	}
 	sel := `SELECT ` + strings.Join(quoted, ", ") + ` FROM ` + quoteIdent(table)
 
-	rows, err := src.db.QueryContext(ctx, sel)
+	rows, err := src.QueryContext(ctx, sel)
 	if err != nil {
 		return 0, fmt.Errorf("read: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-
-	tx, err := dst.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }() // no-op after a successful Commit
 
 	var total int64
 	batch := make([]any, 0, copyBatch*len(cols))
@@ -384,7 +503,7 @@ func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows fun
 			return nil
 		}
 		stmt := insertSQL(dst, table, quoted, values)
-		if _, err := tx.ExecContext(ctx, stmt, batch...); err != nil {
+		if _, err := dstTx.ExecContext(ctx, stmt, batch...); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
 		batch = batch[:0]
@@ -425,9 +544,6 @@ func copyTable(ctx context.Context, src, dst *sqlStore, table string, onRows fun
 	if err := flush(); err != nil {
 		return total, err
 	}
-	if err := tx.Commit(); err != nil {
-		return total, fmt.Errorf("commit: %w", err)
-	}
 	if onRows != nil {
 		onRows(total)
 	}
@@ -455,8 +571,12 @@ func insertSQL(dst *sqlStore, table string, quotedCols []string, rowCount int) s
 // describe reads a table's column names and declared types, in ordinal order, via an
 // empty result set. Used against the DESTINATION for both — it is authoritative for the
 // column set, the order, and (critically) the types `coerce` targets.
-func describe(ctx context.Context, s *sqlStore, table string) ([]string, []*sql.ColumnType, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT * FROM `+quoteIdent(table)+` WHERE 1 = 0`)
+type rowQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func describe(ctx context.Context, db rowQueryer, table string) ([]string, []*sql.ColumnType, error) {
+	rows, err := db.QueryContext(ctx, `SELECT * FROM `+quoteIdent(table)+` WHERE 1 = 0`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("describe %s: %w", table, err)
 	}

@@ -99,7 +99,7 @@ func TestSystemRestart_TriggersTheLoop(t *testing.T) {
 func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 	srv := serverWithRestart(t, api.Options{
 		Restart:         &fakeRestart{},
-		PlayoutSessions: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
+		PlayoutObserver: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
 		BootstrapDrift:  func() []string { return []string{"DATABASE_URL"} },
 	})
 

@@ -1,17 +1,12 @@
-import { type ClipDTO, fillerApi } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import {
-  Button,
-  Card,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
 
 // The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).

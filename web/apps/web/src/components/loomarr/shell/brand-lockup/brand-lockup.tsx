@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { ColorBars } from "../color-bars";
 import type { BrandLockupProps } from "./brand-lockup.type";
 

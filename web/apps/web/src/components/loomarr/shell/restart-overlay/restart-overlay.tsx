@@ -1,5 +1,5 @@
 import { Check, Loader2 } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
 // RestartOverlay — the app is unusable while it restarts, so say so and mean it (§9.2, V13).

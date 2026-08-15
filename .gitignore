@@ -68,3 +68,5 @@ web/apps/web/dist/
 .cmp-review/
 scratch-*.png
 .filler-smoke/
+# Rust build output.
+/target/

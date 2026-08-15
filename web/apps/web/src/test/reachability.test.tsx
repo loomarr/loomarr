@@ -70,15 +70,17 @@ const FEATURES = {
   ingest: true,
 };
 
-// One entry per settings GROUP — the groups are what the pages render, and a group with no
-// field renders no form. ⚠ Each of these was ten hand-written lines repeating the same eight
+// At least one entry for every curated block — a block with no matching field renders no form.
+// ⚠ Each of these was ten hand-written lines repeating the same eight
 // required SettingEntry fields; `setting()` owns them now, so a new required field on the wire
 // breaks one fixture instead of seven copies.
 const SETTINGS = [
   setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
   setting({ key: "filler.dir", group: "filler", kind: "string", value: "/filler" }),
+  setting({ key: "filler.pod_max", group: "filler", kind: "int", value: "4" }),
+  setting({ key: "filler.breaks_per_hour", group: "filler", kind: "int", value: "4" }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2" }),
-  setting({ key: "channel.reconcile_every", group: "channels", kind: "duration", value: "5m" }),
+  setting({ key: "sched.window_hours", group: "channels", kind: "duration", value: "24h" }),
   setting({ key: "session.ttl", group: "users_security", kind: "duration", value: "720h" }),
   setting({ key: "llm.url", group: "ai", kind: "url", value: "http://ollama:11434" }),
 ];
@@ -162,7 +164,10 @@ const stubReachable = () => {
           needsDecision: true,
         },
       ],
+      clipsTotal: 1,
+      decisionsTotal: 1,
       reels: [],
+      reelsTotal: 0,
       // V38's audit half — what was filed with nobody looking.
       recentlyFiled: [
         {
@@ -176,14 +181,18 @@ const stubReachable = () => {
           autoFiled: true,
         },
       ],
+      recentlyFiledTotal: 1,
       rejected: [],
+      rejectedTotal: 0,
       stageOrder: [],
       total: 1,
     }),
-    // One clip, not an empty catalog: the per-clip actions (split, tag, pin) only render
-    // when there is a card to hang them on, and this suite exists to prove they mount.
+    // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
+    // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
+    // so using one row to assert both doors would require the UI to offer an action that cannot
+    // have an effect.
     getListFillerMockHandler({
-      total: 1,
+      total: 2,
       clips: [
         {
           hash: "hash-comp",
@@ -196,6 +205,17 @@ const stubReachable = () => {
           // mounts on a clip it is deliberately not offered for.
           isComposite: true,
           tagged: false,
+          aiTagged: false,
+          playCount: 0,
+          playsCounted: true,
+        },
+        {
+          hash: "hash-ad",
+          name: "80s cereal advert",
+          kind: "commercial",
+          durationMs: 30000,
+          isComposite: false,
+          tagged: true,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,
@@ -249,7 +269,24 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
-    getGetPlayoutStatusMockHandler({ running: false, channels: [], gpu: { contended: false } }),
+    getGetPlayoutStatusMockHandler({
+      running: false,
+      channels: [],
+      gpu: { contended: false },
+      prepared: {
+        available: false,
+        running: false,
+        channels: 0,
+        readyChannels: 0,
+        scheduledBindings: 0,
+        readyBindings: 0,
+        missingBindings: 0,
+        queuedPublications: 0,
+        remainingBytes: 0,
+        budgetBytes: 0,
+        protectedBytes: 0,
+      },
+    }),
     getGetProgrammingVocabularyMockHandler({ what: [], when: [], how: [] }),
     getSystemBackupsListMockHandler({
       backups: [],
@@ -468,7 +505,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // or be sent actually mounts the panel, not merely that a click within one page swaps it.
     // The tab's own presence is asserted separately below.
     renderAt("/channels/ch-1/filler");
-    const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
+    const found = await screen.findAllByText(/preview break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
 

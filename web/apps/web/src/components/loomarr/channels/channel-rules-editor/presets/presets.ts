@@ -1,4 +1,8 @@
-import type { HowVocab, RuleOrdering, ScopePolicy, WhatVocab, WhenVocab } from "@loomarr/api";
+import type { HowVocab } from "@loomarr/api/models/howVocab";
+import type { RuleOrdering } from "@loomarr/api/models/ruleOrdering";
+import type { ScopePolicy } from "@loomarr/api/models/scopePolicy";
+import type { WhatVocab } from "@loomarr/api/models/whatVocab";
+import type { WhenVocab } from "@loomarr/api/models/whenVocab";
 
 // The rule authoring vocabulary is now SERVED by the backend (GET /v1/programming/vocabulary,
 // §6.6/§8.1) and consumed via a prop — this file no longer hand-mirrors the enumerable

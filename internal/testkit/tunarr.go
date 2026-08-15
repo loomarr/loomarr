@@ -28,6 +28,14 @@ type Tunarr struct {
 	FillerWrites int // EnsureFillerList calls that changed the attached list
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	// Optional synchronization hooks for deterministic concurrency tests. They run
+	// BEFORE the fake takes its mutex, so a hook may block while the test commits a
+	// competing store write without deadlocking Tunarr introspection. Production
+	// interfaces do not expose these; they are observation points on the one shared
+	// Programmer adapter rather than private per-package doubles.
+	BeforeEnsureChannel func(programmer.ChannelSpec)
+	BeforeSetLineup     func(tunarrID string, slots []schedule.Slot)
+	BeforeDeleteChannel func(tunarrID string)
 	// NowMs is the fake's clock for stamping a new channel's loop anchor (epoch ms). 0 ⇒ a
 	// fixed non-zero default so a create always has a plausible, non-1970 anchor a test can
 	// assert against; a test can set it to script the "preserve on update" check.
@@ -75,6 +83,9 @@ func (m *Tunarr) nowMs() int64 {
 }
 
 func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (string, error) {
+	if m.BeforeEnsureChannel != nil {
+		m.BeforeEnsureChannel(spec)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if spec.TunarrID == "" {
@@ -165,6 +176,9 @@ func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.Actu
 }
 
 func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.Slot) error {
+	if m.BeforeSetLineup != nil {
+		m.BeforeSetLineup(tunarrID, slots)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.SetLineupErr != nil {
@@ -200,6 +214,9 @@ func (m *Tunarr) GetLineup(_ context.Context, tunarrID string) ([]schedule.Slot,
 }
 
 func (m *Tunarr) DeleteChannel(_ context.Context, tunarrID string) error {
+	if m.BeforeDeleteChannel != nil {
+		m.BeforeDeleteChannel(tunarrID)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.channels, tunarrID)
