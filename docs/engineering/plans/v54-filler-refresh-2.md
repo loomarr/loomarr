@@ -4,7 +4,7 @@
 #347/#348 (split boundary and confirmation), #350 (settings honesty), #352 (source hierarchy,
 split preview, catalog, accessibility and docs), #354 (hosted/OpenRouter model selection), #356
 (automated intake, break handling and persisted fingerprints), and #359 (intake reliability,
-hold reasons, counts and composite visibility). The final certification PR closes two upgrade and
+hold reasons, counts and composite visibility). The final certification PR #364 closes two upgrade and
 provider-routing seams found only by exercising the completed system: stale holds on legacy
 confirmed composites, and filler paths bypassing a hosted provider's namespaced credential.
 
