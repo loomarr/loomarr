@@ -215,7 +215,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
-			Kind: KindString, Default: "",
+			Kind: KindString, Default: "", Advanced: true,
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
 		},
 		{

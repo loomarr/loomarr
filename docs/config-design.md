@@ -196,7 +196,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
 | **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
-| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (backend, quality, language/subtitles, detected encoder/capacity, guide, advanced paths) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. | per sub-tab where testable |
+| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
 | **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
@@ -299,6 +299,14 @@ show ordinary choices first, and put tuning limits, executable paths, and pipeli
 group's Advanced disclosure. A safe default is not a reason to make its tuning knob part of the
 everyday path. Group headings carry a one-line explanation when the distinction would otherwise be
 unclear.
+
+Playback applies that rule to the encoder specifically: automatic selection is the ordinary path,
+so the free-form `playout.encoder` override is Advanced alongside executable and storage paths. The
+page leads with the read-only live status because it answers who is actually streaming, which GPU or
+software path is active, and whether any fallback encoders are consuming capacity before the
+operator changes a preference. Tunarr-backed channels keep their encoding profile in Connections →
+Tunarr; Playback explains that ownership instead of presenting Loomarr's internal controls as if they
+reconfigured Tunarr.
 
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
