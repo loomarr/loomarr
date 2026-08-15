@@ -227,3 +227,31 @@ func TestBootstrapSearchFallsThroughAMissingFile(t *testing.T) {
 		t.Errorf("DATABASE_URL = %q, want the value from the second directory", values["DATABASE_URL"])
 	}
 }
+
+func TestUpdateBootstrapFilePreservesOtherBootChoices(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteBootstrapFile(dir, map[string]string{
+		"DATABASE_URL": "sqlite:///data/loomarr.db",
+		"LISTEN_ADDR":  ":9090",
+		"LOG_LEVEL":    "debug",
+		"TZ":           "America/New_York",
+		"AUTO_MIGRATE": "false",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateBootstrapFile(dir, map[string]string{
+		"DATABASE_URL": "postgres://u:p@db:5432/loomarr",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	values, err := LoadBootstrapFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["DATABASE_URL"] != "postgres://u:p@db:5432/loomarr" ||
+		values["LISTEN_ADDR"] != ":9090" || values["LOG_LEVEL"] != "debug" ||
+		values["TZ"] != "America/New_York" || values["AUTO_MIGRATE"] != "false" {
+		t.Fatalf("updated bootstrap values = %#v", values)
+	}
+}

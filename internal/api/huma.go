@@ -58,10 +58,11 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images ImageService
-	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
-	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	images   ImageService
+	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -731,11 +732,13 @@ type Options struct {
 	// instance with no store behind it.
 	Images    ImageService
 	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown  <-chan struct{}  // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
-	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
+	// (§18, V11). Production wires it on both backends so a reconnect can observe the
+	// successful cutover; nil is reserved for embeddings without migration status.
 	Database DatabaseService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).

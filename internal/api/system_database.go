@@ -10,11 +10,10 @@ import (
 
 // /v1/system/database* — the SQLite → PostgreSQL migration stepper (§18, V11).
 //
-// The stepper's six stages (connect → preflight → backup → migrate → verify → restart)
-// map onto four endpoints plus the existing restart control. Preflight, backup and
-// migrate are separate calls rather than one "migrate" button because each is a decision
-// point: preflight can send you back to fix the target, and the backup between them is a
-// gate rather than a step.
+// The operator-facing flow is connect → preflight → backup → migrate-and-restart.
+// Migrate only asks the process owner to begin the atomic operation; it returns before
+// the current generation drains. The process then closes the live store, copies and
+// verifies the data, writes the bootstrap target, and starts a fresh generation.
 //
 // ⚠ **The backup gate is enforced HERE, on the server.** The mock disables the Migrate
 // button until a backup exists, but a disabled button is a hint, not a gate — anything
@@ -34,6 +33,15 @@ var (
 	ErrNotSQLite = errors.New("this install is not on SQLite")
 	// ErrMigrationRunning: a migration is already in flight (→ 409).
 	ErrMigrationRunning = errors.New("a migration is already running")
+	// ErrDatabaseURLPinned: an environment pin would override the migrated target on
+	// restart, so the atomic operation is refused before it is queued (→ 409).
+	ErrDatabaseURLPinned = errors.New("DATABASE_URL is pinned by the environment")
+	// ErrMigrationUnavailable: this handler has no process-level migration callback
+	// behind it, so accepting the request would be a lie (→ 501).
+	ErrMigrationUnavailable = errors.New("atomic database migration is unavailable")
+	// ErrMigrationNotVerified: the compatibility switchover route was called without
+	// an exact, verified in-memory migration result (→ 409).
+	ErrMigrationNotVerified = errors.New("the target has not been verified for switchover")
 )
 
 // DatabaseService backs /v1/system/database*. Implemented in the composition root over
@@ -49,14 +57,11 @@ type DatabaseService interface {
 	// Backup writes a server-side snapshot and returns what it wrote. This is the
 	// gate Migrate enforces, not a convenience.
 	Backup(ctx context.Context) (DatabaseBackup, error)
-	// Migrate copies every table into the target and verifies row-count parity.
-	// Refuses without a passing preflight (ErrPreflightFailed) or a backup taken
-	// after this migration was configured (ErrNoBackup).
+	// Migrate validates the server-owned preconditions and queues one atomic
+	// migrate-and-restart request. It does not perform the copy on the HTTP request.
 	Migrate(ctx context.Context, dsn string) error
-	// Switchover persists the new DSN to the bootstrap file so the NEXT boot uses it.
-	// Deliberately separate from Migrate: copying data and changing which database the
-	// app answers from are different commitments, and the operator confirms the second
-	// one after seeing parity.
+	// Switchover is retained for wire compatibility. The atomic Migrate path does not
+	// need it; implementations must fail closed unless this exact target is verified.
 	Switchover(ctx context.Context, dsn string) error
 }
 
@@ -178,6 +183,9 @@ func (s *Server) databasePreflight(ctx context.Context, in *databaseTargetInput)
 	}
 	checks, err := s.database.Preflight(ctx, in.Body.DSN)
 	if err != nil {
+		if errors.Is(err, ErrNotSQLite) {
+			return nil, huma.Error409Conflict("this install is not on SQLite")
+		}
 		return nil, huma.Error422UnprocessableEntity("preflight", err)
 	}
 	out := &databasePreflightOutput{}
@@ -229,11 +237,12 @@ func (s *Server) databaseMigrate(ctx context.Context, in *databaseTargetInput) (
 			return nil, huma.Error409Conflict("this install is not on SQLite")
 		case errors.Is(err, ErrMigrationRunning):
 			return nil, huma.Error409Conflict("a migration is already running")
+		case errors.Is(err, ErrDatabaseURLPinned):
+			return nil, huma.Error409Conflict("DATABASE_URL is pinned by the environment — change it where Loomarr is launched, then restart before migrating")
+		case errors.Is(err, ErrMigrationUnavailable):
+			return nil, huma.Error501NotImplemented("atomic database migration is not available on this build")
 		}
-		// A copy failure is NOT a 500 in the "we are broken" sense — the instance is
-		// fine and still on SQLite. Report it as the conflict it is, with the reason,
-		// because the operator's next action depends on which reason it was.
-		return nil, huma.Error409Conflict("migration failed — the source database was only read from, so this install is still running on it: " + err.Error())
+		return nil, huma.Error409Conflict("migration request was not accepted; Loomarr is still running on SQLite: " + err.Error())
 	}
 	st, err := s.database.Status(ctx)
 	if err != nil {
@@ -254,6 +263,9 @@ func (s *Server) databaseSwitchover(ctx context.Context, in *databaseTargetInput
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
 	if err := s.database.Switchover(ctx, in.Body.DSN); err != nil {
+		if errors.Is(err, ErrMigrationNotVerified) || errors.Is(err, ErrDatabaseURLPinned) || errors.Is(err, ErrNotSQLite) {
+			return nil, huma.Error409Conflict(err.Error())
+		}
 		return nil, huma.Error500InternalServerError("switchover", err)
 	}
 	out := &databaseSwitchoverOutput{}
