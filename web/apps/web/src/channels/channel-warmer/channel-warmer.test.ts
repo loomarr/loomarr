@@ -68,6 +68,35 @@ new/seg.m4s?sig=x
     expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
   });
 
+  it("does not report an asset warm until its response body has been consumed", async () => {
+    mintChannelPlaySource.mockResolvedValue({
+      url: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
+      expiresAt: Date.now() + 60_000,
+    });
+    const initBytes = vi.fn().mockResolvedValue(new ArrayBuffer(1));
+    const mediaBytes = vi.fn().mockResolvedValue(new ArrayBuffer(1));
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        url: "http://localhost/v1/playout/hls/ch-2/master.m3u8?sig=signed&mode=prepared",
+        text: vi
+          .fn()
+          .mockResolvedValue(
+            '#EXTM3U\n#EXT-X-MAP:URI="init.mp4?sig=signed"\n#EXTINF:2,\nsegment.m4s?sig=signed\n',
+          ),
+      } as unknown as Response)
+      .mockResolvedValueOnce({ ok: true, arrayBuffer: initBytes } as unknown as Response)
+      .mockResolvedValueOnce({ ok: true, arrayBuffer: mediaBytes } as unknown as Response);
+
+    await expect(warmChannel("ch-2", new AbortController().signal)).resolves.toMatchObject({
+      warmed: true,
+    });
+
+    expect(initBytes).toHaveBeenCalledOnce();
+    expect(mediaBytes).toHaveBeenCalledOnce();
+  });
+
   it("warms the bounded live origin when durable preparation misses", async () => {
     mintChannelPlaySource.mockResolvedValue({
       url: "/v1/playout/hls/ch-3/master.m3u8?sig=signed",

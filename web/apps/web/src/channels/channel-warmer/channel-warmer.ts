@@ -57,7 +57,14 @@ const warmChannel = async (channelId: string, signal: AbortSignal): Promise<Warm
         signal,
         credentials: "same-origin",
         cache: "force-cache",
-      }).then((result) => result.ok),
+      }).then(async (result) => {
+        if (!result.ok) return false;
+        // fetch() resolves when response HEADERS arrive. Consume the body before calling this
+        // Channel warm: otherwise its connection can remain occupied, its bytes may not enter the
+        // HTTP cache, and the active tune queues behind speculative work on constrained browsers.
+        await result.arrayBuffer();
+        return true;
+      }),
     ),
   );
   return { ...source, warmed: assets.length > 0 && fetched.every(Boolean) };
