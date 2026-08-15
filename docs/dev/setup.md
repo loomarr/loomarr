@@ -50,8 +50,8 @@ make agent-worktree TOPIC=<topic>
 ```
 
 The harness creates a sibling worktree, installs the web workspace, runs codegen, and assigns isolated
-runtime ports, Compose state, SQLite storage, and an artifact directory. `BOOTSTRAP_SKIP_FE=1` skips the
-web preparation for a known Go-only task.
+runtime ports, Compose state, SQLite storage, prepared-publication storage, and an artifact directory.
+`BOOTSTRAP_SKIP_FE=1` skips the web preparation for a known Go-only task.
 
 Credentials are not copied. `COPY_ENV=1` is an explicit opt-in for integration work; runtime and
 database isolation still override the copied values.

@@ -28,6 +28,10 @@ printf '%s\n' "$primary" | grep -q 'http://localhost:5173'
 
 secondary="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$secondary" | grep -q 'database override.*\.agent-data/loomarr.db'
+printf '%s\n' "$secondary" | grep -q 'prepared override.*\.agent-data/prepared'
+secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
+grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
 	echo 'agent-harness-test: secondary worktree reused the primary backend port' >&2
 	exit 1

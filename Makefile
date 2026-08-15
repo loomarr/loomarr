@@ -219,7 +219,7 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_PREPARED_DIR:-.agent-data/prepared}"; \
 	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
 	  sh scripts/dev-be-guard.sh; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \

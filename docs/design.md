@@ -1258,6 +1258,39 @@ V57 ships in reviewable checkpoints: first the controller, cancellation, control
 then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel
 Playwright surf gate. No checkpoint adds a second player stack or a platform-named backend type.
 
+### Browser and real-runtime certification is layered (V58)
+
+V57 proves the controller contract against deterministic browser-owned HLS bytes. It does not claim
+that a real Loomarr process can prepare those bytes on every development host, that Linux Playwright
+WebKit is Safari, or that 100 surfable Channels means 100 simultaneous encoders. V58 keeps those
+claims separate so one green test cannot silently stand in for another.
+
+The **controller matrix** runs the same 100-Channel catalog through Playwright Chromium, Firefox,
+and WebKit. Every engine must preserve latest-request-wins, one video element, exact warmed-URL reuse,
+prepared-only adjacent probes, and a genuinely decoded H.264 frame. Latency budgets remain measured
+per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox or WebKit sample.
+These projects certify browser engines in the pinned Linux image. WebKit is useful compatibility
+evidence, but only a run on shipping Safari may be called Safari certification.
+
+The **real-runtime gate** starts the real composition root over an isolated SQLite store, the real
+prepared library and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server
+API and its library) may be test doubles, and they serve pinned representative media rather than
+prebuilt HLS responses. The browser must bootstrap/authenticate through the real API, tune a real
+Channel, receive an HLS manifest produced by Loomarr, and report a decoded frame. A process restart
+then repeats the tune from the durable readiness index, proving cold boot and prepared reuse rather
+than only a warm in-process path. Missing and corrupt representative inputs must reach the designed
+offline/retry state instead of an unexplained black frame.
+
+The **shipping-browser and hardware soak** is maintainer-run evidence: current Chrome, Firefox, and
+Safari against the isolated Loomarr runtime, with representative H.264, HEVC/10-bit, multichannel
+audio, and corrupt/missing inputs while GPU capacity is contended. It records boot-to-ready and
+request-to-first-decoded-frame timings plus the resolved copy/transcode plan. It never drives the
+maintainer's normal database or media-server configuration, and no agent invokes the `make smoke*`
+targets. Android TV, Roku, and Apple TV remain later adapters over the same controller vocabulary.
+
+V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
+controller matrix; then the real composition-root/media gate and its documented soak procedure.
+
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
 The consumers above do **not** have the same codec tolerance, and pretending they do is a black
