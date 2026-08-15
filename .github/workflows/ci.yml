@@ -331,6 +331,22 @@ jobs:
       - name: The shard split covers every package
         run: make go-shard-verify SHARDS=${{ strategy.job-total }}
       - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # One shard certifies the RELEASE-profile worker against the deterministic real-codec
+      # corpus. `make check` already covers debug Rust tests in both shards; this is the packaged
+      # Go-to-Rust protocol, resource-boundary, and output-manifest gate operators run locally.
+      - name: Rust image runtime certification
+        if: matrix.shard == 1
+        run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
+      - name: Keep the Rust image certification report
+        if: always() && matrix.shard == 1
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-image-certification
+          path: ${{ runner.temp }}/image-certification.json
+          # An earlier `make check` failure means certification never ran; do not bury that cause
+          # under a second artifact error. A certification failure itself still writes this report.
+          if-no-files-found: ignore
+          retention-days: 14
       # The drift checks are whole-repo and shard-independent: running them per shard would
       # just diff the same generated files N times. Shard 1 by the same convention that runs
       # e2e on one Playwright shard.
