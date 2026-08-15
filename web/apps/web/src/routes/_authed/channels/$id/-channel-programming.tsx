@@ -1,17 +1,19 @@
-import { type ChannelPolicy, channelsApi, type LineupEntryDTO, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
-import {
-  ChannelAutoCurate,
-  ChannelCollectionsScope,
-  ChannelCyclePreview,
-  ChannelLineupEditor,
-  ChannelPolicyFields,
-  ChannelRulesEditor,
-  ChannelSeasonal,
-  ChannelSeriesScope,
-  RefinePanel,
-} from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
+import { ChannelAutoCurate } from "@/components/loomarr/channels/channel-auto-curate";
+import { ChannelCollectionsScope } from "@/components/loomarr/channels/channel-collections-scope";
+import { ChannelCyclePreview } from "@/components/loomarr/channels/channel-cycle-preview";
+import { ChannelLineupEditor } from "@/components/loomarr/channels/channel-lineup-editor";
+import { ChannelPolicyFields } from "@/components/loomarr/channels/channel-policy-fields";
+import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-editor";
+import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
+import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
+import { Button } from "@/components/ui/button";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
 // what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface
@@ -37,14 +39,14 @@ import { Button } from "@/components/ui";
 
 interface ChannelProgrammingProps {
   channelId: string;
+  revision: number;
   channelName: string;
   lineup: LineupEntryDTO[];
   policy: ChannelPolicy;
   onPolicyChange: (next: ChannelPolicy) => void;
-  // The channel's playback strategy. Not part of ChannelPolicy and saved by its own PATCH,
-  // but edited here because Ordering's "inherit channel default" refers to it.
+  // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
+  // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
   strategy?: string;
-  onStrategyChange?: (next: string) => void;
   // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
   // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
   // control says so instead of offering a setting the job would skip.
@@ -52,26 +54,33 @@ interface ChannelProgrammingProps {
   onRefined: () => void;
 }
 
-// Block — one titled step of the Programming surface. The numberless heading + one-line hint
-// name what the block controls in the operator's words (not the schema's).
-const Block = ({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) => (
-  <section className="flex flex-col gap-4 border-border border-t pt-6">
-    <div>
-      <h3 className="font-semibold text-base">{title}</h3>
-      <p className="text-muted-foreground text-sm">{hint}</p>
-    </div>
-    {children}
-  </section>
+// Block — one intent-sized step of the Programming surface. The first task opens; secondary
+// tuning stays quiet until requested. Closed content remains reachable to find-in-page through
+// the shared disclosure primitive.
+const Block = ({
+  title,
+  hint,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  hint: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) => (
+  <CollapsibleSection title={title} description={hint} defaultOpen={defaultOpen}>
+    <div className="flex flex-col gap-4">{children}</div>
+  </CollapsibleSection>
 );
 
 const ChannelProgramming = ({
   channelId,
+  revision,
   channelName,
   lineup,
   policy,
   onPolicyChange,
   strategy,
-  onStrategyChange,
   intentRef,
   onRefined,
 }: ChannelProgrammingProps) => {
@@ -79,7 +88,7 @@ const ChannelProgramming = ({
 
   // The scheduling-rules draft (§12). Only the rules block reads it; everything else on this
   // surface keeps saving inline through `onPolicyChange`.
-  const rules = useChannelRulesDraft(channelId, policy);
+  const rules = useChannelRulesDraft(channelId, policy, revision);
 
   // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
@@ -106,8 +115,12 @@ const ChannelProgramming = ({
         onApplied={onRefined}
       />
 
-      <Block title="What plays" hint="The titles this channel draws from, and the content it stays within.">
-        <ChannelLineupEditor channelId={channelId} lineup={lineup} />
+      <Block
+        title="What plays"
+        hint="The titles this channel draws from, and the content it stays within."
+        defaultOpen
+      >
+        <ChannelLineupEditor channelId={channelId} revision={revision} lineup={lineup} />
         <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="scope" />
         {/* `scope.series` narrows the channel to specific shows. It sits under the scope
             fields because it is the same question ("what may play?") at a coarser grain than
@@ -119,13 +132,7 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields
-          policy={policy}
-          onChange={onPolicyChange}
-          show="ordering"
-          strategy={strategy}
-          onStrategyChange={onStrategyChange}
-        />
+        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" strategy={strategy} />
       </Block>
 
       <Block
@@ -190,13 +197,16 @@ const ChannelProgramming = ({
 
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
           wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
-      <div className="border-border border-t pt-6">
+      <CollapsibleSection
+        title="Preview schedule"
+        description="Check what airs at a specific time and which rule wins."
+      >
         <ChannelCyclePreview
           channelId={channelId}
           lineupKeys={lineupKeys}
           draftPolicy={rules.isDirty ? rules.draft : undefined}
         />
-      </div>
+      </CollapsibleSection>
     </div>
   );
 };

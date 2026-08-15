@@ -1,7 +1,8 @@
-import { formatRelative, formatUntil, pluralize } from "@loomarr/core";
+import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
 import { Loader2 } from "lucide-react";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SessionListProps } from "./session-list.type";
 
 // SessionList — who is signed in as this user, and the ability to end it (§11: sessions

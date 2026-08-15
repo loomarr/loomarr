@@ -12,7 +12,7 @@ func TestLaddersAreAscendingAndNonEmpty(t *testing.T) {
 			t.Fatalf("role %q has an empty ladder", r)
 		}
 		if !slices.IsSorted(w) {
-			t.Errorf("role %q ladder is not ascending: %v — ResizeLadder sorts internally, but "+
+			t.Errorf("role %q ladder is not ascending: %v — the renderer can normalize order, but "+
 				"NearestWidth's round-up walk assumes order", r, w)
 		}
 	}

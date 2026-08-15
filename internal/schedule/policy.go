@@ -77,6 +77,10 @@ type OperatorPolicy struct {
 	// flex that Tunarr renders as large channel-named blocks, which is a promise of commercials
 	// Loomarr cannot keep. This knob lowers density, never forces breaks into existence.
 	BreaksPerHour *int `json:"breaksPerHour,omitempty"`
+	// BreakDuration overrides the global target length for each commercial break. Nil inherits
+	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
+	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
+	BreakDuration *Duration `json:"breakDuration,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole
@@ -117,21 +121,10 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
-	// Subtitles is the channel's subtitle mode (§9.1, V46): "" / "off" = none (default);
-	// "burn" = burn the preferred-language subtitle track into the shared encode. Burn-in
-	// rather than a soft toggle for the same reason as audio: a viewer-toggled soft track
-	// would need per-viewer output, which the one-encoder-per-channel model forbids.
-	Subtitles string `json:"subtitles,omitempty"`
 }
 
 // PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
 const PlayoutBackendInternal = "internal"
-
-// Subtitle modes for PlayoutPolicy.Subtitles / the `playout.subtitles` global (§9.1, V46).
-const (
-	SubtitlesOff  = "off"  // no subtitles (the default; "" resolves to this)
-	SubtitlesBurn = "burn" // burn the preferred-language track into the shared encode
-)
 
 // ResolveAudioLanguage picks the audio language for a channel: its own
 // `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
@@ -145,23 +138,6 @@ func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) stri
 		return strings.TrimSpace(p.AudioLanguage)
 	}
 	return strings.TrimSpace(globalAudioLanguage)
-}
-
-// ResolveSubtitles picks the subtitle mode for a channel: its own
-// `policy.playout.subtitles` when set, else the global `playout.subtitles`. Normalizes to
-// SubtitlesOff when neither names a mode, so callers never branch on "".
-func ResolveSubtitles(policy ChannelPolicy, globalSubtitles string) string {
-	pick := ""
-	if p := policy.Playout; p != nil {
-		pick = strings.TrimSpace(p.Subtitles)
-	}
-	if pick == "" {
-		pick = strings.TrimSpace(globalSubtitles)
-	}
-	if pick == "" {
-		return SubtitlesOff
-	}
-	return pick
 }
 
 // PlaysInternally resolves the nil-means-inherit precedence §15 defines: a channel's own
@@ -651,6 +627,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if err := p.Filler.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)
+	}
+	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
+		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
 	}
 	if p.AutoCurate != nil {
 		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {

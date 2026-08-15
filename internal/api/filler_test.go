@@ -39,7 +39,8 @@ type fakeFiller struct {
 	// `discovered`. Two fields rather than one, so a test can prove a collection request
 	// never lands on the keyword search (and vice versa) — a single log would pass either
 	// way round.
-	collections []string
+	collections       []string
+	collectionQueries []string
 	// enriched records the ids EnrichDiscovered was asked for, so a test can prove the
 	// handler asks for exactly what the client sent — the cost is per id, so an extra one
 	// is a real upstream request nobody wanted.
@@ -79,8 +80,9 @@ func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api
 
 // DiscoverCollection returns a DIFFERENT item set from Discover, deliberately: identical
 // fixtures would let a handler that called the wrong method pass every assertion.
-func (f *fakeFiller) DiscoverCollection(_ context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
+func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
 	f.collections = append(f.collections, ref)
+	f.collectionQueries = append(f.collectionQueries, query)
 	f.discoverLimit = limit
 	if f.discoverErr != nil {
 		return nil, 0, f.discoverErr
@@ -749,18 +751,23 @@ func TestDiscoverFiller_SearchDoesNotListACollection(t *testing.T) {
 	}
 }
 
-// Exactly one mode. Both is ambiguous (searching WITHIN a collection is a different question
-// archive.org would be asked differently) and neither is the empty search the schema forbids
-// — so both spellings are refused BEFORE any upstream call.
-func TestDiscoverFiller_RefusesBothModesAtOnce(t *testing.T) {
+// Supplying both modes means search WITHIN the named collection. This is the request made by a
+// Sources-row search; treating q as global would make the row label a lie.
+func TestDiscoverFiller_SearchesWithinACollection(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal&collection=classic_tv_commercials", adminToken, "")
-	if resp.StatusCode == http.StatusOK {
-		t.Error("q and collection together were accepted; the request is ambiguous")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	if len(ff.discovered) != 0 || len(ff.collections) != 0 {
-		t.Errorf("upstream was called despite an ambiguous request (q=%v, collection=%v)", ff.discovered, ff.collections)
+	if !slices.Equal(ff.collections, []string{"classic_tv_commercials"}) {
+		t.Errorf("collections = %v, want the source collection", ff.collections)
+	}
+	if !slices.Equal(ff.collectionQueries, []string{"cereal"}) {
+		t.Errorf("collection queries = %v, want the typed words", ff.collectionQueries)
+	}
+	if len(ff.discovered) != 0 {
+		t.Errorf("the scoped request also ran the global keyword search (%v)", ff.discovered)
 	}
 }
 
@@ -815,7 +822,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
-			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true},
+			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true},
 		},
 	}
 	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
@@ -833,13 +840,23 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	// The V34 review fields must cross the wire — the UI renders from exactly these.
 	s1 := got.Segments[1]
-	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable {
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable || !s1.Looked {
 		t.Errorf("review fields lost: %+v", s1)
 	}
 
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/nope", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown proposal → %d, want 404", resp.StatusCode)
+	}
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_detecting", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("incomplete detector checkpoint → %d, want 404 until reviewable", resp.StatusCode)
 	}
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_1", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {

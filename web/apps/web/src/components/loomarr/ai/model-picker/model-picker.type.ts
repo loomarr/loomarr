@@ -1,4 +1,4 @@
-import type { LLMModelView } from "@loomarr/api";
+import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 
 interface ModelPickerProps {
   // The BE ranks and explains fit for THIS machine (§8.1) — the UI never guesses which

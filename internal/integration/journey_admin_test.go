@@ -142,9 +142,13 @@ func TestJourney_NewAdmin(t *testing.T) {
 		t.Fatalf("policy ceiling = %q, want TV-Y7", prop.Policy.Audience.Ceiling)
 	}
 
-	// A9: APPROVE (the real gate) → in-library picks become `available` titles.
-	if code := h.status(http.MethodPost, "/v1/proposals/"+propID+"/approve", "", admin); code != http.StatusOK {
-		t.Fatalf("approve → %d, want 200", code)
+	// A9: APPROVE (the real gate) → titles and the local channel commit together.
+	var approved struct {
+		ChannelID string `json:"channelId"`
+	}
+	decodeBody(t, h.do(http.MethodPost, "/v1/proposals/"+propID+"/approve", "", admin), &approved)
+	if approved.ChannelID == "" {
+		t.Fatal("approve returned no channel id")
 	}
 	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {
 		if rec, err := h.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
@@ -152,13 +156,9 @@ func TestJourney_NewAdmin(t *testing.T) {
 		}
 	}
 
-	// A10: CREATE the channel from the approved intent → the real engine reconciles to
-	// the injected Tunarr, ENFORCING the policy (the TV-MA toon is excluded).
-	body := `{"id":"cartoons","name":"Saturday Cartoons","number":42,"strategy":"shuffle","intentRef":"` + submitted.JobID + `"}`
-	if code := h.status(http.MethodPost, "/v1/channels", body, admin); code != http.StatusOK {
-		t.Fatalf("create channel → %d, want 200", code)
-	}
-	ch, _ := h.store.GetChannel(context.Background(), "cartoons")
+	// A10: The same approval reconciles through the real engine to the injected Tunarr,
+	// ENFORCING the policy (the TV-MA toon is excluded).
+	ch, _ := h.store.GetChannel(context.Background(), approved.ChannelID)
 	if ch.TunarrID == "" {
 		t.Fatal("server-assigned TunarrID not persisted")
 	}
@@ -182,7 +182,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 
 	// A11: IDEMPOTENCY — a second reconcile makes no new Tunarr writes.
 	pushesBefore := h.tun.Pushes
-	if code := h.status(http.MethodPost, "/v1/channels/cartoons/reconcile", "", admin); code != http.StatusOK {
+	if code := h.status(http.MethodPost, "/v1/channels/"+approved.ChannelID+"/reconcile", "", admin); code != http.StatusOK {
 		t.Fatalf("reconcile → %d, want 200", code)
 	}
 	if h.tun.Pushes != pushesBefore {

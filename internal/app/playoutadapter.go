@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -73,7 +74,7 @@ type channelReader interface {
 // targeted column write — the resolver samples + probes the lineup, but has no other business
 // mutating a channel row (the binder owns the lineup, loomarr-one-lineup-writer).
 type codecWriter interface {
-	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
+	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 }
 
 type playoutResolver struct {
@@ -256,13 +257,42 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 //
 // If r.codecs is wired the measured codec is persisted; the measured value is returned either way.
 func (r *playoutResolver) ComputeChannelCodec(ctx context.Context, channelID string) (string, error) {
-	codec := r.measureChannelCodec(ctx, channelID)
-	if r.codecs != nil {
-		if err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, codec); err != nil {
+	if r.codecs == nil {
+		return r.measureChannelCodec(ctx, channelID), nil
+	}
+	if r.channels == nil {
+		return store.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
+	}
+
+	// Measuring spans cycle construction, library resolution, and several probes. A lineup can
+	// change during that window, so the derived codec is only valid when the channel revision is
+	// unchanged on both sides of the measurement. The targeted write uses that same revision and
+	// advances it, preventing either a stale probe or a full-row writer from overwriting the other.
+	const maxCodecWriteAttempts = 4
+	codec := store.BroadcastCodecH264
+	for attempt := 0; attempt < maxCodecWriteAttempts; attempt++ {
+		before, err := r.channels.GetChannel(ctx, channelID)
+		if err != nil {
+			return codec, fmt.Errorf("read channel %s before codec measurement: %w", channelID, err)
+		}
+		codec = r.measureChannelCodec(ctx, channelID)
+		after, err := r.channels.GetChannel(ctx, channelID)
+		if err != nil {
+			return codec, fmt.Errorf("read channel %s after codec measurement: %w", channelID, err)
+		}
+		if before.Revision != after.Revision {
+			continue
+		}
+		if _, err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, after.Revision, codec); err == nil {
+			return codec, nil
+		} else if !errors.Is(err, store.ErrChannelStale) {
 			return codec, fmt.Errorf("persist broadcast codec for %s: %w", channelID, err)
 		}
+		if err := ctx.Err(); err != nil {
+			return codec, err
+		}
 	}
-	return codec, nil
+	return codec, fmt.Errorf("persist broadcast codec for %s: channel kept changing", channelID)
 }
 
 // ChannelCodec reads the channel's STORED broadcast codec (§9.1 V50) — the hot-path read the play
@@ -746,11 +776,19 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the concat demuxer asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-func (r *playoutResolver) AudioTrackFor(ctx context.Context, streamURL string) int {
+func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamURL string) int {
 	if r.audioLanguage == nil || r.probeAudio == nil || streamURL == "" {
 		return 0
 	}
 	prefer := r.audioLanguage()
+	// A channel override wins over the instance default. Failure to reload the channel is
+	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
+	// to the global preference is better than taking the programme off air for an optional track.
+	if r.channels != nil && channelID != "" {
+		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
+			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
+		}
+	}
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
 		// entirely rather than paying for an answer that cannot change the outcome.

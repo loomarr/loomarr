@@ -1,6 +1,7 @@
-import { formatRelative } from "@loomarr/core";
-import { Badge, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import { formatRelative } from "@loomarr/core/format";
+import { Badge } from "@/components/ui/badge";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { ApprovalHistoryRowProps } from "./approval-history-row.type";
 
 // ApprovalHistoryRow — one DECIDED proposal in Queue's History tab (V27).

@@ -30,7 +30,7 @@ type GCStore interface {
 	ListUnrecoverable(ctx context.Context, limit int) ([]Image, error)
 	ListColdestDerivatives(ctx context.Context, limit int) ([]Derivative, error)
 	TotalDerivativeBytes(ctx context.Context) (int64, error)
-	DeleteDerivative(ctx context.Context, hash string, f Format, width int) error
+	DeleteDerivative(ctx context.Context, hash, recipe string, f Format, width int) error
 	DeleteDerivatives(ctx context.Context, hash string) error
 	DeleteImage(ctx context.Context, hash string) error
 }
@@ -63,7 +63,7 @@ type GC struct {
 	log    *slog.Logger
 	notify Notifier
 
-	// remoteTTL is `images.remote_ttl` — the TMDB compliance ceiling, read per run.
+	// remoteTTL is the application-owned TMDB compliance ceiling.
 	remoteTTL func() time.Duration
 	// budgetMB is `images.cache_budget_mb`.
 	budgetMB func() int
@@ -232,7 +232,7 @@ func (g *GC) evict(ctx context.Context, out *GCResult) error {
 			g.log.Warn("evicting a derivative failed", "path", d.Path, "err", err)
 			continue
 		}
-		if err := g.store.DeleteDerivative(ctx, d.ImageHash, d.Format, d.Width); err != nil {
+		if err := g.store.DeleteDerivative(ctx, d.ImageHash, d.Recipe, d.Format, d.Width); err != nil {
 			return err
 		}
 		total -= d.Bytes

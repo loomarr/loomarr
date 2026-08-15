@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -18,13 +19,42 @@ import (
 
 const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FROM filler_split_proposals`
 
+// splitProposalDocument evolves the original bare segment array without a coordination-column
+// migration. Detection checkpoints are implementation state, not independently queryable data;
+// keeping them in the proposal's one authored/read document preserves that ownership.
+type splitProposalDocument struct {
+	Version   int                            `json:"version"`
+	Segments  []filler.SplitSegment          `json:"segments,omitempty"`
+	Detection *filler.SplitDetectionProgress `json:"detection,omitempty"`
+	Spawned   []string                       `json:"spawned,omitempty"`
+}
+
+func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
+	return json.Marshal(splitProposalDocument{Version: 2, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned})
+}
+
+func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
+	trimmed := bytes.TrimSpace([]byte(raw))
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		// V34–V54 stored the segment array directly. Absence of detector state means those rows
+		// are complete proposals, so upgrades need no migration or queue rewrite.
+		return json.Unmarshal(trimmed, &p.Segments)
+	}
+	var doc splitProposalDocument
+	if err := json.Unmarshal(trimmed, &doc); err != nil {
+		return err
+	}
+	p.Segments, p.Detection, p.Spawned = doc.Segments, doc.Detection, doc.Spawned
+	return nil
+}
+
 // UpsertSplitProposal writes a proposal. ONE proposal per compilation clip:
 // re-running detection replaces the pending one (clip_hash is UNIQUE), because
 // two competing cut-lists for one file is a review bug, not a choice.
 func (s *sqlStore) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
-	raw, err := json.Marshal(p.Segments)
+	raw, err := marshalSplitProposal(p)
 	if err != nil {
-		return fmt.Errorf("marshal split segments: %w", err)
+		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_split_proposals (id, clip_hash, segments_json, created_at)
@@ -54,8 +84,8 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	if err != nil {
 		return filler.SplitProposal{}, fmt.Errorf("get split proposal %s: %w", id, err)
 	}
-	if err := json.Unmarshal([]byte(raw), &p.Segments); err != nil {
-		return filler.SplitProposal{}, fmt.Errorf("split proposal %s segments corrupt: %w", id, err)
+	if err := unmarshalSplitProposal(raw, &p); err != nil {
+		return filler.SplitProposal{}, fmt.Errorf("split proposal %s document corrupt: %w", id, err)
 	}
 	p.CreatedAt = fromEpoch(createdAt)
 	return p, nil
@@ -156,8 +186,8 @@ func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
 	return nil
 }
 
-// UpdateSplitProposalSegments replaces the segments of an EXISTING proposal (§10 V54 — split-time
-// grounding accumulates across passes, so a pass writes back what it learned).
+// UpdateSplitProposal replaces the document of an EXISTING proposal (§10 V54 — split-time
+// grounding and partial-confirm output accumulate across passes, so a pass writes back what it learned).
 //
 // ⚠ **Deliberately NOT `UpsertSplitProposal`.** That one is `INSERT … ON CONFLICT(clip_hash)`, so
 // a grounding write landing after `Confirm` consumed the proposal would RESURRECT it: a pending
@@ -167,19 +197,19 @@ func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
 //
 // ⚠ It does not touch `created_at`. `ListSplitProposals` orders by it, so writing it would let a
 // reel jump the review queue merely for having been grounded.
-func (s *sqlStore) UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error {
-	raw, err := json.Marshal(segs)
+func (s *sqlStore) UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	raw, err := marshalSplitProposal(p)
 	if err != nil {
-		return fmt.Errorf("marshal split segments: %w", err)
+		return fmt.Errorf("marshal split proposal document: %w", err)
 	}
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), id)
+		`UPDATE filler_split_proposals SET segments_json = ? WHERE id = ?`), string(raw), p.ID)
 	if err != nil {
-		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("update split proposal %s segments: %w", id, err)
+		return fmt.Errorf("update split proposal %s: %w", p.ID, err)
 	}
 	if n == 0 {
 		return ErrNotFound
@@ -234,6 +264,49 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 	}
 	defer func() { _ = rows.Close() }()
 
+	return collectReadyOrAllSplitProposals(rows, 0, false)
+}
+
+// ListReadySplitProposals returns at most limit proposals that have finished detection. It scans
+// checkpoint documents without retaining them, so a large detection backlog cannot become an
+// equally large Incoming payload.
+func (s *sqlStore) ListReadySplitProposals(ctx context.Context, limit int) ([]filler.SplitProposal, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
+	if err != nil {
+		return nil, fmt.Errorf("list ready split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return collectReadyOrAllSplitProposals(rows, limit, true)
+}
+
+// CountReadySplitProposals counts reviewable reels without retaining their JSON documents.
+func (s *sqlStore) CountReadySplitProposals(ctx context.Context) (int, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
+	if err != nil {
+		return 0, fmt.Errorf("count ready split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		var (
+			p         filler.SplitProposal
+			raw       string
+			createdAt int64
+		)
+		if err := rows.Scan(&p.ID, &p.ClipHash, &raw, &createdAt); err != nil {
+			return 0, fmt.Errorf("scan split proposal: %w", err)
+		}
+		if err := unmarshalSplitProposal(raw, &p); err != nil {
+			return 0, fmt.Errorf("split proposal %s document corrupt: %w", p.ID, err)
+		}
+		if p.Ready() {
+			n++
+		}
+	}
+	return n, rows.Err()
+}
+
+func collectReadyOrAllSplitProposals(rows *sql.Rows, limit int, readyOnly bool) ([]filler.SplitProposal, error) {
 	var out []filler.SplitProposal
 	for rows.Next() {
 		var (
@@ -247,11 +320,17 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 		// Reported rather than silently skipped: a proposal whose segments will not decode is
 		// a compilation the operator can never review, and dropping it from the list makes it
 		// invisible instead of fixable.
-		if err := json.Unmarshal([]byte(raw), &p.Segments); err != nil {
-			return nil, fmt.Errorf("split proposal %s segments corrupt: %w", p.ID, err)
+		if err := unmarshalSplitProposal(raw, &p); err != nil {
+			return nil, fmt.Errorf("split proposal %s document corrupt: %w", p.ID, err)
 		}
 		p.CreatedAt = fromEpoch(createdAt)
+		if readyOnly && !p.Ready() {
+			continue
+		}
 		out = append(out, p)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	return out, rows.Err()
 }

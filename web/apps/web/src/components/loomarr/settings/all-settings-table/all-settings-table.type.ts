@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 
 interface AllSettingsTableProps {
   entries: SettingEntry[];
@@ -11,6 +11,8 @@ interface AllSettingsTableProps {
   // without a provider.
   values: Record<string, string>;
   onEdit: (key: string, value: string) => void;
+  onEnvOverride?: (key: string, enabled: boolean) => void;
+  onClear?: (entry: SettingEntry) => void;
   className?: string;
 }
 

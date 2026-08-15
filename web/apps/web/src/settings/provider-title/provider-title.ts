@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 
 // A block whose backend is provider-selected (Requester, AI) shows the CHOSEN provider in its
 // title — "Requester (Seerr)", "AI (Ollama)" — so at a glance you see what it's wired to. The

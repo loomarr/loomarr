@@ -87,14 +87,22 @@ func TestBackupGateCannotBeSatisfiedByTheCaller(t *testing.T) {
 		t.Error("a zero-byte backup is not a backup")
 	}
 
-	// Now the gate passes and the call proceeds far enough to fail on the unreachable
-	// target — which is the proof it got past the gate.
-	err = svc.Migrate(context.Background(), dsn)
-	if errors.Is(err, api.ErrNoBackup) {
-		t.Fatal("the gate still fired after a real backup was written")
+	// Now the gate passes and only the process-level request is queued. The HTTP-owned
+	// module must never open the target or copy data itself.
+	var requested string
+	svc.WithMigrationRequest(func(target string) error {
+		requested = target
+		return nil
+	})
+	if err = svc.Migrate(context.Background(), dsn); err != nil {
+		t.Fatalf("queue migration: %v", err)
 	}
-	if err == nil {
-		t.Fatal("expected the unreachable target to fail the copy")
+	if requested != dsn {
+		t.Fatalf("requested target = %q, want %q", requested, dsn)
+	}
+	status, _ := svc.Status(context.Background())
+	if status.Phase != "migrating" {
+		t.Errorf("accepted request phase = %q, want migrating", status.Phase)
 	}
 }
 
@@ -110,6 +118,67 @@ func TestPreflightAuthorizationIsPerTarget(t *testing.T) {
 	err := svc.Migrate(context.Background(), "postgres://u:p@host-b:5432/loomarr")
 	if !errors.Is(err, api.ErrPreflightFailed) {
 		t.Fatalf("migrating to a DIFFERENT target than the one preflighted → %v, want ErrPreflightFailed", err)
+	}
+}
+
+func TestMigrateRefusesAnEnvironmentPinBeforeQueueing(t *testing.T) {
+	t.Setenv("DATABASE_URL", "sqlite:///data/loomarr.db")
+	svc, _ := newTestDatabaseService(t)
+	called := false
+	svc.WithMigrationRequest(func(string) error { called = true; return nil })
+
+	err := svc.Migrate(context.Background(), "postgres://u:p@db:5432/loomarr")
+	if !errors.Is(err, api.ErrDatabaseURLPinned) {
+		t.Fatalf("pinned migration = %v, want ErrDatabaseURLPinned", err)
+	}
+	if called {
+		t.Fatal("a pinned migration must be rejected before queueing")
+	}
+}
+
+func TestMigrateFailsClosedWithoutAProcessRequester(t *testing.T) {
+	svc, _ := newTestDatabaseService(t)
+	const dsn = "postgres://u:p@db:5432/loomarr"
+	svc.mu.Lock()
+	svc.preflighted = dsn
+	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
+	svc.mu.Unlock()
+
+	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, api.ErrMigrationUnavailable) {
+		t.Fatalf("migration without requester = %v, want ErrMigrationUnavailable", err)
+	}
+}
+
+func TestMigrationRequestFailureIsVisibleAndRetryable(t *testing.T) {
+	svc, _ := newTestDatabaseService(t)
+	const dsn = "postgres://u:p@db:5432/loomarr"
+	want := errors.New("restart request queue is full")
+	svc.WithMigrationRequest(func(string) error { return want })
+	svc.mu.Lock()
+	svc.preflighted = dsn
+	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
+	svc.mu.Unlock()
+
+	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, want) {
+		t.Fatalf("migration request = %v, want %v", err, want)
+	}
+	status, _ := svc.Status(context.Background())
+	if status.Phase != "failed" || !strings.Contains(status.Error, "queue is full") {
+		t.Fatalf("failed status = %+v", status)
+	}
+	// A rejected enqueue is not left marked running; a corrected requester can retry.
+	svc.WithMigrationRequest(func(string) error { return nil })
+	if err := svc.Migrate(context.Background(), dsn); err != nil {
+		t.Fatalf("retry after rejected enqueue: %v", err)
+	}
+}
+
+func TestLastMigrationErrorCarriesAcrossGeneration(t *testing.T) {
+	svc, _ := newTestDatabaseService(t)
+	svc.WithLastError("target parity mismatch; still running on SQLite")
+	status, _ := svc.Status(context.Background())
+	if status.Phase != "failed" || status.Error == "" {
+		t.Fatalf("status = %+v, want failed with the carried error", status)
 	}
 }
 
@@ -138,6 +207,7 @@ func TestStatusReportsBackendAndOffersMigration(t *testing.T) {
 func TestSwitchoverWritesTheBootstrapFile(t *testing.T) {
 	svc, _ := newTestDatabaseService(t)
 	const dsn = "postgres://u:p@db:5432/loomarr"
+	seedVerifiedSwitchover(svc, dsn)
 
 	if err := svc.Switchover(context.Background(), dsn); err != nil {
 		t.Fatalf("switchover: %v", err)
@@ -156,15 +226,55 @@ func TestSwitchoverWritesTheBootstrapFile(t *testing.T) {
 func TestSwitchoverRefusesWhenPinnedByEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "sqlite:///data/loomarr.db")
 	svc, _ := newTestDatabaseService(t)
+	const dsn = "postgres://u:p@db:5432/loomarr"
+	seedVerifiedSwitchover(svc, dsn)
 
-	err := svc.Switchover(context.Background(), "postgres://u:p@db:5432/loomarr")
-	if err == nil {
-		t.Fatal("switchover must refuse while DATABASE_URL is pinned by the environment")
-	}
-	if !strings.Contains(err.Error(), "pinned") {
-		t.Errorf("the refusal must explain the pin, got: %v", err)
+	err := svc.Switchover(context.Background(), dsn)
+	if !errors.Is(err, api.ErrDatabaseURLPinned) {
+		t.Fatalf("pinned switchover = %v, want ErrDatabaseURLPinned", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(svc.dataDir, "bootstrap.json")); statErr == nil {
 		t.Error("nothing should have been written")
 	}
+}
+
+func TestSwitchoverFailsClosedWithoutExactVerifiedState(t *testing.T) {
+	const dsn = "postgres://u:p@db:5432/loomarr"
+	for _, tc := range []struct {
+		name  string
+		alter func(*databaseService)
+	}{
+		{name: "idle", alter: func(*databaseService) {}},
+		{name: "wrong target", alter: func(s *databaseService) {
+			seedVerifiedSwitchover(s, "postgres://u:p@other:5432/loomarr")
+		}},
+		{name: "parity unknown", alter: func(s *databaseService) {
+			seedVerifiedSwitchover(s, dsn)
+			s.parity = "unknown"
+		}},
+		{name: "still running", alter: func(s *databaseService) {
+			seedVerifiedSwitchover(s, dsn)
+			s.running = true
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _ := newTestDatabaseService(t)
+			tc.alter(svc)
+			if err := svc.Switchover(context.Background(), dsn); !errors.Is(err, api.ErrMigrationNotVerified) {
+				t.Fatalf("switchover = %v, want ErrMigrationNotVerified", err)
+			}
+			if _, err := os.Stat(filepath.Join(svc.dataDir, "bootstrap.json")); err == nil {
+				t.Fatal("unverified switchover wrote bootstrap.json")
+			}
+		})
+	}
+}
+
+func seedVerifiedSwitchover(svc *databaseService, dsn string) {
+	svc.mu.Lock()
+	svc.preflighted = dsn
+	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
+	svc.phase = "verified"
+	svc.parity = "match"
+	svc.mu.Unlock()
 }

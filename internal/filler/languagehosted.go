@@ -72,7 +72,7 @@ type HostedLanguage struct {
 	// that needs a restart.
 	//
 	// Returning nil ⇒ LangUndetermined, so an install that selected `hosted` without configuring
-	// a key is inert rather than broken.
+	// a service URL is inert rather than broken. A key is optional for Custom endpoints.
 	Asker func() AudioAsker
 	// Model is read per call for the same reason.
 	Model func() string
@@ -89,6 +89,22 @@ type HostedLanguage struct {
 // "we cannot tell" is an answer the gate already knows how to handle.
 func NewHostedLanguage(asker func() AudioAsker, model func() string, ffmpegPath, tmpDir string) *HostedLanguage {
 	return &HostedLanguage{Asker: asker, Model: model, FFmpegPath: ffmpegPath, tmpDir: tmpDir}
+}
+
+// UnavailableReason checks configuration only; reachability and model capability remain work-time
+// failures and therefore keep the retry protection. The closures are deliberately resolved on
+// every call so an in-app hosted selection becomes ready without reconstructing this detector.
+func (h *HostedLanguage) UnavailableReason() string {
+	switch {
+	case h.FFmpegPath == "":
+		return "audio extraction is not configured (set playout.ffmpeg_path)"
+	case h.Model == nil || h.Model() == "":
+		return "the hosted language model is not configured"
+	case h.Asker == nil || h.Asker() == nil:
+		return "the hosted language service is not configured"
+	default:
+		return ""
+	}
 }
 
 func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {

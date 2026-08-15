@@ -1,17 +1,19 @@
-import type { ChannelDTO } from "@loomarr/api";
-import { channelsApi, toProblem, unwrap } from "@loomarr/api";
-import { channelNumber } from "@loomarr/core";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
+import { channelNumber } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { ChannelIdentityField } from "@/channels";
-import type { OnAirState } from "@/components/loomarr";
-import { ErrorState } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { useDocumentTitle } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { ChannelIdentityField } from "@/channels/channel-identity-field";
+import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -80,7 +82,13 @@ const ChannelDetailLayout = () => {
   // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
   const { pathname } = useLocation();
 
-  const channel = channelsApi.useGetChannel(id);
+  // A surf request changes `$id` before the replacement GET completes. On Watch, retaining the
+  // previous DTO keeps the one player/decoder mounted while ChannelWatch immediately renders the
+  // target from the already-loaded list. Other sections do not opt into this: an editor must never
+  // temporarily show one channel's data under another channel's URL.
+  const channel = channelsApi.useGetChannel(id, {
+    query: { placeholderData: pathname.endsWith("/watch") ? (previous) => previous : undefined },
+  });
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
 
   const invalidate = () => {
@@ -108,7 +116,10 @@ const ChannelDetailLayout = () => {
         invalidate();
         toast.success("Saved");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't save that change"),
+      onError: (e) => {
+        invalidate();
+        toast.error(toProblem(e).title ?? "Couldn't save that change");
+      },
     },
   });
   const del = channelsApi.useDeleteChannel({
@@ -143,12 +154,13 @@ const ChannelDetailLayout = () => {
   // close) from failure (a 409 renumber surfaces inline on the field, editor stays open). The
   // hook-level onError toast still fires; the field also gets the rejection to show in place.
   const saveName = (name: string | number) =>
-    update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
+    update.mutateAsync({ id, data: { revision: ch.revision, name: String(name) } }).then(() => undefined);
   const saveNumber = (number: string | number) =>
-    update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
+    update.mutateAsync({ id, data: { revision: ch.revision, number: Number(number) } }).then(() => undefined);
   // The icon is just another field on the same PATCH (§7) — not a bespoke endpoint — so it
   // commits exactly like the identity fields above. `""` clears it.
-  const saveLogo = (logo: string) => update.mutateAsync({ id, data: { logo } }).then(() => undefined);
+  const saveLogo = (logo: string) =>
+    update.mutateAsync({ id, data: { revision: ch.revision, logo } }).then(() => undefined);
 
   return (
     <div className="flex h-full flex-col">
@@ -172,7 +184,7 @@ const ChannelDetailLayout = () => {
               validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
               onSave={saveName}
             />
-            <label className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
               <span className="font-mono uppercase tracking-wide">Ch</span>
               <ChannelIdentityField
                 label="Channel number"
@@ -186,7 +198,7 @@ const ChannelDetailLayout = () => {
                 }}
                 onSave={saveNumber}
               />
-            </label>
+            </div>
           </div>
         ) : (
           <>
@@ -234,14 +246,9 @@ const ChannelDetailLayout = () => {
               invalidate,
               saving: update.isPending,
               deleting: del.isPending,
-              update: (data) => update.mutate({ id, data }),
-              updateAsync: (data) => update.mutateAsync({ id, data }),
-              savePolicy: (policy) => update.mutate({ id, data: { policy } }),
-              // `strategy` is a CHANNEL field, not a policy one, so it takes its own PATCH —
-              // but it is edited on the Programming surface beside Ordering, because that is
-              // where its effect is visible: Ordering's "inherit channel default" has always
-              // referred to this value.
-              saveStrategy: (strategy) => update.mutate({ id, data: { strategy } }),
+              update: (data) => update.mutate({ id, data: { ...data, revision: ch.revision } }),
+              updateAsync: (data) => update.mutateAsync({ id, data: { ...data, revision: ch.revision } }),
+              savePolicy: (policy) => update.mutate({ id, data: { revision: ch.revision, policy } }),
               saveLogo,
               onDelete: ({ purge }) => del.mutate({ id, params: { purge } }),
             }}

@@ -1,4 +1,4 @@
-import type { TitleDTOState } from "@loomarr/api";
+import type { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 
 // The 5 title provisioning states come 1:1 from the generated TitleDTOState (§12); `drift`
 // is a FE-only badge state (a title whose library item changed underneath it) with no BE

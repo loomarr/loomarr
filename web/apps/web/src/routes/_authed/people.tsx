@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "@/auth";
-import { EmptyState } from "@/components/loomarr";
-import { useDocumentTitle } from "@/lib";
-import { UsersPage } from "@/people";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { UsersPage } from "@/people/users-page";
 
 // People is admin-only. The server enforces it (every /v1/users route 403s for a member —
 // §11, §19); this check exists so a member who follows a link sees an explanation instead

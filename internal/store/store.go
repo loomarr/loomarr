@@ -18,6 +18,27 @@ import (
 // ErrNotFound is returned by Get* methods when no row matches.
 var ErrNotFound = errors.New("store: not found")
 
+// ErrProposalNotSubmitted reports a terminal proposal decision that lost the
+// submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
+// the proposal exists, but another decision already won.
+var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
+
+// ErrProposalSuperseded reports an approval candidate whose job already has an
+// approved proposal created at the same time or later. Same-second ties fail closed:
+// proposal timestamps are stored at second resolution, so guessing an order could
+// roll a channel back to content the operator reviewed earlier.
+var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
+
+// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
+// number or non-empty intent binding). Approval transactions have rolled back
+// completely when returning it, so their caller may safely reload and replan.
+var ErrChannelConflict = errors.New("store: channel conflict")
+
+// ErrChannelStale reports that a channel mutation was planned from an older
+// revision than the row now holds. The row still exists; callers may reload and
+// either reapply their domain merge or surface a conflict to the operator.
+var ErrChannelStale = errors.New("store: stale channel revision")
+
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -44,12 +65,19 @@ type ChannelStore interface {
 	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
 	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
-	UpsertChannel(ctx context.Context, ch Channel) error
+	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
+	// at revision 1; a positive revision replaces the row only when it still
+	// matches, then returns the saved channel with its incremented revision.
+	SaveChannel(ctx context.Context, ch Channel) (Channel, error)
+	// AttachTunarrChannel records the server-assigned id and the number actually used
+	// without replacing a concurrently edited channel snapshot. Both old values are
+	// compared; the targeted write advances and returns the row revision.
+	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
-	// a targeted write used after the lineup is bound, so it never races the binder's row write.
-	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
+	// a targeted revision-checked write used after the lineup is bound.
+	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
-	DeleteChannel(ctx context.Context, id string) error
+	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
 	// content, not by channel id — see ImageStore.
@@ -73,7 +101,7 @@ type SeriesEpisodeStore interface {
 	GetSeriesEpisodes(ctx context.Context, libraryID string) (SeriesEpisodes, error)
 	UpsertSeriesEpisodes(ctx context.Context, se SeriesEpisodes) error
 	// ListStaleSeriesEpisodes returns shows fetched before `before`, oldest first, for the
-	// series-episode-refresh job (§18.1).
+	// channel-maintenance job (§18.1).
 	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
 }
 
@@ -99,7 +127,13 @@ type JobStore interface {
 type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
-	UpdateProposal(ctx context.Context, p Proposal) error
+	// CommitProposalApproval atomically wins the submitted -> approved decision,
+	// inserts title records that do not already exist, and creates or patches the
+	// intent-bound channel. Existing title lifecycle state is never overwritten.
+	// The returned count is newly inserted wanted titles.
+	CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error)
+	// CommitProposalDenial atomically wins the submitted -> denied decision.
+	CommitProposalDenial(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
 	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
 	// one job in one status. Newest wins because a refine produces a newer approved proposal
@@ -150,6 +184,9 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
+	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
+	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -184,6 +221,9 @@ type ClipStore interface {
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// ReplaceSplitChildren makes one completed re-split generation airable and tombstones older
+	// children of the same composite. It never deletes files and preserves channel-pinned clips.
+	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
 	// SetClipLanguage records the detected language (§10 V40).
 	//
 	// ⚠ The ONLY writer of that column, like the tombstone above: UpsertClip omits it, which is
@@ -272,6 +312,11 @@ type ClipStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+	// ListClipFingerprints/UpsertClipFingerprint own the persisted derived cache used by
+	// compilation de-duplication (§10). Reads batch the catalog by exact algorithm; corrupt rows
+	// are omitted with an error so valid siblings remain reusable and the bad row is recomputed.
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 }
 
 // SplitProposalStore is the persisted split-proposal surface (§10, V34) —
@@ -286,9 +331,9 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
-	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
-	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
+	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
+	// Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
 	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
@@ -393,7 +438,7 @@ type ActivityStore interface {
 	RecordActivity(ctx context.Context, a Activity) error
 	// ListActivity returns the newest feed rows first, capped at limit.
 	ListActivity(ctx context.Context, limit int) ([]Activity, error)
-	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
+	// PurgeActivity deletes feed rows older than `before` (§18.1 housekeeping). The feed
 	// is the one append-only table here, so it is the one that needs a purge.
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }

@@ -1,6 +1,7 @@
-import { channelsApi, unwrap } from "@loomarr/api";
-import { formatEpgTime } from "@loomarr/core";
-import { cn } from "@/lib";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { unwrap } from "@loomarr/api/unwrap";
+import { formatEpgTime } from "@loomarr/core/format";
+import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
 // ChannelUpcoming — the viewer-facing "what's on later" strip (P7 / plan finding 5): the

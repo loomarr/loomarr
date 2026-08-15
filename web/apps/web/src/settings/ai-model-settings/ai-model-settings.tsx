@@ -1,8 +1,12 @@
-import { systemApi, unwrap } from "@loomarr/api";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ErrorState, HostedModelPicker, ModelDiscover, ModelPicker } from "@/components/loomarr";
-import { useLoomarrEventListener } from "@/events";
+import { useEffect, useState } from "react";
+import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
+import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
+import { ModelPicker } from "@/components/loomarr/ai/model-picker";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 // The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
 // which is why this sits beside the AI settings form rather than inside it: the form
@@ -24,7 +28,17 @@ import { useLoomarrEventListener } from "@/events";
 // (e.g. the wizard) uses to refresh things this component doesn't own, like the setup-status
 // checklist whose `llm` verdict flips green once a model is active. Settings passes nothing
 // (its own status invalidation is enough); the wizard passes a setup-status invalidation.
-const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onModelChange?: () => void }) => {
+const AiModelSettings = ({
+  provider,
+  baseUrl,
+  onBaseUrlChange,
+  onModelChange,
+}: {
+  provider?: string;
+  baseUrl?: string;
+  onBaseUrlChange?: (value: string) => void;
+  onModelChange?: () => void;
+}) => {
   const queryClient = useQueryClient();
   const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
   // A failed download must SAY so. Clearing the progress on error looked identical to
@@ -35,6 +49,17 @@ const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onMod
   // Status carries BOTH the local catalog and the hosted-provider catalog, so it's always
   // fetched — the branch below picks which surface to render from the same payload.
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
+  const status = unwrap(llm.data);
+  const openRouterBase = status?.hosted?.find((hosted) => hosted.key === "openrouter")?.baseUrl;
+
+  // The probe already owns the blessed provider's canonical API base. When someone chooses the
+  // hosted path on a blank form, stage that fact into the same edit buffer as the visible field.
+  // Never overwrite a non-empty URL: that is the Custom path and remains fully operator-owned.
+  useEffect(() => {
+    if (isHosted && baseUrl === "" && openRouterBase && onBaseUrlChange) {
+      onBaseUrlChange(openRouterBase);
+    }
+  }, [baseUrl, isHosted, onBaseUrlChange, openRouterBase]);
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
   // A model became active: refresh our own status AND notify the host (setup-status, etc.).
@@ -80,7 +105,6 @@ const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onMod
   };
 
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
-  const status = unwrap(llm.data);
   if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
   // Hosted (OpenAI-compatible): render the live model picker over the provider's /models.

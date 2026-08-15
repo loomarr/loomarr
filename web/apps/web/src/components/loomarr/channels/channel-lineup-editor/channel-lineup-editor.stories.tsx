@@ -55,7 +55,7 @@ const withStubbedLineup = (): Decorator => (Story) => {
 const meta = {
   title: "Channels/ChannelLineupEditor",
   component: ChannelLineupEditor,
-  args: { channelId: "ch-1" },
+  args: { channelId: "ch-1", revision: 1 },
   decorators: [withStubbedLineup(), widthFrame(560)],
 } satisfies Meta<typeof ChannelLineupEditor>;
 

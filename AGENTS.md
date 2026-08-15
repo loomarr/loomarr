@@ -56,8 +56,9 @@ different delivery path.
 2. Never weaken grounding, the approval gate, authorization, or forward-only migrations, including in
    tests and seed data.
 3. New dependencies require a design §14 amendment with a one-line rationale in the same PR.
-4. All application code is Go. Frontend build code and the vendored `yt-dlp` executable are the stated
-   exceptions; do not introduce another application runtime.
+4. Application code is Go except for the frontend build, the vendored `yt-dlp` executable, and the
+   required `loomarr-image` Rust worker documented in design §14 and §22. Do not introduce another
+   application runtime.
 5. Unit tests never touch the network. Extend `internal/testkit`; do not create private service mocks.
 6. Store conformance remains one suite over SQLite and Postgres.
 7. Never run `make smoke*` from an agent session. It drives the maintainer's live stack.
@@ -83,8 +84,9 @@ make dev-be                 # isolated backend with Air
 make dev-fe                 # isolated Vite frontend pointed at that backend
 ```
 
-Go 1.26+, Node 22.x (22.5 minimum), pnpm 11.13.1, and Docker are required. ffmpeg/ffprobe are
-required for playout tests. Lint tools and Air run at pinned versions from the harness.
+Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x (22.5 minimum), pnpm 11.13.1,
+and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and Air run at
+pinned versions from the harness.
 
 ## Generated files
 
@@ -117,7 +119,8 @@ make agent-worktree TOPIC=<branch>
 It installs frontend dependencies and runs codegen. Credentials are not copied by default; use
 `COPY_ENV=1` only when the task genuinely needs the maintainer's configured integrations. Secondary
 worktrees receive deterministic, distinct backend/frontend/Storybook/Tunarr ports, a Compose project,
-an SQLite database, a filler drop folder, and `.artifacts/<instance>/`.
+an SQLite database, a prepared-publication library, a filler drop folder, and
+`.artifacts/<instance>/`.
 
 Do not park a secondary worktree on `main`. Never remove a worktree containing uncommitted or untracked
 work. Use `git worktree list` and `make agent-status` before cleanup.

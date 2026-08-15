@@ -1,4 +1,4 @@
-import type { Vocabulary } from "@loomarr/api";
+import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 
 // A static rule authoring vocabulary for STORIES + UNIT TESTS — the runtime rules editor gets
 // the real one from GET /v1/programming/vocabulary (ChannelProgramming passes it as a prop),

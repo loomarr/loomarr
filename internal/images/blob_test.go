@@ -68,7 +68,7 @@ func TestPathsAreShardedTwoLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = filepath.Join(dir, "drv", "ab", "cd", hashA+"_w320.webp")
+	want = filepath.Join(dir, "drv", "ab", "cd", hashA+"_loomarr-rendition-v1_w320.webp")
 	if drv != want {
 		t.Errorf("DerivativePath = %q, want %q", drv, want)
 	}

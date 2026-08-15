@@ -23,26 +23,31 @@ import (
 
 // the full lineup editor is a Phase-13 UI concern.
 type ChannelDTO struct {
-	ID     string `json:"id" example:"ch_abc123"`
-	Name   string `json:"name" example:"Saturday Morning Cartoons"`
-	Number int    `json:"number" example:"42" doc:"Guide channel number"`
-	Group  string `json:"group,omitempty" example:"Kids"`
-	Logo   string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
+	ID       string `json:"id" example:"ch_abc123"`
+	Revision int64  `json:"revision" minimum:"1" doc:"Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition."`
+	Name     string `json:"name" example:"Saturday Morning Cartoons"`
+	Number   int    `json:"number" example:"42" doc:"Guide channel number"`
+	Group    string `json:"group,omitempty" example:"Kids"`
+	Logo     string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
 	// LogoImage is the image record when `logo` points at this instance's image service (§22),
 	// and absent when it is an external URL an operator pasted.
 	//
 	// ⚠ It ENRICHES `logo` rather than replacing it. The frontend's <Image> primitive needs real
 	// width/height, the ThumbHash and both srcsets — none of which a URL carries — but an external
 	// logo is a supported configuration, not a legacy state, so the plain URL has to keep working.
-	LogoImage    *ImageDTO `json:"logoImage,omitempty" doc:"The image record when the logo is served by this instance's image service; absent for an external URL"`
-	Strategy     string    `json:"strategy" enum:"sequential,shuffle,time_slot"`
-	Status       string    `json:"status" enum:"building,live,empty,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
-	TunarrID     string    `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
-	IntentRef    string    `json:"intentRef,omitempty"`
-	ProgramCount int       `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
-	PendingCount int       `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
-	BreakCount   int       `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
-	SlotCount    int       `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
+	LogoImage *ImageDTO `json:"logoImage,omitempty" doc:"The image record when the logo is served by this instance's image service; absent for an external URL"`
+	Strategy  string    `json:"strategy" enum:"sequential,shuffle,time_slot"`
+	Status    string    `json:"status" enum:"building,live,empty,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
+	// InAppPlayable is the server-resolved surfability truth (§9.1 V57). It includes the
+	// global-backend/channel-override precedence and lifecycle state, so Web/native clients never
+	// grow their own subtly different copy of those rules.
+	InAppPlayable bool   `json:"inAppPlayable" doc:"True when this channel can be tuned by Loomarr's in-app player"`
+	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
+	IntentRef     string `json:"intentRef,omitempty"`
+	ProgramCount  int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
+	PendingCount  int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
+	BreakCount    int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
+	SlotCount     int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
 	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
 	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
@@ -132,7 +137,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 		lineup = append(lineup, dto)
 	}
 	out := ChannelDTO{
-		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
+		ID: ch.ID, Revision: ch.Revision, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
@@ -143,6 +148,29 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 		out.LogoImage = logoImage(ch.Logo)
 	}
 	return out
+}
+
+// channelDTO adds server-owned presentation facts to the pure persisted-channel projection.
+// `inAppPlayable` needs the live resolved global backend, which deliberately does not belong in
+// channelToDTO: that mapper is also used in domain-shape tests and must not read application config.
+func (s *Server) channelDTO(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
+	out := channelToDTO(ch, entryState, logoImage)
+	out.InAppPlayable = s.inAppPlayable(ch)
+	return out
+}
+
+// inAppPlayable is the one server-side definition of the V57 surfable catalog. Guide-only states
+// remain visible through the normal list but Channel Up/Down must never land on them.
+func (s *Server) inAppPlayable(ch store.Channel) bool {
+	if !s.playsInternally(ch) {
+		return false
+	}
+	switch ch.Status {
+	case schedule.StatusPaused, schedule.StatusDetached, schedule.StatusEmpty:
+		return false
+	default:
+		return true
+	}
 }
 
 // entryStateResolver returns a per-key acquisition-state lookup for a SINGLE channel's DTO

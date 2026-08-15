@@ -1,9 +1,13 @@
-import type { ClipDTO } from "@loomarr/api";
-import { formatClipDuration, formatRelative } from "@loomarr/core";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { formatClipDuration, formatRelative } from "@loomarr/core/format";
 import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card, Image } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
 // ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category
@@ -233,8 +237,7 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="absolute top-1.5 left-1.5 size-4 accent-signal"
@@ -327,8 +330,7 @@ const ClipCard = ({
           overlays would have nowhere to sit and the clip would become unselectable. On a
           Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
       {!clip.thumbImage && onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="mt-0.5 size-4 shrink-0 accent-signal"

@@ -1,15 +1,16 @@
-import { channelsApi, toProblem } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui";
+} from "@/components/ui/dropdown-menu";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
 
@@ -68,7 +69,10 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
         toast.success(paused ? "Channel resumed" : "Channel paused");
         resetConfirm();
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't update the channel"),
+      onError: (e) => {
+        invalidate();
+        toast.error(toProblem(e).title ?? "Couldn't update the channel");
+      },
     },
   });
 
@@ -84,6 +88,21 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   });
 
   const busy = update.isPending || del.isPending;
+
+  // Guide rows intentionally carry only timeline data, not the editable channel resource.
+  // Read the resource at click time so the PATCH is based on the revision the operator is
+  // actually changing, rather than inventing a revision or trusting an old guide snapshot.
+  const togglePaused = async () => {
+    const current = await channelsApi.getChannel(channel.id);
+    if (current.status !== 200) {
+      toast.error("Couldn't read the latest channel");
+      return;
+    }
+    update.mutate({
+      id: channel.id,
+      data: { revision: current.data.revision, status: paused ? "building" : "paused" },
+    });
+  };
 
   return (
     <div className="relative shrink-0">
@@ -130,12 +149,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           </DropdownMenuItem>
 
           {/* Pause / Resume — reversible, single click. */}
-          <DropdownMenuItem
-            disabled={busy}
-            onClick={() =>
-              update.mutate({ id: channel.id, data: { status: paused ? "building" : "paused" } })
-            }
-          >
+          <DropdownMenuItem disabled={busy} onClick={() => void togglePaused()}>
             {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
             {paused ? "Resume" : "Pause"}
           </DropdownMenuItem>

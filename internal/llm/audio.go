@@ -13,12 +13,10 @@ import (
 
 // Audio input over the OpenAI-compatible chat API (§8.1, for §10 V40's language gate).
 //
-// ⚠ **This is NOT a transcription endpoint.** OpenAI's `/v1/audio/transcriptions` (Whisper) is a
-// different API that gateways generally do not proxy — OpenRouter, the hosted provider this repo
-// already wires, does not. What it DOES offer is chat models that accept audio as an input
-// modality (25 of 338 when probed on 2026-08-03, including the Gemini Flash family). So the
-// question is asked the way any other question is asked: a chat completion whose user message
-// carries an audio part.
+// ⚠ **This is NOT a transcription endpoint.** `/audio/transcriptions` is a separate capability
+// (implemented in transcription.go) that turns speech into timed text. This path asks a model to
+// REASON about audio — currently the narrow language question — through chat completions. OpenRouter
+// exposes both under one key, but the request shapes and model modalities remain distinct.
 //
 // That difference is why this is a small separate file rather than a flag on `Chat`: the request
 // shape is genuinely different (content becomes an ARRAY of typed parts, not a string), and
@@ -134,8 +132,8 @@ func (o *OpenAI) AskAboutAudio(ctx context.Context, req AudioRequest) (string, e
 	}
 
 	var out openaiChatResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode audio response: %w", err)
+	if err := decodeOpenAIJSON(resp, &out, "audio response"); err != nil {
+		return "", err
 	}
 	if out.Error != nil {
 		return "", fmt.Errorf("audio chat: %s", out.Error.Message)

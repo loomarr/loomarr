@@ -2,11 +2,14 @@ package channels_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/channels"
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -46,7 +49,7 @@ func seedChannel(t *testing.T, st store.Store, id string, number int, entries ..
 	ch.Number = number
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -102,6 +105,35 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 }
 
+func TestReconcile_ReadsLiveCooldownSetting(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	cooldown := 10 * time.Minute
+	e := channels.New(st, tun, avail, nil, channels.Config{
+		ResolveReconcileTTL: func() time.Duration { return cooldown },
+	}, func() time.Time { return now }, testkit.Logger())
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if want := now.Add(10 * time.Minute); !ch.ReconcileDeadline.Equal(want) {
+		t.Fatalf("initial deadline = %v, want %v", ch.ReconcileDeadline, want)
+	}
+
+	cooldown = 30 * time.Minute
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ = st.GetChannel(context.Background(), "c1")
+	if want := now.Add(30 * time.Minute); !ch.ReconcileDeadline.Equal(want) {
+		t.Fatalf("deadline after settings change = %v, want %v", ch.ReconcileDeadline, want)
+	}
+}
+
 // A lineup-push failure right after channel creation must NOT lose the new Tunarr
 // id: the create is checkpointed to the store before the push. So the next reconcile
 // UPDATES the existing channel instead of re-creating it — the fix for the live-smoke
@@ -151,6 +183,287 @@ func TestReconcile_ChannelIDCheckpointedBeforeLineupPush(t *testing.T) {
 	}
 }
 
+func TestReconcile_CheckpointPersistsAutoRenumberBeforeLineupFailure(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	tun.SeedForeignChannel(5, "Do not touch")
+	tun.SetLineupErr = context.DeadlineExceeded
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+	seedChannel(t, st, "c-renumber-checkpoint", 5, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "c-renumber-checkpoint"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first reconcile = %v, want lineup failure", err)
+	}
+	checkpointed, err := st.GetChannel(context.Background(), "c-renumber-checkpoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkpointed.TunarrID == "" || checkpointed.Number == 5 {
+		t.Fatalf("checkpoint lost remote identity/renumber: id=%q number=%d", checkpointed.TunarrID, checkpointed.Number)
+	}
+
+	tun.SetLineupErr = nil
+	if err := e.Reconcile(context.Background(), "c-renumber-checkpoint"); err != nil {
+		t.Fatal(err)
+	}
+	if tun.Creates != 1 {
+		t.Fatalf("retry recreated auto-renumbered channel: creates=%d", tun.Creates)
+	}
+	got, err := st.GetChannel(context.Background(), "c-renumber-checkpoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TunarrID != checkpointed.TunarrID || got.Number != checkpointed.Number {
+		t.Fatalf("retry drifted checkpoint: before=%q/%d after=%q/%d",
+			checkpointed.TunarrID, checkpointed.Number, got.TunarrID, got.Number)
+	}
+}
+
+// A channel edit can land after reconcile has read its snapshot and even after a stale
+// lineup has reached Tunarr. The final channel save is a CAS: losing it must restart the
+// whole plan from the new row, preserving the operator edit and converging Tunarr to it.
+func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	e := newEngine(st, tun, avail, nil)
+	seedChannel(t, st, "c-race", 15, entry("movie:tmdb:1", "Old"))
+
+	setLineupStarted := make(chan struct{})
+	allowSetLineup := make(chan struct{})
+	var once sync.Once
+	tun.BeforeSetLineup = func(_ string, _ []schedule.Slot) {
+		once.Do(func() {
+			close(setLineupStarted)
+			<-allowSetLineup
+		})
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- e.Reconcile(context.Background(), "c-race") }()
+	<-setLineupStarted
+
+	// Commit a real competing writer while reconcile is holding the older snapshot.
+	// SaveChannel advances the revision, so the first reconcile attempt cannot replace it.
+	edited, err := st.GetChannel(context.Background(), "c-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited.Name = "Operator edit"
+	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "New")}
+	if _, err := st.SaveChannel(context.Background(), edited); err != nil {
+		t.Fatal(err)
+	}
+	close(allowSetLineup)
+
+	if err := <-done; err != nil {
+		t.Fatalf("reconcile did not converge after a stale save: %v", err)
+	}
+	got, err := st.GetChannel(context.Background(), "c-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Operator edit" || len(got.Lineup) != 1 || got.Lineup[0].Key != "movie:tmdb:2" {
+		t.Fatalf("concurrent operator edit was lost: name=%q lineup=%+v", got.Name, got.Lineup)
+	}
+	if len(got.Desired) != 1 || got.Desired[0].LibraryItemID != "lib-2" {
+		t.Fatalf("desired lineup was not recomputed from the winning edit: %+v", got.Desired)
+	}
+	actual, err := tun.GetLineup(context.Background(), got.TunarrID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actual) != 1 || actual[0].LibraryItemID != "lib-2" {
+		t.Fatalf("Tunarr retained the stale push instead of the retry's lineup: %+v", actual)
+	}
+}
+
+// The new remote id is checkpointed with a targeted write. If another channel writer
+// advanced the revision during the remote create, AttachTunarrChannel still makes that id
+// durable, then reconcile restarts before pushing the stale lineup. That gives both sides:
+// no orphan shell and no operator edit overwritten by the checkpoint.
+func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	e := newEngine(st, tun, avail, nil)
+	seedChannel(t, st, "c-checkpoint-race", 16, entry("movie:tmdb:1", "Old"))
+
+	ensureStarted := make(chan struct{})
+	allowEnsure := make(chan struct{})
+	var once sync.Once
+	tun.BeforeEnsureChannel = func(_ programmer.ChannelSpec) {
+		once.Do(func() {
+			close(ensureStarted)
+			<-allowEnsure
+		})
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- e.Reconcile(context.Background(), "c-checkpoint-race") }()
+	<-ensureStarted
+
+	edited, err := st.GetChannel(context.Background(), "c-checkpoint-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited.Name = "Edited during create"
+	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "New")}
+	if _, err := st.SaveChannel(context.Background(), edited); err != nil {
+		t.Fatal(err)
+	}
+	close(allowEnsure)
+
+	if err := <-done; err != nil {
+		t.Fatalf("reconcile did not restart after the checkpoint observed a newer row: %v", err)
+	}
+	got, err := st.GetChannel(context.Background(), "c-checkpoint-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tun.Creates != 1 {
+		t.Fatalf("stale checkpoint recreated the remote channel: creates=%d", tun.Creates)
+	}
+	if tun.Pushes != 1 {
+		t.Fatalf("stale plan reached Tunarr before restart: pushes=%d, want only the fresh push", tun.Pushes)
+	}
+	if got.TunarrID == "" || got.Name != "Edited during create" || got.Lineup[0].Key != "movie:tmdb:2" {
+		t.Fatalf("checkpoint did not preserve both identity and edit: %+v", got)
+	}
+	actual, ok, err := tun.GetChannel(context.Background(), got.TunarrID)
+	if err != nil || !ok {
+		t.Fatalf("Tunarr channel missing after checkpoint retry: ok=%v err=%v", ok, err)
+	}
+	if actual.Name != "Edited during create" || actual.ProgramCount != 1 {
+		t.Fatalf("Tunarr did not converge from the reloaded row: %+v", actual)
+	}
+}
+
+func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.T) {
+	for _, recreate := range []bool{false, true} {
+		name := "fresh"
+		if recreate {
+			name = "out-of-band recreation"
+		}
+		t.Run(name, func(t *testing.T) {
+			st := newStore(t)
+			tun := testkit.NewTunarr()
+			avail := mapAvail{"movie:tmdb:1": "lib-1"}
+			firstEngine := newEngine(st, tun, avail, nil)
+			secondEngine := newEngine(st, tun, avail, nil)
+			seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+
+			if recreate {
+				if err := firstEngine.Reconcile(context.Background(), "c1"); err != nil {
+					t.Fatal(err)
+				}
+				durable, err := st.GetChannel(context.Background(), "c1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := tun.DeleteChannel(context.Background(), durable.TunarrID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			createsBefore, deletesBefore := tun.Creates, tun.Deletes
+
+			firstCreating := make(chan struct{})
+			releaseFirst := make(chan struct{})
+			var once sync.Once
+			tun.BeforeEnsureChannel = func(spec programmer.ChannelSpec) {
+				if spec.TunarrID == "" && spec.Number == 5 {
+					once.Do(func() { close(firstCreating) })
+					<-releaseFirst
+				}
+			}
+
+			firstErr := make(chan error, 1)
+			go func() { firstErr <- firstEngine.Reconcile(context.Background(), "c1") }()
+			<-firstCreating
+
+			// A concurrent operator edit gives the second replica a different free number, so
+			// both remote creates can succeed before the first replica attempts its attachment.
+			ch, err := st.GetChannel(context.Background(), "c1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch.Number = 6
+			if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+				t.Fatal(err)
+			}
+			if err := secondEngine.Reconcile(context.Background(), "c1"); err != nil {
+				t.Fatal(err)
+			}
+			close(releaseFirst)
+			if err := <-firstErr; err != nil {
+				t.Fatal(err)
+			}
+
+			durable, err := st.GetChannel(context.Background(), "c1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			remote, err := tun.ListChannels(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tun.Creates-createsBefore != 2 || tun.Deletes-deletesBefore != 1 {
+				t.Fatalf("race creates/deletes = %d/%d, want 2/1",
+					tun.Creates-createsBefore, tun.Deletes-deletesBefore)
+			}
+			if len(remote) != 1 || remote[0].TunarrID != durable.TunarrID || remote[0].Number != 6 {
+				t.Fatalf("remote channels = %+v, durable id/number = %q/%d",
+					remote, durable.TunarrID, durable.Number)
+			}
+		})
+	}
+}
+
+// Purge performs a remote delete before its local delete. A channel edit committed
+// in that interval must make the revision-guarded local delete fail: the surviving
+// row is the durable truth and a later reconcile can recreate its removed Tunarr peer.
+func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+	seedChannel(t, st, "c-purge-race", 17, entry("movie:tmdb:1", "A"))
+	if err := e.Reconcile(context.Background(), "c-purge-race"); err != nil {
+		t.Fatal(err)
+	}
+
+	deleteStarted := make(chan struct{})
+	allowDelete := make(chan struct{})
+	tun.BeforeDeleteChannel = func(_ string) {
+		close(deleteStarted)
+		<-allowDelete
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- e.Purge(context.Background(), "c-purge-race") }()
+	<-deleteStarted
+
+	edited, err := st.GetChannel(context.Background(), "c-purge-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited.Name = "Keep this edit"
+	if _, err := st.SaveChannel(context.Background(), edited); err != nil {
+		t.Fatal(err)
+	}
+	close(allowDelete)
+
+	if err := <-done; !errors.Is(err, store.ErrChannelStale) {
+		t.Fatalf("purge error = %v, want ErrChannelStale", err)
+	}
+	got, err := st.GetChannel(context.Background(), "c-purge-race")
+	if err != nil {
+		t.Fatalf("stale purge deleted the newer row: %v", err)
+	}
+	if got.Name != "Keep this edit" {
+		t.Fatalf("surviving row lost the concurrent edit: %+v", got)
+	}
+}
+
 // fakeRatings is a RatingResolver over a fixed key→rating map (present = ok).
 type fakeRatings map[provision.Key]string
 
@@ -178,7 +491,7 @@ func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 	}}
 	ch.ID, ch.Number, ch.Strategy, ch.Status = "cheal", 7, schedule.Sequential, schedule.StatusBuilding
 	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -400,7 +713,7 @@ func TestReconcile_SkipsDetached(t *testing.T) {
 	ch.Number = 5
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusDetached
-	_ = st.UpsertChannel(context.Background(), ch)
+	_, _ = st.SaveChannel(context.Background(), ch)
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)

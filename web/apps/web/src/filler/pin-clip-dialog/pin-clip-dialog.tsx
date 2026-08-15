@@ -1,8 +1,12 @@
-import { channelsApi, fillerApi, toProblem, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChannelOverridePicker } from "@/components/loomarr";
-import { Button, Card } from "@/components/ui";
+import { ChannelOverridePicker } from "@/components/loomarr/filler/channel-override-picker";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { PinClipDialogProps } from "./pin-clip-dialog.type";
 
 // PinClipDialog — which channels use this clip (§10, V35 item 1.7).
@@ -43,7 +47,10 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
         // fit is as stale as the channel is.
         void queryClient.invalidateQueries({ queryKey: fillerApi.getClipChannelFitQueryKey() });
       },
-      onError: (e) => setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't save that change"),
+      onError: (e, vars) => {
+        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(vars.id) });
+        setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't save that change");
+      },
     },
   });
 
@@ -75,7 +82,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
 
     update.mutate({
       id: channelId,
-      data: { policy: { ...policy, filler: { ...f, pinned, excluded } } },
+      data: { revision: res.data.revision, policy: { ...policy, filler: { ...f, pinned, excluded } } },
     });
   };
 

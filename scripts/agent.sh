@@ -210,7 +210,7 @@ baseline() {
 	fi
 	state="$(state_dir)/baselines"
 	mkdir -p "$state"
-	toolchain="$(go version) $(uname -s)-$(uname -m)"
+	toolchain="$(go version) $(rustc --version) $(uname -s)-$(uname -m)"
 	key="$(printf '%s\n%s' "$(git -C "$ROOT" rev-parse HEAD)" "$toolchain" | cksum | awk '{print $1}')"
 	stamp="$state/$key.ok"
 	lock="$state/$key.lock"
@@ -250,6 +250,8 @@ doctor() {
 	fail=0
 	echo 'Required toolchain:'
 	tool_version Go go version || fail=1
+	tool_version Rust rustc --version || fail=1
+	tool_version Cargo cargo --version || fail=1
 	tool_version Node node --version || fail=1
 	tool_version pnpm pnpm --version || fail=1
 	tool_version Docker docker --version || fail=1
@@ -262,6 +264,9 @@ doctor() {
 	fi
 	if command -v pnpm >/dev/null 2>&1; then
 		[ "$(pnpm --version)" = 11.13.1 ] || { echo "  ERROR: pnpm 11.13.1 is required"; fail=1; }
+	fi
+	if command -v rustc >/dev/null 2>&1; then
+		case "$(rustc --version)" in rustc\ 1.93.*) ;; *) echo "  ERROR: Rust 1.93.x is required (see rust-toolchain.toml)"; fail=1 ;; esac
 	fi
 
 	echo
@@ -280,11 +285,19 @@ doctor() {
 }
 
 bootstrap() {
+	command -v cargo >/dev/null 2>&1 || { echo 'bootstrap: cargo is required' >&2; exit 1; }
+	( cd "$ROOT" && LOOMARR_RELEASE=dev cargo build --locked -p loomarr-image )
 	if [ "${BOOTSTRAP_SKIP_FE:-0}" != 1 ]; then
 		command -v pnpm >/dev/null 2>&1 || { echo 'bootstrap: pnpm is required' >&2; exit 1; }
 		( cd "$ROOT/web" && pnpm install --frozen-lockfile && pnpm codegen )
 	fi
 	mkdir -p "$ROOT/.artifacts" "$ROOT/.agent-data"
+	eval "$("$SCRIPT_DIR/dev-env.sh" export)"
+	if [ -n "$LOOMARR_AGENT_DATABASE_URL" ] && [ "${AGENT_DEV_IDENTITY:-1}" = 1 ]; then
+		DATABASE_URL="$LOOMARR_AGENT_DATABASE_URL" go run ./cmd/dev-bootstrap
+	elif [ -n "$LOOMARR_AGENT_DATABASE_URL" ]; then
+		echo 'dev-bootstrap: skipped (AGENT_DEV_IDENTITY=0)'
+	fi
 	echo 'bootstrap: ready'
 	"$SCRIPT_DIR/dev-env.sh" show
 }
@@ -324,7 +337,7 @@ verify_changed() {
 		( cd "$ROOT" && go test -race $packages )
 	fi
 	if printf '%s\n' "$changed" | grep -q '^web/'; then
-		( cd "$ROOT/web" && pnpm codegen && pnpm biome check && pnpm lint:boundaries && pnpm -r --parallel typecheck )
+		( cd "$ROOT/web" && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck )
 	fi
 }
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,14 +22,25 @@ import (
 // programmes (and skips breaks).
 // ⚠ It returns an IMAGE-SERVICE URL, not a TMDB one — the resolver stopped emitting third-party
 // URLs in V52 phase 7 (§22), and a fake still handing one back would let a regression through.
-type fakeTimelineThumbs struct{ asked []string }
+type fakeTimelineThumbs struct {
+	mu    sync.Mutex
+	asked []string
+}
 
 func (f *fakeTimelineThumbs) ThumbFor(_ context.Context, key string, _, _ int) (string, string) {
+	f.mu.Lock()
 	f.asked = append(f.asked, key)
+	f.mu.Unlock()
 	if key == "" {
 		return "", ""
 	}
-	return "http://loomarr.local:8080/v1/images/" + key + "/w300.jpg", ""
+	return "/v1/images/" + key + "/w300.jpg", ""
+}
+
+func (f *fakeTimelineThumbs) askedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.asked)
 }
 
 func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, store.Store) {
@@ -116,8 +128,8 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 	if first.ThumbURL == "" {
 		t.Error("a programme block should carry a resolved preview image")
 	}
-	if len(thumbs.asked) != 2 {
-		t.Errorf("thumb resolver asked %d times, want 2 (one per programme, not the break)", len(thumbs.asked))
+	if got := thumbs.askedCount(); got != 2 {
+		t.Errorf("thumb resolver asked %d times, want 2 (one per programme, not the break)", got)
 	}
 }
 

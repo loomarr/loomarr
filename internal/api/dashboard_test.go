@@ -11,7 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 )
 
-func newDashboardServer(t *testing.T, sessions api.PlayoutSessions) *httptest.Server {
+func newDashboardServer(t *testing.T, sessions api.PlayoutObserver) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/dash.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -20,7 +20,7 @@ func newDashboardServer(t *testing.T, sessions api.PlayoutSessions) *httptest.Se
 		Store:           st,
 		Auth:            api.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
-		PlayoutSessions: sessions,
+		PlayoutObserver: sessions,
 	}))
 	t.Cleanup(srv.Close)
 	return srv

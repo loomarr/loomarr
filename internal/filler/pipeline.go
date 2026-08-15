@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 )
 
@@ -181,6 +182,9 @@ var fatalStages = map[StageID]RejectReason{
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
+	// SetClipsHeld keeps every review verdict out of rotation, including a hand-dropped or
+	// previously-filed clip that was not already held when a later quality check asked for help.
+	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 	// SetClipsRemoved tombstones a refused clip. ⚠ A TOMBSTONE, not a delete: `clips` is a synced
 	// cache, so a hard delete would be undone by the next scan finding the file still on disk and
 	// the clip would air again.
@@ -204,6 +208,18 @@ type Pipeline struct {
 	notify  Notifier
 	now     func() time.Time
 	log     *slog.Logger
+	// legacyQualityChecked gates the one-time sidecar scan that requeues mezzanines made before
+	// content-quality facts rode the encode. It is intentionally process-local: after restart the
+	// sidecar reports make the scan a no-op, while any interrupted backlog is found again.
+	legacyQualityChecked bool
+	// legacySplitReviewsChecked gates the compatibility pass that resumes proposals created by
+	// the former one-shot classifier. Persisted Looked markers make the data self-healing
+	// across restarts; this bool merely avoids re-reading a settled queue every pass.
+	legacySplitReviewsChecked bool
+	// legacyCompositeHoldsChecked gates the compatibility pass for composites fully confirmed
+	// before Confirm began filing their parent row. The pipeline disposition and absence of a
+	// proposal make the old state recognizable without a schema version or a new migration.
+	legacyCompositeHoldsChecked bool
 }
 
 // NewPipeline builds a runner over the given stages. Stages absent from the list are treated as
@@ -223,6 +239,8 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 // PipelineResult summarises one pass.
 type PipelineResult struct {
 	Enrolled  int
+	Requeued  int
+	Repaired  int
 	Advanced  int
 	Completed int
 	Rejected  int
@@ -254,6 +272,42 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		// because it stumbled would also stop the clips already enrolled from advancing.
 		if p.log != nil {
 			p.log.Warn("filler pipeline: enrolment failed", "err", err)
+		}
+	}
+	if !p.legacyQualityChecked {
+		n, backfillErr := p.requeueLegacyQuality(ctx)
+		res.Requeued = n
+		if backfillErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: quality backfill enrolment failed", "err", backfillErr)
+			}
+		} else {
+			p.legacyQualityChecked = true
+		}
+	}
+	if !p.legacySplitReviewsChecked {
+		n, resumeErr := p.requeueResumableSplitReviews(ctx)
+		res.Requeued += n
+		if resumeErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: split review resume failed", "err", resumeErr)
+			}
+		} else {
+			p.legacySplitReviewsChecked = true
+		}
+	}
+	if !p.legacyCompositeHoldsChecked {
+		n, repairErr := p.repairLegacyCompositeHolds(ctx)
+		res.Repaired = n
+		if repairErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: legacy composite hold repair failed", "err", repairErr)
+			}
+		} else {
+			p.legacyCompositeHoldsChecked = true
+			if n > 0 && p.log != nil {
+				p.log.Info("filler pipeline: released legacy composite holds", "repaired", n)
+			}
 		}
 	}
 
@@ -313,11 +367,147 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		// healthy idle run and is in fact the job achieving nothing, repeatedly. The old code at
 		// least said "failed". A number removed from a log is a number an operator stops being
 		// able to act on.
-		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "advanced", res.Advanced,
+		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "requeued", res.Requeued, "repaired", res.Repaired, "advanced", res.Advanced,
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
 			"deferred", res.Deferred)
 	}
 	return res, nil
+}
+
+// repairLegacyCompositeHolds releases parent rows confirmed before full confirmation started doing
+// that itself. A filed pipeline row says the reel is terminal; no surviving proposal says there
+// are no leftover cuts awaiting a person. Both facts are required. The parent remains non-airable
+// because IsComposite is an independent catalog-selection gate.
+func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) {
+	if p.rewind == nil || p.clips == nil {
+		return 0, nil
+	}
+	proposals, err := p.rewind.ListSplitProposals(ctx)
+	if err != nil {
+		return 0, err
+	}
+	pending := make(map[string]struct{}, len(proposals))
+	for _, proposal := range proposals {
+		pending[proposal.ClipHash] = struct{}{}
+	}
+	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range rows {
+		if row.Disposition != DispositionFiled {
+			continue
+		}
+		if _, ok := pending[row.ClipHash]; ok {
+			continue
+		}
+		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
+		if err != nil {
+			return n, err
+		}
+		if !found || !clip.IsComposite || !clip.Held || clip.Path == "" {
+			continue
+		}
+		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, false, false, p.now().UTC()); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// requeueResumableSplitReviews upgrades review rows created by the old one-pass split stage. It
+// is deliberately data-selected rather than version-selected: proposals containing a duplicate,
+// a below-floor fragment, or an unchecked segment are exactly the rows the current stage can make
+// progress on. Once curated/classified, those markers disappear or become checked, so a restart
+// does not loop a genuinely ambiguous proposal back through the machine.
+func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error) {
+	stage, ok := p.stages[StageSplit].(*SplitStage)
+	if !ok || stage == nil {
+		return 0, nil
+	}
+	hashes, err := stage.resumableReviewHashes(ctx)
+	if err != nil || len(hashes) == 0 {
+		return 0, err
+	}
+	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range rows {
+		if _, ok := hashes[row.ClipHash]; !ok || row.Disposition != DispositionReview || row.Stage != StageSplit {
+			continue
+		}
+		kept := row.Stages[:0:0]
+		for _, rec := range row.Stages {
+			if rec.Stage != StageSplit {
+				kept = append(kept, rec)
+			}
+		}
+		row.Stages = kept
+		row.Status, row.Attempts, row.Progress = StatusQueued, 0, 0
+		row.Disposition = DispositionRunning
+		row.RejectReason, row.RejectDetail = "", ""
+		row.NextRun = time.Time{}
+		row.UpdatedAt = p.now().UTC()
+		if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// requeueLegacyQuality finds only the recognisable pre-quality state: a FILED pipeline row whose
+// media sidecar proves the mezzanine encode completed but has no quality report. It resets the row
+// to transcode without clearing the marker or any clip metadata; TranscodeStage therefore performs
+// a detector-only decode. Review/rejected/operator-dismissed rows are decisions and are untouched.
+func (p *Pipeline) requeueLegacyQuality(ctx context.Context) (int, error) {
+	if p.clipDir == "" {
+		return 0, nil
+	}
+	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range rows {
+		if row.Disposition != DispositionFiled {
+			continue
+		}
+		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
+		if err != nil {
+			return n, err
+		}
+		if !found || clip.Path == "" {
+			continue
+		}
+		full := filepath.Join(p.clipDir, filepath.FromSlash(clip.Path))
+		tags, ok := ReadSidecarTags(full)
+		if !ok || tags.Mezzanine == "" || tags.MediaQuality != nil {
+			continue
+		}
+		kept := row.Stages[:0:0]
+		for _, rec := range row.Stages {
+			if i := StageIndex(rec.Stage); i >= 0 && i < StageIndex(StageTranscode) {
+				kept = append(kept, rec)
+			}
+		}
+		row.Stages = kept
+		row.Stage, row.Status, row.Attempts, row.Progress = StageTranscode, StatusQueued, 0, 0
+		row.Disposition = DispositionRunning
+		row.RejectReason, row.RejectDetail = "", ""
+		row.NextRun = time.Time{}
+		row.UpdatedAt = p.now().UTC()
+		if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
+			return n, err
+		}
+		p.publish(row, clip)
+		n++
+	}
+	return n, nil
 }
 
 // enrolMissing gives every catalogued clip a pipeline row.
@@ -470,7 +660,11 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			// pre-increment is deliberate and protective — a process killed mid-run still burns an
 			// attempt, so a crash loop stays bounded — but a deadline is our own doing, and
 			// charging the clip for it is what let `attempts` climb without limit.
-			if ctx.Err() != nil {
+			// A stage may also yield deliberately after persisting a bounded batch. That is the
+			// content-sized counterpart of the pass deadline: split-time classification can inspect
+			// sixty segments, checkpoint them, and let the queue take a turn without pretending the
+			// sixty-first segment failed. Both paths share the same no-attempt, due-next-pass state.
+			if ctx.Err() != nil || errors.Is(runErr, ErrDeferred) {
 				row.Status = StatusQueued
 				if row.Attempts > 0 {
 					row.Attempts--
@@ -501,7 +695,14 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		if out.Clip.Hash != "" {
+			previousHash := clip.Hash
 			clip = out.Clip
+			if clip.Hash != previousHash {
+				// A byte-changing stage re-keys the durable pipeline row together with the clip.
+				// Keep the in-memory row on that identity too; otherwise the next save recreates the
+				// old hash and the following pass looks up bytes that no longer exist.
+				row.ClipHash = clip.Hash
+			}
 		}
 		for _, spawned := range out.Spawned {
 			// ⚠ A failed enrolment is logged, not fatal. The segment EXISTS in the catalog by this
@@ -729,13 +930,20 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 	})
 }
 
-// save writes the row, tombstones a refused clip, and publishes the result.
+// save applies an airability gate, writes the row, tombstones a refused clip, and publishes the
+// result. A review is not terminal until its clip is held: otherwise a transient store failure
+// could leave content the operator was explicitly asked to inspect eligible for a pod forever.
 func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) error {
 	row.UpdatedAt = p.now().UTC()
 	if row.Disposition.Terminal() {
 		// A terminal row is not due again; zero the schedule so the work list cannot re-pick it
 		// on a clock skew.
 		row.NextRun = time.Time{}
+	}
+	if row.Disposition == DispositionReview && clip.Path != "" {
+		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, true, false, p.now().UTC()); err != nil {
+			return fmt.Errorf("hold clip for review: %w", err)
+		}
 	}
 	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
 		return err

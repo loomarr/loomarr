@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { RestartNeededBannerProps } from "./restart-needed-banner.type";
 
 // RestartNeededBanner — "you changed a boot-time setting" (§9.2, config-design §3; v2 mock

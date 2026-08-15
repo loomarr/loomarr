@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useDeleteConfirm } from "@/channels";
-import { Button, Checkbox, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { useDeleteConfirm } from "@/channels/use-delete-confirm";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { ChannelDangerZoneProps } from "./channel-danger-zone.type";
 
 // ChannelDangerZone — the destructive-actions section (frontend-design §6: an isolated

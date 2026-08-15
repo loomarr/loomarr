@@ -1,4 +1,4 @@
-import type { CoverageDTO } from "@loomarr/api";
+import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 
 interface CoverageMeterProps {
   // The server's answer, verbatim. ⚠ Typed as the generated DTO rather than re-declared:

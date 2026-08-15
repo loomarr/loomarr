@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ type quotaStore struct {
 	users     map[string]store.User
 	titles    map[provision.Key]provision.Record
 	proposals map[string]store.Proposal
+	channels  map[string]store.Channel
+	titleErr  error
 }
 
 func newQuotaStore() *quotaStore {
@@ -25,6 +28,7 @@ func newQuotaStore() *quotaStore {
 		users:     map[string]store.User{},
 		titles:    map[provision.Key]provision.Record{},
 		proposals: map[string]store.Proposal{},
+		channels:  map[string]store.Channel{},
 	}
 }
 
@@ -37,6 +41,9 @@ func (q *quotaStore) GetUser(_ context.Context, id string) (store.User, error) {
 }
 
 func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.Record, error) {
+	if q.titleErr != nil {
+		return provision.Record{}, q.titleErr
+	}
 	r, ok := q.titles[key]
 	if !ok {
 		return provision.Record{}, store.ErrNotFound
@@ -44,14 +51,40 @@ func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.R
 	return r, nil
 }
 
-func (q *quotaStore) UpsertTitle(_ context.Context, rec provision.Record) error {
-	q.titles[rec.Key] = rec
-	return nil
+func (q *quotaStore) NewestProposalByStatusForJob(_ context.Context, jobID, status string) (store.Proposal, error) {
+	var newest store.Proposal
+	for _, p := range q.proposals {
+		if p.JobID == jobID && p.Status == status && (newest.ID == "" || p.CreatedAt.After(newest.CreatedAt)) {
+			newest = p
+		}
+	}
+	if newest.ID == "" {
+		return store.Proposal{}, store.ErrNotFound
+	}
+	return newest, nil
 }
 
-func (q *quotaStore) UpdateProposal(_ context.Context, p store.Proposal) error {
-	q.proposals[p.ID] = p
-	return nil
+func (q *quotaStore) CommitProposalApproval(_ context.Context, commit store.ProposalApproval) (int, error) {
+	p, ok := q.proposals[commit.Proposal.ID]
+	if !ok {
+		return 0, store.ErrNotFound
+	}
+	if p.Status != "submitted" {
+		return 0, store.ErrProposalNotSubmitted
+	}
+	q.proposals[p.ID] = commit.Proposal
+	q.channels[commit.Channel.ID] = commit.Channel
+	enqueued := 0
+	for _, rec := range commit.Titles {
+		if _, exists := q.titles[rec.Key]; exists {
+			continue
+		}
+		q.titles[rec.Key] = rec
+		if rec.State == provision.Wanted {
+			enqueued++
+		}
+	}
+	return enqueued, nil
 }
 
 func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([]store.Proposal, error) {
@@ -71,8 +104,19 @@ func proposalWith(id, createdBy, status string, tmdbIDs ...int) store.Proposal {
 		items = append(items, suggest.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
 	}
 	blob, _ := json.Marshal(suggest.Proposal{Acquisitions: items})
-	return store.Proposal{ID: id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
+	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
 }
+
+type quotaChannels struct{}
+
+func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (store.Channel, error) {
+	ch := store.Channel{}
+	ch.ID = "ch-" + p.ID
+	ch.IntentRef = p.JobID
+	return ch, nil
+}
+
+func (quotaChannels) AfterApprovalCommitted(context.Context, string) {}
 
 func movieKey(t *testing.T, tmdbID int) provision.Key {
 	t.Helper()
@@ -84,10 +128,12 @@ func movieKey(t *testing.T, tmdbID int) provision.Key {
 }
 
 func autoApprover(st *quotaStore, defaultLimit int) *suggest.AutoApprover {
+	now := func() time.Time { return time.Unix(1_700_000_000, 0) }
+	approver := suggest.NewApprover(st, quotaChannels{}, now)
 	return suggest.NewAutoApprover(
 		st,
+		approver,
 		func(context.Context) int { return defaultLimit },
-		func() time.Time { return time.Unix(1_700_000_000, 0) },
 		slog.New(slog.DiscardHandler),
 	)
 }
@@ -120,6 +166,9 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 		}
 		if st.titles[movieKey(t, 101)].State != provision.Wanted {
 			t.Error("acquisition did not become a wanted title")
+		}
+		if got := st.channels["ch-p1"].IntentRef; got != p.JobID {
+			t.Errorf("approved channel intentRef = %q, want %q", got, p.JobID)
 		}
 	})
 
@@ -262,6 +311,37 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 		p := proposalWith("p1", "", "submitted", 101)
 		if d, _ := autoApprover(st, 99).Consider(ctx, p); d.Approved {
 			t.Error("auto-approved a proposal with no requester")
+		}
+	})
+
+	t.Run("quota title read fails", func(t *testing.T) {
+		st := newQuotaStore()
+		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.proposals["old"] = proposalWith("old", "grace", "approved", 201)
+		p := proposalWith("p1", "grace", "submitted", 101)
+		st.proposals[p.ID] = p
+		st.titleErr = errors.New("database unavailable")
+		d, err := autoApprover(st, 99).Consider(ctx, p)
+		if err == nil || d.Approved {
+			t.Fatalf("quota read failure = (%+v, %v), want closed with error", d, err)
+		}
+		if st.proposals[p.ID].Status != "submitted" {
+			t.Errorf("proposal status = %q, want submitted", st.proposals[p.ID].Status)
+		}
+	})
+
+	t.Run("approved audit is malformed", func(t *testing.T) {
+		st := newQuotaStore()
+		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.proposals["old"] = store.Proposal{ID: "old", CreatedBy: "grace", Status: "approved", ProposalJSON: `{`}
+		p := proposalWith("p1", "grace", "submitted", 101)
+		st.proposals[p.ID] = p
+		d, err := autoApprover(st, 99).Consider(ctx, p)
+		if err == nil || d.Approved {
+			t.Fatalf("malformed approved audit = (%+v, %v), want closed with error", d, err)
+		}
+		if st.proposals[p.ID].Status != "submitted" {
+			t.Errorf("proposal status = %q, want submitted", st.proposals[p.ID].Status)
 		}
 	})
 }

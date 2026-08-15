@@ -5,7 +5,9 @@ package store
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,6 +85,16 @@ func seedForMigration(t *testing.T, s Store) {
 	if err := s.SetSetting(ctx, "setup.completed", "true"); err != nil {
 		t.Fatalf("seed setting: %v", err)
 	}
+
+	// The copier discovers the destination's live column set. Saving twice gives
+	// revision a non-default value, proving it is copied rather than merely filled
+	// by Postgres's migration default.
+	channel := mustSaveChannel(t, s, sampleChannel("migration-revision", 701, time.Time{}))
+	channel.Name = "revision two"
+	channel = mustSaveChannel(t, s, channel)
+	if channel.Revision != 2 {
+		t.Fatalf("migration source channel revision = %d, want 2", channel.Revision)
+	}
 }
 
 // TestMigrateSQLiteToPostgres is the phase gate itself.
@@ -90,28 +102,33 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	ctx := context.Background()
 	src := newSQLiteStore(t)
 	seedForMigration(t, src)
+	dsn := startPostgres(t)
 
-	dst, err := Open(ctx, startPostgres(t), true)
-	if err != nil {
-		t.Fatalf("open destination: %v", err)
-	}
-	t.Cleanup(func() { _ = dst.Close() })
-
-	prog, err := MigrateData(ctx, src, dst, nil)
+	prog, err := MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, nil)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	dst, err := Open(ctx, dsn, false)
+	if err != nil {
+		t.Fatalf("open migrated destination: %v", err)
+	}
+	t.Cleanup(func() { _ = dst.Close() })
 	if !prog.Done {
 		t.Error("progress must report done on success")
 	}
 
-	// Parity is the gate, and it re-counts both sides independently.
-	stats, err := VerifyParity(ctx, src, dst)
-	if err != nil {
-		t.Fatalf("verify: %v", err)
-	}
-	if bad := ParityMismatches(stats); len(bad) > 0 {
+	// MigrateToPostgres does not return success until it has independently
+	// re-counted both sides inside the source snapshot.
+	if bad := ParityMismatches(prog.Tables); len(bad) > 0 {
 		t.Fatalf("row-count parity failed: %+v", bad)
+	}
+	migratedChannel, err := dst.GetChannel(ctx, "migration-revision")
+	if err != nil {
+		t.Fatalf("get migrated channel: %v", err)
+	}
+	if migratedChannel.Revision != 2 || migratedChannel.Name != "revision two" {
+		t.Fatalf("migrated channel revision = %d name=%q, want 2/revision two",
+			migratedChannel.Revision, migratedChannel.Name)
 	}
 
 	// Parity alone would pass if every value were mangled identically, so assert the
@@ -142,13 +159,233 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 	}
 }
 
+// A migration is one point-in-time view of SQLite, not one view per table. A live
+// source can change while a large copy is running; rows written after the snapshot
+// belong to the old generation and must not leak into only the later-copied tables.
+func TestMigrateToPostgresUsesOneSourceSnapshot(t *testing.T) {
+	ctx := context.Background()
+	src := newSQLiteStore(t)
+	if err := src.SetSetting(ctx, "snapshot.probe", "before"); err != nil {
+		t.Fatal(err)
+	}
+	dsn := startPostgres(t)
+
+	var mutationErr error
+	mutated := false
+	_, err := MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, func(p MigrationProgress) {
+		if mutated || p.Current == "" {
+			return
+		}
+		mutated = true
+		// Use a second pool deliberately. The production Store has one connection,
+		// while a distinct connection can write beside a WAL reader and prove that
+		// every source query stays on the original snapshot.
+		db, openErr := sql.Open("sqlite", "file:"+SQLitePath(src))
+		if openErr != nil {
+			mutationErr = openErr
+			return
+		}
+		defer func() { _ = db.Close() }()
+		_, mutationErr = db.ExecContext(ctx,
+			`UPDATE settings SET value = 'after' WHERE key = 'snapshot.probe'`)
+	})
+	if mutationErr != nil {
+		t.Fatalf("mutate live SQLite source: %v", mutationErr)
+	}
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !mutated {
+		t.Fatal("progress never fired, so the concurrent-write probe did not run")
+	}
+
+	dst, err := Open(ctx, dsn, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dst.Close() }()
+	if got, err := dst.GetSetting(ctx, "snapshot.probe"); err != nil || got != "before" {
+		t.Fatalf("migrated snapshot.probe = %q (err %v), want pre-snapshot value", got, err)
+	}
+	if got, err := src.GetSetting(ctx, "snapshot.probe"); err != nil || got != "after" {
+		t.Fatalf("live SQLite snapshot.probe = %q (err %v), want concurrent value", got, err)
+	}
+}
+
+func TestMigrateToPostgresLocksTargetThroughParityAndCommit(t *testing.T) {
+	ctx := context.Background()
+	src := newSQLiteStore(t)
+	if err := src.SetSetting(ctx, "source.row", "copied"); err != nil {
+		t.Fatal(err)
+	}
+	dsn := startPostgres(t)
+	writer, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+
+	var once sync.Once
+	writerDone := make(chan error, 1)
+	finishedBeforeCommit := false
+	_, err = MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, func(p MigrationProgress) {
+		if p.Current == "" {
+			return
+		}
+		once.Do(func() {
+			go func() {
+				_, err := writer.ExecContext(ctx,
+					`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)`,
+					"external.row", "after", time.Now().Unix())
+				writerDone <- err
+			}()
+			select {
+			case <-writerDone:
+				finishedBeforeCommit = true
+			case <-time.After(100 * time.Millisecond):
+				// Expected: ACCESS EXCLUSIVE holds the writer until migration commits.
+			}
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finishedBeforeCommit {
+		t.Fatal("external target write completed before verified migration commit")
+	}
+	select {
+	case err := <-writerDone:
+		if err != nil {
+			t.Fatalf("external target write after commit: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("external target write stayed blocked after migration commit")
+	}
+}
+
+func TestMigrationTargetAdvisoryLockRejectsAConcurrentOwner(t *testing.T) {
+	ctx := context.Background()
+	dsn := startPostgres(t)
+	release, err := lockPostgresMigrationTarget(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lockPostgresMigrationTarget(ctx, dsn); err == nil {
+		release()
+		t.Fatal("second migration acquired an already-owned target")
+	}
+	release()
+
+	releaseAgain, err := lockPostgresMigrationTarget(ctx, dsn)
+	if err != nil {
+		t.Fatalf("target stayed locked after release: %v", err)
+	}
+	releaseAgain()
+}
+
+func TestMigrateToPostgresRechecksTargetAtPointOfUse(t *testing.T) {
+	ctx := context.Background()
+	src := newSQLiteStore(t)
+	dsn := startPostgres(t)
+
+	checks, err := Preflight(ctx, dsn)
+	if err != nil || !PreflightPassed(checks) {
+		t.Fatalf("initial preflight = %+v, err %v", checks, err)
+	}
+	// The target changes after the caller's earlier preflight. The deep migration
+	// operation must not trust that stale authorization or clear what appeared.
+	existing, err := Open(ctx, dsn, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = existing.Close() }()
+	if err := existing.SetSetting(ctx, "other.owner", "keep"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, nil); err == nil {
+		t.Fatal("migration accepted a target populated after the earlier preflight")
+	}
+	if got, err := existing.GetSetting(ctx, "other.owner"); err != nil || got != "keep" {
+		t.Fatalf("pre-existing target value = %q (err %v), want untouched", got, err)
+	}
+}
+
+func TestMigrateToPostgresRollsBackTheWholeDataCopy(t *testing.T) {
+	ctx := context.Background()
+	src := newSQLiteStore(t)
+	seedForMigration(t, src)
+	if err := src.UpsertFillerSource(ctx, FillerSource{
+		ID: "operator:keep", Kind: "archive", URI: "operator_collection",
+		Label: "Operator source", CreatedAt: time.Now(), Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// SQLite accepts this integer, while the destination BOOLEAN coercion rejects
+	// it. filler_sources sorts before users, so a per-table commit would strand the
+	// operator row in an otherwise failed destination.
+	if _, err := src.(*sqlStore).db.ExecContext(ctx,
+		`UPDATE users SET disabled = 2 WHERE id = 'u-bob'`); err != nil {
+		t.Fatal(err)
+	}
+	dsn := startPostgres(t)
+
+	if _, err := MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, nil); err == nil {
+		t.Fatal("migration with an invalid destination boolean unexpectedly succeeded")
+	}
+	dst, err := Open(ctx, dsn, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dst.Close() }()
+	sources, err := dst.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range sources {
+		if source.ID == "operator:keep" {
+			t.Fatal("failed migration committed an earlier table's operator row")
+		}
+	}
+	if len(sources) != 6 {
+		t.Fatalf("target contains %d filler sources after rollback, want only 6 SQL seeds", len(sources))
+	}
+	taxa, err := dst.ListTaxa(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(taxa) != 0 {
+		t.Fatalf("target contains %d Go-runtime-seeded taxa after rollback, want none", len(taxa))
+	}
+}
+
+func TestMigrateDataNeverClearsUnexpectedTargetRows(t *testing.T) {
+	ctx := context.Background()
+	src := newSQLiteStore(t)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dst.Close() }()
+	if err := dst.SetSetting(ctx, "other.owner", "keep"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := MigrateData(ctx, src, dst, nil); err == nil {
+		t.Fatal("migration accepted an unexpected target row")
+	}
+	if got, err := dst.GetSetting(ctx, "other.owner"); err != nil || got != "keep" {
+		t.Fatalf("unexpected target value = %q (err %v), want untouched", got, err)
+	}
+}
+
 // Every table in the destination schema must be visited. A migrator that silently skips
 // a table nobody remembered is the failure mode a hardcoded list produces — this repo's
 // own TRUNCATE list had already drifted to 8 of 10 when this was written.
 func TestMigrateCoversEveryTable(t *testing.T) {
 	ctx := context.Background()
 	src := newSQLiteStore(t)
-	dst, err := Open(ctx, startPostgres(t), true)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatalf("open destination: %v", err)
 	}
@@ -165,7 +402,7 @@ func TestMigrateCoversEveryTable(t *testing.T) {
 	}
 	// Derived from the destination catalog, which goose just built from the embedded
 	// migrations — so this assertion cannot drift from the schema.
-	want, err := userTables(ctx, dst.(*sqlStore))
+	want, err := userTables(ctx, dst)
 	if err != nil {
 		t.Fatalf("list tables: %v", err)
 	}
@@ -255,7 +492,7 @@ func TestMigrateLeavesTheSourceUntouched(t *testing.T) {
 		t.Fatalf("count source: %v", err)
 	}
 
-	dst, err := Open(ctx, startPostgres(t), true)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatalf("open destination: %v", err)
 	}
@@ -297,7 +534,7 @@ func TestMigrateReportsProgress(t *testing.T) {
 	src := newSQLiteStore(t)
 	seedForMigration(t, src)
 
-	dst, err := Open(ctx, startPostgres(t), true)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatalf("open destination: %v", err)
 	}
@@ -344,7 +581,7 @@ func TestMigrateReportsProgress(t *testing.T) {
 func TestBinaryColumnsSurviveMigration(t *testing.T) {
 	ctx := context.Background()
 	src := newSQLiteStore(t)
-	dst, err := Open(ctx, startPostgres(t), true)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +600,7 @@ func TestBinaryColumnsSurviveMigration(t *testing.T) {
 		`INSERT INTO binary_probe (id, payload) VALUES (?, ?)`, "one", raw); err != nil {
 		t.Fatalf("seed probe: %v", err)
 	}
-	if _, err := dst.(*sqlStore).db.ExecContext(ctx,
+	if _, err := dst.db.ExecContext(ctx,
 		`CREATE TABLE binary_probe (id TEXT PRIMARY KEY, payload BYTEA NOT NULL)`); err != nil {
 		t.Fatalf("create destination probe: %v", err)
 	}
@@ -373,7 +610,7 @@ func TestBinaryColumnsSurviveMigration(t *testing.T) {
 	}
 
 	var got []byte
-	if err := dst.(*sqlStore).db.QueryRowContext(ctx,
+	if err := dst.db.QueryRowContext(ctx,
 		`SELECT payload FROM binary_probe WHERE id = $1`, "one").Scan(&got); err != nil {
 		t.Fatalf("read migrated bytes: %v", err)
 	}
@@ -388,12 +625,12 @@ func TestBinaryColumnsSurviveMigration(t *testing.T) {
 // was originally missed.
 func TestCopyOrderPutsParentsFirst(t *testing.T) {
 	ctx := context.Background()
-	dst, err := Open(ctx, startPostgres(t), true)
+	dst, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = dst.Close() })
-	d := dst.(*sqlStore)
+	d := dst
 
 	tables, err := userTables(ctx, d)
 	if err != nil {

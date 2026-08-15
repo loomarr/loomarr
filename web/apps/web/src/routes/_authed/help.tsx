@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { HelpPage } from "@/help";
+import { HelpPage } from "@/help/help-page";
 
 // `?page=` is validated rather than trusted: the API emits `troubleshooting#tunarr`-style
 // deep-links, and typed search params mean a link into Help is as type-safe as any other

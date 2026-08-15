@@ -148,6 +148,9 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 	// adjacent to another break.
 	for i, s := range got.Slots {
 		if s.Kind == schedule.SlotFiller {
+			if s.DurationMs != 5*60*1000 {
+				t.Errorf("break duration = %dms, want default 5m", s.DurationMs)
+			}
 			if i == len(got.Slots)-1 {
 				t.Errorf("break is the last slot (trailing break): %+v", got.Slots)
 			}
@@ -155,6 +158,24 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 				t.Errorf("two breaks back-to-back at %d", i)
 			}
 		}
+	}
+}
+
+func TestComputeDesired_UsesChannelBreakDuration(t *testing.T) {
+	ch := breakChannel(4)
+	ch.BreakDurationMs = 90_000
+	avail := durAvail{
+		"movie:tmdb:1": {id: "l1", dur: 15 * 60 * 1000},
+		"movie:tmdb:2": {id: "l2", dur: 15 * 60 * 1000},
+	}
+	got := schedule.ComputeDesired(ch, []schedule.LineupEntry{
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
+	}, avail, schedule.PodFill)
+	if len(got.Slots) != 3 || got.Slots[1].Kind != schedule.SlotFiller {
+		t.Fatalf("slots = %+v, want program / break / program", got.Slots)
+	}
+	if got.Slots[1].DurationMs != 90_000 {
+		t.Errorf("break duration = %dms, want channel override 90000", got.Slots[1].DurationMs)
 	}
 }
 

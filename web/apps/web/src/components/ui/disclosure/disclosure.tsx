@@ -1,6 +1,6 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { DisclosurePanelProps, DisclosureProps, DisclosureTriggerProps } from "./disclosure.type";
 
 // Disclosure — a reveal whose trigger is a DISCRETE chevron, not the whole header (§5.1c, Layer 1).

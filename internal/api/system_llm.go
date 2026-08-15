@@ -18,6 +18,9 @@ var (
 	ErrKeyInvalid = errors.New("api key invalid or provider unreachable")
 	// ErrUnknownProvider: a select/test named a provider not in the curated catalog.
 	ErrUnknownProvider = errors.New("unknown provider")
+	// ErrInvalidHostedModel: a curated hosted provider received a model id in the
+	// wrong provider-specific shape (for example an Ollama name:tag for OpenRouter).
+	ErrInvalidHostedModel = errors.New("hosted model must use a provider/model slug")
 )
 
 // SystemLLMService backs /v1/system/llm* (§8.1 model selection). Implemented in the
@@ -246,6 +249,8 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 		return nil, errConflict("Model not ready", "Download this model before selecting it.")
 	case ErrUnknownProvider:
 		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
+	case ErrInvalidHostedModel:
+		return nil, errUnprocessable("Invalid hosted model", "OpenRouter models use a provider/model slug, such as openai/gpt-4o-mini. Ollama tags such as qwen3:8b only work with Ollama.")
 	case ErrKeyInvalid:
 		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:

@@ -14,21 +14,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SchedulingRule, Vocabulary } from "@loomarr/api";
+import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
+import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useId, useState } from "react";
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
 import { computeLabel } from "./label";
 import {

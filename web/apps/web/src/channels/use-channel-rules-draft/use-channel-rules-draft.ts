@@ -1,4 +1,7 @@
-import { type ChannelPolicy, channelsApi, toProblem, unwrap } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -42,7 +45,11 @@ const canonicalize = (p: ChannelPolicy | undefined): string =>
 // Shaped after useChannelFillerDraft on purpose — same interface, same debounce, same
 // render-time resync — so the page's two drafts behave identically rather than each having
 // its own personality.
-const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelRulesDraft => {
+const useChannelRulesDraft = (
+  channelId: string,
+  policy: ChannelPolicy | undefined,
+  revision: number,
+): ChannelRulesDraft => {
   const queryClient = useQueryClient();
 
   // The saved policy this draft was seeded from, as a canonical string — its identity, not its
@@ -87,7 +94,12 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
         });
         toast.success("Programming rules updated");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't update programming rules"),
+      onError: (e) => {
+        void queryClient.invalidateQueries({
+          queryKey: channelsApi.getGetChannelQueryKey(channelId),
+        });
+        toast.error(toProblem(e).title ?? "Couldn't update programming rules");
+      },
     },
   });
 
@@ -113,7 +125,7 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
     // back (nothing re-proposes an operator's filler selection the way a refine re-suggests a
     // scope). The server now treats an absent `filler` as "unchanged", so the loss is unreachable
     // from here regardless of what this hook sends or when.
-    apply: () => update.mutate({ id: channelId, data: { policy: draft } }),
+    apply: () => update.mutate({ id: channelId, data: { revision, policy: draft } }),
     isApplying: update.isPending,
     discard: () => setDraft(policy ?? {}),
   };

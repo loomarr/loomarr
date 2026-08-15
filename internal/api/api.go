@@ -6,7 +6,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -52,27 +51,25 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store:     opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
-		suggest: opts.Suggest, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
+		suggest: opts.Suggest, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		bootstrapDrift: opts.BootstrapDrift,
 		settings:       opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,
 		liveConfigBoolOn: opts.LiveConfigBoolOn, ready: ready,
+		approver:        opts.Approver,
 		binder:          opts.Binder,
-		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
+		playoutObserver: opts.PlayoutObserver, preparedObserver: opts.PreparedObserver,
+		playoutSecret:   opts.PlayoutSecret,
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
-		playoutHLS:   opts.PlayoutHLS,
+		playout:      opts.Playout,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
 		playoutTonemap:  opts.PlayoutTonemap,
 		timelineThumbs:  opts.TimelineThumbs,
 		reclaimVRAM:     opts.ReclaimVRAM,
 		residentLLMVRAM: opts.ResidentLLMVRAM,
-	}
-	if opts.HWEncodeSlots != nil {
-		// The gate reads the slot count lazily on first use, on a background context — the capability
-		// probe outlives any one request and must not be cancelled by the viewer who triggered it.
-		srv.hwEncodeGate = newHWEncodeGate(func() int { return opts.HWEncodeSlots(context.Background()) })
+		encodePool:      opts.EncodePool,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)

@@ -157,8 +157,8 @@ flowchart TD
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
   p_schedule["schedule<br/><small>12 importers</small>"]
-  p_scheduler["scheduler<br/><small>7 importers</small>"]
-  p_store["store<br/><small>11 importers</small>"]
+  p_scheduler["scheduler<br/><small>6 importers</small>"]
+  p_store["store<br/><small>13 importers</small>"]
   p_suggest["suggest<br/><small>5 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
@@ -186,12 +186,14 @@ flowchart TD
 
 **Layer 0** — no internal dependencies. These are the vocabulary the rest agrees on.
 
-- **`buildinfo`** · 1 importer
+- **`buildinfo`** · 2 importers
   Carries the version stamped into the binary at build time.
 - **`config`** · 1 importer
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
+- **`media`** · 3 importers
+  Owns host-wide resources shared by live and background media work.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`settings`** · 1 importer
@@ -205,6 +207,8 @@ flowchart TD
 
 - **`metrics`** · 6 importers · → `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §18).
+- **`prepared`** · 3 importers · → `media`
+  Owns immutable, reusable playout publications.
 - **`schedule`** · 12 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -212,7 +216,7 @@ flowchart TD
 
 - **`httpx`** · 5 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`playout`** · 3 importers · → `provision`, `schedule`
+- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
@@ -230,8 +234,6 @@ flowchart TD
 
 - **`filler`** · 6 importers · → `llm`, `mediatools`, `metrics`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`testkit`** · → `llm`, `programmer`, `provision`, `schedule`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 5**
 
@@ -239,27 +241,29 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 6 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 11 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 6**
 
 - **`activity`** · 3 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
+- **`auth`** · 3 importers · → `library`, `store`
+  Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`scheduler`** · 7 importers · → `store`
+- **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
 
 **Layer 7**
 
-- **`auth`** · 2 importers · → `library`, `scheduler`, `store`
-  Issues and validates Loomarr sessions (design §11).
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
-- **`images`** · 2 importers · → `scheduler`
+- **`devbootstrap`** · → `auth`, `store`
+  Prepares an isolated agent worktree for UI development.
+- **`images`** · 3 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
@@ -273,20 +277,22 @@ flowchart TD
 **Layer 8**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
-  Materializes an APPROVED proposal onto a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
+  Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`eval`** · → `catalog`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
+- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `metrics`, `playout`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 10**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `mediatools`, `metrics`, `playout`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -369,8 +375,8 @@ Store interface:
   GetTitle/UpsertTitle/ListTitlesByState
   ClaimDueTitles(now, limit)               # concurrency-safe reconcile claim
   # scheduling
-  GetChannel/UpsertChannel/ListChannels
-  GetDesiredLineup/UpsertDesiredLineup
+  GetChannel/SaveChannel/ListChannels
+  ClaimDueChannels/AttachTunarrChannel/SetChannelBroadcastCodec
   GetSeriesEpisodes/UpsertSeriesEpisodes  # §9 series expansion, cached (see below)
   ListStaleSeriesEpisodes(before, limit)  # which shows the refresh job should re-enumerate
   # filler catalog (§10)
@@ -426,7 +432,7 @@ answer, never a second opinion:
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
   today's behaviour rather than to an empty channel.
-- **Refresh:** the **`series-episode-refresh`** job (§18.1) re-enumerates shows whose rows have
+- **Refresh:** the **`channel-maintenance`** job (§18.1) re-enumerates shows whose rows have
   aged out. Bounded to the shows actually referenced by channel lineups — the set that matters
   is small and known, and sweeping the whole library would cost far more than it saves.
 - ⚠ **NOT hung off `library-scan`.** That job correlates *in-flight* acquisitions
@@ -483,7 +489,7 @@ subject_id}` — for the Dashboard's **Recent activity** feed (§12, V32).
   text, so the UI cannot receive a colour it has no rendering for.
 - **Read path:** `ListActivity(limit)` — newest first, and nothing else. The feed is a glance,
   not a query surface; a filterable log is a different feature (§20).
-- **Retention:** `activity.retention` (§15), purged by the `activity-purge` job (§18.1). ⚠ The
+- **Retention:** `activity.retention` (§15), enforced by the `housekeeping` job (§18.1). ⚠ The
   key is **consumed in the same PR that declares it**. `jobs.retention` and
   `proposals.retention` were declared long ago and are read by **nothing** — no purge exists
   for either table — which is the same dead-setting shape V12 found in `backup.retain`. Adding
@@ -500,42 +506,78 @@ operators to ignore the ladder. The signal spreads airings evenly and stops a ti
 its own last showing; only more content fixes the underlying frequency, which is what re-curation
 and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
 
-### Retention & janitor
-State accumulates; a **janitor** (piggybacking the reconciler ticker) enforces retention so a year-old install isn't dragging a landfill:
+### Retention & housekeeping
+State accumulates; the daily **housekeeping** task enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)
-- **Activity:** feed rows purged after `activity.retention` (default 30d) by the `activity-purge` job (§18.1, V32).
-- **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `retention-purge` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
+- **Activity:** feed rows purged after `activity.retention` (default 30d) by the `housekeeping` job (§18.1, V32).
+- **Jobs:** finished jobs (`done`/`failed`) purged after `JOBS_RETENTION` (default 30d) by the `housekeeping` job (§18.1). A `queued` or `running` job is never purged regardless of age — age is not evidence that work finished, and deleting a running job's row would strand the worker holding its lease.
 - **Proposals:** `denied` purged after `PROPOSALS_RETENTION` (default 90d). ⚠ **`approved` and `submitted` are kept indefinitely**, for different reasons: an approved proposal is the audit trail behind `approved_by` (the record of a decision that spent real resources), and a `submitted` one is a member still waiting for an answer — ageing it out would silently discard a request rather than decline it.
+  - **A terminal decision is a compare-and-swap from `submitted`.** Approval first derives the
+    complete local result, then writes the final audited proposal, every newly tracked
+    `available`/`wanted` title, and its intent-bound `building` channel in one database
+    transaction; denial uses the same expected-state guard. A concurrent approve, deny, or
+    retry therefore has exactly one winner. A failed approval leaves the proposal, title
+    catalog, and channel catalog unchanged — there is no valid state in which acquisitions or
+    a channel exist because of a proposal that still says `submitted`, nor an `approved`
+    proposal whose local channel is missing. The non-empty channel `intent_ref` is unique at
+    the database boundary, so concurrent materialization cannot mint two channels for one
+    intent. Channel-number and intent uniqueness races roll the whole attempt back and make
+    the coordinator reload + replan before retrying; they never leak a half-decision to the
+    caller. Codec derivation and the immediate Tunarr reconcile run only after commit and are
+    best-effort: the committed channel is already `building` with a due reconcile deadline, so
+    the periodic channel sweep is the durable external retry. A denial can never overwrite an
+    approval that already spent resources.
   - ⚠ **Purge order is proposals, then jobs.** `proposals.job_id` has no foreign key, so the constraint is ours to keep: removing a job first would leave a proposal pointing at nothing. Verified that no read path joins the two (`job_id` is diagnostic provenance; the proposal endpoint does not resolve it), so an orphan is cosmetic rather than broken — but a purge that creates one on every run is a purge that makes the data harder to reason about for no gain.
-  - *These two keys were declared long before they were read — the same declared-but-unconsumed shape V12 found in `backup.retain` and V32 avoided for `activity.retention`. This section described the purge as shipped for several phases while it did not exist.*
+  - These two keys were declared before the purge existed; `housekeeping` is now their single consumer and operator control.
 - Filler catalog sync (§10) already removes clips that vanished from the media server.
 
 ### Concurrency consequence of supporting Postgres (important)
 SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes reconcile correctness:
 - `ClaimDueTitles` on Postgres uses `SELECT … FOR UPDATE SKIP LOCKED` (or an advisory-lock leader) so two replicas don't both fire a give-up/retry — the reason it's a distinct method, not a plain list.
 - On SQLite it's a straight query.
+- **Every channel-row mutation advances one monotonic `revision`.** Full channel saves are
+  compare-and-swap writes against the revision they read; claims and targeted updates advance the
+  same counter. Approval and reconcile may reload/replan after a stale write, but an operator's
+  PATCH carries the revision shown in the editor and receives 409 when stale — silently replaying
+  a whole-lineup replacement could erase an approved title the operator never saw. The revision
+  is internal concurrency state, not `updated_at`: timestamps are second-resolution presentation
+  metadata and cannot serialize replicas.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
 ### Migrating SQLite → PostgreSQL (V11)
 
 An install that outgrows SQLite can move without an export/import dance: **Settings → System →
-Database** runs a six-stage stepper — connect → preflight → backup → migrate → verify → restart.
-Only this direction is supported; the reverse is served by the backup file plus reverting one
-config line.
+Database** runs connect → preflight → backup → **migrate and restart**. Only this direction is
+supported; the reverse is served by the backup file plus reverting one config line.
 
 **The invariant: the source is only ever READ.** Every failure mode ends with the operator still
 running on the database they started on, which is what makes "roll back by reverting one config
 line" true rather than aspirational. Nothing in the copy writes to, vacuums, or locks the source
-beyond its read transaction, and the destination is never switched to until parity passes.
+beyond its read transaction: after the live store closes, the migration reopens SQLite with both
+URI `mode=ro` and `query_only`, rather than trusting the driver's advisory read-only transaction.
+The destination is never switched to until parity passes. The copy
+does **not** run inside the request or beside a writable SQLite generation. `POST
+/v1/system/database/migrate` validates the server-owned gates, queues a process-level migration, and
+returns before the connection drops. The generation then drains, closes the live store, performs the
+copy and independent parity check, merges the target into the authoritative `/data/bootstrap.json`
+only after parity, and starts a fresh generation on PostgreSQL. Other bootstrap choices are
+preserved. There is therefore no interval where accepted writes can land in SQLite after their
+table was copied.
 
 | Stage | What it does | Why it is its own stage |
 | --- | --- | --- |
 | Connect | Takes the target DSN | — |
 | Preflight | Reachable · version ≥ 13 · **target is empty** · privileges · UTF8 encoding | Fails while failing is free; can send you back to fix the target |
-| Backup | Writes a server-side snapshot into `backup.dir` | **A gate, not a step** — see below |
-| Migrate | Copies every table, streaming progress as `database` SSE frames | — |
-| Verify | Re-counts BOTH sides independently; a mismatch aborts | A copy that reports success is a claim; parity is the evidence |
-| Restart | Persists the new `DATABASE_URL` to the bootstrap file | Copying data and changing which database the app answers from are different commitments |
+| Backup | Writes a server-side snapshot into `backup.dir` | **A gate, not a suggestion** — see below |
+| Migrate and restart | Drains the generation, copies every table, independently verifies parity, commits `DATABASE_URL`, then starts on PostgreSQL | These are one process-owned commitment: writes stay quiesced from copy through switchover |
+
+After the request is accepted, the browser expects Loomarr to disconnect and polls the status route
+until it reconnects. A successful reconnect reports PostgreSQL. On any open/copy/parity/bootstrap
+failure, the bootstrap target is not committed and Loomarr starts a fresh SQLite generation carrying
+the failure text; the half-written, preflight-empty target must be cleared before retrying. The SQLite
+file is never deleted. The first PostgreSQL generation remains part of the commit: if opening,
+composing, or binding its listener fails, Loomarr restores the prior SQLite URL in bootstrap and
+rebuilds on SQLite.
 
 Four rules that are not negotiable, each because the obvious alternative is subtly wrong:
 
@@ -559,11 +601,19 @@ Four rules that are not negotiable, each because the obvious alternative is subt
    the branch means the next binary column added does not silently arrive mangled; the cost is a
    path no test covers. *(Named here as the historical example, not a live column — retired-ok.)*
 4. **Preflight refuses a populated target.** "Wipe it and retry" is safe advice only because this
-   check guarantees there was nothing there to lose.
+   check guarantees there was nothing there to lose. A database-scoped advisory lock serializes
+   competing Loomarr migrations across preflight and copy, and destination tables remain exclusively
+   locked through parity and commit so a concurrent writer cannot create an unverified row.
+5. **Switchover is not a second operator action.** The process writes the bootstrap target only after
+   parity, while the old store is closed, then immediately starts the new generation. The historical
+   `/v1/system/database/switchover` route remains for generated-client compatibility but fails closed
+   unless this exact process holds an exact verified result for that exact DSN; the current atomic
+   flow never needs it.
 
-**An env-pinned `DATABASE_URL` makes this copy-only.** Env always wins at boot (§15), so writing
-the bootstrap file would produce a switch that silently does not happen. The server refuses the
-switchover and the UI says so up front, rather than after a backup and a full copy.
+**An env-pinned `DATABASE_URL` disables in-app migration.** Env always wins at boot (§15), so an
+atomic copy-and-switch cannot honestly commit its target. The server rejects the migrate request
+before queueing any process work. Change the value where Loomarr is launched and restart instead;
+there is no copy-only mode that can leave two diverging databases behind.
 
 ---
 
@@ -576,7 +626,10 @@ Every outbound client is built from a shared HTTP factory with **hard timeouts**
 Both share `GET /Items?Recursive=true&AnyProviderIdEquals=<provider>&IncludeItemTypes=<Movie|Series>&Limit=1`; provider `tmdb.<id>` / `tvdb.<id>`; present iff `Items` non-empty → `Items[0].Id`. Use **header** auth (never `api_key` query param — leaks to logs; Jellyfin deprecates legacy auth from 10.11+):
 - Emby: `X-Emby-Token: <key>` · Jellyfin: `Authorization: MediaBrowser Token="<key>"`
 
-Flavor via `LIBRARY_FLAVOR`. **Season precision default:** `SEASON_PRECISION=series` — a series counts as in-library if the show exists; `seasons` mode (verify each requested season before `available`) is the stricter opt-in. Caveat to encode as a TODO: provider-name casing in `AnyProviderIdEquals` can differ across versions — if a known-present title returns empty, check casing first.
+Flavor via `LIBRARY_FLAVOR`. A series counts as in-library when the show exists; season-level
+availability is not inferred from a registry switch. Provider-name casing in
+`AnyProviderIdEquals` can differ across versions — if a known-present title returns empty, check
+casing first.
 
 **Bulk scan (poll-based availability, §4 + §18.1).** Beyond the id-only `Lookup`, the library adapter exposes two bulk reads that drive the `library-scan`/`library-full-scan` jobs — one call returns *many* items with their provider ids, so availability is confirmed without an N-lookup storm:
 
@@ -640,9 +693,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/titles/{key}` | Provisioning state for a title. |
 | GET | `/v1/titles?state=…` | List, filter by state. |
 | DELETE | `/v1/titles/{key}` | Give up / cancel. |
-| POST | `/v1/channels` | Create a channel (admin). From an **approved proposal** (`intentRef` → its grounded lineup + policy), a **hand-made single-series** channel (`series`), or an **empty hand-made** channel (neither given → name/number/strategy only, no lineup — then fill it via the manual lineup editor or Refine-with-AI on its page). The channel **`id` is optional**: the client may pass a stable caller-assigned id, or omit it and the **server assigns one** (`ch_…`) — so the UI's "New channel" action needs no client-side id scheme. Duplicate id or number → 409. |
+| POST | `/v1/channels` | Create a channel (admin). From an **approved proposal** (`intentRef` → its grounded lineup + policy), a **hand-made single-series** channel (`series`), or an **empty hand-made** channel (neither given → name/number/strategy only, no lineup — then fill it via the manual lineup editor or Refine-with-AI on its page). The channel **`id` is optional**: the client may pass a stable caller-assigned id, or omit it and the **server assigns one** (`ch_…`) — so the UI's "New channel" action needs no client-side id scheme. Duplicate id, number, or non-empty `intentRef` → 409. |
 | GET | `/v1/channels` / `/v1/channels/{id}` | Channel definition + current status. The **single-channel** GET additionally resolves each lineup entry's `state` — `available` (in the library, plays now), `acquiring` (wanted/requested/downloading — on its way), `pending` (added but nothing requested it yet — the manual-add case with no provision Record), or `unavailable` (acquisition gave up) — derived from the `provision.Record` per key, so the editor's "not here yet" badge is durable across reloads rather than known only at add-time. The list endpoint omits per-entry state (its cards show counts, not entries) to avoid an N-query fan-out. |
-| PATCH | `/v1/channels/{id}` | Edit a channel (admin). A **partial** update of the identity fields (`name`, `number`, `group`, `logo`), the per-channel programming `policy` (§8, `programming-design.md`), `status` for pause/resume (`paused`↔`building` only), and the **`lineup`** entries. Renumber is unique-checked (409 on a collision). `policy.applied` is reconcile-owned and rejected on write. **Policy ownership is sticky (§8.2 / `programming-design.md` §2):** the `policy` blob mixes proposal-owned fields (scope, audience, ordering, separation, seasonal — the suggester extracts them) with operator-owned ones (filler, window, auto-curate). A PATCH that sets a proposal-owned field **marks it operator-set**, and a later refine/re-curate then **cannot overwrite it** (untouched fields still refresh from the fresh proposal); the audience ceiling is additionally never relaxed. Curation `rules` carry **provenance** (`llm` or `operator`): a refine replaces only the LLM-authored rules and preserves the operator's, so shaping rules by refine and by hand compose instead of clobbering. **Every edit auto-reconciles** (best-effort, like create) — there is **no manual "rebuild" step**; the change reaches Tunarr on its own and the UI reflects it live via the `channel` SSE frame. **Editing the lineup** is a **whole-list replace** (the client sends the full ordered list of entries): add = a new entry, remove = an omitted entry, reorder = the same entries in a new order — one idempotent payload, diffed server-side. Each entry's `key` is validated (`provision.ParseKey`; a malformed key → 422). The handler mutates `ch.Lineup` only and lets the reconcile derive `desired` — it never computes slots itself (§9). Entries that carry richer scheduling metadata already on the channel (a series' season range, `officialRating`, runtime) are **preserved by key**: an incoming entry whose key already exists keeps that metadata; the read DTO is deliberately lossy, so a reorder must not silently drop a season scope. **Safety (prime directive #3):** a manually-added key that is not `available` in the library is inert — it renders as a **pending slot** (flex to Tunarr, never content) and swaps to a program in place only if/when that title independently reaches `available` through the acquisition pipeline. Manual editing therefore cannot make unapproved content play, and does not itself trigger acquisition. |
+| PATCH | `/v1/channels/{id}` | Edit a channel (admin). A **partial** update of the identity fields (`name`, `number`, `group`, `logo`), the per-channel programming `policy` (§8, `programming-design.md`), `status` for pause/resume (`paused`↔`building` only), and the **`lineup`** entries. The body must carry the `revision` returned by the channel read; a stale revision returns 409 rather than overwriting an intervening approval, reconcile, or operator edit. Renumber is unique-checked (409 on a collision). `policy.applied` is reconcile-owned and rejected on write. **Policy ownership is sticky (§8.2 / `programming-design.md` §2):** the `policy` blob mixes proposal-owned fields (scope, audience, ordering, separation, seasonal — the suggester extracts them) with operator-owned ones (filler, window, auto-curate). A PATCH that sets a proposal-owned field **marks it operator-set**, and a later refine/re-curate then **cannot overwrite it** (untouched fields still refresh from the fresh proposal); the audience ceiling is additionally never relaxed. Curation `rules` carry **provenance** (`llm` or `operator`): a refine replaces only the LLM-authored rules and preserves the operator's, so shaping rules by refine and by hand compose instead of clobbering. **Every edit auto-reconciles** (best-effort, like create) — there is **no manual "rebuild" step**; the change reaches Tunarr on its own and the UI reflects it live via the `channel` SSE frame. **Editing the lineup** is a **whole-list replace** (the client sends the full ordered list of entries): add = a new entry, remove = an omitted entry, reorder = the same entries in a new order — one idempotent payload, diffed server-side. Each entry's `key` is validated (`provision.ParseKey`; a malformed key → 422). The handler mutates `ch.Lineup` only and lets the reconcile derive `desired` — it never computes slots itself (§9). Entries that carry richer scheduling metadata already on the channel (a series' season range, `officialRating`, runtime) are **preserved by key**: an incoming entry whose key already exists keeps that metadata; the read DTO is deliberately lossy, so a reorder must not silently drop a season scope. **Safety (prime directive #3):** a manually-added key that is not `available` in the library is inert — it renders as a **pending slot** (flex to Tunarr, never content) and swaps to a program in place only if/when that title independently reaches `available` through the acquisition pipeline. Manual editing therefore cannot make unapproved content play, and does not itself trigger acquisition. |
 | POST | `/v1/channels/{id}/refine` | Refine a channel with the LLM (admin). Takes free-text ("add more Schwarzenegger, drop the slow ones"); builds an intent from the channel's **current lineup** + the ask, runs the SAME grounded suggester → proposal (§8), and returns a `jobId`. Approving that proposal patches THIS channel (idempotent on its `intentRef`, same as re-approval). The review shows a **diff** (kept / added / removed); an approve step appears **only if the re-proposal actually differs**. This is the "shape a channel over time by talking to it" path — no create-a-channel-from-scratch detour. |
 | GET | `/v1/channels/{id}/pods` | Preview the commercial pool this channel would get from its **saved** filler selection (§10, §12). Assembles WITHOUT touching Tunarr, through the same code path and seed as reconcile, so preview and reality cannot disagree. Returns the ordered entries, total duration, and the `matchLevel` reached on the fallback ladder — the answer to "why are my commercials wrong". Read-only, so any authenticated user may call it. |
 | POST | `/v1/channels/{id}/pods/preview` | Preview the pool a **draft** filler selection would produce, WITHOUT saving it (§10, §12) — the live sandbox on the channel's Filler section. Body is a `FillerSelection` (the unsaved draft); the handler runs the SAME assembler as `GET …/pods`/reconcile but with the draft in place of the persisted selection, and returns the SAME shape (entries + `matchLevel` + total). One assembler ⇒ the sandbox shows exactly what will air once applied. Admin-only (it's an authoring tool); applying is a normal `PATCH …/{id}` of `policy.filler`. |
@@ -653,23 +706,23 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/proposals` | Start a suggestion job from an intent. |
 | GET | `/v1/proposals?status=…&mine=true` | List proposals by status (`submitted` = the admin approval queue). **`mine=true` scopes the list to the caller's own proposals** — the "My requests" surface (§12). Scoping is resolved **server-side from the session**, never from a client-supplied user id: a `?user=` parameter would let any member read another's requests by editing a URL. A break-glass `API_TOKEN` caller has no user record, so `mine=true` returns **empty** rather than everyone's — an unscopable caller asking for "mine" must not silently receive all. |
 | GET | `/v1/proposals/{id}` | Job status + proposal (the source of truth on SSE reconnect; generation progress streams over `/v1/events` as `suggestion` frames, not a per-job endpoint). |
-| POST | `/v1/proposals/{id}/approve` | Approve (admin) → enqueue acquisitions **+ create/patch the channel**, returning its id. This is the primary path from an approved intent to a live channel — §13's flow is describe → review → approve, so **the everyday way to make a channel is to describe one, not fill out a form** (the two other origination seeds — a hand-made single-series or empty channel via `POST /v1/channels` — are express doors into the same object, not a separate "create screen" model; see §12 origination-vs-evolution). **Idempotent on `intentRef`** (the suggestion job id): re-approving the same intent patches that channel rather than minting a second one. The channel is created `building` with the proposal's lineup + grounded policy, then reconciled immediately (§9 "live immediately — never dead air"). **Number** = the lowest free positive integer, so an operator never has to think about numbering to get on air; **name** = the intent description, trimmed to a channel-sized label. Both are ordinary editable fields afterwards (§7 `PATCH /v1/channels/{id}`) — the point is that approving is *sufficient*, not that the derived values are final. A channel is **shaped over time** after creation: direct edits (name/number/rules/lineup) via `PATCH`, or by *refining* it with the LLM (`POST /v1/channels/{id}/refine` → review the diff → approve → the same idempotent patch). |
+| POST | `/v1/proposals/{id}/approve` | Approve (admin) → enqueue acquisitions **+ create/patch the channel**, returning its id. This is the primary path from an approved intent to a live channel — §13's flow is describe → review → approve, so **the everyday way to make a channel is to describe one, not fill out a form** (the two other origination seeds — a hand-made single-series or empty channel via `POST /v1/channels` — are express doors into the same object, not a separate "create screen" model; see §12 origination-vs-evolution). **The local result is one commit:** the audited approval, title insertions, and intent-bound channel either all persist or none do; a local planning or store failure leaves the proposal submitted and retryable. That transaction rejects an older proposal when the same job already has an approved proposal created in the same persisted second or later; second-resolution ties fail closed with 409 rather than guessing an order and rolling the channel back. **Idempotent on `intentRef`** (the suggestion job id): re-approving the same intent patches that channel rather than minting a second one, enforced by a partial unique database index for non-empty intent refs. The channel is created `building` with the proposal's lineup + grounded policy, then codec derivation and reconciliation run after commit (§9 "live immediately — never dead air"). An immediate external failure does not undo the approval: the due `building` row is durable retry state for the channel sweep. **Number** = the lowest free positive integer across both Loomarr and Tunarr, so an operator never has to think about numbering to get on air; **name** = the intent description, trimmed to a channel-sized label. Both are ordinary editable fields afterwards (§7 `PATCH /v1/channels/{id}`) — the point is that approving is *sufficient*, not that the derived values are final. A channel is **shaped over time** after creation: direct edits (name/number/rules/lineup) via `PATCH`, or by *refining* it with the LLM (`POST /v1/channels/{id}/refine` → review the diff → approve → the same idempotent patch). |
 | POST | `/v1/proposals/{id}/deny` | Deny (admin) with optional reason; proposal → `denied`, member sees it in My proposals. |
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, plus `q` for a `name LIKE` search (§7.2 — clip search lives here, not in `/v1/search`). |
 | PATCH | `/v1/filler/tags` | Edit a clip's tags — including **confirming an era suggestion** (§10): setting `era` on a clip that carries one clears the suggestion. The suggestion itself is never settable directly; only the tagger writes it, and only when the year is not in the source text. ⚠ **The clip is identified by its content `hash` in the BODY** (V45a) — completing the V38c identity change up through the API. The wire identity is the hash (hex, no slashes), NOT the path: the path is a disk *location* the server keeps to itself, and putting a slash-bearing path in a URL or body was the source of a routing/proxy 404. Every clip-addressing route (this, split, and the byte routes below) takes the hash. |
-| GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). Two mutually exclusive modes: `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier). The `collection` mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
+| GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier); sending both searches **within that collection**, which is what a registered source row promises. The `collection`-only mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as a **job** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/splits/{proposalId}` | Read a split proposal (admin, §10 V34) — the source of truth on SSE reconnect, the same pattern as `/v1/proposals/{id}`. |
-| POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, written into the drop-folder, and the **original compilation row removed** — its identity is a path that now means twenty clips, not one. |
+| POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, and written into the drop-folder beneath the **preserved non-airable compilation parent**. Confirming completes the parent's pipeline work; the row and source bytes remain for lineage and recovery. |
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. The PATCH body also carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
 | GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?}` — everything the page header's pill renders, computed on the SERVER. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
-| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips whose tags need a human, and compilations mid-split. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. ⚠ Reports **no confidence score** — nothing measures one; each item carries the reason it is waiting, derived from real state. |
+| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips being prepared or waiting on a human, compilations mid-split, and the rejected/auto-filed audit feeds. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`, `recentlyFiledTotal`); a large import cannot create an unbounded response or make the tab badge collapse to the page length. Confidence is the real grounding-capped score (§10 V38), never model self-assessment; each item also carries the measured reason for its state. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
 | POST | `/v1/filler/pulls` | Propose a **pull** — a plan across sources (admin, §10 V35). **Downloads nothing**: it writes a proposal for the approval queue. Refused when every source the plan needs is disabled, with the switch to flip named. |
@@ -808,15 +861,15 @@ The same guided flow covers **both** a local Ollama host and a **hosted** endpoi
 
 - **System probe** (`GET /v1/system/llm`, admin) returns the active provider + model and **two curated catalogs**:
   - **Local models** — the catalog is **discovered live from the host**, not curated in-code (there is no maintained "good models" list to go stale). Detected inputs: **GPU VRAM** (best-effort via `nvidia-smi`; absent → CPU/unknown, which just widens the "tight" band) and the models that are **already pulled** (`/api/tags`, which also gives each model's on-disk size — a VRAM proxy — and its family/params/quant). Each pulled model is then checked for **tool-calling** via `/api/show` `capabilities`: only tool-capable models enter the catalog (grounding is impossible without tools), so a model that can't tool-call — e.g. a DeepSeek-R1 build — simply never appears, with no hand-maintained exclusion list. Each carries its VRAM footprint and a **fit verdict** ("fits" / "tight" / "won't fit") against detected VRAM, plus a single **recommended** best-fit default (the largest pulled tool-capable model that comfortably fits). To pull something new, the user **browses downloadable models live** (`GET /v1/system/llm/discover`, below) rather than choosing from a frozen list.
-  - **Hosted** — the probe returns **OpenRouter** (curated in-code: label, base URL, keys-URL, note — stable) and a **Custom** template (the user fills base URL + key). For either, the **model list is live** (`{baseURL}/models`), and recommendations rank it for **Loomarr's use case — best grounded tool-caller, not merely cheapest**. Ranking, over the live list:
+  - **Hosted** — the probe returns **OpenRouter** (curated in-code: label, base URL, keys-URL, note — stable) and a **Custom** template (the user fills base URL + key). When the operator switches to the hosted path with no URL already saved or staged, the form seeds OpenRouter's returned `baseUrl`; it never asks them to reproduce a value the backend already owns. A non-empty value is preserved, so Custom remains a first-class editable endpoint. For either, the **model list is live** (`{baseURL}/models`), and recommendations rank it for **Loomarr's use case — best grounded tool-caller, not merely cheapest**. Ranking, over the live list:
     1. **Hard filter (capability):** keep only models the provider advertises as tool-calling (`supported_parameters` has `tools`) — grounding is impossible without it. This is pure live metadata.
     2. **Quality tier (curated by FAMILY, not exact id):** a small durable table maps model **families** (`gpt-4o`, `claude-sonnet`/`claude-haiku`, `gemini-*-flash`/`-pro`, `llama-3.3`, `qwen*`) to a quality tier for grounded reasoning. Families change far slower than exact ids, so this barely rots — and it encodes the one thing metadata can't: *which models actually reason well enough to pick themed titles*. A live model matches by family **prefix**.
     3. **Cost tie-break:** within a tier, cheaper wins (from live `pricing`); context length breaks a further tie.
 
-    So the recommended few are **high-tier families that are live + tool-capable**, cheapest within tier — with a rationale naming the family + why ("GPT-4o family — strong grounded tool-caller, ~$X/1M tokens"). A tool-capable model **not in any tier still appears** (selectable), just **unranked** — we never hide a new model we haven't tiered yet. A **thin** provider whose `/models` returns bare ids degrades to the live id list, unranked. Each provider carries a **`keyConfigured`** flag; the API key is **never echoed back**. The one per-model hardcode is a tiny pre-key **fallback**. The user may always select any id they type.
+    So the recommended few are **high-tier families that are live + tool-capable**, cheapest within tier — with a rationale naming the family + why ("GPT-4o family — strong grounded tool-caller, ~$X/1M tokens"). A tool-capable model **not in any tier still appears** (selectable), just **unranked** — we never hide a new model we haven't tiered yet. A **thin** provider whose `/models` returns bare ids degrades to the live id list, unranked and **not selectable until tool support is known**: Loomarr's grounding loop requires tool-calling, so absence of capability evidence cannot be presented as a safe choice. Each provider carries a **`keyConfigured`** flag; the API key is **never echoed back**. The one per-model hardcode is a tiny pre-key **fallback**, shown before credentials are configured with its own `recommended`, `tools`, and plain-English `why`; it is a preview of the safe default, and becomes selectable after the key is configured. The normal Settings page does not expose a second free-text model field beside the picker.
 
   The **local** catalog is **live-discovered** — installed models from `/api/tags` + `/api/show`, tool-capability from Ollama itself, fit from real on-disk size — with **no** curated-in-code model list. The **hosted** ranking likewise curates only *quality judgment by family* (durable) and derives *availability, capability, and cost* from live metadata. Neither side hardcodes an exact model id that can silently go stale.
-- **Select** (`POST /v1/system/llm/select`, admin) sets the active provider **and** model. For a **local** model it verifies the tag is pulled (409 if not — pull it first). For **OpenRouter** it accepts an optional `apiKey`; for **Custom** it accepts a `baseUrl` (any OpenAI-compatible `/v1`) plus its `apiKey`. Before committing it **validates** the endpoint + key with a cheap live call (a tiny models-list / completion) and rejects a bad base or key (**401/502**) rather than letting the next suggestion job fail opaquely — so only a reachable, authorized endpoint is ever committed (this validation, not a hardcoded allowlist, is what gates a user-supplied base URL). It then persists to the **settings store** (§5: `llm.provider`, `llm.model`, `llm.url`, and the **secret** `llm.api_key`) and **hot-swaps** the live suggester via an atomic pointer — effective on the next job, **no restart**. These persisted settings **override** their §15 env defaults when present, so an in-app choice survives reboots. The stored key rides in the settings table (plaintext, same trust boundary as the `LLM_API_KEY` env var it replaces — a household LAN app; §11) and is **never returned** by any GET.
+- **Select** (`POST /v1/system/llm/select`, admin) sets the active provider **and** model. For a **local** model it verifies the tag is pulled (409 if not — pull it first). For **OpenRouter** it accepts an optional `apiKey` and requires OpenRouter's namespaced `vendor/model` slug; an Ollama-style `name:tag` (or any other unnamespaced value) is rejected before a provider call. For **Custom** it accepts a `baseUrl` (any OpenAI-compatible `/v1`) plus its `apiKey`; Custom model ids remain provider-defined because this path deliberately covers local OpenAI-compatible runtimes too. Before committing it **validates** the endpoint + key with a cheap live call (a tiny models-list / completion) and rejects a bad base or key (**401/502**) rather than letting the next suggestion job fail opaquely — so only a reachable, authorized endpoint is ever committed (this validation, not a hardcoded allowlist, is what gates a user-supplied base URL). It then persists to the **settings store** (§5: `llm.provider`, `llm.model`, `llm.url`, and the **secret** `llm.api_key`) and **hot-swaps** the live suggester via an atomic pointer — effective on the next job, **no restart**. These persisted settings **override** their §15 env defaults when present, so an in-app choice survives reboots. The stored key rides in the settings table (plaintext, same trust boundary as the `LLM_API_KEY` env var it replaces — a household LAN app; §11) and is **never returned** by any GET.
 - **Test** (`POST /v1/system/llm/test`, admin) validates a provider+key **without** committing a swap — the "test my key" button. Returns reachable/authorized + the error on failure. Uses the same cheap validation call as select.
 - **Discover** (`GET /v1/system/llm/discover`, admin) returns the downloadable models that are **compatible with this machine**, ranked best-first — since **Ollama has no first-party "what can I download" API** (`/api/search` is unshipped; ollama.com serves HTML only). Loomarr takes the most-popular GGUF repos from **Hugging Face's model API** (§14) and, crucially, reads **each repo's real per-file GGUF sizes** (which HF exposes *before* download) to size it against the detected VRAM — using the **Q4_K_M-class build**, which is what Ollama's `latest` tag resolves to and therefore what actually downloads. Repos too big for the machine are dropped; the rest are **curated, dedup'd, and ranked for Loomarr's use case** (below) — *not* by raw HF popularity — with one **recommended** pick surfaced for this machine. Each carries a **bare `pullRef`** of the form `hf.co/<repo>` (Ollama's implicit `:latest`). *(A synthesized `:quant` tag would NOT be reliable: Ollama resolves `hf.co/<repo>:<tag>` against the repo's own manifest, and many repos expose only `latest`, so a guessed `hf.co/<repo>:Q8_0` returns 400 "tag not available". `latest` always resolves and is the build we size against, so what we show equals what pulls.)* **The list is filtered to a curated allowlist of tool-capable model *families*** (Qwen, Llama, Mistral, Gemma, Phi, …) — because grounding needs tool-calling and **HF exposes no reliable pre-download signal for it** (verified live: its `conversational`/`pipeline_tag` tags don't separate tool-callers from completion-only models, and a model like DeepSeek-V4 reports no `tools` to Ollama only *after* pull). This is a deliberate, documented tradeoff: a maintained *family* allowlist (broad names that change slowly, one table in `internal/llm`) is the price of "only offer models that actually work locally", chosen over an inaccurate live heuristic that would both hide good models and still let dead ends through. So the operator sees "these download and run on your GPU, best first" — every one usable — not a search box. There is **no keyword parameter**: it's the compatible set for this hardware. Tool-capability is confirmed only after the model is pulled and re-probed (HF has no reliable tool-calling signal). It's **best-effort**: if the source is unreachable the list is empty and the UI falls back to a "browse on huggingface.co" link — a discovery outage never wedges the AI settings page. This machine-ranked browse, plus `/api/tags` for what's installed, is what replaces any curated-in-code local catalog.
 
@@ -900,9 +953,9 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 ### Backfill loop (async correctness)
 - On approval: build the channel from currently-available items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative.
 - Subscribe to provisioner availability events (internal). On `available` → place the real title, re-push affected programming. On `unavailable` → substitute permanently: next-ranked candidate from the proposal's `alternates[]` (§8), else the fallback pool. **The fallback pool is defined as** the channel's already-available lineup items (loopable) plus its filler catalog — i.e., "never dead air" concretely means: loop what the channel has, padded with pods.
-- **Default backfill placement is stable:** landed titles fill their pending slots in place; no global reshuffle of a live channel on backfill (`SCHED_BACKFILL=stable|reshuffle`, default `stable`) — viewers shouldn't see the guide scramble every time a download lands.
+- **Backfill placement is stable:** landed titles fill their pending slots in place; there is no global reshuffle of a live channel on backfill — viewers shouldn't see the guide scramble every time a download lands.
 - The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with the active-rule attribution for proposal review and the channel's Programming surface.
-- **Policy defaults (v1):** omitted policy fields resolve to **built-in Go constants** (§15 lists the values). The full `channel-policy > registry-default > built-in` precedence in `config-design.md` awaits the settings registry (not yet built); the registry-default middle tier is a documented no-op for v1 and slots in later without touching enforcement.
+- **Policy defaults:** omitted policy fields resolve to **built-in Go constants**. V55 removed the unused registry-default middle tier; per-channel policy is the only operator-authored override.
 - **Ordering has one operator-facing knob (`policy.ordering`), not two.** The canonical 3-tier precedence is **per-rule `How.Ordering` (within that rule's window) > `policy.ordering` > `Channel.Strategy` (the stored default)**. `Channel.Strategy` is the create-time default the suggester/binder seed and is consulted only when `policy.ordering` is unset (inherit); it is **not** a separately-editable field on the channel page — the operator edits `policy.ordering`. (`programming-design.md` §5 is authoritative for the ladder.)
 - Reconciliation is **desired-vs-actual and idempotent**: recompute desired lineup, diff against Tunarr's current channel state, apply the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`).
 - **Periodic sweep (correctness):** a channel-reconcile ticker (`CHANNEL_RECONCILE_EVERY`, default `10m`) re-derives every channel's desired lineup from the store and reconciles — so availability **events are a latency optimization, never load-bearing**. This is what makes backfill survive a crash between event and re-push, and what makes Postgres multi-replica correct without cross-instance event delivery (an in-memory event can't reach another replica; the sweep can). The sweep also **revalidates every program slot against the library** (§4 invariant 1): if a scheduled item has vanished (deleted, replaced, re-id'd), the slot is substituted via `alternates[]`/fallback pool and the channel is flagged on the Channels view — an old `available` is never trusted forever. Postgres `LISTEN/NOTIFY` as a faster cross-replica signal is future work (§20).
@@ -1021,6 +1074,246 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
   its already-keyframe-aligned bytes into a rolling playlist.
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
+
+### One playout module, prepared first — not a second playback stack (V55–V56)
+
+The route layer must not choose between a live session, a live HLS remux, and prepared media. That
+choice is playout behavior, and exposing each mechanism gives every caller enough knowledge to make
+them drift. The production seam is therefore one deep **Playout** module. A client asks it to tune a
+`(Channel, EncodePlan, Delivery)` and receives a presentation; immutable follow-up resources are
+opened through the same module. The interface includes the ordering and lifetime rules callers need,
+but no encoder, scratch-directory, preparation-job, or cache-layout concepts.
+
+Inside that module, one deterministic timeline maps Channel plus wall clock to Airings. The guide,
+readiness planner, prepared origin, and live fallback all consume that same answer; none may maintain
+a private schedule. A tune resolves in this order:
+
+1. Resolve the authoritative Airing window and the client's canonical EncodePlan.
+2. Look up a complete prepared publication by `(source fingerprint, rendition contract, packaging
+   version)`. Tune-time lookup may use only a fingerprint warmed by the readiness control plane; it
+   must never hash source media or start preparation on demand. A publication is visible only after
+   all of its immutable fragments and metadata have validated and been atomically committed.
+3. On a hit, render the short wall-clock manifest over those shared fragments. Starting an encoder or
+   per-Channel packager on this path is a contract violation.
+4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
+   accepted Lineup, `AiringAt`, or guide.
+
+The rendered manifest derives its media sequence from the Airing start, segment cadence, and current
+offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset. Its
+live edge is the segment containing that offset: the short window carries prior segments and the
+current segment, never future media. At an Airing boundary it carries the previous publication's
+tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`; this is the exact shape
+the V55 Chromium/Firefox spike validated. Every init/segment URI is namespaced by the immutable
+publication key. Follow-up requests therefore stay bound to the publication that authored the
+manifest even when the Channel crosses a programme boundary; there is no mutable per-Channel
+“current directory” for prepared media.
+
+Preparation is a separate control-plane module because it has a different caller and lifetime, not
+because it is a second playout. Its small interface accepts a source plus rendition contract and
+returns the resulting publication. It hides probing, copy-versus-transcode, staging paths, fragment
+validation, retries, and atomic rename. The readiness planner submits work from the accepted schedule;
+it cannot write that schedule. Prepared identity is transport-independent: codec/profile/level,
+pixel format/HDR, audio codec/layout, dimensions, frame rate, video/audio bitrate, segment cadence,
+and packaging version are data. Changing any output property produces a different publication key.
+There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
+compatible renditions and render/fetch their transport; they do not redefine preparation identity.
+
+The first production contract is one **portable baseline rendition**, derived from the TOP rung of
+the existing `playout.quality_tier` ladder: H.264 High 4.1, 8-bit SDR `yuv420p`, AAC stereo, and
+two-second fMP4 fragments. Width, height, frame rate, and bitrate come from that ladder rather than a
+second preparation-only quality table. This is deliberately a media contract, not a promise that
+every device gets only one rendition forever: Web (Safari/Firefox/Chrome), Android TV, Roku, and
+Apple TV can all consume it, while a later capable-client adapter may select an additional HEVC
+publication without changing the identity or scheduler model. A tier change creates a different
+immutable publication; it never rewrites bytes under an existing key.
+
+Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
+One measured encode pool admits both classes. Live program children take foreground leases and may
+use every slot. The readiness planner may hold at most one background lease, only when measured
+capacity leaves at least one separate slot for a cold live tune. If foreground demand reaches that
+last slot, the pool cancels the background encode and gives it a short bounded opportunity to exit;
+if it does not, that one live child takes the existing software fallback rather than waiting behind
+maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
+does not guess and it does not consume the only live slot. This priority contract is shared code;
+adding a second semaphore around ffmpeg is forbidden.
+
+Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
+is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
+once a minute by default with the long media timeout and looks six hours ahead across Channels whose
+effective backend is internal. It orders unique library items by earliest need, so all currently
+airing items precede later programmes and two Channels scheduling one movie still submit one source
+rendition. A pass exposes at most sixteen new misses to path/audio resolution before it starts media
+work; this bounds a cold 100-Channel install instead of issuing hundreds of media-server calls in
+one burst. Completed warmed publications are skipped on the next pass, so the frontier advances.
+
+Only readable local files are eligible for preparation. An item that resolves only to the media
+server's HTTP stream remains a live fallback; a reusable immutable publication must not pretend a
+remote response is a stable source file. The planner owns path mapping, preferred-audio probing,
+fingerprinting, and ffmpeg. Each pass writes one atomic, versioned readiness index under the
+persistent prepared root. The index binds a Channel, library item, active source policy, selected
+audio track, source fingerprint, and immutable publication; startup loads it into memory before the
+minute scheduler runs. Tune reads that memory index and `Preparer.Lookup` only. An absent entry,
+changed tier, audio preference, path map, file stat, or publication is an immediate prepared miss.
+Tune never contacts the media server, probes audio, hashes bytes, or waits for the scheduler.
+
+The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
+upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
+arguments from output arguments because ffmpeg hardware-device setup placed after `-i` silently
+applies to nothing. Software-only or explicitly-software installs do not run background preparation,
+because spare CPU capacity is not measured and guessing would move the cold start from the viewer to
+every other subsystem. Both cases keep the live fallback.
+
+The same `playout-prepare` pass owns the prepared store's lifecycle; retention is not a second task
+that can race preparation or silently stop running. After readiness work it enforces the hot-applied
+`playout.prepared_budget_gb` soft cap (default 512 GiB) over complete publication bytes, evicting
+whole immutable publications oldest-use first. `Lookup` and asset delivery touch use in memory, so
+segment traffic does not turn into database or per-request filesystem writes. A publication used in
+the last fifteen minutes is protected, and every publication is protected for the first thirty
+minutes after process start so a restart cannot immediately collect current programmes before the
+schedule frontier has been rebuilt. If those protected bytes alone exceed the budget, playback wins:
+the pass leaves the store over its soft cap and logs the exact byte totals rather than breaking an
+active HLS manifest. A later pass converges after the grace expires.
+
+Eviction serializes only with the individual publication key it is deleting; a whole-store scan may
+not take a lock that blocks unrelated tunes. It deletes only complete directories whose names are
+valid content keys and whose metadata validates, plus Loomarr-owned `.staging-*` workspaces abandoned
+for more than a day. Unknown files and directories are reported through the pass error and left
+untouched. Logical file bytes define the budget (rather than filesystem allocation blocks), making
+the setting stable across ext4, ZFS, APFS, and network mounts. At the balanced 5.16 Mbit/s contract,
+512 GiB holds roughly 220 hours of unique programming; installs whose currently airing hot set is
+larger raise the cap without restart or accept live fallback for evicted cold programmes.
+
+Readiness identity survives process restarts in a versioned `.readiness.json` control file inside
+the prepared root. It records two regenerable indexes: `(Channel, library item, global source
+policy, Channel audio policy) -> local path / selected audio / rendition`, and `(absolute path,
+size, mtime, selected audio) -> content fingerprint`. The scheduler is the only writer. It snapshots
+updates under a short memory lock, writes a private temporary file, fsyncs it, atomically renames it,
+and fsyncs the root; tune reads the in-memory snapshot loaded at boot and never waits on that write.
+The source stat in `Preparer.Lookup` still proves the persisted file version before reuse, while a
+tier, language, Channel override, path-map, size, or mtime change makes the entry miss by identity.
+A corrupt index is a visible warning and a clean live fallback, not a boot failure; the next
+successful control-plane resolution replaces it. The index contains no irreplaceable state and is
+excluded from the media-byte budget.
+
+The planner resolves a full readiness plan rather than a bare work queue. Every already-prepared
+publication in the accepted six-hour schedule is passed to retention as protected, while no more
+than sixteen bindings absent from the durable index may contact the media server or audio prober in
+one pass. Readiness probes use a non-touching library lookup: only a successful publication build,
+manifest load, or asset open advances playback LRU. This separation is load-bearing. Treating the
+minute-level schedule scan as viewer use would make every scheduled publication permanently hot;
+evicting without schedule protection would instead rebuild and evict the same over-budget horizon
+forever. When the protected horizon itself is larger than the cap, Loomarr keeps it and reports the
+soft-cap overage; publications no longer in that horizon remain eligible oldest-playback-use first.
+
+**V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
+at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
+adapter and every HTTP caller crosses the new seam. The old route-facing `PlayoutSessions` and
+`PlayoutHLS` interfaces are deleted in that cutover, not deprecated. The disposable
+`prototype_prepared` implementation is deleted after its wall-clock, reuse, discontinuity, and
+encoder-free contracts exist at the production seam. The live adapter and its per-Channel HLS scratch
+layout are removed when representative-media coverage meets the tune-time gate and the tuner path has
+a replacement; until then their names and removal conditions stay in the phase record.
+
+The V56 gate is: existing MPEG-TS and HLS route behavior passes through the one Playout interface;
+two Channels resolving one source/rendition reuse one publication; incomplete or stale publications
+are unreachable; a failed publish leaves the previous complete publication readable; and `make check`
+plus store conformance remain green. Safari Web activation and later native-TV adapters are later
+delivery gates and do not change this module shape.
+
+### Tuning is a latest-request-wins state machine, not route churn (V57)
+
+The Watch surface must support the ordinary television gesture: press Channel Up or Channel Down
+repeatedly and see the last requested Channel begin playing without waiting for every Channel in
+between. The playback state is therefore owned by one **Tuner controller**, not by route mounting.
+The URL follows the selected Channel so refresh and deep-linking stay honest, but a route transition
+is an output of a tune request, never the mechanism that sequences playback.
+
+The controller consumes one surfable catalog, ordered by Channel number with wraparound. Whether a
+Channel can play in-app is server-derived from its **effective** playout backend; clients do not
+reimplement global-default-plus-Channel-override precedence. Paused, detached, empty, and
+Tunarr-backed Channels remain visible in the Guide but are absent from the surfable catalog. The
+catalog includes the already-computed now/next row, so accepting a tune request requires no network
+round trip before it can name the target.
+
+Every request receives a monotonically increasing attempt id. A newer request synchronously aborts
+the older play-URL mint, prepared-manifest fetch, and HLS attachment. Completion callbacks compare
+their attempt id before changing state, so an older slow response cannot replace the newest Channel.
+At most one `<video>` element and one attached decoder exist: tuning swaps the presentation on that
+element; prefetch never creates a hidden player, `MediaSource`, or decoder. This controller contract
+is platform-neutral. The Web adapter binds hls.js or native Safari HLS; later Android TV, Roku, and
+Apple TV adapters bind their native player while preserving the same catalog, attempt, cancellation,
+and telemetry vocabulary.
+
+Channel Up/Down are visible, focusable controls in the live player. On Web, `ArrowUp`/`ArrowDown`,
+`PageUp`/`PageDown`, and the media-key values `ChannelUp`/`ChannelDown` invoke the same actions when
+focus is not inside a control that owns those keys. The OSD changes immediately to the requested
+Channel number, name, current programme, and `Tuning…`; it stays over the existing frame until the
+replacement produces a decoded frame, then fades. A failed tune keeps the target identity visible
+with a retry action rather than silently snapping back to the previous Channel.
+
+Adjacent warming is deliberately **prepared-only**. The client keeps signed play URLs for the
+previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
+least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
+presentation, but on a miss the handler returns `204 No Content` and MUST NOT attach a live session,
+start an encoder, or enqueue preparation. It is safe for the parameter to remain unsigned because it
+can only remove the live fallback. This is not a second endpoint, task, or cache.
+
+On a prepared hit, the Web adapter parses the short manifest and fetches its init map (when present)
+plus the first useful media fragment. Prepared assets are publication-keyed immutable files, so they
+may be served `private, max-age=31536000, immutable`; live-remux assets remain `no-store`. The
+prepared-only flag is omitted from asset URLs in the returned manifest while the signature, plan,
+and quality remain, making the warmed asset URL byte-identical to the subsequent real tune. The
+manifest itself remains `no-store` because its media sequence and live edge follow wall clock.
+
+The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
+request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
+`playing` event as a compatibility fallback). It also records whether the request was adjacent,
+whether its assets were warmed, and whether an older attempt was cancelled. Channel ids and media
+names are not placed in measure names. The product gates on a 100-Channel catalog are:
+
+- OSD acknowledgement p95 below **100 ms**.
+- prepared adjacent request-to-first-frame p95 below **750 ms**.
+- prepared arbitrary request-to-first-frame p95 below **1.5 s**.
+- prepared manifest response p95 below **50 ms** on the local server.
+- a burst of twenty mixed Up/Down requests plays only the final target, leaves one video element,
+  and starts no live fallback for either adjacent prefetch.
+
+V57 ships in reviewable checkpoints: first the controller, cancellation, controls, OSD, and timing;
+then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel
+Playwright surf gate. No checkpoint adds a second player stack or a platform-named backend type.
+
+### Browser and real-runtime certification is layered (V58)
+
+V57 proves the controller contract against deterministic browser-owned HLS bytes. It does not claim
+that a real Loomarr process can prepare those bytes on every development host, that Linux Playwright
+WebKit is Safari, or that 100 surfable Channels means 100 simultaneous encoders. V58 keeps those
+claims separate so one green test cannot silently stand in for another.
+
+The **controller matrix** runs the same 100-Channel catalog through Playwright Chromium, Firefox,
+and WebKit. Every engine must preserve latest-request-wins, one video element, exact warmed-URL reuse,
+prepared-only adjacent probes, and a genuinely decoded H.264 frame. Latency budgets remain measured
+per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox or WebKit sample.
+These projects certify browser engines in the pinned Linux image. WebKit is useful compatibility
+evidence, but only a run on shipping Safari may be called Safari certification.
+
+The **real-runtime gate** starts the real composition root over an isolated SQLite store, the real
+prepared library and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server
+API and its library) may be test doubles, and they serve pinned representative media rather than
+prebuilt HLS responses. The browser must bootstrap/authenticate through the real API, tune a real
+Channel, receive an HLS manifest produced by Loomarr, and report a decoded frame. A process restart
+then repeats the tune from the durable readiness index, proving cold boot and prepared reuse rather
+than only a warm in-process path. Missing and corrupt representative inputs must reach the designed
+offline/retry state instead of an unexplained black frame.
+
+The **shipping-browser and hardware soak** is maintainer-run evidence: current Chrome, Firefox, and
+Safari against the isolated Loomarr runtime, with representative H.264, HEVC/10-bit, multichannel
+audio, and corrupt/missing inputs while GPU capacity is contended. It records boot-to-ready and
+request-to-first-decoded-frame timings plus the resolved copy/transcode plan. It never drives the
+maintainer's normal database or media-server configuration, and no agent invokes the `make smoke*`
+targets. Android TV, Roku, and Apple TV remain later adapters over the same controller vocabulary.
+
+V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
+controller matrix; then the real composition-root/media gate and its documented soak procedure.
 
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
@@ -1192,12 +1485,12 @@ channel-wide**: it re-picks the track for the shared stream, for everyone, exact
 instance default would. The per-**title** decision (a subtitled original vs a dub, one program at a
 time) remains a separate, unscoped feature; a channel-wide knob does not pre-empt it.
 
-**Subtitles are the same story, one axis over.** The Watch tab's Subtitles control is likewise
-**channel-wide and admin-scoped**, writing `policy.playout.subtitles` (§15): `off` (default, no change),
-or **burn-in** of the preferred-language track via ffmpeg's `subtitles`/`overlay` filter into the shared
-encode. Burn-in rather than a selectable soft track for the same invariant reason as audio — a soft
-subtitle track the *viewer* toggles would need per-viewer output; a burned-in one is baked once into the
-channel everyone shares. `off` keeps today's behaviour and costs nothing.
+**Subtitles are not a setting yet.** The track probe reports what the current item carries, but the
+encoder deliberately maps video plus one audio stream and drops subtitles. The previously-drawn
+global and Watch-tab burn-in controls were therefore inert and are retired in V55. A future subtitle
+control must add the real encoder filter and its direct-play/transcode consequences in the same
+change; a selectable per-viewer soft track would still require per-viewer output and is outside the
+one-encoder-per-channel model.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's
@@ -1234,6 +1527,17 @@ safe to poll and safe to hand a support request. It is the in-app twin of `scrip
 `GET /v1/playout/sessions` reports raw per-encoder telemetry, the doctor adds the *verdict and the
 context* — the GPU/LLM picture and the ok/degraded/stalled judgement — so "why is it black?" has an
 answer without shelling into the box.
+
+The same response includes one **prepared-readiness summary** from the readiness planner; this is
+not a parallel endpoint, task, or cache. It reports whether preparation is available, whether a pass
+is currently running, the last completed pass time and error, Channels and scheduled bindings ready
+within the accepted six-hour window, work still warming, and the prepared store's remaining,
+protected, and budgeted bytes. Counts describe the most recently resolved accepted schedule window;
+an absent completion time means **the planner has not completed a pass**, not that all Channels are
+ready. The existing live encoder rows remain the immediate fallback-demand signal: a prepared HLS
+hit creates no live encoder row. System > Playback renders both halves together so an operator can
+distinguish an unprepared frontier from an encoder that is already failing to keep up. The API only
+projects a planner-owned snapshot; it never rescans schedules or the filesystem on request.
 
 ### Consequences recorded honestly
 
@@ -1413,6 +1717,15 @@ Tagging options form a **grounding ladder** — cheapest, most-trusted signal fi
 
 Tiers 0–2 are pre-V44 (text-only classification via the configured LLM — filename, the source title/description that yt-dlp/Archive preserve as info-JSON sidecars, and, for split segments, the segment transcript, V34; whisper.cpp, §14). **V44 adds tiers 3–5**: persisting transcripts and running them on demand (`transcribe` job below), a grounded `brand` field, cheap frame heuristics, and vision-based tagging. Vision is no longer future work — it is the only tier that reads a *wordless* clip, and it fits the same grounding discipline (a model reading `KELLOGG'S` off an on-screen box is grounded exactly as an era is grounded when its year appears in the filename). Even text-only tagging is what makes thousands of clips practical; the visual tier closes the silent-advert gap that no amount of text ever could.
 
+⚠ **Vision JSON is field-tolerant and evidence-strict.** A local model can return a valid object
+with one wrong-typed optional field (measured live: `category: 0`). That field is discarded without
+discarding the independently readable fields in the same answer; a numeric-string era is likewise
+accepted as an integer. This does not weaken grounding: brand and era still need literal visible
+evidence, and category still has to resolve through the taxonomy. A syntactically invalid or
+non-object answer remains a retryable provider failure. The Ollama vision request also enables its
+native JSON output mode; prompt-only JSON produced malformed syntax often enough to consume real
+retries. Hosted providers retain their existing portable prompt-and-parse path.
+
 **On-demand transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would be a ~9.5-hour scan on arm64. The `transcribe` job (below, modelled on the language gate) is therefore opt-in, timer-driven, batched, and **selective**: it transcribes only clips whose source text is *thin OR that remain untagged after a text-only pass* — a clip with a rich archive.org description never pays for Whisper. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
 
 **Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
@@ -1504,8 +1817,10 @@ not, right or wrong. V38 gives an arriving clip a **state**:
 
 A clip that arrives is not automatically a clip worth playing. Real downloads from the archive
 sources include truncated fragments, audio-only files, and spots recorded a decade apart at wildly
-different levels. **All of this is handled automatically — there is no badge, no review step, and
-no operator decision.** A gate an operator has to read is a gate they learn to click through (§7).
+different levels. **Objective failures are handled automatically — there is no badge or operator
+decision for a file that cannot play.** A gate an operator has to read is a gate they learn to
+click through (§7). Content anomalies that can also be intentional are the narrow exception below:
+the machine shows its measurement and asks rather than deleting a plausible creative choice.
 
 **Rejected at the scan boundary.** `ScanDir` already skips unprobeable files; these join it, and
 they never become clips at all:
@@ -1515,6 +1830,41 @@ they never become clips at all:
   and airable in the dev catalog, i.e. a third of a second of nothing in an ad break.
 - **No audio stream.** Silence mid-break.
 - **No video stream.** An audio-only file in a video catalog.
+
+**The transcode pass also inspects the content it is already decoding.** Stream presence does not
+catch a valid MP4 containing thirty seconds of black, a muted audio track, or a decoder repeating
+one damaged frame. Adding a second unconditional decode would double the most expensive routine
+part of ingest, so `blackdetect`, `silencedetect`, and `freezedetect` ride the mezzanine encode's
+video/audio filter chains. Their measured intervals are written to the sidecar: the evidence
+survives a catalog rebuild, and an older mezzanine that predates the measurement gets one bounded
+inspection pass rather than another lossy encode.
+
+On the first pipeline pass after this ships, already-filed rows whose sidecars carry a mezzanine
+marker but no quality report are re-queued at `transcode`. The marker makes that rung inspection-
+only: it does not encode those bytes again. The ordinary transcode budget still bounds the work,
+so a large existing catalog drains over cycles instead of turning an upgrade into a decode storm.
+Rows already rejected or waiting on a person are left alone.
+
+The decision is deliberately asymmetric:
+
+- **At least 90% black or 90% content-silent is a hard reject.** This is dead air with streams
+  attached, not the wordless-but-audible advert the language rule below protects. It appears in
+  the refusal audit with the measured coverage; no operator control can make it playable.
+- **A black or silent span of at least 5 seconds, or a frozen span of at least 10 seconds, goes to
+  review unless the hard rule above already decided it.** A long end slate, a radio spot over a
+  still, and an intentional dramatic pause are plausible, so freeze alone is never auto-rejected.
+  These are the rare judgement calls; clean clips proceed without a badge or a decision.
+
+Any `review` disposition holds the clip out of rotation at the pipeline boundary, including a
+hand-dropped or previously-filed clip. Recording "needs a look" while leaving the same bytes
+eligible for the next break would make the review state decorative rather than protective. The
+hold must succeed before the terminal review row is committed; on a transient store failure the
+row stays runnable and the persisted detector report re-emits the verdict without decoding or
+encoding the media again.
+
+Intervals are unioned and clamped to the probed duration before coverage is calculated, so
+overlapping detector events cannot manufacture more than 100%. A trailing event with no explicit
+end is closed at the measured duration rather than dropped.
 
 **Loudness is measured at ingest and applied at playout.** Measured across real fetched clips the
 spread was **−21.8 to −32.6 LUFS** — about 11 dB, which is the clip-to-clip volume jump an operator
@@ -1595,6 +1945,17 @@ the hosted path can guess, which is why the floor exists.
 | Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
 | Cost | free | fractions of a cent for a 10s span |
 | Offline | yes | no |
+
+⚠ **An unavailable backend is a skip, not a retry.** If the selected detector has no model,
+executable, media tool, or hosted client configured, the language rung records why it did not apply
+and the clip advances immediately. Backoff is reserved for a backend that was ready enough to run
+and then failed, or one that ran but returned no trustworthy answer. Retrying a missing model at
+5- and 30-minute intervals cannot make it appear; it only turns an optional quality gate into a
+35-minute ingest delay. A later configuration change can use the ordinary rewind action to re-run
+the rung for clips that already passed it. The Filler settings surface shows the same unavailable
+reason beside a disabled expected-language control while retaining its desired value; a default of
+`en` must never look active when the multilingual model or another selected-backend prerequisite is
+missing.
 
 ⚠ **NOT Ollama, and this is the trap worth naming.** "We already run a local LLM, so we do not need
 whisper" is the reasonable inference and it is wrong: Ollama has no audio input path at all. Probed
@@ -1722,12 +2083,16 @@ V44's signals.
 #### 1. Composite is a first-class kind, detected at intake
 
 A **composite** is a recorded break — many adverts in one file. It is detected when the clip is
-pulled in (not left to be mis-tagged as a single advert), from cheap deterministic signals: duration
-past `OverlongSegmentMs` (§10 V34, 120s — no single advert runs that long) AND multiple
-black/silence boundaries (the fades between spots, which `blackdetect` already finds — measured
-present on the KCPQ clip: black at 0s, 6.1s, 15s…). A composite is **not airable**: it is never
-matched into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial"
-is the bug this section removes.
+pulled in (not left to be mis-tagged as a single advert) from the cheap deterministic signal the
+catalog already has: duration past `OverlongSegmentMs` (§10 V34, 120s — by definition it cannot be
+one normally airable advert). The earlier intake detector also required multiple black/silence
+boundaries, but that made `probe` fully decode every long recording and then made `split` fully
+decode it again. On hour-scale captures the first pass could consume the whole job deadline before
+the owning stage began. Boundary detection therefore belongs only to `split`; a long single-product
+infomercial may ultimately remain one `unsplittable` proposal for review, but it is still correctly
+quarantined from playout while Loomarr decides. A composite is **not airable**: it is never matched
+into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial" is the
+bug this section removes.
 
 ⚠ **`IsComposite` is a distinct axis from `Kind`, deliberately.** A composite's *segments* are
 commercials/bumpers/PSAs; the composite itself is a container. Overloading `Kind` with a `composite`
@@ -1835,6 +2200,24 @@ the load-bearing change, and it buys three things V34 threw away:
 The parent stays on disk and in the store, marked composite (not airable); its segments are the
 airable clips. `parent_hash` is nullable — a hand-dropped single advert has none.
 
+⚠ **A terminal parent cannot remain held after its proposal is gone.** Full confirmation now files
+the composite parent and releases its hold as one operation. On upgrade, the pipeline performs a
+data-selected compatibility pass for parents written by the older confirm path: it releases a hold
+only when the pipeline row is already `filed`, the clip is still a composite, and no split proposal
+survives for that hash. A review row or a proposal with leftovers remains held. The repaired parent
+does not become airable — `is_composite` is the independent playout gate — so this repair removes
+stale operator friction without weakening split review.
+
+**A completed re-split replaces the prior generation; it does not stack another overlapping set
+beside it.** Partial auto-confirm remembers every child it produced on the proposal. When the last
+cut is confirmed, the store atomically restores every child in that remembered generation and
+tombstones prior children of the same `parent_hash` that were not reproduced. The bytes are never
+deleted, so a retired cut remains recoverable through the normal restore path. A content-identical
+cut is kept by hash, and a clip explicitly pinned by any channel is also kept: improving detection
+must not silently break an operator override. Until the proposal is fully resolved, the prior
+generation remains airable; a half-finished re-split may not replace a complete catalog with half
+a reel.
+
 ⚠ **"Stays on disk" is now "stays until the sweep retires it" (V54), and one of the three things
 above is genuinely given up.** Partial confirm leaves a residue by design — every reel files its
 confident cuts and holds the doubtful ones — so proposals accumulate and each pins a 1–2 GB
@@ -1883,7 +2266,7 @@ not in the table, or a title with no date, yields empty — never a guess. This 
 on the whole ladder (no model, no network) and the one that makes period/regional authenticity
 possible. The parser runs on the **composite** and its output propagates to every segment.
 
-#### 4. Semantic metadata + an embedding column, for confident channel matching
+#### 4. Semantic metadata, without a vector column
 
 The end goal — "automatically curate clips with high confidence they match a channel" — needs a
 signal the enum tags cannot give: **thematic/tonal matching**. The shape of this was decided by a
@@ -1916,26 +2299,18 @@ Payment Offer Ends 6/2", six red cars):
   for only ~3–5s (the closing logo card). `MediaTools.Keyframes(n)` already takes a count; V45 uses
   several frames biased toward the segment's end, where branding lives, rather than one.
 
-- ⚠ **Embeddings are DEMOTED to a secondary role: content-dedup and lexical search only — never the
-  primary curation signal.** The prototype embedded 10 real ad transcripts (`nomic-embed-text`, 768d)
-  and ranked them against channel-theme queries. It matched well where the transcript shared
-  VOCABULARY with the query (a Dove body-wash ad scored 0.728 against "personal care", cleanly #1)
-  and FAILED on abstract theme (a genuine sci-fi/X-Files promo ranked #4, *below* a Christmas candy
-  ad, against a "sci-fi channel" query — 0.48 vs 0.55). Scores compressed into 0.40–0.55, so the
-  ranking is fragile. `nomic-embed-text` matches literal topical words, not inferred theme, which is
-  exactly the case structured tags already cover — so an embedding buys little as a curation axis and
-  actively misleads where the tags are absent. It keeps a place only for what it IS good at:
-  near-duplicate detection by content and a "clips lexically like this" search, both supplementary.
-
-If the embedding column is built at all, the same constraints hold: stored *in* the existing store
-via `sqlite-vec` / `pgvector` (a column, not a second datastore — §14 keeps "one binary, one store"),
-generated by the already-running Ollama `nomic-embed-text` (no new service, no key). But it is a
-dedup/search helper, not the thematic matcher, and Part 4 leads with the LLM tags.
+- ⚠ **Embeddings were measured and rejected.** The prototype embedded 10 real ad transcripts with
+  `nomic-embed-text` and failed on the abstract-theme case structured tags must solve. Duplicate
+  detection instead uses persisted, versioned whole-catalog dHash evidence: deterministic across
+  providers, reusable between split jobs, and supported identically by SQLite and Postgres. A vector
+  extension is also incompatible with the current portability boundary: the SQLite build is pure Go
+  (`CGO_ENABLED=0`) and the Postgres conformance image does not carry pgvector. Reconsidering fuzzy
+  search would require a new measured use case and a §14 dependency decision; it is not latent work.
 
 ⚠ **Structured filters stay structured and deterministic — the thematic layer only RANKS.** The pod
 assembler's core queries — era, audience, category, no-repeat-brand, network/market — are exact
 `WHERE` clauses and must stay deterministic (pod assembly is seeded so the guide can promise what
-airs, §10/§19). The LLM theme tags (and, if present, embeddings) are a *ranking* signal over an
+airs, §10/§19). The grounded LLM theme tags are a *ranking* signal over an
 already-eligible structured candidate set — they order the pool toward the channel's theme, they
 never decide *which* clips are eligible.
 
@@ -1999,55 +2374,37 @@ the earlier framing is only the job's *body*: it calls the store's set-based `Re
 does not iterate clips. `category` survives as a **derived shadow** (the primary product leaf) so
 existing readers do not break during the migration.
 
-⚠ **The taxonomy SHRINKS the embedding's job (#4), it does not compete with it.** The taxonomy is the
-*structured, deterministic* half of thematic matching (topic/season/product family — what the
-embedding prototype failed at); the embedding is left the *fuzzy residue* (vibe similarity, dedup).
-When the embedding lands, it embeds *tags + transcript* (grounded tags anchor the fuzzy text), and its
-re-embed job is a SIBLING of this reindex job — both "derived-from-clip, rebuilt-on-change" background
-jobs (cron, off by default, wired like the transcribe/vision jobs). ⚠ **The two diverge in their
-body, and the reason is instructive:** the reindex work is a set-based SQL rebuild (the derivation —
-ancestor rollup — is expressible as a join over the closure table), so it does no per-clip loop; the
-re-embed work is a per-clip *model call* (`nomic-embed-text` over each clip's tags+transcript), which
-is not set-based and DOES loop-and-batch like transcribe/vision. So "sibling" means *same wiring and
-lifecycle*, not *same body* — a derivation that SQL can express in bulk should be, and one that needs
-a model per clip is batched. Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
+⚠ **The taxonomy owns thematic matching.** The embedding prototype failed at the topic/season/theme
+case this graph makes explicit, while persisted dHash owns the separate near-duplicate problem. The
+reindex remains a set-based SQL rebuild over `taxa_closure`; there is no re-embed job or vector column.
+Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
 
 #### The curation confidence this produces
 
-With brand (V44), broadcast context (#3), and semantic embedding (#4), the assembler gains new match
+With brand (V44), broadcast context (#3), and grounded taxonomy tags (#4), the assembler gains new match
 and variety axes: **no repeat advertiser in a break** (Brand, today carried but unused), **network/
 market/era-window** filters (a "1996 Seattle Fox" channel), **loudness-aware ordering** (the LUFS
 V42 measures, used to pace a break instead of only to normalise), and a **thematic match score** (the
-embedding). "High confidence this segment fits channel X" becomes a real number: the grounding gate
-(is the metadata fact or guess?) times the thematic distance (does it fit the theme?). The operator
+grounded tag set). "High confidence this segment fits channel X" comes from auditable grounded
+signals rather than an opaque vector distance. The operator
 rules layer (`internal/schedule`'s `SchedulingRule` WHEN/WHAT/HOW, borrowed rather than reinvented)
 expresses the exclusions and quotas.
 
-⚠ **New dependencies (§14 records them): `sqlite-vec` / `pgvector` for the embedding column, and the
-Ollama `nomic-embed-text` model for generating embeddings.** Both stay inside the "one store, one
-binary" boundary — a store extension and an already-present local model — which is why they earn
-their place where a standalone vector database (Qdrant/Weaviate) would not: at a catalog of thousands
-(the `filler.fetch.max_catalog_clips` ceiling is 2000), a second datastore to back up and reconcile
-buys nothing a column does not.
+⚠ **No vector dependencies.** `sqlite-vec`, pgvector and `nomic-embed-text` are not part of the
+runtime or §14. Persisted dHash is ordinary store data and keeps the dual-dialect conformance suite
+over one behavior.
 
 #### Frontend implications (V45 — governed by §12/§13 and `docs/frontend-design.md`)
 
 The keep-parent model **inverts a user-facing flow**, so V45's FE work is not all additive — two
 things it makes actively *wrong* must be corrected in the SAME change as the backend, not deferred:
 
-1. ⚠ **The split-review UI asserts the compilation is DELETED on confirm** — the exact opposite of
-   V45. `split-review-page.tsx` reads "the compilation row is gone" / "Nothing is in the catalog
-   yet"; `split-review-editor.tsx`'s empty state says "Go back to keep the compilation whole" — a
-   framing where the parent survives ONLY if you *don't* confirm. Under V45 confirm KEEPS the
-   parent (as a composite) and creates segments that point back to it. The copy and the mental model
-   both flip: confirm now means "file these segments under this break", and the parent is always
-   kept. This lives in the review-gate route and editor, and it is coupled to the backend Confirm
-   change — shipping one without the other leaves the UI lying about what the button does.
-2. ⚠ **`kind` is a closed 6-value enum on the frontend with no `composite`** — the catalog kind
-   filter, the `KIND_LABEL`/`CLIP_DOT` maps, and the `FillerSearch.kind` route validation all drop
-   or mis-render an unknown value. Adding `composite` to the OpenAPI enum without the FE additions
-   SILENTLY breaks the catalog filter, so the enum extension is a coupled BE+FE unit (regenerate the
-   orval client, extend the label maps and the route-param validator together).
+1. ⚠ **Resolved:** split review says confirming files segments beneath the preserved compilation,
+   and completion files the parent's pipeline row so it leaves Incoming without deleting lineage.
+2. ⚠ **Composite is a separate boolean, not a seventh clip kind.** `isComposite` marks a non-airable
+   container while the underlying recording retains its measured content kind. Catalog navigation
+   opts into composites with `includeComposites+topLevel` and loads children with `parentHash`; the
+   six-value airable-kind filter remains closed and unchanged.
 
 **The FE already anticipated the composite problem, which is why these additions complete an existing
 design rather than fight it.** `pool-health` warns in-tree that "a catalog of five hundred
@@ -2059,7 +2416,7 @@ Incoming) for a per-clip/per-pod curation-confidence score; the `ClipCard` badge
 kept-parent lineage view; and `GuideDetailCard`'s per-clip pod lines (already era/quality) for
 broadcast context and the match-level ("why this clip") explanation.
 
-**New additive surfaces**, each with an identified home: a `composite` badge + catalog filter value;
+**Additive surfaces**, each with an identified home: a compilation container in the catalog;
 a lineage view (segment ↔ parent break) in the review editor header and the clip card; broadcast
 context (network/market/air-date) on the card, guide hover, and as new catalog filters; a
 curation-confidence indicator (reusing `ConfidenceMeter`); and mood/topic/sensitivity chips on the
@@ -2073,31 +2430,37 @@ from the display path, rather than carrying dead fields that read as capability.
 
 #### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
 
-⚠ **The system now runs FOUR model roles, but the AI settings page only lets you choose ONE.** Text
-(qwen3), vision (qwen2.5vl), audio/transcribe (whisper), and embedding (nomic-embed-text) are
-distinct models, yet `/settings/ai`'s model picker binds only `llm.model`; `filler.vision.model` is a
-bare text field on the *Filler* page, whisper is `INGEST_WHISPER_*` env-only, and embeddings would
-have no control at all. Model selection fragmented as roles multiplied. V45 fixes the IA:
+⚠ **The system has three model roles:** text, vision, and audio/transcription. They may share one
+hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
+their modalities differ. Local transcription remains the bundled whisper path; there is no
+embedding role.
 
-- **A "Model roles" section on the AI page** — text / vision / audio / embedding, each a reusable
+⚠ **All three roles resolve one active provider selection, including its branded credential.** A
+hosted selection stores the wire kind as `llm.provider=openai`, its brand as
+`llm.hosted_provider` (`openrouter`, `custom`, …), and its secret as
+`llm.api_key.<brand>`. Text tagging and split classification, inherited vision, hosted timed
+transcription, and the setup connection check must all resolve that selection rather than reading
+the legacy `llm.api_key` row directly. The wire remains OpenAI-compatible; the brand exists so a
+restart can recover the right namespaced key. Custom endpoints may have an empty key, so endpoint
+presence — not credential presence — is the runtime availability boundary, while the setup check
+reports the selected provider's own credential state.
+
+- **A "Model roles" section on the AI page** — text / vision / audio, each a reusable
   `ModelPicker` (the component is already props-driven — `catalog`/`active`/`onSelect`, not hardwired
   to `llm.model`), each pointed at its own settings key. The one backend addition is filtering the
   ranked model catalog **by role capability** (Ollama's `/api/show` reports `vision`/`embedding`/…,
   which §8.1 model selection already reads) so the vision picker only offers vision-capable models.
 - **The organising principle: models live on the AI page; feature toggles and behavior live on the
-  Filler page.** So `filler.vision.model` and a new `filler.embed.model` move to / are exposed on the
-  AI page; `filler.vision.enabled` / `filler.transcribe.enabled` / a new `filler.embed.enabled` and
+  Filler page.** So `filler.vision.model` is exposed on the AI page;
+  `filler.vision.enabled` / `filler.transcribe.enabled` and
   the split/curation behavior knobs stay on Filler.
 
 **Setting to change immediately, independent of the phase:** `filler.vision.model` default becomes
 **`qwen2.5vl:7b`** — the prototype proved llava:7b's confident-fabrication (a misread date grounded as
 fact) is unsafe for the grounding gate, while qwen reads OCR accurately and fails honestly.
 
-**New V45 settings** (all §15-declared, config-docs regenerated): `filler.embed.enabled` (opt-in),
-`filler.embed.model` (default `nomic-embed-text`), `filler.split.autoconfirm_confidence` (the
-signal-agreement bar for auto-confirming a segment), `filler.split.rescue_over_ms` (the "longer than
-a typical spot" transcript-rescue trigger, default ~45–60s, replacing the fixed 120s over-long gate),
-and a no-repeat-brand curation toggle.
+The split confidence threshold reuses `filler.autofile.min_confidence`; the duration ceiling is
+`filler.autosplit.max_duration`. There are no `filler.embed.*` settings.
 
 ### Tagging confidence, and auto-filing (V38)
 
@@ -2163,13 +2526,15 @@ exist. The key lands with its ffmpeg `loudnorm` pass, in the same PR, or not at 
 - **It is the discovery path with a different argument**, not a parallel one. A starter pack that acquired through its own route would be a second implementation of ingest — the shape §10 already rejected for filler search, and the shape that let `filler_sources` ship with no reader.
 - **The pack is a default, never a requirement.** "Start from scratch" is always offered, and a collection that has gone away degrades to an empty list with the reason shown — not a blocked channel. An operator with their own clips must never have to walk through someone else's taste to reach their own.
 
-⚠ **Which collection is a curated default, not a hardcoded truth.** It is a **setting** (§15 `FILLER_STARTER_COLLECTION`) so an operator can point it at their own collection or empty it to turn the pack off, and so a collection going dead is a config fix rather than a release.
+⚠ **The starter collections are product-curated seeds, not operator configuration.** They may
+change with a release and degrade to an empty list when unavailable. V55 retired the unconsumed
+setting that previously implied an operator could redirect this flow.
 
 ### Pulls — the approval gate arrives for filler (V35)
 
 The three properties above are right and had **no object to hang them on**: "the machine proposes, a human commits" described an intention, while the only thing that existed was a listing endpoint and a download button. A **pull** is that object.
 
-A pull is a **plan Loomarr composed across sources** — *"fill the 1990s kids gap"* resolving to several collections, each with a reason and an estimate. It is persisted, it appears in the approval queue beside title proposals, and **nothing downloads until it is approved**. The starter pack becomes its first seed rather than its own flow: `FILLER_STARTER_COLLECTION` seeds a pull on a fresh install instead of driving a parallel path.
+A pull is a **plan Loomarr composed across sources** — *"fill the 1990s kids gap"* resolving to several collections, each with a reason and an estimate. It is persisted, it appears in the approval queue beside title proposals, and **nothing downloads until it is approved**. A starter pack may seed a pull on a fresh install instead of driving a parallel path, but is not an operator setting.
 
 **What a pull carries:** a title, who or what proposed it, a rationale, plan rows (each a source with a reason, an estimate, and the ability to drop it before approving), an aggregate estimate, and an operator note that narrows it (*"no local dealers, no PSAs"*).
 
@@ -2196,7 +2561,14 @@ A removed clip is excluded from the catalog listing and from pod assembly **by d
 Between "a file arrived" and "a clip the scheduler can place" there is work only a person can finish. `GET /v1/filler/incoming` is that queue, in one read:
 
 - **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing. ⚠ **Nor does a COMPILATION** (V54): it is `kind=commercial` and permanently untagged — the pipeline deliberately skips tag and vision for a composite, "a compilation is cut up rather than filed" — so read literally it satisfies the second bullet above, and for a while it did. It is not an advert with missing tags; it is a container of adverts, and its handoff to a human is the reel below. Asking an operator to "Add tags" to it would tag twenty unrelated products as one clip.
-- **Compilations mid-split** — the persisted split proposals, with a count of the segments an operator cannot simply accept (unsplittable, or flagged as a duplicate).
+- **Compilations mid-split** — persisted proposals only after bounded detection and classification have examined every usable segment. Known duplicates and below-floor fragments have already been discarded; the attention count is limited to genuinely doubtful boundaries, unsplittable spans, and examined segments the model could not classify.
+
+⚠ **The response is a window, not the database.** Each conveyor/audit array is capped at 100;
+the full totals are counted independently in the store and drive headings and the badge. Loading
+all held clips or every split-proposal JSON document merely to render the first screen makes a
+large import a memory and latency spike, while using `len(rows)` as the total hides work beyond
+the cap. The store therefore counts the conveyor union and review-ready reels separately from
+their bounded row reads.
 
 ⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
 
@@ -2204,7 +2576,7 @@ Between "a file arrived" and "a clip the scheduler can place" there is work only
 
 The **drop-folder** and each **remote collection** can be **disabled**. A disabled source is **not scanned**, and **cannot enter a pull** — neither when one is composed nor when one is approved, which is re-checked at the commit point because a source can be switched off while a pull sits in the queue.
 
-⚠ **What the switch does NOT bind, deliberately: an admin's own hands.** Keyword discovery searches the Archive globally rather than per-source, and `POST /v1/filler/ingest` takes a URL the operator typed. Both are the *single-item direct* path this section already carves out — an admin acting deliberately, one item at a time, is the person the gate exists to defer to (§7). *(An earlier draft of this paragraph claimed a disabled source was "not searched, and not downloaded from" full stop. That was never true of those two routes and was not going to become true, because neither is scoped to a source; the claim is narrowed rather than the routes gated.)*
+⚠ **What the switch does NOT bind, deliberately: an admin's own hands.** The Sources tab only offers search on an enabled collection and scopes it to that collection; the discover route can also perform a global keyword search, and `POST /v1/filler/ingest` takes a URL the operator typed. Those latter two are the *single-item direct* path this section already carves out — an admin acting deliberately, one item at a time, is the person the gate exists to defer to (§7). The server does not pretend an arbitrary collection reference came from a registered row; the row UI is where enabled-source scope is known.
 
 ⚠ **Clips already in the catalog stay.** Disabling a source withdraws it from *future* work; it is not a delete, and it must never look like one. This is enforced at the scan and fetch sites rather than by hiding the source in the UI — a toggle that only dims a row is a claim the system does not honour.
 
@@ -2378,9 +2750,31 @@ been a different clip and the tags would be gone.
    which a re-scan does not fix by itself. Tolerable for filler (clips are a synced cache, and
    the operator can delete the shadowing file), and stated here because a silent shadow is worse
    than a documented one.
-2. **A re-encoded or trimmed file is a DIFFERENT clip, and loses its tags.** That is correct — it
-   is a different file — but an operator who re-encodes their library re-tags it. Worth saying
-   because "I only changed the bitrate" does not feel like "I replaced the clip".
+2. **A re-encoded or trimmed file is a DIFFERENT content identity.** A file changed outside
+   Loomarr and re-entered through the watch folder is a new clip and is tagged again. A transform
+   Loomarr performs inside the ingest pipeline is different: it computes the transformed bytes'
+   hash, files them at that hash's canonical path, and atomically re-keys the catalog row plus its
+   tags, pipeline state and lineage references. Display metadata and provenance travel with that
+   replacement; the old hash must never remain as the name of bytes it no longer identifies.
+   This distinction is load-bearing: rewriting a hash-addressed path in place makes the next scan
+   discover a new identity with only the hash-shaped filename left as its title.
+
+   **Legacy mismatches repair themselves at sync.** V51b briefly rewrote a clip in place while
+   leaving the old hash in its path, so a later scan could quite correctly identify hash B at a
+   filename whose stem was hash A. The legacy name may be the old 40-character digest or the
+   current 64-character content id; both are recognisably machine-generated. When the new value is
+   a full content identity and the old stem is either hash shape, sync files
+   the bytes at B's canonical shard path without overwriting anything, carries the sidecar, and
+   removes A's stale link only after B exists. It also seeds a missing sidecar from the durable
+   catalog name before moving, so a human title that still survives in the database does not turn
+   into a hash on the following scan. If that name was already lost too, sync may replace the hash
+   only with a conservative display name assembled from durable grounded facts (brand/category and
+   era). With no such facts it uses the explicitly neutral **“Untitled commercial”** (or the
+   corresponding known kind), because displaying an implementation hash as if it were a title is
+   not more truthful. This display-name repair also runs when the file is already at its canonical
+   path: a stale sidecar name must not keep resurrecting the hash on every sync. An arbitrary
+   operator filename is never "repaired" merely for being non-canonical; this is a narrowly
+   recognisable old Loomarr state, not a folder tidy.
 3. **The migration DROPS the catalog** (`00033`), because ids cannot be recomputed without
    reading every file, and a migration that does I/O over an operator's whole media library is
    not a migration. Clips are a synced cache and the next scan repopulates paths.
@@ -2513,7 +2907,7 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 2. **Coarse split.** ffmpeg's `blackdetect` + `silencedetect`, parsed in Go; segments under the **detection floor** are dropped. That floor is `max(MinSegmentMs, filler.min_duration)` — the 3s sliver floor and the catalog floor, whichever binds (10s on a default install). ⚠ `max()`, never replacement: `filler.min_duration` is settable to `0s`, and a 400ms fade artefact must still be dropped there. The two numbers are **one floor on purpose** — a segment the auto-confirm gate would admit and the scan boundary would then reject (§10 V40) is a clip cut out of a compilation and thrown away, work done to produce nothing and a source file consumed for it. Scene-cut detectors (`scdet`, PySceneDetect) were measured and rejected: they fire on camera cuts *inside* an advert — the wrong granularity, not a tuning problem. Detection quality is a property of the **source**, not of any threshold (69–100% across the six compilations; two had genuinely absent boundaries no setting fixes).
 3. **Rescue.** A segment far longer than a plausible advert means boundaries the A/V pass could not see; it goes to **transcript (whisper) + LLM** for cut points. ⚠ The LLM must return **exactly one entry when the transcript is a single advert** — without that instruction it invented cuts at suspiciously round 30/61/92s marks inside one 121s infomercial. With no runnable whisper (`INGEST_WHISPER_PATH`, §15) an over-long segment is not guessed at: it surfaces in the review as **unsplittable**.
 4. **Metadata.** Each segment's transcript feeds the **existing** text-signal classifier unchanged (above) — it already knows `cereal`, `toys`, `cars`. Era follows the grounding rule above: persisted only when the year appears in the text, else carried on the proposal as an unconfirmed suggestion.
-5. **Dedup.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. Matches are **flagged on the proposal**, never silently dropped — the operator sees "already in the catalog" and decides.
+5. **Deterministic discard.** The same advert recurs across compilations. A dHash over frames sampled at 1/3fps — ~30 lines of pure Go over `ffmpeg -pix_fmt gray` output, no library, no cgo — separates a re-encoded duplicate from a different advert by a measured 25× margin (mean per-frame Hamming 1.1 vs 27.6–32.2), so any threshold in the teens works. A matched segment is discarded before classification: keeping another copy cannot improve the catalog, and asking a person to make that decision is queue-shaped busywork. A segment shorter than the existing `filler.min_duration` floor is discarded at the same seam — the scan boundary would reject the resulting clip immediately, so cutting and reviewing it can produce no usable outcome. **Neither discard deletes source media:** the composite row and file remain (§10 V45), so re-splitting with improved detection is the recovery path. Detection ambiguity is never a deterministic discard: an `unsplittable` or over-long span remains with the whole reel for review.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.
 
    ⚠ **The review PLAYS each proposed cut, in place (V54).** It did not, for as long as it existed: measured 2026-08-12 on a 52-segment reel, the screen offered a name field, two mm:ss fields, Merge, Drop and Confirm, and **no media element at all** — an operator was asked whether a cut at 04:17 was right with nothing to see or hear. V54 A7 had already deleted the mock's "click to preview" caption for being false; this is the other half.
@@ -3111,11 +3505,60 @@ That is why attempts reached 12 against a `MaxAttempts` of 3, and why the row ne
 **Any rung that ever times out loops forever**; `split` is simply the one that timed out first.
 Failure and deferral both persist through a detached context.
 
-**Known gap, deliberately not built.** A much longer recording — a 3-hour capture is ~500 segments
-— would spend ~5 minutes in the fingerprint pass alone and exceed a pass again. The fix then is a
-per-pass SEGMENT budget with resume by `(ParentHash, index)`; the lineage column already exists
-(§10 V45, migration 00039). Not built because the measured corpus does not reach it, and a resume
-rule interacts with proposal editing in ways that need their own design.
+**Long recordings resume instead of restarting.** The split proposal is also the detector's durable
+checkpoint before it becomes operator-visible. When chapters are absent, boundary detection scans
+one fixed ten-minute span per pipeline pass, persists `scannedThroughMs` plus the accumulated
+black/silence gaps, and yields without spending an attempt. The next pass resumes at that exact
+offset. Once the final span is scanned, the module fuses the gaps into segments, performs rescue and
+dedup, removes the private checkpoint, and only then exposes the proposal in the review queue. The
+ten-minute span is an implementation budget, not a setting: it is deliberately well inside the
+two-minute job deadline on the measured hardware, and adding another operator control would make
+reliability depend on tuning Loomarr should own.
+
+The checkpoint rides inside `filler_split_proposals.segments_json` as a versioned document rather
+than adding coordination columns to the table. Readers remain backward-compatible with the former
+bare segment array. A draft has no reviewable segments and is filtered from both the Incoming reels
+list and `GET /v1/filler/splits/{id}`; the pipeline and rewind path still see it. Persist after every
+successful span, before starting the next: a crash or deadline can repeat at most one span, never
+the whole recording. The media-tools seam takes a time span and returns black and silence gaps
+separately; preserving the source across checkpoints is what lets detector agreement remain the
+strongest boundary-confidence evidence. Whether production uses ffmpeg filters or a test adapter
+supplies captured intervals stays inside that module.
+
+**Every segment operation is duration-bounded.** The ffmpeg adapters seek with `-ss` and limit work
+with `-t (end-start)`. They never pair an input seek with absolute `-to end`: `-to` is a position,
+not a duration, and made a late 30-second segment decode/cut an ever-growing portion of the reel.
+That error made fingerprinting super-linear and could produce oversized cuts. Timeline checkpointing
+still stands independently—the fixed span makes each invocation bounded; the durable proposal makes
+the sequence resumable.
+
+**Catalog fingerprints are a persisted derived cache, not work a reel repeats (V54).** Duplicate
+detection compares each proposed span with every other catalog clip. Decoding those whole catalog
+clips again for every compilation makes the rung scale with *catalog size × reels attempted*, and a
+deadline or restart throws away every completed decode. Loomarr therefore persists the successful,
+non-empty dHash sequence for a catalog clip in a sibling `filler_clip_fingerprints` table and reuses
+it across reels, retries and process restarts. Proposed spans remain proposal-local work: only
+whole catalog clips are reusable across compilations.
+
+The cache key is **`(clip_hash, algorithm)`**. `clip_hash` is the SHA-256 identity of the actual
+bytes, so replacing or transcoding a file produces a hard miss instead of reusing evidence from the
+old media. `algorithm` versions every sampling and hashing choice (`fps`, dimensions, pixel format,
+hash construction and comparison alignment), so a future detector change can coexist with old rows
+without a lock-step rewrite. Identity replacement deletes the old hash's entries rather than
+re-keying them: the new bytes must earn new evidence. Catalog pruning removes orphan cache rows; the
+table deliberately has no foreign key to the rebuildable `clips` cache, matching the pipeline-state
+ownership rule above.
+
+Cache population is incremental. After one catalog clip decodes, its fingerprint is upserted through
+a short context detached from the expiring pipeline pass; a later timeout can repeat at most the
+currently-decoding clip, not the entire catalog prefix. Concurrent misses may compute the same clip
+and converge through the same upsert. Each reel loads the current algorithm's cache in **one read**,
+not one query per catalog clip; a malformed row is omitted without discarding valid siblings. A
+read/write/cache-document failure is **fail-open**: Loomarr
+computes from media when it can, logs a cache write failure, and never calls a clip duplicate from
+missing or corrupt cached evidence. Empty frame sequences and failed decodes are not cached, because
+an undecodable file is not proof that two adverts are the same. This is derived state and adds no
+operator setting or review control.
 
 #### The rule V51g established, restated as its principle (V54)
 
@@ -3139,8 +3582,9 @@ absolute would forbid a shape that no longer costs what it cost when it was meas
   across segments but for the number — and grounding correctly refused to invent tags from that.
   **A faster model classifying `"part 7"` grounds exactly as much as a slow one.** The tripwire in
   `splitjob.go` stands: it must not come back to that file.
-- The atomic confirm stays atomic. Deferral-not-failure stays. The per-pass segment budget for
-  ~500-segment captures is still an unbuilt gap.
+- The atomic confirm stays atomic. Deferral-not-failure stays. The per-pass segment budget is now
+  a persisted checkpoint: each examined segment is marked on the proposal, a deliberate yield
+  spends no retry, and the next pass resumes the unchecked tail even for ~500-segment captures.
 
 **What a per-segment model call must satisfy to be permitted:**
 
@@ -3253,7 +3697,7 @@ The scheduler assembles realistic **ad pods**, not single random clips:
 - **Matching rules:** `era` to the block (90s sitcom block → 90s ads), `audience` to the channel (Saturday-morning cartoons → toy/cereal ads, not car insurance), `category` variety within a pod so it doesn't play three car ads back to back.
 - **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`**, applied live at every derivation rather than stamped once at create, so a 90s channel gets 90s ads out of the box and keeps getting them when its scope changes; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip ids always included), `excluded` (clip ids never used). Every field is optional and an empty selection == the whole catalog (the prior behavior), so this is additive.
 - **How the selection reaches assembly.** The theme filter is applied as a **catalog pre-filter** (`[]Clip → []Clip` by category + kinds) plus `Window.Era`/`Window.Audience` from the selection — replacing the previously **hardcoded** `PodEra→0` and empty audience. `excluded` ids are pre-seeded into the assembler's no-repeat set (`used`), which already excludes at every pick site, so exclusion needs no ladder change. `pinned` ids are placed as a **top-priority pool** at the front of the commercial fill before the ladder takes the rest (the one genuinely new assembly step, since the ladder ranks pools and has no force-include). If a clip is both pinned and excluded, **exclude wins** (the safe default). *(Historical note: the assembler once passed `general` as the channel audience under a comment claiming it "matches broadly" — the opposite of the filter's actual behavior — so every channel's filler-list held only bumpers + the fallback card, §10's central feature silently doing nothing; found by building the §12 pod preview. The per-channel selection above is what finally wires real era/audience through.)*
-- **Density:** target break length and breaks-per-hour; min/max filler duration. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and it inserts `SlotFiller` gaps that the reconcile's pod assembler (`fillPods` → `Assemble`) fills with matched pods. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
+- **Density:** target break length and breaks-per-hour; min/max filler duration. `FILLER_BREAK_DURATION` defaults to 5m and may be overridden per channel as `policy.breakDuration`; it hot-applies on the next reconcile. The minimum is 30s because Tunarr silently clamps smaller flex gaps to 30s, which would otherwise make Loomarr's preview and guide disagree with playout. Zero never means off here — `policy.breaksPerHour = 0` is the one off switch. `FILLER_POD_MAX` is a preferred clip-count ceiling, but break length wins: the adapter estimates the clips required from the median duration of the tightest matching pool and raises the limit when necessary, so a 5m target is not truncated to four 30s adverts. The assembled pool window is `max(10m, resolved break length)` so long custom breaks are not clipped by the pool's former fixed size. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and the reconcile's `PodAdapter.Assemble` bridge calls the pure `filler.Assemble` over the matched catalog. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
 - **Repeat avoidance:** don't repeat a clip within a session/window.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
@@ -3285,7 +3729,7 @@ Two jobs the suggester (§8) can do here, both under the same grounding rule (ca
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
 
 ### Config
-Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_MAX_CONCURRENT` and `INGEST_TIMEOUT`. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
+Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-backed channel Loomarr separately exposes the same folder as a Tunarr `local` source), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
 
 ---
 
@@ -3301,7 +3745,7 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 
 ### Authentication
 - **Local users:** `POST /v1/auth/login` verifies the password against the row's bcrypt `password_hash` (constant-time; a missing hash never verifies).
-- **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. It is not a credential path in the sense the other three are — it is a sanctioned bypass of the *credential check*, for the maintainer's dev loop, and must never be reachable in a shipped install. (The phrase "the only sanctioned third credential path" here predated SSO, V8; the distinction that matters is bypass-vs-credential, not the count.)
+- **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. When the server advertises that this route is mounted, the web login route calls it once automatically; a failure falls back to the visible dev-login button rather than looping. The repository's secondary-worktree harness is the only automatic provisioning companion: `make bootstrap` opens that worktree's already-isolated SQLite database, creates a random-password `developer` through the same first-admin `Provisioner` used by the wizard, writes `setup.completed=true`, and enables the server-side dev-login gate. The primary worktree is untouched, and `AGENT_DEV_IDENTITY=0` preserves a genuinely unclaimed database for wizard work. Thus neither the endpoint nor application startup gains a user-creation path. It is not a credential path in the sense the other three are — it is a sanctioned bypass of the *credential check*, for the maintainer's dev loop, and must never be reachable in a shipped install. (The phrase "the only sanctioned third credential path" here predated SSO, V8; the distinction that matters is bypass-vs-credential, not the count.)
 - **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), and — critically — only proceeds if the user id is already an allowlisted row. Media-server passwords are never persisted or logged.
 - **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby accepts the equivalent `X-Emby-Authorization` header. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
 - Either path issues Loomarr's **own session**: HTTP-only, `SameSite=Strict` cookie signed with the generated `SESSION_SECRET` (config-design §4). Sessions are rows in the store (revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one), not stateless JWTs — disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Session tokens are random 256-bit values, **SHA-256-hashed at rest** (a DB read never yields a usable cookie). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
@@ -3509,13 +3953,15 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
 ### Stack & delivery
 - **React 18 + TypeScript** (Vite SPA); **TanStack Router** (file-based, typed); **TanStack Query** for server state; **Tailwind CSS + shadcn/ui** (full stack rationale in §14).
-- **Typed hooks generated by `orval` from committed `api/openapi.yaml`** — the payoff of §7.1: no hand-written types or fetch glue; contract changes become TypeScript compile errors.
-- **Decided: embed** built assets in the Go binary (`embed.FS`), served at `/` → single self-contained container (§16), same-origin (no CORS). A separate SSR container is future work if ever needed.
+- **Typed hooks generated by `orval` from committed `api/openapi.yaml`** — the payoff of §7.1: no hand-written types or fetch glue; contract changes become TypeScript compile errors. The `@loomarr/api` root barrel exposes generated DTOs through a **type-only** star export and explicitly re-exports only the generated enum objects the UI uses as runtime values. A normal DTO import must not make Vite fetch every generated model module before auth and the Guide can start; this is a development first-paint invariant, not merely bundle tidiness.
+- **Decided: embed** built assets in the Go binary (`embed.FS`), served at `/` → single self-contained container (§16), same-origin (no CORS). Compressible representations are gzip-compressed once when the web handler is constructed and selected through `Accept-Encoding`; hashed assets keep their immutable one-year cache while the SPA document remains `no-store`. A separate SSR container is future work if ever needed.
 - **Live updates** via SSE `/v1/events` (native `EventSource` hook).
 
 ### Views
 - **Login** — local or imported-media-server credentials (§11); first-run flows into the **setup wizard** (§13): create the owning admin (bootstrap) → **choose who plays your channels** (`playout.backend`, internal by default — §9.1) → connection checklist → **connect Tunarr to your library** *(Tunarr path only:* `tunarr-connect` *wires + scans Tunarr's media source so channels get real programs not dead-air — §6; internal playout reads the library directly)* → import media-server users → guided first channel.
 - **Guide** (route `/guide`) — headed **"Channels"**, this is the single channels surface: a cross-channel time grid answering both *"what do I have"* and *"what is on"*. **Origination** (how a channel is born) is a header action on this surface: the everyday door is **"✦ Add a channel" → describe it** (the §13 describe→review→approve flow, inlined below the header), and an empty install shows the **"Dead air"** state whose one action opens the same panel. **Evolution** (shaping a live channel) happens on the detail page (`/channels/{id}`) and never re-originates it.
+
+  Hovering or focusing an airing opens its detail card with a compact, unframed, same-origin image-service thumbnail beside the title. A programme uses the same 16:9 episode still or movie backdrop as the Watch timeline, so films and episodes have one consistent preview shape rather than rendering portrait posters as narrow slivers. A filler block previews the first clip in that actual pod with available artwork, preferring its animated hover image and falling back to its still. These previews preserve the whole source image (`contain`, never a forced crop): programme art is landscape and filler loops may be landscape or 4:3. Their ThumbHash is confined to an inner frame with the source's own aspect ratio, never exposed as a matte around the real image. Programme previews are an **interactive fetch exception**: when the Guide or Watch timeline first discovers one, its bounded request synchronously warms the adopted image and returns only real bytes, rather than displaying a gray/blurred placeholder until the next scheduled image-fetch pass. That interactive work is deduplicated by programme identity across the response and resolved through one bounded concurrent batch: TMDB has no multi-title endpoint, so serial per-airing calls would put the sum of every upstream round trip on first paint, while unbounded fan-out would trade latency for provider abuse. The card is anchored to the actual airing block and collision-positioned against the viewport, so its size and the row's virtualized index can never push it beyond a browser edge.
 
   The **hand-made seeds** (single-series / empty via `POST /v1/channels`) have **no UI door and that is deliberate** — see the §12 surface-map row. They remain an API-only express door into the same object for scripted and restore use; the everyday way to make a channel is to describe one.
 
@@ -3523,9 +3969,9 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   The **channel detail page is five surfaces, organized by intent, with two audiences** — the everyday **Overview and Watch are viewer surfaces; the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
   - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
-  - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** and **Subtitles** are **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so those re-pick the track / burn-in for the shared stream (§9.1 audio-track and subtitle overrides — a member sees the current values, only an admin changes them). "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
-  - **Programming** (admin) — *"What plays, and when?"* One surface with a visible hierarchy: **what plays** (the lineup + scope: era, genres, audience ceiling + unrated, runtimeMax, and the *only these shows* series picker) → **how it's ordered** (ordering, separation) → **when it changes** (the wall-clock curation rules, `programming-design.md` §6.5, plus **seasonal**/holiday behaviour on the calendar clock). The `GET …/cycle` **cycle preview docks here** as the shared verification pane ("what airs Saturday 9am, and which rule wins"). **Refine-with-AI is a verb on this surface, not a separate place** — a header action opens the describe→review→apply loop (§8) acting on the *same* object the manual controls edit; the review shows a diff including **policy deltas** (so a refine can't silently change era/ceiling — §8.2 ownership).
-  - **Filler** (admin) — *"What plays between shows?"* The per-channel selection (era/audience/category/kinds + pin/exclude) with a **live sandbox** — every change re-assembles the actual break against an unsaved draft (`POST …/pods/preview`, §7/§10) so you see exactly what airs before you **Apply**.
+  - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. The live timeline is inspectable rather than seekable; its hover card uses landscape episode stills and movie backdrops so every programme preview matches the 16:9 frame, preserving the complete artwork rather than cropping it. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** is **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so it re-picks the track for the shared stream (§9.1 — a member sees the current value, only an admin changes it). Subtitle discovery is read-only until the encoder implements an actual subtitle path. "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
+  - **Programming** (admin) — *"What plays, and when?"* One surface with a visible hierarchy: **what plays** (the lineup + scope: era, genres, audience ceiling + unrated, runtimeMax, and the *only these shows* series picker) → **how it's ordered** (ordering, separation) → **when it changes** (the wall-clock curation rules, `programming-design.md` §6.5, plus **seasonal**/holiday behaviour on the calendar clock). These are intent sections, not one continuous form: **What plays opens by default; ordering, scheduling rules, and the verification preview are collapsed until requested**, retaining their state and remaining reachable to find-in-page through the shared collapsible primitive. The `GET …/cycle` **cycle preview docks here** as the shared verification pane ("what airs Saturday 9am, and which rule wins"). **Refine-with-AI is a verb on this surface, not a separate place** — a header action opens the describe→review→apply loop (§8) acting on the *same* object the manual controls edit; the review shows a diff including **policy deltas** (so a refine can't silently change era/ceiling — §8.2 ownership).
+  - **Filler** (admin) — *"What plays between shows?"* The per-channel selection (era/audience/category/kinds + pin/exclude) with a **live sandbox** — every change re-assembles the actual break against an unsaved draft (`POST …/pods/preview`, §7/§10) so you see exactly what airs before you **Apply**. Because this is already a dedicated route, it is a normal page rather than a permanently-open accordion nested inside that page. Era and audience stay visible; the large category vocabulary opens only while choosing categories, selected categories remain visible, pin/exclude is an optional disclosure, and catalog coverage is a diagnostic disclosure below the live break rather than a wall between the controls and their result.
   - **Danger zone** (admin) — *"Stop or remove this channel."* Pause/resume and a typed-confirm **delete**. Deliberately narrow: a tab headed by an irreversible action is the wrong home for anything an operator edits routinely, so identity and growth settings live where they are used rather than being grouped here as "lifecycle".
 
   ⚠ **There is no Settings tab, and the auto-curate opt-in is not on one.** This bullet previously described a *Settings* surface holding identity + lifecycle + auto-curate. It was never built — the tabs are `info | watch | programming | filler | danger` (`SECTION_IDS`, `channels/$id.tsx`; `watch` added V46) — and describing it cost real work: the 2026-07-26 surface audit found `autoCurate`'s map row asserting a home ("Settings → lifecycle") that did not exist, so anyone checking "is auto-curate reachable?" read a row saying yes. Identity (name/number/group/**logo**) lives in the **page header**, next to the name it edits; auto-curate lives in **Programming → when it changes** (below), beside the curation rules it shares a clock with. Both are deliberate, not drift.
@@ -3550,7 +3996,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | watch in browser (live HLS player + theater) | `POST …/{id}/play-url` → signed HLS URL; `GET /playout/hls/{id}.m3u8` (+segments) | Watch; also guide → row ⋮ → Watch | viewer |
   | stream quality (per-viewer tier) | `play-url` `quality` param | Watch → Quality picker | viewer |
   | audio track (channel-wide) | `policy.playout.audio_language` | Watch → Audio picker | viewer sees; admin edits |
-  | subtitles (channel-wide burn-in) | `policy.playout.subtitles` | Watch → Subtitles picker | viewer sees; admin edits |
+  | subtitles | none — track discovery only; burn-in control retired in V55 until the encoder implements it | none | — |
   | cross-channel schedule (time grid) | `GET /v1/guide?from=&to=` | **Guide** (top-level, not a channel surface) | viewer |
   | relaxation ladder, drift, Tunarr link | `policy.applied`, status | Overview → diagnostics | admin |
   | lineup (add/remove/reorder, season windows) | `PATCH` `lineup` | Programming → What plays | admin |
@@ -3559,8 +4005,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | scope: genres, collections | `policy.scope.genres`, `.collections` | The two are in *different* states and an earlier row conflated them. `genres` **binds** but has no dedicated control: the scheduler's scope pass filters on it (`schedule/slotting.go`), it is simply only settable inside a curation rule. **`collections` is now reachable end to end** — Programming → What plays → *Only these collections*, a checkbox list over `GET /v1/library/collections`, enforced by the membership stamped at reconcile (programming-design §2.2). ⚠ **It was described as ORPHANED and "blocked on a missing endpoint" through three planning passes, and that framing was wrong**: the endpoint was the easy half. `filterEntries` is a pure no-I/O function over `[]LineupEntry`, so the load-bearing work was stamping membership onto the entry — a lookup inside the filter would have been an N+1 on the scheduling path. Recorded because the mis-framing survived being written down three times. | admin |
   | audience ceiling (safety) | `policy.audience.ceiling` | Programming → What plays | admin |
   | unrated allowance | `policy.audience.unrated` | Programming → What plays, beside the ceiling its default is derived from ("Automatic" names which way it currently resolves) | admin |
-  | playback strategy | `PATCH` `strategy` | Programming → How it's ordered | admin |
-  | ordering; separation (no-repeat, series gap, block cap) | `policy.ordering`, `policy.separation.*` | Programming → How it's ordered | admin |
+  | ordering; separation (no-repeat, series gap, block cap) | `policy.ordering`, `policy.separation.*` | Programming → How it's ordered. **One play-order control, not separate Playback + Ordering controls:** an unset policy choice is labelled `Use channel strategy (<resolved strategy>)`, naming the stored fallback without presenting `Channel.Strategy` as a second editable knob. Unset separation fields say they use Loomarr's built-in spacing; they never claim blank means “no restriction,” because `Resolved` fills those fields from built-in constants. | admin |
   | wall-clock curation rules | `policy.rules` | Programming → When it changes | admin |
   | rolling-window horizon | `policy.window` | **none — ORPHANED** at channel level; a curation rule sets its own `window` | admin |
   | AI refine (diff → apply) | `POST …/refine` | Programming → header action | admin |
@@ -3568,7 +4013,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | per-channel filler + sandbox | `policy.filler`, `POST …/pods/preview` | Filler | admin |
   | auto-curate opt-in (+ overrides) | `policy.autoCurate` | Programming → When it changes (below the curation rules — the same question on a slower clock). The checkbox **constructs/deletes the object**, since the opt-in IS its presence; the two thresholds show blank for `0` (inherit), never a literal 0. Disabled with a reason on a hand-made channel — §8.2 skips a channel with no `IntentRef`. | admin |
   | pause / resume / delete | `PATCH` `status`, `DELETE` | Danger zone | admin |
-  | seasonal mode / holidays / off-season | `policy.seasonal.*` | Programming → When it changes (below the curation rules — the calendar is the longest of the three clocks on that surface). The holiday list is read from the **rule vocabulary** (`when` tokens `holiday:<id>`), not hand-mirrored, so it cannot offer a holiday `builtinCalendar` does not know. Off-season fallback renders **only** in `exclusive` mode, the only mode that consults it. | admin |
+  | seasonal mode / holidays / off-season | `policy.seasonal.*` | Programming → When it changes (below the curation rules — the calendar is the longest of the three clocks on that surface). The default is named as Loomarr's **built-in seasonal rotation**, not the source-free “Automatic”; wire values `""` and `"auto"` render as one choice because they resolve identically. The holiday list is read from the **rule vocabulary** (`when` tokens `holiday:<id>`), not hand-mirrored, so it cannot offer a holiday `builtinCalendar` does not know. An empty stored holiday subset means all built-ins, so the UI shows every holiday checked; unchecking one materializes the remaining subset. Off-season fallback renders **only** in `exclusive` mode, the only mode that consults it, and its identical `""` / `"loop"` states render as one choice. | admin |
   | playout backend (per channel) | `policy.playout.backend` | Overview → Advanced (admin) → Broadcast, beside the Tunarr link — the same subject, *who streams this channel*. §9.1's "one can be moved from its own page", now true. "Follow the default" lowers to `""` so the inherit shape survives. | admin |
   | draft programming preview | `POST …/{id}/programming/preview` | **none — ORPHANED**; the UI previews only saved state | admin |
   | forced reconcile | `POST …/{id}/reconcile` | **API-only by design** — §9: every edit auto-reconciles, there is no manual rebuild | admin |
@@ -3595,12 +4040,12 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   **Gaps are preserved, never filtered.** Dropping a block would leave a hole that every later block slides into, so the timeline would stop matching the clock — the one thing a guide must never do. (`GET …/{id}/upcoming` *does* filter gaps; that is right for a "what's on next" strip and wrong here.)
 
-  A **now-line** marks the current instant and advances client-side from the block timestamps rather than by polling — the browser already knows the wall clock, so pushing "time passed" over the wire would be pure waste. **Lineup changes** are the genuine invalidation, and those arrive on the existing `channel` SSE frame (§7 live updates): the grid refetches its window when a channel reconciles. **Zoom and span are two separate controls** (revised after V14a): zoom scales the *chrome* — rail width, row height, type — while the window always fits the viewport, which is the TV-guide convention (you change how much detail each row shows, not how much time is on screen). The **time span** is chosen independently (2H/4H/6H/day) by asking the API for a different window. Scrolling backwards is bounded (the past is recomputed from the *current* lineup, so a distant past would be fiction rather than history).
+  A **now-line** marks the current instant and advances client-side from the block timestamps rather than by polling — the browser already knows the wall clock, so pushing "time passed" over the wire would be pure waste. **Lineup changes** are the genuine invalidation, and those arrive on the existing `channel` SSE frame (§7 live updates): the grid refetches its window when a channel reconciles. The primary toolbar answers the everyday questions directly: which day, where now is, and how much time is visible (2H/4H/6H/12H). Precise start-time and zoom controls are secondary **View** options, closed by default; when either is non-default the View trigger visibly indicates and accessibly announces the custom state, so a hidden control can never silently explain a surprising grid. Zoom magnifies the time axis while span independently asks the API for a different window. Scrolling backwards is bounded (the past is recomputed from the *current* lineup, so a distant past would be fiction rather than history).
 
 - **Queue** (route `/queue`) — **three tabs, per the v2 mock: `Needs approval · In flight · History`** (V27). *Needs approval* is the admin approval gate (§7) with per-row review/edit and **bulk approve**; *In flight* is the tracked titles below; *History* is the decided proposals — each carrying **when** it was approved (`approvedAt`), who by, what they changed, and any deny reason. This is what "the approvals queue as its own surface" means: **Queue is that surface**, which is why the mock hangs a pending-proposal count badge off this nav entry and not a separate one. Tab counts come from the same queries that fill the tabs, so a count cannot disagree with its list. Tracked titles by provisioning state keep their **retry** on a stalled acquisition, and each title's journey (*pending approval → acquiring (3/7) → live on channel N*). Named for what it holds — work waiting on someone — rather than "Board", which named a layout. Per §342's global-read model this list is **not per-member**: every authenticated user sees every tracked title, because `TitleDTO` carries no requester and the store has no per-user index to scope by. "My requests" as a heading would therefore be a promise the data cannot keep — scoping it is a schema change (a requester column + a filtered list route), not a UI filter.
 
   **The member-facing "My requests" surface therefore lists PROPOSALS, not titles** (§12, V26). The two halves of a request scope differently and it is worth being precise about why: a `Proposal` carries `created_by`, so *"the requests I submitted"* is answerable; a `Title` does not, so *"the titles acquired for me"* is not. The surface shows each proposal's journey (submitted → approved/denied), the approver's **note** and server-generated **modification summary** when it came back altered, and the **deny reason** when it did not — the provenance V25/V25b persist. Tracked titles remain the global list above. **Cancel** is likewise unbuilt: giving up on a title is `DELETE /v1/titles/{key}`, which is admin-only by the same §342 rule that makes enqueuing admin-only, so it is not a member-facing control on this route.
-- **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch generation → review lineup + acquisitions w/ rationale + scores → **edit via search** (§7.2: add/replace titles; missing ones become acquisitions) → **submit**; admins get an **approval queue** and approve/deny with `approved_by` recorded. **The queue is also where a proposal is edited before approval** (§7.2 / D-K): "Review & edit picks" opens the same pick list with a drop control per title, an add-via-search box, and a note to the requester. The edit is a **delta** (`drop` by provisioning key, `add`, `note`) sent **on the approve call itself** — never a separate save — because `suggest.Approve` takes it as a parameter, keeping "what gets acquired" inside the one gate. Approving unmodified sends an empty body and behaves exactly as it did before the feature existed. Inline intent-writing hints. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
+- **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch generation → review lineup + acquisitions w/ rationale + scores → **edit via search** (§7.2: add/replace titles; missing ones become acquisitions) → **submit**; admins get an **approval queue** and approve/deny with `approved_by` recorded. **The queue is also where a proposal is edited before approval** (§7.2 / D-K): "Review & edit picks" opens the same pick list with a drop control per title, an add-via-search box, and a note to the requester. The edit is a **delta** (`drop` by provisioning key, `add`, `note`) sent **on the approve call itself** — never a separate save — because `Approver.Approve` takes it as a parameter, keeping "what gets acquired" inside the one gate. Approving unmodified sends an empty body and behaves exactly as it did before the feature existed. Inline intent-writing hints. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
 - **Filler library** — browse/tag commercial clips (era/audience/category), trigger sync, review AI tags, preview a channel's pods (§10). This is the **catalog**; each channel *chooses* from it on its own Filler section (§10 per-channel selection). The two surfaces cross-link both ways — the catalog heading points to per-channel selection, a channel's Filler section links back to the catalog, and a clip offers a **"Use in a channel"** action that pins it into a channel's filler directly (a normal `PATCH …/{id}` of `policy.filler.pinned`, merged onto the channel's live policy).
 
   **Three tabs — `Catalog · Incoming · Sources` — under a persistent pool-health strip** (V35). The strip is *not* a tab: catalog health is the context you read the other three in, and burying it behind one made it the thing nobody clicked. It carries the honest headline numbers plus the page's primary action, **Propose a pull**.
@@ -3613,7 +4058,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (what a new channel inherits, plus filler behaviour) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, hot-apply, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, hot-apply, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
@@ -3773,11 +4218,10 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
-| Image decode + resize | **stdlib `image/*` + `golang.org/x/image`** (`webp` decoder, `draw.CatmullRom`) | The image service (§22) needs decode, high-quality downscale, and no cgo. `x/image` is Go-team maintained with zero supply-chain surface, and `CatmullRom` is the quality tier worth paying for on artwork. **`disintegration/imaging` rejected** — effectively unmaintained since 2019; its live fork adds ICC/animation we do not need. **`govips`/`bimg` rejected** — both are cgo bindings to libvips, which is 4–8× faster than ImageMagick and entirely beside the point: pulling libvips and its dependency tree into a QEMU-emulated `linux/arm64` build is exactly the cost `modernc.org/sqlite` was chosen to avoid, and it would drag LGPL-2.1+ into the image. |
-| WebP encode | **`github.com/gen2brain/webp`**, built with **`-tags nodynamic`** | The one no-cgo lossy-WebP encoder that is actually production-grade. ⚠ **It is no longer a wazero/WASM library** — a design written from 2023 knowledge would reject it on that basis and be wrong. It is now libwebp transpiled to **pure Go via `wasm2go`**, roughly 3× native libwebp (the older wazero path was ~5×). ⚠ **The `nodynamic` tag is not optional:** without it the library `dlopen`s a system libwebp when one is present, so the same image encodes differently depending on the base layer — a reproducibility hazard across our two architectures. **`nativewebp` rejected** (pure Go but **lossless VP8L only**, useless for posters); **`kolesa-team/go-webp` / `chai2010/webp` rejected** (cgo); `KarpelesLab/gowebp` and `skrashevich/go-webp` are genuinely pure-Go and worth watching, but at ~12–108 commits each they are too immature to be a primary encoder. |
-| AVIF encode | **the already-vendored `ffmpeg`** (`libaom-av1` / `libsvtav1`), via subprocess | **No new dependency.** In-process AVIF from Go exists (`gen2brain/avif`) and works, but AVIF encoding is 300–1200 ms for a ~1000px image — an order of magnitude past WebP — and paying that through a transpiled-C-in-Go path, on a request, is untenable. ffmpeg is already a core runtime dependency (§9.1), is natively multithreaded on both arches, and a subprocess is exactly what you want around a one-second CPU burn: killable, with a timeout. This is why §22 makes AVIF a background job rather than a lazy rendition. ⚠ The image build must **assert the AV1 encoder exists**, the way it already proves whisper by transcribing at build time rather than by `--help`. |
-| JPEG encode | **stdlib `image/jpeg`** | §22 keeps a JPEG floor for old iOS and legacy Android WebViews — over-represented among a self-hosted media server's clients (televisions, ageing tablets). ⚠ **`gen2brain/jpegli` was evaluated and rejected on inspection**, reversing an earlier intent recorded here: its ~20% density win is real, but it arrives on a **wazero WASM runtime** — a second, heavier interpreter in the binary, distinct from the `wasm2go`-transpiled path the WebP encoder uses — in order to improve *the rendition the fewest clients take*, which is a compatibility floor rather than a quality target. Stdlib costs nothing and is already correct. If JPEG ever becomes a primary format that trade flips. |
-| Image placeholder (LQIP) | **`github.com/galdor/go-thumbhash`** | The ~25-byte blur preview stored on every image row (§22). **BlurHash rejected** despite being the more widely deployed format: ThumbHash is smaller, higher quality per byte, faster to decode, and — the decider — **carries alpha**, where BlurHash renders transparency as **black**. Channel logos are routinely transparent PNGs, so BlurHash would have needed a composite-onto-dominant-colour step purely to avoid shipping black placeholder boxes. BlurHash's one remaining advantage is ecosystem breadth, which buys nothing in an app that owns both ends of the wire. *(Watching, not adopting: `google/wuffs`' **Handsum**, better again per byte, but published 2026-07 with no client-side decoder ecosystem yet.)* |
+| Image rendering runtime | **the required Rust `loomarr-image` one-shot worker**, over a versioned bounded-JSON/file-manifest protocol | Static and animated decoding is an untrusted, allocation-heavy boundary. A sibling process contains panics and native-code crashes without making the Go server use cgo, returns all worker memory to the OS after each Image, and can be killed on cancellation. One invocation renders a complete requested ladder, amortising process startup. A persistent daemon adds supervision and retained-memory complexity before measurement justifies it; in-process FFI would let a decoder fault take down Loomarr. The worker is part of Loomarr, ships in the one image, and is mandatory: a missing or incompatible worker prevents readiness, with no Go codec fallback (§22). |
+| Rust image dependencies | **pinned `serde`/`serde_json` + `sha2` + `base64` + `thumbhash` + `image` + `fast_image_resize` + `webp`/`webp-animation`, locked by `Cargo.lock`; `png` is direct only in tests** | Serde is the bounded worker protocol rather than a hand-written parser; `sha2` verifies content identity on both sides of the process boundary; `base64` and `thumbhash` produce the existing placeholder wire format. `image` supplies one animation-decoder contract for GIF, APNG, and WebP; the direct test-only `png` edge generates a standards-valid APNG fixture instead of checking in opaque bytes. `fast_image_resize` supplied the measured static speed/RSS win; `webp` provides static encoding while `webp-animation` exposes libwebp's incremental encoder so a timeline does not accumulate full-frame buffers. A pure-Rust `zenwebp` replacement remains contingent on the corpus proving dependency, licence, deterministic-output, malformed-input, and both-architecture gates rather than novelty. The complete resolved graph ships in the SBOM. |
+| AVIF encode | **the required Rust image worker, using the pure-Rust `ravif` path behind `image`, background-only** | AVIF remains outside request latency so a cold grid cannot multiply expensive encodes. The worker's startup self-test performs a real encode; no ffmpeg or Go image fallback survives. |
+| Image placeholder (LQIP) | **the Rust `thumbhash` crate inside `loomarr-image`** | The ~25-byte blur preview stored on every image row (§22). ThumbHash carries alpha, which avoids black placeholder boxes for transparent channel logos. The worker emits the existing base64 wire format, so the frontend contract does not change. |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
 
 ### Frontend (Node 22.5+, Vite + React 19 + TypeScript)
@@ -3786,7 +4230,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
 | Wire schemas for validation | **`orval` `client: "zod"`**, a second output block over the same spec → `@loomarr/api/zod` | The form schemas in `packages/core` used to MIRROR wire field names by hand, and it shipped a bug: `intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` (and `runtimeTarget` for `runtimeTargetMin`), so a user's acquisition cap serialized into JSON the server ignored and silently vanished. Each schema is now `.pick()`ed off its generated wire schema, making a lookalike name a **compile error at the schema definition** (`Type 'true' is not assignable to type 'never'`). ⚠ This replaces a hand-written contract test that covered **one** of three schemas with a guarantee that covers all three and every future one — the same "a grep beats a convention" reasoning as `check-retired.sh`. ⚠ **Generation carries names and types, NOT rules:** the spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` in ~9k lines and `maxAcquisitions` has no bounds at all, and OpenAPI has nowhere to put a user-facing message — so trims, lengths, the 0–200 cap and all copy stay hand-authored in `.extend()`, and `confirm` (form-only, never sent) is added there too. Zod stays on v3; `zod@3.25.76` exposes the `./v4` bridge subpath, so v4 remains a separate decision. ⚠ **This row said the mock generator was rejected outright; that was true at V53a and is no longer.** It was rejected for its DATA because it targets OpenAPI 3.0 idioms while this spec is 3.1 — it degraded `type: ["array","null"]` to `arrayElement([[], null])` without descending into `items` (137 never-populated list fields), and `useExamples` reads singular `.example` where Huma emits plural `examples:` (0 of 53 tags used). **V53b removed the first half** by making arrays non-nullable, taking never-populated list mocks to 0; the `useExamples` half remains, which is why it stays unset. See the MSW row below for what is adopted and what is still not trusted. |
 | FE test mocking | **`msw`** + **`@faker-js/faker`** (devDeps), handlers generated by `orval` `mock: { type: "msw" }` → `@loomarr/api/msw` | Before V53d, **31 test files each hand-rolled a local `stubFetch`**, so 31 places independently encoded what the wire looks like — the FE doing exactly what the Go side bans ("Phases do not invent private mocks; extend the testkit"). This is that shared layer. ⚠ **What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so a renamed route is fixed by a regenerate where a hand-written path would silently stop matching and its test keep passing against nothing — `/v1/suggestions` → `/v1/proposals` (V41) is the case this repo has lived (named here as the historical example, not as a live route — retired-ok). ⚠ **The generated DATA is never trusted and every test passes an override:** optional fields emit as `arrayElement([value, undefined])` so presence varies per CALL, and nothing is seeded, which is flaky rather than merely arbitrary. `useExamples` stays UNSET — it reads singular `example` and Huma emits 3.1 plural `examples:`, so setting it would imply a guarantee that does not hold. ⚠ **`onUnhandledRequest: "error"` is NOT used**, because it does not fail a test: MSW's docs define it as "print an error and halt request execution", and the maintainer confirms (mswjs/msw#946) that the interceptor swallows the exception so the runner never sees it. `src/test/msw/server.ts` records unhandled requests and throws in `afterEach` instead — which is what makes a moved route go red. Fixtures are parsed through their generated zod response schema (`validated()`), catching fixture drift where orval cannot: its `runtimeValidation` is absent in 7.21.0, and in 8.x the only `.parse()` injection is the Angular path while the custom-mutator branch returns before it (orval PR #3226, open). `faker` is a transitive requirement of the generated handlers, imported at module scope even though its values are always overridden. `msw`'s build script is denied in `pnpm-workspace.yaml` — it installs a browser service worker, and `setupServer` (Node) needs none. |
-| Package dependency seams | **`dependency-cruiser` 17** + analyzer-only **TypeScript 6** (pnpm package extension) | Each `web/packages/<name>/` package is a deep module: root TypeScript files are the small public interface and nested folders are private implementation. A static import-graph gate prevents app code and sibling packages from bypassing those entry points and rejects cycles; this turns package locality into an enforced property instead of a review convention. Version 17 preserves Loomarr's Node 22.5 floor but its parser rejects TypeScript 7, so pnpm supplies TypeScript 6 only beside dependency-cruiser; each workspace package continues compiling with its own TypeScript 7. Neither tool ships in browser code. |
+| Package dependency seams | **`dependency-cruiser` 17** + analyzer-only **TypeScript 6** (pnpm package extension) | Each `web/packages/<name>/` package is a deep module: root TypeScript files are the small public interface and nested folders are private implementation. Focused `@loomarr/api/{models,endpoints,zod}/*` and `@loomarr/core/*` exports still preserve the route-payload boundary in frontend-design §4.4; they resolve to focused root entry files rather than exposing generated or `src/` paths. Orval regenerates the API entry files with its client. A static import-graph gate prevents app code and sibling packages from bypassing those entry points and rejects cycles; this turns package locality into an enforced property instead of a review convention. Version 17 preserves Loomarr's Node 22.5 floor but its parser rejects TypeScript 7, so pnpm supplies TypeScript 6 only beside dependency-cruiser; each workspace package continues compiling with its own TypeScript 7. Neither tool ships in browser code. |
 | Routing | **`@tanstack/react-router`** (file-based; `@tanstack/router-plugin` + `-cli` generate `routeTree.gen.ts`) | End-to-end type-safe routing (typed params/search/links) matching the orval-contract ethos; shares the TanStack Query client via router `context` + loader-based auth guards (`beforeLoad` → `redirect`, no guard-flash). Web-only — routing was always the per-platform seam (frontend-build-plan §), mobile keeps Expo Router; `react-router` v6 replaced 13.3a |
 | Styling / components | **Tailwind CSS + shadcn/ui** on **`@base-ui/react`** (one package; per-component subpath exports) | Fast, decent defaults, copy-in components. The headless primitive library is the runtime piece shadcn wraps. **Every reason below for adopting a primitive still holds — only the vendor changed (V50a).** The enum control is a themed listbox, not a native `<select>`: native first shipped (accessible, mobile-correct, zero-dep) but renders an **unstyleable OS option list** (light popup on some platforms, off-theme), and richer selects (search, groups, icons) are planned that native can't do. Supersedes the earlier native-only choice recorded in `select.tsx`. **Tooltip** serves icon-only-button labels: the app has many icon-only affordances (sidebar search/sign-out, the channel-detail back arrow, row actions) whose meaning needs a hover/focus label, and the native `title=` attribute is unstyled, ~1s-delayed, and keyboard/touch-hostile. **Slider** backs the video scrubber (V39): a seek bar is a slider, and the hand-rolled `role="slider"` it replaced had to re-implement the WAI-ARIA keyboard contract (arrow steps, Home/End, `aria-valuetext`) by hand — semantics that rot silently, because nothing fails when they drift. **Menu** backs the video player's in-bar audio/subtitle controls (V47): these are icon-triggered MENUS (a speaker/CC glyph opens a list of language/mode choices), not a form `<select>`, and need the roving-focus/typeahead/Escape contract a menu has. ⚠ **The vendor change is Radix → Base UI (V50a), and it is a consolidation, not a preference.** Radix was six separately-versioned packages (`react-slot`, `react-select`, `react-tooltip`, `react-slider`, `react-dropdown-menu`, `react-dialog`) plus ~27 transitive `@radix-ui/*`; Base UI is one MIT package covering all of them and 30 more, so the primitives the app still hand-rolls (combobox, toggle-group, meter) stop needing a §14 conversation each. ⚠ **That list shrank twice and the removals are the record:** `menu` left it in V50b (the channel row's ⋮ menu), and `collapsible` in V50c. **Collapsible** backs `CollapsibleSection`, and it was adopted for `hiddenUntilFound` specifically — a closed section's text stays reachable by the browser's find-in-page, where the old `overflow:hidden` clip made it findable by nothing. ⚠ Its MOTION stayed hand-rolled: Base UI measures the panel (`scrollHeight` → `--collapsible-panel-height`) to transition `height`, while `styles.css`'s `.reveal` grid-rows 0fr→1fr trick is height-agnostic and cannot desync from a stale measurement, so the primitive owns state and semantics while the stylesheet still owns motion. **`combobox` remains hand-rolled deliberately, not by omission** — see `search-command.tsx`, which records why Autocomplete's Portal→Positioner→Popup shape does not fit an always-visible panel embedded in six layouts. shadcn ships a Base UI variant of all 57 relevant registry components, so the copy-in philosophy survives. Two API deltas are load-bearing and are recorded where they bite: `asChild` becomes a `render` prop (`useRender`/`mergeProps` replace `Slot`), and Portal→**Positioner**→Popup replaces Radix's single `Content`. ⚠ **One behavioural difference is NOT cosmetic:** Base UI's Tooltip is visual-only by design — no `role="tooltip"`, no `aria-describedby` — where Radix wired that association. Harmless everywhere the trigger's `aria-label` restates the tooltip, but `FieldHelp` renders each setting's `doc` prose and nothing else in the DOM carries it, so that component declares an explicit `sr-only` description. See §12 and `field-help.tsx`. *(This row names the retired vendor and its composition prop deliberately, to record what moved and why — retired-ok.)* |
 | Drag-and-drop (lineup reorder) | **`@dnd-kit`** (`@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`) | Reordering a channel's lineup (§7 PATCH, §12) is a sortable list. `@dnd-kit` is the current-gen, React-18/StrictMode-safe choice (`react-beautiful-dnd` is archived); it is headless (~10kb core, no runtime deps of its own, CSP-safe for the embedded assets) and ships **keyboard + screen-reader reordering** built in (arrow-key sort + live-region announcements), which is the accessibility cost that would otherwise make drag worse than up/down buttons. The reorder still commits through the same `PATCH /v1/channels/{id}` whole-list replace — DnD is presentation only. |
@@ -3804,6 +4248,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **`ffmpeg` is a core runtime dependency, not an ingest-only tool** (revised — §9.1). It serves two callers now: yt-dlp's stream merging, and **internal playout's encoder**. A Loomarr that can't encode can't play out, so the previous opt-in-variant model (below) no longer describes a coherent artifact.
   - **`ffprobe` is bundled** (revised — it was previously excluded to save ~99MB, on the grounds that *"Loomarr never probes media — Tunarr assigns duration during its `local`-source scan"*). Internal playout owns duration and cut points, so the premise is gone. Both reversals trace to the same root cause: §9.1.
   - **`whisper-cli` (whisper.cpp) transcribes filler audio for compilation splitting** (§10, V34 — a maintainer-approved §14 addition, 2026-07-31). The transcript is the only signal that sees an ad boundary with no black frame and no silence: measured, one 149s block defeated every A/V detector while holding three complete adverts whose cuts exist only in language (plan §6.4). It matches the vendored-binary pattern in the ways that matter — exec'd, no cgo, no service — and ships in the single image with its model file like the rest of the tooling. ⚠ **It is NOT self-contained the way `yt-dlp` is** (this line used to say it was): whisper-cli links `libwhisper` + `libggml`, so those ship beside it, and **ggml `dlopen()`s its compute backend from the executable's own directory** — hence the binary lives in `/usr/local/lib/whisper` with a symlink on `PATH`. Getting that layout wrong produces a binary where `--help` succeeds and the first real transcription aborts (`GGML_ASSERT(device) failed`), so the image proves whisper by **transcribing at build time**, never by `--help`. On amd64 upstream ships 15 `libggml-cpu-*` microarchitecture variants selected at run time; copy the whole set or it fails only on untested host CPUs. ⚠ **Model size is a correctness property, not a tuning preference:** verified against the vendored **v1.9.1** binary on a real 244s commercial break — `tiny.en` dropped a complete 20s advert at the file's average loudness and `base.en` dropped 7s of equally audible speech, while **`small.en`** had no gap over audible content (its only gap is true near-silence). `small.en` therefore ships, at **466MB** — the single largest item in the image. Full method and table: plan §6.4.
+  - **OpenRouter can replace the local inference paths, including timed transcription** (§8.1, §10). Text/tool calls and vision already use its OpenAI-compatible `/chat/completions`; audio-language questions use `input_audio`; transcription uses its dedicated `/audio/transcriptions` endpoint with `response_format: verbose_json` and segment timestamps. This is one credential and provider selection, but deliberately not one model: the text model, vision model, and STT model are separate capability choices. Long spans are chunked below the endpoint's processing timeout and timestamps are offset back onto the original span. This adds no dependency or service. It does add explicit egress and usage cost for clip audio/frames, so every hosted modality remains an operator choice and the local whisper/Ollama paths remain available.
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
@@ -3854,7 +4299,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **36 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **39 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -3877,6 +4322,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
 | `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
+| `prepared` | Immutable, reusable playout publications — source/rendition identity through atomic visibility (§9.1 V56) |
 
 **The ports** — everything that talks to something outside the process. Each is a boundary with one implementation today and a second one plausible tomorrow:
 
@@ -3900,6 +4346,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
+| `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
@@ -3913,6 +4360,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `app` | The composition root — the only place subsystems are wired together |
 | `web` | Embeds the built SPA, served same-origin (§12) |
 | `setup` | The operator connection flows: Live TV wiring, connection tests (§7, §13) |
+| `devbootstrap` | Harness-only provisioning of an isolated worktree identity through the real first-admin path (§11) |
 | `testkit` | Shared test doubles and pinned fixtures — never linked into the binary |
 | `integration` | Journey tests that drive the REAL composition root |
 | `eval` | Semantic evaluation of suggester output, run by hand not by CI |
@@ -3946,6 +4394,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | --- | --- |
 | `SESSION_SECRET` | Signs session cookies (§11). Regenerating invalidates all sessions. |
 | `API_TOKEN` | Machine access + break-glass admin (§11) — the Sonarr API-key model. |
+| `PLAYOUT_TOKEN` | Read-only device credential for tuner and segment URLs (§9.1). |
 
 ### Application settings registry (UI-managed; each key's env name pins it)
 
@@ -3964,11 +4413,12 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | Env | Meaning / default |
 | --- | --- |
 | `PLAYOUT_BACKEND` | `internal` (default) or `tunarr` — who streams a channel. **Overridable per channel** via `policy.playout.backend`, which rides `policy_json` (no schema change, like `rules`/`filler`/`window`/`autoCurate`). Nil per-channel = inherit this global, which is what makes "changing the default affects new channels only" true rather than aspirational. |
-| `PLAYOUT_TRANSPORT` | `both` (default) / `hls` / `mpegts` — which formats internal playout offers. Both by default: MPEG-TS matches Tunarr's shape and keeps latency low, HLS survives proxies. |
 | `PLAYOUT_ENCODER` | ffmpeg encoder (e.g. `libx264`, `h264_vaapi`, `h264_nvenc`). Empty ⇒ the best one the transcode check found. |
 | `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
+| `PLAYOUT_PREPARED_DIR` | `/data/prepared` — persistent immutable prepared publications shared across Channels and restarts. Separate from `PLAYOUT_HLS_DIR`, which is viewer-scoped scratch. Read at construction; changing it requires restart so keyed assets cannot split across roots. |
+| `PLAYOUT_PREPARED_BUDGET_GB` | `512` — soft cap for complete prepared publications. The minute-level preparation pass evicts cold whole publications after readiness work; anything used in the last fifteen minutes remains protected even when that leaves the store temporarily over budget. Hot-applies without restart (§9.1 V56). |
 | `PLAYOUT_MAX_CHANNELS` | `4` — concurrent encodes. The wizard's transcode check measures a realistic figure; a test pattern encodes cheaper than film grain, so treat any measurement as a starting estimate. |
 | `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
 
@@ -3984,30 +4434,25 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `LLM_KEEP_ALIVE` | `30m` — how long a **local** Ollama model stays resident between calls (§8.2). Loading an 8B model costs ~9s vs ~0.5s warm, and Ollama unloads after 5m idle, so the stock behavior makes a describe→read→refine cycle re-pay the load every time. `0` disables (stock unload) for a memory-tight host. Ignored by hosted providers, which have no residency to manage. |
 | `TMDB_API_KEY` | *(secret; grounds suggestions — required if the suggester is enabled)* |
 | `IMAGES_DIR` | `/data/images` — where the image service (§22) stores originals and derivatives, inside the documented volume. ⚠ **Not covered by the application backup**, which is a database backup: `/data` is one volume and the volume is what to back up. Everything here is regenerable or re-fetchable **except** operator uploads. |
-| `IMAGES_FORMATS` | `avif,webp,jpeg` — which renditions to emit (§22). Dropping `jpeg` saves storage at the cost of very old iOS and legacy Android WebViews; dropping `avif` saves considerable CPU at ~25% more bytes on the wire. |
 | `IMAGES_MAX_UPLOAD_BYTES` | `8388608` (8 MiB) — the ceiling on an uploaded image, enforced on the read as well as the declared size. |
 | `IMAGES_REMOTE_FETCH_ENABLED` | `true` — whether to ingest remote artwork (TMDB, media-server) at all. `false` keeps the service to locally-produced images only; no outbound image requests are made. |
-| `IMAGES_REMOTE_MAX_CONCURRENCY` | `12` — simultaneous outbound image fetches. ⚠ **TMDB caps a client at 20 simultaneous connections**; this stays under it with room for the other outbound callers. Raising it past 20 earns 429s, not throughput. |
-| `IMAGES_REMOTE_TTL` | `4320h` (~6 months) — how long a fetched remote image may be kept before it is re-fetched or purged. ⚠ **This is a compliance ceiling, not a tuning knob:** TMDB's API terms forbid caching their content for longer than six months (§22). Raising it past the default puts the instance out of compliance with TMDB's terms. |
 | `IMAGES_CACHE_BUDGET_MB` | `2048` — soft cap on the derivative cache before the GC job evicts least-recently-used renditions. Derivatives are always regenerable, so eviction costs latency, never data. |
-| `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
-| `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
+| Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
+| `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
+| `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
+| `JOB_PLAYOUT_PREPARE_SCHEDULE` | `0 * * * * *` — once a minute, look six hours ahead and spend only preemptible spare hardware on the nearest missing prepared publications (§9.1 V56). |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
 | `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
-| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) — ⚠ **declared but not consumed**; no purge exists for either table yet (§5). |
-| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `activity-purge` removes them (§5, §18.1, V32). |
-| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `series-episode-refresh` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
-| `EVENT_WEBHOOK_URL` | optional external event target |
-| `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | `false` / `10` |
-| `SEASON_PRECISION` | `series` (default) \| `seasons` (§6) |
-| `SCHED_DEFAULT_STRATEGY` / `SCHED_BACKFILL` | `shuffle` / `stable` (§9) |
-| Policy defaults: `SCHED_EPISODE_NOREPEAT` / `SCHED_MOVIE_NOREPEAT` / `SCHED_SERIES_MIN_GAP` / `SCHED_BLOCK_MAX` / `SCHED_ORDERING` / `SEASONAL_MODE` | `168h` / `720h` / `2h` / `2` / `syndication` / `auto` (per-channel overridable — `programming-design.md`) |
+| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
+| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
+| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
+| `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* The folder Loomarr registers as a Tunarr `local` source. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
 | `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and a watch folder that vanishes silently loses whatever had not been filed yet. The scan skips it by name, so a file waiting there is never catalogued from its arrival path |
-| `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
+| `FILLER_BREAKS_PER_HOUR` / `FILLER_BREAK_DURATION` / `FILLER_POD_MAX` | `4` / `5m` / `4`. Break frequency is the inherited channel default (`policy.breaksPerHour`: absent = follow it, `0` = no breaks, positive = custom). Break length is also inherited (`policy.breakDuration`: absent = follow it, minimum `30s`) and never uses zero as off. Pod size is a global preferred clip count, automatically raised when the matching catalog's median clip duration needs more clips to fill the resolved break length. |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
 | `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog. ⚠ **It has a SECOND job since V54**: composed with `MinSegmentMs` as `max()`, it is also the splitter's detection floor (§10 V34 step 2). One number, two enforcement points, deliberately — the alternative is a segment the auto-confirm gate admits and the scan boundary then rejects, which is the shape `FILLER_AUTOSPLIT_MAX_DURATION` one row down also serves two jobs to avoid |
@@ -4017,23 +4462,22 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` | `false` (V42) — when on, auto-file rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` at `FILLER_TARGET_LUFS` before it enters the catalog. ⚠ **DESTRUCTIVE and opt-in for that reason**: the original is unrecoverable. The sidecar records `normalizedLufs` so a re-scan skips a file already normalised at the current target — without that marker every pass would re-normalise, walking the loudness down each run |
 | `FILLER_VISION_ENABLED` / `FILLER_VISION_MODEL` | **`true` / empty** (§10 V44) — whether a clip's own frames are read, and by which model. Empty model ⇒ reuse `LLM_MODEL`, for an install whose main model already sees images. ⚠ **Neither row existed in this table until V54a**, though both settings shipped in V44; the omission is why the gap one row below went unnoticed. |
 | `FILLER_VISION_PROVIDER` / `FILLER_VISION_URL` / `FILLER_VISION_API_KEY` | **all empty ⇒ vision uses the main LLM's provider, URL and key** — unchanged behaviour for every existing install (§10 V54a). Set them to point vision at a *different service* from the one that writes text. ⚠ **This gap was load-bearing.** `FILLER_VISION_MODEL` promised a vision model independent of `LLM_MODEL`, but the provider was built from `LLM_URL`/`LLM_API_KEY`, so the model name was the ONLY independent part: naming a local `llava:7b` while `LLM_URL` was a hosted endpoint sent an Ollama tag to that endpoint. Measured on the maintainer's stack — `llava:7b` → `https://openrouter.ai/api/v1` → **HTTP 401** on every segment, so split grounding had never once run and the gate refused every reel with *"a segment could not be classified"*. ⚠ **The key is NEVER inherited when `FILLER_VISION_PROVIDER` is set.** Declaring a separate vision service means declaring its own credentials: inheriting would send the operator's hosted key to whatever host they named, including `localhost`. ⚠ `FILLER_VISION_URL` empty with provider `ollama` resolves to the conventional `http://localhost:11434`, the same rule `ollamaBase` already applies to probes and pulls. |
-| `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely |
+| `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely. When the selected detector lacks a model, executable, media tool, or hosted client, the UI disables this control with that reason while retaining the desired value; the backend skips the rung with the same reason. |
 | `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
+| `FILLER_TRANSCRIBE_PROVIDER` / `FILLER_TRANSCRIBE_MODEL` | **`whisper` / `openai/whisper-large-v3`** (§10). Which backend writes timed clip transcripts and rescues spoken-only compilation boundaries. `whisper` uses the bundled local `INGEST_WHISPER_*` paths. `hosted` uses the selected §8.1 OpenAI-compatible provider's key and base URL; OpenRouter is the supported all-hosted path and exposes `/audio/transcriptions` with `verbose_json` segment timestamps. The model is separate from `LLM_MODEL`: a chat/vision model and an STT model have different modalities, so one model id cannot honestly serve both. Hosted spans are split into sub-minute requests and their timestamps reassembled, respecting OpenRouter's ~60s upstream processing timeout while preserving the timing the boundary-rescue prompt requires. A provider without the transcription endpoint fails visibly and retries; it never falls back to untimed invented cuts. ⚠ Hosted transcription sends clip audio off the box and incurs provider cost; local remains the default. |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
-| `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
-| `FILLER_STARTER_COLLECTION` | the archive.org collection the **starter pack** lists on a fresh install (§10). A curated default, not a hardcoded truth: point it at your own collection, or **set it empty to turn the pack off entirely**. Listing only — nothing downloads without the operator keeping a row. ⚠ **From V35 this seeds a pull** rather than driving its own flow, so the "nothing downloads" property is now enforced by the approval gate instead of by a UI convention |
+| `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |
 | `FILLER_AUTOFILE_ENABLED` / `FILLER_AUTOFILE_MIN_CONFIDENCE` | **`true` / `85`** (§10 V38). Whether a tagged clip is filed automatically, and the score it must reach. ⚠ **These keys were REMOVED from this table in V35's review** as declared-but-unconsumed — §15's own rule is that a setting not in the registry does not exist. They return **with their consumer, in the same PR**: the filing path reads them, and a test proves a clip below the threshold reaches Incoming instead of the catalog. ⚠ **ON by default means an existing install starts auto-filing on its first tagging run after upgrade** (maintainer, 2026-08-02) — a deliberate product call. What makes it safe is not the number but §10's grounding **cap**: an ungrounded era cannot reach any threshold, so the fabrication class stays with a human regardless |
 | `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the one rung that rewrites the operator's file. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
 | `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
-| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every segment must reach. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert and the source is consumed either way. That risk has not changed; the evidence has. The gate is strict (the whole reel qualifies or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the whole reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
+| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
 | `FILLER_FETCH_MAX_DISK_GB` | `20` (§10 V38b). Same, for drop-folder size. ⚠ Measured against the folder, not a running total, so files an operator deletes by hand are noticed |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
-| `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.
 
@@ -4041,9 +4485,23 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 ## 16. Deployment (Docker)
 
-Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver ⇒ no cgo). Toolchain pins: **Go 1.22+** for the binary, **Node 20+** in the FE build stage. Non-root. `HEALTHCHECK` → `/healthz`. The web UI is embedded and served at `/`.
+Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
+Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
+the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
+already require that base. `HEALTHCHECK` → `/healthz`; readiness additionally requires the bundled
+image worker's release/profile self-test. The web UI is embedded and served at `/`.
 
-**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published tag. It vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at **~1.3GB measured** (amd64 uncompressed rootfs; **~821MB before whisper-cli**). ⚠ The **+486MB is almost entirely the whisper MODEL** (466MB for `ggml-small.en.bin`; the binary and its libggml/libwhisper set are only ~20MB) — and that model size is a correctness floor, not a preference (§14). Re-measured when V34 landed, as this line previously promised. ⚠ **Do not compare this number to the "549MB" below or the "510MB" this line used to claim**: those were *compressed registry* sizes for a tree that no longer exists, and mixing the two units is how the earlier figure drifted. What an operator downloads is the compressed pull, which is smaller.
+**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published
+tag. It contains the Go server and its required release-matched `loomarr-image` Rust worker, and
+vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
+model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
+**~1.3GB measured before the Rust worker** (amd64 uncompressed rootfs; **~821MB before whisper-cli**).
+The image-size figure must be re-measured at the Rust cutover. ⚠ The **+486MB is almost entirely the
+whisper MODEL** (466MB for `ggml-small.en.bin`; the binary and its libggml/libwhisper set are only
+~20MB) — and that model size is a correctness floor, not a preference (§14). ⚠ **Do not compare this
+number to the "549MB" below or the "510MB" this line used to claim**: those were *compressed registry*
+sizes for a tree that no longer exists, and mixing the two units is how the earlier figure drifted.
+What an operator downloads is the compressed pull, which is smaller.
 
 It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh named volume inherits nonroot ownership and the documented `docker run -v loomarr-data:/data loomarr` boots. Without that the volume arrives root-owned and boot dies with *"unable to open database file (14)"* — a failure that was **masked** while `DATABASE_URL` had no default (§15), because the app never tried to open a file. Compose's one-shot chown init container stays for **bind mounts**, which the image cannot pre-seed.
 
@@ -4053,7 +4511,9 @@ It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh
 
 **The cost, stated plainly:** the default download grows by more than an order of magnitude (31MB → a rootfs of ~1.3GB uncompressed, ~821MB of it before V34's whisper model) and every install carries an encoder whether or not it uses internal playout, plus a speech model whether or not it ever splits a compilation. That is the price of the capability, and it is the third time this packaging question has been decided — sidecar → opt-in tag → single image. Each reversal followed a change in what the tooling was *for*; if a future change makes the encoder optional again, revisit it with that history in view rather than as a fresh question.
 
-Every binary is invoked via `exec` — `yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are the only vendored non-Go artifacts the project permits (§14).
+Every non-Go binary is invoked via `exec`. `loomarr-image` is required application code; `yt-dlp`,
+`ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are vendored
+tools. The Go server stays cgo-free, and pixel buffers never cross the process boundary.
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
@@ -4186,24 +4646,27 @@ The first-run wizard (§13) walks these checks interactively — the list below 
 
 All recurring background work runs under **one scheduler** (`internal/scheduler`), modeled on how Sonarr/Radarr/Overseerr expose *System → Tasks*: a registry of **named jobs**, each with a **default interval** that is **user-configurable**, all **triggerable on demand** ("Run now"). This replaces the previous model of four independent `time.NewTicker` goroutines — there is now **one scheduling mechanism**, one place to see what runs when, and one way to force a run.
 
-- **Jobs are code-defined; schedules are cron settings; run-history is state.** The set of jobs and their `Run` funcs live in a code registry (a runner can't live in a DB row). Each job's schedule is a **cron expression** (6-field, seconds-leading, Overseerr-style, e.g. `0 */5 * * * *`) in an ordinary **settings key** (`job.<name>.schedule`, a new `KindCron` validated via the cron lib, `env > db > default`, hot-read per tick), so a schedule is edited through the normal settings path (`PATCH /v1/settings`), not a bespoke one. Next-run is computed from the cron, not `now + interval`. *Last-run / next-run / last-result* is **runtime state** in a small `scheduled_jobs` table (keyed by job name), upserted after each run — this powers the Tasks UI.
+- **An execution job is not automatically an operator task.** The scheduler owns fine-grained execution, but the Tasks page presents seven outcome groups: **Acquisitions, Channels, Filler, Artwork, Playout, System, and Backup**. A group is collapsed initially; its summary reports aggregate health and its jobs expand underneath it. A job row is compact by default (title, status, frequency, last/next run). Expanding the row reveals its required description, failure detail, and controls. This keeps implementation stages available for diagnosis without making every internal seam an equally prominent operator decision.
 
-- **Every job carries a Title AND a Description, both required.** The title is the human label ("Reconcile acquisitions"); the description is one plain sentence saying what running it actually does ("Checks in-flight downloads and moves finished ones into your library"). ⚠ **Required, not optional** — an operator deciding whether to run or pause a task needs to know what it does, and a nullable field is one where every later job ships without one. Enforced by the registry seal test, alongside the existing uniqueness checks.
+- **Jobs are code-defined; schedules are cron settings; run-history is state.** The set of jobs and their `Run` funcs live in a code registry (a runner can't live in a DB row). Each recurring job's schedule is a **cron expression** (6-field, seconds-leading, Overseerr-style, e.g. `0 */5 * * * *`) in an ordinary **settings key** (`job.<name>.schedule`, a new `KindCron` validated via the cron lib, `env > db > default`), so a schedule is edited through the normal settings path (`PATCH /v1/settings`), not a bespoke one. River wakes a lightweight gate every 15 seconds and the gate resolves the current cron before deciding whether to enqueue; saving a cron therefore changes actual execution promptly without rebuilding leader-only River state or restarting. Next-run is computed from the cron, not `now + interval`. *Last-run / next-run / last-result* is **runtime state** in a small `scheduled_jobs` table (keyed by job name), upserted after each run — this powers the Tasks UI.
+
+- **Every job carries a Group, Title, and Description, all required.** The group is one of the seven operator outcomes above. The title is a short verb phrase; the description is one plain sentence that adds scope or consequence instead of restating the title. ⚠ **Required, not always visible** — the row disclosure hides the description initially, but an operator deciding whether to run or pause a task must be able to reveal what it does. Enforced by the registry seal test, alongside the existing uniqueness checks.
 
 - **A run reports progress, and the button reflects it.** Triggering a job moves its control through `Run now → Running… → done`, driven by the existing `job` SSE frame rather than client-side guessing. Jobs report **indeterminate** progress by default (a spinner, not a fake percentage); a job that genuinely knows its denominator may report a fraction. ⚠ **Never synthesize a percentage from elapsed time** — a bar that reaches 90% and stops is a worse claim than a spinner that says only "running".
 
 - **Errors open up.** `last_error` is rendered as an expandable panel with the full message, not a truncated single line. The Tasks page is where an operator diagnoses a failing integration, and a clipped error is the one piece of information they came for.
+- **Execution history is lazy and bounded.** Expanding a task loads `GET /v1/jobs/{name}/history`; the collapsed Tasks list never pays for an execution-history query. The response summarizes the **past 24 hours** (run count, failure count, and average duration) and returns only the five latest executions with their trigger (`scheduled` or `manual`), start time, duration, outcome, and error. River's existing finalized execution rows are the source of truth: each named Loomarr task has a distinct River kind, and the worker records the Loomarr outcome in River output metadata before that row finalizes. Rows from before outcome recording began are omitted rather than falsely called successful. `scheduled_jobs` remains the one-row-per-task status read model; do not duplicate execution rows into an application table.
 - **River is the engine.** Each registry job becomes a River **periodic job** whose worker calls the same `Run` func; River owns due-selection, leadership (so only one replica runs a tick), retries with backoff, and the durable job records behind run history. **Run now** = inserting the job's args immediately — the same worker, no separate code path. The `scheduled_jobs` table remains the read model the Tasks page renders (last run, last result, paused), because River's own tables are keyed by *job execution*, not by "the operator's view of this named task".
 
 - ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — declared ceiling ⇒ `long`, none ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently and forever. Deriving the queue *set* and the *routing* from one function makes that state unreachable.
 
-  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — `channel-sweep`, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
+  This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — channel maintenance, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
 
   ⚠ **`MaxWorkers 1` on SQLite is about the DEFAULT queue's WIDTH, not a ban on a second producer.** The pool holds `MaxOpenConns(1)`, so a second worker blocks *at the pool* — it cannot corrupt anything — and a long media job spends its time inside `exec.Command` holding no connection at all. It starved the others by holding a worker SLOT, not a connection. `long` is nevertheless 1 on Postgres too, for an unrelated reason already recorded in §10: ffmpeg competes with playout for the GPU, so a media worker *pool* would turn a catalog import into a live-channel outage.
 
   ⚠ **Run-now must take the same queue the schedule would.** Forgetting `InsertOpts` on the trigger path reproduces the exact symptom above for manual runs, and nothing else in the suite covers it.
 
-  ⚠ Known and deliberately not fixed: River's periodic enqueuer inserts on schedule regardless of worker availability, so a long pass accumulates queued rows that drain back-to-back afterwards. After the split this is confined to `long` and self-limiting (each pass is budget-bounded and mostly a no-op). `UniqueOpts` is **not** the answer — Run-now inserts the same args, so deduplication would silently swallow an operator's click.
+  **Scheduled ticks coalesce; explicit runs do not.** A periodic insert is unique by job name while an earlier scheduled instance is available, running, scheduled, or retryable, so a slow pass cannot accumulate a train of identical ticks. `Run now` carries an explicit/manual bit and is inserted without that uniqueness rule: it remains a real request rather than being swallowed by the coalescer.
 
 - **An overdue job says so.** A job past its next run and waiting on a worker is marked `overdue` by the scheduler and rendered as such. ⚠ Before this the Tasks page ran the past timestamp through a duration formatter that answers **"expired"** for any past instant — a word written for session expiry — so a starved job reported itself in another subsystem's vocabulary. Deliberately NOT "which job is holding the worker": that is per-process, and on a multi-replica Postgres install it would confidently name the wrong one.
 
@@ -4211,19 +4674,18 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 
   ⚠ **River's schema is applied at boot via `rivermigrate`, never the `river migrate-up` CLI.** goose owns the application catalog; River owns its own. Two migration *libraries* is a stated cost — two migration *systems an operator must run* would not be shippable, and is why the programmatic path is load-bearing rather than a convenience.
 
-- **Pause is Loomarr's state, not River's.** A paused job is skipped when its schedule comes due and its row greys out on the Tasks page, showing "Paused" where the next-run time would be — a time that will never fire reads as a bug. Persisted per job (`job.<name>.paused`), so it survives restarts and leadership changes.
+- **Pause is Loomarr's state, not River's.** A paused job is skipped when its schedule comes due and its row greys out on the Tasks page, showing "Paused" where the next-run time would be — a time that will never fire reads as a bug. Persisted per job (`job.<name>.paused`), so it survives restarts and leadership changes. A manual River payload is distinct from a periodic one, so **Run now still executes while paused**; pause stops the schedule, not an explicit operator request.
 
   ⚠ **River's own pause is the wrong granularity and the wrong durability.** `Client.QueuePause` pauses a whole *queue*, not a job; and `PeriodicJobs().Remove` only takes effect on the client holding leadership, so a restart or a leadership change would silently resume a job the operator deliberately paused. Pause is a record of operator intent and must be as durable as any other setting.
 
   **Distinct from `DisabledReason`**, which states a fact about the environment (backup needs SQLite) that no clicking changes: paused is an operator choice with a Resume control, disabled is not.
-- **The existing loops are jobs.** The reconciler tick, the channel sweep, filler sync, and the session sweep are registered jobs (reading their existing interval keys `reconcile.every` / `channel.reconcile_every` / `filler.sync_every`, plus a new `job.session_sweep.interval`); their standalone ticker/retune plumbing is gone. Their *logic* (`Tick`/`Sweep`/`Sync`) is unchanged — only the loop driver moved. So they appear on the Tasks page and are Run-now-triggerable like any other job.
+- **The existing loops are jobs.** Channel maintenance and filler sync are registered jobs; their standalone ticker/retune plumbing is gone. Expired-session collection is a stage of daily housekeeping because expiry is enforced on reads and deletion only bounds storage. Their logic is unchanged; the scheduler owns the loop and on-demand trigger.
 - **Availability jobs (§4, §6).** Poll-based availability runs as scheduler jobs: **`library-scan`** (incremental, default every 5m — `RecentlyAdded(since)` within `job.library_scan.lookback`) and **`library-full-scan`** (daily safety net — `AllItems()`). The scan confirms any in-flight (`requested`/`downloading`) title now present in the media server → `available`, correlating by `provision.Key`. This is the mechanism that replaces the retired inbound `/hooks/arr` webhook.
 - **Arr queue poller (§6, arr provider only).** When `requester.provider=arr`, a **`arr-queue-poll`** job (default every 1m) reads each configured arr's `/api/v3/queue` and correlates records to in-flight titles by `provision.Key` (via the arr's lookup id). A title with a live download record is **`Grabbed`** → `downloading` (resetting the deadline), and its **download progress is persisted on the title record** — `progress` (0..1), `eta_text`, and `download_status` (the arr's own status string, passed through so a `warning`/`stalled` download reads as such rather than fake healthy progress). Persisting (rather than an in-memory cache) means `GET /v1/titles` reads progress straight from the store and it survives a restart. A grabbed-but-stalled title still ages out under the reconciler's deadline discipline (§4). Availability itself still comes from the library scan; the poller adds the grabbed transition + progress, never the `available` flip.
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
-- **Series episode refresh (§5, §9).** A **`series-episode-refresh`** job (default hourly) re-enumerates the shows whose cached episode lists have aged past `episodes.max_age`, so `series_episodes` stays current without any expansion happening on the request path. **Bounded to the shows referenced by channel lineups** — that set is small and known, and sweeping the whole library would cost more than the cache saves. Deliberately its own job rather than a hook on `library-scan`: that job only correlates *in-flight* acquisitions and returns early when there are none, so it would never revisit an already-`available` show (see §5).
+- **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and reconciles them with Tunarr. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
-- **Retention purge (§5).** A **`retention-purge`** job (default daily) removes finished jobs past `JOBS_RETENTION` and denied proposals past `PROPOSALS_RETENTION`. **Proposals first, then jobs**, so the purge never creates an orphaned `proposals.job_id` (there is no foreign key to enforce it). In-flight work and the audit trail are both exempt: a `queued`/`running` job and an `approved`/`submitted` proposal are never removed by age.
-- **Activity purge (§5, §12, V32).** An **`activity-purge`** job (default daily) deletes feed rows older than `activity.retention`. The feed is append-only on a busy install, so it needs a reader for its own retention key — declared and consumed in one PR, unlike `JOBS_RETENTION`/`PROPOSALS_RETENTION`, which are still read by nothing.
+- **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; in-flight work and the approval audit trail remain exempt.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.
   - **The alternative was silence, and silence is a claim too.** A conditionally-registered job simply vanishes, which is indistinguishable — from the Tasks page alone — from a job that runs fine and has never failed. For backup specifically, the failure mode of that ambiguity is an operator believing they are covered when they are not.
   - **Disabled is not "off".** It is not operator-settable and carries no enable control: it means *this build/backend cannot run this job*, which no amount of clicking changes. A per-job on/off switch would be a different feature.
@@ -4296,18 +4758,18 @@ Each phase ends green (compiles + its tests pass) before the next.
 2. **Provisioner domain + state machine.** Types, keying (+ webhook-key parity test), pure transitions + invariant tests. No I/O.
 3. **Store + SQLite.** `Store` (titles, channels, **clips**, **users, sessions**, **jobs, proposals**), `modernc.org/sqlite`, WAL, embedded migrations + **startup downgrade guard**, `ClaimDue`. Conformance suite (SQLite).
 4. **Postgres backend.** `pgx`, `postgres` migrations, `ClaimDue` via `FOR UPDATE SKIP LOCKED`; same conformance suite via testcontainers incl. concurrent claim. DSN-scheme selection.
-5. **Library adapter.** Shared Emby/Jellyfin `Lookup` + `AuthenticateByName` + `ListUsers`, flavor header auth (incl. Jellyfin's MediaBrowser login header), `SEASON_PRECISION` (default `series`), flavor tests.
+5. **Library adapter.** Shared Emby/Jellyfin `Lookup` + `AuthenticateByName` + `ListUsers`, flavor header auth (incl. Jellyfin's MediaBrowser login header), series-level availability, flavor tests.
 6. **Requester + availability.** Seerr requester (201/409 ok) or direct Sonarr/Radarr (§6); availability by **library scan** (poll, not webhook — §4/§18.1) + the arr queue poller (progress + grabbed); library-confirm-before-available, idempotency tests. *(The inbound `/hooks/arr` webhook this phase originally shipped has been retired in favor of polling — see the webhook-retirement arc.)*
 7. **Provisioning reconciler + janitor.** Ticker → `ClaimDue` → retry `wanted`, library re-check (deadline backstop), deadline give-up + `Cancel`; retention sweeps (§5: sessions, jobs, proposals).
 8. **Self-documenting API.** Huma v2 on `humago` (§7.1, §14); `/v1/titles*`, `/v1/events`, `/openapi.*`, `/docs`, ops; `GET /v1/backup` (SQLite `VACUUM INTO`); `make openapi` + committed `api/openapi.yaml`; contract tests.
 9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, **local-admin bootstrap (once) + explicit media-server import (allowlist; un-imported → 403) + local bcrypt credential path**, user sync (periodic + on-demand; refreshes imported users, never adds), role enforcement on all mutating routes, `API_TOKEN` break-glass, login rate-limit. **Auth & roles tests are the gate.** *(The identity model was reworked from the earlier claim-on-login/lazy-provision design — see §11.)*
 10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). *Phase 10 shipped this behind a manual `POST` route; it was later removed in favour of auto-wiring on a Connections save, since an idempotent action fully derived from the connection had nothing to decide — `retired-ok`.* **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
 11. **Suggester (§8).** `Suggester` + Ollama and the OpenAI-compatible client (hosted OR Ollama's own `/v1`); in-app provider/model selection (§8.1: probe, catalog, hot-swap); catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/proposals*` + `/v1/system/llm*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
-12. **Commercials & filler (§10).** Catalog sync from the Tunarr `local` filler source (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder), whose tooling ships in the single image (§16 — the `loomarr:filler` variant this line used to name no longer exists). **Filler-never-a-program + pod-matching tests are the gate.**
+12. **Commercials & filler (§10).** Catalog sync by scanning Loomarr's own `FILLER_DIR` (`/v1/filler/sync` + periodic), with Tunarr registration only for Tunarr-backed playout; clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder), whose tooling ships in the single image (§16 — the `loomarr:filler` variant this line used to name no longer exists). **Filler-never-a-program + pod-matching tests are the gate.**
 12.5. **End-to-end integration (the seams).** *Added after the first live smoke (2026-07-13/14) revealed that phases 0–12, each gate-green in isolation, had unwired seams between them — the per-phase unit gates never exercised the composition.* This phase makes "the whole thing works, driven only through Loomarr's own endpoints" an explicit gate, not an emergent hope. Scope = close every seam between an approved intent and a playing channel **with pods**, each proven against the live stack AND covered by an integration test:
     - **Approve → lineup carries acquisitions** (`#9`): a not-yet-available acquisition must enter the channel's lineup as a *pending* entry (key preserved) so backfill/sweep can place it — today `lineupEntries` drops non-in-library items, so acquired titles never appear.
     - **Provisioner availability events → scheduler** (`#10`) and **→ SSE `/v1/events`** (`#11`): wire the emitter adapters in `cmd/loomarr/main.go` (a `reconcile.Emitter` + ingest-handler emitter) that fan `DomainEvent`s to `engine.OnAvailability` **and** `eventBus.Publish`. Both are built on the consuming side and never called.
-    - **Commercial breaks between programs** (§10 density): `ComputeDesired` must interleave pod-fill break slots at `FILLER_BREAKS_PER_HOUR` between *available* programs (today `SlotFiller` gaps are only created for *un*available titles, so an all-available channel gets zero commercials even with a full catalog). The pod assembler + `fillPods` already consume such gaps.
+    - **Commercial breaks between programs** (§10 density): `ComputeDesired` interleaves pod-fill break slots at `FILLER_BREAKS_PER_HOUR` between *available* programs. The pod adapter and `filler.Assemble` consume those gaps through the shared assembly seam.
     - **Filler catalog present**: the manual smoke syncs a real (small) filler library so pods have content; the automated gate uses testkit clips.
     - **Playback sanity**: the channel plays through Tunarr AND is watchable from the media server's Live TV (rule out tuner-stream/format issues end-to-end, not just a raw Tunarr pull).
     Already fixed en route to this phase (live-smoke commits): `#6` channel-create binds the approved lineup, `#7` program duration resolution, `#8` in-library picks become `available` records, `#12` Tunarr content-id resolution (media-server id → program uuid), `#13` series expansion (a series entry → episode slots). **Gate:** an integration test (`make e2e` or a Go integration suite) that drives intent → suggest → approve → create channel → reconcile → asserts the pushed Tunarr lineup has real programs **with pod breaks**; plus the live manual smoke below. No phase-13 UI work starts until this is green — the UI must be built on a system that actually works end-to-end.
@@ -4342,7 +4804,10 @@ That was not merely untidy. It had three concrete consequences:
 - **No modern format on any still.** The only WebP in the product was the *animated* hover loop.
 
 This section defines `internal/images`: one service owning ingest → storage → derivatives → serving,
-which every image path uses and none bypasses.
+which every image path uses and none bypasses. Go owns Image identity, policy, jobs, authorization,
+storage records, and publication. The required Rust `loomarr-image` worker owns every operation that
+interprets pixels: validation, inspection, static or animated decode, compositing, resize, encode,
+ThumbHash, and dominant colour. There is one production renderer and **no Go codec fallback**.
 
 ### Identity and storage
 
@@ -4370,14 +4835,17 @@ Three tables, added forward-only (§16):
 
 - **`images`** — one row per logical image: `hash` (PK), `origin` (`upload` | `remote` | `extracted` |
   `generated`), `source_url`, `visibility` (`public` | `member`), `mime`, `width`, `height`, `bytes`,
-  `animated`, `placeholder` (ThumbHash), `dominant_hex`, `origin_fetched_at`, `meta` (JSON), and the
-  usual timestamps plus `last_used_at`.
+  `animated`, `frame_count`, `duration_ms`, `loop_count` (`0` means infinite; `NULL` means static),
+  `placeholder` (ThumbHash), `dominant_hex`, `origin_fetched_at`, `meta` (JSON), and the usual
+  timestamps plus `last_used_at`.
 - **`image_refs`** — `(image_hash, owner_kind, owner_id, role)`. What an image *decorates*. Kept in
   its own table rather than as a column on each domain so the garbage collector can find orphans
   **without every domain knowing about images** — the same reasoning that keeps §10's clip identity
   out of the channel schema.
-- **`image_derivatives`** — `(image_hash, format, width, bytes, path, created_at)`. Regenerable,
-  never backed up, freely deletable.
+- **`image_derivatives`** — `(image_hash, recipe, format, width, bytes, output_hash, path, animated,
+  created_at)`. `recipe` is part of identity and the immutable URL: an encoder/profile change creates
+  new bytes at a new URL rather than mutating an artifact cached for a year. Regenerable, never backed
+  up, freely deletable.
 
 ⚠ `source_url` is the load-bearing column, not decoration: it is what makes a remote image
 *recoverable* rather than merely *cached*, and it is why losing the image directory is survivable for
@@ -4388,35 +4856,64 @@ everything except uploads.
 WebP and AVIF are two orders of magnitude apart in encode cost, and treating them uniformly gets one
 of them wrong:
 
-- **WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
+- **Static WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
   advance which widths a surface will ask for, so an eager matrix would encode mostly-unserved
   renditions.
+- **Animated WebP ladders generate lazily at bounded ladder widths**, behind the same singleflight and
+  global worker cap as stills. The explicitly requested first-presentation-frame JPEG is an output
+  contract for clients that do not display motion, not another renderer.
 - **AVIF generates in a background job, never on a request.**
 
-⚠ **The usual justification for that split is wrong, and it is worth recording why, because the
-correct reason leads to different decisions later.** The received wisdom is that AVIF costs an order
-of magnitude more than WebP (300–1200 ms per image). **Measured on a development box with
-`libaom -still-picture -cpu-used 6`, a 500px poster encodes in ~86 ms against WebP's ~67 ms** — about
-1.3×, not 10×. The alarming figures in circulation come from running a *video* encoder at video
-defaults: asked for a single 1000×1500 frame, SVT-AV1 allocated **2.34 GB** and spawned **82 threads**
-while producing a file **78% larger** than libaom's still-picture path.
-
-The reason that survives measurement is **concurrency, not latency**. Every AVIF encode is a forked,
-natively-multithreaded process; generating them lazily means a cold grid of fifty posters forks fifty
-at once, which will thrash a four-core NAS whatever the per-image number is. A job runs them at a
-controlled rate. A request cannot.
+The load-bearing reason is **concurrency and request latency**. AVIF is produced by the pure-Rust
+`ravif` path with one encoder thread, but a cold grid must still not queue expensive worker processes
+in front of HTTP responses. The background job drains that work under the same global worker cap.
 
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
 and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
 job has caught up.
 
-⚠ **Use `libaom-av1` with `-still-picture`, never `libsvtav1`,** for the measurements above. The
-dependency row in §14 says the image must *contain* an AV1 encoder; this says which one to call.
-
 ### Formats and negotiation
 
 Three formats are emitted: **AVIF** (smallest), **WebP** (near-universal), and **JPEG** (the floor).
+
+**Animation is a first-class ladder, not an original-file exception.** Animated WebP, GIF, and APNG
+inputs produce responsive animated-WebP Renditions; a one-frame animated container is static. JPEG
+and still WebP/AVIF requests use the first fully composited presentation frame. Animated AVIF is not
+emitted. Motion preservation means the same displayed canvas at every frame boundary, with frame
+order, per-frame duration, alpha, and finite/infinite looping preserved. GIF and WebP disposal flags
+do not map one-for-one, so the worker may normalise to full-canvas replace frames after applying source
+blend and disposal operations, including restore-to-previous. Container bytes and flags need not be
+identical; the visible timeline does. WebP timestamps have millisecond resolution, so fractional APNG
+delays are rounded on cumulative time (preventing per-frame drift); source zero-delay frames use a
+deterministic 10 ms viewer floor.
+
+Every transform uses a named recipe (`loomarr-rendition-v1` initially) fixing decoder, resize kernel,
+quality, effort, animation normalisation, thread limits, and encoder versions. The recipe is present
+in the derivative key, internal filename, and public URL query, so a future recipe creates a distinct
+immutable cache identity. Output SHA-256 remains recorded even when architecture-specific native
+encoding produces different but contract-equivalent bytes.
+
+### Required renderer protocol and limits
+
+At boot the Go composition root runs `loomarr-image capabilities --protocol 1 --self-test`. The exact
+Loomarr release, protocol, recipe identifier, required formats, and embedded static-plus-animation probe
+must agree before readiness. The production command `loomarr-image generate --protocol 1` reads one
+bounded JSON request from stdin, writes one bounded result to stdout, and uses stderr only for bounded
+diagnostics. The request names a content-addressed source, its expected SHA-256, a private staging
+directory, explicit format/width/motion targets, and resource limits. Rust writes only complete safe
+relative files inside that staging directory and returns their metadata and SHA-256 values. Go
+validates the exact target set, containment, regular-file type, signatures, sizes, and hashes before
+atomic rename and Store commit. Rust never sees the Store or canonical publication paths.
+
+The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
+canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,
+and 64 MiB of output. The fixture corpus may lower them before release; raising them is a design
+change. Rust checks limits before large allocations and while streaming frames. Go owns the global
+worker semaphore and cancellation: it terminates on context cancellation and removes the private
+staging directory. Corrupt, unsupported, source-changed, limit, decode, encode, I/O, and internal
+worker refusals have stable machine codes. None invokes Go
+pixel processing.
 
 ⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at
 ~95% and WebP ~97% global support, and a general web app could reasonably drop the fallback. The
@@ -4465,8 +4962,13 @@ The properties the channel-icon path already established are carried forward, no
 - `X-Content-Type-Options: nosniff` on every serve.
 - Path containment by resolving to absolute form and testing with `filepath.Rel`, because a `..`
   component in the result is the only reliable containment test however the input was spelled.
-- Serve URLs derive from `server.public_url`, **never** from request headers — `Host` and
-  `X-Forwarded-Host` are attacker-controllable, and these URLs are stored and fetched downstream.
+- Machine-client URLs (channel icons handed to Tunarr, and native/off-origin consumers) derive
+  from `server.public_url`, **never** from request headers — `Host` and `X-Forwarded-Host` are
+  attacker-controllable, and these URLs are stored and fetched downstream. **Image records sent
+  to the in-app browser are the same-origin `/v1/images/...` paths instead.** The page already has
+  an origin; making its `src`/`srcset` depend on the separately configured machine-client address
+  strands every image when that address is container-only, VPN-only, or otherwise unreachable
+  from the browser. This is the same browser-vs-native split as §9.1's `relativeUrl`/`url` pair.
 - ⚠ **New with this section: SSRF defence.** Adopting a remote image is a new outbound request driven
   by input, which nothing in the product had before. Host allowlist, `https` only, no redirect into
   private address ranges, a response size cap, and the §6 per-service timeout.
@@ -4565,17 +5067,9 @@ expensive at identical output quality.
 
 ### Metadata
 
-Rich metadata is recorded in the `images.meta` column and **additionally embedded in the WebP
-rendition**, which is the one Tunarr fetches and can redistribute.
-
-⚠ **Embedding is WebP-only, and that is an ecosystem constraint rather than a preference.** No Go
-library writes image metadata into containers — the maintained reader is explicitly read-only forever,
-the XMP libraries emit packets but support no image containers, and the EXIF libraries emit IFDs but
-not containers. For WebP the remaining work is small and mechanical: promote to the extended format
-with a `VP8X` chunk carrying the metadata feature bits, then append the XMP and EXIF chunks with
-even-byte padding. For AVIF the equivalent is ISOBMFF box surgery, which is not worth hand-rolling;
-if AVIF metadata is ever needed it goes through ffmpeg. Everything else is **stripped**: smaller files,
-no incidental PII from operator uploads, no ICC ambiguity.
+Rich metadata is recorded in the `images.meta` column. Encoded derivatives strip source-container
+metadata: smaller files, no incidental PII from operator uploads, and no ICC ambiguity. Consumers that
+need attribution or provenance read the image row instead of parsing format-specific EXIF/XMP boxes.
 
 ### Two modes
 
@@ -4589,9 +5083,8 @@ no incidental PII from operator uploads, no ICC ambiguity.
 | job | does |
 | --- | --- |
 | `images-fetch` | pulls bytes for `remote` rows that have none, under the concurrency cap |
-| `images-avif` | encodes the AVIF ladder via ffmpeg for images that have WebP but no AVIF |
-| `images-rehydrate` | re-fetches everything recoverable that is missing — the post-restore path |
-| `images-gc` | evicts unused derivatives, deletes images with no refs, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
+| `images-avif` | fills scheduled static AVIF ladders through the required Rust worker; animated WebP ladders are rendered lazily behind the bounded request seam |
+| `images-maintenance` | re-fetches recoverable missing files, evicts unused derivatives, deletes unreferenced images, enforces the TMDB TTL, and counts unrecoverable-missing rows as a system warning |
 
 ### Frontend contract
 

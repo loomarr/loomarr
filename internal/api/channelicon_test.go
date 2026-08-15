@@ -38,7 +38,7 @@ func newIconUploadServer(t *testing.T) (*httptest.Server, store.Store, *fakeImag
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -175,6 +175,109 @@ func TestUploadChannelIcon_IngestsAndLinksTheChannel(t *testing.T) {
 	if ch.Logo != wantLogo {
 		t.Errorf("persisted channel logo = %q, want %q — the response and the row disagreeing "+
 			"means Tunarr gets whatever the reconcile reads, not what the FE was told", ch.Logo, wantLogo)
+	}
+}
+
+// A logo upload is intentionally revisionless at the HTTP boundary: it is a logo-only action,
+// not a whole-channel edit. If another edit lands after the handler's read, the upload must reload
+// the winner and retry so it links the ingested image without reverting the concurrent edit.
+func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
+	base := openTestStore(t, t.TempDir()+"/icon-concurrent.db")
+	t.Cleanup(func() { _ = base.Close() })
+	if _, err := base.SaveChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+		winner, err := base.GetChannel(ctx, "ch-1")
+		if err != nil {
+			return err
+		}
+		winner.Name = "Star Trek: Concurrent Cut"
+		_, err = base.SaveChannel(ctx, winner)
+		return err
+	}
+
+	imgs := newFakeImageService()
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:  wrapped,
+		Auth:   testAuthorizer{},
+		Images: imgs,
+		Log:    slog.New(slog.DiscardHandler),
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("upload = %d, want 200: %s", resp.StatusCode, body)
+	}
+
+	read := do(t, srv, http.MethodGet, "/v1/channels/ch-1", adminToken, "")
+	defer func() { _ = read.Body.Close() }()
+	if read.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(read.Body)
+		t.Fatalf("read after upload = %d, want 200: %s", read.StatusCode, body)
+	}
+	var got api.ChannelDTO
+	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Star Trek: Concurrent Cut" {
+		t.Errorf("name = %q, want concurrent winner preserved", got.Name)
+	}
+	if got.Logo == "" {
+		t.Error("logo is empty; upload was ingested but not linked to the channel")
+	}
+	if got.Revision != 3 {
+		t.Errorf("revision = %d, want 3 after seed, concurrent edit, and logo link", got.Revision)
+	}
+}
+
+// If purge wins after ingestion but before the channel link is saved, the upload reports the
+// missing resource and must not recreate the deleted channel from its stale snapshot.
+func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) {
+	base := openTestStore(t, t.TempDir()+"/icon-delete.db")
+	t.Cleanup(func() { _ = base.Close() })
+	if _, err := base.SaveChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+		current, err := base.GetChannel(ctx, "ch-1")
+		if err != nil {
+			return err
+		}
+		return base.DeleteChannel(ctx, current.ID, current.Revision)
+	}
+
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:  wrapped,
+		Auth:   testAuthorizer{},
+		Images: newFakeImageService(),
+		Log:    slog.New(slog.DiscardHandler),
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("upload = %d, want 404: %s", resp.StatusCode, body)
+	}
+
+	read := do(t, srv, http.MethodGet, "/v1/channels/ch-1", adminToken, "")
+	defer func() { _ = read.Body.Close() }()
+	if read.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(read.Body)
+		t.Fatalf("read after concurrent delete = %d, want 404: %s", read.StatusCode, body)
 	}
 }
 
@@ -330,7 +433,7 @@ func TestChannel_OmitsLogoImageForAnExternalURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch.Logo = "https://image.tmdb.org/t/p/w500/abc.jpg"
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 

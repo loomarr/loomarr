@@ -55,6 +55,10 @@ const (
 	ReasonTooShort    RejectReason = "too_short"
 	ReasonNoAudio     RejectReason = "no_audio"
 	ReasonNoVideo     RejectReason = "no_video"
+	// ReasonBlackContent / ReasonSilentContent are valid-stream files whose measured CONTENT is
+	// near-total dead air. Distinct from no_video/no_audio: ffprobe sees both streams just fine.
+	ReasonBlackContent  RejectReason = "black_content"
+	ReasonSilentContent RejectReason = "silent_content"
 	// ReasonUnplayable — the transcode stage failed after retries, so nothing downstream can
 	// play it.
 	ReasonUnplayable RejectReason = "unplayable"

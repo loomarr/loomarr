@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { TmdbAttributionProps } from "./tmdb-attribution.type";
 
 // TmdbAttribution — Settings → Connections, below the TMDB block (§22, V52 phase 7).

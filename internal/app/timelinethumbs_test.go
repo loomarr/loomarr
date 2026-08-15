@@ -13,11 +13,11 @@ import (
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
-// tmdbTimelineStub serves the TMDB endpoints the timeline resolver uses: a movie's poster
+// tmdbTimelineStub serves the TMDB endpoints the timeline resolver uses: a movie's backdrop
 // (/movie/{id}), a series episode's still (/tv/{id}/season/{s}/episode/{e}), and the TVDB→TMDB
 // bridge (/find/{tvdbId}?external_source=tvdb_id → a tv_result carrying the TMDB series id).
 // `finds` maps a /find path to the TMDB series id it resolves to. Paths not in the maps 404.
-func tmdbTimelineStub(t *testing.T, posters, stills map[string]string, finds map[string]int) *httptest.Server {
+func tmdbTimelineStub(t *testing.T, backdrops, stills map[string]string, finds map[string]int) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -34,7 +34,7 @@ func tmdbTimelineStub(t *testing.T, posters, stills map[string]string, finds map
 			}
 			w.WriteHeader(http.StatusNotFound)
 		case strings.HasPrefix(r.URL.Path, "/movie/"):
-			_ = json.NewEncoder(w).Encode(map[string]string{"poster_path": posters[r.URL.Path]})
+			_ = json.NewEncoder(w).Encode(map[string]string{"backdrop_path": backdrops[r.URL.Path]})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -48,7 +48,7 @@ const imgBase = "https://image.tmdb.org/t/p/original"
 func newTimelineTMDB(t *testing.T) *tmdb.Client {
 	t.Helper()
 	mock := tmdbTimelineStub(t,
-		map[string]string{"/movie/603": "/matrix.jpg"},
+		map[string]string{"/movie/603": "/matrix-wide.jpg"},
 		// Episode stills, keyed by the TMDB series id (456 direct; 789 reached via the tvdb bridge).
 		map[string]string{
 			"/tv/456/season/1/episode/6": "/lisa.jpg",
@@ -62,24 +62,24 @@ func newTimelineTMDB(t *testing.T) *tmdb.Client {
 }
 
 // The key→TMDB-URL resolution the strip depends on: a series (tmdb OR tvdb key) resolves to its
-// EPISODE's still, a movie to its poster, and a TVDB series bridges TVDB→TMDB via /find first.
+// EPISODE's still, a movie to its landscape backdrop, and a TVDB series bridges TVDB→TMDB via
+// /find first.
 //
 // It is asserted through ADOPTION rather than on a returned TMDB URL, because the resolver no
 // longer returns one. Seeding a fetched row per expected source URL is what makes each branch
 // observable: the resolver only emits a URL for an image whose bytes exist, so the row it finds
 // proves which TMDB URL it resolved the key to.
 func TestTimelineThumbResolver(t *testing.T) {
-	const base = "https://loomarr.test"
 	st := newMemImageStore()
-	svc := newTestImageService(t.TempDir(), base, st)
+	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st)
 	ctx := context.Background()
 
 	// A fetched row per source URL the resolver should arrive at. The hashes are arbitrary but
 	// must be valid sha256 hex, since that is what a rendition URL is allowed to contain.
 	seeded := map[string]string{
-		imgBase + "/lisa.jpg":   strings.Repeat("a", 64),
-		imgBase + "/matrix.jpg": strings.Repeat("b", 64),
-		imgBase + "/bart.jpg":   strings.Repeat("c", 64),
+		imgBase + "/lisa.jpg":        strings.Repeat("a", 64),
+		imgBase + "/matrix-wide.jpg": strings.Repeat("b", 64),
+		imgBase + "/bart.jpg":        strings.Repeat("c", 64),
 	}
 	for src, hash := range seeded {
 		if err := st.PutImage(ctx, images.Image{
@@ -100,7 +100,7 @@ func TestTimelineThumbResolver(t *testing.T) {
 		wantHash        string
 	}{
 		{"tmdb series → episode still", "series:tmdb:456", 1, 6, seeded[imgBase+"/lisa.jpg"]},
-		{"movie → poster", "movie:tmdb:603", 0, 0, seeded[imgBase+"/matrix.jpg"]},
+		{"movie → backdrop", "movie:tmdb:603", 0, 0, seeded[imgBase+"/matrix-wide.jpg"]},
 		// A series episode TMDB doesn't have (404) → "", not an error.
 		{"series with no still", "series:tmdb:456", 9, 9, ""},
 		// The COMMON case (§3 series prefer a TVDB key): bridge TVDB→TMDB, then the episode still.
@@ -118,7 +118,7 @@ func TestTimelineThumbResolver(t *testing.T) {
 			}
 			wantURL := ""
 			if c.wantHash != "" {
-				wantURL = base + "/v1/images/" + c.wantHash + "/w300.jpg"
+				wantURL = "/v1/images/" + c.wantHash + "/w300.jpg?r=loomarr-rendition-v1"
 			}
 			if gotURL != wantURL {
 				t.Errorf("ThumbFor(%q, %d, %d) url = %q, want %q", c.key, c.season, c.episode, gotURL, wantURL)
@@ -127,29 +127,43 @@ func TestTimelineThumbResolver(t *testing.T) {
 	}
 }
 
-// ⚠ An image the strip has never seen must render a FALLBACK, never a TMDB URL.
+type timelineFetchStub struct {
+	work []images.Image
+	warm map[string]images.Image
+}
+
+func (f *timelineFetchStub) FetchNow(_ context.Context, work []images.Image, _ time.Duration) map[string]images.Image {
+	f.work = append(f.work, work...)
+	return f.warm
+}
+
+// ⚠ An image the strip has never seen is adopted and warmed inside the interactive request. The
+// returned URL is still ours, never TMDB's, but the first hover must not wait for a scheduler tick.
 //
 // This is the seam §22 exists to close: the timeline used to hand the operator's browser a
 // third-party URL, which is a beacon telling TMDB who is watching what and when. The honest
-// degradation is no image — the strip already draws a fallback for a block without one.
-func TestTimelineThumbAdoptsButEmitsNothingUntilTheBytesLand(t *testing.T) {
-	const base = "https://loomarr.test"
+// degradation on a failed bounded fetch is no image — never a gray permanent placeholder.
+func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 	st := newMemImageStore()
-	r := timelineThumbResolver{tmdb: newTimelineTMDB(t), images: newTestImageService(t.TempDir(), base, st)}
+	contentHash := strings.Repeat("d", 64)
+	src := imgBase + "/lisa.jpg"
+	fetch := &timelineFetchStub{warm: map[string]images.Image{
+		src: {
+			Hash: contentHash, SourceURL: src, Role: images.RoleBackdrop,
+			OriginFetchedAt: time.Unix(1_700_000_000, 0),
+		},
+	}}
+	r := timelineThumbResolver{
+		tmdb: newTimelineTMDB(t), images: newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st),
+		fetch: fetch,
+	}
 
 	url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6)
-	if url != "" || hash != "" {
-		t.Errorf("ThumbFor on a cold image = (%q, %q), want empty — a placeholder hash 404s once the fetch re-keys it", url, hash)
+	if want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v1"; url != want || hash != contentHash {
+		t.Errorf("ThumbFor on a cold image = (%q, %q), want (%q, %q)", url, hash, want, contentHash)
 	}
-
-	// But it DID adopt: the row is queued, so the every-minute fetch job will pick it up and the
-	// next render of the strip has a real image. Adopting is the point of the call.
-	pending, err := st.ListAwaitingFetch(context.Background(), 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 1 || pending[0].SourceURL != imgBase+"/lisa.jpg" {
-		t.Fatalf("pending = %+v, want the episode still adopted and awaiting fetch", pending)
+	if len(fetch.work) != 1 || fetch.work[0].SourceURL != src || !fetch.work[0].OriginFetchedAt.IsZero() {
+		t.Fatalf("FetchNow work = %+v, want the one cold adopted still", fetch.work)
 	}
 }
 

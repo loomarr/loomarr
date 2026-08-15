@@ -1,9 +1,10 @@
-import type { DiscoverModelView } from "@loomarr/api";
-import { formatGiB, formatPercentPoints } from "@loomarr/core";
+import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
+import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
 // The §8.1 "download a model" surface — the QUIET counterpart to the installed picker above

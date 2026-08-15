@@ -16,7 +16,7 @@ import (
 // (the §7 refine mechanism). Satisfied by *suggest.Service. The runner declares the interface
 // so recurate doesn't depend on the concrete worker beyond the one method it calls.
 type Refiner interface {
-	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+	Recurate(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
 }
 
 // Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
@@ -76,7 +76,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if !ok {
 			continue // no readable source job → can't refine; skip (logged in refreshIntent)
 		}
-		if _, rerr := r.refiner.Refine(ctx, ch.IntentRef, intent); rerr != nil {
+		if _, rerr := r.refiner.Recurate(ctx, ch.IntentRef, intent); rerr != nil {
 			r.log.Warn("re-curation refine failed for a channel; skipping",
 				"channel", ch.ID, "err", rerr)
 			continue

@@ -6,10 +6,16 @@
 package web
 
 import (
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path"
+	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed all:dist
@@ -24,18 +30,30 @@ func Handler() http.Handler {
 	if err != nil {
 		return notBuilt()
 	}
+	return handlerFor(sub)
+}
+
+func handlerFor(sub fs.FS) http.Handler {
 	index, err := fs.ReadFile(sub, "index.html")
 	if err != nil {
 		return notBuilt() // only .gitkeep present — `make fe` hasn't run
 	}
 	files := http.FileServer(http.FS(sub))
+	compressed := precompress(sub)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(r.URL.Path, "/")
-		if clean != "" {
+		if clean != "" && clean != "index.html" {
 			if f, err := sub.Open(clean); err == nil {
 				_ = f.Close()
 				if strings.HasPrefix(clean, "assets/") {
 					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				if body, ok := compressed[clean]; ok {
+					w.Header().Set("Vary", "Accept-Encoding")
+					if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+						serveCompressed(w, r, clean, body)
+						return
+					}
 				}
 				files.ServeHTTP(w, r)
 				return
@@ -45,8 +63,82 @@ func Handler() http.Handler {
 		// deploy's new asset hashes are always picked up.
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write(index)
+		w.Header().Set("Vary", "Accept-Encoding")
+		if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+			serveCompressed(w, r, "index.html", compressed["index.html"])
+			return
+		}
+		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(index))
 	})
+}
+
+func precompress(files fs.FS) map[string][]byte {
+	compressed := make(map[string][]byte)
+	_ = fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !compressible(name) {
+			return nil
+		}
+		body, err := fs.ReadFile(files, name)
+		if err != nil {
+			return nil
+		}
+		var result bytes.Buffer
+		writer := gzip.NewWriter(&result)
+		if _, err := writer.Write(body); err != nil {
+			return nil
+		}
+		if err := writer.Close(); err != nil {
+			return nil
+		}
+		compressed[name] = result.Bytes()
+		return nil
+	})
+	return compressed
+}
+
+func compressible(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".css", ".html", ".js", ".json", ".map", ".mjs", ".svg", ".txt", ".wasm", ".webmanifest", ".xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func acceptsGzip(header string) bool {
+	wildcard := false
+	for _, value := range strings.Split(header, ",") {
+		parts := strings.Split(value, ";")
+		encoding := strings.ToLower(strings.TrimSpace(parts[0]))
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			key, value, found := strings.Cut(strings.TrimSpace(parameter), "=")
+			if found && strings.EqualFold(key, "q") {
+				parsed, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					quality = 0
+				} else {
+					quality = parsed
+				}
+			}
+		}
+		if encoding == "gzip" {
+			return quality > 0
+		}
+		if encoding == "*" {
+			wildcard = quality > 0
+		}
+	}
+	return wildcard
+}
+
+func serveCompressed(w http.ResponseWriter, r *http.Request, name string, body []byte) {
+	if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(body))
 }
 
 func notBuilt() http.Handler {

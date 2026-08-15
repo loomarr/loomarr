@@ -26,6 +26,27 @@ func TestSQLiteConformance(t *testing.T) {
 	RunConformance(t, newSQLiteStore)
 }
 
+func TestMigrationSourceIsStructurallyReadOnly(t *testing.T) {
+	ctx := context.Background()
+	live := newSQLiteStore(t)
+	if err := live.SetSetting(ctx, "migration.probe", "before"); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := openSQLiteReadOnly(ctx, SQLitePath(live))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = snapshot.Close() }()
+
+	if err := snapshot.SetSetting(ctx, "migration.probe", "after"); err == nil {
+		t.Fatal("read-only migration source accepted a write")
+	}
+	if got, err := snapshot.GetSetting(ctx, "migration.probe"); err != nil || got != "before" {
+		t.Fatalf("read-only source value = %q (err %v), want before", got, err)
+	}
+}
+
 func TestUnknownSchemeFailsFast(t *testing.T) {
 	_, err := Open(context.Background(), "mysql://nope", false)
 	if err == nil {

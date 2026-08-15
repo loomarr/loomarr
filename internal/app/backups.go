@@ -127,7 +127,7 @@ const (
 // the manual path come to disagree about which files are safe to delete.
 func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
 	return scheduler.Job{
-		Name: backupJobName, Title: backupJobTitle, Description: backupJobDesc,
+		Name: backupJobName, Group: scheduler.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
 		Run: func(ctx context.Context) error {
 			entry, err := s.Run(ctx)
@@ -154,7 +154,7 @@ func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
 // no-op that looks like a successful backup.
 func unavailableBackupJob(reason string) scheduler.Job {
 	return scheduler.Job{
-		Name: backupJobName, Title: backupJobTitle, Description: backupJobDesc,
+		Name: backupJobName, Group: scheduler.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
 		DisabledReason: reason,
 	}

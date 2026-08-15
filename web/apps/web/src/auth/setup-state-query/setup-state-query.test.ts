@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { needsBootstrap } from "./setup-state-query";
+import { needsBootstrap, readSetupState } from "./setup-state-query";
 
 // The router guards branch on this one boolean, so its failure direction matters more
 // than its happy path. FINDING 1 from the maintainer smoke: a fresh install sent the
@@ -29,5 +29,13 @@ describe("needsBootstrap", () => {
 
   it("reports false when the field is missing entirely", async () => {
     expect(await needsBootstrap(client({ status: 200, data: {} }))).toBe(false);
+  });
+});
+
+describe("readSetupState", () => {
+  it("preserves the server's development-login gate", async () => {
+    const data = { bootstrapped: true, devLogin: true, sso: false };
+    const client = { ensureQueryData: vi.fn().mockResolvedValue({ status: 200, data }) };
+    expect(await readSetupState(client)).toEqual(data);
   });
 });

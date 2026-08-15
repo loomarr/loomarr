@@ -1,0 +1,122 @@
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type WarmedChannel, warmPreparedChannel } from "../channel-warmer";
+import { beginTune, markTunePhase } from "../tuner-timing";
+import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";
+
+// surfableCatalog consumes the SERVER'S effective-backend truth. Sorting has a stable id tie-break
+// so even a corrupt duplicate channel number cannot make Up/Down order vary between renders.
+const surfableCatalog = (channels: ChannelDTO[]): ChannelDTO[] =>
+  channels
+    .filter((channel) => channel.inAppPlayable)
+    .sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+
+const adjacentChannel = (
+  channels: ChannelDTO[],
+  currentId: string,
+  direction: TuneDirection,
+): ChannelDTO | undefined => {
+  if (channels.length === 0) return undefined;
+  const current = channels.findIndex((channel) => channel.id === currentId);
+  // A deep link to a channel that just became unsurfable joins at the nearest end rather than
+  // producing an invalid index. Up enters the first channel; Down wraps to the last.
+  if (current < 0) return direction > 0 ? channels[0] : channels.at(-1);
+  return channels[(current + direction + channels.length) % channels.length];
+};
+
+const afterNextPaint = (fn: () => void) => {
+  if (typeof requestAnimationFrame !== "function") return;
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+};
+
+// useChannelTuner owns intent ordering, not media transport. The route mirrors its target, while
+// pendingId keeps rapid key presses moving from the LAST REQUESTED channel even before React Router
+// has committed the previous URL. That is the heart of latest-request-wins channel surfing.
+const useChannelTuner = ({
+  currentId,
+  channels,
+  nowNext,
+  onTune,
+  warmChannel = warmPreparedChannel,
+}: UseChannelTunerOptions): UseChannelTuner => {
+  const catalog = useMemo(() => surfableCatalog(channels), [channels]);
+  const [request, setRequest] = useState<{ channel: ChannelDTO; attempt: ReturnType<typeof beginTune> }>();
+  const pendingId = useRef(currentId);
+  const requestedId = useRef<string | undefined>(undefined);
+  const warmed = useRef(new Map<string, WarmedChannel>());
+
+  useEffect(() => {
+    // A navigation from outside this controller becomes the new base. Keep our request while the
+    // route catches up to it; clear only when the URL genuinely names some other channel.
+    pendingId.current = currentId;
+    if (requestedId.current === currentId) return;
+    requestedId.current = undefined;
+    setRequest(undefined);
+  }, [currentId]);
+
+  const current = request?.channel ?? catalog.find((channel) => channel.id === currentId);
+
+  useEffect(() => {
+    if (!current) return;
+    const controller = new AbortController();
+    const neighbors = [adjacentChannel(catalog, current.id, -1), adjacentChannel(catalog, current.id, 1)]
+      .filter((channel): channel is ChannelDTO => Boolean(channel && channel.id !== current.id))
+      .filter((channel, index, all) => all.findIndex((candidate) => candidate.id === channel.id) === index);
+    const keep = new Set([current.id, ...neighbors.map((channel) => channel.id)]);
+    for (const id of warmed.current.keys()) {
+      if (!keep.has(id)) warmed.current.delete(id);
+    }
+    for (const neighbor of neighbors) {
+      const cached = warmed.current.get(neighbor.id);
+      if (cached && cached.expiresAt > Date.now() + 60_000) continue;
+      void warmChannel(neighbor.id, controller.signal)
+        .then((result) => {
+          if (result && !controller.signal.aborted) warmed.current.set(neighbor.id, result);
+        })
+        .catch(() => {
+          // Warming is speculative. A real tune still mints and attaches normally.
+        });
+    }
+    return () => controller.abort();
+  }, [catalog, current, warmChannel]);
+
+  const step = useCallback(
+    (direction: TuneDirection) => {
+      const target = adjacentChannel(catalog, pendingId.current, direction);
+      if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
+      const warm = warmed.current.get(target.id);
+      const attempt = beginTune(true, warm?.warmed, warm?.url);
+      pendingId.current = target.id;
+      requestedId.current = target.id;
+      setRequest({ channel: target, attempt });
+      afterNextPaint(() => markTunePhase(attempt, "osd"));
+      onTune(target);
+    },
+    [catalog, onTune],
+  );
+
+  const retry = useCallback(() => {
+    if (!current) return;
+    const warm = warmed.current.get(current.id);
+    const attempt = beginTune(false, warm?.warmed, warm?.url);
+    pendingId.current = current.id;
+    requestedId.current = current.id;
+    setRequest({ channel: current, attempt });
+    afterNextPaint(() => markTunePhase(attempt, "osd"));
+  }, [current]);
+
+  const currentTitle = current
+    ? nowNext.find((entry) => entry.channelId === current.id)?.now?.title
+    : undefined;
+
+  return {
+    channel: current,
+    currentTitle,
+    attempt: request?.attempt,
+    canSurf: catalog.length > 1,
+    step,
+    retry,
+  };
+};
+
+export { adjacentChannel, surfableCatalog, useChannelTuner };

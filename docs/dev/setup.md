@@ -5,6 +5,7 @@
 | Tool | Version | Pinned in |
 | --- | --- | --- |
 | Go | 1.26+ | `go.mod` |
+| Rust | 1.93.x | `rust-toolchain.toml` |
 | Node | 22.x (22.5 minimum) | `.node-version` + `web/package.json` → `engines.node` |
 | pnpm | 11.13.1, via `corepack enable` | `web/package.json` → `packageManager` |
 | ffmpeg + ffprobe | on `PATH` | — |
@@ -37,8 +38,8 @@ make agent-baseline # make check, shared by clean worktrees at this commit
 
 What each target does is in the [command reference](commands.md), generated from the Makefile.
 
-`make bootstrap` is idempotent. It closes the fresh-clone gap where `make fe` fails first on missing
-dependencies and then on missing generated files.
+`make bootstrap` is idempotent. It builds the required Rust image worker and closes the fresh-clone
+gap where `make fe` fails first on missing dependencies and then on missing generated files.
 
 The frontend also needs codegen: `web/packages/api/generated/` is gitignored, so `@loomarr/api`
 imports don't resolve until `make fe-codegen` (or `make fe`) has run once.
@@ -50,8 +51,11 @@ make agent-worktree TOPIC=<topic>
 ```
 
 The harness creates a sibling worktree, installs the web workspace, runs codegen, and assigns isolated
-runtime ports, Compose state, SQLite storage, and an artifact directory. `BOOTSTRAP_SKIP_FE=1` skips the
-web preparation for a known Go-only task.
+runtime ports, Compose state, SQLite storage, prepared-publication storage, and an artifact directory.
+It provisions a `developer` admin in that isolated SQLite database, marks setup complete, and enables
+automatic dev login so the advertised Vite URL opens ready to use. Set `AGENT_DEV_IDENTITY=0` when a
+worktree must exercise a genuine first run. `BOOTSTRAP_SKIP_FE=1` skips the web preparation for a known
+Go-only task.
 
 Credentials are not copied. `COPY_ENV=1` is an explicit opt-in for integration work; runtime and
 database isolation still override the copied values.

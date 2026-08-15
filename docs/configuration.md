@@ -13,7 +13,6 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `library.url` (`LIBRARY_URL`) | url | — | Media server base URL, e.g. http://emby:8096. |
 | `library.token` (`LIBRARY_TOKEN`) | secret | (secret) | An API key from your media server. Lets Loomarr read your library and set up the TV guide. |
 | `library.path_map` (`LIBRARY_PATH_MAP`) | string | — | Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as "/data=>/mnt/media". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead. _(advanced)_ |
-| `season.precision` (`SEASON_PRECISION`) | enum | `series` | When adding a series, get the whole show (default) or just the seasons you asked for. _(advanced; one of: series \| seasons)_ |
 
 ## Connections — Requester
 
@@ -44,16 +43,16 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `server.public_url` (`SERVER_PUBLIC_URL`) | url | — | Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons. |
 | `playout.backend` (`PLAYOUT_BACKEND`) | enum | `internal` | Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel. _(one of: internal \| tunarr)_ |
-| `playout.transport` (`PLAYOUT_TRANSPORT`) | enum | `both` | Which stream formats internal playout offers. Media servers differ in what they accept, so both is the default: MPEG-TS matches Tunarr's existing shape and keeps latency low, HLS survives proxies. _(one of: both \| hls \| mpegts)_ |
-| `playout.encoder` (`PLAYOUT_ENCODER`) | string | — | ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice. |
+| `playout.encoder` (`PLAYOUT_ENCODER`) | string | — | ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice. _(advanced)_ |
 | `playout.audio_language` (`PLAYOUT_AUDIO_LANGUAGE`) | string | `eng` | Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1). |
-| `playout.subtitles` (`PLAYOUT_SUBTITLES`) | enum | `off` | Whether internal playout burns subtitles into the channel. Off is the default. Burn in renders the preferred-language subtitle track into the picture for the whole channel — everyone watching sees the same thing, because one encoder serves them all. A channel can override this on its Watch tab (§9.1). _(one of: off \| burn)_ |
 | `playout.quality_tier` (`PLAYOUT_QUALITY_TIER`) | enum | `balanced` | The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise. _(one of: efficient \| balanced \| quality)_ |
 | `playout.ffmpeg_path` (`PLAYOUT_FFMPEG_PATH`) | string | `ffmpeg` | Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual. _(advanced)_ |
 | `playout.hls_dir` (`PLAYOUT_HLS_DIR`) | string | — | Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching. _(advanced)_ |
+| `playout.prepared_dir` (`PLAYOUT_PREPARED_DIR`) | string | `/data/prepared` | Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart. _(advanced)_ |
+| `playout.prepared_budget_gb` (`PLAYOUT_PREPARED_BUDGET_GB`) | int | `512` | Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart. _(advanced)_ |
 | `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `4` | How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate. |
-| `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. _(advanced)_ |
-| `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. _(advanced)_ |
+| `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
+| `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
 ## Backup
 
@@ -68,11 +67,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `images.dir` (`IMAGES_DIR`) | string | `/data/images` | Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume. |
-| `images.formats` (`IMAGES_FORMATS`) | string_list | `avif,webp,jpeg` | Which image formats to produce, best first. Dropping jpeg saves storage but breaks very old iOS and legacy Android WebViews; dropping avif saves considerable CPU at about 25% more bytes on the wire. |
 | `images.max_upload_bytes` (`IMAGES_MAX_UPLOAD_BYTES`) | int | `8388608` | The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares. |
 | `images.remote_fetch_enabled` (`IMAGES_REMOTE_FETCH_ENABLED`) | bool | `true` | Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made. |
-| `images.remote_max_concurrency` (`IMAGES_REMOTE_MAX_CONCURRENCY`) | int | `12` | How many artwork downloads run at once. TMDB allows 20 simultaneous connections in total, so raising this past 20 earns rate-limit errors rather than speed. _(advanced)_ |
-| `images.remote_ttl` (`IMAGES_REMOTE_TTL`) | duration | `4320h` | How long downloaded artwork may be kept before it is re-fetched or removed (about six months). This is a compliance limit, not a preference: TMDB's terms forbid caching their images for longer, so raising it puts your instance out of compliance with them. _(advanced)_ |
 | `images.cache_budget_mb` (`IMAGES_CACHE_BUDGET_MB`) | int | `2048` | How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image. _(advanced)_ |
 
 ## Connections — TMDB
@@ -86,11 +82,10 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `llm.provider` (`LLM_PROVIDER`) | enum | `ollama` | Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings. _(required for suggestions; one of: ollama \| openai)_ |
-| `llm.url` (`LLM_URL`) | url | — | The base URL of your OpenAI-compatible service, ending in /v1. |
-| `llm.model` (`LLM_MODEL`) | string | — | The model name for your hosted AI service (e.g. gpt-4o-mini). |
+| `llm.url` (`LLM_URL`) | url | — | For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable. |
+| `llm.model` (`LLM_MODEL`) | string | — | The active hosted model id. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini). |
 | `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for your hosted AI service. Never shown again after saving. |
 | `llm.keep_alive` (`LLM_KEEP_ALIVE`) | duration | `2m` | How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes. _(advanced)_ |
-| `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Automatically approve suggested downloads, with no review step. Off by default. _(advanced)_ |
 | `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |
 | `recurate.min_score_pct` (`RECURATE_MIN_SCORE_PCT`) | int | `60` | Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser. _(advanced)_ |
 | `recurate.max_titles` (`RECURATE_MAX_TITLES`) | int | `40` | The most titles an auto-curate channel may grow to. Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser. _(advanced)_ |
@@ -102,24 +97,21 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.recurate.schedule` (`JOB_RECURATE_SCHEDULE`) | cron | `0 0 4 * * 0` | How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent. _(advanced)_ |
 | `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
 | `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
-| `reconcile.every` (`RECONCILE_EVERY`) | duration | `5m` | How often Loomarr checks on in-progress downloads. |
 | `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
-| `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
+| `job.channel_maintenance.schedule` (`JOB_CHANNEL_MAINTENANCE_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron). |
+| `job.playout_prepare.schedule` (`JOB_PLAYOUT_PREPARE_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available. _(advanced)_ |
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
 | `job.filler_split_sweep.schedule` (`JOB_FILLER_SPLIT_SWEEP_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`. |
 | `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.filler_pipeline.schedule` (`JOB_FILLER_PIPELINE_SCHEDULE`) | cron | `0 */2 * * * *` | How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron). |
 | `job.filler_reindex.schedule` (`JOB_FILLER_REINDEX_SCHEDULE`) | cron | `0 5 * * * *` | How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled. |
-| `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.images_fetch.schedule` (`JOB_IMAGES_FETCH_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders. |
 | `job.images_adopt_artwork.schedule` (`JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see. |
 | `job.images_avif.schedule` (`JOB_IMAGES_AVIF_SCHEDULE`) | cron | `0 20 * * * *` | How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP. |
-| `job.images_rehydrate.schedule` (`JOB_IMAGES_REHYDRATE_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder. |
-| `job.images_gc.schedule` (`JOB_IMAGES_GC_SCHEDULE`) | cron | `0 0 5 * * *` | How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork. |
+| `job.images_maintenance.schedule` (`JOB_IMAGES_MAINTENANCE_SCHEDULE`) | cron | `0 0 5 * * *` | When Loomarr restores recoverable artwork, enforces retention, and cleans up image storage. |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
 | `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
-| `job.series_episode_refresh.schedule` (`JOB_SERIES_EPISODE_REFRESH_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr re-reads the episode lists of shows used by channels, so the guide doesn't have to ask the media server on every load (cron). |
 | `episodes.max_age` (`EPISODES_MAX_AGE`) | duration | `24h` | How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness. |
 | `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
 | `job.seerr_queue_poll.schedule` (`JOB_SEERR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only). |
@@ -128,25 +120,15 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
 | `activity.retention` (`ACTIVITY_RETENTION`) | duration | `720h` | How long the Dashboard's recent-activity entries are kept before they're cleaned up. |
-| `job.retention_purge.schedule` (`JOB_RETENTION_PURGE_SCHEDULE`) | cron | `0 30 4 * * *` | When to clean up finished suggestion jobs and declined requests. |
-| `job.activity_purge.schedule` (`JOB_ACTIVITY_PURGE_SCHEDULE`) | cron | `0 15 4 * * *` | When to clean up old recent-activity entries. |
-| `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip. |
+| `job.housekeeping.schedule` (`JOB_HOUSEKEEPING_SCHEDULE`) | cron | `0 30 4 * * *` | When Loomarr removes expired sessions and operational records beyond their retention periods. |
 | `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 
 ## Channels & playback
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `sched.default_strategy` (`SCHED_DEFAULT_STRATEGY`) | enum | `shuffle` | How channels order their programs by default, unless a channel sets its own. _(one of: sequential \| shuffle)_ |
-| `sched.backfill` (`SCHED_BACKFILL`) | enum | `stable` | When new titles arrive, keep the lineup order (stable) or reshuffle it. _(one of: stable \| reshuffle)_ |
-| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | How often Loomarr rebuilds channels to pick up newly-available content. |
-| `sched.episode_norepeat` (`SCHED_EPISODE_NOREPEAT`) | duration | `168h` | Default no-repeat window for a series' episodes (per-channel overridable). |
-| `sched.movie_norepeat` (`SCHED_MOVIE_NOREPEAT`) | duration | `720h` | Default no-repeat window for movies (per-channel overridable). |
-| `sched.series_min_gap` (`SCHED_SERIES_MIN_GAP`) | duration | `2h` | Default minimum gap between two episodes of the same series (per-channel overridable). |
-| `sched.block_max` (`SCHED_BLOCK_MAX`) | int | `2` | Default max consecutive programs from one series before another must air (per-channel overridable). |
-| `sched.ordering` (`SCHED_ORDERING`) | enum | `syndication` | Default program order (per-channel overridable). If a channel sets none, it uses its own strategy. _(one of: sequential \| shuffle \| syndication)_ |
+| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | Minimum delay after a successful rebuild before that channel is eligible for another scheduled sweep. Change the sweep cadence under System → Tasks. _(advanced)_ |
 | `sched.window_hours` (`SCHED_WINDOW_HOURS`) | duration | `24h` | How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything). |
-| `seasonal.mode` (`SEASONAL_MODE`) | enum | `auto` | How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season. _(one of: off \| auto \| exclusive)_ |
 
 ## Filler / commercials
 
@@ -154,13 +136,15 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. |
-| `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. |
+| `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. _(advanced)_ |
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.autofile.enabled` (`FILLER_AUTOFILE_ENABLED`) | bool | `true` | File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming. |
-| `filler.transcribe.enabled` (`FILLER_TRANSCRIBE_ENABLED`) | bool | `false` | Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection. |
-| `filler.vision.enabled` (`FILLER_VISION_ENABLED`) | bool | `false` | Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model. |
-| `filler.reindex.enabled` (`FILLER_REINDEX_ENABLED`) | bool | `false` | Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary. |
+| `filler.transcribe.enabled` (`FILLER_TRANSCRIBE_ENABLED`) | bool | `false` | Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the transcription provider selected below. _(advanced)_ |
+| `filler.transcribe.provider` (`FILLER_TRANSCRIBE_PROVIDER`) | enum | `whisper` | Where timed transcripts come from: the bundled local Whisper engine, or the hosted AI provider configured under AI. OpenRouter supports this with the same key used for text and vision. _(advanced; one of: whisper \| hosted)_ |
+| `filler.transcribe.model` (`FILLER_TRANSCRIBE_MODEL`) | string | `openai/whisper-large-v3` | Speech-to-text model used for hosted transcription. This is separate from the chat and vision models because it must return timed transcript segments. _(advanced)_ |
+| `filler.vision.enabled` (`FILLER_VISION_ENABLED`) | bool | `false` | Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model. _(advanced)_ |
+| `filler.reindex.enabled` (`FILLER_REINDEX_ENABLED`) | bool | `false` | Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary. _(advanced)_ |
 | `filler.vision.model` (`FILLER_VISION_MODEL`) | string | — | Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images. _(advanced)_ |
 | `filler.vision.provider` (`FILLER_VISION_PROVIDER`) | enum | `inherit` | Which service reads clip frames. Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service. _(advanced; one of: inherit \| ollama \| openai)_ |
 | `filler.vision.url` (`FILLER_VISION_URL`) | url | — | Where that service lives. Leave empty for a local Ollama on this machine. _(advanced)_ |
@@ -178,11 +162,12 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.pipeline.max_splits` (`FILLER_PIPELINE_MAX_SPLITS`) | int | `3` | How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes. _(advanced)_ |
 | `filler.reject.unidentified` (`FILLER_REJECT_UNIDENTIFIED`) | bool | `true` | Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back. |
 | `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself. |
-| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. |
-| `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. |
-| `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. |
-| `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
-| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
+| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. _(advanced)_ |
+| `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
+| `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
+| `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |
+| `filler.break_duration` (`FILLER_BREAK_DURATION`) | duration | `5m` | How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off. |
+| `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
@@ -195,20 +180,17 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.language_provider` (`FILLER_LANGUAGE_PROVIDER`) | enum | `whisper` | What works out a clip's language: the built-in local engine (free and offline, but slow on low-power hardware), or a hosted AI service (fast anywhere, costs a fraction of a cent per clip and sends a few seconds of audio off this machine). _(advanced; one of: whisper \| hosted)_ |
 | `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off. _(advanced)_ |
 | `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |
-| `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |
 | `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | How long one download may run before it's stopped, so a stuck fetch can't block others. _(advanced)_ |
 | `ingest.whisper_path` (`INGEST_WHISPER_PATH`) | string | — | Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks. _(advanced)_ |
 | `ingest.whisper_model` (`INGEST_WHISPER_MODEL`) | string | — | The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks. _(advanced)_ |
 | `filler.language_model` (`FILLER_LANGUAGE_MODEL`) | string | — | The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off. _(advanced)_ |
-| `filler.starter_collection` (`FILLER_STARTER_COLLECTION`) | string | `classic_tv_commercials` | The archive.org collection suggested as a starter pack when your clip catalog is empty. Nothing downloads until you pick from it. Leave empty to turn the suggestion off. |
 
 ## Users & security
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `session.ttl` (`SESSION_TTL`) | duration | `720h` | How long you stay signed in before needing to log in again. |
-| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
-| `user.sync_every` (`USER_SYNC_EVERY`) | duration | `1h` | How often Loomarr refreshes imported users from your media server. _(advanced)_ |
+| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(advanced; one of: auto \| always \| never)_ |
 
 ## Single sign-on
 

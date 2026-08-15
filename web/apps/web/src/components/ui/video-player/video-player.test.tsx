@@ -70,6 +70,31 @@ describe("VideoPlayer", () => {
     render(<VideoPlayer src={SRC} leading={<button type="button">Close</button>} />);
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
+
+  it("lowers keyboard, page, and media channel keys to one live-tuner seam", () => {
+    const onChannelStep = vi.fn();
+    const { container } = render(<VideoPlayer src={SRC} live onChannelStep={onChannelStep} />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    fireEvent.keyDown(video, { key: "ArrowUp" });
+    fireEvent.keyDown(video, { key: "PageDown" });
+    fireEvent.keyDown(video, { key: "ChannelUp" });
+    expect(onChannelStep.mock.calls.map(([direction]) => direction)).toEqual([1, -1, 1]);
+  });
+
+  it("does not steal channel-navigation keys from an interactive child", () => {
+    const onChannelStep = vi.fn();
+    render(
+      <VideoPlayer
+        src={SRC}
+        live
+        onChannelStep={onChannelStep}
+        barControls={<button type="button">Menu</button>}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "Menu" }), { key: "ArrowUp" });
+    expect(onChannelStep).not.toHaveBeenCalled();
+  });
 });
 
 // Auto-hide — the Emby/Jellyfin behaviour that native `<video controls>` gives free but custom

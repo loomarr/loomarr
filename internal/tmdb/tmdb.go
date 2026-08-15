@@ -383,6 +383,33 @@ func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID i
 	return "", nil
 }
 
+// BackdropURL returns a title's landscape artwork, or "" when TMDB has none. Backdrops are the
+// movie-level counterpart to episode stills: both are 16:9 and therefore share one preview shape
+// in the Guide and Watch timeline. PosterURL remains separate because portrait artwork is still
+// the right source for channel icons and title tiles.
+//
+// As with PosterURL, the caller adopts this original-size URL into Loomarr's image service; it is
+// never handed to an operator's browser.
+func (c *Client) BackdropURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	if tmdbID <= 0 {
+		return "", nil
+	}
+	path := "/movie/" + strconv.Itoa(tmdbID)
+	if mt == provision.Series {
+		path = "/tv/" + strconv.Itoa(tmdbID)
+	}
+	var body struct {
+		BackdropPath string `json:"backdrop_path"`
+	}
+	if err := c.get(ctx, path, &body); err != nil {
+		return "", err
+	}
+	if p := strings.TrimSpace(body.BackdropPath); p != "" {
+		return imageBase + p, nil // backdrop_path already has a leading "/"
+	}
+	return "", nil
+}
+
 // PosterURLByTVDB resolves a TVDB series id to a TMDB poster via the /find bridge
 // (/find/{tvdb_id}?external_source=tvdb_id → the matching tv result's poster_path). Our
 // series are often TVDB-keyed (Seerr's canonical id for series), but posters live on TMDB;

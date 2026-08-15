@@ -53,8 +53,8 @@ const (
 	RejectUnsplittable AutoSplitReject = "a segment could not be split and needs a human"
 	RejectTooLong      AutoSplitReject = "a segment is longer than one advert"
 	RejectTooShort     AutoSplitReject = "a segment is shorter than the clip floor"
-	// RejectDuplicate: the dedup pass flagged a match against the catalog. §10 says a match is
-	// a FLAG and never a silent drop, so it is also never a silent keep.
+	// RejectDuplicate is defense in depth for callers that invoke the gate without the split
+	// stage's deterministic curation. The automated path discards the match before this point.
 	RejectDuplicate AutoSplitReject = "a segment already exists in the catalog"
 	// RejectUngrounded is the grounding rule, reused rather than re-derived.
 	RejectUngrounded AutoSplitReject = "a segment's era is a guess rather than something Loomarr read"

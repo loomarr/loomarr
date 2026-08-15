@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { OnAirIndicatorProps, OnAirState } from "./on-air-indicator.type";
 
 // OnAirIndicator — the red dot (§3). `live` pulses (the one live-motion signature,

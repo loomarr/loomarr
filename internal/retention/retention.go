@@ -14,6 +14,7 @@ package retention
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -83,24 +84,32 @@ func (s *Service) PurgeActivity(ctx context.Context) error {
 	return nil
 }
 
-// Jobs returns both purges as scheduler jobs (§18.1).
-//
-// ⚠ Deliberately staggered rather than sharing a cron: two full-table deletes firing in the
-// same second is avoidable contention for no benefit, and 04:15/04:30 keeps them out of the
-// 03:00 backup's way.
-func (s *Service) Jobs() []scheduler.Job {
-	return []scheduler.Job{
-		{
-			Name: "retention-purge", Title: "Clean up old jobs and proposals",
-			Description: "Deletes finished job records and denied requests once they are older than your retention settings. Approved requests and anything still running are kept.",
-			DefaultCron: "0 30 4 * * *", ScheduleKey: "job.retention_purge.schedule",
-			Run: s.PurgeRecords,
-		},
-		{
-			Name: "activity-purge", Title: "Clean up old activity",
-			Description: "Trims the dashboard activity feed to the age you configured, so it stays quick to read.",
-			DefaultCron: "0 15 4 * * *", ScheduleKey: "job.activity_purge.schedule",
-			Run: s.PurgeActivity,
-		},
+// Housekeeping bounds every append-only operational table in one pass. The individual
+// purges remain methods because they are independently testable policies, but separate
+// schedules offered no useful operator decision and made routine cleanup look like three
+// unrelated features.
+func (s *Service) Housekeeping(ctx context.Context) error {
+	var errs []error
+	if err := s.PurgeRecords(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := s.PurgeActivity(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if n, err := s.store.PurgeExpiredSessions(ctx, s.now()); err != nil {
+		errs = append(errs, err)
+	} else if n > 0 && s.log != nil {
+		s.log.Info("expired sessions purged", "rows", n)
+	}
+	return errors.Join(errs...)
+}
+
+// Job returns the single daily system-housekeeping task (§18.1).
+func (s *Service) Job() scheduler.Job {
+	return scheduler.Job{
+		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
+		Description: "Removes expired sessions, old activity, denied requests, and completed jobs after their retention periods.",
+		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
+		Run: s.Housekeeping,
 	}
 }

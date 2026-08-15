@@ -1,4 +1,5 @@
-import type { MeBody, UserBody } from "@loomarr/api";
+import type { MeBody } from "@loomarr/api/models/meBody";
+import type { UserBody } from "@loomarr/api/models/userBody";
 
 // The two people fixtures. Same reasoning as `./channels` — see that file's header — but this pair
 // carries an extra trap worth naming: `MeBody` and `UserBody` LOOK interchangeable and are not.

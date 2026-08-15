@@ -12,6 +12,13 @@ import (
 	"github.com/mantonx/loomarr/internal/scheduler"
 )
 
+const (
+	// Provider protection and compliance are policy, not settings. Letting an operator
+	// raise either value can only cause throttling or a terms violation.
+	imageRemoteConcurrency = 12
+	imageRemoteTTL         = 180 * 24 * time.Hour
+)
+
 // The image service's job wiring (§22, §18.1 — V52 phase 3b).
 //
 // ⚠ **Registration is the whole point of this file, and it is the step with no unit test.** Phase
@@ -21,39 +28,22 @@ import (
 // way and look identical from inside every test that constructs them directly, which is why the
 // guard for this lives in jobset_test.go, against the real BuildHandler.
 
-// registerImageJobs constructs the four jobs and adds them to the registry.
+// registerImageJobs constructs the artwork jobs and adds them to the registry.
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
 // an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
 func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return set.boolv("images.remote_fetch_enabled") },
-		func() int { return set.intv("images.remote_max_concurrency") },
+		func() int { return imageRemoteConcurrency },
 		func() []string { return imageFetchHosts(set) },
 		log)
 
 	reg.Add(images.FetchJob(fetcher))
-	reg.Add(images.RehydrateJob(fetcher))
 
-	// ⚠ The AVIF encoder is PROBED, not assumed. `HasAVIFEncoder` runs `ffmpeg -encoders` once at
-	// boot because a build whose ffmpeg carries no libaom-av1 produces an install where every pass
-	// fails forever and the only symptom is that clients quietly keep taking WebP — a degradation
-	// nobody would notice for months. `--help`-style checks are what let the arm64 whisper layout
-	// ship broken (§34), so this asks the binary what it can actually do.
-	ffmpeg := set.str("playout.ffmpeg_path")
-	var enc images.AVIFEncoder
-	var avifDisabled string
-	if images.HasAVIFEncoder(ctx, ffmpeg) {
-		enc = images.FFmpegAVIF(ffmpeg)
-	} else {
-		// A DisabledReason rather than an omitted row: an absent Tasks row is indistinguishable
-		// from a job that runs fine and has never failed, and this state is worth an operator
-		// being able to see. It is a fact about the build, not a switch — nothing they click
-		// changes it.
-		avifDisabled = "this build's ffmpeg has no AV1 encoder, so AVIF copies cannot be made; browsers take the WebP version instead"
-		log.Warn("no libaom-av1 in ffmpeg — the AVIF job is disabled", "ffmpeg", ffmpeg)
-	}
-	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, enc, log), avifDisabled))
+	// The release handshake already performed a real Rust AVIF encode. There is no second probe or
+	// ffmpeg path here: the worker is required, and a mismatch prevents readiness.
+	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, log), ""))
 
 	// ⚠ The adoption pass, and it is what makes the clip half of §22 real: without it, artwork
 	// keeps living only as files under FILLER_DIR and every clip surface stays on the legacy route.
@@ -71,8 +61,8 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 	if rec != nil {
 		notify = rec
 	}
-	reg.Add(images.GCJob(images.NewGC(svc, st,
-		func() time.Duration { return set.dur("images.remote_ttl") },
+	reg.Add(images.MaintenanceJob(fetcher, images.NewGC(svc, st,
+		func() time.Duration { return imageRemoteTTL },
 		func() int { return set.intv("images.cache_budget_mb") },
 		notify, log)))
 

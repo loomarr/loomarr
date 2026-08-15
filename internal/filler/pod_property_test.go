@@ -20,8 +20,8 @@ import (
 //   - NEVER DEAD AIR — a Pod always has ≥1 entry; when no commercial fits, it is
 //     MatchBumperCard with FallbackCard present (pod.go:120-123).
 //   - NO-REPEAT     — no TunarrProgramID appears twice in a single Pod.
-//   - DENSITY       — commercial entries ≤ PodMax (pod.go/ladder.go cap PodMax on
-//     commercials; bumpers are bookends, the fallback card is the floor).
+//   - DENSITY       — commercial entries ≤ PodMax and total duration ≤ GapMs
+//     (bumpers are bookends, the fallback card is the floor).
 
 // --- randomized catalog / window builders (seeded, hermetic) ---
 
@@ -237,6 +237,10 @@ func TestProp_Density(t *testing.T) {
 		if got := commercialCount(p); got > w.PodMax {
 			t.Fatalf("iter %d: %d commercials > PodMax=%d (density violated)\n pod=%+v",
 				i, got, w.PodMax, p)
+		}
+		if p.TotalMs > w.GapMs {
+			t.Fatalf("iter %d: pod duration %dms > GapMs=%d (duration budget violated)\n pod=%+v",
+				i, p.TotalMs, w.GapMs, p)
 		}
 	}
 }
