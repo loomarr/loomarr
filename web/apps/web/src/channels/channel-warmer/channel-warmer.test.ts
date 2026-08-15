@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it, vi } from "vitest";
+import { server } from "@/test/msw/server";
 
 const { mintChannelPlaySource } = vi.hoisted(() => ({ mintChannelPlaySource: vi.fn() }));
 
@@ -10,8 +12,6 @@ vi.mock("../channel-play-url", async (importOriginal) => ({
 import { preparedURL, warmableAssets, warmPreparedChannel } from "./channel-warmer";
 
 describe("channel warmer", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("selects the newest fragment and the map active across its discontinuity", () => {
     const manifest = `#EXTM3U
 #EXT-X-MAP:URI="old/init.mp4?sig=x"
@@ -37,17 +37,23 @@ new/seg.m4s?sig=x
       url: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
       expiresAt: Date.now() + 60_000,
     });
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        status: 200,
-        ok: true,
-        url: "http://localhost/v1/playout/hls/ch-2/master.m3u8?mode=prepared&sig=signed",
-        text: async () =>
+    const requests: URL[] = [];
+    server.use(
+      http.get("*/v1/playout/hls/ch-2/master.m3u8", ({ request }) => {
+        requests.push(new URL(request.url));
+        return new HttpResponse(
           '#EXTM3U\n#EXT-X-MAP:URI="pub/init.mp4?sig=signed"\n#EXTINF:2,\npub/seg.m4s?sig=signed\n',
-      })
-      .mockResolvedValue({ ok: true });
-    vi.stubGlobal("fetch", fetch);
+        );
+      }),
+      http.get("*/v1/playout/hls/ch-2/pub/init.mp4", ({ request }) => {
+        requests.push(new URL(request.url));
+        return new HttpResponse(new Uint8Array([0]));
+      }),
+      http.get("*/v1/playout/hls/ch-2/pub/seg.m4s", ({ request }) => {
+        requests.push(new URL(request.url));
+        return new HttpResponse(new Uint8Array([0]));
+      }),
+    );
 
     const result = await warmPreparedChannel("ch-2", new AbortController().signal);
 
@@ -57,10 +63,9 @@ new/seg.m4s?sig=x
         warmed: true,
       }),
     );
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(String(fetch.mock.calls[0]?.[0])).toContain("mode=prepared");
-    expect(String(fetch.mock.calls[1]?.[0])).not.toContain("mode=prepared");
-    expect(String(fetch.mock.calls[2]?.[0])).not.toContain("mode=prepared");
+    expect(requests).toHaveLength(3);
+    expect(requests[0]?.searchParams.get("mode")).toBe("prepared");
+    expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
   });
 
   it("keeps the signed URL but fetches no assets on a prepared miss", async () => {
@@ -68,12 +73,17 @@ new/seg.m4s?sig=x
       url: "/v1/playout/hls/ch-3/master.m3u8?sig=signed",
       expiresAt: Date.now() + 60_000,
     });
-    const fetch = vi.fn().mockResolvedValue({ status: 204, ok: true });
-    vi.stubGlobal("fetch", fetch);
+    const requests: URL[] = [];
+    server.use(
+      http.get("*/v1/playout/hls/ch-3/master.m3u8", ({ request }) => {
+        requests.push(new URL(request.url));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
 
     await expect(warmPreparedChannel("ch-3", new AbortController().signal)).resolves.toEqual(
       expect.objectContaining({ warmed: false }),
     );
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(requests).toHaveLength(1);
   });
 });
