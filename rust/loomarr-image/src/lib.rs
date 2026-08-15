@@ -305,19 +305,23 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
         ImageFormat::WebP => {
             let decoder = WebPDecoder::new(Cursor::new(&source))
                 .map_err(|err| WorkerError::new("decode_failed", format!("decode WebP: {err}")))?;
-            let loop_count = canonical_loop_count(decoder.loop_count());
-            generate_animation(
-                &request,
-                AnimationSource {
-                    frames: decoder.into_frames(),
-                    loop_count,
-                    hash: source_hash.clone(),
-                    mime,
-                    width,
-                    height,
-                    bytes: source.len() as u64,
-                },
-            )?
+            if decoder.has_animation() {
+                let loop_count = canonical_loop_count(decoder.loop_count());
+                generate_animation(
+                    &request,
+                    AnimationSource {
+                        frames: decoder.into_frames(),
+                        loop_count,
+                        hash: source_hash.clone(),
+                        mime,
+                        width,
+                        height,
+                        bytes: source.len() as u64,
+                    },
+                )?
+            } else {
+                None
+            }
         }
         _ => None,
     };

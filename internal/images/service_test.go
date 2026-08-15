@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/images/rustgen"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
@@ -143,6 +145,35 @@ func TestIngestStoresAndDescribes(t *testing.T) {
 	}
 	if len(fs.refs) != 1 || fs.refs[0].OwnerID != "ch_1" {
 		t.Errorf("expected one ref for ch_1, got %+v", fs.refs)
+	}
+}
+
+func TestIngestObservesTheQueueAndRealWorkerProcess(t *testing.T) {
+	var queueWaits []time.Duration
+	var inFlight []int
+	var worker []rustgen.Observation
+	svc := New(Config{
+		Dir: t.TempDir(),
+		Observer: Observer{
+			QueueWait: func(wait time.Duration) { queueWaits = append(queueWaits, wait) },
+			InFlight:  func(delta int) { inFlight = append(inFlight, delta) },
+			Worker:    func(observation rustgen.Observation) { worker = append(worker, observation) },
+		},
+	}, newFakeStore(), testkit.RustImageRenderer(t), func() time.Time { return fixedNow })
+	data := pngBytes(t, testImage(64, 36))
+
+	if _, err := svc.Ingest(context.Background(), bytes.NewReader(data), IngestRequest{Role: RoleThumb}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(queueWaits) != 1 || queueWaits[0] < 0 {
+		t.Errorf("queue waits = %v", queueWaits)
+	}
+	if !slices.Equal(inFlight, []int{1, -1}) {
+		t.Errorf("in-flight transitions = %v", inFlight)
+	}
+	if len(worker) != 1 || worker[0].Kind != "inspect" || worker[0].Result != "success" ||
+		worker[0].InputBytes != int64(len(data)) || worker[0].Duration <= 0 || worker[0].PeakRSSBytes <= 0 {
+		t.Errorf("worker observations = %+v", worker)
 	}
 }
 
