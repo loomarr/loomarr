@@ -1,4 +1,4 @@
-import { settingsApi, setupApi, unwrap } from "@loomarr/api";
+import { settingsApi, setupApi, systemApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
@@ -39,6 +39,9 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
+          // Saving provider/base/key must refresh the hosted catalog. Otherwise the
+          // picker keeps its pre-save "add a key" snapshot until a full reload.
+          queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
         ]);
         resetEdits(); // saved values are the new baseline
       },

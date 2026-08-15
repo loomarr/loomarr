@@ -340,7 +340,7 @@ describe("Settings honesty", () => {
             kind: "url",
             value: "",
           }),
-          setting({ key: "llm.model", group: "ai", value: "" }),
+          setting({ key: "llm.model", label: "Hosted lineup model", group: "ai", value: "" }),
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
         ],
       }),
@@ -369,6 +369,7 @@ describe("Settings honesty", () => {
     renderAt("/settings/ai");
 
     expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
+    expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
   });

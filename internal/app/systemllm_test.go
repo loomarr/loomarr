@@ -104,6 +104,33 @@ func TestWireKind(t *testing.T) {
 	}
 }
 
+func TestSelectHosted_RejectsAnOllamaTagBeforeCallingTheProvider(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // any provider call would fail differently; validation must happen first
+
+	sut := &systemLLMService{log: slog.Default()}
+	err := sut.selectHosted(ctx, "openrouter", "", "qwen3:8b", "unused")
+	if err == nil || !strings.Contains(err.Error(), "hosted model") {
+		t.Fatalf("selectHosted(qwen3:8b) error = %v, want a hosted-model shape error", err)
+	}
+}
+
+func TestHostedSelectionMatchesGenericOpenAIByCanonicalURL(t *testing.T) {
+	openRouter, _ := llm.HostedProviderByKey("openrouter")
+	custom, _ := llm.HostedProviderByKey(llm.CustomProviderKey)
+
+	if !hostedSelectionMatches(llm.Selection{
+		Provider: "openai", URL: openRouter.BaseURL + "/",
+	}, openRouter) {
+		t.Error("generic openai selection at the canonical OpenRouter URL should activate OpenRouter")
+	}
+	if !hostedSelectionMatches(llm.Selection{
+		Provider: "openai", URL: "http://ai.internal/v1",
+	}, custom) {
+		t.Error("generic openai selection at an operator URL should activate Custom")
+	}
+}
+
 // keepAliveArg renders the residency duration for Ollama's wire format (§8.2). The two
 // edge values are the point: 0 means "unload as soon as this request finishes" and a
 // negative means "keep loaded indefinitely" — both are real instructions to Ollama, so
