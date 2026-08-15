@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 )
@@ -14,6 +15,8 @@ import (
 // fakeJobs is a scriptable JobService for the API-layer tests.
 type fakeJobs struct {
 	list      []api.JobView
+	history   api.JobHistoryView
+	historyOf string
 	triggered []string
 	paused    map[string]bool // name -> last requested pause state
 	unknown   string          // a name that Trigger reports as not-found
@@ -21,6 +24,14 @@ type fakeJobs struct {
 }
 
 func (f *fakeJobs) List(context.Context) ([]api.JobView, error) { return f.list, nil }
+
+func (f *fakeJobs) History(_ context.Context, name string) (api.JobHistoryView, error) {
+	if name == f.unknown {
+		return api.JobHistoryView{}, api.ErrJobNotFound
+	}
+	f.historyOf = name
+	return f.history, nil
+}
 
 func (f *fakeJobs) SetPaused(_ context.Context, name string, paused bool) error {
 	if name == f.unknown {
@@ -66,6 +77,7 @@ func TestJobs_RequiresAdmin(t *testing.T) {
 	srv := serverWithJobs(t, &fakeJobs{})
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/jobs"},
+		{http.MethodGet, "/v1/jobs/reconcile/history"},
 		{http.MethodPost, "/v1/jobs/reconcile/run"},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", "") // no token
@@ -73,6 +85,38 @@ func TestJobs_RequiresAdmin(t *testing.T) {
 			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
+	}
+}
+
+func TestJobs_HistoryReturnsRecentExecutionSummary(t *testing.T) {
+	started := time.Date(2026, time.August, 15, 11, 59, 55, 0, time.UTC)
+	svc := &fakeJobs{unknown: "ghost", history: api.JobHistoryView{
+		WindowStart: started.Add(-24 * time.Hour), RunCount: 3, FailureCount: 1, AverageDurationMs: 2500,
+		Recent: []api.JobExecutionView{{
+			StartedAt: started, FinishedAt: started.Add(5 * time.Second), DurationMs: 5000,
+			Result: "error", Error: "media server unavailable", Trigger: "manual",
+		}},
+	}}
+	srv := serverWithJobs(t, svc)
+
+	resp := do(t, srv, http.MethodGet, "/v1/jobs/reconcile/history", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("history → %d, want 200", resp.StatusCode)
+	}
+	var body api.JobHistoryView
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if svc.historyOf != "reconcile" || body.RunCount != 3 || body.FailureCount != 1 || len(body.Recent) != 1 {
+		t.Fatalf("history = %+v (requested %q), want reconcile summary", body, svc.historyOf)
+	}
+	if body.Recent[0].Trigger != "manual" || body.Recent[0].Error != "media server unavailable" {
+		t.Fatalf("recent execution = %+v", body.Recent[0])
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/jobs/ghost/history", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown history → %d, want 404", resp.StatusCode)
 	}
 }
 

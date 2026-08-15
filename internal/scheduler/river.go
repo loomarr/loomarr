@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -45,7 +46,25 @@ type jobArgs struct {
 	Manual bool   `json:"manual,omitempty"`
 }
 
-func (a jobArgs) Kind() string { return "loomarr_job" }
+const legacyJobKind = "loomarr_job"
+
+// Kind gives each named task its own River kind, making one task's history directly queryable
+// without scanning executions from every other task. The empty-name kind remains registered so
+// jobs queued by an older Loomarr build can drain after an upgrade.
+func (a jobArgs) Kind() string {
+	if a.Name == "" {
+		return legacyJobKind
+	}
+	return legacyJobKind + ":" + a.Name
+}
+
+type jobExecutionOutput struct {
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	DurationMs int64     `json:"durationMs"`
+	Result     string    `json:"result"`
+	Error      string    `json:"error,omitempty"`
+}
 
 // riverWorker executes one registered job by name and records the outcome in `scheduled_jobs`,
 // preserving the exact contract the Tasks page reads: last run, last result, last error.
@@ -95,7 +114,13 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
 		return nil
 	}
-	w.s.execute(ctx, j)
+	out := w.s.execute(ctx, j)
+	// River owns the durable execution rows. Recording Loomarr's outcome here lets a failed
+	// task remain a completed queue item (the next cron tick is its retry policy) while still
+	// preserving the operator-visible failure in that execution's history.
+	if err := river.RecordOutput(ctx, out); err != nil {
+		w.s.log.Warn("scheduler: record River job output", "job", j.Name, "err", err)
+	}
 	return nil
 }
 
@@ -151,7 +176,12 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 	}
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &riverWorker{s: s})
+	worker := &riverWorker{s: s}
+	// Keep the old shared kind registered only to drain rows queued before named kinds shipped.
+	river.AddWorker(workers, worker)
+	for _, name := range s.order {
+		river.AddWorkerArgs(workers, jobArgs{Name: name}, worker)
+	}
 
 	periodic, err := s.periodicJobs()
 	if err != nil {
@@ -186,10 +216,35 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: river client: %w", err)
 	}
+	completed, cancelCompleted := client.Subscribe(river.EventKindJobCompleted)
 	if err := client.Start(ctx); err != nil {
+		cancelCompleted()
 		return nil, fmt.Errorf("scheduler: river start: %w", err)
 	}
 	s.river = client
+	// Notify only AFTER River has finalized the row and merged RecordOutput. Emitting from
+	// execute() is too early: the frontend would refetch history while the row was still
+	// running, miss the just-finished execution, and receive no later signal to try again.
+	go func() {
+		defer cancelCompleted()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-completed:
+				if !ok {
+					return
+				}
+				if _, ok := executionFromRiverRow(event.Job); !ok {
+					continue // paused/disabled/legacy rows did not execute work
+				}
+				var args jobArgs
+				if err := json.Unmarshal(event.Job.EncodedArgs, &args); err == nil && args.Name != "" && s.notifier != nil {
+					s.notifier.JobChanged(args.Name)
+				}
+			}
+		}
+	}()
 
 	// ⚠ **Stop on cancellation, and BLOCK until it finishes.** River's shutdown issues queries,
 	// so it must complete while the pool is still open — and the pool is closed by a `defer` in
@@ -399,4 +454,78 @@ func (s *Scheduler) TriggerRiver(ctx context.Context, name string) error {
 	// either way, so the queue it lands on is immaterial.
 	_, err := s.river.Insert(ctx, jobArgs{Name: name, Manual: true}, &river.InsertOpts{Queue: queueFor(s.jobs[name])})
 	return err
+}
+
+const (
+	jobHistoryWindow      = 24 * time.Hour
+	jobHistoryRecentLimit = 5
+	jobHistoryScanLimit   = 10_000
+)
+
+// History returns the last 24 hours of completed executions for one registered task. It is a
+// separate, lazy read from List because River rows are per execution: the collapsed Tasks page
+// should not query or aggregate them for all jobs.
+func (s *Scheduler) History(ctx context.Context, name string) (JobHistory, error) {
+	if _, ok := s.jobs[name]; !ok {
+		return JobHistory{}, ErrUnknownJob
+	}
+	if s.river == nil {
+		return JobHistory{}, fmt.Errorf("scheduler: River not started")
+	}
+	rows, err := s.river.JobList(ctx, river.NewJobListParams().
+		Kinds(jobArgs{Name: name}.Kind()).
+		States(rivertype.JobStateCompleted).
+		OrderBy(river.JobListOrderByTime, river.SortOrderDesc).
+		First(jobHistoryScanLimit))
+	if err != nil {
+		return JobHistory{}, fmt.Errorf("scheduler: list history for %s: %w", name, err)
+	}
+	return summarizeJobHistory(s.now(), rows.Jobs, len(rows.Jobs) == jobHistoryScanLimit), nil
+}
+
+func summarizeJobHistory(now time.Time, rows []*rivertype.JobRow, truncated bool) JobHistory {
+	history := JobHistory{WindowStart: now.Add(-jobHistoryWindow), Truncated: truncated}
+	var totalDuration int64
+	for _, row := range rows {
+		execution, ok := executionFromRiverRow(row)
+		if !ok {
+			continue // pre-feature rows have no trustworthy Loomarr outcome
+		}
+		if execution.FinishedAt.Before(history.WindowStart) {
+			continue
+		}
+		history.RunCount++
+		totalDuration += execution.DurationMs
+		if execution.Result == "error" {
+			history.FailureCount++
+		}
+		if len(history.Recent) < jobHistoryRecentLimit {
+			history.Recent = append(history.Recent, execution)
+		}
+	}
+	if history.RunCount > 0 {
+		history.AverageDurationMs = totalDuration / int64(history.RunCount)
+	}
+	return history
+}
+
+func executionFromRiverRow(row *rivertype.JobRow) (JobExecution, bool) {
+	var metadata struct {
+		Output *jobExecutionOutput `json:"output"`
+	}
+	if err := json.Unmarshal(row.Metadata, &metadata); err != nil || metadata.Output == nil {
+		return JobExecution{}, false
+	}
+	out := metadata.Output
+	if (out.Result != "ok" && out.Result != "error") || out.StartedAt.IsZero() || out.FinishedAt.IsZero() {
+		return JobExecution{}, false
+	}
+	var args jobArgs
+	if err := json.Unmarshal(row.EncodedArgs, &args); err != nil {
+		return JobExecution{}, false
+	}
+	return JobExecution{
+		StartedAt: out.StartedAt, FinishedAt: out.FinishedAt, DurationMs: out.DurationMs,
+		Result: out.Result, Error: out.Error, Manual: args.Manual,
+	}, true
 }
