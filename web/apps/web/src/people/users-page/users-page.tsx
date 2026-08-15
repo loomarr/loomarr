@@ -97,110 +97,112 @@ const UsersPage = () => {
   const rows = users.data?.status === 200 ? (users.data.data.users ?? []) : undefined;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Users"
         description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
       />
 
-      {patch.error != null && <ErrorState error={patch.error} />}
-      {revoke.error != null && <ErrorState error={revoke.error} />}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+        {patch.error != null && <ErrorState error={patch.error} />}
+        {revoke.error != null && <ErrorState error={revoke.error} />}
 
-      <Card>
-        {rows === undefined ? (
-          <p className="p-4 text-muted-foreground text-sm">Loading users…</p>
-        ) : rows.length === 0 ? (
-          <EmptyState
-            title="No users yet"
-            description="Import accounts from your media server below, and they can sign in with their existing password."
-          />
-        ) : (
-          rows.map((u) => (
-            <UserRow
-              key={u.id}
-              user={u}
-              busy={busyUser === u.id}
-              isSelf={u.id === me?.id}
-              onRoleChange={(role) => edit(u.id, { role })}
-              onQuotaChange={(quota) => edit(u.id, { quota })}
-              onToggleAutoApprove={(autoApprove) => edit(u.id, { autoApprove })}
-              onToggleDisabled={(disabled) => edit(u.id, { disabled })}
-              onViewSessions={() => setOpenSessions(u)}
-              onResetPassword={() => {
-                setResetting(u);
-                setNewPassword("");
-                setResetError("");
-              }}
+        <Card>
+          {rows === undefined ? (
+            <p className="p-4 text-muted-foreground text-sm">Loading users…</p>
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title="No users yet"
+              description="Import accounts from your media server below, and they can sign in with their existing password."
             />
-          ))
-        )}
-      </Card>
+          ) : (
+            rows.map((u) => (
+              <UserRow
+                key={u.id}
+                user={u}
+                busy={busyUser === u.id}
+                isSelf={u.id === me?.id}
+                onRoleChange={(role) => edit(u.id, { role })}
+                onQuotaChange={(quota) => edit(u.id, { quota })}
+                onToggleAutoApprove={(autoApprove) => edit(u.id, { autoApprove })}
+                onToggleDisabled={(disabled) => edit(u.id, { disabled })}
+                onViewSessions={() => setOpenSessions(u)}
+                onResetPassword={() => {
+                  setResetting(u);
+                  setNewPassword("");
+                  setResetError("");
+                }}
+              />
+            ))
+          )}
+        </Card>
 
-      {/* Admin reset (§11). No current password — that is what distinguishes it from
+        {/* Admin reset (§11). No current password — that is what distinguishes it from
           the self-service change on /account — so it leans entirely on the admin role,
           and every session for the target dies on success. */}
-      {resetting && (
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-lg">{`Reset password, ${resetting.name}`}</h2>
-            <Button variant="ghost" size="sm" onClick={() => setResetting(undefined)}>
-              Close
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-sm">
-            Set a new password for this account. They'll be signed out everywhere and will need the new one to
-            get back in, so tell them what it is.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={resetId}>New password</Label>
-            <Input
-              id={resetId}
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-          </div>
-          {resetError && <p className="text-onair-300 text-sm">{resetError}</p>}
-          <div className="flex gap-2">
-            <Button onClick={submitReset} disabled={resetPassword.isPending}>
-              Set new password
-            </Button>
-          </div>
-        </Card>
-      )}
+        {resetting && (
+          <Card className="flex flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-lg">{`Reset password, ${resetting.name}`}</h2>
+              <Button variant="ghost" size="sm" onClick={() => setResetting(undefined)}>
+                Close
+              </Button>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Set a new password for this account. They'll be signed out everywhere and will need the new one
+              to get back in, so tell them what it is.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={resetId}>New password</Label>
+              <Input
+                id={resetId}
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            {resetError && <p className="text-onair-300 text-sm">{resetError}</p>}
+            <div className="flex gap-2">
+              <Button onClick={submitReset} disabled={resetPassword.isPending}>
+                Set new password
+              </Button>
+            </div>
+          </Card>
+        )}
 
-      {openSessions && (
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-lg">{`Sessions, ${openSessions.name}`}</h2>
-            <Button variant="ghost" size="sm" onClick={() => setOpenSessions(undefined)}>
-              Close
-            </Button>
-          </div>
-          <SessionList
-            userName={openSessions.name}
-            loading={sessions.isLoading}
-            // `?? []` narrows the contract's nullable list (huma infers nullability from
-            // Go's slice type); the handler always initializes it, so null never
-            // actually arrives.
-            sessions={unwrap(sessions.data, (b) => b.sessions) ?? []}
-            revoking={revoking}
-            onRevoke={(id) => {
-              setRevoking(id);
-              revoke.mutate({ hash: id });
-            }}
-          />
-          {/* Disabling is the documented "kill every session now" path (§11), so it is
+        {openSessions && (
+          <Card className="flex flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-lg">{`Sessions, ${openSessions.name}`}</h2>
+              <Button variant="ghost" size="sm" onClick={() => setOpenSessions(undefined)}>
+                Close
+              </Button>
+            </div>
+            <SessionList
+              userName={openSessions.name}
+              loading={sessions.isLoading}
+              // `?? []` narrows the contract's nullable list (huma infers nullability from
+              // Go's slice type); the handler always initializes it, so null never
+              // actually arrives.
+              sessions={unwrap(sessions.data, (b) => b.sessions) ?? []}
+              revoking={revoking}
+              onRevoke={(id) => {
+                setRevoking(id);
+                revoke.mutate({ hash: id });
+              }}
+            />
+            {/* Disabling is the documented "kill every session now" path (§11), so it is
               named here rather than duplicated as a separate revoke-all call that the
               backend would treat differently. */}
-          <p className="text-static-400 text-xs">Disabling this account ends every session immediately.</p>
-        </Card>
-      )}
+            <p className="text-static-400 text-xs">Disabling this account ends every session immediately.</p>
+          </Card>
+        )}
 
-      {/* Two ways into the allowlist, both explicit admin actions (§11): import an
+        {/* Two ways into the allowlist, both explicit admin actions (§11): import an
           existing media-server account, or mint a local one for someone who has none. */}
-      <CreateLocalPanel onCreated={invalidate} />
-      <ImportPanel onImported={invalidate} />
+        <CreateLocalPanel onCreated={invalidate} />
+        <ImportPanel onImported={invalidate} />
+      </div>
     </div>
   );
 };

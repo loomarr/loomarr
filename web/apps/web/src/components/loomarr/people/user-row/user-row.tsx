@@ -127,7 +127,7 @@ const UserRow = ({
         </Label>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {onViewSessions && (
           <Button variant="ghost" size="sm" onClick={onViewSessions} disabled={busy}>
             <MonitorSmartphone aria-hidden />

@@ -5,6 +5,8 @@ interface PageHeaderProps extends Omit<ComponentPropsWithoutRef<"header">, "titl
   title: ReactNode;
   /** Short context that explains what the page owns. */
   description?: ReactNode;
+  /** Page-level controls or status. They stack below the copy on narrow screens. */
+  actions?: ReactNode;
 }
 
 export type { PageHeaderProps };

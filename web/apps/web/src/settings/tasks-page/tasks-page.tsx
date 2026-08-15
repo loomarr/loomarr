@@ -12,6 +12,7 @@ import { ErrorDetails } from "@/components/loomarr/feedback/error-details";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
@@ -188,15 +189,13 @@ const TasksPage = () => {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-6">
-      <div>
-        <h1 className="font-semibold text-2xl">Tasks</h1>
-        <p className="text-muted-foreground text-sm">
-          Background work grouped by outcome. Expand a group to inspect or control its tasks.
-        </p>
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        title="Tasks"
+        description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
+      />
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+      <div className="min-h-0 flex-1 space-y-2 overflow-auto p-6">
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;

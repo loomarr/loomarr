@@ -34,30 +34,31 @@ const AllSettings = () => {
   const clear = settingsApi.useSettingsClear({ mutation: { onSuccess: refresh } });
 
   return (
-    <div className="h-full overflow-auto p-6">
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="All settings"
-        className="mb-4"
         description="Every key Loomarr knows about, searchable by name, group, or value. Edit it here, or follow its Group to the workflow that owns it."
       />
-      <AllSettingsTable
-        entries={entries}
-        query={query}
-        onQueryChange={setQuery}
-        values={edits}
-        onEdit={setEdit}
-        onEnvOverride={(key, enabled) => envOverride.mutate({ key, data: { enabled } })}
-        onClear={(entry) => {
-          if (
-            entry.secret &&
-            !window.confirm(
-              `Clear ${entry.label || entry.key}? The integration will stop working until it is set again.`,
+      <div className="min-h-0 flex-1 overflow-auto p-6">
+        <AllSettingsTable
+          entries={entries}
+          query={query}
+          onQueryChange={setQuery}
+          values={edits}
+          onEdit={setEdit}
+          onEnvOverride={(key, enabled) => envOverride.mutate({ key, data: { enabled } })}
+          onClear={(entry) => {
+            if (
+              entry.secret &&
+              !window.confirm(
+                `Clear ${entry.label || entry.key}? The integration will stop working until it is set again.`,
+              )
             )
-          )
-            return;
-          clear.mutate({ key: entry.key });
-        }}
-      />
+              return;
+            clear.mutate({ key: entry.key });
+          }}
+        />
+      </div>
     </div>
   );
 };

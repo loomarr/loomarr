@@ -11,4 +11,11 @@ describe("PageHeader", () => {
     rerender(<PageHeader title="Dashboard" description="Machine status at a glance." />);
     expect(screen.getByText("Machine status at a glance.")).toBeInTheDocument();
   });
+
+  it("keeps page-level actions inside the shared header", () => {
+    render(<PageHeader title="Channels" actions={<button type="button">Add a channel</button>} />);
+    const header = screen.getByRole("banner");
+    expect(header).toHaveAttribute("data-page-header");
+    expect(header).toContainElement(screen.getByRole("button", { name: "Add a channel" }));
+  });
 });
