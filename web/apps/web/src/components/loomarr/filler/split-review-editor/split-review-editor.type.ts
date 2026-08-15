@@ -1,4 +1,5 @@
-import type { SplitProposal, SplitSegment } from "@loomarr/api";
+import type { SplitProposal } from "@loomarr/api/models/splitProposal";
+import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 
 // The proposal is the orval-generated SplitProposal (§10 V34) — no hand-written mirror.
 // The editor owns the draft state; the page owns the query, the confirm mutation and the

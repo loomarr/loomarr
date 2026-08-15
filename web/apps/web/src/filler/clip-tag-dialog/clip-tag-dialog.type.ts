@@ -1,4 +1,4 @@
-import type { ClipDTO } from "@loomarr/api";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 
 interface ClipTagDialogProps {
   // Undefined while the list is refetching under an open dialog; the dialog renders

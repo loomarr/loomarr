@@ -1,4 +1,4 @@
-import type { ProposalDTO } from "@loomarr/api";
+import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
 
 interface ApprovalHistoryRowProps {
   proposal: ProposalDTO;

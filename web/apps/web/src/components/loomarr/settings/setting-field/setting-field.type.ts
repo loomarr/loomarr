@@ -1,4 +1,5 @@
-import type { SettingEntry, SettingResult } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import type { SettingResult } from "@loomarr/api/models/settingResult";
 
 interface SettingFieldProps {
   // The generated registry entry (§8) — kind/enum/secret/provenance/doc all come from

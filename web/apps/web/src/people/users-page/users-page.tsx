@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SessionList } from "@/components/loomarr/people/session-list";
 import { UserRow } from "@/components/loomarr/people/user-row";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -97,13 +98,10 @@ const UsersPage = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-semibold text-xl">Users</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Who may sign in, what they may spend, and what they may approve. An account grants no access until
-          you add it here: by importing a media-server account, or creating a local one.
-        </p>
-      </div>
+      <PageHeader
+        title="Users"
+        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+      />
 
       {patch.error != null && <ErrorState error={patch.error} />}
       {revoke.error != null && <ErrorState error={revoke.error} />}

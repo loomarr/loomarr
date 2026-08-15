@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import type { MigrationStep } from "@/components/loomarr/settings/database-migration";
 import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useLoomarrEventListener } from "@/events/events-provider";
 
 // Settings → System → Database (§18, V11) — the SQLite → PostgreSQL migration stepper.
@@ -95,12 +96,11 @@ const DatabasePage = () => {
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="mb-4">
-        <h1 className="font-semibold text-xl">Database</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Which database Loomarr stores everything in, and how to move to another one.
-        </p>
-      </div>
+      <PageHeader
+        title="Database"
+        className="mb-4"
+        description="Which database Loomarr stores everything in, and how to move to another one."
+      />
       <DatabaseMigration
         status={view}
         step={step}

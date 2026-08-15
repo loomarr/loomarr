@@ -1,4 +1,5 @@
-import type { ApprovalEditDTO, ProposalItem } from "@loomarr/api";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 
 interface ProposalEditProps {
   // The proposal's two pick lists, as the queue already renders them. Both are needed:

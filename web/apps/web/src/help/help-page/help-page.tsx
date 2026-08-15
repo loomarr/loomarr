@@ -3,6 +3,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,10 +50,7 @@ const HelpPage = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-semibold text-xl">Help</h1>
-        <p className="mt-1 text-muted-foreground text-sm">Ships with Loomarr. No internet needed.</p>
-      </div>
+      <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
       <div className="flex flex-col gap-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">

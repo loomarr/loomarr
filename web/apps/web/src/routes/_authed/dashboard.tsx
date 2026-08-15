@@ -17,6 +17,7 @@ import { ServiceControl } from "@/components/loomarr/dashboard/service-control";
 import { ServicesPanel } from "@/components/loomarr/dashboard/services-panel";
 import { StatCard } from "@/components/loomarr/dashboard/stat-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -111,9 +112,7 @@ const DashboardScreen = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">Dashboard</h1>
-      </header>
+      <PageHeader title="Dashboard" className="border-border border-b px-6 py-4" />
 
       {/* ⚠ `[&>*]:shrink-0` is load-bearing: the column is a flex-col that scrolls (overflow-auto).
           Without it, when the stacked panels are taller than the viewport, flex SHRINKS each panel

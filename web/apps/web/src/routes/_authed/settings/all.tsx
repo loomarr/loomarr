@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AllSettingsTable } from "@/components/loomarr/settings/all-settings-table";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useSettingsEdits } from "@/settings/settings-edits";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -34,13 +35,11 @@ const AllSettings = () => {
 
   return (
     <div className="h-full overflow-auto p-6">
-      <div className="mb-4">
-        <h1 className="font-semibold text-xl">All settings</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Every key Loomarr knows about, searchable by name, group, or value. Edit it here, or follow its
-          Group to the workflow that owns it.
-        </p>
-      </div>
+      <PageHeader
+        title="All settings"
+        className="mb-4"
+        description="Every key Loomarr knows about, searchable by name, group, or value. Edit it here, or follow its Group to the workflow that owns it."
+      />
       <AllSettingsTable
         entries={entries}
         query={query}
