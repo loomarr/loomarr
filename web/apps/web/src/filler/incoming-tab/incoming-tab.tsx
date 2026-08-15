@@ -75,7 +75,7 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending;
 
   return (
-    <div id="panel-incoming" role="tabpanel" aria-labelledby="tab-incoming" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {incomingQuery.error != null && (
         <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
       )}

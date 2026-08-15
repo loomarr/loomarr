@@ -23,11 +23,12 @@ import (
 
 // the full lineup editor is a Phase-13 UI concern.
 type ChannelDTO struct {
-	ID     string `json:"id" example:"ch_abc123"`
-	Name   string `json:"name" example:"Saturday Morning Cartoons"`
-	Number int    `json:"number" example:"42" doc:"Guide channel number"`
-	Group  string `json:"group,omitempty" example:"Kids"`
-	Logo   string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
+	ID       string `json:"id" example:"ch_abc123"`
+	Revision int64  `json:"revision" minimum:"1" doc:"Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition."`
+	Name     string `json:"name" example:"Saturday Morning Cartoons"`
+	Number   int    `json:"number" example:"42" doc:"Guide channel number"`
+	Group    string `json:"group,omitempty" example:"Kids"`
+	Logo     string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
 	// LogoImage is the image record when `logo` points at this instance's image service (§22),
 	// and absent when it is an external URL an operator pasted.
 	//
@@ -136,7 +137,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 		lineup = append(lineup, dto)
 	}
 	out := ChannelDTO{
-		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
+		ID: ch.ID, Revision: ch.Revision, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),

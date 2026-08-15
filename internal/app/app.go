@@ -721,17 +721,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
-	// The channel binder (§7): the ONE "materialize an approved proposal onto a
-	// channel" implementation, shared by the manual-approve HTTP handler and the
-	// suggest worker's auto-approve path (§8/§11) — closes the gap where a
-	// per-user auto-approved refine enqueued acquisitions but never rebound its
-	// channel. Needs only the store, so it's constructed whenever one is open;
+	// The channel binder (§7) owns the approval coordinator's read-only channel plan
+	// and post-commit runtime consequences. The coordinator below is the ONE public
+	// approval operation shared by HTTP and automatic paths; callers cannot split
+	// acquisition persistence from local channel materialization. The binder needs
+	// only the store, so it's constructed whenever one is open;
 	// channelSvc (if the scheduler/Tunarr block above wired it) satisfies
 	// binder.Reconciler directly — same Reconcile(ctx, channelID) signature. If
 	// channels isn't configured, channelSvc is a nil interface and the binder's
 	// nil-guard just skips the immediate reconcile push (same best-effort
 	// behavior createChannel/approveProposal always had).
 	var chBinder *binder.Binder
+	var proposalApprover *suggest.Approver
 	if st != nil {
 		var rec binder.Reconciler
 		if channelSvc != nil {
@@ -760,6 +761,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if chanNumbers != nil {
 			chBinder = chBinder.WithChannelNumbers(chanNumbers)
 		}
+		// One deep gate owns proposal edits, acquisition records, and the intent-bound
+		// channel commit. HTTP, per-user auto-approval, and auto-curate all receive this
+		// same instance, so composition cannot accidentally split local materialization.
+		proposalApprover = suggest.NewApprover(st, chBinder, time.Now)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
@@ -865,22 +870,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// effect without a restart, like every other setting (config-design §3).
 		svc = svc.WithAutoApprove(suggest.NewAutoApprover(
 			st,
+			proposalApprover,
 			func(context.Context) int { return set.intv("suggest.max_acquisitions") },
-			time.Now,
 			log,
 		))
-		// Same *binder.Binder the API's approve handler uses (wired into api.Options
-		// below) — so an auto-approved proposal ALSO rebinds its channel, closing the
-		// gap where auto-approve enqueued acquisitions but left the channel stale.
-		svc = svc.WithChannelBinder(chBinder)
 
 		// Self-updating channels (§8.2): the channel-scoped auto-curate grant + the
 		// scheduled re-curation job. The Curator approves a re-curation proposal because
 		// its CHANNEL opted in (schedule.AutoCurate), bounded by the quality bar + title
-		// cap (global settings, per-channel overridable) — through the SAME suggest.Approve
+		// cap (global settings, per-channel overridable) — through the SAME suggest.Approver
 		// gate, audit "auto-curate". The Runner (registered below) triggers the refresh
 		// refine that produces the proposal the Curator considers.
-		curator := recurate.NewCurator(st, recurateThresholds{set}, time.Now, log)
+		curator := recurate.NewCurator(st, proposalApprover, recurateThresholds{set}, log)
 		svc = svc.WithAutoCurate(curator)
 		// The §8.3 adjacency corpus rides the SAME catalog the suggester grounds against,
 		// so an adjacency candidate is the same shape (and gets the same in-library
@@ -1357,6 +1358,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Settings:       settingsSvc,
 		Guide:          guideSvc,
 		Provision:      provisionSvc,
+		Approver:       proposalApprover,
 		Binder:         chBinder,
 		LiveConfig:     liveConfig,
 		LiveConfigInt:  set.intv,

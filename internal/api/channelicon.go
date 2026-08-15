@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/images"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // Channel icon UPLOAD. One Huma operation, registered in registerChannels, taking a
@@ -144,10 +146,30 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 			"Something went wrong storing the image. Try again.", err)
 	}
 
-	ch.Logo = s.channelLogoURL(img.Hash)
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
-			"The icon was saved but linking it to the channel failed. Try again.", err)
+	logo := s.channelLogoURL(img.Hash)
+	const maxIconLinkAttempts = 4
+	for attempt := 0; attempt < maxIconLinkAttempts; attempt++ {
+		ch.Logo = logo
+		saved, saveErr := s.store.SaveChannel(ctx, ch)
+		if saveErr == nil {
+			ch = saved
+			break
+		}
+		if errors.Is(saveErr, store.ErrNotFound) {
+			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		}
+		if !errors.Is(saveErr, store.ErrChannelStale) || attempt == maxIconLinkAttempts-1 {
+			return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
+				"The icon was saved but linking it to the channel failed. Try again.", saveErr)
+		}
+		ch, err = s.store.GetChannel(ctx, in.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+			}
+			return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
+				"The icon was saved but linking it to the channel failed. Try again.", err)
+		}
 	}
 
 	// Auto-reconcile so the new icon reaches Tunarr without a manual step (the seamless
@@ -160,7 +182,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	}
 
 	out := &uploadIconOutput{}
-	out.Body.Logo = ch.Logo
+	out.Body.Logo = logo
 	return out, nil
 }
 

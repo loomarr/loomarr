@@ -25,8 +25,8 @@ type ChannelDetailValue = {
   invalidate: () => void;
   saving: boolean;
   deleting: boolean;
-  update: (data: UpdateChannelInputBody) => void;
-  updateAsync: (data: UpdateChannelInputBody) => Promise<unknown>;
+  update: (data: Omit<UpdateChannelInputBody, "revision">) => void;
+  updateAsync: (data: Omit<UpdateChannelInputBody, "revision">) => Promise<unknown>;
   savePolicy: (policy: ChannelPolicy) => void;
   /** `""` clears it — the icon is just another field on the same PATCH (§7). */
   saveLogo: (logo: string) => Promise<void>;

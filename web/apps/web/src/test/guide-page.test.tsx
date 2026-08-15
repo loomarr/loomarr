@@ -160,6 +160,37 @@ describe("Guide", () => {
     expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
   });
 
+  it("keeps everyday time controls visible and precise view controls behind one disclosure", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt("/guide");
+
+    // Wait for a guide row so the loading state cannot be mistaken for a closed disclosure.
+    expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "NOW" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "true");
+
+    // Planning controls do not compete with the everyday toolbar until asked for.
+    expect(view.queryByLabelText("Start hour")).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Zoom in" })).not.toBeInTheDocument();
+
+    const viewTrigger = view.getByRole("button", { name: "View options" });
+    expect(viewTrigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(viewTrigger);
+
+    expect(view.getByLabelText("Start hour")).toBeInTheDocument();
+    await user.click(view.getByRole("button", { name: "Zoom in" }));
+    expect(viewTrigger).toHaveAccessibleName("View options, custom");
+
+    // Closing the row keeps its non-default state legible on the trigger.
+    await user.click(viewTrigger);
+    expect(view.queryByLabelText("Start hour")).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: "View options, custom" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
   it("keeps the floating airing detail from blocking nearby guide rows", async () => {
     const user = userEvent.setup();
     stubGuide();

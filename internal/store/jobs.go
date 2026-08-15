@@ -13,7 +13,7 @@ import (
 // (like titles.title_json). IntentHash is the cache key.
 type Job struct {
 	ID         string
-	Kind       string // "suggest"
+	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
 	Status     string // queued | running | done | failed
 	IntentJSON string
 	IntentHash string
@@ -182,7 +182,7 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 // at 1k, 19.4ms at 5k, linear, on every bind including every scheduled auto-curate cycle.
 func (s *sqlStore) NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		proposalSelect+` WHERE job_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1`), jobID, status)
+		proposalSelect+` WHERE job_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT 1`), jobID, status)
 	return scanProposal(row)
 }
 

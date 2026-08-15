@@ -33,8 +33,14 @@ printf '%s\n' "$secondary" | grep -q 'public URL override.*http://localhost:'
 secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PUBLIC_URL=.*http://localhost:"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"
+if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"; then
+	echo 'agent-harness-test: primary worktree enabled automatic dev login' >&2
+	exit 1
+fi
 grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'SERVER_PUBLIC_URL=.*LOOMARR_AGENT_PUBLIC_URL' "$SCRIPT_DIR/../.air.toml"
+grep -q 'LOOMARR_DEV_LOGIN=.*LOOMARR_AGENT_DEV_LOGIN' "$SCRIPT_DIR/../.air.toml"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
 	echo 'agent-harness-test: secondary worktree reused the primary backend port' >&2
 	exit 1
@@ -42,6 +48,21 @@ fi
 
 overridden="$(LOOMARR_REPO_ROOT="$TMP-wt" LOOMARR_DEV_PORT=23456 "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
+
+step 'secondary dev identity'
+mkdir -p "$TMP/fake-bin"
+# shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "$*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/go"
+chmod +x "$TMP/fake-bin/go"
+bootstrap_log="$TMP/bootstrap-runs"
+PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 \
+	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
+grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"
+: > "$bootstrap_log"
+PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 AGENT_DEV_IDENTITY=0 \
+	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
+[ ! -s "$bootstrap_log" ]
+rm -f "$TMP/fake-bin/go"
 
 step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null
@@ -78,7 +99,6 @@ fi
 
 # One clean-commit baseline is shared through the common Git directory.
 step 'shared baseline cache'
-mkdir -p "$TMP/fake-bin"
 # shellcheck disable=SC2016 # BASELINE_LOG must expand when the generated fixture executes.
 printf '%s\n' '#!/usr/bin/env sh' 'echo run >> "$BASELINE_LOG"' > "$TMP/fake-bin/make"
 chmod +x "$TMP/fake-bin/make"

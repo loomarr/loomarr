@@ -82,7 +82,11 @@ var hostedCatalog = []HostedProvider{
 		Note:    "One key → every frontier family (OpenAI, Anthropic, Gemini, Llama, Qwen). The blessed hosted path.",
 		// Fallback: shown only before a key is set (no live metadata). Live ranking
 		// supersedes this. Kept short + obvious; not an allowlist.
-		Fallback: []HostedModel{{ID: "openai/gpt-4o-mini", Label: "GPT-4o mini"}},
+		Fallback: []HostedModel{{
+			ID: "openai/gpt-4o-mini", Label: "GPT-4o mini",
+			Recommended: true, Tools: true,
+			Why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
+		}},
 	},
 	{
 		Key: CustomProviderKey, Label: "Custom (OpenAI-compatible)", BaseURL: "",

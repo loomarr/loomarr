@@ -353,7 +353,14 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 }
 
 func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash, newHash string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id, policy_json FROM channels`)
+	query := `SELECT id, policy_json FROM channels`
+	if s.dialect == DialectPostgres {
+		// Lock the policy snapshots before decoding them. Without this, a concurrent
+		// channel CAS could commit between SELECT and UPDATE and this maintenance
+		// transaction would overwrite its policy with the pre-edit JSON.
+		query += ` FOR UPDATE`
+	}
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -395,7 +402,9 @@ func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash
 		return err
 	}
 	for _, item := range changed {
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE channels SET policy_json = ? WHERE id = ?`), string(item.blob), item.id); err != nil {
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE channels SET policy_json = ?, revision = revision + 1 WHERE id = ?`),
+			string(item.blob), item.id); err != nil {
 			return err
 		}
 	}

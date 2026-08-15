@@ -2,7 +2,7 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
+import { SlidersHorizontal, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth";
 import {
@@ -55,12 +55,13 @@ import type { GuidePageProps } from "./guide-page.type";
 const ZOOM_STOPS = [0.75, 1, 1.5, 2, 3, 4] as const;
 const DEFAULT_ZOOM_INDEX = 1;
 
-// How far a window may span. The mock's 2H/4H/6H, plus a whole day for planning.
+// How far a window may span. Kept as compact chips because this is the everyday view choice;
+// the longer phrase remains in each chip's accessible name.
 const WINDOW_CHOICES = [
-  { value: "120", label: "2 hours" },
-  { value: "240", label: "4 hours" },
-  { value: "360", label: "6 hours" },
-  { value: "720", label: "12 hours" },
+  { value: "120", label: "2h", description: "2 hours" },
+  { value: "240", label: "4h", description: "4 hours" },
+  { value: "360", label: "6h", description: "6 hours" },
+  { value: "720", label: "12h", description: "12 hours" },
 ] as const;
 
 // How far back the day picker offers. Matches the server's `guide.retention_hours` default —
@@ -115,6 +116,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
   const [startHour, setStartHour] = useState<number | null>(null);
+  // Precise start and zoom are useful planning tools, but not the questions most people ask on
+  // every visit. Keep them in one secondary row and announce when a hidden non-default remains
+  // active, so progressive disclosure never turns into invisible state.
+  const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
+  const hasCustomView = startHour !== null || zoomIndex !== DEFAULT_ZOOM_INDEX;
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. `adding` toggles it open.
@@ -251,169 +257,197 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
         </div>
       )}
 
-      {/* Row 2 — the guide toolbar: WHEN you are looking at (day, timezone, hour stepper,
-          start hour) on the left, HOW MUCH you see (zoom, span) on the right. Separate from
-          the title row because these re-frame the grid rather than acting on channels. */}
+      {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
+          much time is on screen. Precise planning controls live in the secondary View row. */}
       {channels.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
-          <div className="flex items-center gap-1.75">
-            <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
-              <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {dayChoices.map((d) => (
-                  <SelectItem key={d} value={String(d)} className="font-mono text-xs">
-                    {dayLabel(d, mountedAt)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <>
+          <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
+            <div className="flex items-center gap-1.75">
+              <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
+                <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dayChoices.map((d) => (
+                    <SelectItem key={d} value={String(d)} className="font-mono text-xs">
+                      {dayLabel(d, mountedAt)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
-                future one is a plan. The chip says which, and doubles as the way back. */}
-            {dayOffset !== 0 && (
-              <button
-                type="button"
-                onClick={() => setDayOffset(0)}
-                className={cn(
-                  "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
-                  dayOffset < 0 ? "text-static-400" : "text-tune",
-                )}
+              {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
+                  future one is a plan. The chip says which, and doubles as the way back. */}
+              {dayOffset !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDayOffset(0)}
+                  className={cn(
+                    "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
+                    dayOffset < 0 ? "text-static-400" : "text-tune",
+                  )}
+                >
+                  {dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today
+                </button>
+              )}
+            </div>
+
+            {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
+                window without changing the day. */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-6.5"
+                aria-label="Back an hour"
+                onClick={() => setHourShift((h) => h - 1)}
               >
-                {dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today
-              </button>
-            )}
-          </div>
+                ‹
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-signal")}
+                onClick={() => {
+                  setHourShift(0);
+                  setDayOffset(0);
+                  setStartHour(null);
+                }}
+              >
+                NOW
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-6.5"
+                aria-label="Forward an hour"
+                onClick={() => setHourShift((h) => h + 1)}
+              >
+                ›
+              </Button>
+            </div>
 
-          {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
-              window without changing the day. */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Back an hour"
-              onClick={() => setHourShift((h) => h - 1)}
-            >
-              ‹
-            </Button>
+            {/* Span stays in the primary row: it changes the question the guide answers, and
+                four compact choices are faster to scan than a select. */}
+            <div className="flex items-center gap-1.75 sm:ml-auto">
+              <Caption shout className="tracking-[0.06em]">
+                Span
+              </Caption>
+              <div className="flex gap-1">
+                {WINDOW_CHOICES.map((w) => {
+                  const active = windowMinutes === Number(w.value);
+                  return (
+                    <button
+                      key={w.value}
+                      type="button"
+                      onClick={() => setWindowMinutes(Number(w.value))}
+                      aria-label={`Show ${w.description}`}
+                      aria-pressed={active}
+                      className={cn(
+                        "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
+                        active
+                          ? "border-signal bg-signal-tint-15 text-signal"
+                          : "border-border text-static-400 hover:border-static-400",
+                      )}
+                    >
+                      {w.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <Button
               variant="outline"
               size="sm"
-              className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-signal")}
-              onClick={() => {
-                setHourShift(0);
-                setDayOffset(0);
-                setStartHour(null);
-              }}
+              className={cn("h-6.5", (viewOptionsOpen || hasCustomView) && "text-signal")}
+              aria-label={hasCustomView ? "View options, custom" : "View options"}
+              aria-expanded={viewOptionsOpen}
+              aria-controls="guide-view-options"
+              onClick={() => setViewOptionsOpen((open) => !open)}
             >
-              NOW
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Forward an hour"
-              onClick={() => setHourShift((h) => h + 1)}
-            >
-              ›
-            </Button>
-          </div>
-
-          {/* Start hour — plan against a specific part of the day ("what airs at 7am?")
-              without stepping there an hour at a time. */}
-          <div className="flex items-center gap-1.75">
-            {/* tracking-[0.06em] overrides `shout`'s tracking-wide (0.025em): these toolbar
-                labels sit tighter to their controls and were tuned wider than the default. */}
-            <Caption shout className="tracking-[0.06em]">
-              Start
-            </Caption>
-            <Select
-              value={startHour === null ? "auto" : String(startHour)}
-              onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
-            >
-              <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Start hour">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto" className="font-mono text-xs">
-                  Now
-                </SelectItem>
-                {START_HOURS.map((h) => (
-                  <SelectItem key={h} value={String(h)} className="font-mono text-xs">
-                    {hourLabel(h)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="ml-auto flex items-center gap-1 border-border border-r pr-3">
-            {/* Magnifier icons, not − / +: a bare minus reads as "remove" and a plus as "add"
-                (they are the add/remove glyphs everywhere else in the app), while a magnifying
-                glass says MAGNIFY without a label — which is what these now actually do. */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Zoom out"
-              disabled={zoomIndex === 0}
-              onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
-            >
-              <ZoomOut className="size-3.5" aria-hidden />
-            </Button>
-            {/* The percentage is the mock's, and it earns its place: without it the two
-                buttons give no sense of where you are in the range. Clicking it returns to
-                100% — the one stop where the whole window fits, and the way back from a deep
-                zoom without repeatedly clicking out. */}
-            <button
-              type="button"
-              onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
-              aria-label="Reset zoom to 100%"
-              className={cn(
-                "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
-                zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
+              {hasCustomView ? (
+                <span className="size-2 rounded-full bg-signal" aria-hidden />
+              ) : (
+                <SlidersHorizontal className="size-3.5" aria-hidden />
               )}
-            >
-              {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
-            </button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Zoom in"
-              disabled={zoomIndex === ZOOM_STOPS.length - 1}
-              onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
-            >
-              <ZoomIn className="size-3.5" aria-hidden />
+              View
             </Button>
           </div>
 
-          {/* Span as CHIPS, not a select: three choices, one click each, and the active one
-              is visible without opening anything. */}
-          <div className="flex gap-1">
-            {WINDOW_CHOICES.map((w) => {
-              const active = windowMinutes === Number(w.value);
-              return (
-                <button
-                  key={w.value}
-                  type="button"
-                  onClick={() => setWindowMinutes(Number(w.value))}
-                  aria-pressed={active}
-                  className={cn(
-                    "cursor-pointer rounded-md border px-2.75 py-1 font-mono text-xs transition-colors",
-                    active
-                      ? "border-signal bg-signal-tint-15 text-signal"
-                      : "border-border text-static-400 hover:border-static-400",
-                  )}
+          {viewOptionsOpen && (
+            <div
+              id="guide-view-options"
+              className="flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-border/60 border-b bg-card/40 px-7 py-2.5 sm:justify-end"
+            >
+              {/* Pin the window to a specific part of the chosen day without stepping there
+                  one hour at a time. */}
+              <div className="flex items-center gap-1.75">
+                <Caption shout className="tracking-[0.06em]">
+                  Start at
+                </Caption>
+                <Select
+                  value={startHour === null ? "auto" : String(startHour)}
+                  onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
                 >
-                  {w.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                  <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Start hour">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto" className="font-mono text-xs">
+                      Now
+                    </SelectItem>
+                    {START_HOURS.map((h) => (
+                      <SelectItem key={h} value={String(h)} className="font-mono text-xs">
+                        {hourLabel(h)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1.75">
+                <Caption shout className="tracking-[0.06em]">
+                  Zoom
+                </Caption>
+                <div className="flex items-center gap-1">
+                  {/* Magnifier icons distinguish view scaling from add/remove actions. */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-6.5"
+                    aria-label="Zoom out"
+                    disabled={zoomIndex === 0}
+                    onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
+                  >
+                    <ZoomOut className="size-3.5" aria-hidden />
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
+                    aria-label="Reset zoom to 100%"
+                    className={cn(
+                      "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
+                      zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
+                    )}
+                  >
+                    {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-6.5"
+                    aria-label="Zoom in"
+                    disabled={zoomIndex === ZOOM_STOPS.length - 1}
+                    onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
+                  >
+                    <ZoomIn className="size-3.5" aria-hidden />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {isEmpty ? (

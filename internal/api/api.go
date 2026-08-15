@@ -58,6 +58,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		settings:       opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,
 		liveConfigBoolOn: opts.LiveConfigBoolOn, ready: ready,
+		approver:        opts.Approver,
 		binder:          opts.Binder,
 		playoutObserver: opts.PlayoutObserver, preparedObserver: opts.PreparedObserver,
 		playoutSecret:   opts.PlayoutSecret,

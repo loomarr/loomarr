@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core";
-import { Image } from "@/components/ui";
+import { Checkbox, Image } from "@/components/ui";
 import { cn } from "@/lib";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
@@ -29,8 +29,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
     )}
   >
     {onToggleSelect ? (
-      <input
-        type="checkbox"
+      <Checkbox
         checked={Boolean(selected)}
         onChange={onToggleSelect}
         className="size-4 accent-signal"

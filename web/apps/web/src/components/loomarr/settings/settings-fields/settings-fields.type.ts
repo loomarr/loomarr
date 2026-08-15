@@ -13,6 +13,9 @@ interface SettingsFieldsProps {
   // straight through to each field; omitted on read-only surfaces, where the env lock stays
   // a plain chip with no affordance.
   onEnvOverride?: (key: string, enabled: boolean) => void;
+  // Per-key workflow availability. A reason disables that field and is rendered beside it;
+  // omitted keys remain ordinary editable settings (config-design §5).
+  disabledReasons?: Record<string, string>;
   className?: string;
 }
 

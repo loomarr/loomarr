@@ -1,7 +1,7 @@
 import { authApi, setupApi } from "@loomarr/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { meQueryOptions, needsBootstrap, safeRedirectPath } from "@/auth";
+import { meQueryOptions, readSetupState, safeRedirectPath } from "@/auth";
 import { LoginForm, LoginShell } from "@/components/loomarr";
 import { useDocumentTitle } from "@/lib";
 
@@ -102,7 +102,21 @@ const Route = createFileRoute("/login")({
       // could work, so showing the form would strand the owner (§7/§13). Guarding
       // here as well as in _authed covers the operator who navigates to /login
       // directly, or who bookmarked it before bootstrapping.
-      if (await needsBootstrap(context.queryClient)) throw redirect({ to: "/wizard" });
+      const setupState = await readSetupState(context.queryClient);
+      if (setupState?.bootstrapped === false) {
+        throw redirect({ to: "/wizard" });
+      }
+      if (setupState?.devLogin === true) {
+        const res = await fetch("/v1/auth/dev-login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Loomarr-Csrf": "1" },
+        });
+        if (res.ok) {
+          await context.queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
+          throw redirect({ href: safeRedirectPath(search.redirect) ?? "/guide" });
+        }
+      }
       return; // signed out on a claimed install → show the form
     }
     // ⚠ The signed-in bounce is the path that was exploitable: the router force-commits a

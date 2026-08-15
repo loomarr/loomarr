@@ -303,7 +303,7 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 	var views []api.HostedProviderView
 	for _, hp := range llm.HostedCatalog() {
 		key := s.storedKeyFor(ctx, hp.Key)
-		isActive := active.Provider == hp.Key
+		isActive := hostedSelectionMatches(active, hp)
 		// Use the active in-memory key if this is the active provider (covers a
 		// just-selected key not yet re-read from the store).
 		if isActive && active.APIKey != "" {
@@ -338,7 +338,35 @@ func (s *systemLLMService) storedKeyFor(ctx context.Context, provider string) st
 	if v, err := s.store.GetSetting(ctx, setLLMAPIKey+"."+provider); err == nil {
 		return v
 	}
+	// A provider configured through the ordinary settings form initially has the
+	// generic "openai" wire kind and base llm.api_key. Match it by its canonical URL
+	// so the picker can use that saved key to fetch/select a model; selectHosted then
+	// persists the provider-branded namespaced copy.
+	if s.swap != nil {
+		active := s.swap.Selection()
+		if hp, ok := llm.HostedProviderByKey(provider); ok && hostedSelectionMatches(active, hp) {
+			return active.APIKey
+		}
+	}
 	return ""
+}
+
+// hostedSelectionMatches maps a generic persisted OpenAI-compatible selection back
+// to the curated provider card. Before the first picker selection there is no branded
+// llm.hosted_provider value yet, so the canonical base URL is the only honest signal.
+func hostedSelectionMatches(sel llm.Selection, hp llm.HostedProvider) bool {
+	if sel.Provider == hp.Key {
+		return true
+	}
+	if sel.Provider != "openai" || sel.URL == "" {
+		return false
+	}
+	openRouter, _ := llm.HostedProviderByKey("openrouter")
+	if hp.Key == "openrouter" {
+		return strings.TrimRight(sel.URL, "/") == strings.TrimRight(openRouter.BaseURL, "/")
+	}
+	return hp.Key == llm.CustomProviderKey &&
+		strings.TrimRight(sel.URL, "/") != strings.TrimRight(openRouter.BaseURL, "/")
 }
 
 func (s *systemLLMService) Select(ctx context.Context, req api.SelectRequest) error {
@@ -391,6 +419,12 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	if !ok {
 		return api.ErrUnknownProvider
 	}
+	// OpenRouter ids are unambiguously namespaced (vendor/model). Reject a local
+	// Ollama tag—or any other bare value—before touching credentials or the network.
+	// Custom deliberately stays provider-defined: it may be Ollama's own /v1 mode.
+	if provider == "openrouter" && !validOpenRouterModelID(model) {
+		return api.ErrInvalidHostedModel
+	}
 	// Reuse a stored key if the caller didn't supply one (re-selecting a model on an
 	// already-configured provider shouldn't require re-pasting the key).
 	if apiKey == "" {
@@ -431,6 +465,14 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	s.swap.Set(sel)
 	s.log.Info("llm selected", "provider", provider, "model", model)
 	return nil
+}
+
+func validOpenRouterModelID(model string) bool {
+	if model == "" || strings.TrimSpace(model) != model || strings.ContainsAny(model, "\t\r\n ") {
+		return false
+	}
+	vendor, id, found := strings.Cut(model, "/")
+	return found && vendor != "" && id != ""
 }
 
 func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey string) error {

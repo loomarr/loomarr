@@ -166,6 +166,16 @@ func TestSystemLLM_SelectBadKey401(t *testing.T) {
 	}
 }
 
+func TestSystemLLM_SelectInvalidHostedModel422(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrInvalidHostedModel}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"qwen3:8b"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("Ollama tag for OpenRouter → %d, want 422", resp.StatusCode)
+	}
+}
+
 // A custom endpoint threads its baseUrl through to the service.
 func TestSystemLLM_SelectCustomPassesBaseURL(t *testing.T) {
 	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}

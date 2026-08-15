@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,28 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+// staleOnceChannelStore forces one deterministic read/write interleaving around SaveChannel.
+// Embedding the real store keeps the test on the production SQL contract; the hook performs one
+// winning mutation immediately before the handler attempts to save its older snapshot.
+type staleOnceChannelStore struct {
+	store.Store
+	once   sync.Once
+	before func(context.Context, store.Channel) error
+}
+
+func (s *staleOnceChannelStore) SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error) {
+	var hookErr error
+	s.once.Do(func() {
+		if s.before != nil {
+			hookErr = s.before(ctx, ch)
+		}
+	})
+	if hookErr != nil {
+		return store.Channel{}, hookErr
+	}
+	return s.Store.SaveChannel(ctx, ch)
+}
 
 // fakeChannelSvc records reconcile + purge calls and returns canned cycle-preview output.
 type fakeChannelSvc struct {
@@ -179,6 +202,24 @@ func TestCreateChannelServerAssignsIDWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestCreateChannel_DuplicateIDIsConflictAndPreservesOriginal(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "same-id", "Original", 7)
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"same-id","name":"Replacement","number":8,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate id create -> %d, want 409", resp.StatusCode)
+	}
+	got, err := st.GetChannel(context.Background(), "same-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Original" || got.Number != 7 {
+		t.Fatalf("duplicate create replaced original: %+v", got.Channel)
+	}
+}
+
 func TestCreateChannelRequiresAdmin(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	for _, tok := range []string{"", "wrong"} {
@@ -198,6 +239,32 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 		`{"id":"c2","name":"B","number":5,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate number → %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestCreateChannelDuplicateIntentRef(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	ctx := context.Background()
+	if _, err := st.SaveChannel(ctx, store.Channel{
+		Channel: schedule.Channel{
+			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
+			IntentRef: "job-bound", Status: schedule.StatusBuilding,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
+	}
+	channels, err := st.ListChannels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 1 || channels[0].ID != "bound" {
+		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
 	}
 }
 
@@ -558,6 +625,46 @@ func TestDeleteChannelDetaches(t *testing.T) {
 	}
 }
 
+func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
+	base := openTestStore(t, t.TempDir()+"/detach-race.db")
+	t.Cleanup(func() { _ = base.Close() })
+	if _, err := base.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+		ID: "c1", Name: "Original", Number: 5, Strategy: schedule.Sequential, Status: schedule.StatusLive,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+		winner, err := base.GetChannel(ctx, "c1")
+		if err != nil {
+			return err
+		}
+		winner.Group = "Concurrent edit"
+		_, err = base.SaveChannel(ctx, winner)
+		return err
+	}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{Store: wrapped, Auth: testAuthorizer{}, Log: log}))
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodDelete, "/v1/channels/c1", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("detach racing an edit -> %d, want 409", resp.StatusCode)
+	}
+	read := do(t, srv, http.MethodGet, "/v1/channels/c1", adminToken, "")
+	defer func() { _ = read.Body.Close() }()
+	if read.StatusCode != http.StatusOK {
+		t.Fatalf("read after stale detach -> %d, want 200", read.StatusCode)
+	}
+	var got api.ChannelDTO
+	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != string(schedule.StatusLive) || got.Group != "Concurrent edit" {
+		t.Fatalf("stale detach overwrote the winner: %+v", got)
+	}
+}
+
 // --- edit (PATCH), pause/resume, purge ---
 
 func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) {
@@ -567,6 +674,18 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("seed channel %s → %d", id, resp.StatusCode)
 	}
+}
+
+// channelPatchBody attaches the revision an editor read to a PATCH payload. Keeping this in the
+// HTTP tests makes every successful edit exercise the real optimistic-concurrency contract while
+// letting each case keep its payload focused on the field whose behavior it asserts.
+func channelPatchBody(t *testing.T, st store.Store, id, body string) string {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatalf("read channel revision: %v", err)
+	}
+	return `{"revision":` + strconv.FormatInt(ch.Revision, 10) + `,` + strings.TrimPrefix(body, "{")
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -607,7 +726,7 @@ func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
 	ch := store.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/channels/handmade/refine", adminToken, `{"change":"more action"}`)
@@ -635,7 +754,7 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -681,7 +800,7 @@ func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 	before := chSvc.reconciles
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"name":"New Name","number":7,"group":"Kids"}`)
+		channelPatchBody(t, st, "c1", `{"name":"New Name","number":7,"group":"Kids"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d, want 200", resp.StatusCode)
 	}
@@ -695,24 +814,66 @@ func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 	}
 }
 
-func TestUpdateChannel_RenumberCollision409(t *testing.T) {
+func TestUpdateChannel_StaleRevisionIs409AndDoesNotReconcile(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Original", 5)
+	stale, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	winner := stale
+	winner.Group = "Newer edit"
+	if _, err := st.SaveChannel(context.Background(), winner); err != nil {
+		t.Fatal(err)
+	}
+	before := chSvc.reconciles
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"revision":`+strconv.FormatInt(stale.Revision, 10)+`,"name":"Stale overwrite"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("stale patch -> %d, want 409", resp.StatusCode)
+	}
+	if chSvc.reconciles != before {
+		t.Fatalf("reconcile calls = %d -> %d; a rejected edit must not reconcile", before, chSvc.reconciles)
+	}
+	got, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Original" || got.Group != "Newer edit" {
+		t.Fatalf("stale edit changed the winner: %+v", got.Channel)
+	}
+}
+
+func TestUpdateChannel_RequiresRevision(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Original", 5)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"No revision"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("patch without revision -> %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannel_RenumberCollision409(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 	mkChannel(t, srv, "c2", "B", 6)
 
 	// Renumber c2 onto c1's number → 409 (not a 500 from the unique index).
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c2", adminToken, `{"number":5}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c2", adminToken,
+		channelPatchBody(t, st, "c2", `{"number":5}`))
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("renumber collision → %d, want 409", resp.StatusCode)
 	}
 }
 
 func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// Re-setting a channel to its OWN number must not false-positive as a collision.
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"number":5}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"number":5}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("renumber to self → %d, want 200", resp.StatusCode)
 	}
@@ -726,14 +887,14 @@ func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
 	ctx := context.Background()
 	ch, _ := st.GetChannel(ctx, "c1")
 	ch.Policy.Applied = []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}}
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
 	// A policy edit that tries to also set `applied` must be ignored — the stored
 	// `applied` is reconcile-owned and preserved.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`)
+		channelPatchBody(t, st, "c1", `{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("policy patch → %d, want 200", resp.StatusCode)
 	}
@@ -747,12 +908,12 @@ func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
 }
 
 func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// An off-ladder audience ceiling is a §4 safety violation → 422.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"policy":{"audience":{"ceiling":"NOT-A-RATING"}}}`)
+		channelPatchBody(t, st, "c1", `{"policy":{"audience":{"ceiling":"NOT-A-RATING"}}}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("invalid policy → %d, want 422", resp.StatusCode)
 	}
@@ -765,7 +926,8 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 
 	// Pause: status → paused, and NO reconcile is kicked (a paused channel is off the sweep).
 	before := chSvc.reconciles
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"paused"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"status":"paused"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pause → %d, want 200", resp.StatusCode)
 	}
@@ -778,7 +940,8 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 	}
 
 	// Resume: status → building, and it reconciles again.
-	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"building"}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"status":"building"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("resume → %d, want 200", resp.StatusCode)
 	}
@@ -817,7 +980,7 @@ func TestUpdateChannel_RequiresAdmin(t *testing.T) {
 
 func TestUpdateChannel_NotFound(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"name":"X"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"revision":1,"name":"X"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
 	}
@@ -830,7 +993,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // they seed the starting state in the store).
 func seedChannelWithLineup(t *testing.T, st store.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
-	err := st.UpsertChannel(context.Background(), store.Channel{
+	_, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
 			ID: id, Name: "Seed", Number: 5, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,
@@ -862,8 +1025,8 @@ func TestUpdateChannel_LineupReorder(t *testing.T) {
 
 	// Swap the order.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
@@ -889,8 +1052,8 @@ func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
 
 	// Keep The Matrix, drop Terminator 2, add Predator (not in this store — a pending add).
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("add/remove → %d, want 200", resp.StatusCode)
 	}
@@ -910,7 +1073,8 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	// Omitting lineup leaves it untouched (renames only).
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"Renamed"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"name":"Renamed"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("rename → %d", resp.StatusCode)
 	}
@@ -920,7 +1084,8 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 	}
 
 	// An explicit empty array clears it.
-	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"lineup":[]}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"lineup":[]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("clear → %d", resp.StatusCode)
 	}
@@ -938,7 +1103,7 @@ func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("malformed key → %d, want 422", resp.StatusCode)
 	}
@@ -965,8 +1130,8 @@ func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
 	// Reorder (series now second) using ONLY the lossy DTO fields — season/rating/runtime
 	// are not in the payload.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
@@ -1000,8 +1165,8 @@ func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("duplicate key → %d, want 422", resp.StatusCode)
 	}
@@ -1015,7 +1180,7 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 	// A padded key must validate (trimmed) and land canonicalized.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("padded key → %d, want 200", resp.StatusCode)
 	}
@@ -1026,7 +1191,7 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 	// The same key padded differently in two entries is still one key → duplicate → 422.
 	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("whitespace-disguised duplicate → %d, want 422", resp.StatusCode)
 	}
@@ -1235,12 +1400,12 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	// A reconciled channel (has a Tunarr id) and one that has never reconciled.
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-live", Name: "Live", Number: 42, TunarrID: "tunarr-1", Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-new", Name: "New", Number: 43, Status: "building"},
 	}); err != nil {
 		t.Fatal(err)

@@ -194,7 +194,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | Page | Contents | Live tests |
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
-| **AI** | Model roles: lineup model/provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker still owns probe/catalog/hot-swap. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
+| **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (backend, quality, language/subtitles, detected encoder/capacity, guide, advanced paths) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. | per sub-tab where testable |
 | **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
@@ -230,6 +230,12 @@ here. **The lookup half still governs presentation:** keys are monospace and ver
 humanized, because someone arrives holding a literal `job.workers` from a compose file and a row
 reading "Job workers" does not match the string they are carrying.
 
+The exception is an **action-owned value** whose safe write is more than a registry PATCH.
+`llm.model` stays searchable and shows its resolved value, but its action deep-links to the AI
+picker instead of rendering free text: selection also verifies tool capability, preserves the
+branded hosted provider, and hot-swaps the client. Letting the raw table bypass those effects
+would make the escape hatch a second, less-safe implementation of the same product decision.
+
 V55 closes the loophole that made this escape hatch the only home of ordinary settings. Every
 non-advanced key has an owning workflow page; the raw table links to that page, carries the same
 help and environment-takeover affordance as the full field, and exposes the explicit **Clear
@@ -258,6 +264,13 @@ only in the raw escape hatch; workflow forms never derive product copy from iden
 
 **Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). `llm.api_key` is hosted-only, while `llm.url` applies to both providers: it is the Ollama host for local AI and the OpenAI-compatible base URL for hosted AI. Hiding the local URL would make a non-default Ollama host impossible to configure. The UI evaluates conditions against live edits; a hidden field's value is untouched.
 
+**Unavailable fields stay legible.** A workflow may disable a setting whose prerequisite cannot
+currently run, but it must render the reason beside that same control. This is distinct from an
+environment pin: provenance says who owns a value; unavailability says whether the app can act on
+it. The saved desired value is retained so fixing the prerequisite activates the operator's prior
+choice instead of resetting it. The disabled control and its reason remain programmatically
+associated for assistive technology.
+
 ### V55 surface audit decisions
 
 - Retired declared-but-unconsumed promises: `season.precision`, `playout.transport`,
@@ -275,7 +288,7 @@ only in the raw escape hatch; workflow forms never derive product copy from iden
   the six-month compliance ceiling are fixed by the image module. Operators control storage,
   outbound fetching, upload size, and derivative cache budget.
 
-**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
+**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · unavailable reason where applicable · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, unavailable reason, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
 **One curated home, with progressive disclosure.** `All settings` remains the searchable escape
 hatch, but every key has only one task-shaped editor elsewhere. A control does not appear on both

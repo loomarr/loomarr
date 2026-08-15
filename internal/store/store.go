@@ -23,6 +23,22 @@ var ErrNotFound = errors.New("store: not found")
 // the proposal exists, but another decision already won.
 var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
 
+// ErrProposalSuperseded reports an approval candidate whose job already has an
+// approved proposal created at the same time or later. Same-second ties fail closed:
+// proposal timestamps are stored at second resolution, so guessing an order could
+// roll a channel back to content the operator reviewed earlier.
+var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
+
+// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
+// number or non-empty intent binding). Approval transactions have rolled back
+// completely when returning it, so their caller may safely reload and replan.
+var ErrChannelConflict = errors.New("store: channel conflict")
+
+// ErrChannelStale reports that a channel mutation was planned from an older
+// revision than the row now holds. The row still exists; callers may reload and
+// either reapply their domain merge or surface a conflict to the operator.
+var ErrChannelStale = errors.New("store: stale channel revision")
+
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -49,12 +65,19 @@ type ChannelStore interface {
 	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
 	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
-	UpsertChannel(ctx context.Context, ch Channel) error
+	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
+	// at revision 1; a positive revision replaces the row only when it still
+	// matches, then returns the saved channel with its incremented revision.
+	SaveChannel(ctx context.Context, ch Channel) (Channel, error)
+	// AttachTunarrChannel records the server-assigned id and the number actually used
+	// without replacing a concurrently edited channel snapshot. Both old values are
+	// compared; the targeted write advances and returns the row revision.
+	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
-	// a targeted write used after the lineup is bound, so it never races the binder's row write.
-	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
+	// a targeted revision-checked write used after the lineup is bound.
+	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
-	DeleteChannel(ctx context.Context, id string) error
+	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
 	// content, not by channel id — see ImageStore.
@@ -104,9 +127,10 @@ type JobStore interface {
 type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
-	// CommitProposalApproval atomically wins the submitted -> approved decision and
-	// inserts any title records that do not already exist. Existing title lifecycle
-	// state is never overwritten. The returned count is newly inserted wanted titles.
+	// CommitProposalApproval atomically wins the submitted -> approved decision,
+	// inserts title records that do not already exist, and creates or patches the
+	// intent-bound channel. Existing title lifecycle state is never overwritten.
+	// The returned count is newly inserted wanted titles.
 	CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error)
 	// CommitProposalDenial atomically wins the submitted -> denied decision.
 	CommitProposalDenial(ctx context.Context, p Proposal) error

@@ -7,7 +7,7 @@
 //   - Curator: the channel-scoped auto-curate GRANT. Given a freshly-produced re-curation
 //     proposal, it approves it because the CHANNEL opted in (schedule.AutoCurate), after
 //     filtering the proposal's net-new acquisitions to those clearing the quality bar and the
-//     title cap. It approves through the ONE suggest.Approve implementation (audit
+//     title cap. It approves through the ONE suggest.Approver implementation (audit
 //     "auto-curate") — never a raw `wanted` write. Wired into the suggest worker as its
 //     ChannelAutoCurator, so a re-curation proposal flows through the same persist→approve→bind
 //     pipeline every other proposal does.
@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -35,15 +34,14 @@ type Thresholds interface {
 	MaxTitles(ctx context.Context) int
 }
 
-// CuratorStore is the slice of the store the Curator needs: the approval-gate surface
-// (suggest.ApproveStore) plus channel + proposal lookups.
+// CuratorStore is the channel lookup the grant needs before handing an authorized, filtered
+// proposal to the shared approval gate.
 type CuratorStore interface {
-	suggest.ApproveStore
 	// GetChannelByIntentRef identifies WHICH channel a re-curation proposal authorizes: the
 	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
 	// plus a linear walk, duplicated byte-for-byte in `binder`.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
-	// ⚠ NO UpsertChannel, deliberately. This package decides retirements (§8.2a) but must not
+	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
 	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
 	// and the resulting two-writer arrangement was held together by a comment explaining that
@@ -59,20 +57,17 @@ type CuratorStore interface {
 // but authorized by the channel, not a user, and bounded by quality/cap, not a user quota.
 type Curator struct {
 	store      CuratorStore
+	approver   *suggest.Approver
 	thresholds Thresholds
-	now        func() time.Time
 	log        *slog.Logger
 }
 
 // NewCurator wires the grant.
-func NewCurator(st CuratorStore, th Thresholds, now func() time.Time, log *slog.Logger) *Curator {
-	if now == nil {
-		now = time.Now
-	}
+func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log *slog.Logger) *Curator {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Curator{store: st, thresholds: th, now: now, log: log}
+	return &Curator{store: st, approver: approver, thresholds: th, log: log}
 }
 
 // Consider applies the auto-curate grant to a just-produced re-curation proposal. It returns
@@ -126,12 +121,15 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// this subsystem, not an approver's judgement — so it is `filtered` above rather than an
 	// ApprovalEdit, which models a human's choices at the gate. Different things, deliberately
 	// not conflated.
-	enqueued, err := suggest.Approve(ctx, c.store, filtered, nil, suggest.AutoCuratedBy, c.now)
+	if c.approver == nil {
+		return suggest.Decision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
+	}
+	approval, err := c.approver.Approve(ctx, filtered, nil, suggest.AutoCuratedBy)
 	if err != nil {
 		return suggest.Decision{Reason: "approval failed"}, err
 	}
 	c.log.Info("auto-curated a channel",
-		"channel", ch.ID, "enqueued", enqueued,
+		"channel", ch.ID, "enqueued", approval.Enqueued,
 		"dropped_below_bar", len(res.BelowBar), "dropped_over_cap", len(res.OverCap),
 		"min_score_pct", minScore, "max_titles", maxTitles)
 	// Name what was rejected, and the score it was rejected for. A bare count says a decision
@@ -153,7 +151,7 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 			"channel", ch.ID, "retired", r.Out, "retired_confidence", r.OutScore,
 			"replaced_by", r.In, "replacement_confidence", r.InScore)
 	}
-	return suggest.Decision{Approved: true, Enqueued: enqueued}, nil
+	return suggest.Decision{Approved: true, Enqueued: approval.Enqueued}, nil
 }
 
 // channelForJob finds the channel bound to a suggestion job (its IntentRef). A re-curation
