@@ -143,6 +143,9 @@ func TestPruneProtectsTheAcceptedScheduleWithoutTreatingAProbeAsPlayback(t *test
 		t.Fatal(err)
 	}
 	publication := publishSized(t, lib, "scheduled", 600<<10)
+	if err := os.Chtimes(publication.Directory, now, now); err != nil {
+		t.Fatal(err)
+	}
 	specification := baselineSpec("scheduled")
 	now = now.Add(preparedStartupGrace + preparedUseGrace + time.Hour)
 	if _, ok, err := lib.Peek(specification); err != nil || !ok {
