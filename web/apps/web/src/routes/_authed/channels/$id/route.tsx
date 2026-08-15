@@ -243,11 +243,6 @@ const ChannelDetailLayout = () => {
               update: (data) => update.mutate({ id, data }),
               updateAsync: (data) => update.mutateAsync({ id, data }),
               savePolicy: (policy) => update.mutate({ id, data: { policy } }),
-              // `strategy` is a CHANNEL field, not a policy one, so it takes its own PATCH —
-              // but it is edited on the Programming surface beside Ordering, because that is
-              // where its effect is visible: Ordering's "inherit channel default" has always
-              // referred to this value.
-              saveStrategy: (strategy) => update.mutate({ id, data: { strategy } }),
               saveLogo,
               onDelete: ({ purge }) => del.mutate({ id, params: { purge } }),
             }}
