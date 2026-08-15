@@ -5,8 +5,32 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+type staticChannelReader struct{ channel store.Channel }
+
+func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel, error) {
+	return s.channel, nil
+}
+
+func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
+	r := &playoutResolver{
+		audioLanguage: func() string { return "eng" },
+		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
+			return []playout.AudioTrack{{Language: "eng"}, {Language: "jpn"}}, nil
+		},
+		channels: staticChannelReader{channel: store.Channel{Policy: schedule.ChannelPolicy{
+			OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{AudioLanguage: "jpn"}},
+		}}},
+	}
+
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "movie.mkv"); got != 1 {
+		t.Fatalf("AudioTrackFor = %d, want channel override track 1", got)
+	}
+}
 
 // ⚠ **THE QUALITY LADDER'S DEPENDENCIES ARE CALLED UNGUARDED.**
 //

@@ -24,7 +24,7 @@ import (
 // fetchBatch bounds one pass's work list.
 //
 // ⚠ A constant rather than a setting. §15 owns configuration and the operator-facing knob already
-// exists in a better form: `images.remote_max_concurrency` decides how hard a pass hits upstream,
+// exists in a better form: the image module's fixed concurrency cap decides how hard a pass hits upstream,
 // while this only decides how much of the backlog one tick takes. Making both configurable would
 // give an operator two dials that interact and no way to reason about either.
 const fetchBatch = 64
@@ -75,9 +75,8 @@ type Fetcher struct {
 	// enabled is `images.remote_fetch_enabled`, read per run so turning it off takes effect on the
 	// next tick rather than the next restart.
 	enabled func() bool
-	// concurrency is `images.remote_max_concurrency`. ⚠ TMDB caps a client at 20 simultaneous
-	// connections per IP (§22); the declared default sits well below it, and this is read live so
-	// an operator throttling a saturated link does not have to restart.
+	// concurrency is supplied by the application policy. TMDB caps a client at 20 simultaneous
+	// connections per IP (§22), so the application keeps this safely below that ceiling.
 	concurrency func() int
 	// allowHosts is the SSRF allowlist — see checkURL. Derived at wiring from what the install is
 	// actually configured to talk to, never operator free-text.

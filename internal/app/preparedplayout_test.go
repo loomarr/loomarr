@@ -19,8 +19,9 @@ func (s preparedChannels) ListChannels(context.Context) ([]store.Channel, error)
 }
 
 type preparedTimelineFake struct {
-	broadcasts map[string][]playout.Broadcast
-	audioCalls int
+	broadcasts          map[string][]playout.Broadcast
+	audioTrackByChannel map[string]int
+	audioCalls          int
 }
 
 func (f *preparedTimelineFake) ScheduledBroadcasts(
@@ -29,8 +30,11 @@ func (f *preparedTimelineFake) ScheduledBroadcasts(
 	return f.broadcasts[channelID], nil
 }
 
-func (f *preparedTimelineFake) AudioTrackFor(context.Context, string) int {
+func (f *preparedTimelineFake) AudioTrackFor(_ context.Context, channelID, _ string) int {
 	f.audioCalls++
+	if track, ok := f.audioTrackByChannel[channelID]; ok {
+		return track
+	}
 	return 2
 }
 
@@ -92,6 +96,43 @@ func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
 	}
 	if inputs.calls != 1 || timeline.audioCalls != 1 {
 		t.Fatal("unchanged source policy re-resolved or re-probed the library item")
+	}
+}
+
+func TestPreparedRuntimeCandidatesKeepChannelAudioOverridesDistinct(t *testing.T) {
+	now := time.Unix(15_000, 0)
+	timeline := &preparedTimelineFake{
+		broadcasts: map[string][]playout.Broadcast{
+			"english":  {{Kind: schedule.SlotProgram, LibraryItemID: "shared", Start: now, Stop: now.Add(time.Hour)}},
+			"japanese": {{Kind: schedule.SlotProgram, LibraryItemID: "shared", Start: now, Stop: now.Add(time.Hour)}},
+		},
+		audioTrackByChannel: map[string]int{"english": 1, "japanese": 2},
+	}
+	inputs := &preparedInputsFake{sources: map[string]library.InputSource{
+		"shared": {URL: "/media/shared.mkv", Kind: library.InputFile},
+	}}
+	r := newPreparedRuntimeResolver(
+		preparedChannels{channels: []store.Channel{
+			{Channel: schedule.Channel{ID: "english"}, Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{AudioLanguage: "eng"}}}},
+			{Channel: schedule.Channel{ID: "japanese"}, Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{AudioLanguage: "jpn"}}}},
+		}}, timeline, inputs, preparedLookupFake{}, func() time.Time { return now }, nil,
+		func() string { return "policy" }, func() string { return "internal" },
+		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
+	)
+
+	candidates, err := r.Candidates(t.Context(), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("candidate count = %d, want one publication per channel audio track", len(candidates))
+	}
+	tracks := map[int]bool{}
+	for _, candidate := range candidates {
+		tracks[candidate.Request.Source.AudioTrack] = true
+	}
+	if !tracks[1] || !tracks[2] {
+		t.Fatalf("candidate audio tracks = %v, want tracks 1 and 2", tracks)
 	}
 }
 

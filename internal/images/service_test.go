@@ -423,49 +423,11 @@ func TestURLForFallsBackToRelative(t *testing.T) {
 	}
 }
 
-// `images.formats` must actually decide what this install emits.
-//
-// ⚠ Regression test for a DEAD KNOB, not a hypothetical. Config.Formats existed, New defaulted it,
-// and nothing read it — so an operator dropping `avif` to save CPU, or `jpeg` to save storage,
-// would have changed precisely nothing while docs/configuration.md promised both. A setting with
-// no reader cannot be caught by any test that does not name it, which is why this one does.
-func TestProducesReadsTheFormatsSetting(t *testing.T) {
-	t.Run("the declared default is the full ladder", func(t *testing.T) {
-		svc := New(Config{Dir: t.TempDir()}, newFakeStore(), func() time.Time { return fixedNow })
-		for _, f := range []Format{FormatAVIF, FormatWebP, FormatJPEG} {
-			if !svc.Produces(f) {
-				t.Errorf("Produces(%s) = false with no formats configured, want the full ladder", f)
-			}
+func TestProducesUsesTheCompatibilityLadder(t *testing.T) {
+	svc := New(Config{Dir: t.TempDir()}, newFakeStore(), func() time.Time { return fixedNow })
+	for _, f := range []Format{FormatAVIF, FormatWebP, FormatJPEG} {
+		if !svc.Produces(f) {
+			t.Errorf("Produces(%s) = false, want the fixed compatibility ladder", f)
 		}
-	})
-
-	t.Run("dropping a format stops it being produced", func(t *testing.T) {
-		svc := New(Config{
-			Dir:     t.TempDir(),
-			Formats: func() []Format { return []Format{FormatWebP, FormatJPEG} },
-		}, newFakeStore(), func() time.Time { return fixedNow })
-		if svc.Produces(FormatAVIF) {
-			t.Error("Produces(avif) = true after avif was dropped from images.formats")
-		}
-		if !svc.Produces(FormatWebP) {
-			t.Error("Produces(webp) = false while webp is still configured")
-		}
-	})
-
-	// Hot-apply (config-design §3): the func shape is the whole reason this passes. A plain
-	// []Format field would have frozen the value at construction and this sub-test would fail.
-	t.Run("it is read per call, so a change applies without a restart", func(t *testing.T) {
-		formats := []Format{FormatAVIF, FormatWebP, FormatJPEG}
-		svc := New(Config{
-			Dir:     t.TempDir(),
-			Formats: func() []Format { return formats },
-		}, newFakeStore(), func() time.Time { return fixedNow })
-		if !svc.Produces(FormatAVIF) {
-			t.Fatal("Produces(avif) = false before the change")
-		}
-		formats = []Format{FormatWebP} // the operator saves images.formats=webp
-		if svc.Produces(FormatAVIF) {
-			t.Error("Produces(avif) still true after the setting changed — the value was captured at construction")
-		}
-	})
+	}
 }

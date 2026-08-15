@@ -63,7 +63,7 @@ type GC struct {
 	log    *slog.Logger
 	notify Notifier
 
-	// remoteTTL is `images.remote_ttl` — the TMDB compliance ceiling, read per run.
+	// remoteTTL is the application-owned TMDB compliance ceiling.
 	remoteTTL func() time.Duration
 	// budgetMB is `images.cache_budget_mb`.
 	budgetMB func() int

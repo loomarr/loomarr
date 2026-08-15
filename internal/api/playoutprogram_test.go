@@ -59,7 +59,7 @@ func (f *fakeResolver) Profile(context.Context) playout.Profile {
 
 // AudioTrackFor returns whatever the test set, defaulting to the file's first track — the same
 // answer the real resolver gives when no language preference is configured.
-func (f *fakeResolver) AudioTrackFor(context.Context, string) int { return f.audioTrack }
+func (f *fakeResolver) AudioTrackFor(context.Context, string, string) int { return f.audioTrack }
 
 // Tracks returns whatever the test set (empty by default) — the Watch pickers' media-derived
 // options. These tests exercise the program/stream path, not the pickers, so empty is the right

@@ -153,7 +153,7 @@ func (c *chainResolver) Profile(context.Context) playout.Profile { return c.prof
 // The source clip is built with a single `anullsrc` track, so track 0 is the only honest
 // answer here — and 0 is also the interface's documented fallback, which keeps this double
 // from asserting a language preference the chain test does not exercise.
-func (c *chainResolver) AudioTrackFor(context.Context, string) int { return 0 }
+func (c *chainResolver) AudioTrackFor(context.Context, string, string) int { return 0 }
 
 // Tracks and PlanFor complete api.PlayoutResolver.
 //

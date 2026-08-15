@@ -117,21 +117,10 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
-	// Subtitles is the channel's subtitle mode (§9.1, V46): "" / "off" = none (default);
-	// "burn" = burn the preferred-language subtitle track into the shared encode. Burn-in
-	// rather than a soft toggle for the same reason as audio: a viewer-toggled soft track
-	// would need per-viewer output, which the one-encoder-per-channel model forbids.
-	Subtitles string `json:"subtitles,omitempty"`
 }
 
 // PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
 const PlayoutBackendInternal = "internal"
-
-// Subtitle modes for PlayoutPolicy.Subtitles / the `playout.subtitles` global (§9.1, V46).
-const (
-	SubtitlesOff  = "off"  // no subtitles (the default; "" resolves to this)
-	SubtitlesBurn = "burn" // burn the preferred-language track into the shared encode
-)
 
 // ResolveAudioLanguage picks the audio language for a channel: its own
 // `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
@@ -145,23 +134,6 @@ func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) stri
 		return strings.TrimSpace(p.AudioLanguage)
 	}
 	return strings.TrimSpace(globalAudioLanguage)
-}
-
-// ResolveSubtitles picks the subtitle mode for a channel: its own
-// `policy.playout.subtitles` when set, else the global `playout.subtitles`. Normalizes to
-// SubtitlesOff when neither names a mode, so callers never branch on "".
-func ResolveSubtitles(policy ChannelPolicy, globalSubtitles string) string {
-	pick := ""
-	if p := policy.Playout; p != nil {
-		pick = strings.TrimSpace(p.Subtitles)
-	}
-	if pick == "" {
-		pick = strings.TrimSpace(globalSubtitles)
-	}
-	if pick == "" {
-		return SubtitlesOff
-	}
-	return pick
 }
 
 // PlaysInternally resolves the nil-means-inherit precedence §15 defines: a channel's own

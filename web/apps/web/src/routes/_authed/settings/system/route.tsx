@@ -13,8 +13,10 @@ import { cn } from "@/lib";
 // §12 used to defer the Dashboard nav entry until V16 built it.
 const SUB_PAGES = [
   { to: "/settings/system/tasks", label: "Tasks" },
+  { to: "/settings/system/playback", label: "Playback" },
   { to: "/settings/system/database", label: "Database" },
   { to: "/settings/system/backup", label: "Backup" },
+  { to: "/settings/system/storage", label: "Storage" },
   { to: "/settings/system/about", label: "About" },
 ] as const;
 

@@ -429,7 +429,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             ? {
                 action: {
                   label: "Open filler defaults",
-                  onClick: () => navigate({ to: "/settings/defaults" }),
+                  onClick: () => navigate({ to: "/filler/settings" }),
                 },
               }
             : {})}
@@ -548,6 +548,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
             : []),
           { id: "sources", label: "Sources", to: "/filler/sources" },
+          ...(isAdmin ? [{ id: "settings", label: "Settings", to: "/filler/settings" }] : []),
         ]}
         activeId={tab}
       />

@@ -24,7 +24,7 @@ type preparedChannelReader interface {
 
 type preparedTimeline interface {
 	ScheduledBroadcasts(context.Context, string, time.Time, time.Time) ([]playout.Broadcast, error)
-	AudioTrackFor(context.Context, string) int
+	AudioTrackFor(context.Context, string, string) int
 }
 
 type preparedInputResolver interface {
@@ -36,8 +36,14 @@ type preparedLookup interface {
 }
 
 type preparedSource struct {
-	policy  string
-	request prepared.Request
+	policy        string
+	channelPolicy string
+	request       prepared.Request
+}
+
+type preparedSourceKey struct {
+	channelID     string
+	libraryItemID string
 }
 
 // preparedRuntimeResolver is the composition adapter shared by the readiness planner and prepared
@@ -56,7 +62,7 @@ type preparedRuntimeResolver struct {
 	rendition     func() prepared.RenditionContract
 
 	mu      sync.RWMutex
-	sources map[string]preparedSource // library item id → control-plane-resolved source
+	sources map[preparedSourceKey]preparedSource // channel + library item → control-plane-resolved source
 }
 
 func newPreparedRuntimeResolver(
@@ -73,13 +79,14 @@ func newPreparedRuntimeResolver(
 	return &preparedRuntimeResolver{
 		channels: channels, timeline: timeline, inputs: inputs, lookup: lookup, now: now,
 		pathMap: pathMap, policy: policy, globalBackend: globalBackend, rendition: rendition,
-		sources: make(map[string]preparedSource),
+		sources: make(map[preparedSourceKey]preparedSource),
 	}
 }
 
-// Candidates enumerates accepted internal-playout schedules, earliest need first. It resolves each
-// distinct library item to a local file once per active source policy; HTTP-only media remains a
-// live fallback because a finite reusable publication cannot depend on a remote stream staying put.
+// Candidates enumerates accepted internal-playout schedules, earliest need first. Source resolution
+// is channel-aware because two channels may select different audio tracks for the same item; equal
+// requests are still collapsed to one reusable publication. HTTP-only media remains a live fallback
+// because a finite reusable publication cannot depend on a remote stream staying put.
 func (r *preparedRuntimeResolver) Candidates(
 	ctx context.Context, from, to time.Time,
 ) ([]prepared.Candidate, error) {
@@ -94,12 +101,14 @@ func (r *preparedRuntimeResolver) Candidates(
 	if r.globalBackend != nil {
 		globalBackend = r.globalBackend()
 	}
-	needed := make(map[string]time.Time)
+	needed := make(map[preparedSourceKey]time.Time)
+	channelPolicies := make(map[string]string)
 	var errs []error
 	for _, channel := range channels {
 		if !schedule.PlaysInternally(channel.Policy, globalBackend) {
 			continue
 		}
+		channelPolicies[channel.ID] = schedule.ResolveAudioLanguage(channel.Policy, "")
 		broadcasts, timelineErr := r.timeline.ScheduledBroadcasts(ctx, channel.ID, from, to)
 		if timelineErr != nil {
 			errs = append(errs, timelineErr)
@@ -113,28 +122,33 @@ func (r *preparedRuntimeResolver) Candidates(
 			if at.Before(from) {
 				at = from // every currently-airing item has equal first priority.
 			}
-			if prior, ok := needed[broadcast.LibraryItemID]; !ok || at.Before(prior) {
-				needed[broadcast.LibraryItemID] = at
+			key := preparedSourceKey{channelID: channel.ID, libraryItemID: broadcast.LibraryItemID}
+			if prior, ok := needed[key]; !ok || at.Before(prior) {
+				needed[key] = at
 			}
 		}
 	}
 
-	ids := make([]string, 0, len(needed))
-	for id := range needed {
-		ids = append(ids, id)
+	keys := make([]preparedSourceKey, 0, len(needed))
+	for key := range needed {
+		keys = append(keys, key)
 	}
-	sort.Slice(ids, func(i, j int) bool {
-		if needed[ids[i]].Equal(needed[ids[j]]) {
-			return ids[i] < ids[j]
+	sort.Slice(keys, func(i, j int) bool {
+		if needed[keys[i]].Equal(needed[keys[j]]) {
+			if keys[i].libraryItemID == keys[j].libraryItemID {
+				return keys[i].channelID < keys[j].channelID
+			}
+			return keys[i].libraryItemID < keys[j].libraryItemID
 		}
-		return needed[ids[i]].Before(needed[ids[j]])
+		return needed[keys[i]].Before(needed[keys[j]])
 	})
-	candidates := make([]prepared.Candidate, 0, len(ids))
-	for _, id := range ids {
+	candidates := make([]prepared.Candidate, 0, len(keys))
+	queued := make(map[prepared.Request]struct{})
+	for _, key := range keys {
 		if len(candidates) >= preparedCandidateBatch {
 			break
 		}
-		request, ok := r.resolveSource(ctx, id)
+		request, ok := r.resolveSource(ctx, key, channelPolicies[key.channelID])
 		if !ok {
 			continue
 		}
@@ -146,33 +160,37 @@ func (r *preparedRuntimeResolver) Candidates(
 		if ready {
 			continue
 		}
-		candidates = append(candidates, prepared.Candidate{NeededAt: needed[id], Request: request})
+		if _, exists := queued[request]; exists {
+			continue
+		}
+		queued[request] = struct{}{}
+		candidates = append(candidates, prepared.Candidate{NeededAt: needed[key], Request: request})
 	}
 	return candidates, errors.Join(errs...)
 }
 
 func (r *preparedRuntimeResolver) resolveSource(
-	ctx context.Context, libraryItemID string,
+	ctx context.Context, key preparedSourceKey, channelPolicy string,
 ) (prepared.Request, bool) {
 	policy := ""
 	if r.policy != nil {
 		policy = r.policy()
 	}
 	r.mu.RLock()
-	warmed, ok := r.sources[libraryItemID]
+	warmed, ok := r.sources[key]
 	r.mu.RUnlock()
-	if ok && warmed.policy == policy {
+	if ok && warmed.policy == policy && warmed.channelPolicy == channelPolicy {
 		return warmed.request, true
 	}
 	var pathMap library.PathMap
 	if r.pathMap != nil {
 		pathMap = r.pathMap()
 	}
-	input := r.inputs.ResolveInput(ctx, libraryItemID, pathMap, library.StatReadableFile)
+	input := r.inputs.ResolveInput(ctx, key.libraryItemID, pathMap, library.StatReadableFile)
 	if input.URL == "" || input.Kind != library.InputFile {
 		return prepared.Request{}, false
 	}
-	audioTrack := r.timeline.AudioTrackFor(ctx, input.URL)
+	audioTrack := r.timeline.AudioTrackFor(ctx, key.channelID, input.URL)
 	if r.rendition == nil {
 		return prepared.Request{}, false
 	}
@@ -181,7 +199,7 @@ func (r *preparedRuntimeResolver) resolveSource(
 		Rendition: r.rendition(),
 	}
 	r.mu.Lock()
-	r.sources[libraryItemID] = preparedSource{policy: policy, request: request}
+	r.sources[key] = preparedSource{policy: policy, channelPolicy: channelPolicy, request: request}
 	r.mu.Unlock()
 	return request, true
 }
@@ -217,13 +235,13 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 	if current < 0 || broadcasts[current].Kind != schedule.SlotProgram {
 		return playout.PreparedWindow{}, false, nil
 	}
-	currentAiring, ok, err := r.preparedAiring(broadcasts[current], now.Sub(broadcasts[current].Start))
+	currentAiring, ok, err := r.preparedAiring(request.ChannelID, broadcasts[current], now.Sub(broadcasts[current].Start))
 	if err != nil || !ok {
 		return playout.PreparedWindow{}, false, err
 	}
 	window := playout.PreparedWindow{Current: currentAiring}
 	for _, broadcast := range broadcasts[:current] {
-		airing, hit, lookupErr := r.preparedAiring(broadcast, 0)
+		airing, hit, lookupErr := r.preparedAiring(request.ChannelID, broadcast, 0)
 		if lookupErr != nil {
 			return playout.PreparedWindow{}, false, lookupErr
 		}
@@ -235,7 +253,7 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 }
 
 func (r *preparedRuntimeResolver) preparedAiring(
-	broadcast playout.Broadcast, offset time.Duration,
+	channelID string, broadcast playout.Broadcast, offset time.Duration,
 ) (playout.PreparedAiring, bool, error) {
 	if broadcast.LibraryItemID == "" || broadcast.Kind != schedule.SlotProgram {
 		return playout.PreparedAiring{}, false, nil
@@ -245,7 +263,7 @@ func (r *preparedRuntimeResolver) preparedAiring(
 		policy = r.policy()
 	}
 	r.mu.RLock()
-	source, warmed := r.sources[broadcast.LibraryItemID]
+	source, warmed := r.sources[preparedSourceKey{channelID: channelID, libraryItemID: broadcast.LibraryItemID}]
 	r.mu.RUnlock()
 	if !warmed || source.policy != policy {
 		return playout.PreparedAiring{}, false, nil

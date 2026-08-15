@@ -79,12 +79,6 @@ func declared() []Setting {
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
 		},
-		{
-			Key: "season.precision", EnvVar: "SEASON_PRECISION", Group: GroupMediaServer,
-			Kind: KindEnum, Enum: []EnumOption{opt("series", "Whole series"), opt("seasons", "Requested seasons")}, Default: "series", Advanced: true,
-			Doc: "When adding a series, get the whole show (default) or just the seasons you asked for.",
-		},
-
 		// --- Connections: requester (§15, Phase 6) ---
 		// How Loomarr acquires missing titles: through Seerr (default), or Sonarr + Radarr
 		// directly. The provider gates which fields show (ShowWhen), mirroring llm.provider.
@@ -176,7 +170,7 @@ func declared() []Setting {
 			// the server's own public address, and both callers (icon fetch, segment
 			// fetch) need the same value. Two keys could drift, and an operator would
 			// have to know which one Live TV reads.
-			Key: "server.public_url", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
+			Key: "server.public_url", Label: "Loomarr address", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
 			Kind: KindURL, Default: "",
 			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons.",
 		},
@@ -189,7 +183,7 @@ func declared() []Setting {
 		// only — the ones already on the other backend keep playing" true rather than
 		// aspirational: switching the default never touches an existing channel's policy.
 		{
-			Key: "playout.backend", EnvVar: "PLAYOUT_BACKEND", Group: GroupPlayout,
+			Key: "playout.backend", Label: "Playback engine", EnvVar: "PLAYOUT_BACKEND", Group: GroupPlayout,
 			Kind: KindEnum, Enum: []EnumOption{
 				opt("internal", "Loomarr (internal)"),
 				opt("tunarr", "Tunarr"),
@@ -198,39 +192,17 @@ func declared() []Setting {
 			Doc:     "Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel.",
 		},
 		{
-			Key: "playout.transport", EnvVar: "PLAYOUT_TRANSPORT", Group: GroupPlayout,
-			Kind: KindEnum, Enum: []EnumOption{
-				opt("both", "HLS and MPEG-TS"),
-				opt("hls", "HLS only"),
-				opt("mpegts", "MPEG-TS only"),
-			},
-			Default: "both",
-			Doc:     "Which stream formats internal playout offers. Media servers differ in what they accept, so both is the default: MPEG-TS matches Tunarr's existing shape and keeps latency low, HLS survives proxies.",
-		},
-		{
-			Key: "playout.encoder", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
+			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
 			Kind: KindString, Default: "",
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
 		},
 		{
-			Key: "playout.audio_language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
-			Kind: KindString, Default: "eng",
+			Key: "playout.audio_language", Label: "Preferred audio language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
+			Kind: KindString, Presentation: PresentationLanguage, Default: "eng",
 			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1).",
 		},
 		{
-			// Subtitles are burned into the shared encode, not offered as a soft toggle: one
-			// encoder serves every viewer of a channel (§9.1), so a viewer-selectable soft
-			// track would require per-viewer output. Off is the default and costs nothing.
-			Key: "playout.subtitles", EnvVar: "PLAYOUT_SUBTITLES", Group: GroupPlayout,
-			Kind: KindEnum, Enum: []EnumOption{
-				opt("off", "Off — no subtitles"),
-				opt("burn", "Burn in — the preferred-language track, rendered into the picture"),
-			},
-			Default: "off",
-			Doc:     "Whether internal playout burns subtitles into the channel. Off is the default. Burn in renders the preferred-language subtitle track into the picture for the whole channel — everyone watching sees the same thing, because one encoder serves them all. A channel can override this on its Watch tab (§9.1).",
-		},
-		{
-			Key: "playout.quality_tier", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
+			Key: "playout.quality_tier", Label: "Maximum playback quality", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
 			Kind: KindEnum, Enum: []EnumOption{
 				opt("efficient", "Efficient — 720p, lowest bandwidth"),
 				opt("balanced", "Balanced — 1080p"),
@@ -249,8 +221,8 @@ func declared() []Setting {
 			// runtime dependency of a channel that is ON AIR, while ingest's is a build
 			// dependency of a download nobody is watching — so an operator pointing ingest at
 			// a newer yt-dlp-compatible ffmpeg must not be able to break playout by doing it.
-			Key: "playout.ffmpeg_path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
-			Kind: KindString, Default: "ffmpeg", Advanced: true,
+			Key: "playout.ffmpeg_path", Label: "FFmpeg path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
+			Kind: KindString, Presentation: PresentationPath, Default: "ffmpeg", Advanced: true,
 			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
 		},
 		{
@@ -261,8 +233,8 @@ func declared() []Setting {
 			// per watched channel, cleaned up when the last viewer leaves. Advanced: a wrong
 			// value degrades in-app playback, never the media-server streams (those never touch
 			// this dir).
-			Key: "playout.hls_dir", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "playout.hls_dir", Label: "Browser playback cache", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching.",
 		},
 		{
@@ -270,12 +242,12 @@ func declared() []Setting {
 			// scratch bytes deleted when viewing stops; these publications are reusable across channels
 			// and restarts. Read once at composition because moving an active publication library while
 			// clients hold keyed asset URLs would split one origin across two roots.
-			Key: "playout.prepared_dir", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
-			Kind: KindString, Default: "/data/prepared", Advanced: true,
+			Key: "playout.prepared_dir", Label: "Prepared media library", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
+			Kind: KindString, Presentation: PresentationPath, Default: "/data/prepared", Advanced: true,
 			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
 		},
 		{
-			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
+			Key: "playout.max_channels", Label: "Maximum live transcodes", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
 			Kind: KindInt, Default: "4",
 			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
 		},
@@ -288,7 +260,7 @@ func declared() []Setting {
 			// Empty = the viewer's own browser timezone, which is right for the household
 			// case. An operator sets it when the server and its viewers are elsewhere, or
 			// when they want the guide to read in the channels' "broadcast" timezone.
-			Key: "guide.timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
+			Key: "guide.timezone", Label: "Guide timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone.",
 		},
@@ -299,25 +271,25 @@ func declared() []Setting {
 			// CURRENT lineup, so a distant "as aired" view would be fiction — the lineup has
 			// been reconciled since. A day is honest; a month would be invention presented as
 			// history.
-			Key: "guide.retention_hours", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
+			Key: "guide.retention_hours", Label: "Guide history", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
 			Kind: KindInt, Default: "24", Advanced: true,
 			Doc: "How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
 		},
 
 		// --- Backup (§16, §15 — added by V4) ---
 		{
-			Key: "backup.schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
+			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
 			Kind: KindCron, Default: "0 30 3 * * *",
 			Doc: "When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential.",
 		},
 		{
-			Key: "backup.retain", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
+			Key: "backup.retain", Label: "Backups to keep", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
 			Kind: KindInt, Default: "7",
 			Doc: "How many backups to keep before pruning the oldest.",
 		},
 		{
-			Key: "backup.dir", EnvVar: "BACKUP_DIR", Group: GroupBackup,
-			Kind: KindString, Default: "/data/backups",
+			Key: "backup.dir", Label: "Backup location", EnvVar: "BACKUP_DIR", Group: GroupBackup,
+			Kind: KindString, Presentation: PresentationPath, Default: "/data/backups",
 			Doc: "Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
@@ -329,44 +301,22 @@ func declared() []Setting {
 			// (§22). Everything here is regenerable or re-fetchable EXCEPT operator uploads, which
 			// is why `images-gc` counts unrecoverable-missing rows as a warning rather than
 			// pretending it can repair them.
-			Key: "images.dir", EnvVar: "IMAGES_DIR", Group: GroupImages,
-			Kind: KindString, Default: "/data/images",
+			Key: "images.dir", Label: "Image library location", EnvVar: "IMAGES_DIR", Group: GroupImages,
+			Kind: KindString, Presentation: PresentationPath, Default: "/data/images",
 			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume.",
 		},
 		{
-			Key: "images.formats", EnvVar: "IMAGES_FORMATS", Group: GroupImages,
-			Kind: KindStringList, Default: "avif,webp,jpeg",
-			Doc: "Which image formats to produce, best first. Dropping jpeg saves storage but breaks very old iOS and legacy Android WebViews; dropping avif saves considerable CPU at about 25% more bytes on the wire.",
-		},
-		{
-			Key: "images.max_upload_bytes", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
-			Kind: KindInt, Default: "8388608",
+			Key: "images.max_upload_bytes", Label: "Maximum image upload", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
+			Kind: KindInt, Presentation: PresentationBytes, Default: "8388608",
 			Doc: "The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares.",
 		},
 		{
-			Key: "images.remote_fetch_enabled", EnvVar: "IMAGES_REMOTE_FETCH_ENABLED", Group: GroupImages,
+			Key: "images.remote_fetch_enabled", Label: "Download remote artwork", EnvVar: "IMAGES_REMOTE_FETCH_ENABLED", Group: GroupImages,
 			Kind: KindBool, Default: true,
 			Doc: "Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made.",
 		},
 		{
-			// ⚠ TMDB caps a client at 20 simultaneous connections. 12 stays under it with room for
-			// the other outbound callers (search, ratings, franchise healing) that share the same
-			// budget. Raising it past 20 earns 429s, not throughput.
-			Key: "images.remote_max_concurrency", EnvVar: "IMAGES_REMOTE_MAX_CONCURRENCY", Group: GroupImages,
-			Kind: KindInt, Default: "12", Advanced: true,
-			Doc: "How many artwork downloads run at once. TMDB allows 20 simultaneous connections in total, so raising this past 20 earns rate-limit errors rather than speed.",
-		},
-		{
-			// ⚠ A COMPLIANCE CEILING, not a tuning knob. TMDB's API terms forbid caching their
-			// content longer than six months, so this is the one setting here where raising the
-			// value puts the instance out of compliance rather than merely using more disk. Said
-			// in the Doc as well as here, because the Doc is what an operator actually reads.
-			Key: "images.remote_ttl", EnvVar: "IMAGES_REMOTE_TTL", Group: GroupImages,
-			Kind: KindDuration, Default: "4320h", Advanced: true,
-			Doc: "How long downloaded artwork may be kept before it is re-fetched or removed (about six months). This is a compliance limit, not a preference: TMDB's terms forbid caching their images for longer, so raising it puts your instance out of compliance with them.",
-		},
-		{
-			Key: "images.cache_budget_mb", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
+			Key: "images.cache_budget_mb", Label: "Resized-image cache", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
 			Kind: KindInt, Default: "2048", Advanced: true,
 			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
 		},
@@ -380,30 +330,30 @@ func declared() []Setting {
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
 		{
-			Key: "llm.provider", EnvVar: "LLM_PROVIDER", Group: GroupAI,
+			Key: "llm.provider", Label: "Lineup AI provider", EnvVar: "LLM_PROVIDER", Group: GroupAI,
 			Kind: KindEnum, Enum: []EnumOption{opt("ollama", "Ollama"), opt("openai", "OpenAI-compatible")}, Default: "ollama", Required: FeatureSuggestions,
 			Doc: "Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings.",
 		},
 		{
-			// A hosted (OpenAI-compatible) service needs its base URL; a local Ollama is
-			// reached at its own host, chosen in the model picker — so this is hidden for Ollama.
-			Key: "llm.url", EnvVar: "LLM_URL", Group: GroupAI,
+			// Both providers need an endpoint: the Ollama host for local AI, or the
+			// OpenAI-compatible base URL for hosted AI. The default host is conventional, not
+			// universal, so hiding this for Ollama made remote Ollama impossible to configure.
+			Key: "llm.url", Label: "AI service address", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc:      "The base URL of your OpenAI-compatible service, ending in /v1.",
-			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
+			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the OpenAI-compatible base URL ending in /v1.",
 		},
 		{
 			// For a hosted service you type the model name; for Ollama the ranked model
 			// picker below is how you choose, so this free-text field is hidden there to
 			// avoid two controls setting the same thing.
-			Key: "llm.model", EnvVar: "LLM_MODEL", Group: GroupAI,
+			Key: "llm.model", Label: "Hosted lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "",
 			Doc:      "The model name for your hosted AI service (e.g. gpt-4o-mini).",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
 			// Ollama is local and needs no key — this only applies to a hosted service.
-			Key: "llm.api_key", EnvVar: "LLM_API_KEY", Group: GroupAI,
+			Key: "llm.api_key", Label: "Hosted AI API key", EnvVar: "LLM_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "",
 			Doc:      "API key for your hosted AI service. Never shown again after saving.",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
@@ -411,18 +361,13 @@ func declared() []Setting {
 		{
 			// Local-only (§8.2): a hosted service has no model to hold in memory, so this
 			// is hidden for the openai provider rather than shown as an inert control.
-			Key: "llm.keep_alive", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
+			Key: "llm.keep_alive", Label: "Keep local model loaded", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
 			Kind: KindDuration, Default: "2m", Advanced: true,
 			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
 		},
 		{
-			Key: "suggest.auto_approve", EnvVar: "SUGGEST_AUTO_APPROVE", Group: GroupAI,
-			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Automatically approve suggested downloads, with no review step. Off by default.",
-		},
-		{
-			Key: "suggest.max_acquisitions", EnvVar: "SUGGEST_MAX_ACQUISITIONS", Group: GroupAI,
+			Key: "suggest.max_acquisitions", Label: "Pending-download limit per person", EnvVar: "SUGGEST_MAX_ACQUISITIONS", Group: GroupAI,
 			Kind: KindInt, Default: 10,
 			Doc: "The most titles a single suggestion may download.",
 		},
@@ -434,68 +379,26 @@ func declared() []Setting {
 			Doc: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
 		},
 		{
-			Key: "recurate.min_score_pct", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
+			Key: "recurate.min_score_pct", Label: "Auto-curation request threshold", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
 			Kind: KindInt, Default: 60, Advanced: true,
 			Doc: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
 		},
 		{
-			Key: "recurate.max_titles", EnvVar: "RECURATE_MAX_TITLES", Group: GroupAI,
+			Key: "recurate.max_titles", Label: "Auto-curation channel limit", EnvVar: "RECURATE_MAX_TITLES", Group: GroupAI,
 			Kind: KindInt, Default: 40, Advanced: true,
 			Doc: "The most titles an auto-curate channel may grow to. Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser.",
 		},
 
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
-			Key: "sched.default_strategy", EnvVar: "SCHED_DEFAULT_STRATEGY", Group: GroupChannels,
-			Kind: KindEnum, Enum: []EnumOption{opt("sequential", "Sequential"), opt("shuffle", "Shuffle")}, Default: "shuffle",
-			Doc: "How channels order their programs by default, unless a channel sets its own.",
-		},
-		{
-			Key: "sched.backfill", EnvVar: "SCHED_BACKFILL", Group: GroupChannels,
-			Kind: KindEnum, Enum: []EnumOption{opt("stable", "Stable"), opt("reshuffle", "Reshuffle")}, Default: "stable",
-			Doc: "When new titles arrive, keep the lineup order (stable) or reshuffle it.",
-		},
-		{
-			Key: "channel.reconcile_every", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
+			Key: "channel.reconcile_every", Label: "Refresh channels every", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
 			Kind: KindDuration, Default: "10m",
 			Doc: "How often Loomarr rebuilds channels to pick up newly-available content.",
 		},
-		// Policy defaults (the middle tier of channel policy > registry default > built-in,
-		// programming-design §2/§9). These close the ChannelPolicy registry-default deferral.
 		{
-			Key: "sched.episode_norepeat", EnvVar: "SCHED_EPISODE_NOREPEAT", Group: GroupChannels,
-			Kind: KindDuration, Default: "168h",
-			Doc: "Default no-repeat window for a series' episodes (per-channel overridable).",
-		},
-		{
-			Key: "sched.movie_norepeat", EnvVar: "SCHED_MOVIE_NOREPEAT", Group: GroupChannels,
-			Kind: KindDuration, Default: "720h",
-			Doc: "Default no-repeat window for movies (per-channel overridable).",
-		},
-		{
-			Key: "sched.series_min_gap", EnvVar: "SCHED_SERIES_MIN_GAP", Group: GroupChannels,
-			Kind: KindDuration, Default: "2h",
-			Doc: "Default minimum gap between two episodes of the same series (per-channel overridable).",
-		},
-		{
-			Key: "sched.block_max", EnvVar: "SCHED_BLOCK_MAX", Group: GroupChannels,
-			Kind: KindInt, Default: 2,
-			Doc: "Default max consecutive programs from one series before another must air (per-channel overridable).",
-		},
-		{
-			Key: "sched.ordering", EnvVar: "SCHED_ORDERING", Group: GroupChannels,
-			Kind: KindEnum, Enum: []EnumOption{opt("sequential", "Sequential"), opt("shuffle", "Shuffle"), opt("syndication", "Syndication")}, Default: "syndication",
-			Doc: "Default program order (per-channel overridable). If a channel sets none, it uses its own strategy.",
-		},
-		{
-			Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Group: GroupChannels,
+			Key: "sched.window_hours", Label: "Schedule ahead", EnvVar: "SCHED_WINDOW_HOURS", Group: GroupChannels,
 			Kind: KindDuration, Default: "24h",
 			Doc: "How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything).",
-		},
-		{
-			Key: "seasonal.mode", EnvVar: "SEASONAL_MODE", Group: GroupChannels,
-			Kind: KindEnum, Enum: []EnumOption{opt("off", "Off"), opt("auto", "Auto (favor in-season)"), opt("exclusive", "In-season only")}, Default: "auto",
-			Doc: "How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season.",
 		},
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
@@ -982,11 +885,6 @@ func declared() []Setting {
 			Doc: "Where the ffmpeg program lives (yt-dlp needs it to combine video and audio).",
 		},
 		{
-			Key: "ingest.max_concurrent", EnvVar: "INGEST_MAX_CONCURRENT", Group: GroupFiller,
-			Kind: KindInt, Default: 2, Advanced: true,
-			Doc: "Maximum ingest sources downloaded in parallel.",
-		},
-		{
 			Key: "ingest.timeout", EnvVar: "INGEST_TIMEOUT", Group: GroupFiller,
 			Kind: KindDuration, Default: "30m", Advanced: true,
 			Doc: "How long one download may run before it's stopped, so a stuck fetch can't block others.",
@@ -1020,30 +918,16 @@ func declared() []Setting {
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off.",
 		},
-		// The starter pack (§10, V17d). A DEFAULT, not a hardcoded truth: an operator can
-		// point it at their own collection, and emptying it turns the pack off. Listing
-		// only — nothing downloads until the operator keeps a row.
-		{
-			Key: "filler.starter_collection", EnvVar: "FILLER_STARTER_COLLECTION", Group: GroupFiller,
-			Kind: KindString, Default: "classic_tv_commercials",
-			Doc: "The archive.org collection suggested as a starter pack when your clip catalog is empty. Nothing downloads until you pick from it. Leave empty to turn the suggestion off.",
-		},
-
 		// --- Users & security (§15, Phase 9) ---
 		{
-			Key: "session.ttl", EnvVar: "SESSION_TTL", Group: GroupUsersSecurity,
+			Key: "session.ttl", Label: "Sign-in lifetime", EnvVar: "SESSION_TTL", Group: GroupUsersSecurity,
 			Kind: KindDuration, Default: "720h",
 			Doc: "How long you stay signed in before needing to log in again.",
 		},
 		{
-			Key: "cookie.secure", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
+			Key: "cookie.secure", Label: "Secure cookies", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
 			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto",
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
-		},
-		{
-			Key: "user.sync_every", EnvVar: "USER_SYNC_EVERY", Group: GroupUsersSecurity,
-			Kind: KindDuration, Default: "1h", Advanced: true,
-			Doc: "How often Loomarr refreshes imported users from your media server.",
 		},
 
 		// --- SSO: a third CREDENTIAL path, never a provisioning one (§11, D-F, V8) ---
@@ -1054,24 +938,27 @@ func declared() []Setting {
 		// decision to someone else's directory. Adding either key later is a §11 conversation,
 		// not a settings change.
 		{
-			Key: "auth.sso.enabled", EnvVar: "AUTH_SSO_ENABLED", Group: GroupSSO,
+			Key: "auth.sso.enabled", Label: "Enable single sign-on", EnvVar: "AUTH_SSO_ENABLED", Group: GroupSSO,
 			Kind: KindBool, Default: "false",
 			Doc: "Let people sign in with your identity provider. They still need an account here — signing in with your provider does not create one.",
 		},
 		{
-			Key: "auth.sso.issuer", EnvVar: "AUTH_SSO_ISSUER", Group: GroupSSO,
+			Key: "auth.sso.issuer", Label: "SSO issuer URL", EnvVar: "AUTH_SSO_ISSUER", Group: GroupSSO,
 			Kind: KindURL, Default: "",
-			Doc: "Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there.",
+			Doc:      "Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there.",
+			ShowWhen: map[string][]string{"auth.sso.enabled": {"true"}},
 		},
 		{
-			Key: "auth.sso.client_id", EnvVar: "AUTH_SSO_CLIENT_ID", Group: GroupSSO,
+			Key: "auth.sso.client_id", Label: "SSO client ID", EnvVar: "AUTH_SSO_CLIENT_ID", Group: GroupSSO,
 			Kind: KindString, Default: "",
-			Doc: "The client ID your provider issued for Loomarr.",
+			Doc:      "The client ID your provider issued for Loomarr.",
+			ShowWhen: map[string][]string{"auth.sso.enabled": {"true"}},
 		},
 		{
-			Key: "auth.sso.client_secret", EnvVar: "AUTH_SSO_CLIENT_SECRET", Group: GroupSSO,
+			Key: "auth.sso.client_secret", Label: "SSO client secret", EnvVar: "AUTH_SSO_CLIENT_SECRET", Group: GroupSSO,
 			Kind: KindSecret, Default: "",
-			Doc: "The client secret your provider issued for Loomarr.",
+			Doc:      "The client secret your provider issued for Loomarr.",
+			ShowWhen: map[string][]string{"auth.sso.enabled": {"true"}},
 		},
 
 		// --- Advanced: TTLs, retention, workers, event webhook (§15) ---
@@ -1084,11 +971,6 @@ func declared() []Setting {
 			Key: "downloading.ttl", EnvVar: "DOWNLOADING_TTL", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "12h",
 			Doc: "How long a downloading title waits to finish before Loomarr gives up on it.",
-		},
-		{
-			Key: "reconcile.every", EnvVar: "RECONCILE_EVERY", Group: GroupAdvanced,
-			Kind: KindDuration, Default: "5m",
-			Doc: "How often Loomarr checks on in-progress downloads.",
 		},
 		// The background-job scheduler's per-job CRON schedules (§18.1). Sonarr/Overseerr-style
 		// 6-field seconds-leading cron; edited via the Tasks page's Modify Job modal (presets
@@ -1299,11 +1181,6 @@ func declared() []Setting {
 			Key: "job.activity_purge.schedule", EnvVar: "JOB_ACTIVITY_PURGE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 15 4 * * *",
 			Doc: "When to clean up old recent-activity entries.",
-		},
-		{
-			Key: "event.webhook_url", EnvVar: "EVENT_WEBHOOK_URL", Group: GroupAdvanced,
-			Kind: KindURL, Default: "",
-			Doc: "Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip.",
 		},
 		{
 			Key: "setup.completed", EnvVar: "SETUP_COMPLETED", Group: GroupAdvanced,

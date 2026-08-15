@@ -48,14 +48,6 @@ const mediaServer: SettingEntry[] = [
     doc: "Admin API token.",
     value: "",
   }),
-  entry({
-    key: "season.precision",
-    kind: "enum",
-    enum: ["series", "season"],
-    doc: "Availability granularity.",
-    value: "series",
-    advanced: true,
-  }),
 ];
 
 // A group's fields, controlled by whoever owns the save (config-design §5/§6): the wizard
