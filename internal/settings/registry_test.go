@@ -231,6 +231,29 @@ func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
 	}
 }
 
+func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{"playout.backend", "playout.quality_tier", "playout.audio_language", "playout.max_channels"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Advanced {
+			t.Errorf("%s should be visible without opening Advanced", key)
+		}
+	}
+
+	for _, key := range []string{"playout.encoder", "playout.ffmpeg_path", "playout.hls_dir", "playout.prepared_dir", "playout.prepared_budget_gb"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if !s.Advanced {
+			t.Errorf("%s should stay behind Advanced", key)
+		}
+	}
+}
+
 // The §8.1 model-selection keys already persisted by systemllm.go must be exactly
 // the ones the registry declares — else the in-app picker and the registry drift.
 func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
