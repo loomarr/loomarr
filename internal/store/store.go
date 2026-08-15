@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
@@ -77,6 +78,9 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// CountChannelsByStatus is the status projection for operational summaries. A missing
+	// status has no map entry; callers zero-fill the domain states they display.
+	CountChannelsByStatus(ctx context.Context) (map[schedule.ChannelStatus]int, error)
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
@@ -135,6 +139,8 @@ type ProposalStore interface {
 	// CommitProposalDenial atomically wins the submitted -> denied decision.
 	CommitProposalDenial(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
+	// CountProposalsByStatus answers queue depth without loading proposal JSON blobs.
+	CountProposalsByStatus(ctx context.Context) (map[string]int, error)
 	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
 	// one job in one status. Newest wins because a refine produces a newer approved proposal
 	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).

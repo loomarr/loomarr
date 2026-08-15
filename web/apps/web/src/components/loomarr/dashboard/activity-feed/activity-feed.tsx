@@ -1,4 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
+import { Button } from "@/components/ui/button";
 import { PanelRow } from "@/components/ui/panel-row";
 import { cn } from "@/lib/utils";
 import type { ActivityFeedProps } from "./activity-feed.type";
@@ -23,7 +24,7 @@ const LEVEL_DOT: Record<string, string> = {
   error: "bg-onair",
 };
 
-const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProps) => (
+const ActivityFeed = ({ entries, now = Date.now(), onOpen, className }: ActivityFeedProps) => (
   <section className={cn("overflow-hidden rounded-lg border border-border", className)}>
     <h2 className="border-border border-b px-4 py-3.5 font-medium text-sm">Recent activity</h2>
 
@@ -46,7 +47,15 @@ const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProp
               aria-label={e.level}
               className={cn("size-1.5 shrink-0 rounded-full", LEVEL_DOT[e.level] ?? "bg-static-500")}
             />
-            <span className="min-w-0 flex-1 text-sm">{e.text}</span>
+            <div className="min-w-0 flex-1">
+              <span className="font-mono text-2xs text-static-400 uppercase tracking-wide">{e.kind}</span>
+              <p className="text-sm">{e.text}</p>
+            </div>
+            {onOpen ? (
+              <Button variant="ghost" size="sm" onClick={() => onOpen(e)}>
+                Open
+              </Button>
+            ) : null}
           </PanelRow>
         ))}
       </ul>

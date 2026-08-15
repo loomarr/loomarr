@@ -234,6 +234,24 @@ func (s *sqlStore) ListChannels(ctx context.Context) ([]Channel, error) {
 	return scanChannels(rows)
 }
 
+func (s *sqlStore) CountChannelsByStatus(ctx context.Context) (map[schedule.ChannelStatus]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM channels GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[schedule.ChannelStatus]int)
+	for rows.Next() {
+		var status schedule.ChannelStatus
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		out[status] = count
+	}
+	return out, rows.Err()
+}
+
 func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevision int64) error {
 	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
 	if err != nil {

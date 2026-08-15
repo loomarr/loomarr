@@ -38,6 +38,7 @@ const user = (over: Partial<UserBody> = {}): UserBody => ({
   quota: 0,
   effectiveQuota: 0,
   pendingAcquisitions: 0,
+  usageAvailable: true,
   ...over,
 });
 

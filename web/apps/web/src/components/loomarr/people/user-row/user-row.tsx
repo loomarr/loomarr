@@ -1,21 +1,27 @@
-import { KeyRound, MonitorSmartphone, Server } from "lucide-react";
+import { ChevronDown, KeyRound, MonitorSmartphone, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { UserRowProps } from "./user-row.type";
 
-// UserRow — one row of the §11 allowlist. Role, quota, auto-approve, and disabled are
-// Loomarr-owned regardless of how the user authenticates, so they are all editable here;
-// the credential path is shown but never editable, because it is a consequence of how the
-// account was created (local bootstrap vs. media-server import), not a setting.
-//
-// Every control writes immediately. There is no save bar: each field is an independent
-// PATCH, and batching them would invite the "I toggled disabled and forgot to save"
-// failure on the one screen where that means someone keeps their access.
+type Confirmation = "demote" | "disable";
+
+// UserRow defaults to a readable roster row. The independent PATCH controls remain immediate,
+// but live behind Manage so a household list is not a wall of repeated form fields and danger
+// buttons. This also gives the actions room to wrap on a phone instead of overflowing the page.
 const UserRow = ({
   user,
   busy,
@@ -28,130 +34,190 @@ const UserRow = ({
   onResetPassword,
   className,
 }: UserRowProps) => {
+  const [expanded, setExpanded] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation>();
+  const [quotaError, setQuotaError] = useState(false);
   const roleId = `role-${user.id}`;
   const quotaId = `quota-${user.id}`;
   const autoId = `auto-${user.id}`;
 
+  const confirm = () => {
+    if (confirmation === "demote") onRoleChange?.("member");
+    if (confirmation === "disable") onToggleDisabled?.(true);
+    setConfirmation(undefined);
+  };
+
   return (
     <div
       className={cn(
-        "grid grid-cols-1 items-center gap-4 border-static-800 border-b p-4 last:border-b-0 md:grid-cols-[minmax(0,2fr)_auto_auto_auto_auto]",
-        // A disabled row is tinted, NOT dimmed. `opacity-60` over the whole row pushed
-        // its text under the WCAG AA contrast floor — the a11y gate caught it — and a
-        // disabled account is exactly the row an admin needs to read clearly. The
-        // "Disabled" badge carries the state; the tint carries the at-a-glance grouping.
+        "border-static-800 border-b p-4 last:border-b-0",
         user.disabled && "bg-static-900/40",
         className,
       )}
     >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate font-medium">{user.name}</p>
-          {isSelf && <Badge variant="tune">You</Badge>}
-          {user.disabled && <Badge variant="onair">Disabled</Badge>}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-40 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate font-medium">{user.name}</p>
+            {isSelf && <Badge variant="tune">You</Badge>}
+            {user.disabled && <Badge variant="onair">Disabled</Badge>}
+            {user.autoApprove && <Badge variant="signal">Auto-approve</Badge>}
+          </div>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-static-400 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              {user.local ? (
+                <KeyRound className="size-3" aria-hidden />
+              ) : (
+                <ShieldCheck className="size-3" aria-hidden />
+              )}
+              {user.local ? "Loomarr password" : "External sign-in"}
+            </span>
+            <span>{user.role === "admin" ? "Admin" : "Member"}</span>
+            <span className="font-mono tabular-nums">
+              {user.usageAvailable
+                ? `${user.pendingAcquisitions} of ${user.effectiveQuota} pending`
+                : `Pending usage unavailable · limit ${user.effectiveQuota}`}
+            </span>
+          </p>
         </div>
-        {/* Local vs imported decides whether a password reset is even meaningful for
-            this row, so it is stated rather than left for the admin to infer. */}
-        <p className="mt-1 flex items-center gap-1.5 text-static-400 text-xs">
-          {user.local ? (
-            <KeyRound className="size-3" aria-hidden />
-          ) : (
-            <Server className="size-3" aria-hidden />
-          )}
-          {user.local ? "Local account" : "Media-server account"}
-        </p>
-      </div>
 
-      <div className="flex items-center gap-2">
-        <Label htmlFor={roleId} className="text-muted-foreground text-xs">
-          Role
-        </Label>
-        <Select
-          value={user.role}
-          // Self-demotion is refused: an admin who removes their own admin role cannot
-          // undo it from the UI, and if they are the last admin nobody can.
-          disabled={busy || isSelf}
-          onValueChange={(v) => onRoleChange?.(v as "admin" | "member")}
-        >
-          <SelectTrigger id={roleId} title={isSelf ? "You cannot change your own role" : undefined}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="member">member</SelectItem>
-            <SelectItem value="admin">admin</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Label htmlFor={quotaId} className="text-muted-foreground text-xs">
-          Quota
-        </Label>
-        {/* The count against the cap. Shown only now that the cap actually BINDS
-            (§11 auto-approve): a denominator advertises a limit, and until quota was
-            enforced this would have promised one that did not exist. `effectiveQuota`
-            comes from the server so the UI never re-derives the 0-means-default rule
-            and disagrees with it. */}
-        <span
-          className="font-mono text-static-400 text-xs tabular-nums"
-          title="Pending acquisitions against the cap"
-        >
-          {`${user.pendingAcquisitions} /`}
-        </span>
-        <Input
-          id={quotaId}
-          type="number"
-          min={0}
-          className="w-20"
-          defaultValue={user.quota}
-          placeholder={String(user.effectiveQuota)}
-          disabled={busy}
-          // Commit on blur, not per keystroke: typing "12" would otherwise PATCH a
-          // quota of 1 on the way to 12.
-          onBlur={(e) => {
-            const next = Number(e.target.value);
-            if (Number.isFinite(next) && next !== user.quota) onQuotaChange?.(next);
-          }}
-        />
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id={autoId}
-          checked={user.autoApprove}
-          disabled={busy}
-          onChange={(e) => onToggleAutoApprove?.(e.target.checked)}
-        />
-        <Label htmlFor={autoId} className="text-muted-foreground text-xs">
-          Auto-approve
-        </Label>
-      </div>
-
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {onViewSessions && (
-          <Button variant="ghost" size="sm" onClick={onViewSessions} disabled={busy}>
-            <MonitorSmartphone aria-hidden />
-            Sessions
-          </Button>
-        )}
-        {/* Local accounts only — Loomarr never held an imported user's password, so
-            offering a reset would imply it could change their media-server one. */}
-        {onResetPassword && user.local && (
-          <Button variant="ghost" size="sm" onClick={onResetPassword} disabled={busy}>
-            <KeyRound aria-hidden />
-            Reset password
-          </Button>
-        )}
         <Button
-          variant={user.disabled ? "outline" : "ghost"}
+          type="button"
+          variant="outline"
           size="sm"
-          disabled={busy || isSelf}
-          title={isSelf ? "You cannot disable your own account" : undefined}
-          onClick={() => onToggleDisabled?.(!user.disabled)}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
         >
-          {user.disabled ? "Enable" : "Disable"}
+          Manage
+          <ChevronDown className={cn("transition-transform", expanded && "rotate-180")} aria-hidden />
         </Button>
       </div>
+
+      {expanded ? (
+        <div className="mt-4 grid gap-4 border-static-800 border-t pt-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={roleId} className="text-muted-foreground text-xs">
+              Role
+            </Label>
+            <Select
+              value={user.role}
+              disabled={busy || isSelf}
+              onValueChange={(value) => {
+                const role = value as "admin" | "member";
+                if (user.role === "admin" && role === "member") setConfirmation("demote");
+                else onRoleChange?.(role);
+              }}
+            >
+              <SelectTrigger id={roleId} title={isSelf ? "You cannot change your own role" : undefined}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={quotaId} className="text-muted-foreground text-xs">
+              Custom pending limit
+            </Label>
+            <Input
+              key={`${user.id}-${user.quota}`}
+              id={quotaId}
+              type="number"
+              min={0}
+              defaultValue={user.quota || ""}
+              placeholder={`Default (${user.effectiveQuota})`}
+              disabled={busy}
+              aria-invalid={quotaError || undefined}
+              aria-describedby={quotaError ? `${quotaId}-error` : `${quotaId}-hint`}
+              onChange={() => setQuotaError(false)}
+              onBlur={(event) => {
+                const raw = event.target.value.trim();
+                const next = raw === "" ? 0 : Number(raw);
+                if (!Number.isInteger(next) || next < 0) {
+                  setQuotaError(true);
+                  return;
+                }
+                setQuotaError(false);
+                if (next !== user.quota) onQuotaChange?.(next);
+              }}
+            />
+            {quotaError ? (
+              <p id={`${quotaId}-error`} className="text-onair-300 text-xs" role="alert">
+                Enter a whole number of zero or more.
+              </p>
+            ) : (
+              <p id={`${quotaId}-hint`} className="text-static-400 text-xs">
+                Leave blank to follow the system default.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 sm:self-start sm:pt-6">
+            <Checkbox
+              id={autoId}
+              checked={user.autoApprove}
+              disabled={busy}
+              onChange={(event) => onToggleAutoApprove?.(event.target.checked)}
+            />
+            <Label htmlFor={autoId} className="font-normal text-sm">
+              Approve automatically
+            </Label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end xl:self-start xl:pt-5">
+            {onViewSessions ? (
+              <Button variant="ghost" size="sm" onClick={onViewSessions} disabled={busy}>
+                <MonitorSmartphone aria-hidden />
+                Sessions
+              </Button>
+            ) : null}
+            {onResetPassword && user.local ? (
+              <Button variant="ghost" size="sm" onClick={onResetPassword} disabled={busy}>
+                <KeyRound aria-hidden />
+                Reset password
+              </Button>
+            ) : null}
+            <Button
+              variant={user.disabled ? "outline" : "ghost"}
+              size="sm"
+              disabled={busy || isSelf}
+              title={isSelf ? "You cannot disable your own account" : undefined}
+              onClick={() => {
+                if (user.disabled) onToggleDisabled?.(false);
+                else setConfirmation("disable");
+              }}
+            >
+              {user.disabled ? "Enable" : "Disable"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <Dialog open={confirmation != null} onOpenChange={(open) => !open && setConfirmation(undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmation === "demote" ? `Make ${user.name} a member?` : `Disable ${user.name}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmation === "demote"
+                ? "They will lose access to approvals, settings, channels, and people management."
+                : "They will be signed out everywhere immediately and cannot sign in until re-enabled."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmation(undefined)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirm}>
+              {confirmation === "demote" ? "Make member" : "Disable account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

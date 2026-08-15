@@ -134,8 +134,8 @@ describe("Users page", () => {
     expect(screen.getAllByText("Ada").length).toBeGreaterThan(0);
     // Exact strings, not regexes: a partial matcher also matches the ancestor <div>,
     // which contains the same text plus the user's name.
-    expect(screen.getByText("Local account")).toBeInTheDocument();
-    expect(screen.getByText("Media-server account")).toBeInTheDocument();
+    expect(screen.getByText("Loomarr password")).toBeInTheDocument();
+    expect(screen.getByText("External sign-in")).toBeInTheDocument();
   });
 
   it("patches a single field without a save step", async () => {
@@ -145,9 +145,10 @@ describe("Users page", () => {
 
     // Grace's row — the second Role select. Open it, then pick admin from its listbox
     // (only the opened Select mounts its options, so the query is unambiguous).
-    const roles = screen.getAllByLabelText("Role");
-    await userEvent.click(roles[1] as HTMLElement);
-    await userEvent.click(await screen.findByRole("option", { name: "admin" }));
+    const manage = screen.getAllByRole("button", { name: "Manage" });
+    await userEvent.click(manage[1] as HTMLElement);
+    await userEvent.click(screen.getByLabelText("Role"));
+    await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
 
     expect(patches, "changing a role should PATCH immediately").toEqual([{ role: "admin" }]);
   });
@@ -167,8 +168,9 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    const buttons = await screen.findAllByRole("button", { name: /sessions/i });
-    await userEvent.click(buttons[1] as HTMLElement);
+    const manage = await screen.findAllByRole("button", { name: "Manage" });
+    await userEvent.click(manage[1] as HTMLElement);
+    await userEvent.click(screen.getByRole("button", { name: /sessions/i }));
     expect(await screen.findByText(/1 active session for Grace/)).toBeInTheDocument();
   });
 
@@ -182,6 +184,7 @@ describe("Users page", () => {
       ],
     });
     renderAt("/people");
+    await userEvent.click(await screen.findByRole("button", { name: /import accounts/i }));
     expect(await screen.findByText("Hopper")).toBeInTheDocument();
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
@@ -195,6 +198,7 @@ describe("Users page", () => {
     stubUsers({ userSync: false });
     renderAt("/people");
     await screen.findByText("Ada");
+    await userEvent.click(screen.getByRole("button", { name: /import accounts/i }));
     expect(await screen.findByText(/connect emby or jellyfin/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
   });
@@ -209,7 +213,7 @@ describe("Users page", () => {
     // by the handler bound to `POST /v1/users`.
     const { creates } = stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: /create local account/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /add local account/i }));
     await userEvent.type(screen.getByLabelText(/username/i), "newcomer");
     await userEvent.type(screen.getByLabelText(/^password$/i), "a-good-password");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
@@ -228,7 +232,9 @@ describe("Users page", () => {
     renderAt("/people");
     // Wait on a ROW affordance, not on "Ada" — that name also renders in the nav footer
     // as the signed-in user, so it resolves before the users query settles.
-    await screen.findAllByRole("button", { name: /sessions/i });
+    const manage = await screen.findAllByRole("button", { name: "Manage" });
+    await userEvent.click(manage[0] as HTMLElement);
+    await userEvent.click(manage[1] as HTMLElement);
     const resets = screen.getAllByRole("button", { name: /reset password/i });
     expect(resets).toHaveLength(1); // Ada is local; Grace is imported
   });
@@ -236,7 +242,8 @@ describe("Users page", () => {
   it("sends the new password to the admin reset route", async () => {
     const { resets } = stubUsers();
     renderAt("/people");
-    await screen.findAllByRole("button", { name: /sessions/i });
+    const manage = await screen.findAllByRole("button", { name: "Manage" });
+    await userEvent.click(manage[0] as HTMLElement);
     await userEvent.click(screen.getByRole("button", { name: /reset password/i }));
     await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
     await userEvent.click(screen.getByRole("button", { name: /set new password/i }));

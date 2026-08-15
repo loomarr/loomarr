@@ -14,15 +14,16 @@ const user = (over: Partial<UserBody> = {}): UserBody => ({
   local: false,
   pendingAcquisitions: 2,
   effectiveQuota: 5,
+  usageAvailable: true,
   ...over,
 });
 
 describe("UserRow", () => {
   it("states the credential path, because it decides what actions apply", () => {
     const { rerender } = render(<UserRow user={user({ local: true })} />);
-    expect(screen.getByText(/local account/i)).toBeInTheDocument();
+    expect(screen.getByText(/loomarr password/i)).toBeInTheDocument();
     rerender(<UserRow user={user({ local: false })} />);
-    expect(screen.getByText(/media-server account/i)).toBeInTheDocument();
+    expect(screen.getByText(/external sign-in/i)).toBeInTheDocument();
   });
 
   it("writes each field independently, with no save step", () => {
@@ -31,10 +32,11 @@ describe("UserRow", () => {
     render(<UserRow user={user()} onRoleChange={onRoleChange} onToggleAutoApprove={onToggleAutoApprove} />);
 
     return (async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Manage" }));
       await userEvent.click(screen.getByLabelText("Role"));
-      await userEvent.click(await screen.findByRole("option", { name: "admin" }));
+      await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
       expect(onRoleChange).toHaveBeenCalledWith("admin");
-      await userEvent.click(screen.getByLabelText(/auto-approve/i));
+      await userEvent.click(screen.getByLabelText(/approve automatically/i));
       expect(onToggleAutoApprove).toHaveBeenCalledWith(true);
     })();
   });
@@ -44,7 +46,8 @@ describe("UserRow", () => {
     const onQuotaChange = vi.fn();
     render(<UserRow user={user({ quota: 5 })} onQuotaChange={onQuotaChange} />);
 
-    const field = screen.getByLabelText("Quota");
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    const field = screen.getByLabelText("Custom pending limit");
     await userEvent.clear(field);
     await userEvent.type(field, "12");
     expect(onQuotaChange).not.toHaveBeenCalled();
@@ -56,15 +59,17 @@ describe("UserRow", () => {
   it("does not re-send an unchanged quota on blur", async () => {
     const onQuotaChange = vi.fn();
     render(<UserRow user={user({ quota: 5 })} onQuotaChange={onQuotaChange} />);
-    await userEvent.click(screen.getByLabelText("Quota"));
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    await userEvent.click(screen.getByLabelText("Custom pending limit"));
     await userEvent.tab();
     expect(onQuotaChange).not.toHaveBeenCalled();
   });
 
   // The one destructive action with no in-app undo: an admin who demotes or disables
   // themselves cannot reverse it, and if they are the last admin nobody can.
-  it("refuses self-demotion and self-disable", () => {
+  it("refuses self-demotion and self-disable", async () => {
     render(<UserRow user={user({ role: "admin" })} isSelf />);
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
     expect(screen.getByLabelText("Role")).toBeDisabled();
     expect(screen.getByRole("button", { name: /disable/i })).toBeDisabled();
     expect(screen.getByText("You")).toBeInTheDocument();
@@ -74,25 +79,56 @@ describe("UserRow", () => {
     const onToggleDisabled = vi.fn();
     render(<UserRow user={user({ disabled: true })} onToggleDisabled={onToggleDisabled} />);
     expect(screen.getByText("Disabled")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
     await userEvent.click(screen.getByRole("button", { name: /enable/i }));
     expect(onToggleDisabled).toHaveBeenCalledWith(false);
   });
 
-  it("disables its controls while a change to this row is in flight", () => {
+  it("disables its controls while a change to this row is in flight", async () => {
     render(<UserRow user={user()} busy onViewSessions={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
     expect(screen.getByLabelText("Role")).toBeDisabled();
-    expect(screen.getByLabelText("Quota")).toBeDisabled();
+    expect(screen.getByLabelText("Custom pending limit")).toBeDisabled();
     expect(screen.getByRole("button", { name: /sessions/i })).toBeDisabled();
   });
 
   // The denominator was deliberately withheld until quota actually bound something
   // (§11 auto-approve): showing "2 / 5" while nothing enforced the 5 would advertise a
   // limit that did not exist.
-  it("shows pending acquisitions against the effective cap", () => {
+  it("shows pending acquisitions against the effective cap", async () => {
     render(<UserRow user={user({ pendingAcquisitions: 3, quota: 0, effectiveQuota: 5 })} />);
-    expect(screen.getByText("3 /")).toBeInTheDocument();
+    expect(screen.getByText("3 of 5 pending")).toBeInTheDocument();
     // A quota of 0 means "use the default", so the field shows the server's effective
     // value as a placeholder rather than a literal 0 the admin would read as "none".
-    expect(screen.getByLabelText("Quota")).toHaveAttribute("placeholder", "5");
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    expect(screen.getByLabelText("Custom pending limit")).toHaveAttribute("placeholder", "Default (5)");
+  });
+
+  it("does not present a failed usage read as zero pending", () => {
+    render(<UserRow user={user({ pendingAcquisitions: 0, effectiveQuota: 10, usageAvailable: false })} />);
+    expect(screen.getByText("Pending usage unavailable · limit 10")).toBeInTheDocument();
+    expect(screen.queryByText("0 of 10 pending")).not.toBeInTheDocument();
+  });
+
+  it("rejects a negative or fractional pending limit before calling the API", async () => {
+    const onQuotaChange = vi.fn();
+    render(<UserRow user={user()} onQuotaChange={onQuotaChange} />);
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    const input = screen.getByLabelText("Custom pending limit");
+    await userEvent.clear(input);
+    await userEvent.type(input, "-2");
+    await userEvent.tab();
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a whole number of zero or more.");
+    expect(onQuotaChange).not.toHaveBeenCalled();
+  });
+
+  it("confirms before disabling an account", async () => {
+    const onToggleDisabled = vi.fn();
+    render(<UserRow user={user()} onToggleDisabled={onToggleDisabled} />);
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    await userEvent.click(screen.getByRole("button", { name: "Disable" }));
+    expect(onToggleDisabled).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Disable account" }));
+    expect(onToggleDisabled).toHaveBeenCalledWith(true);
   });
 });

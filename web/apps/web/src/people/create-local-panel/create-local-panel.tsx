@@ -1,7 +1,9 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useId, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,12 +20,12 @@ import type { CreateLocalPanelProps } from "./create-local-panel.type";
 //
 // It does NOT weaken the allowlist: like import, it is an explicit admin action that
 // adds a row. Signing in still provisions nobody.
-const CreateLocalPanel = ({ onCreated, className }: CreateLocalPanelProps) => {
+const CreateLocalPanel = ({ onCreated, initiallyOpen = false, className }: CreateLocalPanelProps) => {
   const nameId = useId();
   const pwId = useId();
   const roleId = useId();
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   // Typed from the generated enum, not `string`: if the role set ever changes, the
@@ -34,7 +36,8 @@ const CreateLocalPanel = ({ onCreated, className }: CreateLocalPanelProps) => {
 
   const create = usersApi.useCreateLocalUser({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (response) => {
+        toast.success(`Created ${unwrap(response, (body) => body.name) ?? username}`);
         setUsername("");
         setPassword("");
         setRole("member");

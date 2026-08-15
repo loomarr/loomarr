@@ -88,7 +88,7 @@ type createLocalUserInput struct {
 		Username string `json:"username" minLength:"1"`
 		Password string `json:"password" format:"password" minLength:"8"`
 		Role     string `json:"role,omitempty" enum:"admin,member" doc:"Defaults to member."`
-		Quota    int    `json:"quota,omitempty" doc:"Pending-acquisition cap; 0 = the default."`
+		Quota    int    `json:"quota,omitempty" minimum:"0" doc:"Pending-acquisition cap; 0 = the default."`
 	}
 }
 type createLocalUserOutput struct {
@@ -98,6 +98,9 @@ type createLocalUserOutput struct {
 func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) (*createLocalUserOutput, error) {
 	if s.passwords == nil {
 		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
+	}
+	if in.Body.Quota < 0 {
+		return nil, errUnprocessable("Invalid quota", "A pending-acquisition limit must be zero (use the default) or a positive number.")
 	}
 	// Default to member: minting an admin should be a deliberate choice, not what
 	// happens when a field is omitted (§11 — roles gate real spending).
@@ -116,7 +119,8 @@ func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) 
 	case err != nil:
 		return nil, err
 	}
-	return &createLocalUserOutput{Body: toUserBody(u)}, nil
+	s.activity.Info(ctx, store.ActivityKindUser, u.ID, "Created local account "+u.Name)
+	return &createLocalUserOutput{Body: s.withUsage(ctx, toUserBody(u), u)}, nil
 }
 
 type resetPasswordInput struct {
@@ -142,5 +146,10 @@ func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) 
 	case err != nil:
 		return nil, err
 	}
+	name := in.ID
+	if u, getErr := s.store.GetUser(ctx, in.ID); getErr == nil {
+		name = u.Name
+	}
+	s.activity.Info(ctx, store.ActivityKindUser, in.ID, "Reset Loomarr password for "+name)
 	return &struct{}{}, nil
 }

@@ -3,13 +3,17 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -29,11 +33,64 @@ func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, store.S
 // install has been doing), which §11 keeps to admins.
 func TestDashboardPanels_RequireAdmin(t *testing.T) {
 	srv, _ := serverWithPanels(t, api.Options{})
-	for _, path := range []string{"/v1/system/services", "/v1/activity", "/v1/playout/status"} {
+	for _, path := range []string{"/v1/dashboard/summary", "/v1/system/services", "/v1/activity", "/v1/playout/status"} {
 		resp := do(t, srv, http.MethodGet, path, "", "") // no token
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("GET %s without admin → %d, want 401", path, resp.StatusCode)
 		}
+	}
+}
+
+func TestDashboardSummaryCountsOperationalStates(t *testing.T) {
+	srv, st := serverWithPanels(t, api.Options{})
+	ctx := context.Background()
+
+	for i, status := range []schedule.ChannelStatus{
+		schedule.StatusLive, schedule.StatusBuilding, schedule.StatusPaused, schedule.StatusDetached,
+	} {
+		ch := store.Channel{}
+		ch.ID = fmt.Sprintf("ch-%d", i)
+		ch.Name = ch.ID
+		ch.Number = i + 1
+		ch.Strategy = schedule.Sequential
+		ch.Status = status
+		if _, err := st.SaveChannel(ctx, ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, state := range []provision.State{
+		provision.Wanted, provision.Requested, provision.Downloading,
+		provision.Available, provision.Unavailable, provision.Unavailable,
+	} {
+		rec := provision.Record{Key: provision.Key(fmt.Sprintf("movie:tmdb:%d", i+1)), State: state}
+		if err := st.UpsertTitle(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, status := range []string{"submitted", "submitted", "approved"} {
+		p := store.Proposal{ID: fmt.Sprintf("p-%d", i), Status: status, ProposalJSON: `{}`,
+			CreatedAt: time.Now(), UpdatedAt: time.Now()}
+		if err := st.CreateProposal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/dashboard/summary", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("summary → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		OnAir, Channels, NeedsApproval, Acquiring, Unavailable int
+		GeneratedAt                                            int64 `json:"generatedAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.OnAir != 1 || body.Channels != 3 || body.NeedsApproval != 2 || body.Acquiring != 3 || body.Unavailable != 2 {
+		t.Errorf("summary = %+v", body)
+	}
+	if body.GeneratedAt <= 0 {
+		t.Error("generatedAt was not populated")
 	}
 }
 
@@ -63,6 +120,43 @@ func TestSystemServices_AlwaysReportsLoomarrItself(t *testing.T) {
 	}
 }
 
+func TestSystemServices_OmitsUnconfiguredOptionalIntegrations(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		Settings:   &fakeSettings{},
+		LiveConfig: func(string) string { return "" },
+	})
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
+	var view api.ServicesView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Rows) != 0 {
+		t.Errorf("unconfigured services rendered as incidents: %+v", view.Rows)
+	}
+}
+
+func TestSystemServices_ReportsConfiguredFixedTargetIntegration(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		Settings: &fakeSettings{},
+		LiveConfig: func(key string) string {
+			if key == "tmdb.api_key" {
+				return "configured-secret"
+			}
+			return ""
+		},
+	})
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
+	var view api.ServicesView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Rows) != 1 || view.Rows[0].Name != "tmdb" || view.Rows[0].OK {
+		t.Errorf("configured TMDB failure was not reported: %+v", view.Rows)
+	}
+}
+
 // ⚠ A failing row must say WHERE to go. A red dot with no destination is a puzzle, not a
 // diagnosis — which is what V31's "Fix →" clause is for.
 func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
@@ -70,8 +164,10 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	// and everything else as failing — a second double would be one more thing to keep in
 	// agreement with the real interface.
 	srv, _ := serverWithPanels(t, api.Options{
-		Settings:   &fakeSettings{},
-		LiveConfig: func(key string) string { return map[string]string{"seerr.url": "http://seerr.lan:5055"}[key] },
+		Settings: &fakeSettings{},
+		LiveConfig: func(key string) string {
+			return map[string]string{"seerr.url": "http://operator:embedded-secret@seerr.lan:5055/base?api_key=query-secret#fragment"}[key]
+		},
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
@@ -97,8 +193,8 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	if failing.Hint == "" {
 		t.Error("no hint on a failing row")
 	}
-	if failing.Target != "http://seerr.lan:5055" {
-		t.Errorf("target = %q, want the probed address", failing.Target)
+	if failing.Target != "http://seerr.lan:5055/base" {
+		t.Errorf("target = %q, want useful address without embedded credentials", failing.Target)
 	}
 	if failing.SettingsGroup == "" {
 		t.Error(`no settingsGroup — "Fix →" would have nowhere to send the operator`)

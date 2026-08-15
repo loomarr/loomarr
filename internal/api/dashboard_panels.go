@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/buildinfo"
+	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -54,6 +57,14 @@ type ServicesView struct {
 
 func (s *Server) registerDashboardPanels(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "dashboard-summary", Method: http.MethodGet, Path: "/v1/dashboard/summary",
+		Summary: "Compact operational counts for the admin dashboard",
+		Description: "Admin only. Computes the dashboard's headline counts in SQL rather than " +
+			"transferring full channel, title, and proposal collections to the browser.",
+		Tags: []string{"dashboard"},
+	}, RoleAdmin), s.dashboardSummary)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-services", Method: http.MethodGet, Path: "/v1/system/services",
 		Summary: "Every configured integration and whether it answers",
 		Description: "Admin only. Runs the SAME connection checks as the wizard checklist and " +
@@ -70,6 +81,45 @@ func (s *Server) registerDashboardPanels(api huma.API) {
 			"is busiest. Survives a restart.",
 		Tags: []string{"system"},
 	}, RoleAdmin), s.listActivity)
+}
+
+type dashboardSummaryOutput struct {
+	Body struct {
+		OnAir         int   `json:"onAir" doc:"Channels currently in the live state"`
+		Channels      int   `json:"channels" doc:"Managed channels, excluding detached rows"`
+		NeedsApproval int   `json:"needsApproval" doc:"Submitted proposals awaiting an admin decision"`
+		Acquiring     int   `json:"acquiring" doc:"Titles actively wanted, requested, or downloading"`
+		Unavailable   int   `json:"unavailable" doc:"Titles in the terminal unavailable state"`
+		GeneratedAt   int64 `json:"generatedAt" doc:"Unix ms when this snapshot was generated"`
+	}
+}
+
+func (s *Server) dashboardSummary(ctx context.Context, _ *struct{}) (*dashboardSummaryOutput, error) {
+	channelCounts, err := s.store.CountChannelsByStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	proposalCounts, err := s.store.CountProposalsByStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	titleCounts, err := s.store.CountTitlesByState(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &dashboardSummaryOutput{}
+	out.Body.OnAir = channelCounts[schedule.StatusLive]
+	for status, count := range channelCounts {
+		if status != schedule.StatusDetached {
+			out.Body.Channels += count
+		}
+	}
+	out.Body.NeedsApproval = proposalCounts["submitted"]
+	out.Body.Acquiring = titleCounts[provision.Wanted] + titleCounts[provision.Requested] + titleCounts[provision.Downloading]
+	out.Body.Unavailable = titleCounts[provision.Unavailable]
+	out.Body.GeneratedAt = time.Now().UnixMilli()
+	return out, nil
 }
 
 type systemServicesOutput struct {
@@ -99,12 +149,37 @@ func (s *Server) systemServices(ctx context.Context, _ *struct{}) (*systemServic
 	// convention: there is one implementation, so three surfaces cannot drift apart.
 	out.Body.Rows = make([]ServiceRow, 0, len(connectionChecklist))
 	for _, c := range s.runConnectionChecks(ctx) {
+		// The setup checklist may describe a missing optional connection while an operator is
+		// configuring it. The dashboard is an operational view: an integration that was never
+		// configured is absent, not a permanent red incident.
+		if !s.dashboardServiceConfigured(c.Name, c.Target) {
+			continue
+		}
 		out.Body.Rows = append(out.Body.Rows, ServiceRow{
 			Name: c.Name, Target: c.Target, OK: c.OK, Hint: c.Hint, DocHref: c.DocHref,
 			SettingsGroup: fixLocation[c.Name],
 		})
 	}
 	return out, nil
+}
+
+func (s *Server) dashboardServiceConfigured(name, target string) bool {
+	if target != "" {
+		return true
+	}
+	switch name {
+	case "requester":
+		return s.configValue("sonarr.url") != "" || s.configValue("radarr.url") != ""
+	case "llm":
+		return s.configValue("llm.model") != ""
+	case "tmdb":
+		return s.configValue("tmdb.api_key") != ""
+	case "livetv", "tunarr_library":
+		// These checks are only appended when the corresponding runtime service exists.
+		return true
+	default:
+		return false
+	}
 }
 
 // loomarrTarget renders the app's own identity line — "v0.9.3 · sqlite · schema 21" — matching

@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { ActivityFeed } from "./activity-feed";
 
 const NOW = Date.parse("2026-07-29T21:50:00Z");
@@ -19,6 +20,15 @@ describe("ActivityFeed", () => {
     // its wording when a channel is renamed.
     expect(screen.getByText("Darkwing Duck landed")).toBeInTheDocument();
     expect(screen.getByText("3m ago")).toBeInTheDocument();
+  });
+
+  it("exposes the activity kind and routes through the owning-surface callback", async () => {
+    const entry = { id: "a1", at: ago(3), kind: "user", level: "info", text: "Updated Grace" };
+    const onOpen = vi.fn();
+    render(<ActivityFeed now={NOW} entries={[entry]} onOpen={onOpen} />);
+    expect(screen.getByText("user")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(onOpen).toHaveBeenCalledWith(entry);
   });
 
   // The level drives the dot, and it is the only signal separating "a title arrived" from

@@ -53,6 +53,11 @@ const status = (over: Partial<PlayoutStatus> = {}): PlayoutStatus =>
   }) as PlayoutStatus;
 
 describe("PlayoutPanel", () => {
+  it("renders a failed read as an error instead of an empty healthy state", () => {
+    renderPanel(<PlayoutPanel error="Playout status is unavailable." />);
+    expect(screen.getByText("Playout status is unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing is being watched/i)).not.toBeInTheDocument();
+  });
   it("shows the human channel label, not the raw id", () => {
     renderPanel(<PlayoutPanel status={status()} />);
     expect(screen.getByText("#3 · 1980s Action Heroes")).toBeInTheDocument();

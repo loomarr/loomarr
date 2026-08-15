@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -825,6 +826,26 @@ func testProposalApprovalOverlappingTitles(t *testing.T, newStore NewStoreFunc) 
 		if _, err := s.GetTitle(ctx, rec.Key); err != nil {
 			t.Errorf("overlapping title %s missing: %v", rec.Key, err)
 		}
+	}
+}
+
+func testProposalStatusCounts(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	for i, status := range []string{"submitted", "submitted", "approved", "denied"} {
+		p := Proposal{ID: fmt.Sprintf("count-%d", i), JobID: "job-count", Status: status,
+			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
+		if err := s.CreateProposal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counts, err := s.CountProposalsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["submitted"] != 2 || counts["approved"] != 1 || counts["denied"] != 1 {
+		t.Errorf("proposal status counts = %+v", counts)
 	}
 }
 

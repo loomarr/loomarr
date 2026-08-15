@@ -1,9 +1,12 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
+import type { PatchUserInputBody } from "@loomarr/api/models/patchUserInputBody";
 import type { UserBody } from "@loomarr/api/models/userBody";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
+import { UserPlus, UsersRound } from "lucide-react";
 import { useId, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -35,13 +38,18 @@ const UsersPage = () => {
   const [resetting, setResetting] = useState<UserBody>();
   const [newPassword, setNewPassword] = useState("");
   const [resetError, setResetError] = useState("");
+  const [addMode, setAddMode] = useState<"local" | "import">();
   const resetId = useId();
 
-  const users = usersApi.useListUsers();
+  const users = usersApi.useListUsers({
+    query: { refetchInterval: 60_000, refetchOnWindowFocus: true },
+  });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: usersApi.getListUsersQueryKey() });
 
   const patch = usersApi.usePatchUser({
     mutation: {
+      onSuccess: () => toast.success("Person updated"),
+      onError: (error) => toast.error(toProblem(error).title ?? "Couldn't update that person"),
       onSettled: () => {
         setBusyUser(undefined);
         void invalidate();
@@ -50,7 +58,7 @@ const UsersPage = () => {
   });
 
   const sessions = usersApi.useListUserSessions(openSessions?.id ?? "", {
-    query: { enabled: Boolean(openSessions) },
+    query: { enabled: Boolean(openSessions), refetchInterval: 30_000, refetchOnWindowFocus: true },
   });
   const invalidateSessions = () => {
     if (openSessions) {
@@ -61,6 +69,8 @@ const UsersPage = () => {
   };
   const revoke = usersApi.useRevokeSession({
     mutation: {
+      onSuccess: () => toast.success("Session revoked"),
+      onError: (error) => toast.error(toProblem(error).title ?? "Couldn't revoke that session"),
       onSettled: () => {
         setRevoking(undefined);
         invalidateSessions();
@@ -77,6 +87,7 @@ const UsersPage = () => {
         // Their sessions are revoked server-side, so the list they might be looking at
         // is stale the moment this succeeds.
         invalidateSessions();
+        toast.success("Password reset. Every session for that account has ended.");
       },
       onError: (e) => setResetError(toProblem(e).detail ?? "Couldn't reset that password."),
     },
@@ -88,7 +99,7 @@ const UsersPage = () => {
     if (resetting) resetPassword.mutate({ id: resetting.id, data: { next: newPassword } });
   };
 
-  const edit = (id: string, body: Record<string, unknown>) => {
+  const edit = (id: string, body: PatchUserInputBody) => {
     setBusyUser(id);
     patch.mutate({ id, data: body });
   };
@@ -99,21 +110,61 @@ const UsersPage = () => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
-        title="Users"
-        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        title="People"
+        description="Control who can sign in, approve requests, and use automatic acquisition."
+        actions={
+          <>
+            <Button
+              variant={addMode === "local" ? "default" : "outline"}
+              onClick={() => setAddMode((mode) => (mode === "local" ? undefined : "local"))}
+            >
+              <UserPlus aria-hidden />
+              Add local account
+            </Button>
+            <Button
+              variant={addMode === "import" ? "default" : "outline"}
+              onClick={() => setAddMode((mode) => (mode === "import" ? undefined : "import"))}
+            >
+              <UsersRound aria-hidden />
+              Import accounts
+            </Button>
+          </>
+        }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
-        {patch.error != null && <ErrorState error={patch.error} />}
-        {revoke.error != null && <ErrorState error={revoke.error} />}
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
+        {addMode === "local" ? (
+          <CreateLocalPanel
+            initiallyOpen
+            onCreated={() => {
+              void invalidate();
+              setAddMode(undefined);
+            }}
+          />
+        ) : null}
+        {addMode === "import" ? (
+          <ImportPanel
+            onImported={() => {
+              void invalidate();
+            }}
+          />
+        ) : null}
 
         <Card>
+          <div className="flex items-center justify-between gap-3 border-static-800 border-b px-4 py-3">
+            <h2 className="font-medium text-sm">Access roster</h2>
+            {rows ? (
+              <span className="text-muted-foreground text-xs">
+                {rows.length} {rows.length === 1 ? "person" : "people"}
+              </span>
+            ) : null}
+          </div>
           {rows === undefined ? (
             <p className="p-4 text-muted-foreground text-sm">Loading users…</p>
           ) : rows.length === 0 ? (
             <EmptyState
               title="No users yet"
-              description="Import accounts from your media server below, and they can sign in with their existing password."
+              description="Use Add local account or Import accounts above to grant someone access."
             />
           ) : (
             rows.map((u) => (
@@ -197,11 +248,6 @@ const UsersPage = () => {
             <p className="text-static-400 text-xs">Disabling this account ends every session immediately.</p>
           </Card>
         )}
-
-        {/* Two ways into the allowlist, both explicit admin actions (§11): import an
-          existing media-server account, or mint a local one for someone who has none. */}
-        <CreateLocalPanel onCreated={invalidate} />
-        <ImportPanel onImported={invalidate} />
       </div>
     </div>
   );

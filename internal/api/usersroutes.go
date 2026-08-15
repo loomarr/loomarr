@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -55,6 +57,7 @@ func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error
 	}
 	out := &syncOutput{}
 	out.Body.Synced = n
+	s.activity.Info(ctx, store.ActivityKindUser, "", fmt.Sprintf("Refreshed %d external account(s)", n))
 	return out, nil
 }
 
@@ -68,6 +71,9 @@ type userBody struct {
 	// that have not landed. Shipped so the UI can show "3 / 5" HONESTLY; it was withheld
 	// until the cap actually bound something, because a denominator implies a limit.
 	PendingAcquisitions int `json:"pendingAcquisitions"`
+	// UsageAvailable distinguishes a real zero from a failed accounting read. An admin page
+	// must not turn an internal read failure into reassuring-looking "0 pending" copy.
+	UsageAvailable bool `json:"usageAvailable"`
 	// EffectiveQuota is Quota, or the configured default when Quota is 0 — so the UI
 	// never has to re-derive the fallback and disagree with the server about it.
 	EffectiveQuota int  `json:"effectiveQuota"`
@@ -107,9 +113,9 @@ func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, 
 }
 
 // withUsage fills in the quota accounting (§11). Best-effort: a usage read that fails
-// leaves the count at zero rather than failing the whole list — the Users page must still
-// render so an admin can act, and a wrong-looking zero is visibly different from a page
-// that will not load.
+// leaves the count unavailable rather than failing the whole list — the People page must still
+// render so an admin can act, while UsageAvailable prevents the zero value from being presented
+// as a successful accounting result.
 func (s *Server) withUsage(ctx context.Context, body userBody, u store.User) userBody {
 	limit := u.Quota
 	if limit <= 0 {
@@ -121,6 +127,7 @@ func (s *Server) withUsage(ctx context.Context, body userBody, u store.User) use
 		return body
 	}
 	body.PendingAcquisitions = usage.Pending
+	body.UsageAvailable = true
 	return body
 }
 
@@ -128,7 +135,7 @@ type patchUserInput struct {
 	ID   string `path:"id"`
 	Body struct {
 		Role        *string `json:"role,omitempty" enum:"admin,member"`
-		Quota       *int    `json:"quota,omitempty"`
+		Quota       *int    `json:"quota,omitempty" minimum:"0"`
 		AutoApprove *bool   `json:"autoApprove,omitempty"`
 		Disabled    *bool   `json:"disabled,omitempty"`
 	}
@@ -143,14 +150,37 @@ func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserO
 	if err != nil {
 		return nil, err
 	}
+	if in.Body.Quota != nil && *in.Body.Quota < 0 {
+		return nil, errUnprocessable("Invalid quota", "A pending-acquisition limit must be zero (use the default) or a positive number.")
+	}
+	if in.ID == userIDFromHuma(ctx) {
+		if in.Body.Role != nil && store.Role(*in.Body.Role) != store.RoleAdmin {
+			return nil, errConflict("Can't demote your own account", "Ask another admin to change your role so this session cannot strand itself without admin access.")
+		}
+		if in.Body.Disabled != nil && *in.Body.Disabled {
+			return nil, errConflict("Can't disable your own account", "Ask another admin to disable this account so this session cannot strand itself without access.")
+		}
+	}
+	changes := make([]string, 0, 4)
 	if in.Body.Role != nil {
 		u.Role = store.Role(*in.Body.Role)
+		changes = append(changes, "role to "+*in.Body.Role)
 	}
 	if in.Body.Quota != nil {
 		u.Quota = *in.Body.Quota
+		if u.Quota == 0 {
+			changes = append(changes, "quota to the default")
+		} else {
+			changes = append(changes, fmt.Sprintf("quota to %d", u.Quota))
+		}
 	}
 	if in.Body.AutoApprove != nil {
 		u.AutoApprove = *in.Body.AutoApprove
+		if u.AutoApprove {
+			changes = append(changes, "automatic approval on")
+		} else {
+			changes = append(changes, "automatic approval off")
+		}
 	}
 	// Disabling a user must immediately revoke their sessions (§11). Route it
 	// through the login service so revocation always accompanies the flag.
@@ -164,11 +194,22 @@ func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserO
 	} else if in.Body.Disabled != nil {
 		u.Disabled = *in.Body.Disabled
 	}
+	if in.Body.Disabled != nil {
+		if u.Disabled {
+			changes = append(changes, "access disabled")
+		} else {
+			changes = append(changes, "access enabled")
+		}
+	}
 
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return nil, err
 	}
-	return &patchUserOutput{Body: toUserBody(u)}, nil
+	if len(changes) > 0 {
+		s.activity.Info(ctx, store.ActivityKindUser, u.ID,
+			fmt.Sprintf("Updated %s: %s", u.Name, strings.Join(changes, ", ")))
+	}
+	return &patchUserOutput{Body: s.withUsage(ctx, toUserBody(u), u)}, nil
 }
 
 // sessionBody is one live session as an admin sees it (§11). ID is the stored SHA-256

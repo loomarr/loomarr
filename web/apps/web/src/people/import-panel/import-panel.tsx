@@ -3,6 +3,7 @@ import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { useState } from "react";
+import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,13 +28,21 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
   const candidates = usersApi.useImportCandidates({ query: { enabled: available } });
   const importUsers = usersApi.useImportUsers({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (response) => {
+        toast.success(`Imported ${pluralize(unwrap(response, (body) => body.imported) ?? 0, "account")}`);
         setPicked(new Set());
         onImported?.();
       },
     },
   });
-  const sync = usersApi.useSyncUsers({ mutation: { onSuccess: () => onImported?.() } });
+  const sync = usersApi.useSyncUsers({
+    mutation: {
+      onSuccess: (response) => {
+        toast.success(`Refreshed ${pluralize(unwrap(response, (body) => body.synced) ?? 0, "account")}`);
+        onImported?.();
+      },
+    },
+  });
 
   if (!available) {
     return (

@@ -16,7 +16,7 @@ import (
 type Activity struct {
 	ID   string `json:"id"`
 	At   int64  `json:"at"`   // unix seconds
-	Kind string `json:"kind"` // title|channel|proposal|filler|system
+	Kind string `json:"kind"` // title|channel|proposal|filler|user|system
 	// Level drives the UI's coloured dot. Bounded on the way IN (see RecordActivity) so the
 	// frontend can never receive a value it has no rendering for.
 	Level     string `json:"level"` // info|warn|error
@@ -38,6 +38,7 @@ const (
 	ActivityKindChannel  = "channel"
 	ActivityKindProposal = "proposal"
 	ActivityKindFiller   = "filler"
+	ActivityKindUser     = "user"
 	ActivityKindSystem   = "system"
 )
 

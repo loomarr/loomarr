@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -46,7 +48,7 @@ type SetupCheck struct {
 	// (§12, V31), because "media server: FAIL" without an address makes an operator go
 	// looking for which one. Empty when the probe has no configurable endpoint (TMDB) or the
 	// setting is unset.
-	Target string `json:"target,omitempty" doc:"The URL or path this check probed"`
+	Target string `json:"target,omitempty" doc:"The URL (without credentials/query) or path this check probed"`
 }
 
 // connectionChecklist is the ordered set of connection probes surfaced by
@@ -108,7 +110,7 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 			ok, hint := s.settings.Test(ctx, c.name)
 			target := ""
 			if c.targetKey != "" {
-				target = s.configValue(c.targetKey)
+				target = safeConnectionTarget(c.targetKey, s.configValue(c.targetKey))
 			}
 			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target})
 		}
@@ -145,6 +147,25 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 	}
 
 	return checks
+}
+
+// safeConnectionTarget keeps the operationally useful endpoint identity without turning a
+// health response into a credential echo. URL settings can technically contain basic-auth
+// userinfo or token-bearing query parameters even though Loomarr normally stores credentials
+// in separate secret fields; neither belongs in setup/status or the dashboard.
+func safeConnectionTarget(key, raw string) string {
+	if raw == "" || !strings.HasSuffix(key, ".url") {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "configured target"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	return u.String()
 }
 
 // configValue reads a live setting for gating optional checks; empty when the

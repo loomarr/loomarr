@@ -28,6 +28,8 @@ const MEMBER = {
   local: true,
 };
 
+const ADMIN = { ...MEMBER, id: "u1", name: "Ada", role: "admin" };
+
 // Records every URL fetched, so the test can assert the admin-only endpoints were never even
 // asked for — a lockout that still fires the requests is a lockout in appearance only.
 const stubAs = (me: unknown) => {
@@ -42,9 +44,31 @@ const stubAs = (me: unknown) => {
         return Promise.resolve(json({ ready: true, bootstrapped: true, checks: [] }));
       }
       if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: [] }));
+      if (u.includes("/v1/dashboard/summary")) {
+        return Promise.resolve(
+          json({
+            onAir: 2,
+            channels: 7,
+            needsApproval: 3,
+            acquiring: 4,
+            unavailable: 1,
+            generatedAt: Date.now(),
+          }),
+        );
+      }
+      if (u.includes("/v1/playout/status")) {
+        return Promise.resolve(json({ running: false, gpu: {}, channels: [] }));
+      }
+      if (u.includes("/v1/system/services")) {
+        return Promise.resolve(json({ loomarr: { name: "loomarr", ok: true }, rows: [] }));
+      }
+      if (u.includes("/v1/system/restart")) {
+        return Promise.resolve(json({ available: false, streamingChannels: 0, pendingKeys: [] }));
+      }
+      if (u.includes("/v1/activity")) return Promise.resolve(json({ activity: [] }));
       // Anything admin-only answers 403, as the real API would — so a screen that ignored the
       // role and queried anyway would visibly fail rather than quietly pass.
-      if (u.includes("/v1/playout/sessions")) return Promise.resolve(json({}, 403));
+      if (u.includes("/v1/playout/status")) return Promise.resolve(json({}, 403));
       return Promise.resolve(json({}));
     }),
   );
@@ -95,7 +119,26 @@ describe("Dashboard — member lockout (V16)", () => {
 
     await screen.findByText(/dashboard is for admins/i);
     await waitFor(() => {
-      expect(seen.some((u) => u.includes("/v1/playout/sessions"))).toBe(false);
+      expect(
+        seen.some((u) =>
+          ["/v1/dashboard/summary", "/v1/playout/status", "/v1/system/services", "/v1/activity"].some(
+            (path) => u.includes(path),
+          ),
+        ),
+      ).toBe(false);
     });
+  });
+
+  it("uses one operational summary instead of downloading full collections", async () => {
+    const seen = stubAs(ADMIN);
+    renderAt("/dashboard");
+
+    expect(await screen.findByText("of 7 managed channels")).toBeInTheDocument();
+    expect(screen.getByText("requests waiting on approval")).toBeInTheDocument();
+    expect(screen.getByText("titles that need attention")).toBeInTheDocument();
+    expect(seen.some((u) => u.includes("/v1/dashboard/summary"))).toBe(true);
+    expect(
+      seen.some((u) => ["/v1/channels", "/v1/titles", "/v1/proposals"].some((path) => u.includes(path))),
+    ).toBe(false);
   });
 });

@@ -171,6 +171,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
         <p className="mt-0.5 truncate text-muted-foreground text-xs">
           {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
         </p>
+        {channel.reason ? <p className="mt-1 text-caution text-xs">{channel.reason}</p> : null}
       </PanelRow.Main>
 
       <PanelRow.Meta>
@@ -203,7 +204,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   );
 };
 
-const PlayoutPanel = ({ status, loading, title = "Playout", className }: PlayoutPanelProps) => {
+const PlayoutPanel = ({ status, loading, error, title = "Playout", className }: PlayoutPanelProps) => {
   const channels = status?.channels ?? [];
 
   return (
@@ -216,26 +217,27 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
       </div>
 
       {loading && <p className="px-4 py-6 text-muted-foreground text-sm">Reading playout status…</p>}
+      {!loading && error ? <p className="px-4 py-6 text-onair-300 text-sm">{error}</p> : null}
 
       {/* On a Tunarr-backed install there is no internal playout to show, which is not the same as
           every channel being unhealthy. */}
-      {!loading && status != null && !status.running && (
+      {!loading && !error && status != null && !status.running && (
         <p className="px-4 py-6 text-muted-foreground text-sm">
           Loomarr isn't streaming these channels. Tunarr is.
         </p>
       )}
 
-      {!loading && status?.running && <GpuRow gpu={status.gpu} />}
+      {!loading && !error && status?.running && <GpuRow gpu={status.gpu} />}
 
-      {!loading && status?.running && <PreparedRow prepared={status.prepared} />}
+      {!loading && !error && status?.running && <PreparedRow prepared={status.prepared} />}
 
-      {!loading && status?.running && channels.length === 0 && (
+      {!loading && !error && status?.running && channels.length === 0 && (
         <p className="px-4 py-6 text-muted-foreground text-sm">
           No live fallback encoders are active. Prepared viewers do not create a row here.
         </p>
       )}
 
-      {status?.running && channels.length > 0 && (
+      {!error && status?.running && channels.length > 0 && (
         <ul className="flex flex-col">
           {channels.map((c) => (
             <ChannelRow key={`${c.channelId}:${c.target}`} channel={c} />

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -235,6 +236,27 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetChannel(ctx, "ch-2"); err != ErrNotFound {
 		t.Errorf("deleted channel still present: %v", err)
+	}
+}
+
+func testChannelStatusCounts(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	for i, status := range []schedule.ChannelStatus{
+		schedule.StatusLive, schedule.StatusLive, schedule.StatusBuilding, schedule.StatusDetached,
+	} {
+		ch := sampleChannel(fmt.Sprintf("count-%d", i), 100+i, time.Time{})
+		ch.Status = status
+		if _, err := s.SaveChannel(ctx, ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counts, err := s.CountChannelsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts[schedule.StatusLive] != 2 || counts[schedule.StatusBuilding] != 1 || counts[schedule.StatusDetached] != 1 {
+		t.Errorf("channel status counts = %+v", counts)
 	}
 }
 

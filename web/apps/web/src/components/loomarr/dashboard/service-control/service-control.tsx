@@ -33,7 +33,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   return (
     <section className={cn("rounded-lg border border-border p-4", className)}>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           <h2 className="font-medium text-sm">Restart Loomarr</h2>
           <p className="mt-0.5 text-muted-foreground text-sm">
@@ -71,7 +71,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       ) : null}
 
       {confirming && (
-        <div className="mt-3 flex items-center gap-2 border-border border-t pt-3">
+        <div className="mt-3 flex flex-col items-start gap-2 border-border border-t pt-3 sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-sm">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
           </p>

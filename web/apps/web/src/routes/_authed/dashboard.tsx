@@ -1,12 +1,8 @@
-import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
-import * as fillerApi from "@loomarr/api/endpoints/filler";
-import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import * as titlesApi from "@loomarr/api/endpoints/titles";
-import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
+import type { Activity } from "@loomarr/api/models/activity";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useQueries } from "@tanstack/react-query";
+import { formatRelative } from "@loomarr/core/format";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -17,6 +13,7 @@ import { ServiceControl } from "@/components/loomarr/dashboard/service-control";
 import { ServicesPanel } from "@/components/loomarr/dashboard/services-panel";
 import { StatCard } from "@/components/loomarr/dashboard/stat-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -40,43 +37,34 @@ const DashboardScreen = () => {
   // firing them would put four 403s in the console on a screen we deliberately show instead.
   const enabled = isAdmin;
 
-  const channels = channelsApi.useListChannels({ query: { enabled } });
-  // The single live-playout picture (§9.1 V47): channels on air with their throughput + cold-start,
-  // AND the GPU/LLM-VRAM contention header — one endpoint, one panel. Refreshed by the `playout` SSE
-  // frame (wired in @loomarr/core), so no refetchInterval here.
-  const playout = dashboardApi.useGetPlayoutStatus({ query: { enabled } });
-  // The approval queue's depth — the mock's `pendingCount`, the same number Queue's nav badge
-  // and its "Needs approval" tab show. One source, so they cannot disagree.
-  const pending = proposalsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
-  const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
-
-  // "Acquiring" spans every non-available state, and GET /v1/titles filters by ONE state, so
-  // this fans out and sums — the same aggregation the Queue page does.
-  const acquiring = useQueries({
-    queries: Object.values(TitleDTOState)
-      .filter((s) => s !== TitleDTOState.available)
-      .map((state) => ({ ...titlesApi.getListTitlesQueryOptions({ state }), enabled })),
+  // One compact read model replaces seven collection fetches. SSE invalidates it on title,
+  // proposal, and channel changes; the poll and focus refetch close any lossy-stream gap.
+  const summary = dashboardApi.useDashboardSummary({
+    query: { enabled, refetchInterval: 60_000, refetchOnWindowFocus: true },
   });
-  const acquiringCount = acquiring.reduce((n, q) => n + (unwrap(q.data, (b) => b.titles?.length) ?? 0), 0);
-
-  // The catalog's size comes from the WATCH endpoint, which counts it in SQL (§10 V51d).
-  //
-  // ⚠ This used to be an unbounded `useListFiller()` whose only use was `.length` — every column
-  // of every clip fetched to render one number. Paging would have made it not merely wasteful but
-  // WRONG: a 100-row default page reports "100 clips" on an install with a thousand. The same
-  // endpoint backs the Filler page header, so the two cannot disagree.
-  const fillerWatch = fillerApi.useFillerWatch({ query: { enabled } });
-
+  // The single live-playout picture (§9.1 V47): channels on air with their throughput + cold-start,
+  // AND the GPU/LLM-VRAM contention header — one endpoint, one panel. SSE catches start/stop;
+  // a 5s poll runs only while internal playout is active so moving telemetry cannot freeze.
+  const playout = dashboardApi.useGetPlayoutStatus({
+    query: {
+      enabled,
+      refetchOnWindowFocus: true,
+      refetchInterval: (query) => (unwrap(query.state.data, (body) => body.running) ? 5_000 : false),
+    },
+  });
   // Restart control (§9.2, V13). One cost query drives the restart-needed banner AND the
   // confirm line, so the two can never disagree about what a restart would do.
   const navigate = useNavigate();
-  const restartCost = systemApi.useSystemRestartCost({ query: { enabled } });
-  // ⚠ Services POLLS (30s); the feed does NOT (§12). A probe result only exists because the
-  // server went and asked, so pushing it would mean probing forever on an idle install. A
-  // feed row IS an event the server knows at write time, so it rides the `activity` frame —
-  // wired centrally in @loomarr/core, which is why there is no refetchInterval here.
-  const services = systemApi.useSystemServices({ query: { enabled, refetchInterval: 30_000 } });
-  const activity = systemApi.useListActivity({ limit: 8 }, { query: { enabled } });
+  const restartCost = systemApi.useSystemRestartCost({ query: { enabled, refetchOnWindowFocus: true } });
+  // Services probes every 30s. Activity rides SSE for latency and keeps a slower 60s poll as
+  // reconnect insurance; both revalidate on focus.
+  const services = systemApi.useSystemServices({
+    query: { enabled, refetchInterval: 30_000, refetchOnWindowFocus: true },
+  });
+  const activity = systemApi.useListActivity(
+    { limit: 8 },
+    { query: { enabled, refetchInterval: 60_000, refetchOnWindowFocus: true } },
+  );
   const [serviceError, setServiceError] = useState<string | null>(null);
   const controlRef = useRef<HTMLDivElement>(null);
   // The SHARED watch (app shell). The overlay it drives covers the whole app, so an
@@ -93,6 +81,30 @@ const DashboardScreen = () => {
     },
   });
 
+  const openActivity = (entry: Activity) => {
+    if (entry.kind === "channel" && entry.subjectId) {
+      void navigate({ to: "/channels/$id", params: { id: entry.subjectId } });
+      return;
+    }
+    if (entry.kind === "proposal") {
+      void navigate({ to: "/queue", search: { tab: "history" } });
+      return;
+    }
+    if (entry.kind === "title") {
+      void navigate({ to: "/queue", search: { tab: "flight" } });
+      return;
+    }
+    if (entry.kind === "user") {
+      void navigate({ to: "/people" });
+      return;
+    }
+    if (entry.kind === "filler") {
+      void navigate({ to: "/filler" });
+      return;
+    }
+    void navigate({ to: "/settings" });
+  };
+
   if (!isAdmin) {
     return (
       <div className="p-6">
@@ -104,15 +116,26 @@ const DashboardScreen = () => {
     );
   }
 
-  const rows = unwrap(channels.data, (b) => b.channels) ?? [];
-  const onAir = rows.filter((c) => c.status === "live").length;
+  const snapshot = unwrap(summary.data);
   const playoutStatus = unwrap(playout.data);
-  const clipCount = unwrap(fillerWatch.data, (b) => b.clips) ?? 0;
   const cost = unwrap(restartCost.data);
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Dashboard" />
+      <PageHeader
+        title="Dashboard"
+        actions={
+          <p className="text-muted-foreground text-xs" aria-live="polite">
+            {summary.error && snapshot
+              ? `Refresh failed · last updated ${formatRelative(snapshot.generatedAt)}`
+              : summary.error
+                ? "Operational summary unavailable · retrying"
+                : snapshot
+                  ? `${summary.isFetching ? "Refreshing" : "Updated"} ${formatRelative(snapshot.generatedAt)}`
+                  : "Loading operational summary…"}
+          </p>
+        }
+      />
 
       {/* ⚠ `[&>*]:shrink-0` is load-bearing: the column is a flex-col that scrolls (overflow-auto).
           Without it, when the stacked panels are taller than the viewport, flex SHRINKS each panel
@@ -129,9 +152,20 @@ const DashboardScreen = () => {
           onGoToRestart={() => controlRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
         />
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Link to="/guide">
-            <StatCard label="On air" value={onAir} note="channels in the guide right now" tone="onair" />
+            <StatCard
+              label="On air"
+              value={snapshot?.onAir ?? (summary.error ? "!" : "—")}
+              note={
+                snapshot == null
+                  ? "checking the guide"
+                  : snapshot.channels === 0
+                    ? "no channels configured"
+                    : `of ${snapshot.channels} managed ${snapshot.channels === 1 ? "channel" : "channels"}`
+              }
+              tone="onair"
+            />
           </Link>
           {/* Needs-you is the only card that is a CALL TO ACTION rather than a status, so it
               takes a colour only when the number is non-zero — a permanently pink zero would
@@ -139,23 +173,43 @@ const DashboardScreen = () => {
           <Link to="/queue" search={{ tab: "approval" }}>
             <StatCard
               label="Needs you"
-              value={pendingCount}
-              note={pendingCount > 0 ? "requests waiting on approval" : "nothing waiting"}
-              tone={pendingCount > 0 ? "suggest" : "neutral"}
+              value={snapshot?.needsApproval ?? (summary.error ? "!" : "—")}
+              note={
+                snapshot == null
+                  ? "checking the approval queue"
+                  : snapshot.needsApproval > 0
+                    ? "requests waiting on approval"
+                    : "nothing waiting"
+              }
+              tone={snapshot != null && snapshot.needsApproval > 0 ? "suggest" : "neutral"}
             />
           </Link>
           <Link to="/queue" search={{ tab: "flight" }}>
-            <StatCard label="Acquiring" value={acquiringCount} note="titles in flight" tone="tune" />
+            <StatCard
+              label="Acquiring"
+              value={snapshot?.acquiring ?? (summary.error ? "!" : "—")}
+              note="titles in flight"
+              tone="tune"
+            />
           </Link>
-          <Link to="/filler">
-            <StatCard label="Filler" value={clipCount} note="clips in the shared catalog" tone="signal" />
+          <Link to="/queue" search={{ tab: "flight" }}>
+            <StatCard
+              label="Unavailable"
+              value={snapshot?.unavailable ?? (summary.error ? "!" : "—")}
+              note={snapshot?.unavailable ? "titles that need attention" : "no failed acquisitions"}
+              tone={snapshot?.unavailable ? "onair" : "neutral"}
+            />
           </Link>
         </div>
 
         {/* One live-playout picture (§9.1 V47): channels on air with throughput + cold-start, and the
             GPU/LLM-VRAM contention header. Merged from the former Transcoding + Playout-health panels,
             which duplicated channel id/speed/hardware per row. */}
-        <PlayoutPanel status={playoutStatus} loading={playout.isLoading} />
+        <PlayoutPanel
+          status={playoutStatus}
+          loading={playout.isLoading}
+          error={playout.error ? "Playout status is unavailable. Retrying automatically." : undefined}
+        />
 
         {services.data?.status === 200 ? (
           <ServicesPanel
@@ -165,9 +219,15 @@ const DashboardScreen = () => {
             // with nowhere to go is a puzzle, not a diagnosis (§12).
             onFix={(group) => navigate({ to: "/settings/connections", hash: group })}
           />
+        ) : services.error ? (
+          <ErrorState error={services.error} onRetry={() => services.refetch()} />
         ) : null}
 
-        {activity.data?.status === 200 ? <ActivityFeed entries={activity.data.data.activity ?? []} /> : null}
+        {activity.data?.status === 200 ? (
+          <ActivityFeed entries={activity.data.data.activity ?? []} onOpen={openActivity} />
+        ) : activity.error ? (
+          <ErrorState error={activity.error} onRetry={() => activity.refetch()} />
+        ) : null}
 
         {cost ? (
           <div ref={controlRef}>

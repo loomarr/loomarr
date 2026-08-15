@@ -166,6 +166,24 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 	return scanProposals(rows)
 }
 
+func (s *sqlStore) CountProposalsByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM proposals GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		out[status] = count
+	}
+	return out, rows.Err()
+}
+
 // NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
 // the binder's "which approved proposal does this channel bind to?" query.
 //

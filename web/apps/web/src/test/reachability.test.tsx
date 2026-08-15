@@ -414,7 +414,9 @@ describe("feature-gated panels mount when their flag is on", () => {
     // and losing it leaves §11's unusual model (most apps DO auto-create) reading as an
     // oversight.
     ["/settings/security", /does not create an account here/i, "the SSO scope note"],
-    ["/people", /import from your media server/i, "the §11 import panel"],
+    // People keeps the import form behind an explicit action so the default roster stays
+    // readable; reachability is represented by the action that discloses it.
+    ["/people", /import accounts/i, "the §11 import action"],
     // ⚠ The ingest panel moved to INCOMING (V35). Discover was retired as a tab — finding
     // clips is now something you do to a source — and the download tooling went with the tab
     // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab

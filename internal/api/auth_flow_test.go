@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	activityfeed "github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/library"
@@ -51,6 +53,7 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 		Passwords:    auth.NewPasswordService(st, func() string { return "u-new" }, time.Now),
 		UserSync:     userSync,
 		CookieSecure: "false",
+		Activity:     activityfeed.New(st, slog.New(slog.DiscardHandler)),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -195,6 +198,96 @@ func TestSessionDiesOnDisable(t *testing.T) {
 	resp = authed(t, http.MethodGet, srv.URL+"/v1/auth/me", member, "")
 	if resp.StatusCode == http.StatusOK {
 		t.Error("disabled user's session still works (§19 — sessions die on disable)")
+	}
+}
+
+func TestAdminCannotDemoteOrDisableOwnSession(t *testing.T) {
+	srv, st, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	for _, body := range []string{`{"role":"member"}`, `{"disabled":true}`} {
+		resp := authed(t, http.MethodPatch, srv.URL+"/v1/users/u-boss", admin, body)
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("self mutation %s → %d, want 409", body, resp.StatusCode)
+		}
+		_ = resp.Body.Close()
+	}
+
+	u, err := st.GetUser(context.Background(), "u-boss")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != store.RoleAdmin || u.Disabled {
+		t.Errorf("self mutation changed admin to role=%q disabled=%v", u.Role, u.Disabled)
+	}
+	if resp := authed(t, http.MethodGet, srv.URL+"/v1/auth/me", admin, ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("admin session stopped working after rejected self mutation: %d", resp.StatusCode)
+	}
+}
+
+func TestPatchUserRejectsNegativeQuota(t *testing.T) {
+	srv, st, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPatch, srv.URL+"/v1/users/u-kid", admin, `{"quota":-1}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("negative quota → %d, want 422", resp.StatusCode)
+	}
+	u, err := st.GetUser(context.Background(), "u-kid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Quota != 0 {
+		t.Errorf("rejected quota persisted as %d, want 0", u.Quota)
+	}
+}
+
+func TestPatchUserReturnsUsageEnrichedBody(t *testing.T) {
+	srv, _, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPatch, srv.URL+"/v1/users/u-kid", admin, `{"quota":7}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch quota → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Quota               int  `json:"quota"`
+		EffectiveQuota      int  `json:"effectiveQuota"`
+		PendingAcquisitions int  `json:"pendingAcquisitions"`
+		UsageAvailable      bool `json:"usageAvailable"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Quota != 7 || body.EffectiveQuota != 7 || body.PendingAcquisitions != 0 || !body.UsageAvailable {
+		t.Errorf("patch body = %+v, want quota/effective 7 and pending 0", body)
+	}
+}
+
+func TestUserManagementWritesActivity(t *testing.T) {
+	srv, _, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPatch, srv.URL+"/v1/users/u-kid", admin, `{"quota":4,"autoApprove":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d, want 200", resp.StatusCode)
+	}
+	resp = authed(t, http.MethodGet, srv.URL+"/v1/activity?limit=1", admin, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("activity → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Activity []store.Activity `json:"activity"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Activity) != 1 {
+		t.Fatalf("activity rows = %d, want 1", len(body.Activity))
+	}
+	entry := body.Activity[0]
+	if entry.Kind != store.ActivityKindUser || entry.SubjectID != "u-kid" || !strings.Contains(entry.Text, "kid") {
+		t.Errorf("activity entry = %+v", entry)
 	}
 }
 
@@ -401,6 +494,20 @@ func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
 	}
 	if u.Role != store.RoleMember {
 		t.Errorf("role = %q, want member when the field is omitted", u.Role)
+	}
+}
+
+func TestCreateLocalUserRejectsNegativeQuota(t *testing.T) {
+	srv, st, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/users", admin,
+		`{"username":"negative","password":"a-good-password","quota":-1}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("create with negative quota → %d, want 422", resp.StatusCode)
+	}
+	if _, err := st.GetUserByName(context.Background(), "negative"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("rejected account lookup error = %v, want not found", err)
 	}
 }
 

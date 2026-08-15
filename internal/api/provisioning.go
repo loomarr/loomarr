@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // registerProvisioning mounts the identity-provisioning routes (§11): first-run
@@ -173,5 +175,6 @@ func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*import
 	}
 	out := &importUsersOutput{}
 	out.Body.Imported = n
+	s.activity.Info(ctx, store.ActivityKindUser, "", fmt.Sprintf("Imported %d external account(s)", n))
 	return out, nil
 }

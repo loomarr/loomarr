@@ -47,6 +47,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ChannelRevisionCAS", func(t *testing.T) { testChannelRevisionCAS(t, newStore) })
 		t.Run("ChannelTargetedRevisionWrites", func(t *testing.T) { testChannelTargetedRevisionWrites(t, newStore) })
 		t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
+		t.Run("ChannelStatusCounts", func(t *testing.T) { testChannelStatusCounts(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
@@ -69,6 +70,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ProposalApprovalSameIntentConflict", func(t *testing.T) { testProposalApprovalSameIntentConflict(t, newStore) })
 		t.Run("ProposalDecisionConcurrent", func(t *testing.T) { testProposalDecisionConcurrent(t, newStore) })
 		t.Run("ProposalApprovalOverlappingTitles", func(t *testing.T) { testProposalApprovalOverlappingTitles(t, newStore) })
+		t.Run("ProposalStatusCounts", func(t *testing.T) { testProposalStatusCounts(t, newStore) })
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
