@@ -10,12 +10,15 @@ const FillerOperations = () => (
     blocks={[
       {
         group: "filler",
-        title: "Library and sources",
+        title: "Clip folders",
+        description: "Where clips are stored and how files dropped onto this machine enter the catalog.",
+        keys: ["filler.dir", "filler.watch_dir", "filler.source.folder.enabled", "filler.sync_every"],
+      },
+      {
+        group: "filler",
+        title: "Automatic downloads",
+        description: "How often enabled sources are checked. Safety limits stay available under Advanced.",
         keys: [
-          "filler.dir",
-          "filler.watch_dir",
-          "filler.sync_every",
-          "filler.source.folder.enabled",
           "filler.fetch.every",
           "filler.fetch.max_per_run",
           "filler.fetch.max_catalog_clips",
@@ -24,12 +27,10 @@ const FillerOperations = () => (
       },
       {
         group: "filler",
-        title: "Automation",
+        title: "Clip review",
+        description: "Choose which background checks may identify, split, or set aside incoming clips.",
         keys: [
           "filler.ai_tagging",
-          "filler.autofile.enabled",
-          "filler.autofile.min_confidence",
-          "filler.autofile.normalize_loudness",
           "filler.transcribe.enabled",
           "filler.vision.enabled",
           "filler.reindex.enabled",
@@ -52,12 +53,12 @@ const FillerOperations = () => (
           "filler.max_clip_duration",
           "filler.target_lufs",
           "filler.language",
-          "filler.language_provider",
         ],
       },
       {
         group: "filler",
         title: "Pipeline limits",
+        description: "Per-pass budgets that keep background work from taking over the machine.",
         keys: [
           "filler.pipeline.max_clips",
           "filler.transcode.max_per_run",
@@ -70,6 +71,7 @@ const FillerOperations = () => (
       {
         group: "filler",
         title: "Processing tools",
+        description: "Executable and model paths for unusual source installs. The container supplies these.",
         keys: [
           "ingest.ytdlp_path",
           "ingest.ffmpeg_path",

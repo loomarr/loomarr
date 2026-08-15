@@ -151,6 +151,59 @@ func TestRegistry_AIConditionalFields(t *testing.T) {
 	}
 }
 
+func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
+	r := NewRegistry()
+	for _, s := range r.All() {
+		if s.Group != GroupFiller {
+			continue
+		}
+		if s.Label == "" {
+			t.Errorf("%s: filler workflow controls need a human label", s.Key)
+		}
+	}
+
+	for _, key := range []string{"filler.dir", "filler.watch_dir", "ingest.ytdlp_path", "ingest.ffmpeg_path", "ingest.whisper_path", "ingest.whisper_model", "filler.language_model"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Presentation != PresentationPath {
+			t.Errorf("%s presentation = %q, want path", key, s.Presentation)
+		}
+	}
+
+	for child, controller := range map[string]string{
+		"filler.autofile.min_confidence":     "filler.autofile.enabled",
+		"filler.autofile.normalize_loudness": "filler.autofile.enabled",
+		"filler.autosplit.min_confidence":    "filler.autosplit.enabled",
+	} {
+		s, ok := r.Get(child)
+		if !ok {
+			t.Fatalf("%s not declared", child)
+		}
+		allowed := s.ShowWhen[controller]
+		if len(allowed) != 1 || allowed[0] != "true" {
+			t.Errorf("%s should ShowWhen %s=true, got %v", child, controller, s.ShowWhen)
+		}
+	}
+}
+
+func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{"guide.timezone", "guide.retention_hours"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Advanced {
+			t.Errorf("%s should be visible without opening Advanced", key)
+		}
+		if s.Label == "" {
+			t.Errorf("%s needs a human label", key)
+		}
+	}
+}
+
 // The §8.1 model-selection keys already persisted by systemllm.go must be exactly
 // the ones the registry declares — else the in-app picker and the registry drift.
 func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {

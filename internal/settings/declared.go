@@ -279,8 +279,8 @@ func declared() []Setting {
 			// Empty = the viewer's own browser timezone, which is right for the household
 			// case. An operator sets it when the server and its viewers are elsewhere, or
 			// when they want the guide to read in the channels' "broadcast" timezone.
-			Key: "guide.timezone", Label: "Guide timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
+			Kind: KindString, Default: "",
 			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone.",
 		},
 		{
@@ -290,8 +290,8 @@ func declared() []Setting {
 			// CURRENT lineup, so a distant "as aired" view would be fiction — the lineup has
 			// been reconciled since. A day is honest; a month would be invention presented as
 			// history.
-			Key: "guide.retention_hours", Label: "Guide history", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
-			Kind: KindInt, Default: "24", Advanced: true,
+			Key: "guide.retention_hours", Label: "Past listings (hours)", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
+			Kind: KindInt, Default: "24",
 			Doc: "How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
 		},
 
@@ -428,8 +428,8 @@ func declared() []Setting {
 			// and configure something. It was "" for no recorded reason while its two
 			// neighbours both defaulted; that asymmetry made the whole feature opt-in by
 			// accident. Still overridable to point at an existing library on another disk.
-			Key: "filler.dir", EnvVar: "FILLER_DIR", Group: GroupFiller,
-			Kind: KindString, Default: "/data/filler", Required: FeatureFiller,
+			Key: "filler.dir", Label: "Clip library", EnvVar: "FILLER_DIR", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "/data/filler", Required: FeatureFiller,
 			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
@@ -448,13 +448,13 @@ func declared() []Setting {
 			// restart — silently, because an empty folder is also what success looks like. The
 			// scan skips `_watch` by name so a waiting file is never catalogued from its arrival
 			// path (which would then be pruned the moment intake moved it).
-			Key: "filler.watch_dir", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
-			Kind: KindString, Default: "",
+			Key: "filler.watch_dir", Label: "Drop folder", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "",
 			Doc: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
 		},
 		{
-			Key: "filler.sync_every", EnvVar: "FILLER_SYNC_EVERY", Group: GroupFiller,
-			Kind: KindDuration, Default: "15m",
+			Key: "filler.sync_every", Label: "Scan for dropped clips every", EnvVar: "FILLER_SYNC_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Default: "15m", Advanced: true,
 			Doc: "How often to re-sync the filler catalog from Tunarr's local source.",
 		},
 		{
@@ -471,12 +471,12 @@ func declared() []Setting {
 			// media-server library for clips (§10 took the media server out of the filler
 			// path), so that key would gate no work — a control that dims a row and changes
 			// nothing. The Sources tab renders that row as provenance, without a switch.
-			Key: "filler.source.folder.enabled", EnvVar: "FILLER_SOURCE_FOLDER_ENABLED", Group: GroupFiller,
+			Key: "filler.source.folder.enabled", Label: "Watch the drop folder", EnvVar: "FILLER_SOURCE_FOLDER_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
 			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
 		},
 		{
-			Key: "filler.ai_tagging", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
+			Key: "filler.ai_tagging", Label: "Tag clips with AI", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
 			Kind: KindBool, Default: false,
 			Doc: "Enable AI tagging of untagged commercials (era/audience/category).",
 		},
@@ -492,7 +492,7 @@ func declared() []Setting {
 		// reachable threshold, so the fabrication class stays with a person regardless of what
 		// this is set to. `filler.Score` owns that property and a sabotage test pins it.
 		{
-			Key: "filler.autofile.enabled", EnvVar: "FILLER_AUTOFILE_ENABLED", Group: GroupFiller,
+			Key: "filler.autofile.enabled", Label: "File confident clips automatically", EnvVar: "FILLER_AUTOFILE_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
 			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
 		},
@@ -501,16 +501,16 @@ func declared() []Setting {
 			// the language gate (~341s per clip under QEMU), so it is a deliberate opt-in, not a
 			// silent background cost. The job is SELECTIVE even when on — it only transcribes clips
 			// whose source described them thinly, never the whole catalog.
-			Key: "filler.transcribe.enabled", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: false,
+			Key: "filler.transcribe.enabled", Label: "Transcribe unclear clips", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false, Advanced: true,
 			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection.",
 		},
 		{
 			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
 			// hosted path spends multimodal tokens per clip and sends frames off the box, the local
 			// path needs an Ollama vision model. Off, or with no vision model, the job is inert.
-			Key: "filler.vision.enabled", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: false,
+			Key: "filler.vision.enabled", Label: "Inspect unclear clips with vision AI", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false, Advanced: true,
 			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
 		},
 		{
@@ -520,8 +520,8 @@ func declared() []Setting {
 			// hand-edits the taxonomy never needs it; one that does turns it on so the derived rollups
 			// re-converge on the current graph. When the taxonomy CRUD API can kick a rebuild directly,
 			// this job remains the eventual-convergence guarantee.
-			Key: "filler.reindex.enabled", EnvVar: "FILLER_REINDEX_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: false,
+			Key: "filler.reindex.enabled", Label: "Keep derived tags up to date", EnvVar: "FILLER_REINDEX_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false, Advanced: true,
 			Doc: "Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary.",
 		},
 		{
@@ -531,7 +531,7 @@ func declared() []Setting {
 			// Tying vision to `llm.model` would force an operator to switch their whole LLM to a
 			// vision model just to tag clips. Empty ⇒ fall back to `llm.model`, so an install whose
 			// main model already sees images needs no second setting.
-			Key: "filler.vision.model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
+			Key: "filler.vision.model", Label: "Vision model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
 		},
@@ -549,7 +549,7 @@ func declared() []Setting {
 			// every enum option to carry a value and a label, and an explicit word reads better in
 			// the picker than a blank row. The resolver treats "" the same way, so an env var set
 			// to empty means inherit rather than "no provider".
-			Key: "filler.vision.provider", EnvVar: "FILLER_VISION_PROVIDER", Group: GroupFiller,
+			Key: "filler.vision.provider", Label: "Vision service", EnvVar: "FILLER_VISION_PROVIDER", Group: GroupFiller,
 			Kind: KindEnum, Default: "inherit", Advanced: true,
 			Enum: []EnumOption{
 				opt("inherit", "Same as your main AI"),
@@ -562,7 +562,7 @@ func declared() []Setting {
 			// Empty + `ollama` resolves to the conventional local host, the same rule `ollamaBase`
 			// already applies to probes and pulls — so the common case (hosted text, local vision)
 			// needs the provider knob alone.
-			Key: "filler.vision.url", EnvVar: "FILLER_VISION_URL", Group: GroupFiller,
+			Key: "filler.vision.url", Label: "Vision service address", EnvVar: "FILLER_VISION_URL", Group: GroupFiller,
 			Kind: KindURL, Default: "", Advanced: true,
 			Doc:      "Where that service lives. Leave empty for a local Ollama on this machine.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"ollama", "openai"}},
@@ -573,7 +573,7 @@ func declared() []Setting {
 			// inheriting would send the operator's hosted key to whatever host they just named,
 			// including `localhost`. A local Ollama needs no key, so the common case leaves this
 			// empty and nothing is sent.
-			Key: "filler.vision.api_key", EnvVar: "FILLER_VISION_API_KEY", Group: GroupFiller,
+			Key: "filler.vision.api_key", Label: "Vision service API key", EnvVar: "FILLER_VISION_API_KEY", Group: GroupFiller,
 			Kind: KindSecret, Default: "", Advanced: true,
 			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
@@ -582,9 +582,10 @@ func declared() []Setting {
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
-			Key: "filler.autofile.min_confidence", EnvVar: "FILLER_AUTOFILE_MIN_CONFIDENCE", Group: GroupFiller,
+			Key: "filler.autofile.min_confidence", Label: "Confidence required to file", EnvVar: "FILLER_AUTOFILE_MIN_CONFIDENCE", Group: GroupFiller,
 			Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
-			Doc: "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
+			Doc:      "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
+			ShowWhen: map[string][]string{"filler.autofile.enabled": {"true"}},
 		},
 		{
 			// On-file loudness normalisation (§10 V42, wired for real in V51b).
@@ -617,9 +618,10 @@ func declared() []Setting {
 			// every pass would normalise an already-normalised file and walk the loudness down
 			// run after run. The transcode rung writes that marker after the encode lands, and
 			// its own `mezzanine` marker stops the re-encode independently.
-			Key: "filler.autofile.normalize_loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
+			Key: "filler.autofile.normalize_loudness", Label: "Rewrite files to normalize loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
 			Group: GroupFiller, Kind: KindBool, Default: false,
-			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
+			Doc:      "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
+			ShowWhen: map[string][]string{"filler.autofile.enabled": {"true"}},
 		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
@@ -641,7 +643,7 @@ func declared() []Setting {
 			// the whole reel to a human — and the measured failure mode is the gate REFUSING good
 			// reels, not admitting bad ones. Off by default meant every compilation waited for a
 			// click that the design says should be unnecessary.
-			Key: "filler.autosplit.enabled", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
+			Key: "filler.autosplit.enabled", Label: "Accept confident cuts automatically", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
 			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
 		},
@@ -650,16 +652,17 @@ func declared() []Setting {
 			// the point: one dial would force the stricter of two different failure modes to
 			// govern both. Bounded by the same range for the same reason — an ungrounded era is
 			// capped below 95, so no settable value can auto-confirm a fabricated one.
-			Key: "filler.autosplit.min_confidence", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
+			Key: "filler.autosplit.min_confidence", Label: "Confidence required to accept cuts", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
 			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
-			Doc: "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
+			Doc:      "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
+			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		{
 			// ⚠ ONE key doing two jobs on purpose. It selects which clips the split job even
 			// looks at (longer than this ⇒ a compilation worth detecting) AND it is the ceiling
 			// every segment must clear to auto-confirm. Two keys could disagree — a clip the job
 			// considers too long to be an advert must not then auto-confirm as one.
-			Key: "filler.autosplit.max_duration", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
+			Key: "filler.autosplit.max_duration", Label: "Longest expected single clip", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
 			Group: GroupFiller, Kind: KindDuration, Default: "120s",
 			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
 		},
@@ -673,7 +676,7 @@ func declared() []Setting {
 		// encoding `filler.fetch.every` uses, and the reason these are integers rather than
 		// booleans-plus-a-rate.
 		{
-			Key: "filler.pipeline.max_clips", EnvVar: "FILLER_PIPELINE_MAX_CLIPS", Group: GroupFiller,
+			Key: "filler.pipeline.max_clips", Label: "Clips prepared per pass", EnvVar: "FILLER_PIPELINE_MAX_CLIPS", Group: GroupFiller,
 			Kind: KindInt, Default: 25, Advanced: true,
 			Doc: "How many clips Loomarr advances through preparation in one pass. A large import drains over several passes rather than occupying the machine in one.",
 		},
@@ -682,17 +685,17 @@ func declared() []Setting {
 			// the GPU and this is what makes the existing catalog backfill converge over a day
 			// instead of pinning the box. Zero switches re-encoding off entirely — an escape
 			// hatch that matters, because this is the one rung that rewrites the operator's file.
-			Key: "filler.transcode.max_per_run", EnvVar: "FILLER_TRANSCODE_MAX_PER_RUN", Group: GroupFiller,
+			Key: "filler.transcode.max_per_run", Label: "Clips re-encoded per pass", EnvVar: "FILLER_TRANSCODE_MAX_PER_RUN", Group: GroupFiller,
 			Kind: KindInt, Default: 3, Advanced: true,
 			Doc: "How many clips Loomarr re-encodes to its standard format in one pass. Set to 0 to never re-encode — clips then play in whatever format they arrived in.",
 		},
 		{
-			Key: "filler.pipeline.max_whisper", EnvVar: "FILLER_PIPELINE_MAX_WHISPER", Group: GroupFiller,
+			Key: "filler.pipeline.max_whisper", Label: "Clips transcribed per pass", EnvVar: "FILLER_PIPELINE_MAX_WHISPER", Group: GroupFiller,
 			Kind: KindInt, Default: 10, Advanced: true,
 			Doc: "How many clips Loomarr listens to in one pass, for language and transcription together. Listening is slow — minutes per clip on some machines — so this keeps a pass from running away.",
 		},
 		{
-			Key: "filler.pipeline.max_vision", EnvVar: "FILLER_PIPELINE_MAX_VISION", Group: GroupFiller,
+			Key: "filler.pipeline.max_vision", Label: "Clips inspected visually per pass", EnvVar: "FILLER_PIPELINE_MAX_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 5, Advanced: true,
 			Doc: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
 		},
@@ -705,12 +708,12 @@ func declared() []Setting {
 			// A reel with more segments than this does not auto-confirm — the gate is
 			// all-or-nothing, so an ungrounded tail sends it to review, which is where a reel
 			// nobody could judge belongs.
-			Key: "filler.pipeline.max_split_vision", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
+			Key: "filler.pipeline.max_split_vision", Label: "Compilation segments inspected per pass", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 60, Advanced: true,
 			Doc: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",
 		},
 		{
-			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
+			Key: "filler.pipeline.max_splits", Label: "Compilations split per pass", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
 			Kind: KindInt, Default: 3, Advanced: true,
 			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
 		},
@@ -728,7 +731,7 @@ func declared() []Setting {
 			// if something actually LOOKED and found nothing. A clip the tagger never reached —
 			// an install with no LLM, a catalog imported before tagging existed — falls through
 			// to review, never to a reject.
-			Key: "filler.reject.unidentified", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
+			Key: "filler.reject.unidentified", Label: "Set unidentified clips aside", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
 			Doc: "Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back.",
 		},
@@ -740,40 +743,40 @@ func declared() []Setting {
 		// a trickle they can live with; the failure mode being designed against is "add a source,
 		// wake up to 8,000 files".
 		{
-			Key: "filler.fetch.every", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
+			Key: "filler.fetch.every", Label: "Check sources every", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
 			Kind: KindDuration, Default: "6h",
 			Doc: "How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself.",
 		},
 		{
-			Key: "filler.fetch.max_per_run", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
-			Kind: KindInt, Default: 10, Validate: positiveLimit,
+			Key: "filler.fetch.max_per_run", Label: "Downloads per source check", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Advanced: true, Validate: positiveLimit,
 			Doc: "How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once.",
 		},
 		{
 			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
 			// a deliberate act and is not stopped by this — a ceiling on what happens while
 			// nobody is looking is not a ceiling on what someone chooses to do.
-			Key: "filler.fetch.max_catalog_clips", EnvVar: "FILLER_FETCH_MAX_CATALOG_CLIPS", Group: GroupFiller,
-			Kind: KindInt, Default: 2000, Validate: positiveLimit,
+			Key: "filler.fetch.max_catalog_clips", Label: "Automatic-download catalog limit", EnvVar: "FILLER_FETCH_MAX_CATALOG_CLIPS", Group: GroupFiller,
+			Kind: KindInt, Default: 2000, Advanced: true, Validate: positiveLimit,
 			Doc: "Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand.",
 		},
 		{
-			Key: "filler.fetch.max_disk_gb", EnvVar: "FILLER_FETCH_MAX_DISK_GB", Group: GroupFiller,
-			Kind: KindInt, Default: 20, Validate: positiveLimit,
+			Key: "filler.fetch.max_disk_gb", Label: "Automatic-download storage limit (GB)", EnvVar: "FILLER_FETCH_MAX_DISK_GB", Group: GroupFiller,
+			Kind: KindInt, Default: 20, Advanced: true, Validate: positiveLimit,
 			Doc: "Stop fetching automatically once the filler folder reaches this size in GB.",
 		},
 		{
-			Key: "filler.breaks_per_hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,
+			Key: "filler.breaks_per_hour", Label: "Breaks per program hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,
 			Kind: KindInt, Default: 4,
 			Doc: "Commercial-break density: breaks interleaved per program hour.",
 		},
 		{
-			Key: "filler.pod_max", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
+			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
 			Kind: KindInt, Default: 4,
 			Doc: "Maximum clips per commercial pod.",
 		},
 		{
-			Key: "filler.cooldown_seconds", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
+			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
 			Kind: KindInt, Default: 30, Advanced: true,
 			Doc: "Seconds before the same commercial can play again.",
 		},
@@ -786,12 +789,12 @@ func declared() []Setting {
 		// Advanced: an operator who does not know what 240p looks like in a break should never
 		// meet this, and one who does will go looking.
 		{
-			Key: "filler.min_quality", EnvVar: "FILLER_MIN_QUALITY", Group: GroupFiller,
+			Key: "filler.min_quality", Label: "Minimum picture height (px)", EnvVar: "FILLER_MIN_QUALITY", Group: GroupFiller,
 			Kind: KindInt, Default: 0, Advanced: true,
 			Doc: "Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution.",
 		},
 		{
-			Key: "filler.weight", EnvVar: "FILLER_WEIGHT", Group: GroupFiller,
+			Key: "filler.weight", Label: "Selection weight", EnvVar: "FILLER_WEIGHT", Group: GroupFiller,
 			Kind: KindInt, Default: 1, Advanced: true,
 			Doc: "How heavily this commercial set is drawn from, relative to others.",
 		},
@@ -802,7 +805,7 @@ func declared() []Setting {
 			//
 			// It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated
 			// download passed it and sat filed-and-airable in the dev catalog.
-			Key: "filler.min_duration", EnvVar: "FILLER_MIN_DURATION", Group: GroupFiller,
+			Key: "filler.min_duration", Label: "Reject files shorter than", EnvVar: "FILLER_MIN_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "10s", Advanced: true,
 			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
 		},
@@ -820,7 +823,7 @@ func declared() []Setting {
 			// who has not chosen an expiry has not agreed to have recordings deleted. A reel that
 			// produced NO clips is never eligible at any window — it is the only copy of that
 			// content, and reaping it would destroy material Loomarr never managed to use.
-			Key: "filler.split.review_window", EnvVar: "FILLER_SPLIT_REVIEW_WINDOW", Group: GroupFiller,
+			Key: "filler.split.review_window", Label: "Keep unreviewed cuts for", EnvVar: "FILLER_SPLIT_REVIEW_WINDOW", Group: GroupFiller,
 			Kind: KindDuration, Default: "720h", Advanced: true,
 			Doc: "How long cuts you haven't reviewed wait before Loomarr gives up on them. When the time is up it drops the leftover cuts and DELETES the original recording to reclaim the space — but only for recordings that already produced clips, so nothing is lost that was never used. The clips themselves are never touched. Set to 0s to keep everything forever.",
 		},
@@ -839,12 +842,12 @@ func declared() []Setting {
 			// and called the pair a diagnosis. Wiring them is what makes that strip mean something.
 			//
 			// Both default to 0 = OFF, so no existing install changes behaviour on upgrade.
-			Key: "filler.min_clip_duration", EnvVar: "FILLER_MIN_CLIP_DURATION", Group: GroupFiller,
+			Key: "filler.min_clip_duration", Label: "Shortest clip used automatically", EnvVar: "FILLER_MIN_CLIP_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "0s", Advanced: true,
 			Doc: "Commercials shorter than this are not drawn into breaks automatically. 0s disables the floor. Unlike the minimum clip length above, this never rejects a clip — it stays in the catalog and can still be pinned to a channel.",
 		},
 		{
-			Key: "filler.max_clip_duration", EnvVar: "FILLER_MAX_CLIP_DURATION", Group: GroupFiller,
+			Key: "filler.max_clip_duration", Label: "Longest clip used automatically", EnvVar: "FILLER_MAX_CLIP_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "0s", Advanced: true,
 			Doc: "Commercials longer than this are not drawn into breaks automatically — the guard against a three-minute infomercial filling a thirty-second gap. 0s disables the ceiling. Never rejects a clip; it stays in the catalog and can still be pinned.",
 		},
@@ -855,14 +858,14 @@ func declared() []Setting {
 			//
 			// Measured spread across real fetched clips: -21.8 to -32.6 LUFS, ~11 dB of
 			// clip-to-clip jump. -23 is the broadcast target.
-			Key: "filler.target_lufs", EnvVar: "FILLER_TARGET_LUFS", Group: GroupFiller,
+			Key: "filler.target_lufs", Label: "Playback loudness target (LUFS)", EnvVar: "FILLER_TARGET_LUFS", Group: GroupFiller,
 			Kind: KindString, Default: "-23", Advanced: true,
 			Doc: "Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded.",
 		},
 		{
 			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
-			Key: "filler.language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
+			Key: "filler.language", Label: "Expected spoken language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
 			Kind: KindString, Default: "en", Advanced: true,
 			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. Empty turns the language check off.",
 		},
@@ -877,7 +880,7 @@ func declared() []Setting {
 			//
 			// ⚠ whisper is ~3s per clip natively but **~341s under QEMU**, which is why the job
 			// runs in the background and why an arm64 install effectively needs the hosted path.
-			Key: "filler.language_provider", EnvVar: "FILLER_LANGUAGE_PROVIDER", Group: GroupFiller,
+			Key: "filler.language_provider", Label: "Language detection service", EnvVar: "FILLER_LANGUAGE_PROVIDER", Group: GroupFiller,
 			Kind: KindEnum, Enum: []EnumOption{
 				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
 			},
@@ -894,17 +897,17 @@ func declared() []Setting {
 		// than the image ships — yt-dlp releases fixes far faster than we cut images,
 		// and a stale one silently stops extracting from YouTube.
 		{
-			Key: "ingest.ytdlp_path", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "ingest.ytdlp_path", Label: "yt-dlp executable", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off.",
 		},
 		{
-			Key: "ingest.ffmpeg_path", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "ingest.ffmpeg_path", Label: "ffmpeg executable", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "Where the ffmpeg program lives (yt-dlp needs it to combine video and audio).",
 		},
 		{
-			Key: "ingest.timeout", EnvVar: "INGEST_TIMEOUT", Group: GroupFiller,
+			Key: "ingest.timeout", Label: "Download timeout", EnvVar: "INGEST_TIMEOUT", Group: GroupFiller,
 			Kind: KindDuration, Default: "30m", Advanced: true,
 			Doc: "How long one download may run before it's stopped, so a stuck fetch can't block others.",
 		},
@@ -912,13 +915,13 @@ func declared() []Setting {
 		// step is unavailable and over-long segments surface as UNSPLITTABLE in the
 		// review rather than being guessed at — coarse splitting needs only ffmpeg.
 		{
-			Key: "ingest.whisper_path", EnvVar: "INGEST_WHISPER_PATH", Group: GroupFiller,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "ingest.whisper_path", Label: "whisper executable", EnvVar: "INGEST_WHISPER_PATH", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks.",
 		},
 		{
-			Key: "ingest.whisper_model", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "ingest.whisper_model", Label: "Transcription model file", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
 		},
 		{
@@ -933,8 +936,8 @@ func declared() []Setting {
 			//
 			// Empty ⇒ local language detection is unavailable and the gate stays inert; the image
 			// sets it, a source build does not.
-			Key: "filler.language_model", EnvVar: "FILLER_LANGUAGE_MODEL", Group: GroupFiller,
-			Kind: KindString, Default: "", Advanced: true,
+			Key: "filler.language_model", Label: "Language detection model file", EnvVar: "FILLER_LANGUAGE_MODEL", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
 			Doc: "The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off.",
 		},
 		// --- Users & security (§15, Phase 9) ---

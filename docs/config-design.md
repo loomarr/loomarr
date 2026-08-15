@@ -269,6 +269,16 @@ only in the raw escape hatch; workflow forms never derive product copy from iden
 
 **Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
+**One curated home, with progressive disclosure.** `All settings` remains the searchable escape
+hatch, but every key has only one task-shaped editor elsewhere. A control does not appear on both
+an operational workflow and a generic Settings page: the workflow owns it when its effect is best
+understood beside the affected work (for example, auto-filing beside Incoming clips), while service
+and model configuration stays in Settings. Workflow pages group controls by the question they answer,
+show ordinary choices first, and put tuning limits, executable paths, and pipeline budgets behind the
+group's Advanced disclosure. A safe default is not a reason to make its tuning knob part of the
+everyday path. Group headings carry a one-line explanation when the distinction would otherwise be
+unclear.
+
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
 navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
@@ -293,6 +303,11 @@ do not "stage" regenerating a secret, and a Save button next to *Run now* would 
 
 Everything else on every page goes through the bar. A fifth exception should be argued for
 against this list, not added quietly.
+
+This applies to contextual workflow editors too. Filler's Incoming-page auto-filing panel is the
+curated home for its enable switch, confidence threshold, and destructive on-file loudness option,
+but those values are staged inside the panel and committed with an explicit **Save auto-filing**
+action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). **Broken blocks open, healthy ones collapse**, so the page opens focused on what needs attention — and a fully set-up install shows a page of quiet collapsed blocks with nothing to worry about.
 

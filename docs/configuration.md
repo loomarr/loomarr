@@ -51,8 +51,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `playout.prepared_dir` (`PLAYOUT_PREPARED_DIR`) | string | `/data/prepared` | Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart. _(advanced)_ |
 | `playout.prepared_budget_gb` (`PLAYOUT_PREPARED_BUDGET_GB`) | int | `512` | Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart. _(advanced)_ |
 | `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `4` | How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate. |
-| `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. _(advanced)_ |
-| `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. _(advanced)_ |
+| `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
+| `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
 ## Backup
 
@@ -140,13 +140,13 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. |
-| `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. |
+| `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. _(advanced)_ |
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.autofile.enabled` (`FILLER_AUTOFILE_ENABLED`) | bool | `true` | File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming. |
-| `filler.transcribe.enabled` (`FILLER_TRANSCRIBE_ENABLED`) | bool | `false` | Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection. |
-| `filler.vision.enabled` (`FILLER_VISION_ENABLED`) | bool | `false` | Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model. |
-| `filler.reindex.enabled` (`FILLER_REINDEX_ENABLED`) | bool | `false` | Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary. |
+| `filler.transcribe.enabled` (`FILLER_TRANSCRIBE_ENABLED`) | bool | `false` | Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection. _(advanced)_ |
+| `filler.vision.enabled` (`FILLER_VISION_ENABLED`) | bool | `false` | Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model. _(advanced)_ |
+| `filler.reindex.enabled` (`FILLER_REINDEX_ENABLED`) | bool | `false` | Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary. _(advanced)_ |
 | `filler.vision.model` (`FILLER_VISION_MODEL`) | string | — | Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images. _(advanced)_ |
 | `filler.vision.provider` (`FILLER_VISION_PROVIDER`) | enum | `inherit` | Which service reads clip frames. Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service. _(advanced; one of: inherit \| ollama \| openai)_ |
 | `filler.vision.url` (`FILLER_VISION_URL`) | url | — | Where that service lives. Leave empty for a local Ollama on this machine. _(advanced)_ |
@@ -164,9 +164,9 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.pipeline.max_splits` (`FILLER_PIPELINE_MAX_SPLITS`) | int | `3` | How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes. _(advanced)_ |
 | `filler.reject.unidentified` (`FILLER_REJECT_UNIDENTIFIED`) | bool | `true` | Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back. |
 | `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself. |
-| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. |
-| `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. |
-| `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. |
+| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. _(advanced)_ |
+| `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
+| `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
