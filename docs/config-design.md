@@ -197,7 +197,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
-| **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
+| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
 ⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
@@ -308,6 +308,14 @@ operator changes a preference. Tunarr-backed channels keep their encoding profil
 Tunarr; Playback explains that ownership instead of presenting Loomarr's internal controls as if they
 reconfigured Tunarr.
 
+Connections applies the same rule to service-owned identifiers. Loomarr automatically chooses
+Tunarr's Default transcode profile and the first Sonarr/Radarr profile and root folder when their
+fields are blank. Their free-form identifiers are therefore labelled as **overrides** and remain
+behind the connection block's Advanced disclosure; the ordinary path asks only how to reach the
+service. Security likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
+and is the safe ordinary path; changing the transport policy is deployment troubleshooting, not a
+routine sign-in preference.
+
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
 navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
@@ -338,7 +346,7 @@ curated home for its enable switch, confidence threshold, and destructive on-fil
 but those values are staged inside the panel and committed with an explicit **Save auto-filing**
 action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
-**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). **Broken blocks open, healthy ones collapse**, so the page opens focused on what needs attention — and a fully set-up install shows a page of quiet collapsed blocks with nothing to worry about.
+**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 
 **Wiring is an effect of saving, not a manual action.** Registering Tunarr as a tuner/guide source in the media server (`livetv`) and pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from the saved connection values* — there is no decision to make and re-running is a no-op. So a Connections save runs them server-side automatically (`settingsPatch` → both connectors, best-effort and non-fatal: a wiring failure never fails the save and surfaces on the relevant connection's own status). The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the Tunarr connection (the Connections step) already auto-wires the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the Tunarr connection's own verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
 

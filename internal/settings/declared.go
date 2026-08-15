@@ -148,13 +148,13 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "sonarr.quality_profile", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
+			Key: "sonarr.quality_profile", Label: "Sonarr quality profile override", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "sonarr.root_folder", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
+			Key: "sonarr.root_folder", Label: "Sonarr root folder override", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Sonarr root folder path. Blank = Sonarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
@@ -172,13 +172,13 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "radarr.quality_profile", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
+			Key: "radarr.quality_profile", Label: "Radarr quality profile override", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "radarr.root_folder", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
+			Key: "radarr.root_folder", Label: "Radarr root folder override", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr root folder path. Blank = Radarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
@@ -191,7 +191,7 @@ func declared() []Setting {
 			Doc: "Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels.",
 		},
 		{
-			Key: "tunarr.transcode_config_id", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
+			Key: "tunarr.transcode_config_id", Label: "Transcode profile override", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
 		},
@@ -992,7 +992,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "cookie.secure", Label: "Secure cookies", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
-			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto",
+			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto", Advanced: true,
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
 

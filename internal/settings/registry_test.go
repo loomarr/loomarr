@@ -254,6 +254,34 @@ func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 	}
 }
 
+func TestRegistry_ConnectionAndSecurityOverridesStayAdvanced(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{
+		"sonarr.quality_profile",
+		"sonarr.root_folder",
+		"radarr.quality_profile",
+		"radarr.root_folder",
+		"tunarr.transcode_config_id",
+		"cookie.secure",
+	} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if !s.Advanced {
+			t.Errorf("%s should stay behind Advanced", key)
+		}
+	}
+
+	session, ok := r.Get("session.ttl")
+	if !ok {
+		t.Fatal("session.ttl not declared")
+	}
+	if session.Advanced {
+		t.Error("session.ttl should remain an ordinary sign-in preference")
+	}
+}
+
 // The §8.1 model-selection keys already persisted by systemllm.go must be exactly
 // the ones the registry declares — else the in-app picker and the registry drift.
 func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
