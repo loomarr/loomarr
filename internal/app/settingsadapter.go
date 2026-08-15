@@ -2,10 +2,15 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/programmer"
@@ -288,7 +293,62 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			}
 			return true, ""
 		},
+		// filler (§10): unlike a remote integration, the dependency is local storage. The probe
+		// verifies the catalog root can be listed and written, then checks the effective drop folder
+		// (including the derived <root>/_watch default). A non-empty configured path is not health.
+		"filler": func(_ context.Context) (bool, string) {
+			root := set.str("filler.dir")
+			if root == "" {
+				return false, "set the filler clip library folder"
+			}
+			if err := probeWritableDirectory(root); err != nil {
+				return false, "clip library is not usable: " + err.Error()
+			}
+			watch := filler.WatchDir(root, set.str("filler.watch_dir"))
+			if err := probeWritableDirectory(watch); err != nil {
+				return false, "drop folder is not usable: " + err.Error()
+			}
+			return true, ""
+		},
 	}
+}
+
+func probeWritableDirectory(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s does not exist", dir)
+		}
+		return fmt.Errorf("inspect %s: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a folder", dir)
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", dir, err)
+	}
+	_, readErr := f.Readdirnames(1)
+	closeErr := f.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return fmt.Errorf("read %s: %w", dir, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close %s: %w", dir, closeErr)
+	}
+	probe, err := os.CreateTemp(dir, ".loomarr-health-*")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", dir, err)
+	}
+	name := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("write %s: %w", dir, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return fmt.Errorf("clean up test file in %s: %w", dir, err)
+	}
+	return nil
 }
 
 // toAPIEnumOptions carries the registry's {value, label} enum choices to the API

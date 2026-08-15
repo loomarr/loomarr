@@ -18,7 +18,7 @@ import { IncomingTab } from "./incoming-tab";
 // still paid for a queue that is admin-only server-side.
 //
 // ⚠ These tests assert the REQUEST BODIES, not just that a click did something. The BE's
-// `UpdateClipTags` writes era and audience unconditionally, so a confirm that sends a bare
+// `UpdateClipClassification` writes era and audience unconditionally, so a confirm that sends a bare
 // `{era}` silently wipes audience. That is a data-loss bug no rendering assertion can see, and
 // this call site reproduced it once already. `category` is NOT part of the body (§10 V45a): it
 // is a derived shadow of the taxonomy tags, and this confirm never touches tags at all.
@@ -135,9 +135,9 @@ describe("IncomingTab", () => {
   //
   // It goes through the existing `asSuggested` flag rather than a PATCH chained to a file: the
   // server confirms each clip's own suggestion and files in one request, so there is no window
-  // where a clip is filed carrying an unconfirmed guess. The tag-preservation worry this test
-  // used to carry lives on the server now — `UpdateClipTags` writes all three columns and
-  // `asSuggested` passes audience and category through, asserted in `fillerfile_test.go`.
+  // where a clip is filed carrying an unconfirmed guess. Scalar preservation lives on the server:
+  // `UpdateClipClassification` carries audience through, while taxonomy and category remain in
+  // their separate transaction, as asserted in `fillerfile_test.go`.
   it("confirming a guessed era files the clip as suggested, in one request", async () => {
     const { patches, files } = stubIncoming();
     renderTab();

@@ -368,6 +368,13 @@ type FillerService interface {
 	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
 }
 
+// FillerRewinder is the optional recovery seam behind the Incoming UI. Separate from
+// FillerService so a runtime without a pipeline reports 501 and lightweight callers need not fake
+// a recovery operation they cannot perform.
+type FillerRewinder interface {
+	Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error
+}
+
 // DiscoveredClip is one candidate the operator could add (§10, V33).
 //
 // ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no path and no tags — only what the

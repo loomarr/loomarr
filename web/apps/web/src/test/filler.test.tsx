@@ -1,7 +1,14 @@
-import type { ClipDTO, FillerIncomingOutputBody, FillerWatchOutputBody, MeBody } from "@loomarr/api";
+import type {
+  ClipDTO,
+  FillerIncomingOutputBody,
+  FillerWatchOutputBody,
+  ListTaxonomyOutputBody,
+  MeBody,
+} from "@loomarr/api";
 import {
   getBulkRemoveFillerMockHandler,
   getBulkTagFillerMockHandler,
+  getCreateTaxonMockHandler,
   getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
@@ -10,6 +17,7 @@ import {
   getListFillerMockHandler,
   getListTaxonomyMockHandler,
   getMeMockHandler,
+  getRewindFillerClipMockHandler,
   getSettingsListMockHandler,
   getSplitFillerMockHandler,
   getSyncFillerMockHandler,
@@ -20,6 +28,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Toaster } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { me } from "@/test/fixtures/users";
@@ -42,6 +51,8 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   era: 1992,
   audience: "kids",
   category: "cereal",
+  tags: ["cereal", "food"],
+  assertedTags: ["cereal"],
   tagged: true,
   aiTagged: false,
   playCount: 0,
@@ -63,6 +74,7 @@ type Opts = {
   held?: ClipDTO[];
   // The review queue's payload. Defaults to empty — most tests here are about the catalog.
   incoming?: Partial<FillerIncomingOutputBody>;
+  taxonomy?: ListTaxonomyOutputBody;
 };
 
 // The SSE stream, captured so a test can fire frames at the app: the split job's terminal
@@ -107,12 +119,15 @@ const stubFiller = ({
   watch,
   held = [],
   incoming,
+  taxonomy,
 }: Opts = {}) => {
   CaptureEventSource.listeners = new Map();
   const tagPatches: unknown[] = [];
   const bulkRemoves: unknown[] = [];
   const bulkTags: unknown[] = [];
   const listQueries: string[] = [];
+  const rewinds: unknown[] = [];
+  const taxonCreates: unknown[] = [];
   let splits = 0;
 
   server.use(
@@ -134,6 +149,18 @@ const stubFiller = ({
     getTagFillerClipMockHandler(async ({ request }) => {
       tagPatches.push(await request.json());
       return clips[0] ?? clip();
+    }),
+    getRewindFillerClipMockHandler(async ({ request }) => {
+      rewinds.push(await request.json());
+    }),
+    getCreateTaxonMockHandler(async ({ request }) => {
+      const body = (await request.json()) as {
+        slug: string;
+        label: string;
+        axis: "product" | "format" | "seasonal" | "audience-cue";
+      };
+      taxonCreates.push(body);
+      return { ...body, assertedClips: 0, matchedClips: 0, storedClips: 0 };
     }),
     getFillerPoolMockHandler({
       clips: clips.length,
@@ -195,13 +222,21 @@ const stubFiller = ({
     // ⚠ FOUND BY THE GUARD. The tag editor reads the taxonomy to build its tag picker, and the
     // old catch-all answered it with `{}` — so `taxa` was undefined every time the editor opened
     // and the picker rendered from nothing.
-    getListTaxonomyMockHandler({ taxa: [] }),
+    getListTaxonomyMockHandler(
+      taxonomy ?? {
+        taxa: [],
+        totalClips: clips.length,
+        taggedClips: 0,
+        unclassifiedClips: clips.length,
+        axisCoverage: [],
+      },
+    ),
     getSettingsListMockHandler({ features, settings: [] }),
     ...appHandlers(),
   );
 
   vi.stubGlobal("EventSource", CaptureEventSource);
-  return { tagPatches, bulkRemoves, bulkTags, listQueries, splitCount: () => splits };
+  return { tagPatches, bulkRemoves, bulkTags, listQueries, rewinds, taxonCreates, splitCount: () => splits };
 };
 
 const renderAt = (path: string) => {
@@ -214,6 +249,7 @@ const renderAt = (path: string) => {
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
+      <Toaster />
     </QueryClientProvider>,
   );
   return router;
@@ -336,8 +372,10 @@ describe("Filler page", () => {
   // where it belongs — `scripts/check-retired.sh` greps the whole tree for the dead image name,
   // which is stronger than one component test asserting one string is missing from one panel.
 
-  it("opens the tag editor and saves a corrected kind", async () => {
-    const { tagPatches } = stubFiller({ clips: [clip({ kind: "commercial", name: "Some Trailer" })] });
+  it("opens the tag editor and saves corrected structural and grounded facts", async () => {
+    const { tagPatches } = stubFiller({
+      clips: [clip({ kind: "commercial", name: "Some Trailer", brand: "Wrong brand" })],
+    });
     renderAt("/filler");
     await screen.findByText("Some Trailer");
 
@@ -350,17 +388,156 @@ describe("Filler page", () => {
     const editor = await screen.findByRole("region", { name: /edit tags: some trailer/i });
     await userEvent.click(within(editor).getByLabelText("Kind"));
     await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
+    await userEvent.clear(within(editor).getByLabelText("Brand"));
+    await userEvent.type(within(editor).getByLabelText("Brand"), "Warner Bros.");
     await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
 
     // ⚠ Was `find(([, i]) => i?.method === "PATCH")` — "a PATCH, to anything". `tagPatches` is fed
     // only by the resolver bound to `PATCH /v1/filler/tags`.
     await expect.poll(() => tagPatches).toHaveLength(1);
     expect((tagPatches[0] as { kind: string }).kind).toBe("trailer");
+    expect((tagPatches[0] as { brand: string }).brand).toBe("Warner Bros.");
+  });
+
+  it("round-trips only directly assigned tags, never inherited rollups", async () => {
+    const { tagPatches } = stubFiller({
+      clips: [clip({ tags: ["cereal", "food"], assertedTags: ["cereal"] })],
+      taxonomy: {
+        totalClips: 1,
+        taggedClips: 1,
+        unclassifiedClips: 0,
+        axisCoverage: [],
+        taxa: [
+          { slug: "food", label: "Food", axis: "product", assertedClips: 0, matchedClips: 1, storedClips: 0 },
+          {
+            slug: "cereal",
+            label: "Cereal",
+            axis: "product",
+            parent: "food",
+            assertedClips: 1,
+            matchedClips: 1,
+            storedClips: 1,
+          },
+        ],
+      },
+    });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
+    const editor = await screen.findByRole("region", { name: /edit tags: frosted flakes/i });
+    expect(within(editor).getByRole("button", { name: /cereal$/i })).toHaveAttribute("aria-pressed", "true");
+    expect(within(editor).getByRole("button", { name: "Food" })).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
+
+    await expect.poll(() => tagPatches).toHaveLength(1);
+    expect((tagPatches[0] as { tags: string[] }).tags).toEqual(["cereal"]);
+  });
+
+  it("makes taxonomy hierarchy and coverage understandable, then links into the matching catalog", async () => {
+    const { listQueries } = stubFiller({
+      taxonomy: {
+        totalClips: 12,
+        taggedClips: 10,
+        unclassifiedClips: 2,
+        axisCoverage: [
+          { axis: "product", taggedClips: 7, untaggedClips: 5 },
+          { axis: "format", taggedClips: 3, untaggedClips: 9 },
+          { axis: "seasonal", taggedClips: 1, untaggedClips: 11 },
+          { axis: "audience-cue", taggedClips: 2, untaggedClips: 10 },
+        ],
+        taxa: [
+          { slug: "food", label: "Food", axis: "product", assertedClips: 1, matchedClips: 7, storedClips: 2 },
+          {
+            slug: "cereal",
+            label: "Cereal",
+            axis: "product",
+            parent: "food",
+            assertedClips: 4,
+            matchedClips: 4,
+            storedClips: 4,
+          },
+        ],
+      },
+    });
+    const router = renderAt("/filler/taxonomy");
+
+    expect(await screen.findByText("10 / 12")).toBeInTheDocument();
+    expect(screen.getByText("Products & topics")).toBeInTheDocument();
+    expect(screen.getByText("1 direct")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Food" }));
+    expect(screen.getByText(/retag 2 stored clips before removing/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove tag" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "7 clips" }));
+
+    await expect.poll(() => router.state.location.pathname).toBe("/filler");
+    expect(router.state.location.search).toMatchObject({ taxon: "food" });
+    await expect
+      .poll(() => listQueries.some((query) => new URLSearchParams(query).get("taxon") === "food"))
+      .toBe(true);
+
+    await router.navigate({ to: "/filler/taxonomy" });
+    await userEvent.click(await screen.findByRole("link", { name: "Browse 5 without" }));
+    await expect.poll(() => router.state.location.search).toMatchObject({ withoutAxis: "product" });
+    await expect
+      .poll(() => listQueries.some((query) => new URLSearchParams(query).get("withoutAxis") === "product"))
+      .toBe(true);
+  });
+
+  it("lets an admin add a grounded classifier term from the taxonomy surface", async () => {
+    const { taxonCreates } = stubFiller({
+      taxonomy: { totalClips: 0, taggedClips: 0, unclassifiedClips: 0, axisCoverage: [], taxa: [] },
+    });
+    renderAt("/filler/taxonomy");
+    const product = (await screen.findByText("Products & topics")).closest(
+      "div.border-border",
+    )?.parentElement;
+    expect(product).not.toBeNull();
+    await userEvent.click(within(product as HTMLElement).getByRole("button", { name: "Add" }));
+
+    await userEvent.type(screen.getByLabelText("Label"), "Breakfast cereal");
+    await userEvent.type(screen.getByLabelText("Slug"), "breakfast-cereal");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await expect
+      .poll(() => taxonCreates)
+      .toEqual([
+        {
+          slug: "breakfast-cereal",
+          label: "Breakfast cereal",
+          axis: "product",
+          synonyms: [],
+          retiredAliases: [],
+        },
+      ]);
+  });
+
+  it("names the auto-fetch ceiling that paused unattended acquisition", async () => {
+    stubFiller({
+      watch: {
+        health: "healthy",
+        sourcesOn: 2,
+        sourcesTotal: 2,
+        clips: 2000,
+        held: 0,
+        autoFetch: {
+          enabled: true,
+          stoppedBy: "catalog",
+          catalogClips: 2000,
+          maxCatalog: 2000,
+        },
+      },
+    });
+    renderAt("/filler");
+
+    expect(await screen.findByText("Automatic fetching is paused")).toBeInTheDocument();
+    expect(screen.getByText(/2,000 of 2,000 catalog clips/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review limits" })).toHaveAttribute("href", "/filler/settings");
   });
 
   // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the
   // admin's one-click confirm PATCHes it — carrying the clip's existing audience, because the
-  // BE's UpdateClipTags writes era and audience unconditionally and a bare {era} would wipe
+  // BE's UpdateClipClassification writes era and audience unconditionally and a bare {era} would wipe
   // audience. `category` is NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags,
   // and this confirm never touches tags.
   it("confirms an era suggestion, keeping the clip's other tags", async () => {
@@ -379,7 +556,7 @@ describe("Filler page", () => {
       .toEqual([{ hash: "c1-hash", era: 1985, audience: "kids" }]);
   });
 
-  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era and audience on
+  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipClassification` overwrites era and audience on
   // every call, so a cycle that PATCHed only the clicked field would silently wipe the other —
   // once per click, not once per dialog. This asserts the whole tag row travels with a single
   // cycled chip. `category` is NOT part of the body (§10 V45a): it's a derived shadow, and a
@@ -602,6 +779,40 @@ describe("Filler page", () => {
     // The dialog labels its region with the clip's name, so finding it by name proves BOTH that
     // it opened and that it opened on the right record.
     expect(await screen.findByRole("region", { name: "Edit tags: Held promo" })).toBeInTheDocument();
+  });
+
+  it("re-runs classification without deleting the clip or upstream pipeline work", async () => {
+    const { rewinds } = stubFiller({
+      incoming: {
+        clips: [
+          {
+            hash: "held-hash",
+            path: "a3/f9/held.mp4",
+            name: "Held promo",
+            kind: "commercial",
+            durationMs: 30_000,
+            reason: "classification needs a decision",
+            needsDecision: true,
+            pipeline: {
+              stage: "tag",
+              status: "done",
+              attempts: 0,
+              progress: 100,
+              stages: [],
+              updatedAt: "2026-08-15T12:00:00Z",
+            },
+          },
+        ],
+        total: 1,
+      },
+    });
+    renderAt("/filler/incoming");
+
+    await userEvent.click(await screen.findByText("More"));
+    await userEvent.click(await screen.findByRole("button", { name: "Re-run AI" }));
+
+    await expect.poll(() => rewinds).toEqual([{ hash: "held-hash", from: "tag" }]);
+    expect(await screen.findByText("Clip queued again")).toBeInTheDocument();
   });
 
   // A member cannot bulk-edit, so the control that would 403 is simply absent rather than

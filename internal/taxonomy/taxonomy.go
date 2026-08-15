@@ -14,6 +14,9 @@
 package taxonomy
 
 import (
+	"errors"
+	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -35,6 +38,80 @@ const (
 	AxisAudienceCue Axis = "audience-cue"
 )
 
+// ErrInvalidForest marks an operator edit that would make the taxonomy ambiguous or malformed.
+// Callers may expose the wrapped explanation as a 422; the stable sentinel lets them distinguish
+// bad input from a store failure without parsing prose.
+var ErrInvalidForest = errors.New("invalid taxonomy forest")
+
+var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:[-_][a-z0-9]+)*$`)
+
+// Validate checks the prospective WHOLE forest before an operator edit is persisted. Forest's read
+// methods are intentionally defensive around malformed data, but an editor must not create that
+// data in the first place: silently truncating a cyclic/dangling lineage is an availability fallback,
+// not a write policy.
+func Validate(taxa []Taxon) error {
+	bySlug := make(map[string]Taxon, len(taxa))
+	for _, t := range taxa {
+		if !slugPattern.MatchString(t.Slug) {
+			return fmt.Errorf("%w: slug %q must use lowercase letters, numbers, hyphens, or underscores", ErrInvalidForest, t.Slug)
+		}
+		if strings.TrimSpace(t.Label) == "" {
+			return fmt.Errorf("%w: taxon %q needs a label", ErrInvalidForest, t.Slug)
+		}
+		switch t.Axis {
+		case AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue:
+		default:
+			return fmt.Errorf("%w: taxon %q has unsupported axis %q", ErrInvalidForest, t.Slug, t.Axis)
+		}
+		if _, exists := bySlug[t.Slug]; exists {
+			return fmt.Errorf("%w: slug %q is declared more than once", ErrInvalidForest, t.Slug)
+		}
+		bySlug[t.Slug] = t
+	}
+
+	// Slugs, synonyms and retired aliases share ONE case-insensitive resolver namespace. If two
+	// taxa claim the same spelling, map iteration order would decide what the classifier meant.
+	resolver := make(map[string]string)
+	for _, t := range taxa {
+		forms := append([]string{t.Slug}, t.Synonyms...)
+		forms = append(forms, t.RetiredAliases...)
+		for _, raw := range forms {
+			form := strings.ToLower(strings.TrimSpace(raw))
+			if form == "" {
+				return fmt.Errorf("%w: taxon %q has an empty synonym or retired alias", ErrInvalidForest, t.Slug)
+			}
+			if owner, exists := resolver[form]; exists {
+				return fmt.Errorf("%w: resolver spelling %q is claimed by both %q and %q", ErrInvalidForest, form, owner, t.Slug)
+			}
+			resolver[form] = t.Slug
+		}
+	}
+
+	for _, t := range taxa {
+		if t.Parent == "" {
+			continue
+		}
+		parent, ok := bySlug[t.Parent]
+		if !ok {
+			return fmt.Errorf("%w: parent %q of %q does not exist", ErrInvalidForest, t.Parent, t.Slug)
+		}
+		if parent.Axis != t.Axis {
+			return fmt.Errorf("%w: parent %q and child %q are on different axes", ErrInvalidForest, t.Parent, t.Slug)
+		}
+	}
+
+	for _, t := range taxa {
+		seen := map[string]bool{t.Slug: true}
+		for parent := t.Parent; parent != ""; parent = bySlug[parent].Parent {
+			if seen[parent] {
+				return fmt.Errorf("%w: parent chain for %q contains a cycle at %q", ErrInvalidForest, t.Slug, parent)
+			}
+			seen[parent] = true
+		}
+	}
+	return nil
+}
+
 // Taxon is one node in the taxonomy forest.
 type Taxon struct {
 	// Slug is the stable machine id — lowercase, hyphenless-or-hyphenated, the token the LLM emits and
@@ -53,6 +130,23 @@ type Taxon struct {
 	// RetiredAliases are former slugs that still resolve here after a rename, so an operator renaming a
 	// taxon does not silently drop every clip tagged under the old name (§10 retired-identifier rule).
 	RetiredAliases []string
+}
+
+// Canonicalize trims the human-entered edges of one taxon without silently changing its stable
+// identity. Slug casing remains validation's concern: accepting `Beer` by rewriting it to `beer`
+// could bind an edit to a different existing node. Resolver terms keep their display casing but
+// lose surrounding whitespace, matching Resolve's input normalization.
+func Canonicalize(t Taxon) Taxon {
+	t.Slug = strings.TrimSpace(t.Slug)
+	t.Label = strings.TrimSpace(t.Label)
+	t.Parent = strings.TrimSpace(t.Parent)
+	for i := range t.Synonyms {
+		t.Synonyms[i] = strings.TrimSpace(t.Synonyms[i])
+	}
+	for i := range t.RetiredAliases {
+		t.RetiredAliases[i] = strings.TrimSpace(t.RetiredAliases[i])
+	}
+	return t
 }
 
 // Forest is a taxonomy — a set of taxa keyed by slug, with the derived indexes the graph operations
@@ -76,12 +170,12 @@ func New(taxa []Taxon) *Forest {
 		f.bySlug[t.Slug] = t
 	}
 	for _, t := range f.bySlug {
-		f.resolver[strings.ToLower(t.Slug)] = t.Slug
+		f.resolver[strings.ToLower(strings.TrimSpace(t.Slug))] = t.Slug
 		for _, s := range t.Synonyms {
-			f.resolver[strings.ToLower(s)] = t.Slug
+			f.resolver[strings.ToLower(strings.TrimSpace(s))] = t.Slug
 		}
 		for _, a := range t.RetiredAliases {
-			f.resolver[strings.ToLower(a)] = t.Slug
+			f.resolver[strings.ToLower(strings.TrimSpace(a))] = t.Slug
 		}
 		if t.Parent != "" {
 			f.children[t.Parent] = append(f.children[t.Parent], t.Slug)
@@ -139,7 +233,7 @@ func (f *Forest) WithRollups(leaf string) []TagRow {
 }
 
 // TagRow is one denormalised clip↔taxon row: the slug and whether it was asserted (leaf) or derived
-// (rollup). Stored in `clip_tags`; the leaf flag drives the reindex (§10 V45a).
+// (rollup). Stored in `clip_tags`; the leaf flag lets owning writes re-derive rollups (§10 V45a).
 type TagRow struct {
 	Slug string
 	Leaf bool

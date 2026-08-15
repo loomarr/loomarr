@@ -24,6 +24,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -365,15 +366,23 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 // assembly can match them. Clips aren't gated — they're a parallel catalog, not
 // titles — so a direct upsert is the correct construction.
 func seedClips(ctx context.Context, st store.Store) error {
-	clips := []filler.Clip{
-		clip("clip-frostedflakes", "Frosted Flakes — They're Grrreat!", filler.Commercial, 1992, filler.Kids, "cereal", 30000),
-		clip("clip-supernintendo", "Super Nintendo — Now You're Playing", filler.Commercial, 1993, filler.Kids, "toys", 30000),
-		clip("clip-nike", "Nike — Just Do It", filler.Commercial, 1994, filler.General, "apparel", 30000),
-		clip("clip-bumper-nite", "You're watching 90s Action", filler.Bumper, 0, filler.General, "", 8000),
+	type seededClip struct {
+		clip filler.Clip
+		tags []string
 	}
-	for _, c := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: c, UpdatedAt: time.Now()}); err != nil {
-			return fmt.Errorf("upsert clip %q: %w", c.Name, err)
+	clips := []seededClip{
+		{clip("clip-frostedflakes", "Frosted Flakes — They're Grrreat!", filler.Commercial, 1992, filler.Kids, "cereal", "Kellogg's", 30000), []string{"cereal"}},
+		{clip("clip-supernintendo", "Super Nintendo — Now You're Playing", filler.Commercial, 1993, filler.Kids, "toys", "Nintendo", 30000), []string{"toys", "kids-cue"}},
+		{clip("clip-nike", "Nike — Just Do It", filler.Commercial, 1994, filler.General, "apparel", "Nike", 30000), []string{"apparel"}},
+		{clip("clip-bumper-nite", "You're watching 90s Action", filler.Bumper, 0, filler.General, "", "", 8000), []string{"bumper"}},
+	}
+	now := time.Now()
+	for _, seeded := range clips {
+		if err := st.UpsertClip(ctx, store.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
+			return fmt.Errorf("upsert clip %q: %w", seeded.clip.Name, err)
+		}
+		if err := st.SetClipTags(ctx, seeded.clip.Hash, seeded.tags); err != nil {
+			return fmt.Errorf("tag clip %q: %w", seeded.clip.Name, err)
 		}
 	}
 	log.Printf("seed: inserted %d filler clips", len(clips))
@@ -435,10 +444,12 @@ func acqItem(mt string, tmdb int, name string, year int) suggest.ProposalItem {
 	}
 }
 
-func clip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string, durMs int64) filler.Clip {
+func clip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat, brand string, durMs int64) filler.Clip {
+	hash := sha256.Sum256([]byte("loomarr-dev-seed:" + id))
 	return filler.Clip{
-		TunarrProgramID: id, Name: name, Kind: kind, Era: era, Audience: aud,
-		Category: cat, DurationMs: durMs, Source: "seed",
+		Hash: fmt.Sprintf("%x", hash), Path: "seed/" + id + ".mp4", TunarrProgramID: id,
+		Name: name, Kind: kind, Era: era, Audience: aud, Category: cat, Brand: brand,
+		DurationMs: durMs, Source: "seed",
 	}
 }
 

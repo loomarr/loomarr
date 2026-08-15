@@ -95,12 +95,12 @@ func (s *Server) fileFillerClips(ctx context.Context, in *fileFillerInput) (*bul
 				continue
 			}
 			// ⚠ Writing `era` is what CONFIRMS: the store clears `suggested_era` in the same
-			// statement (see UpdateClipTags), so the question cannot outlive its answer. The other
-			// two tags are passed through unchanged because that write sets all three columns —
-			// sending only the era would blank audience and category.
+			// statement (see UpdateClipClassification), so the question cannot outlive its answer.
+			// Audience is passed through unchanged; taxonomy tags and their category shadow are owned
+			// by the separate taxonomy transaction.
 			//
-			// ⚠ Keyed by HASH: UpdateClipTags is `WHERE hash = ?`, unlike SetClipsHeld below.
-			if err := s.store.UpdateClipTags(ctx, c.Hash, c.SuggestedEra, string(c.Audience), c.Category, 0, c.AITagged, now); err != nil {
+			// ⚠ Keyed by HASH: UpdateClipClassification is `WHERE hash = ?`, unlike SetClipsHeld below.
+			if err := s.store.UpdateClipClassification(ctx, c.Hash, c.SuggestedEra, string(c.Audience), 0, c.AITagged, now); err != nil {
 				return nil, huma.Error500InternalServerError("confirm suggested era", err)
 			}
 		}

@@ -148,6 +148,52 @@ func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 	}
 }
 
+func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
+	stub := &fetchStub{paths: []string{"x.mp4", "y.mp4", "z.mp4"}}
+	f := newFetcher(t, stub, limits(10, 3, 0))
+	status, err := f.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Enabled || status.StoppedBy != "catalog" || status.CatalogClips != 3 || status.MaxCatalog != 3 {
+		t.Errorf("status = %+v, want enabled catalog ceiling 3/3", status)
+	}
+	if stub.calls != 0 || len(stub.queued) != 0 {
+		t.Error("status check performed fetch work")
+	}
+
+	status, err = f.WithEnabled(func() bool { return false }).Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Enabled || status.StoppedBy != "" {
+		t.Errorf("disabled status = %+v, want no active stop reason", status)
+	}
+}
+
+func TestFetchStatus_UsesTheSameLimitPriorityAsRun(t *testing.T) {
+	stub := &fetchStub{paths: []string{"x.mp4"}}
+	dir := t.TempDir()
+	large := filepath.Join(dir, "large.mp4")
+	if err := os.WriteFile(large, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A sparse file reports the logical size dirSizeBytes uses without allocating a gigabyte.
+	if err := os.Truncate(large, 1024*1024*1024); err != nil {
+		t.Fatal(err)
+	}
+	f := filler.NewFetcher(stub, stub, stub, dir, limits(10, 1, 1), discardLog())
+	f.WithEnabled(func() bool { return true })
+
+	status, err := f.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.StoppedBy != "catalog" {
+		t.Errorf("StoppedBy = %q when both limits are reached, want Run's catalog-first answer", status.StoppedBy)
+	}
+}
+
 // Same for the disk ceiling, measured against the FOLDER rather than a running total — so files
 // an operator deletes by hand are noticed.
 func TestFetch_StopsAtTheDiskCeiling(t *testing.T) {

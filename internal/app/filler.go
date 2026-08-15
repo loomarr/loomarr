@@ -252,8 +252,8 @@ func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]f
 	}
 	return out, nil
 }
-func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
-	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
+func (a fillerTagStoreAdapter) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+	return a.st.UpdateClipClassification(ctx, id, era, audience, suggestedEra, aiTagged, updatedAt)
 }
 
 func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
@@ -276,8 +276,8 @@ func (a fillerTagStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, 
 func (a fillerTagStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
 	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
 }
-func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error {
-	return a.st.SetClipTags(ctx, clipHash, leaves, forest, at)
+func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves)
 }
 
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
@@ -347,8 +347,8 @@ func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQu
 	return out, nil
 }
 
-func (a fillerVisionStoreAdapter) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
-	return a.st.SetClipVisionTags(ctx, path, brand, visibleText, era, suggestedEra, category, at)
+func (a fillerVisionStoreAdapter) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
+	return a.st.ApplyClipVision(ctx, hash, path, brand, visibleText, era, suggestedEra, leaves, at)
 }
 
 // ListTaxa: the vision tier grounds its category against the taxonomy graph (§10 V45a).
@@ -475,6 +475,12 @@ func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clip
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
+func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
+	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
+}
+func (a fillerSplitStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves)
+}
 func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	return a.st.ReplaceSplitChildren(ctx, parentHash, keepHashes, at)
 }
@@ -548,6 +554,23 @@ type fillerServiceAdapter struct {
 	// the runner instead of leaving a fresh download until the next tick. nil on an install with
 	// no drop-folder, where there is nothing to ingest.
 	pipeline *filler.Pipeline
+	// autoFetch supplies the live limit status rendered by /v1/filler/watch. It is the same
+	// Fetcher the scheduler runs, so reporting and enforcement cannot drift.
+	autoFetch *filler.Fetcher
+}
+
+func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {
+	if a.autoFetch == nil {
+		return filler.FetchStatus{}, nil
+	}
+	return a.autoFetch.Status(ctx)
+}
+
+func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error {
+	if a.pipeline == nil {
+		return errors.New("filler pipeline is not configured")
+	}
+	return a.pipeline.Rewind(ctx, hash, from, force)
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {

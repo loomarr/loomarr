@@ -17,18 +17,15 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err := s.SeedTaxonomy(ctx, taxonomy.SeedForest(), now); err != nil {
 		return err
 	}
-	// ⚠ Rebuild the closure on EVERY open, unlike the seed's empty-guard. The closure is a derived
-	// cache of `taxa` that a fresh migration creates empty; an operator-edited graph needs its closure
-	// present just as a seeded one does. It is a full idempotent replace over ~55 taxa (a few hundred
-	// rows), so running it unconditionally at boot keeps the closure in sync with whatever graph is
-	// live — seeded default or operator's — at negligible cost. RebuildRollups is NOT run here: clip
-	// rollups only go stale on a GRAPH EDIT (the CRUD path rebuilds them) or a re-tag (SetClipTags),
-	// not on a plain re-open where the graph is unchanged.
+	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the
+	// upgrade backstop for installs whose graph was edited before V55 made graph writes atomic, and it
+	// heals restored/manual data without an operator task. The work is set-based and commits under the
+	// same taxonomy lock as live edits, so another replica cannot observe or interleave half a generation.
 	taxa, err := s.ListTaxa(ctx)
 	if err != nil {
 		return err
 	}
-	return s.RebuildClosure(ctx, taxonomy.New(taxa), now)
+	return s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when

@@ -1081,6 +1081,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
 					"dir", dir, "err", err)
 			}
+			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
+			// default at boot so a fresh install is green before its first arrival; an explicitly
+			// configured, unusable watch path still fails visibly rather than being ignored.
+			watch := filler.WatchDir(dir, set.str("filler.watch_dir"))
+			if err := os.MkdirAll(watch, 0o750); err != nil {
+				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
+					"dir", watch, "err", err)
+			}
 		}
 		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
 		// captured — see buildSyncer for why, and for why a nil library scanner is a supported
@@ -1135,24 +1143,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
 		fillerAdapter.pipeline = fillerPipeline
-		fillerSvc = fillerAdapter
 
 		// The split-review sweep (§10 V54): reels whose leftover cuts nobody reviewed expire, and
 		// their recordings are reclaimed. ⚠ No adapter — `SweepStore` is a pure SUBSET of
-		// `store.Store`, like the reindex job below. The clip dir is the same containment boundary
+		// `store.Store`. The clip dir is the same containment boundary
 		// the splitter uses; the window is read live so a change applies on the next run.
 		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
 			func() time.Duration { return set.dur("filler.split.review_window") },
 			time.Now, log)))
-
-		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
-		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
-		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a
-		// path-vs-hash mismatch. Off unless `filler.reindex.enabled`, read live inside Run, so the row
-		// stays visible on the Tasks page even when idle.
-		jobReg.Add(fillerReindexJob(filler.NewReindexJob(
-			st, func() bool { return set.boolv("filler.reindex.enabled") }, time.Now, log)))
 
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
@@ -1164,13 +1163,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// made for backups on Postgres.
 		autoFetch := filler.NewFetcher(
 			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerSvc, set.str("filler.dir"),
+			archiveDiscoverAdapter{}, fillerAdapter, set.str("filler.dir"),
 			filler.FetchLimits{
 				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
 				MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 			}, log,
 		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+		fillerAdapter.autoFetch = autoFetch
+		fillerSvc = fillerAdapter
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
 

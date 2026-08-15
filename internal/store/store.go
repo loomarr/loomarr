@@ -19,6 +19,11 @@ import (
 // ErrNotFound is returned by Get* methods when no row matches.
 var ErrNotFound = errors.New("store: not found")
 
+// ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
+// slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
+// never retry the same write blindly.
+var ErrTaxonConflict = errors.New("store: taxonomy conflict")
+
 // ErrProposalNotSubmitted reports a terminal proposal decision that lost the
 // submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
 // the proposal exists, but another decision already won.
@@ -240,18 +245,19 @@ type ClipStore interface {
 	// ever catalogued while `TagSuggestion.Score` computed a value the tagger then discarded. The
 	// value must be `Score`'s output, never the model's own self-assessment.
 	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
-	// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44) — path-keyed,
-	// writes `brand` and nothing else. It SHARES the `brand` column with SetClipVisionTags (text
+	// SetClipBrand records a GROUNDED advertiser found by the text tagger or confirmed by an operator
+	// (§10 V44) — path-keyed,
+	// writes `brand` and nothing else. It SHARES the `brand` column with ApplyClipVision (text
 	// grounds a brand in the filename/sidecar/transcript, vision grounds one in the on-screen text);
 	// UpsertClip omits `brand` from DO UPDATE so a re-sync cannot blank either. The caller has
 	// already applied the grounding rule, so this writes what it is given.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
-	// SetClipVisionTags records a vision pass — the on-screen text it read, a grounded brand, and
-	// (when the frame supported them) an era/category (§10 V44). The ONLY writer of `visible_text`
+	// ApplyClipVision records a vision pass — the on-screen text it read, a grounded brand/era, and
+	// its asserted taxonomy tags (§10 V44/V55). The ONLY writer of `visible_text`
 	// and `vision_tagged`; `brand` it shares with SetClipBrand above. UpsertClip omits them so a
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
-	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
 	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
@@ -266,26 +272,19 @@ type ClipStore interface {
 	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
 	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
-	// UpsertTaxon / DeleteTaxon are the operator-edit path; the caller reindexes after a graph edit.
-	UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error
-	DeleteTaxon(ctx context.Context, slug string) error
+	// ApplyTaxonomyEdit is the ONE operator-edit path. It validates the prospective graph and commits
+	// the row edit, closure rebuild, and catalog rollup rebuild atomically. Callers never choreograph
+	// those derived writes themselves.
+	ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
-	// SetClipTags REPLACES one clip's tags with the rollup expansion of the given leaves (the per-clip
-	// re-tag path — the tagger writing a single clip). GetClipTags reads them (leavesOnly = the asserted
-	// set, else full). ⚠ It must produce the SAME rows RebuildRollups would for the same leaves; the
-	// conformance suite pins the two writers as equivalent.
-	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from
+	// the store's current graph in the same transaction. Callers never supply a graph snapshot.
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
-	// ListClipHashesLeaves returns every clip's asserted leaves — a work list for a per-clip job (the
-	// future re-embed sibling). The bulk rollup reindex does NOT use it: it is a set-based SQL rebuild.
-	ListClipHashesLeaves(ctx context.Context) (map[string][]string, error)
-	// RebuildClosure recomputes taxa_closure from the forest — the ONLY writer of the closure, run when
-	// the GRAPH edits (rare). The graph walk stays in Go; the closure makes the rollup rebuild plain SQL.
-	RebuildClosure(ctx context.Context, forest *taxonomy.Forest, at time.Time) error
-	// RebuildRollups recomputes EVERY clip's rollup rows from the closure in one set-based statement —
-	// the reindex (§10 V45a). Preserves asserted leaves; call after RebuildClosure on a graph edit.
-	RebuildRollups(ctx context.Context) error
+	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus
+	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
+	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
@@ -293,13 +292,13 @@ type ClipStore interface {
 	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
 	// and is cleared whenever a person decides.
 	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
-	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
-	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
+	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
+	// editor (§10) and AI job. Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
 	// it in the same write, and a write with neither leaves it alone. Returns
 	// ErrNotFound if absent.
-	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
-	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
+	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipClassification because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
 	// scanned as a commercial being the likely case).

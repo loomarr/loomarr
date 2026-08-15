@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
@@ -117,21 +119,22 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 			out.Body.Missing++
 			continue
 		}
-		era, audience, category := clip.Era, clip.Audience, clip.Category
+		era, audience := clip.Era, clip.Audience
 		if in.Body.Era != nil {
 			era = *in.Body.Era
 		}
 		if in.Body.Audience != nil {
 			audience = filler.Audience(*in.Body.Audience)
 		}
-		// Tags: persist the grounded set and DERIVE category from it (never take category from the
-		// client). Only when Tags was sent — otherwise the clip's existing tags and category shadow
-		// are left untouched.
+		// Tags: the store persists the grounded set and derives category from it against the current
+		// graph in one transaction. Without Tags, both taxonomy fields remain untouched.
 		if in.Body.Tags != nil {
-			if err := s.store.SetClipTags(ctx, clip.Hash, leaves, forest, now); err != nil {
+			if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
+				if errors.Is(err, store.ErrTaxonConflict) {
+					return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while these clips were being edited. Review the tags and try again.")
+				}
 				return nil, huma.Error500InternalServerError("retag clips", err)
 			}
-			category = forest.PrimaryProductLeaf(leaves)
 		}
 
 		// ⚠ Setting an era CONFIRMS an outstanding suggestion, and the existing single-clip
@@ -143,7 +146,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 			suggested = 0
 		}
 		// aiTagged=false: a human just made this decision, so it is no longer an AI tag. Hash-keyed.
-		if err := s.store.UpdateClipTags(ctx, clip.Hash, era, string(audience), category, suggested, false, now); err != nil {
+		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, false, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
 		out.Body.Updated++

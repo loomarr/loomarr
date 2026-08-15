@@ -630,7 +630,10 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			continue
 		}
 
-		if applies, note := stage.Applies(ctx, clip); !applies {
+		// Rewind is an explicit operator instruction to run THIS rung. Its durable ForceRun bit
+		// bypasses only the ordinary applicability shortcut; structural protections above (for
+		// example, never classifying a compilation container) still win.
+		if applies, note := stage.Applies(ctx, clip); !applies && !row.ForceRun {
 			row.Record(row.Stage, StatusSkipped, note, row.Attempts, p.now().UTC())
 			if done := p.step(&row); done {
 				break
@@ -717,11 +720,13 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		switch out.Verdict {
 		case VerdictReject:
 			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
+			row.ForceRun = false
 			row.Disposition = DispositionRejected
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
 			return row.Disposition, p.persist(ctx, row, clip)
 		case VerdictReview:
 			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
+			row.ForceRun = false
 			row.Disposition = DispositionReview
 			return row.Disposition, p.persist(ctx, row, clip)
 		case VerdictDefer:
@@ -758,6 +763,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 
 // step advances to the next stage, returning true when the ladder is finished.
 func (p *Pipeline) step(row *ClipPipeline) bool {
+	row.ForceRun = false
 	idx := StageIndex(row.Stage)
 	if idx < 0 || idx+1 >= len(StageOrder) {
 		row.Status = StatusDone
@@ -805,6 +811,7 @@ func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	}
 	if reason, fatal := fatalStages[row.Stage]; fatal {
 		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
+		row.ForceRun = false
 		row.Disposition = DispositionRejected
 		row.RejectReason = reason
 		row.RejectDetail = err.Error()

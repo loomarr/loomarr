@@ -1,6 +1,7 @@
 package taxonomy_test
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -130,5 +131,56 @@ func TestResolve_RetiredAlias(t *testing.T) {
 	})
 	if slug, ok := f.Resolve("beverages-old"); !ok || slug != "drinks" {
 		t.Errorf("Resolve(retired alias) = (%q,%v), want (drinks,true)", slug, ok)
+	}
+}
+
+func TestValidate_AcceptsSeedForest(t *testing.T) {
+	if err := taxonomy.Validate(taxonomy.SeedForest()); err != nil {
+		t.Fatalf("Validate(seed) = %v, want a valid shipped forest", err)
+	}
+}
+
+func TestValidate_RejectsMalformedGraphs(t *testing.T) {
+	base := []taxonomy.Taxon{
+		{Slug: "food", Label: "Food", Axis: taxonomy.AxisProduct},
+		{Slug: "cereal", Label: "Cereal", Parent: "food", Axis: taxonomy.AxisProduct},
+		{Slug: "promo", Label: "Promo", Axis: taxonomy.AxisFormat},
+	}
+	tests := []struct {
+		name string
+		edit func([]taxonomy.Taxon) []taxonomy.Taxon
+	}{
+		{"malformed slug", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Slug = "Breakfast Food"; return ts }},
+		{"blank label", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Label = "  "; return ts }},
+		{"unknown axis", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Axis = "topic"; return ts }},
+		{"missing parent", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Parent = "missing"; return ts }},
+		{"cross-axis parent", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Parent = "promo"; return ts }},
+		{"self parent", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Parent = "cereal"; return ts }},
+		{"cycle", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[0].Parent = "cereal"; return ts }},
+		{"resolver collision", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Synonyms = []string{"promo"}; return ts }},
+		{"duplicate resolver spelling", func(ts []taxonomy.Taxon) []taxonomy.Taxon { ts[1].Synonyms = []string{"flakes", " FLAKES "}; return ts }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := append([]taxonomy.Taxon(nil), base...)
+			if err := taxonomy.Validate(tt.edit(got)); !errors.Is(err, taxonomy.ErrInvalidForest) {
+				t.Fatalf("Validate() = %v, want ErrInvalidForest", err)
+			}
+		})
+	}
+}
+
+func TestCanonicalize_MatchesResolverWhitespaceRules(t *testing.T) {
+	taxon := taxonomy.Canonicalize(taxonomy.Taxon{
+		Slug: " cereal ", Label: " Breakfast cereal ", Parent: " food ",
+		Axis: taxonomy.AxisProduct, Synonyms: []string{" cold cereal "}, RetiredAliases: []string{"breakfast-food "},
+	})
+	if taxon.Slug != "cereal" || taxon.Label != "Breakfast cereal" || taxon.Parent != "food" ||
+		taxon.Synonyms[0] != "cold cereal" || taxon.RetiredAliases[0] != "breakfast-food" {
+		t.Fatalf("Canonicalize = %+v", taxon)
+	}
+	forest := taxonomy.New([]taxonomy.Taxon{taxon})
+	if got, ok := forest.Resolve("  COLD CEREAL "); !ok || got != "cereal" {
+		t.Fatalf("Resolve spaced synonym = %q, %v, want cereal, true", got, ok)
 	}
 }

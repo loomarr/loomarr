@@ -164,6 +164,47 @@ func (m *splitMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error 
 	m.clips[c.Hash] = c
 	return nil
 }
+func (m *splitMemStore) GetClipTags(_ context.Context, hash string, leavesOnly bool) ([]string, error) {
+	c, ok := m.clips[hash]
+	if !ok {
+		return nil, fmt.Errorf("clip not found: %s", hash)
+	}
+	if leavesOnly {
+		return append([]string(nil), c.AssertedTags...), nil
+	}
+	return append([]string(nil), c.Tags...), nil
+}
+func (m *splitMemStore) SetClipTags(_ context.Context, hash string, leaves []string) error {
+	c, ok := m.clips[hash]
+	if !ok {
+		return fmt.Errorf("clip not found: %s", hash)
+	}
+	forest := taxonomy.New(taxonomy.SeedForest())
+	c.AssertedTags = unionStrings(c.AssertedTags, leaves)
+	c.Tags = nil
+	for _, leaf := range c.AssertedTags {
+		c.Tags = unionStrings(c.Tags, []string{leaf})
+		c.Tags = unionStrings(c.Tags, forest.Ancestors(leaf))
+	}
+	c.Category = forest.PrimaryProductLeaf(c.AssertedTags)
+	m.clips[hash] = c
+	return nil
+}
+
+func unionStrings(left, right []string) []string {
+	out := append([]string(nil), left...)
+	seen := make(map[string]bool, len(out)+len(right))
+	for _, value := range out {
+		seen[value] = true
+	}
+	for _, value := range right {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
 func (m *splitMemStore) ReplaceSplitChildren(_ context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	keep := make(map[string]bool, len(keepHashes))
 	for _, hash := range keepHashes {
@@ -1033,6 +1074,11 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	if len(segments) != 2 {
 		t.Fatalf("segments = %+v", segments)
+	}
+	for _, seg := range segments {
+		if len(seg.AssertedTags) != 1 || seg.AssertedTags[0] != seg.Category {
+			t.Errorf("confirmed segment %q taxonomy = category %q / asserted %v", seg.Name, seg.Category, seg.AssertedTags)
+		}
 	}
 	// The cut files exist at cataloged paths (segments only; the composite keeps its own file).
 	for _, seg := range segments {

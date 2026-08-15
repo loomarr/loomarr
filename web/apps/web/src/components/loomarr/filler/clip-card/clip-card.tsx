@@ -344,6 +344,11 @@ const ClipCard = ({
         </span>
       )}
     </div>
+    {clip.brand ? (
+      <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
+        Brand: <span className="text-foreground">{clip.brand}</span>
+      </p>
+    ) : null}
 
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge>
@@ -392,10 +397,9 @@ const ClipCard = ({
           alcohol, drinks — matched on, not shown). The dialog shows them all. */}
       {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
       {(() => {
-        // Extra LEAF-ish tags beyond the headline: the full set minus the rollups of `category` is not
-        // known on the wire, so approximate "more than the headline" by count. A clip with only its
-        // category's own lineage shows no "+N"; one tagged on another axis (christmas, psa) shows it.
-        const extra = (clip.tags ?? []).filter((t) => t !== clip.category).length;
+        // Count only direct assertions. `tags` also contains inherited parents (cereal → food),
+        // which made one choice look like three and hid the distinction the taxonomy depends on.
+        const extra = (clip.assertedTags ?? []).filter((t) => t !== clip.category).length;
         return extra > 0 ? (
           <Badge variant="neutral" title="This clip has more tags — open it to see them all">
             +{extra}

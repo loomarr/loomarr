@@ -103,10 +103,14 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
     // toggle (Toys, Candy) so the chips render for the interaction.
     getListTaxonomyMockHandler({
       taxa: [
-        { slug: "toys", label: "Toys", axis: "product" },
-        { slug: "candy", label: "Candy", axis: "product" },
-        { slug: "cars", label: "Cars", axis: "product" },
+        { slug: "toys", label: "Toys", axis: "product", assertedClips: 0, matchedClips: 0, storedClips: 0 },
+        { slug: "candy", label: "Candy", axis: "product", assertedClips: 0, matchedClips: 0, storedClips: 0 },
+        { slug: "cars", label: "Cars", axis: "product", assertedClips: 0, matchedClips: 0, storedClips: 0 },
       ],
+      totalClips: 0,
+      taggedClips: 0,
+      unclassifiedClips: 0,
+      axisCoverage: [],
     }),
     // GET /v1/filler — catalog + add-search.
     getListFillerMockHandler(({ request }) => {
@@ -159,7 +163,7 @@ describe("ChannelFiller", () => {
     // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
     // transition, so the content isn't in the DOM on the first synchronous pass).
     expect(await screen.findByLabelText("Audience")).toBeInTheDocument();
-    expect(screen.getByText("Categories")).toBeInTheDocument();
+    expect(screen.getByText("Products & topics")).toBeInTheDocument();
     expect(screen.getByText("Clip kinds")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Break frequency" })).toHaveTextContent(
@@ -212,7 +216,7 @@ describe("ChannelFiller", () => {
     const { previews } = stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
 
-    await user.click(await screen.findByRole("button", { name: /choose categories/i }));
+    await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
     // (findBy awaits the router-harness mount.) No Apply until the draft diverges.
     const toys = await screen.findByRole("button", { name: "Toys" });
@@ -234,7 +238,7 @@ describe("ChannelFiller", () => {
     const { patches } = stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ audience: "kids" })} />);
 
-    await user.click(await screen.findByRole("button", { name: /choose categories/i }));
+    await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
     await user.click(await screen.findByRole("button", { name: "Candy" }));
     const apply = await screen.findByRole("button", { name: /apply filler/i });
     await user.click(apply);
@@ -291,7 +295,13 @@ describe("ChannelFiller", () => {
         HttpResponse.json({ title: "bad selection" }, { status: 422 }),
       ),
       getListFillerMockHandler({ clips: [], total: 0 }),
-      getListTaxonomyMockHandler({ taxa: [] }),
+      getListTaxonomyMockHandler({
+        taxa: [],
+        totalClips: 0,
+        taggedClips: 0,
+        unclassifiedClips: 0,
+        axisCoverage: [],
+      }),
       getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [], criteria: HEALTHY }),
       // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
       // the inherited-default settings read too.

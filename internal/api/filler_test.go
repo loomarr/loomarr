@@ -24,7 +24,12 @@ import (
 // fakeFiller records sync/tag calls.
 type fakeFiller struct {
 	syncs, tags int
-	ingested    []string
+	rewinds     []struct {
+		hash  string
+		from  filler.StageID
+		force bool
+	}
+	ingested []string
 	// asked records only what came through IngestAsked — the operator-initiated path, and the
 	// only one that may register a source. Separate from `ingested` so a test can tell the two
 	// entry points apart; collapsing them is how the real adapter's bug hid.
@@ -53,6 +58,20 @@ type fakeFiller struct {
 	splitNotFound    bool
 	confirmNotFound  bool
 	confirmInvalid   bool
+	fetchStatus      filler.FetchStatus
+}
+
+func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
+	return f.fetchStatus, nil
+}
+
+func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {
+	f.rewinds = append(f.rewinds, struct {
+		hash  string
+		from  filler.StageID
+		force bool
+	}{hash: hash, from: from, force: force})
+	return nil
 }
 
 func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
@@ -302,6 +321,83 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	}
 }
 
+func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "cereal-ad", filler.Commercial, 1992, filler.Kids, "")
+	seedClip(t, st, "beer-ad", filler.Commercial, 1994, filler.General, "")
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"cereal-ad","tags":["cereal"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag cereal-ad → %d", p.StatusCode)
+	}
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"beer-ad","tags":["beer"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag beer-ad → %d", p.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler?taxon=food", memberToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list taxon=food → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Total != 1 || len(body.Clips) != 1 || body.Clips[0].Hash != "cereal-ad" {
+		t.Errorf("taxon=food → total %d clips %+v, want only cereal-ad via its inherited food tag", body.Total, body.Clips)
+	}
+}
+
+func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "classified-bumper", filler.Bumper, 0, "", "")
+	seedClip(t, st, "unclassified-bumper", filler.Bumper, 0, "", "")
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"classified-bumper","tags":["promo"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag classified-bumper → %d", p.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler?unclassified=true", memberToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list unclassified=true → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Total != 1 || len(body.Clips) != 1 || body.Clips[0].Hash != "unclassified-bumper" {
+		t.Errorf("unclassified=true → total %d clips %+v, want only the bumper with no taxonomy rows", body.Total, body.Clips)
+	}
+}
+
+func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "format-only", filler.Bumper, 0, "", "")
+	seedClip(t, st, "product-and-format", filler.Commercial, 0, "", "")
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"format-only","tags":["promo"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag format-only → %d", p.StatusCode)
+	}
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"product-and-format","tags":["cereal","promo"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag product-and-format → %d", p.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler?withoutAxis=product", memberToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list withoutAxis=product → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Total != 1 || len(body.Clips) != 1 || body.Clips[0].Hash != "format-only" {
+		t.Errorf("withoutAxis=product → total %d clips %+v, want format-only despite its format tag", body.Total, body.Clips)
+	}
+}
+
 func TestPatchClip_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
@@ -316,17 +412,19 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
 	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
-	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":"  Kellogg's  ","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin patch → %d", resp.StatusCode)
 	}
 	var body struct {
-		Era      int
-		Audience string
-		Category string
-		Tags     []string
-		Tagged   bool
-		AITagged bool
+		Era          int
+		Audience     string
+		Category     string
+		Brand        string
+		Tags         []string
+		AssertedTags []string
+		Tagged       bool
+		AITagged     bool
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Era != 1994 || body.Audience != "kids" || !body.Tagged {
@@ -336,11 +434,28 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	if body.Category != "cereal" {
 		t.Errorf("derived category = %q, want cereal (the primary product leaf of the tag set)", body.Category)
 	}
+	if body.Brand != "Kellogg's" {
+		t.Errorf("brand = %q, want trimmed operator correction", body.Brand)
+	}
 	if !slices.Contains(body.Tags, "cereal") {
 		t.Errorf("tags = %v, want to contain cereal", body.Tags)
 	}
+	if !slices.Contains(body.Tags, "food") {
+		t.Errorf("full tags = %v, want inherited food rollup", body.Tags)
+	}
+	if !slices.Equal(body.AssertedTags, []string{"cereal"}) {
+		t.Errorf("asserted tags = %v, want only cereal (never the food rollup)", body.AssertedTags)
+	}
 	if body.AITagged {
 		t.Error("a manual edit should clear the AI-tagged flag")
+	}
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":""}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear brand → %d", resp.StatusCode)
+	}
+	cleared, err := st.GetClip(context.Background(), "u1")
+	if err != nil || cleared.Brand != "" {
+		t.Errorf("cleared brand = %q (%v), want empty", cleared.Brand, err)
 	}
 	// Missing clip → 404.
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"nope","era":1990}`)
@@ -349,12 +464,37 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	}
 }
 
+func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedClip(t, st, "stuck", filler.Commercial, 0, "", "")
+
+	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"tag"}`)
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("member rewind → %d, want 403", member.StatusCode)
+	}
+	admin := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"stuck","from":"tag"}`)
+	if admin.StatusCode != http.StatusNoContent {
+		t.Fatalf("admin rewind → %d, want 204", admin.StatusCode)
+	}
+	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageTag || ff.rewinds[0].force {
+		t.Errorf("rewinds = %+v, want stuck from tag without force", ff.rewinds)
+	}
+
+	missing := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"gone","from":"tag"}`)
+	if missing.StatusCode != http.StatusNotFound {
+		t.Errorf("missing clip rewind → %d, want 404", missing.StatusCode)
+	}
+}
+
 // Era suggestions (§10, V34): the list surfaces an unconfirmed suggestion, and
 // PATCHing era CONFIRMS it — the suggestion clears in the same write.
 func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
-	if err := st.UpdateClipTags(context.Background(), "u1", 0, "kids", "cereal", 1985, true, time.Now()); err != nil {
+	if err := st.SetClipTags(context.Background(), "u1", []string{"cereal"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateClipClassification(context.Background(), "u1", 0, "kids", 1985, true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	// The suggestion rides the DTO so the UI can ask the question.
