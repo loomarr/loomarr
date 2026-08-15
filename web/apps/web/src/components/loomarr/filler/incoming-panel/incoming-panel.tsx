@@ -234,7 +234,9 @@ const IncomingPanel = ({
             <Caption>{pluralize(allPreparing, "more clip")} still being prepared, further down.</Caption>
           )}
           {allClips > clips.length && (
-            <Caption>Showing the first {clips.length} of {allClips} incoming clips.</Caption>
+            <Caption>
+              Showing the first {clips.length} of {allClips} incoming clips.
+            </Caption>
           )}
 
           {/* ⚠ ONE live region for the whole belt, carrying only the most recent transition. A
@@ -282,7 +284,9 @@ const IncomingPanel = ({
             These are already playing. Least-confident first — send any of them back if they look wrong.
           </Caption>
           {allRecentlyFiled > recentlyFiled.length && (
-            <Caption>Showing {recentlyFiled.length} of {allRecentlyFiled} filed clips.</Caption>
+            <Caption>
+              Showing {recentlyFiled.length} of {allRecentlyFiled} filed clips.
+            </Caption>
           )}
           <ul className="flex flex-col gap-2">
             {recentlyFiled.map((clip) => (
@@ -324,7 +328,9 @@ const IncomingPanel = ({
             {...(busyPath ? { busyHash: busyPath } : {})}
           />
           {allRejected > rejected.length && (
-            <Caption>Showing the newest {rejected.length} of {allRejected} rejected clips.</Caption>
+            <Caption>
+              Showing the newest {rejected.length} of {allRejected} rejected clips.
+            </Caption>
           )}
         </div>
       )}
@@ -333,7 +339,9 @@ const IncomingPanel = ({
         <section className="flex flex-col gap-3">
           <h2 className="font-medium text-sm">{pluralize(allReels, "compilation")} to review</h2>
           {allReels > reels.length && (
-            <Caption>Showing the oldest {reels.length} of {allReels} compilations.</Caption>
+            <Caption>
+              Showing the oldest {reels.length} of {allReels} compilations.
+            </Caption>
           )}
           <ul className="flex flex-col gap-2">
             {reels.map((reel) => (

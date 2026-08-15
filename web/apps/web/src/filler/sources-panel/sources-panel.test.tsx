@@ -169,8 +169,20 @@ describe("SourcesPanel", () => {
 // puts several collections on screen at once.
 describe("SourcesPanel per-source search", () => {
   const twoCollections = [
-    source({ kind: "archive", id: "archive:classic", uri: "classic_tv", target: "Classic TV Commercials", searchable: true }),
-    source({ kind: "archive", id: "archive:psas", uri: "vintage_psas", target: "Vintage PSAs", searchable: true }),
+    source({
+      kind: "archive",
+      id: "archive:classic",
+      uri: "classic_tv",
+      target: "Classic TV Commercials",
+      searchable: true,
+    }),
+    source({
+      kind: "archive",
+      id: "archive:psas",
+      uri: "vintage_psas",
+      target: "Vintage PSAs",
+      searchable: true,
+    }),
   ];
 
   it("scopes a row search to that source's collection URI", async () => {

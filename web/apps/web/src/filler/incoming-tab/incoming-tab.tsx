@@ -38,8 +38,7 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const decisionsTotal = unwrap(incomingQuery.data, (b) => b.decisionsTotal) ?? 0;
   const reelsTotal = unwrap(incomingQuery.data, (b) => b.reelsTotal) ?? reels.length;
   const rejectedTotal = unwrap(incomingQuery.data, (b) => b.rejectedTotal) ?? rejected.length;
-  const recentlyFiledTotal =
-    unwrap(incomingQuery.data, (b) => b.recentlyFiledTotal) ?? recentlyFiled.length;
+  const recentlyFiledTotal = unwrap(incomingQuery.data, (b) => b.recentlyFiledTotal) ?? recentlyFiled.length;
 
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on

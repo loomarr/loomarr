@@ -98,14 +98,7 @@ describe("IncomingPanel", () => {
   });
 
   it("reports the full queue while rendering only the bounded page", () => {
-    renderAsks(
-      <IncomingPanel
-        clips={[d(guessed)]}
-        clipsTotal={137}
-        decisionsTotal={120}
-        reels={[]}
-      />,
-    );
+    renderAsks(<IncomingPanel clips={[d(guessed)]} clipsTotal={137} decisionsTotal={120} reels={[]} />);
 
     expect(screen.getByText("120 clips need a decision")).toBeInTheDocument();
     expect(screen.getByText("17 more clips still being prepared, further down.")).toBeInTheDocument();
