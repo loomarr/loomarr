@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,17 +14,14 @@ import (
 
 func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	record := &phaseRecorder{}
-	st := &faultSettingStore{Store: base, record: record}
-	fleet := &fleetAdapter{record: record}
-	publisher := newPublisherAdapter(record)
-	cutover := &cutoverAdapter{record: record}
-	controller := NewController(st, fleet, publisher, cutover)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	st := transitionFaultStore(base, probe, nil)
+	controller := NewController(st, probe, probe, probe)
 	var fleetSnapshot Snapshot
-	fleet.observe = func() { fleetSnapshot = controller.Runtime().Snapshot() }
+	probe.ObserveFleet(func() { fleetSnapshot = controller.Runtime().Snapshot() })
 
 	var snapshots []Snapshot
-	st.afterSave = func() { snapshots = append(snapshots, controller.Runtime().Snapshot()) }
+	st.AfterSave = func() { snapshots = append(snapshots, controller.Runtime().Snapshot()) }
 	if err := controller.Apply(context.Background(), BackendInternal); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +35,7 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 		"save:internal/",
 		"publisher.retire:internal",
 	}
-	if got := record.snapshot(); !slices.Equal(got, wantOrder) {
+	if got := probe.Phases(); !slices.Equal(got, wantOrder) {
 		t.Fatalf("phase order = %v, want %v", got, wantOrder)
 	}
 	if len(snapshots) != 2 {
@@ -54,9 +50,8 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 
 func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.T) {
 	st := testkit.SQLiteStore(t)
-	record := &phaseRecorder{}
-	controller := NewController(st,
-		&fleetAdapter{record: record}, newPublisherAdapter(record), &cutoverAdapter{record: record})
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	controller := NewController(st, probe, probe, probe)
 
 	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
 		return BackendInternal, nil
@@ -65,7 +60,7 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 	}
 	assertDurableState(t, st, BackendInternal, "")
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendInternal, "", true)
-	if got := record.snapshot(); len(got) != 0 {
+	if got := probe.Phases(); len(got) != 0 {
 		t.Fatalf("Initialize invoked transition adapters: %v", got)
 	}
 
@@ -75,7 +70,7 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 		t.Fatalf("invalid desired error = %v, want ErrInvalidState from Load", err)
 	}
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendInternal, "", true)
-	if got := record.snapshot(); len(got) != 0 {
+	if got := probe.Phases(); len(got) != 0 {
 		t.Fatalf("invalid Initialize invoked transition adapters: %v", got)
 	}
 }
@@ -93,9 +88,8 @@ func TestControllerReconnectRepairsAppliedBackendWithoutPublishingPrepared(t *te
 	if err := Save(context.Background(), st, state); err != nil {
 		t.Fatal(err)
 	}
-	record := &phaseRecorder{}
-	publisher := newPublisherAdapter(record)
-	controller := NewController(st, &fleetAdapter{record: record}, publisher, nil)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	controller := NewController(st, probe, probe, nil)
 
 	reset, err := controller.ReconnectCurrent(context.Background(), func(context.Context) (string, error) {
 		return BackendInternal, nil
@@ -106,7 +100,7 @@ func TestControllerReconnectRepairsAppliedBackendWithoutPublishingPrepared(t *te
 	if reset != 1 {
 		t.Fatalf("tuners reset = %d, want 1", reset)
 	}
-	if got := record.snapshot(); !slices.Equal(got, []string{"publisher.reconnect:tunarr"}) {
+	if got := probe.Phases(); !slices.Equal(got, []string{"publisher.reconnect:tunarr"}) {
 		t.Fatalf("reconnect phases = %v, want applied Tunarr only", got)
 	}
 	assertDurableState(t, st, BackendTunarr, BackendInternal)
@@ -165,28 +159,27 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 	} {
 		t.Run(phase, func(t *testing.T) {
 			base := initializedStore(t, BackendTunarr)
-			st := &faultSettingStore{Store: base, failWrites: map[int]error{}}
-			fleet := &fleetAdapter{}
-			publisher := newPublisherAdapter(nil)
-			cutover := &cutoverAdapter{}
+			failWrites := map[int]error{}
+			probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+			st := transitionFaultStore(base, nil, failWrites)
 			switch phase {
 			case "fleet":
-				fleet.failOnce = crash
+				probe.FailFleetOnce(crash)
 			case "save-prepared":
-				st.failWrites[1] = crash
+				failWrites[1] = crash
 			case "publisher-prepare":
-				publisher.prepareFailOnce = crash
+				probe.FailPrepareOnce(crash)
 			case "refresh":
-				publisher.refreshFailOnce = crash
+				probe.FailRefreshOnce(crash)
 			case "cutover":
-				cutover.failOnce = crash
+				probe.FailCutoverOnce(crash)
 			case "save-published":
-				st.failWrites[2] = crash
+				failWrites[2] = crash
 			case "retire":
-				publisher.retireFailOnce = crash
+				probe.FailRetireOnce(crash)
 			}
 
-			first := NewController(st, fleet, publisher, cutover)
+			first := NewController(st, probe, probe, probe)
 			if err := first.Apply(context.Background(), BackendInternal); !errors.Is(err, crash) {
 				t.Fatalf("first Apply error = %v, want simulated interruption", err)
 			}
@@ -204,7 +197,7 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 
 			// A new process has no in-memory phase history. It must resume from the durable row
 			// and converge without operator repair.
-			restarted := NewController(st, fleet, publisher, cutover)
+			restarted := NewController(st, probe, probe, probe)
 			if err := restarted.Apply(context.Background(), BackendInternal); err != nil {
 				t.Fatalf("Apply after restart: %v", err)
 			}
@@ -218,7 +211,7 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 				// replay the fleet barrier before publisher work after restart.
 				wantFleetCalls = 2
 			}
-			if got := fleet.callCount(); got != wantFleetCalls {
+			if got := probe.FleetCalls(); got != wantFleetCalls {
 				t.Fatalf("fleet calls = %d, want %d", got, wantFleetCalls)
 			}
 		})
@@ -240,13 +233,9 @@ func TestControllerDesiredReversalReplacesPreparedTargetBeforeRepair(t *testing.
 		t.Fatal(err)
 	}
 
-	record := &phaseRecorder{}
-	st := &faultSettingStore{Store: base, record: record}
-	fleet := &fleetAdapter{record: record}
-	publisher := newPublisherAdapter(record)
-	publisher.registered[BackendInternal] = true
-	cutover := &cutoverAdapter{record: record}
-	controller := NewController(st, fleet, publisher, cutover)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr, BackendInternal)
+	st := transitionFaultStore(base, probe, nil)
+	controller := NewController(st, probe, probe, probe)
 
 	if err := controller.Apply(ctx, BackendTunarr); err != nil {
 		t.Fatal(err)
@@ -259,16 +248,16 @@ func TestControllerDesiredReversalReplacesPreparedTargetBeforeRepair(t *testing.
 		"save:tunarr/",
 		"publisher.retire:tunarr",
 	}
-	if got := record.snapshot(); !slices.Equal(got, want) {
+	if got := probe.Phases(); !slices.Equal(got, want) {
 		t.Fatalf("reversal phases = %v, want %v", got, want)
 	}
-	if fleet.callCount() != 1 || cutover.callCount() != 0 {
+	if probe.FleetCalls() != 1 || probe.CutoverCalls() != 0 {
 		t.Fatalf("reversal fleet/cutover calls: fleet=%d cutover=%d, want 1/0",
-			fleet.callCount(), cutover.callCount())
+			probe.FleetCalls(), probe.CutoverCalls())
 	}
 	assertDurableState(t, base, BackendTunarr, "")
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendTunarr, "", false)
-	if publisher.isRegistered(BackendInternal) {
+	if probe.IsRegistered(BackendInternal) {
 		t.Fatal("cancelled internal registration survived stale retirement")
 	}
 }
@@ -283,16 +272,16 @@ func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t
 	}
 
 	cancelErr := errors.New("checkpoint unavailable")
-	st := &faultSettingStore{Store: base, failWrites: map[int]error{1: cancelErr}}
-	publisher := newPublisherAdapter(nil)
-	first := NewController(st, &fleetAdapter{}, publisher, nil)
+	st := transitionFaultStore(base, nil, map[int]error{1: cancelErr})
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	first := NewController(st, probe, probe, nil)
 	if err := first.Apply(ctx, BackendTunarr); !errors.Is(err, cancelErr) {
 		t.Fatalf("Apply error = %v, want target replacement failure", err)
 	}
 	assertDurableState(t, base, BackendTunarr, BackendInternal)
 	assertSnapshot(t, first.Runtime().Snapshot(), BackendTunarr, BackendInternal, true)
 
-	restarted := NewController(st, &fleetAdapter{}, publisher, nil)
+	restarted := NewController(st, probe, probe, nil)
 	if err := restarted.Apply(ctx, BackendTunarr); err != nil {
 		t.Fatalf("retry target replacement: %v", err)
 	}
@@ -301,19 +290,17 @@ func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t
 
 func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	record := &phaseRecorder{}
-	publisher := newPublisherAdapter(record)
-	publisher.needsRepair = true // same backend, but its resolved registration URLs changed
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	probe.RequirePublisherRepair() // same backend, but its resolved registration URLs changed
 	refreshErr := errors.New("media server refresh failed")
-	publisher.refreshFailOnce = refreshErr
-	fleet := &fleetAdapter{record: record}
-	controller := NewController(base, fleet, publisher, nil)
+	probe.FailRefreshOnce(refreshErr)
+	controller := NewController(base, probe, probe, nil)
 
 	if err := controller.Apply(context.Background(), BackendTunarr); !errors.Is(err, refreshErr) {
 		t.Fatalf("first repair error = %v, want refresh failure", err)
 	}
 	assertDurableState(t, base, BackendTunarr, "")
-	if got, want := record.snapshot(), []string{
+	if got, want := probe.Phases(), []string{
 		"fleet:tunarr",
 		"publisher.prepare:tunarr",
 		"publisher.refresh:tunarr",
@@ -326,19 +313,19 @@ func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 	if err := controller.Apply(context.Background(), BackendTunarr); err != nil {
 		t.Fatalf("retry repair: %v", err)
 	}
-	if got := publisher.prepareChanges(); !slices.Equal(got, []bool{true, false}) {
+	if got := probe.PrepareChanges(); !slices.Equal(got, []bool{true, false}) {
 		t.Fatalf("Prepare changed results = %v, want [true false]", got)
 	}
-	if got := publisher.refreshCount(); got != 2 {
+	if got := probe.RefreshCalls(); got != 2 {
 		t.Fatalf("Refresh calls = %d, want retry despite unchanged registration", got)
 	}
-	if got := publisher.retireCount(); got != 1 {
+	if got := probe.RetireCalls(); got != 1 {
 		t.Fatalf("Retire calls = %d, want only the successful repair", got)
 	}
-	if fleet.callCount() != 2 {
-		t.Fatalf("steady-state repair fleet calls = %d, want one per attempt", fleet.callCount())
+	if probe.FleetCalls() != 2 {
+		t.Fatalf("steady-state repair fleet calls = %d, want one per attempt", probe.FleetCalls())
 	}
-	if got, want := record.snapshot(), []string{
+	if got, want := probe.Phases(), []string{
 		"fleet:tunarr",
 		"publisher.prepare:tunarr",
 		"publisher.refresh:tunarr",
@@ -353,15 +340,15 @@ func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 
 func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	record := &phaseRecorder{}
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	fleetErr := errors.New("channel fleet unavailable")
-	fleet := &fleetAdapter{record: record, failOnce: fleetErr}
-	controller := NewController(base, fleet, newPublisherAdapter(record), nil)
+	probe.FailFleetOnce(fleetErr)
+	controller := NewController(base, probe, probe, nil)
 
 	if err := controller.Apply(context.Background(), BackendTunarr); !errors.Is(err, fleetErr) {
 		t.Fatalf("repair error = %v, want fleet failure", err)
 	}
-	if got, want := record.snapshot(), []string{"fleet:tunarr"}; !slices.Equal(got, want) {
+	if got, want := probe.Phases(), []string{"fleet:tunarr"}; !slices.Equal(got, want) {
 		t.Fatalf("failed repair phases = %v, want %v", got, want)
 	}
 	assertDurableState(t, base, BackendTunarr, "")
@@ -369,7 +356,7 @@ func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *tes
 	if err := controller.Apply(context.Background(), BackendTunarr); err != nil {
 		t.Fatalf("retry repair: %v", err)
 	}
-	if got, want := record.snapshot(), []string{
+	if got, want := probe.Phases(), []string{
 		"fleet:tunarr",
 		"fleet:tunarr",
 		"publisher.prepare:tunarr",
@@ -382,9 +369,9 @@ func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *tes
 
 func TestControllerRetirementFailureLeavesNewBackendApplied(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	publisher := newPublisherAdapter(nil)
-	publisher.retireFailOnce = errors.New("stale tuner busy")
-	controller := NewController(base, &fleetAdapter{}, publisher, nil)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	probe.FailRetireOnce(errors.New("stale tuner busy"))
+	controller := NewController(base, probe, probe, nil)
 
 	if err := controller.Apply(context.Background(), BackendInternal); err == nil {
 		t.Fatal("Apply succeeded despite retirement failure")
@@ -403,9 +390,9 @@ func TestControllerSerializesConcurrentApplyAndRuntimeReads(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	secondEntry := make(chan struct{})
-	fleet := &fleetAdapter{entered: entered, release: release, secondEntry: secondEntry}
-	publisher := newPublisherAdapter(nil)
-	controller := NewController(base, fleet, publisher, &cutoverAdapter{})
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	probe.BlockFleet(entered, release, secondEntry)
+	controller := NewController(base, probe, probe, probe)
 
 	stopReads := make(chan struct{})
 	readsDone := make(chan struct{})
@@ -441,7 +428,7 @@ func TestControllerSerializesConcurrentApplyAndRuntimeReads(t *testing.T) {
 	close(stopReads)
 	<-readsDone
 
-	if got := fleet.callCount(); got != callers {
+	if got := probe.FleetCalls(); got != callers {
 		t.Fatalf("fleet calls = %d, want one barrier per serialized transition/repair", got)
 	}
 	assertDurableState(t, base, BackendInternal, "")
@@ -452,11 +439,13 @@ func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *
 	base := initializedStore(t, BackendTunarr)
 	entered := make(chan struct{})
 	release := make(chan struct{})
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	probe.BlockFleet(entered, release, nil)
 	controller := NewController(
 		base,
-		&fleetAdapter{entered: entered, release: release},
-		newPublisherAdapter(nil),
-		&cutoverAdapter{},
+		probe,
+		probe,
+		probe,
 	)
 	firstDone := make(chan error, 1)
 	go func() { firstDone <- controller.Apply(context.Background(), BackendInternal) }()
@@ -489,28 +478,28 @@ func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *
 
 func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	record := &phaseRecorder{}
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	controller := NewController(
-		&faultSettingStore{Store: base, record: record},
-		&fleetAdapter{record: record},
-		newPublisherAdapter(record),
-		&cutoverAdapter{record: record},
+		transitionFaultStore(base, probe, nil),
+		probe,
+		probe,
+		probe,
 	)
 	desired := BackendTunarr
 	refreshed := false
 	err := controller.MutateAndApplyCurrent(context.Background(), func(context.Context) error {
-		record.add("refresh")
+		probe.RecordPhase("refresh")
 		refreshed = true
 		return nil
 	}, func(context.Context) bool {
 		if !refreshed {
 			t.Fatal("mutation ran before settings refresh")
 		}
-		record.add("mutation")
+		probe.RecordPhase("mutation")
 		desired = BackendInternal
 		return true
 	}, func(context.Context) (string, error) {
-		record.add("resolve")
+		probe.RecordPhase("resolve")
 		return desired, nil
 	})
 	if err != nil {
@@ -528,7 +517,7 @@ func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testin
 		"save:internal/",
 		"publisher.retire:internal",
 	}
-	if got := record.snapshot(); !slices.Equal(got, want) {
+	if got := probe.Phases(); !slices.Equal(got, want) {
 		t.Fatalf("mutation transition order = %v, want %v", got, want)
 	}
 	assertDurableState(t, base, BackendInternal, "")
@@ -536,8 +525,8 @@ func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testin
 
 func TestControllerMutateAndApplyCurrentSkipsRepairAfterIneffectiveMutation(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
-	record := &phaseRecorder{}
-	controller := NewController(base, &fleetAdapter{record: record}, newPublisherAdapter(record), nil)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	controller := NewController(base, probe, probe, nil)
 	resolved := false
 	refreshed := false
 	err := controller.MutateAndApplyCurrent(context.Background(), func(context.Context) error {
@@ -555,8 +544,8 @@ func TestControllerMutateAndApplyCurrentSkipsRepairAfterIneffectiveMutation(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved || len(record.snapshot()) != 0 {
-		t.Fatalf("ineffective mutation resolved or repaired: resolved=%v phases=%v", resolved, record.snapshot())
+	if resolved || len(probe.Phases()) != 0 {
+		t.Fatalf("ineffective mutation resolved or repaired: resolved=%v phases=%v", resolved, probe.Phases())
 	}
 }
 
@@ -609,228 +598,21 @@ func assertSnapshot(t testing.TB, got Snapshot, applied, prepared string, intern
 	}
 }
 
-type phaseRecorder struct {
-	mu     sync.Mutex
-	phases []string
-}
-
-func (r *phaseRecorder) add(phase string) {
-	if r == nil {
-		return
+func transitionFaultStore(
+	base store.Store,
+	probe *testkit.BackendTransitionProbe,
+	failWrites map[int]error,
+) *testkit.FaultSettingStore {
+	return &testkit.FaultSettingStore{
+		Store:      base,
+		FailWrites: failWrites,
+		Inspect: func(_ string, value string) error {
+			state, err := decode(value)
+			if err != nil {
+				return err
+			}
+			probe.RecordPhase(fmt.Sprintf("save:%s/%s", state.Applied(), state.Prepared()))
+			return nil
+		},
 	}
-	r.mu.Lock()
-	r.phases = append(r.phases, phase)
-	r.mu.Unlock()
-}
-
-func (r *phaseRecorder) snapshot() []string {
-	if r == nil {
-		return nil
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]string(nil), r.phases...)
-}
-
-type faultSettingStore struct {
-	store.Store
-
-	mu         sync.Mutex
-	writes     int
-	failWrites map[int]error
-	record     *phaseRecorder
-	afterSave  func()
-}
-
-func (s *faultSettingStore) SetSetting(ctx context.Context, key, value string) error {
-	s.mu.Lock()
-	s.writes++
-	write := s.writes
-	fail := s.failWrites[write]
-	s.mu.Unlock()
-
-	state, err := decode(value)
-	if err != nil {
-		return err
-	}
-	s.record.add(fmt.Sprintf("save:%s/%s", state.Applied(), state.Prepared()))
-	if fail != nil {
-		return fail
-	}
-	if err := s.Store.SetSetting(ctx, key, value); err != nil {
-		return err
-	}
-	if s.afterSave != nil {
-		s.afterSave()
-	}
-	return nil
-}
-
-type fleetAdapter struct {
-	mu          sync.Mutex
-	calls       int
-	failOnce    error
-	record      *phaseRecorder
-	entered     chan struct{}
-	release     chan struct{}
-	secondEntry chan struct{}
-	observe     func()
-}
-
-func (f *fleetAdapter) PrepareInheritedBackend(_ context.Context, target string) error {
-	f.mu.Lock()
-	f.calls++
-	call := f.calls
-	err := f.failOnce
-	f.failOnce = nil
-	if call == 1 && f.entered != nil {
-		close(f.entered)
-	}
-	if call == 2 && f.secondEntry != nil {
-		close(f.secondEntry)
-	}
-	f.mu.Unlock()
-	f.record.add("fleet:" + target)
-	if f.observe != nil {
-		f.observe()
-	}
-	if call == 1 && f.release != nil {
-		<-f.release
-	}
-	return err
-}
-
-func (f *fleetAdapter) callCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.calls
-}
-
-type publisherAdapter struct {
-	mu sync.Mutex
-
-	record *phaseRecorder
-
-	registered  map[string]bool
-	needsRepair bool
-	changes     []bool
-
-	prepareCalls   int
-	refreshCalls   int
-	retireCalls    int
-	reconnectCalls int
-
-	prepareFailOnce error
-	refreshFailOnce error
-	retireFailOnce  error
-}
-
-func newPublisherAdapter(record *phaseRecorder) *publisherAdapter {
-	return &publisherAdapter{record: record, registered: map[string]bool{BackendTunarr: true}}
-}
-
-func (p *publisherAdapter) Prepare(_ context.Context, target string) (bool, error) {
-	p.record.add("publisher.prepare:" + target)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.prepareCalls++
-	if p.prepareFailOnce != nil {
-		err := p.prepareFailOnce
-		p.prepareFailOnce = nil
-		return false, err
-	}
-	changed := !p.registered[target] || p.needsRepair
-	p.registered[target] = true
-	p.needsRepair = false
-	p.changes = append(p.changes, changed)
-	return changed, nil
-}
-
-func (p *publisherAdapter) Refresh(_ context.Context, target string) error {
-	p.record.add("publisher.refresh:" + target)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.refreshCalls++
-	if p.refreshFailOnce != nil {
-		err := p.refreshFailOnce
-		p.refreshFailOnce = nil
-		return err
-	}
-	return nil
-}
-
-func (p *publisherAdapter) RetireStale(_ context.Context, target string) error {
-	p.record.add("publisher.retire:" + target)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.retireCalls++
-	if p.retireFailOnce != nil {
-		err := p.retireFailOnce
-		p.retireFailOnce = nil
-		return err
-	}
-	for backend := range p.registered {
-		if backend != target {
-			delete(p.registered, backend)
-		}
-	}
-	return nil
-}
-
-func (p *publisherAdapter) Reconnect(_ context.Context, target string) (int, error) {
-	p.record.add("publisher.reconnect:" + target)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.reconnectCalls++
-	return 1, nil
-}
-
-func (p *publisherAdapter) prepareChanges() []bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]bool(nil), p.changes...)
-}
-
-func (p *publisherAdapter) refreshCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.refreshCalls
-}
-
-func (p *publisherAdapter) retireCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.retireCalls
-}
-
-func (p *publisherAdapter) isRegistered(target string) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.registered[target]
-}
-
-type cutoverAdapter struct {
-	mu       sync.Mutex
-	calls    int
-	failOnce error
-	record   *phaseRecorder
-}
-
-func (c *cutoverAdapter) BeforePublish(_ context.Context, from, to string) error {
-	c.record.add("cutover:" + from + "->" + to)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.calls++
-	if c.failOnce != nil {
-		err := c.failOnce
-		c.failOnce = nil
-		return err
-	}
-	return nil
-}
-
-func (c *cutoverAdapter) callCount() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.calls
 }

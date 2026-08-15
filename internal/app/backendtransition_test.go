@@ -17,7 +17,9 @@ import (
 func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
 	st := testkit.SQLiteStore(t)
 	fleetErr := errors.New("fleet remains pending")
-	controller := backendtransition.NewController(st, failingCurrentTransitionFleet{err: fleetErr}, nil, nil)
+	probe := testkit.NewBackendTransitionPhaseProbe()
+	probe.FailFleetOnce(fleetErr)
+	controller := backendtransition.NewController(st, probe, nil, nil)
 	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
 		return backendtransition.BackendTunarr, nil
 	}); err != nil {
@@ -50,12 +52,6 @@ func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
 	if got := controller.Runtime().Snapshot().Prepared; got != backendtransition.BackendInternal {
 		t.Fatalf("prepared backend = %q, want mutation's desired internal", got)
 	}
-}
-
-type failingCurrentTransitionFleet struct{ err error }
-
-func (f failingCurrentTransitionFleet) PrepareInheritedBackend(context.Context, string) error {
-	return f.err
 }
 
 func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {

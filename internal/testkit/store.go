@@ -90,6 +90,43 @@ func waitInvalidationStep(ctx context.Context, gate <-chan struct{}) error {
 	}
 }
 
+// FaultSettingStore wraps a real Store with deterministic SetSetting failures.
+// Inspect runs before fault injection so package-specific tests can decode and
+// record values without teaching testkit the owning package's wire format.
+type FaultSettingStore struct {
+	store.Store
+
+	mu         sync.Mutex
+	writes     int
+	FailWrites map[int]error
+	Inspect    func(key, value string) error
+	AfterSave  func()
+}
+
+func (s *FaultSettingStore) SetSetting(ctx context.Context, key, value string) error {
+	s.mu.Lock()
+	s.writes++
+	write := s.writes
+	fail := s.FailWrites[write]
+	s.mu.Unlock()
+
+	if s.Inspect != nil {
+		if err := s.Inspect(key, value); err != nil {
+			return err
+		}
+	}
+	if fail != nil {
+		return fail
+	}
+	if err := s.Store.SetSetting(ctx, key, value); err != nil {
+		return err
+	}
+	if s.AfterSave != nil {
+		s.AfterSave()
+	}
+	return nil
+}
+
 // SQLiteStore opens a fresh migrated production store for a test. Domain tests use
 // this shared adapter when behavior depends on real settings/channel persistence.
 func SQLiteStore(t testing.TB) store.Store {
