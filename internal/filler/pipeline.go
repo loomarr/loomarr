@@ -216,6 +216,10 @@ type Pipeline struct {
 	// the former one-shot classifier. Persisted Looked markers make the data self-healing
 	// across restarts; this bool merely avoids re-reading a settled queue every pass.
 	legacySplitReviewsChecked bool
+	// legacyCompositeHoldsChecked gates the compatibility pass for composites fully confirmed
+	// before Confirm began filing their parent row. The pipeline disposition and absence of a
+	// proposal make the old state recognizable without a schema version or a new migration.
+	legacyCompositeHoldsChecked bool
 }
 
 // NewPipeline builds a runner over the given stages. Stages absent from the list are treated as
@@ -236,6 +240,7 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 type PipelineResult struct {
 	Enrolled  int
 	Requeued  int
+	Repaired  int
 	Advanced  int
 	Completed int
 	Rejected  int
@@ -289,6 +294,20 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			}
 		} else {
 			p.legacySplitReviewsChecked = true
+		}
+	}
+	if !p.legacyCompositeHoldsChecked {
+		n, repairErr := p.repairLegacyCompositeHolds(ctx)
+		res.Repaired = n
+		if repairErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: legacy composite hold repair failed", "err", repairErr)
+			}
+		} else {
+			p.legacyCompositeHoldsChecked = true
+			if n > 0 && p.log != nil {
+				p.log.Info("filler pipeline: released legacy composite holds", "repaired", n)
+			}
 		}
 	}
 
@@ -348,11 +367,54 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		// healthy idle run and is in fact the job achieving nothing, repeatedly. The old code at
 		// least said "failed". A number removed from a log is a number an operator stops being
 		// able to act on.
-		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "requeued", res.Requeued, "advanced", res.Advanced,
+		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "requeued", res.Requeued, "repaired", res.Repaired, "advanced", res.Advanced,
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
 			"deferred", res.Deferred)
 	}
 	return res, nil
+}
+
+// repairLegacyCompositeHolds releases parent rows confirmed before full confirmation started doing
+// that itself. A filed pipeline row says the reel is terminal; no surviving proposal says there
+// are no leftover cuts awaiting a person. Both facts are required. The parent remains non-airable
+// because IsComposite is an independent catalog-selection gate.
+func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) {
+	if p.rewind == nil || p.clips == nil {
+		return 0, nil
+	}
+	proposals, err := p.rewind.ListSplitProposals(ctx)
+	if err != nil {
+		return 0, err
+	}
+	pending := make(map[string]struct{}, len(proposals))
+	for _, proposal := range proposals {
+		pending[proposal.ClipHash] = struct{}{}
+	}
+	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range rows {
+		if row.Disposition != DispositionFiled {
+			continue
+		}
+		if _, ok := pending[row.ClipHash]; ok {
+			continue
+		}
+		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
+		if err != nil {
+			return n, err
+		}
+		if !found || !clip.IsComposite || !clip.Held || clip.Path == "" {
+			continue
+		}
+		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, false, false, p.now().UTC()); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // requeueResumableSplitReviews upgrades review rows created by the old one-pass split stage. It

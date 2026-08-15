@@ -234,17 +234,18 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 		// here — their key is validated via POST /v1/system/llm/test; the checklist
 		// only confirms a provider + key are configured, and points at the picker.
 		"llm": func(ctx context.Context) (bool, string) {
-			provider := set.str("llm.provider")
+			sel := resolveSelection(set)
+			provider := sel.Provider
 			if provider != "" && provider != "ollama" {
-				if set.str("llm.api_key") == "" {
+				if sel.APIKey == "" {
 					return false, "set the " + provider + " API key (AI settings), then Test it"
 				}
-				if set.str("llm.model") == "" {
+				if sel.Model == "" {
 					return false, "choose a model for " + provider + " (AI settings)"
 				}
 				return true, "" // key present; live validation is the §8.1 Test button
 			}
-			base := set.str("llm.url")
+			base := sel.URL
 			if base == "" {
 				return false, "set the Ollama URL, or configure a hosted provider in AI settings"
 			}
@@ -252,7 +253,7 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			if !probe.Reachable {
 				return false, "could not reach the LLM host at " + base
 			}
-			model := set.str("llm.model")
+			model := sel.Model
 			if model == "" {
 				return false, "select a model in AI settings (the model picker, §8.1)"
 			}
