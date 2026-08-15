@@ -218,13 +218,23 @@ func (l *Library) Publish(ctx context.Context, spec Specification, build Builder
 // Lookup returns only a complete publication whose metadata matches spec. Staging directories and
 // directories without a valid publication marker are never visible as hits.
 func (l *Library) Lookup(spec Specification) (Publication, bool, error) {
+	return l.lookup(spec, true)
+}
+
+// Peek checks completeness without advancing playback LRU. The readiness scheduler uses it while
+// building a plan; only manifests/assets actually served to a viewer count as use.
+func (l *Library) Peek(spec Specification) (Publication, bool, error) {
+	return l.lookup(spec, false)
+}
+
+func (l *Library) lookup(spec Specification, touch bool) (Publication, bool, error) {
 	key, err := keyFor(spec)
 	if err != nil {
 		return Publication{}, false, err
 	}
 	unlock := l.lock(key)
 	defer unlock()
-	return l.lookupKey(key, spec, true)
+	return l.lookupKey(key, spec, touch)
 }
 
 func (l *Library) lookupKey(key string, spec Specification, touch bool) (Publication, bool, error) {

@@ -1135,6 +1135,28 @@ the setting stable across ext4, ZFS, APFS, and network mounts. At the balanced 5
 512 GiB holds roughly 220 hours of unique programming; installs whose currently airing hot set is
 larger raise the cap without restart or accept live fallback for evicted cold programmes.
 
+Readiness identity survives process restarts in a versioned `.readiness.json` control file inside
+the prepared root. It records two regenerable indexes: `(Channel, library item, global source
+policy, Channel audio policy) -> local path / selected audio / rendition`, and `(absolute path,
+size, mtime, selected audio) -> content fingerprint`. The scheduler is the only writer. It snapshots
+updates under a short memory lock, writes a private temporary file, fsyncs it, atomically renames it,
+and fsyncs the root; tune reads the in-memory snapshot loaded at boot and never waits on that write.
+The source stat in `Preparer.Lookup` still proves the persisted file version before reuse, while a
+tier, language, Channel override, path-map, size, or mtime change makes the entry miss by identity.
+A corrupt index is a visible warning and a clean live fallback, not a boot failure; the next
+successful control-plane resolution replaces it. The index contains no irreplaceable state and is
+excluded from the media-byte budget.
+
+The planner resolves a full readiness plan rather than a bare work queue. Every already-prepared
+publication in the accepted six-hour schedule is passed to retention as protected, while no more
+than sixteen bindings absent from the durable index may contact the media server or audio prober in
+one pass. Readiness probes use a non-touching library lookup: only a successful publication build,
+manifest load, or asset open advances playback LRU. This separation is load-bearing. Treating the
+minute-level schedule scan as viewer use would make every scheduled publication permanently hot;
+evicting without schedule protection would instead rebuild and evict the same over-budget horizon
+forever. When the protected horizon itself is larger than the cap, Loomarr keeps it and reports the
+soft-cap overage; publications no longer in that horizon remain eligible oldest-playback-use first.
+
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
 adapter and every HTTP caller crosses the new seam. The old route-facing `PlayoutSessions` and

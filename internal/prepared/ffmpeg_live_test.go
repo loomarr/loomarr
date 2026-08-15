@@ -49,7 +49,13 @@ func TestLiveFFmpegPackagerPublishesPlayableHLS(t *testing.T) {
 		AudioCodec: "aac", AudioLayout: "stereo", Width: 320, Height: 180, FrameRate: 25,
 		VideoBitrateKbps: 500, AudioBitrateKbps: 96, SegmentDurationMS: 1000, PackagingVersion: 1,
 	}
-	preparer := NewPreparer(library, NewFFmpegPackager(bin))
+	readiness, err := OpenReadiness(library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := NewPreparer(PreparerDependencies{
+		Library: library, Packager: NewFFmpegPackager(bin), Readiness: readiness,
+	})
 	pub, err := preparer.Prepare(ctx, Request{Source: Source{Path: source}, Rendition: r})
 	if err != nil {
 		t.Fatal(err)

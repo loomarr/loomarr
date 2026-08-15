@@ -20,10 +20,17 @@ type Candidate struct {
 	Request  Request
 }
 
+// ReadinessPlan separates missing work from the complete accepted schedule. Protected includes
+// every ready publication still referenced by that schedule, even when no encoder slot is free.
+type ReadinessPlan struct {
+	Candidates []Candidate
+	Protected  []Specification
+}
+
 // CandidateResolver reads the authoritative schedule and returns locally readable sources.
 // Implemented at composition, where channels, library path mapping, and audio selection meet.
 type CandidateResolver interface {
-	Candidates(context.Context, time.Time, time.Time) ([]Candidate, error)
+	Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error)
 }
 
 // Preparation publishes one request. Preparer implements it; the interface keeps Planner focused
@@ -34,7 +41,7 @@ type Preparation interface {
 
 // Retainer owns the lifecycle of the same immutable store preparation writes.
 type Retainer interface {
-	Prune(context.Context, int64) (PruneResult, error)
+	Prune(context.Context, int64, []Specification) (PruneResult, error)
 }
 
 // PlannerDependencies makes the readiness control plane's ownership explicit. Preparation and
@@ -82,9 +89,12 @@ func (p *Planner) Run(ctx context.Context) error {
 		return nil
 	}
 	var errs []error
+	var plan ReadinessPlan
 	if p.resolver != nil && p.preparer != nil && p.pool != nil {
 		now := p.now()
-		candidates, resolveErr := p.resolver.Candidates(ctx, now, now.Add(preparationLookahead))
+		var resolveErr error
+		plan, resolveErr = p.resolver.Plan(ctx, now, now.Add(preparationLookahead))
+		candidates := plan.Candidates
 		slices.SortStableFunc(candidates, func(a, b Candidate) int { return a.NeededAt.Compare(b.NeededAt) })
 		seen := make(map[Request]struct{}, len(candidates))
 		errs = append(errs, resolveErr)
@@ -113,7 +123,7 @@ func (p *Planner) Run(ctx context.Context) error {
 	}
 	if p.retainer != nil && p.budget != nil {
 		budget := p.budget()
-		result, err := p.retainer.Prune(ctx, budget)
+		result, err := p.retainer.Prune(ctx, budget, plan.Protected)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("retain prepared media: %w", err))
 		}

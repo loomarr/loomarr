@@ -52,6 +52,17 @@ func preparedRequest(path string) prepared.Request {
 	return prepared.Request{Source: prepared.Source{Path: path}, Rendition: baseline("unused").Rendition}
 }
 
+func newTestPreparer(t *testing.T, library *prepared.Library, packager prepared.Packager) *prepared.Preparer {
+	t.Helper()
+	readiness, err := prepared.OpenReadiness(library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager, Readiness: readiness,
+	})
+}
+
 func TestPreparerLookupNeverFingerprintsOrBuildsOnDemand(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "movie.mkv")
@@ -63,7 +74,7 @@ func TestPreparerLookupNeverFingerprintsOrBuildsOnDemand(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := prepared.NewPreparer(lib, packager)
+	preparer := newTestPreparer(t, lib, packager)
 
 	if _, ok, err := preparer.Lookup(preparedRequest(path)); err != nil || ok {
 		t.Fatalf("cold Lookup = (_, %v, %v), want fast miss", ok, err)
@@ -84,7 +95,7 @@ func TestPreparerSharesOnePublicationAcrossConcurrentRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := prepared.NewPreparer(lib, packager)
+	preparer := newTestPreparer(t, lib, packager)
 	req := preparedRequest(path)
 
 	const callers = 8
@@ -137,7 +148,7 @@ func TestPreparerChangedSourceMakesOldPublicationUnreachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := prepared.NewPreparer(lib, packager)
+	preparer := newTestPreparer(t, lib, packager)
 	req := preparedRequest(path)
 	old, err := preparer.Prepare(t.Context(), req)
 	if err != nil {
@@ -170,7 +181,7 @@ func TestPreparerSelectedAudioTrackIsPartOfSourceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := prepared.NewPreparer(lib, packager)
+	preparer := newTestPreparer(t, lib, packager)
 	one := preparedRequest(path)
 	two := one
 	two.Source.AudioTrack = 1
@@ -199,7 +210,7 @@ func TestPreparerFailedPackagingRemainsUnready(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantErr := errors.New("packager stopped")
-	preparer := prepared.NewPreparer(lib, &countingPackager{err: wantErr})
+	preparer := newTestPreparer(t, lib, &countingPackager{err: wantErr})
 	req := preparedRequest(path)
 	if _, err := preparer.Prepare(t.Context(), req); !errors.Is(err, wantErr) {
 		t.Fatalf("Prepare error = %v, want %v", err, wantErr)
@@ -228,7 +239,7 @@ func TestPreparerRejectsSourceThatChangesWhilePackaging(t *testing.T) {
 		}
 		return prepared.Output{Files: []string{"media.m3u8"}}, nil
 	})
-	preparer := prepared.NewPreparer(lib, packager)
+	preparer := newTestPreparer(t, lib, packager)
 	req := preparedRequest(path)
 
 	if _, err := preparer.Prepare(t.Context(), req); !errors.Is(err, prepared.ErrSourceChanged) {
@@ -236,5 +247,27 @@ func TestPreparerRejectsSourceThatChangesWhilePackaging(t *testing.T) {
 	}
 	if _, ok, err := preparer.Lookup(req); err != nil || ok {
 		t.Fatalf("changed-during-package Lookup = (_, %v, %v), want miss", ok, err)
+	}
+}
+
+func TestPreparerLookupReusesACompletePublicationAfterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "movie.mkv")
+	if err := os.WriteFile(path, []byte("movie bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	library, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := preparedRequest(path)
+	first := newTestPreparer(t, library, &countingPackager{})
+	if _, err := first.Prepare(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := newTestPreparer(t, library, &countingPackager{err: errors.New("must not rebuild")})
+	specification, ok, err := restarted.Lookup(request)
+	if err != nil || !ok || specification.SourceFingerprint == "" {
+		t.Fatalf("Lookup after restart = (%+v, %v, %v), want existing publication", specification, ok, err)
 	}
 }
