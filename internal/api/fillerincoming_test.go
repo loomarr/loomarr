@@ -503,6 +503,44 @@ func TestFillerIncoming_ACompilationBeingDetectedStillShows(t *testing.T) {
 	}
 }
 
+// A detection checkpoint is private pipeline state, not a reviewable reel. The list side already
+// filters these drafts out of `reels` and leaves their compilation on the conveyor; the server-side
+// total must apply the same readiness rule or the UI renders one preparing card beneath a zero
+// count. This is the production shape between the first boundary-scan pass and its resume.
+func TestFillerIncoming_ACompilationDetectionCheckpointCountsOnTheConveyor(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	putClip(t, st, filler.Clip{
+		Hash: "hash-checkpoint", Path: "comps/checkpoint.mp4", Name: "Commercial Break Checkpoint",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: "hash-checkpoint", Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp_checkpoint", ClipHash: "hash-checkpoint", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want one compilation still being detected", len(body.Clips))
+	}
+	if body.ClipsTotal != 1 {
+		t.Errorf("clipsTotal = %d, want 1 — a draft proposal does not take its clip off the conveyor", body.ClipsTotal)
+	}
+	if len(body.Reels) != 0 || body.ReelsTotal != 0 {
+		t.Errorf("reels = %d total %d, want no reviewable reel for a detection checkpoint",
+			len(body.Reels), body.ReelsTotal)
+	}
+}
+
 // ⚠ A clip catalogued BEFORE V51b has no pipeline row at all. Treating "no row" as "still being
 // prepared" would strand it in a section that says nothing needs the operator, permanently.
 func TestFillerIncoming_AClipWithNoPipelineRowStillAsks(t *testing.T) {

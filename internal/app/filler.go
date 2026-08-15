@@ -482,6 +482,9 @@ func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) erro
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
+func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+}
 
 // ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
 func (a fillerSplitStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {

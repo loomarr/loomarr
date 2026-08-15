@@ -380,6 +380,20 @@ const SegmentRow = ({
           ) : null}
         </div>
 
+        {segment.holdReason ? (
+          <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
+            {`Needs review: ${segment.holdReason}.`}
+          </p>
+        ) : null}
+
+        {segment.boundaryConfidence ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-muted-foreground text-xs">
+            <span>{`Cut confidence ${segment.boundaryConfidence}%`}</span>
+            {segment.startEvidence ? <span>{`Start: ${segment.startEvidence}`}</span> : null}
+            {segment.endEvidence ? <span>{`End: ${segment.endEvidence}`}</span> : null}
+          </div>
+        ) : null}
+
         {/* Unsplittable: over-long AND the rescue could not see boundaries (no whisper, or
             none detectable in the text). Said unmistakably, because the alternative is
             guessing — exactly what the era rule forbids in tag form. */}

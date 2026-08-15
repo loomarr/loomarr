@@ -78,6 +78,33 @@ describe("SplitReviewEditor", () => {
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
+  it("explains the automatic hold and shows the boundary evidence", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Needs classification",
+              holdReason: "a segment could not be classified",
+              boundaryConfidence: 90,
+              startEvidence: "reel edge",
+              endEvidence: "black + silence",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("region", { name: /segment 1: needs classification/i });
+    expect(within(row).getByText(/needs review: a segment could not be classified/i)).toBeInTheDocument();
+    expect(within(row).getByText(/cut confidence 90%/i)).toBeInTheDocument();
+    expect(within(row).getByText(/start: reel edge/i)).toBeInTheDocument();
+    expect(within(row).getByText(/end: black \+ silence/i)).toBeInTheDocument();
+  });
+
   it("confirms the edited cut list — names and mm:ss times parsed back to ms", () => {
     const { onConfirm } = renderEditor();
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });

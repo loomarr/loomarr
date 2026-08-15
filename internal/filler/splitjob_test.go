@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -98,6 +99,10 @@ type splitMemStore struct {
 	clips        map[string]filler.StoreClip
 	proposals    map[string]filler.SplitProposal
 	fingerprints map[string][]uint64
+	// roundTripProposals makes the fake cross the same JSON durability boundary as the SQL store.
+	// It is opt-in because most splitter tests exercise domain behavior, while checkpoint tests
+	// specifically need private in-memory fields to disappear between passes like they do live.
+	roundTripProposals bool
 	// Captures whether cache population incorrectly reused an expired pipeline context.
 	fingerprintWriteCtxErr error
 	fingerprintReadErr     error
@@ -197,14 +202,48 @@ func (m *splitMemStore) SetClipComposite(_ context.Context, hash string, composi
 	m.clips[hash] = c
 	return nil
 }
+func (m *splitMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
+	wanted := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		wanted[path] = struct{}{}
+	}
+	updated := 0
+	for hash, c := range m.clips {
+		if _, ok := wanted[c.Path]; !ok {
+			continue
+		}
+		c.Held = held
+		m.clips[hash] = c
+		updated++
+	}
+	return updated, nil
+}
 func (m *splitMemStore) UpsertSplitProposal(_ context.Context, p filler.SplitProposal) error {
 	for id, existing := range m.proposals {
 		if existing.ClipHash == p.ClipHash && id != p.ID {
 			delete(m.proposals, id) // one proposal per clip, like the store's UNIQUE
 		}
 	}
+	if m.roundTripProposals {
+		p = durableProposalCopy(p)
+	}
 	m.proposals[p.ID] = p
 	return nil
+}
+
+func durableProposalCopy(p filler.SplitProposal) filler.SplitProposal {
+	copy := p
+	if p.Segments != nil {
+		raw, _ := json.Marshal(p.Segments)
+		_ = json.Unmarshal(raw, &copy.Segments)
+	}
+	if p.Detection != nil {
+		raw, _ := json.Marshal(p.Detection)
+		var detection filler.SplitDetectionProgress
+		_ = json.Unmarshal(raw, &detection)
+		copy.Detection = &detection
+	}
+	return copy
 }
 func (m *splitMemStore) GetSplitProposal(_ context.Context, id string) (filler.SplitProposal, error) {
 	p, ok := m.proposals[id]
@@ -351,6 +390,78 @@ func TestSplitStage_LongBoundaryScanResumesFromDurableChunkAfterRestartAndTimeou
 	}
 	if tools.chapterCalls != 1 {
 		t.Errorf("chapters checked %d times; draft resume repeated triage", tools.chapterCalls)
+	}
+}
+
+// A checkpoint crosses JSON before the next pass. The detector's private source bitmask cannot be
+// the only copy of boundary evidence, or a restart turns corroborated black+silence cuts into
+// confidence 0 and makes the default auto-split threshold impossible to clear.
+func TestSplitStage_BoundaryConfidenceSurvivesDetectionCheckpoint(t *testing.T) {
+	st := newSplitMemStore()
+	st.roundTripProposals = true
+	hash := seedCompilation(st, "comps/corroborated.mp4", 65_000)
+	clip := st.clips[hash]
+	clip.IsComposite = true
+	st.clips[hash] = clip
+	tools := &fakeTools{
+		blacks: []filler.Interval{
+			{StartMs: 20_000, EndMs: 21_000},
+			{StartMs: 40_000, EndMs: 41_000},
+		},
+		silences: []filler.Interval{
+			{StartMs: 20_000, EndMs: 21_000},
+			{StartMs: 40_000, EndMs: 41_000},
+		},
+	}
+	newStage := func() *filler.SplitStage {
+		return filler.NewSplitStage(newSplitter(st, tools, nil, t.TempDir()), st)
+	}
+
+	if _, err := newStage().Run(context.Background(), clip); !errors.Is(err, filler.ErrDeferred) {
+		t.Fatalf("checkpoint pass = %v, want deliberate deferral", err)
+	}
+	out, err := newStage().Run(context.Background(), clip)
+	if err != nil || out.Verdict != filler.VerdictReview {
+		t.Fatalf("resume pass = (%+v, %v), want completed proposal awaiting policy", out, err)
+	}
+	props, err := st.ListSplitProposals(context.Background())
+	if err != nil || len(props) != 1 || !props[0].Ready() {
+		t.Fatalf("completed proposals = %+v, %v", props, err)
+	}
+	for i, seg := range props[0].Segments {
+		if seg.BoundaryConfidence != 90 || seg.StartEvidence == "" || seg.EndEvidence == "" {
+			t.Errorf("segment %d boundary = %d (%q / %q), want persisted corroborated evidence at 90",
+				i, seg.BoundaryConfidence, seg.StartEvidence, seg.EndEvidence)
+		}
+	}
+}
+
+func TestSplitStage_UntitledChapterEvidenceSurvivesDetectionCheckpoint(t *testing.T) {
+	st := newSplitMemStore()
+	st.roundTripProposals = true
+	hash := seedCompilation(st, "comps/untitled-chapter.mp4", 60_000)
+	clip := st.clips[hash]
+	clip.IsComposite = true
+	st.clips[hash] = clip
+	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 60_000}}}
+	newStage := func() *filler.SplitStage {
+		return filler.NewSplitStage(newSplitter(st, tools, nil, t.TempDir()), st)
+	}
+
+	if _, err := newStage().Run(context.Background(), clip); !errors.Is(err, filler.ErrDeferred) {
+		t.Fatalf("checkpoint pass = %v, want deliberate deferral", err)
+	}
+	if _, err := newStage().Run(context.Background(), clip); err != nil {
+		t.Fatalf("resume pass: %v", err)
+	}
+	props, _ := st.ListSplitProposals(context.Background())
+	if len(props) != 1 || len(props[0].Segments) != 1 {
+		t.Fatalf("completed proposals = %+v", props)
+	}
+	seg := props[0].Segments[0]
+	if seg.BoundaryConfidence != 100 || seg.StartEvidence != "chapter" || seg.EndEvidence != "chapter" {
+		t.Errorf("chapter boundary = %d (%q / %q), want durable chapter evidence at 100",
+			seg.BoundaryConfidence, seg.StartEvidence, seg.EndEvidence)
 	}
 }
 
@@ -730,6 +841,9 @@ func TestPropose_CatalogFingerprintCacheFailureFallsBackToMedia(t *testing.T) {
 func TestSplitStage_DiscardsDuplicateAndShortCandidatesBeforeAutoConfirm(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 70_000)
+	parent := st.clips[hash]
+	parent.Held = true
+	st.clips[hash] = parent
 	drop := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(drop, "comps"), 0o755); err != nil {
 		t.Fatal(err)
@@ -772,6 +886,9 @@ func TestSplitStage_DiscardsDuplicateAndShortCandidatesBeforeAutoConfirm(t *test
 	if !st.clips[hash].IsComposite {
 		t.Error("parent was not retained as a composite")
 	}
+	if st.clips[hash].Held {
+		t.Error("fully auto-confirmed composite remained held and invisible in the catalog")
+	}
 	if _, ok := st.proposals[p.ID]; ok {
 		t.Error("completed proposal still waits for approval")
 	}
@@ -780,6 +897,9 @@ func TestSplitStage_DiscardsDuplicateAndShortCandidatesBeforeAutoConfirm(t *test
 func TestSplitStage_AllDiscardedFinishesWithoutAnEmptyReview(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/repeats.mp4", 30_000)
+	parent := st.clips[hash]
+	parent.Held = true
+	st.clips[hash] = parent
 	p := filler.SplitProposal{
 		ID: "sp_duplicates", ClipHash: hash, CreatedAt: time.Now(),
 		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_000, DupOf: "old/ad.mp4"}},
@@ -800,8 +920,46 @@ func TestSplitStage_AllDiscardedFinishesWithoutAnEmptyReview(t *testing.T) {
 	if !st.clips[hash].IsComposite {
 		t.Error("all-duplicate parent can still air")
 	}
+	if st.clips[hash].Held {
+		t.Error("resolved all-duplicate parent remained held and invisible in the catalog")
+	}
 	if _, ok := st.proposals[p.ID]; ok {
 		t.Error("an empty proposal was left in the review queue")
+	}
+}
+
+func TestSplitStage_PersistsWhyEverySegmentNeedsReview(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unclassified.mp4", 30_000)
+	p := filler.SplitProposal{
+		ID: "sp_unclassified", ClipHash: hash, CreatedAt: time.Now(),
+		Segments: []filler.SplitSegment{{
+			Index: 0, StartMs: 0, EndMs: 30_000, Name: "unclassified part", Looked: true,
+			BoundaryConfidence: 90, StartEvidence: "reel edge", EndEvidence: "black + silence",
+		}},
+	}
+	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	stage := filler.NewSplitStage(newSplitter(st, &fakeTools{}, nil, t.TempDir()), st).WithAutoConfirm(
+		filler.AutoSplitPolicy{
+			Enabled:       func() bool { return true },
+			MinConfidence: func() int { return 85 },
+			MaxDuration:   func() time.Duration { return 2 * time.Minute },
+		},
+		func() time.Duration { return 10 * time.Second },
+	)
+
+	out, err := stage.Run(context.Background(), st.clips[hash])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Verdict != filler.VerdictReview {
+		t.Fatalf("verdict = %v, want review", out.Verdict)
+	}
+	persisted := st.proposals[p.ID]
+	if got := persisted.Segments[0].HoldReason; got != string(filler.RejectUntagged) {
+		t.Fatalf("persisted hold reason = %q, want %q", got, filler.RejectUntagged)
 	}
 }
 
@@ -922,12 +1080,18 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	if err := st.UpsertSplitProposal(context.Background(), newProposal); err != nil {
 		t.Fatal(err)
 	}
+	parent := st.clips[parentHash]
+	parent.Held = true
+	st.clips[parentHash] = parent
 	first, err := sp.ConfirmSome(context.Background(), newProposal.ID, newProposal.Segments[:1], newProposal.Segments[1:])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(first) != 1 || st.clips[first[0]].RemovedAt.IsZero() {
 		t.Fatalf("partial re-split child = %v / %+v, want a tombstone until the generation is complete", first, st.clips[first[0]])
+	}
+	if !st.clips[parentHash].Held {
+		t.Error("partial confirmation filed the parent before its proposal was resolved")
 	}
 	for _, hash := range oldHashes {
 		if !st.clips[hash].RemovedAt.IsZero() {
@@ -955,6 +1119,9 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	}
 	if _, ok := st.proposals[newProposal.ID]; ok {
 		t.Error("completed re-split proposal survived final confirm")
+	}
+	if st.clips[parentHash].Held {
+		t.Error("final re-split confirmation left the parent held")
 	}
 }
 
