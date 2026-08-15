@@ -11,6 +11,30 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
+// backendTransitionDependencies are the composition-owned adapters needed to construct the
+// durable backend workflow. Keeping initialization here prevents BuildHandler from knowing the
+// controller's boot ordering in addition to all of its other subsystem wiring.
+type backendTransitionDependencies struct {
+	store     store.Store
+	fleet     backendtransition.Fleet
+	publisher backendtransition.Publisher
+	cutover   backendtransition.Cutover
+	desired   func(context.Context) (string, error)
+}
+
+func buildBackendTransition(
+	ctx context.Context,
+	deps backendTransitionDependencies,
+) (*backendtransition.Controller, error) {
+	controller := backendtransition.NewController(
+		deps.store, deps.fleet, deps.publisher, deps.cutover,
+	)
+	if err := controller.Initialize(ctx, deps.desired); err != nil {
+		return nil, fmt.Errorf("initialize playout backend transition: %w", err)
+	}
+	return controller, nil
+}
+
 // backendPublisher adapts the transition controller's backend names to explicit URL
 // snapshots. No phase re-reads live desired settings, so a concurrent save cannot make one
 // transition prepare one target and refresh or retire against another.

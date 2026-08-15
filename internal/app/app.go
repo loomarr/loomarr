@@ -819,15 +819,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				target, set.str("tunarr.url"), set.str("server.public_url"), tok,
 			), nil
 		}
-		backendController = backendtransition.NewController(
-			st,
-			channelEngine,
-			&backendPublisher{connector: liveTVConnector, urls: backendURLs},
-			inheritedInternalCutover{channels: st, playout: playoutSvc},
-		)
-		if err := backendController.Initialize(rootCtx, resolveDesiredBackend); err != nil {
-			return nil, fmt.Errorf("initialize playout backend transition: %w", err)
+		builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
+			store: st, fleet: channelEngine,
+			publisher: &backendPublisher{connector: liveTVConnector, urls: backendURLs},
+			cutover:   inheritedInternalCutover{channels: st, playout: playoutSvc},
+			desired:   resolveDesiredBackend,
+		})
+		if err != nil {
+			return nil, err
 		}
+		backendController = builtBackendController
 		if backendView == nil {
 			backendView = backendtransition.NewDurableView(st)
 		}
