@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/llm"
@@ -85,6 +86,29 @@ func TestOpenAI_FinalContent(t *testing.T) {
 	}
 	if resp.Content != `{"picks":[]}` {
 		t.Errorf("content = %q", resp.Content)
+	}
+}
+
+// A syntactically valid but wrong API base commonly returns the provider's HTML marketing page
+// with status 200. The raw JSON decoder error ("invalid character '<'") sends the operator to the
+// model output instead of the setting that is wrong, so name the response type and the URL field.
+func TestOpenAI_HTMLResponsePointsAtTheAPIBaseSetting(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html><title>Provider home page</title></html>"))
+	}))
+	defer srv.Close()
+
+	_, err := llm.NewOpenAI(srv.URL, "m", "").Chat(
+		context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{})
+	if err == nil {
+		t.Fatal("HTML response succeeded, want an actionable configuration error")
+	}
+	got := err.Error()
+	for _, want := range []string{"expected JSON", "text/html", "llm.url", "API base"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("error %q does not contain %q", got, want)
+		}
 	}
 }
 
