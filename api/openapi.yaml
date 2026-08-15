@@ -477,6 +477,9 @@ components:
           examples:
             - ch_abc123
           type: string
+        inAppPlayable:
+          description: True when this channel can be tuned by Loomarr's in-app player
+          type: boolean
         intentRef:
           type: string
         lineup:
@@ -540,6 +543,7 @@ components:
         - number
         - strategy
         - status
+        - inAppPlayable
         - programCount
         - pendingCount
         - breakCount

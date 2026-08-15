@@ -1,5 +1,7 @@
+import { channelsApi, unwrap } from "@loomarr/api";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChannelWatch } from "@/channels";
+import { useCallback } from "react";
+import { ChannelWatch, useChannelTuner } from "@/channels";
 import { useChannelDetail } from "./-channel-detail-context";
 
 // WATCH — play the channel live in the browser (§9.1, V46). A VIEWER surface (like Overview): a
@@ -7,15 +9,43 @@ import { useChannelDetail } from "./-channel-detail-context";
 // pickers inside gate their own editability on isAdmin — a member sees the values, an admin
 // changes them.
 const WatchScreen = () => {
+  const { id } = Route.useParams();
+  const navigate = Route.useNavigate();
   const { channel, isAdmin, savePolicy } = useChannelDetail();
+  const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
+  const nowNext = channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } });
+  const tune = useCallback(
+    (target: { id: string }) => {
+      void navigate({ to: "/channels/$id/watch", params: { id: target.id }, replace: true });
+    },
+    [navigate],
+  );
+  const tuner = useChannelTuner({
+    currentId: id,
+    channels: unwrap(channels.data)?.channels ?? [],
+    nowNext: unwrap(nowNext.data)?.channels ?? [],
+    onTune: tune,
+  });
+  const tunedChannel = tuner.channel ?? channel;
   return (
     <>
       {/* A visually-hidden heading, same as filler.tsx. The Watch surface labels itself visibly through
           the player's own top bar (CH n + channel name) and the "Watch live" poster, none of which is a
           heading; as its own route it still needs a real heading for the page to be provably reachable —
           see the visible-heading reachability check — without adding a caption the mock doesn't have. */}
-      <h2 className="sr-only">Watch {channel.name}</h2>
-      <ChannelWatch channel={channel} isAdmin={isAdmin} onSavePolicy={savePolicy} />
+      <h2 className="sr-only">Watch {tunedChannel.name}</h2>
+      <ChannelWatch
+        channel={tunedChannel}
+        isAdmin={isAdmin}
+        onSavePolicy={savePolicy}
+        tuner={{
+          canSurf: tuner.canSurf,
+          currentTitle: tuner.currentTitle,
+          attempt: tuner.attempt,
+          step: tuner.step,
+          retry: tuner.retry,
+        }}
+      />
     </>
   );
 };
