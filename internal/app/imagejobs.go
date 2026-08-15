@@ -41,25 +41,9 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 
 	reg.Add(images.FetchJob(fetcher))
 
-	// ⚠ The AVIF encoder is PROBED, not assumed. `HasAVIFEncoder` runs `ffmpeg -encoders` once at
-	// boot because a build whose ffmpeg carries no libaom-av1 produces an install where every pass
-	// fails forever and the only symptom is that clients quietly keep taking WebP — a degradation
-	// nobody would notice for months. `--help`-style checks are what let the arm64 whisper layout
-	// ship broken (§34), so this asks the binary what it can actually do.
-	ffmpeg := set.str("playout.ffmpeg_path")
-	var enc images.AVIFEncoder
-	var avifDisabled string
-	if images.HasAVIFEncoder(ctx, ffmpeg) {
-		enc = images.FFmpegAVIF(ffmpeg)
-	} else {
-		// A DisabledReason rather than an omitted row: an absent Tasks row is indistinguishable
-		// from a job that runs fine and has never failed, and this state is worth an operator
-		// being able to see. It is a fact about the build, not a switch — nothing they click
-		// changes it.
-		avifDisabled = "this build's ffmpeg has no AV1 encoder, so AVIF copies cannot be made; browsers take the WebP version instead"
-		log.Warn("no libaom-av1 in ffmpeg — the AVIF job is disabled", "ffmpeg", ffmpeg)
-	}
-	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, enc, log), avifDisabled))
+	// The release handshake already performed a real Rust AVIF encode. There is no second probe or
+	// ffmpeg path here: the worker is required, and a mismatch prevents readiness.
+	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, log), ""))
 
 	// ⚠ The adoption pass, and it is what makes the clip half of §22 real: without it, artwork
 	// keeps living only as files under FILLER_DIR and every clip surface stays on the legacy route.

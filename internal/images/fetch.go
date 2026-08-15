@@ -274,16 +274,14 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 		return fetchOutcome{err: err}
 	}
 
-	// ⚠ Decode before anything touches disk, exactly as Ingest does: it is the format allowlist
-	// and the only proof the bytes are an image rather than something merely served with an image
-	// content type. An upstream that returns an HTML error page with a 200 gets rejected here.
-	decoded, mime, err := Decode(data)
+	hash := HashBytes(data)
+	manifest, cleanup, err := f.svc.inspect(ctx, data, hash)
 	if err != nil {
 		return fetchOutcome{err: err}
 	}
+	defer cleanup()
 
-	hash := HashBytes(data)
-	dst, err := f.svc.blob.OriginalPath(hash, extForMIME(mime))
+	dst, err := f.svc.blob.OriginalPath(hash, extForMIME(manifest.Source.MIME))
 	if err != nil {
 		return fetchOutcome{err: err}
 	}
@@ -294,15 +292,17 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	}
 
 	now := f.svc.now()
-	bounds := decoded.Bounds()
 	rec := img // carries origin, source URL, visibility, role, meta and created_at forward
 	rec.Hash = hash
-	rec.MIME = mime
-	rec.Width, rec.Height = bounds.Dx(), bounds.Dy()
+	rec.MIME = manifest.Source.MIME
+	rec.Width, rec.Height = manifest.Source.Width, manifest.Source.Height
 	rec.Bytes = int64(len(data))
-	rec.Animated = isAnimatedWebP(data, mime)
-	rec.Placeholder = Placeholder(decoded)
-	rec.DominantHex = DominantHex(decoded)
+	rec.Animated = manifest.Source.Animated
+	rec.FrameCount = manifest.Source.FrameCount
+	rec.DurationMS = manifest.Source.DurationMS
+	rec.LoopCount = manifest.Source.LoopCount
+	rec.Placeholder = manifest.Source.Placeholder
+	rec.DominantHex = manifest.Source.DominantHex
 	rec.OriginFetchedAt = now
 	rec.UpdatedAt = now
 	rec.LastUsedAt = now

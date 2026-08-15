@@ -191,6 +191,16 @@ RETIRED=(
 	'JOB_IMAGES_REHYDRATE_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
 	'job.images_gc.schedule|scheduler task deepening: one image-maintenance schedule'
 	'JOB_IMAGES_GC_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
+	# Rust is the single image execution engine. These Go dependencies and entry points were the
+	# former in-process renderer; restoring any of them would silently recreate the fallback the
+	# worker handshake is designed to exclude.
+	'github.com/gen2brain/webp|image encoding is owned by the required loomarr-image Rust worker'
+	'go.n16f.net/thumbhash|placeholder generation is owned by the required loomarr-image Rust worker'
+	'EncodeWebP|image encoding is owned by the required loomarr-image Rust worker'
+	'ResizeLadder|image resizing is owned by the required loomarr-image Rust worker'
+	'FFmpegAVIF|AVIF encoding is owned by the required loomarr-image Rust worker'
+	'HasAVIFEncoder|worker startup self-test is the image capability gate'
+	'AVIFEncoder|AVIF encoding is owned by the required loomarr-image Rust worker'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

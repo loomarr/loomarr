@@ -71,7 +71,7 @@ func newTimelineTMDB(t *testing.T) *tmdb.Client {
 // proves which TMDB URL it resolved the key to.
 func TestTimelineThumbResolver(t *testing.T) {
 	st := newMemImageStore()
-	svc := newTestImageService(t.TempDir(), "https://machine-client-only.invalid", st)
+	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st)
 	ctx := context.Background()
 
 	// A fetched row per source URL the resolver should arrive at. The hashes are arbitrary but
@@ -118,7 +118,7 @@ func TestTimelineThumbResolver(t *testing.T) {
 			}
 			wantURL := ""
 			if c.wantHash != "" {
-				wantURL = "/v1/images/" + c.wantHash + "/w300.jpg"
+				wantURL = "/v1/images/" + c.wantHash + "/w300.jpg?r=loomarr-rendition-v1"
 			}
 			if gotURL != wantURL {
 				t.Errorf("ThumbFor(%q, %d, %d) url = %q, want %q", c.key, c.season, c.episode, gotURL, wantURL)
@@ -154,12 +154,12 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 		},
 	}}
 	r := timelineThumbResolver{
-		tmdb: newTimelineTMDB(t), images: newTestImageService(t.TempDir(), "https://machine-client-only.invalid", st),
+		tmdb: newTimelineTMDB(t), images: newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st),
 		fetch: fetch,
 	}
 
 	url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6)
-	if want := "/v1/images/" + contentHash + "/w300.jpg"; url != want || hash != contentHash {
+	if want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v1"; url != want || hash != contentHash {
 		t.Errorf("ThumbFor on a cold image = (%q, %q), want (%q, %q)", url, hash, want, contentHash)
 	}
 	if len(fetch.work) != 1 || fetch.work[0].SourceURL != src || !fetch.work[0].OriginFetchedAt.IsZero() {

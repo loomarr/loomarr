@@ -1,7 +1,6 @@
 package images
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,9 +8,12 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/images/rustgen"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -77,9 +79,11 @@ func DefaultFormats() []Format { return []Format{FormatAVIF, FormatWebP, FormatJ
 
 // Service is the concrete implementation.
 type Service struct {
-	cfg   Config
-	store Store
-	blob  *blobStore
+	cfg      Config
+	store    Store
+	blob     *blobStore
+	renderer Renderer
+	slots    chan struct{}
 	// group collapses concurrent identical rendition requests into one encode. Without it, a cold
 	// poster grid asking fifty browsers for the same width would run fifty identical encodes and
 	// race each other writing the same file.
@@ -87,9 +91,17 @@ type Service struct {
 	now   func() time.Time
 }
 
+// Renderer is the required Rust worker seam. It is deliberately the complete operation rather
+// than codec-shaped methods: product policy sends a plan; the worker owns all pixel work.
+type Renderer interface {
+	Generate(context.Context, rustgen.Request) (rustgen.Manifest, error)
+}
+
+const renditionRecipe = "loomarr-rendition-v1"
+
 // New builds a Service. `now` is injectable because several behaviours here are time-dependent
 // (fetch stamps, last-used) and a test that cannot control the clock asserts on wall time.
-func New(cfg Config, store Store, now func() time.Time) *Service {
+func New(cfg Config, store Store, renderer Renderer, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
@@ -99,7 +111,9 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 	if cfg.PublicBaseURL == nil {
 		cfg.PublicBaseURL = func() string { return "" }
 	}
-	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), now: now}
+	workers := min(4, max(1, runtime.GOMAXPROCS(0)))
+	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), renderer: renderer,
+		slots: make(chan struct{}, workers), now: now}
 }
 
 // defaultMaxUploadBytes mirrors `images.max_upload_bytes` (§15). Declared here too so a Service
@@ -139,7 +153,7 @@ func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, e
 		return false, err
 	}
 	for _, d := range ds {
-		if d.Format == f {
+		if d.Recipe == renditionRecipe && d.Format == f {
 			return true, nil
 		}
 	}
@@ -157,16 +171,14 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		return Image{}, err
 	}
 
-	// ⚠ Decode BEFORE storing. It is both the format allowlist (a sniff the client cannot lie past)
-	// and the only proof the bytes are a real image rather than something merely labelled as one —
-	// and storing first would mean a rejected upload had already touched the disk.
-	img, mime, err := Decode(data)
+	hash := HashBytes(data)
+	manifest, cleanup, err := s.inspect(ctx, data, hash)
 	if err != nil {
 		return Image{}, err
 	}
+	defer cleanup()
 
-	hash := HashBytes(data)
-	dst, err := s.blob.OriginalPath(hash, extForMIME(mime))
+	dst, err := s.blob.OriginalPath(hash, extForMIME(manifest.Source.MIME))
 	if err != nil {
 		return Image{}, err
 	}
@@ -177,19 +189,21 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 	}
 
 	now := s.now()
-	b := img.Bounds()
 	rec := Image{
 		Hash:        hash,
 		Origin:      orDefault(req.Origin, OriginUpload),
 		Visibility:  orDefault(req.Visibility, VisibilityMember),
 		Role:        orDefault(req.Role, RoleIcon),
-		MIME:        mime,
-		Width:       b.Dx(),
-		Height:      b.Dy(),
+		MIME:        manifest.Source.MIME,
+		Width:       manifest.Source.Width,
+		Height:      manifest.Source.Height,
 		Bytes:       int64(len(data)),
-		Animated:    isAnimatedWebP(data, mime),
-		Placeholder: Placeholder(img),
-		DominantHex: DominantHex(img),
+		Animated:    manifest.Source.Animated,
+		FrameCount:  manifest.Source.FrameCount,
+		DurationMS:  manifest.Source.DurationMS,
+		LoopCount:   manifest.Source.LoopCount,
+		Placeholder: manifest.Source.Placeholder,
+		DominantHex: manifest.Source.DominantHex,
 		Meta:        req.Meta,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -209,6 +223,62 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		}
 	}
 	return rec, nil
+}
+
+func (s *Service) inspect(ctx context.Context, data []byte, hash string) (rustgen.Manifest, func(), error) {
+	if s.renderer == nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: required Rust renderer unavailable")
+	}
+	stagingRoot := filepath.Join(s.cfg.Dir, "staging")
+	if err := os.MkdirAll(stagingRoot, 0o750); err != nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: create staging root: %w", err)
+	}
+	staging, err := os.MkdirTemp(stagingRoot, "request-*")
+	if err != nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: create staging: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(staging) }
+	source := filepath.Join(staging, "source")
+	if err := os.WriteFile(source, data, 0o600); err != nil {
+		cleanup()
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: stage source: %w", err)
+	}
+	workerCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	manifest, err := s.generate(workerCtx, s.workerRequest(hash, source, staging, nil))
+	if err != nil {
+		cleanup()
+		return rustgen.Manifest{}, func() {}, err
+	}
+	return manifest, cleanup, nil
+}
+
+func (s *Service) generate(ctx context.Context, request rustgen.Request) (rustgen.Manifest, error) {
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-ctx.Done():
+		return rustgen.Manifest{}, ctx.Err()
+	}
+	return s.renderer.Generate(ctx, request)
+}
+
+func (s *Service) workerRequest(hash, source, staging string, targets []rustgen.Target) rustgen.Request {
+	if targets == nil {
+		targets = []rustgen.Target{}
+	}
+	return rustgen.Request{
+		RequestID:  filepath.Base(staging),
+		Source:     rustgen.Source{Path: source, ExpectedSHA256: hash},
+		StagingDir: staging,
+		Targets:    targets,
+		Budget: rustgen.Budget{
+			MaxInputBytes: s.cfg.MaxUploadBytes(), MaxWidth: 16_384, MaxHeight: 16_384,
+			MaxCanvasPixels: 40_000_000, MaxFrames: 600,
+			MaxTotalFramePixels: 600_000_000, MaxDurationMS: 60_000,
+			MaxOutputBytes: 64 << 20,
+		},
+	}
 }
 
 // Adopt records a remote image WITHOUT fetching it, and returns immediately.
@@ -307,35 +377,26 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// unauthenticated caller request ten thousand distinct sizes and make the box encode ten
 	// thousand renditions — CPU and disk amplification with no login.
 	w := rec.Role.NearestWidth(width)
-	if rec.Animated {
-		// An animation has one rendition and skips the ladder entirely; resizing it per breakpoint
-		// costs far more than it saves.
-		w = rec.Width
-		if f == FormatWebP && rec.MIME == "image/webp" {
-			// The original is already the card-sized animated WebP. Passing it through Decode +
-			// Encode would preserve only frame zero, which is precisely the hover regression this
-			// branch prevents. It is the one rendition; no derivative row or duplicate file exists.
-			path, pathErr := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
-			if pathErr != nil {
-				return Rendition{}, ErrNotFound
-			}
-			size, ok := s.blob.Stat(path)
-			if !ok {
-				return Rendition{}, ErrNotFound
-			}
-			_ = s.store.TouchImage(ctx, hash, s.now())
-			return Rendition{Path: path, ContentType: rec.MIME, Bytes: size, Hash: hash}, nil
-		}
-	}
-
 	dst, err := s.blob.DerivativePath(hash, w, f)
 	if err != nil {
 		return Rendition{}, ErrNotFound
 	}
-	if size, ok := s.blob.Stat(dst); ok {
-		_ = s.store.TouchImage(ctx, hash, s.now())
-		return Rendition{Path: dst, ContentType: f.MIME(), Bytes: size, Hash: hash}, nil
+	derivatives, err := s.store.ListDerivatives(ctx, hash)
+	if err != nil {
+		return Rendition{}, err
 	}
+	for _, derivative := range derivatives {
+		if derivative.Recipe != renditionRecipe || derivative.Format != f || derivative.Width != w {
+			continue
+		}
+		if size, ok := s.blob.Stat(derivative.Path); ok {
+			_ = s.store.TouchImage(ctx, hash, s.now())
+			return Rendition{Path: derivative.Path, ContentType: f.MIME(), Bytes: size, Hash: hash}, nil
+		}
+	}
+	// A file without its provenance row is an interrupted publication. It is not accepted as a
+	// cache hit: regenerate so output hash, recipe and animation state become durable together.
+	_ = s.blob.Remove(dst)
 
 	if f == FormatAVIF {
 		// Job-only. Absent is a normal, expected state rather than an error worth logging.
@@ -367,34 +428,51 @@ func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w in
 		return Rendition{}, ErrNotFound
 	}
 
-	data, err := os.ReadFile(origPath) //nolint:gosec // path built from a validated hash
-	if err != nil {
-		return Rendition{}, fmt.Errorf("images: read original %s: %w", rec.Hash, err)
+	if s.renderer == nil {
+		return Rendition{}, fmt.Errorf("images: required Rust renderer unavailable")
 	}
-	img, _, err := Decode(data)
+	stagingRoot := filepath.Join(s.cfg.Dir, "staging")
+	if err := os.MkdirAll(stagingRoot, 0o750); err != nil {
+		return Rendition{}, fmt.Errorf("images: create staging root: %w", err)
+	}
+	staging, err := os.MkdirTemp(stagingRoot, "request-*")
+	if err != nil {
+		return Rendition{}, fmt.Errorf("images: create staging: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+	motion := "first_frame"
+	if rec.Animated && f == FormatWebP {
+		motion = "preserve"
+	}
+	targetID := fmt.Sprintf("%s-w%d", f, w)
+	timeout := 30 * time.Second
+	if f == FormatAVIF || rec.Animated {
+		timeout = 2 * time.Minute
+	}
+	workerCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	manifest, err := s.generate(workerCtx, s.workerRequest(rec.Hash, origPath, staging, []rustgen.Target{{
+		ID: targetID, Format: string(f), Width: w, Motion: motion,
+	}}))
 	if err != nil {
 		return Rendition{}, err
 	}
-
-	var buf bytes.Buffer
-	if err := Encode(&buf, Resize(img, w), f); err != nil {
-		return Rendition{}, err
-	}
-	out := buf.Bytes()
-	if err := s.blob.Write(dst, out); err != nil {
+	output := manifest.Outputs[0]
+	if err := s.blob.Promote(filepath.Join(staging, output.RelativePath), dst); err != nil {
 		return Rendition{}, err
 	}
 
 	now := s.now()
 	if err := s.store.PutDerivative(ctx, Derivative{
-		ImageHash: rec.Hash, Format: f, Width: w,
-		Bytes: int64(len(out)), Path: dst, CreatedAt: now,
+		ImageHash: rec.Hash, Recipe: output.RecipeID, Format: f, Width: w,
+		Bytes: output.Bytes, OutputHash: output.SHA256, Path: dst,
+		Animated: output.Animated, CreatedAt: now,
 	}); err != nil {
 		return Rendition{}, err
 	}
 	_ = s.store.TouchImage(ctx, rec.Hash, now)
 
-	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: int64(len(out)), Hash: rec.Hash}, nil
+	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: output.Bytes, Hash: rec.Hash}, nil
 }
 
 // PathFor builds the same-origin path of one rendition for an in-app browser.
@@ -403,7 +481,7 @@ func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w in
 // make every real rendition fail when that machine-client address is container-only or otherwise
 // unreachable from the viewer, while the inline ThumbHash misleadingly keeps painting.
 func (s *Service) PathFor(hash string, width int, f Format) string {
-	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, f.Ext())
+	return fmt.Sprintf("/v1/images/%s/w%d.%s?r=%s", hash, width, f.Ext(), renditionRecipe)
 }
 
 // URLFor builds the public URL of one rendition for a machine/off-origin client.

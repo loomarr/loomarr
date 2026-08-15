@@ -20,6 +20,7 @@ web/apps/web/storybook-static
 **/*.tsbuildinfo
 bin/
 dist/
+target/
 
 # Test + tooling artifacts
 **/coverage

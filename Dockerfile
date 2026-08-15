@@ -1,9 +1,7 @@
-# Loomarr core image (design §16): multi-stage → distroless static, non-root.
-# Pure-Go SQLite driver ⇒ CGO_ENABLED=0 ⇒ a fully static binary with no glibc,
-# no Python/ffprobe in the core (the filler design §10 depends on this).
+# Loomarr's single release image (design §16): a cgo-free Go server, the mandatory
+# release-matched Rust image worker, and the media tooling required by playout/ingest.
 #
-# Stages: fe (build the SPA) → build (cross-compile Go, embedding the SPA) →
-# filler (the §10 ingest-tooling variant) → runtime (the default distroless image).
+# Stages: fe (SPA) → build (Go) + image-worker (Rust) → runtime (one Debian image).
 
 # ---- frontend ----
 # Build the Vite/React SPA so the Go stage can embed it (internal/web/embed.go's
@@ -21,6 +19,7 @@ RUN npm install -g corepack@latest && corepack enable
 WORKDIR /src
 COPY web ./web
 COPY api/openapi.yaml ./api/openapi.yaml
+COPY scripts/check-fe-bundle.mjs ./scripts/check-fe-bundle.mjs
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     cd web && pnpm install --frozen-lockfile \
     && pnpm codegen \
@@ -54,8 +53,17 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
       -X github.com/mantonx/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
     -o /out/loomarr ./cmd/loomarr
 
+# Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
+# libwebp and Rust standard library always match the runtime architecture.
+FROM rust:1.93-bookworm AS image-worker
+WORKDIR /src
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY rust ./rust
+ARG VERSION=""
+RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-image
+
 # ---- runtime ----------------------------------------------------------------
-# THE image. One tag, one binary, all the tooling (§16 — revised).
+# THE image. One tag, one release unit, all required binaries and tooling (§16 — revised).
 #
 # Loomarr previously published two tags: a 31MB distroless `loomarr:latest` with no
 # media tooling, and a 549MB `loomarr:filler` that added it for the §10 ingest job.
@@ -340,7 +348,12 @@ RUN set -eux; \
       whisper-cli -m /usr/local/share/whisper/ggml-small.en.bin -f /tmp/probe.wav -np >/dev/null; \
       rm -f /tmp/probe.wav; \
     fi
+ARG VERSION=""
 COPY --from=build /out/loomarr /loomarr
+COPY --from=image-worker /src/target/release/loomarr-image /usr/local/bin/loomarr-image
+RUN contract="$(/usr/local/bin/loomarr-image capabilities --protocol 1 --self-test)"; \
+    echo "$contract" | grep -q '"selfTest":true'; \
+    echo "$contract" | grep -q "\"release\":\"${VERSION:-dev}\""
 # Pre-create /data owned by nonroot. Docker seeds a fresh NAMED volume from the image's
 # directory at that path — including its ownership — so this is what makes the documented
 # zero-env `docker run -v loomarr-data:/data loomarr` actually work. Without it the volume
@@ -373,7 +386,6 @@ ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
     INGEST_WHISPER_PATH=/usr/local/bin/whisper-cli \
     INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin \
     FILLER_LANGUAGE_MODEL=/usr/local/share/whisper/ggml-tiny.bin
-ARG VERSION=""
 ARG COMMIT=""
 # licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the
 # bundled GPL ffmpeg. See THIRD_PARTY_NOTICES.md for the source offer.
