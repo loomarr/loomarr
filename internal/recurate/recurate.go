@@ -43,7 +43,6 @@ type CuratorStore interface {
 	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
 	// plus a linear walk, duplicated byte-for-byte in `binder`.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
-	UpdateProposal(ctx context.Context, p store.Proposal) error
 	// ⚠ NO UpsertChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
 	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
@@ -120,10 +119,6 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// sequenced against each other by a comment rather than by any checkable contract. The
 	// binder now consumes `Retired` through the same `ApplyOpts.Drop` seam it already uses for
 	// off-intent titles — one writer, one primitive, and the retirement is an input to it.
-	if err := c.store.UpdateProposal(ctx, filtered); err != nil {
-		return suggest.Decision{Reason: "could not persist filtered proposal"}, err
-	}
-
 	// Approve through the ONE gate (audit "auto-curate"). In-library adds land as `available`
 	// records; the surviving acquisitions land as `wanted` — the same code the admin's manual
 	// approve runs, so re-curation can never enqueue by a path the gate doesn't see.
