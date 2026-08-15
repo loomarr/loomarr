@@ -177,15 +177,37 @@ func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Split
 		splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
 	}
 
+	tools := buildFillerMediaTools(set)
+
+	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
+	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
+		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+}
+
+// buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
+// MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
+// to the next span without restarting, matching the rest of the filler settings contract.
+func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 	ffmpegPath := set.str("playout.ffmpeg_path")
 	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
-
-	// ⚠ The SAME `filler.min_duration` closure the probe stage and the auto-confirm gate read.
-	// Passed live so it hot-applies, and composed with `MinSegmentMs` inside the splitter — one
-	// number, enforced at detection and again at the scan boundary, never two numbers (§10 V34).
-	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
-		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+	hosted := &mediatools.HostedTranscriber{
+		FFmpegPath: ffmpegPath,
+		Client: func() mediatools.AudioTranscriptionClient {
+			url := set.str("llm.url")
+			if url == "" {
+				return nil
+			}
+			return hostedSTTAdapter{llm.NewOpenAI(url, set.str("filler.transcribe.model"), set.str("llm.api_key"))}
+		},
+		Model: func() string { return set.str("filler.transcribe.model") },
+	}
+	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
+		if set.str("filler.transcribe.provider") != "hosted" {
+			return nil
+		}
+		return hosted
+	})
 }
 
 // buildPipeline constructs the ingest pipeline: one driver over eight rungs (§10 V51b).
@@ -257,9 +279,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	}
 	// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
 	// they run on files already on disk regardless of whether yt-dlp is present).
-	fillerTools := mediatools.NewFFmpegTools(
-		set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
-		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+	fillerTools := buildFillerMediaTools(set)
 
 	// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
 	// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
@@ -305,7 +325,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
 			func() int64 { return set.dur("filler.min_duration").Milliseconds() },
-			fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
+			func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
 		filler.NewTranscodeStage(
 			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 			clipDir, mediatools.DefaultMezzanine(),

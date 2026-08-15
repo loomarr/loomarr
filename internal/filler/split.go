@@ -267,8 +267,8 @@ type SplitSegment struct {
 	// should be retried next pass rather than poisoning the reel.
 	Looked bool `json:"looked,omitempty"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
-	// (dHash, measured 25× separation). ⚠ A FLAG, never a silent drop — the
-	// reviewer sees "already in the catalog" and decides.
+	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
+	// stage then discards it before classification because it cannot add a new catalog clip.
 	DupOf string `json:"dupOf,omitempty"`
 	// Unsplittable means the segment is over-long AND the rescue could not run or
 	// found nothing (no whisper, whisper/LLM failure). The review must say so —
@@ -279,6 +279,18 @@ type SplitSegment struct {
 	// the proposal so the reviewer can SEE why a boundary was proposed; not
 	// persisted to the catalog on confirm.
 	Transcript string `json:"transcript,omitempty"`
+}
+
+// SplitDetectionProgress is the private durable checkpoint for coarse boundary detection. It is
+// stored with a proposal but never exposed through the review interface: until this becomes nil,
+// the proposal is detector work rather than a cut list an operator can judge.
+type SplitDetectionProgress struct {
+	ScannedThroughMs int64      `json:"scannedThroughMs"`
+	Black            []Interval `json:"black,omitempty"`
+	Silence          []Interval `json:"silence,omitempty"`
+	// CoarseSegments is set once chapter/boundary triage is complete. Persisting it before
+	// transcript rescue means a timeout in the next phase never repeats the timeline scan.
+	CoarseSegments []SplitSegment `json:"coarseSegments,omitempty"`
 }
 
 // SplitProposal is the persisted, operator-reviewable result of detecting cuts
@@ -311,7 +323,13 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
+	// Detection is persisted inside the store document, not served in OpenAPI. nil means the
+	// proposal is complete and reviewable; non-nil means the pipeline must resume detection.
+	Detection *SplitDetectionProgress `json:"-"`
 }
+
+// Ready reports whether detection has produced an operator-reviewable cut list.
+func (p SplitProposal) Ready() bool { return p.Detection == nil }
 
 // segmentsFromBoundaries builds segments by cutting the timeline at every
 // detected gap (a black or silence interval), dropping slivers under
