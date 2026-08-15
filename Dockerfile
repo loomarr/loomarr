@@ -19,6 +19,7 @@ RUN npm install -g corepack@latest && corepack enable
 WORKDIR /src
 COPY web ./web
 COPY api/openapi.yaml ./api/openapi.yaml
+COPY scripts/check-fe-bundle.mjs ./scripts/check-fe-bundle.mjs
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     cd web && pnpm install --frozen-lockfile \
     && pnpm codegen \
