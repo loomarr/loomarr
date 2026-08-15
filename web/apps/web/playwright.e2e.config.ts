@@ -13,6 +13,10 @@ const PORT = 6008;
 export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/e2e",
+  // The tuner scenario owns a real same-origin HLS fixture and its own three-engine config.
+  // Keeping it out of this wizard-only suite prevents it from being discovered against the
+  // wizard route-mock server before the dedicated tuner gate runs.
+  testIgnore: "tuner-surf.spec.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
