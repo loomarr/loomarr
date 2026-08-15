@@ -23,6 +23,11 @@ var ErrNotFound = errors.New("store: not found")
 // the proposal exists, but another decision already won.
 var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
 
+// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
+// number or non-empty intent binding). Approval transactions have rolled back
+// completely when returning it, so their caller may safely reload and replan.
+var ErrChannelConflict = errors.New("store: channel conflict")
+
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -104,9 +109,10 @@ type JobStore interface {
 type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
-	// CommitProposalApproval atomically wins the submitted -> approved decision and
-	// inserts any title records that do not already exist. Existing title lifecycle
-	// state is never overwritten. The returned count is newly inserted wanted titles.
+	// CommitProposalApproval atomically wins the submitted -> approved decision,
+	// inserts title records that do not already exist, and creates or patches the
+	// intent-bound channel. Existing title lifecycle state is never overwritten.
+	// The returned count is newly inserted wanted titles.
 	CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error)
 	// CommitProposalDenial atomically wins the submitted -> denied decision.
 	CommitProposalDenial(ctx context.Context, p Proposal) error

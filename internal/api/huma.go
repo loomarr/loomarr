@@ -105,10 +105,12 @@ type Server struct {
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
-	// binder materializes an approved proposal onto a channel (§7) — the ONE
-	// implementation shared with the suggest worker's auto-approve path (§8/§11).
-	// Implemented by *binder.Binder; declared here as ChannelBinder so the api
-	// package doesn't import internal/binder's concrete type.
+	// approver is the one proposal -> titles + channel gate shared with every
+	// automatic approval path (§7/§8). The API owns authorization and presentation;
+	// the coordinator owns the indivisible domain transition.
+	approver ProposalApprover
+	// binder serves the explicit channel creation helpers. Proposal approval does
+	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
 	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
@@ -623,17 +625,17 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
-// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
-// first approval, patch it (preserving operator-owned fields) on re-approval or
-// refine. Implemented by *binder.Binder — declared here (not imported concretely)
-// so the api package doesn't couple to the binder package's internals; it only
-// needs these methods.
-//
-// LineupFromIntent/PolicyFromIntent are also used directly by createChannel (§7 POST
-// /v1/channels with an intentRef), sharing the same approved-proposal resolution
-// BindApprovedChannel uses internally — one gate, not two.
+// ProposalApprover is the complete approval gate. Its implementation plans the
+// channel and commits proposal, titles, and channel atomically before post-commit
+// runtime work; a handler cannot reproduce or reorder that choreography.
+type ProposalApprover interface {
+	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
+}
+
+// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
+// shares channel-number occupancy with manually typed channel numbers. Approval
+// uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
@@ -753,11 +755,12 @@ type Options struct {
 	Restart RestartService
 	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
 	BootstrapDrift func() []string
-	Jobs           JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings       SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
+	Jobs           JobService       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings       SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Guide          GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision      Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver       ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
+	Binder         ChannelBinder    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.
