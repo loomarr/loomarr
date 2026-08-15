@@ -32,10 +32,9 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
     mutation: {
       onSuccess: (res) => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
-        // The approval created (or patched) a channel and returned its id — navigate there so
-        // the operator lands on the new channel. Empty channelId only if creation failed
-        // server-side (the approval still stands); guard so we never navigate to "".
-        if (res.status === 200 && res.data.channelId) {
+        // Approval atomically created (or patched) the local channel and returned its required
+        // id — navigate there so the operator lands on the channel it just committed.
+        if (res.status === 200) {
           run.reset();
           onCreated(res.data.channelId);
         }

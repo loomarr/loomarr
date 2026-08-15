@@ -1,10 +1,7 @@
-// Package binder materializes an APPROVED proposal onto a channel (§7): create it
+// Package binder plans how an APPROVED proposal changes a channel (§7): create it
 // on first approval, patch it (preserving operator-owned fields) on re-approval or
-// refine. It is the ONE implementation of that logic — extracted out of
-// internal/api so both the manual-approve HTTP handler and the suggest worker's
-// auto-approve path share it (previously only the HTTP path called it, so a
-// per-user auto-approved refine enqueued acquisitions but never rebound its
-// channel — a live channel with a stale lineup).
+// refine. Local persistence belongs to the approval transaction; codec measurement
+// and Tunarr reconciliation run only after that transaction commits.
 //
 // binder is deliberately neutral: it imports store/schedule/suggest/channels, but
 // nothing in those packages imports binder back, so nothing new is coupled to it.
@@ -38,7 +35,6 @@ type Store interface {
 	// use. Looking a channel up BY something is GetChannelByIntentRef below.
 	ListChannels(ctx context.Context) ([]store.Channel, error)
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
-	UpsertChannel(ctx context.Context, ch store.Channel) error
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
@@ -46,9 +42,8 @@ type Store interface {
 }
 
 // Reconciler pushes a channel's desired state to Tunarr (§9). Satisfied by
-// *channels.Engine. A nil Reconciler (channels not wired) is fine — BindApprovedChannel
-// then just skips the "go live immediately" push and leaves the channel for the sweep,
-// matching today's best-effort reconcile behavior.
+// *channels.Engine. A nil Reconciler (channels not wired) is fine — the committed,
+// due-now channel remains available to the sweep.
 type Reconciler interface {
 	Reconcile(ctx context.Context, channelID string) error
 }
@@ -85,8 +80,8 @@ type NumberSource interface {
 	TakenChannelNumbers(ctx context.Context) (map[int]bool, error)
 }
 
-// Binder materializes approved proposals onto channels (§7). Holds the store + an
-// optional Reconciler + a logger.
+// Binder plans approved proposals onto channels (§7), then triggers optional
+// post-commit convergence work.
 type Binder struct {
 	store   Store
 	rec     Reconciler
@@ -96,8 +91,8 @@ type Binder struct {
 	log     *slog.Logger
 }
 
-// New builds a Binder. rec may be nil (no Tunarr wired yet); the bind still
-// creates/patches the channel row, it just skips the immediate reconcile push.
+// New builds a Binder. rec may be nil (no Tunarr wired yet); approval still
+// creates/patches the due-now channel row, it just skips the immediate reconcile push.
 // codec may be nil (no playout wiring); the bind then leaves the channel's stored
 // broadcast codec (h264 default) untouched — see CodecComputer.
 func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
@@ -124,34 +119,40 @@ func newChannelID() string {
 }
 
 // NewChannelID is the exported form, for callers (e.g. the API's hand-made-channel
-// path) that need the same id scheme without going through BindApprovedChannel.
+// path) that need the same id scheme without going through approval planning.
 func NewChannelID() string { return newChannelID() }
 
-// BindApprovedChannel creates — or, on re-approval/refine, patches — the channel an
-// approved proposal describes (§7). Idempotent on IntentRef (the suggestion job
-// id), so approving the same intent twice never mints a second channel.
+// PlanApprovedChannel derives the complete local channel state for one approval.
+// It reads the current channel/title/number snapshots but performs no writes. The
+// caller commits the returned channel in the SAME transaction as the proposal CAS
+// and title inserts, so "approved without a local channel" is not a representable
+// successful outcome.
 //
-// THIS IS THE ONE IMPLEMENTATION shared by the manual-approve HTTP handler and the
-// suggest worker's auto-approve path (§8/§11) — the two can never disagree about
-// what "approve → channel" means.
-func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (string, error) {
+// The supplied proposal is the exact candidate being decided. In particular, this
+// method does not query "newest approved" by job: before the approval transaction
+// commits, the candidate is necessarily not visible through that query, and resolving
+// again could pair the candidate's audit identity with another proposal's content.
+func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+	if p.Status != "approved" {
+		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
+	}
 	intentRef := p.JobID
 	if intentRef == "" {
-		return "", fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
+		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
 
-	lineup, err := b.LineupFromIntent(ctx, intentRef)
-	if err != nil {
-		return "", fmt.Errorf("resolve lineup: %w", err)
+	var proposal suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
+		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
 	}
-	policy, err := b.PolicyFromIntent(ctx, intentRef)
+	lineup, err := LineupEntries(proposal)
 	if err != nil {
-		return "", fmt.Errorf("resolve policy: %w", err)
+		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
 	}
 
 	existing, err := b.channelByIntent(ctx, intentRef)
 	if err != nil {
-		return "", err
+		return store.Channel{}, err
 	}
 
 	ch := existing
@@ -169,7 +170,7 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 		ch.Name = channelNameFromIntent(p)
 		ch.Number, err = b.nextFreeChannelNumber(ctx)
 		if err != nil {
-			return "", err
+			return store.Channel{}, err
 		}
 	}
 	// Lineup binding differs by WHO approved (§8.2). A human-in-the-loop approval (manual
@@ -197,7 +198,7 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	// autoCurate), operator-pinned fields, and the reconcile-owned Applied are preserved, and
 	// rules merge by provenance. This replaces the old capture-then-restore block; a refine can
 	// no longer silently revert an operator's era/ceiling edit or turn off its own AutoCurate.
-	ch.Policy = existing.Policy.MergeFromProposal(policy)
+	ch.Policy = existing.Policy.MergeFromProposal(proposal.Policy)
 	// On a FIRST approval the channel has no filler yet → seed it from the program scope era so
 	// a "90s action" channel gets 90s ads out of the box (audience/category/kinds stay "any").
 	// A re-approval keeps the operator's tuned filler (MergeFromProposal already preserved it).
@@ -213,12 +214,20 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	ch.ReconcileDeadline = time.Now().UTC()
 
 	if err := ch.Validate(); err != nil {
-		return "", fmt.Errorf("invalid channel: %w", err)
+		return store.Channel{}, fmt.Errorf("invalid channel: %w", err)
 	}
-	if err := b.store.UpsertChannel(ctx, ch); err != nil {
-		return "", err
+	if err := ch.Policy.Validate(); err != nil {
+		return store.Channel{}, fmt.Errorf("invalid channel policy: %w", err)
 	}
+	return ch, nil
+}
 
+// AfterApprovalCommitted performs the non-transactional half of approval. Both
+// operations are deliberately best-effort: the local channel already committed as
+// building + due-now, so the channel sweep is the durable reconcile retry and the
+// stored codec's h264 default is always safe. External or derived work must never
+// retroactively turn a successful local approval into an error.
+func (b *Binder) AfterApprovalCommitted(ctx context.Context, ch store.Channel) {
 	// Compute + store the channel's uniform broadcast codec from the just-bound content (§9.1 V50):
 	// the majority codec of the lineup's landed programs, which the timeline normalizes to. Runs here
 	// so the codec is set BEFORE the first play (no default-h264 window). Best-effort — a probe
@@ -239,8 +248,10 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 			// has a lineup and shows a full schedule in the guide, but has never been pushed to
 			// Tunarr — an operator reading "warning" would reasonably scroll past the one line
 			// explaining why their new channel is stuck on "Creating".
-			b.log.Error("initial reconcile of an approved channel FAILED — it is not on Tunarr yet; the next channel sweep will retry",
-				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
+			if b.log != nil {
+				b.log.Error("initial reconcile of an approved channel FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+					"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
+			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
 				b.acts.Error(ctx, "channel.reconcile", ch.ID,
@@ -248,7 +259,6 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 			}
 		}
 	}
-	return ch.ID, nil
 }
 
 // channelByIntent finds the channel already bound to this intent, if any. Returns a

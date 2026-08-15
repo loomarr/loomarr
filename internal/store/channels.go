@@ -76,6 +76,21 @@ func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) 
 }
 
 func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
+	err := s.upsertChannel(ctx, s.db, ch)
+	if isConstraintViolation(err) {
+		return fmt.Errorf("%w: %v", ErrChannelConflict, err)
+	}
+	return err
+}
+
+type channelExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+// upsertChannel is shared by ordinary channel writes and the proposal-approval
+// transaction. Keeping the serialization and SQL in one place prevents the
+// atomic path from becoming a subtly different channel adapter.
+func (s *sqlStore) upsertChannel(ctx context.Context, exec channelExecer, ch Channel) error {
 	lineupBlob, err := json.Marshal(orEmptyEntries(ch.Lineup))
 	if err != nil {
 		return fmt.Errorf("marshal lineup: %w", err)
@@ -97,7 +112,7 @@ func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO channels
 		   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
 		    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,

@@ -19,6 +19,7 @@ type quotaStore struct {
 	users     map[string]store.User
 	titles    map[provision.Key]provision.Record
 	proposals map[string]store.Proposal
+	channels  map[string]store.Channel
 	titleErr  error
 }
 
@@ -27,6 +28,7 @@ func newQuotaStore() *quotaStore {
 		users:     map[string]store.User{},
 		titles:    map[provision.Key]provision.Record{},
 		proposals: map[string]store.Proposal{},
+		channels:  map[string]store.Channel{},
 	}
 }
 
@@ -49,6 +51,19 @@ func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.R
 	return r, nil
 }
 
+func (q *quotaStore) NewestProposalByStatusForJob(_ context.Context, jobID, status string) (store.Proposal, error) {
+	var newest store.Proposal
+	for _, p := range q.proposals {
+		if p.JobID == jobID && p.Status == status && (newest.ID == "" || p.CreatedAt.After(newest.CreatedAt)) {
+			newest = p
+		}
+	}
+	if newest.ID == "" {
+		return store.Proposal{}, store.ErrNotFound
+	}
+	return newest, nil
+}
+
 func (q *quotaStore) CommitProposalApproval(_ context.Context, commit store.ProposalApproval) (int, error) {
 	p, ok := q.proposals[commit.Proposal.ID]
 	if !ok {
@@ -58,6 +73,7 @@ func (q *quotaStore) CommitProposalApproval(_ context.Context, commit store.Prop
 		return 0, store.ErrProposalNotSubmitted
 	}
 	q.proposals[p.ID] = commit.Proposal
+	q.channels[commit.Channel.ID] = commit.Channel
 	enqueued := 0
 	for _, rec := range commit.Titles {
 		if _, exists := q.titles[rec.Key]; exists {
@@ -88,8 +104,19 @@ func proposalWith(id, createdBy, status string, tmdbIDs ...int) store.Proposal {
 		items = append(items, suggest.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
 	}
 	blob, _ := json.Marshal(suggest.Proposal{Acquisitions: items})
-	return store.Proposal{ID: id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
+	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
 }
+
+type quotaChannels struct{}
+
+func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (store.Channel, error) {
+	ch := store.Channel{}
+	ch.ID = "ch-" + p.ID
+	ch.IntentRef = p.JobID
+	return ch, nil
+}
+
+func (quotaChannels) AfterApprovalCommitted(context.Context, store.Channel) {}
 
 func movieKey(t *testing.T, tmdbID int) provision.Key {
 	t.Helper()
@@ -101,10 +128,12 @@ func movieKey(t *testing.T, tmdbID int) provision.Key {
 }
 
 func autoApprover(st *quotaStore, defaultLimit int) *suggest.AutoApprover {
+	now := func() time.Time { return time.Unix(1_700_000_000, 0) }
+	approver := suggest.NewApprover(st, quotaChannels{}, now)
 	return suggest.NewAutoApprover(
 		st,
+		approver,
 		func(context.Context) int { return defaultLimit },
-		func() time.Time { return time.Unix(1_700_000_000, 0) },
 		slog.New(slog.DiscardHandler),
 	)
 }
@@ -137,6 +166,9 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 		}
 		if st.titles[movieKey(t, 101)].State != provision.Wanted {
 			t.Error("acquisition did not become a wanted title")
+		}
+		if got := st.channels["ch-p1"].IntentRef; got != p.JobID {
+			t.Errorf("approved channel intentRef = %q, want %q", got, p.JobID)
 		}
 	})
 

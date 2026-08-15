@@ -13,7 +13,7 @@ import (
 // (like titles.title_json). IntentHash is the cache key.
 type Job struct {
 	ID         string
-	Kind       string // "suggest"
+	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
 	Status     string // queued | running | done | failed
 	IntentJSON string
 	IntentHash string
