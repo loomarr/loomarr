@@ -268,7 +268,7 @@ dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its back
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
 .PHONY: test-pg
-test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker)
+test-pg: ## all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker)
 # ⚠ The `-run TestPostgresConformance` filter this used to carry meant every OTHER integration test
 # in the package compiled and never ran — including TestMigrateSQLiteToPostgres, which its own file
 # header calls "the V11 gate", plus TestMigrateCoversEveryTable and the three TestPreflight* tests.
@@ -279,7 +279,7 @@ test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (tes
 # This is the third variant of "green that proves nothing" this repo has hit — after a pipe masking
 # an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
 # compiling, and EXECUTING are three separate facts.
-	$(GO) test -race -tags=integration ./internal/store/
+	$(GO) test -race -tags=integration ./internal/store/ ./internal/backendtransition/ ./internal/app/
 
 ## ---- OpenAPI (Phase 8) ---------------------------------------------------
 
