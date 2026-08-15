@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -261,6 +262,16 @@ func (r *preparedRuntimeResolver) preparedAiring(
 
 func preparedSourcePolicy(tier, audioLanguage, pathMap string) string {
 	return strings.Join([]string{tier, audioLanguage, pathMap}, "\x00")
+}
+
+func preparedBudgetBytes(gib int) int64 {
+	if gib <= 0 {
+		return 0
+	}
+	if int64(gib) > math.MaxInt64>>30 {
+		return math.MaxInt64
+	}
+	return int64(gib) << 30
 }
 
 // ScheduledBroadcasts is the metadata-free authoritative timeline used by preparation. Guide

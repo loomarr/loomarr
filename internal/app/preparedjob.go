@@ -13,7 +13,7 @@ type preparedRunner interface{ Run(context.Context) error }
 func preparedPlayoutJob(runner preparedRunner, disabledReason string) scheduler.Job {
 	return scheduler.Job{
 		Name: "playout-prepare", Title: "Prepare upcoming channel programmes",
-		Description: "Prepares the next programmes shared across your channels so changing channels starts at the live point without waiting for a new encoder.",
+		Description: "Prepares the next programmes shared across your channels so changing channels starts at the live point without waiting for a new encoder. Afterwards it keeps prepared storage within its soft cap without removing recently played programmes.",
 		DefaultCron: "0 * * * * *", ScheduleKey: "job.playout_prepare.schedule",
 		Timeout: scheduler.LongJobTimeout, DisabledReason: disabledReason,
 		Run: runner.Run,

@@ -171,3 +171,15 @@ func TestPreparedRuntimePolicyChangeMakesTuneMissUntilPlannerRewarms(t *testing.
 		t.Fatal("tune tried to rewarm the changed policy")
 	}
 }
+
+func TestPreparedBudgetBytesUsesGiBAndSaturates(t *testing.T) {
+	if got := preparedBudgetBytes(512); got != int64(512)<<30 {
+		t.Fatalf("preparedBudgetBytes(512) = %d", got)
+	}
+	if got := preparedBudgetBytes(0); got != 0 {
+		t.Fatalf("preparedBudgetBytes(0) = %d, want disabled", got)
+	}
+	if got := preparedBudgetBytes(int(^uint(0) >> 1)); got <= 0 {
+		t.Fatalf("preparedBudgetBytes(max int) overflowed to %d", got)
+	}
+}

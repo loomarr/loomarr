@@ -1112,6 +1112,26 @@ applies to nothing. Software-only or explicitly-software installs do not run bac
 because spare CPU capacity is not measured and guessing would move the cold start from the viewer to
 every other subsystem. Both cases keep the live fallback.
 
+The same `playout-prepare` pass owns the prepared store's lifecycle; retention is not a second task
+that can race preparation or silently stop running. After readiness work it enforces the hot-applied
+`playout.prepared_budget_gb` soft cap (default 512 GiB) over complete publication bytes, evicting
+whole immutable publications oldest-use first. `Lookup` and asset delivery touch use in memory, so
+segment traffic does not turn into database or per-request filesystem writes. A publication used in
+the last fifteen minutes is protected, and every publication is protected for the first thirty
+minutes after process start so a restart cannot immediately collect current programmes before the
+schedule frontier has been rebuilt. If those protected bytes alone exceed the budget, playback wins:
+the pass leaves the store over its soft cap and logs the exact byte totals rather than breaking an
+active HLS manifest. A later pass converges after the grace expires.
+
+Eviction serializes only with the individual publication key it is deleting; a whole-store scan may
+not take a lock that blocks unrelated tunes. It deletes only complete directories whose names are
+valid content keys and whose metadata validates, plus Loomarr-owned `.staging-*` workspaces abandoned
+for more than a day. Unknown files and directories are reported through the pass error and left
+untouched. Logical file bytes define the budget (rather than filesystem allocation blocks), making
+the setting stable across ext4, ZFS, APFS, and network mounts. At the balanced 5.16 Mbit/s contract,
+512 GiB holds roughly 220 hours of unique programming; installs whose currently airing hot set is
+larger raise the cap without restart or accept live fallback for evicted cold programmes.
+
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
 adapter and every HTTP caller crosses the new seam. The old route-facing `PlayoutSessions` and
@@ -4078,6 +4098,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
 | `PLAYOUT_PREPARED_DIR` | `/data/prepared` — persistent immutable prepared publications shared across Channels and restarts. Separate from `PLAYOUT_HLS_DIR`, which is viewer-scoped scratch. Read at construction; changing it requires restart so keyed assets cannot split across roots. |
+| `PLAYOUT_PREPARED_BUDGET_GB` | `512` — soft cap for complete prepared publications. The minute-level preparation pass evicts cold whole publications after readiness work; anything used in the last fifteen minutes remains protected even when that leaves the store temporarily over budget. Hot-applies without restart (§9.1 V56). |
 | `PLAYOUT_MAX_CHANNELS` | `4` — concurrent encodes. The wizard's transcode check measures a realistic figure; a test pattern encodes cheaper than film grain, so treat any measurement as a starting estimate. |
 | `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
 
