@@ -23,28 +23,28 @@ const POPULATED: ChannelPolicy = {
 };
 
 describe("ChannelPolicyFields", () => {
-  it("renders inherit/no-limit sentinels for an empty policy", () => {
+  it("renders source-explicit fallback and no-limit sentinels for an empty policy", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Ordering" })).toHaveTextContent("Inherit channel default");
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Use channel strategy");
     expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("No limit");
   });
 
   it("renders the current values of a populated policy", () => {
     render(<ChannelPolicyFields policy={POPULATED} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Ordering" })).toHaveTextContent("Shuffled");
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Shuffled");
     expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("TV-14");
     expect(screen.getByLabelText("From year")).toHaveValue(1990);
     expect(screen.getByLabelText("To year")).toHaveValue(1999);
     // Duration strings tidied for display (the wire form the operator reads/types).
-    expect(screen.getByLabelText("Movies")).toHaveValue("168h");
-    expect(screen.getByLabelText("Episodes")).toHaveValue("24h");
+    expect(screen.getByLabelText("Same movie")).toHaveValue("168h");
+    expect(screen.getByLabelText("Same episode")).toHaveValue("24h");
   });
 
   it("merges an ordering change into a NEW policy, preserving applied and other sections", async () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Ordering" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Play order" }));
     await userEvent.click(await screen.findByRole("option", { name: "In order" }));
 
     expect(onChange).toHaveBeenCalledWith({
@@ -59,8 +59,8 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Ordering" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Inherit channel default" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Play order" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Use channel strategy" }));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ ordering: "" }));
   });
@@ -106,7 +106,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
 
-    const movies = screen.getByLabelText("Movies");
+    const movies = screen.getByLabelText("Same movie");
     await userEvent.type(movies, "168h");
     expect(onChange).not.toHaveBeenCalled();
     await userEvent.tab();
@@ -118,7 +118,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    const movies = screen.getByLabelText("Movies");
+    const movies = screen.getByLabelText("Same movie");
     await userEvent.clear(movies);
     await userEvent.tab();
 
@@ -163,7 +163,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.type(screen.getByLabelText("Series gap"), "2h");
+    await userEvent.type(screen.getByLabelText("Same series"), "2h");
     await userEvent.tab();
 
     expect(onChange).toHaveBeenCalledWith(
@@ -181,7 +181,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
 
-    await userEvent.type(screen.getByLabelText("Max in a row"), "3");
+    await userEvent.type(screen.getByLabelText("Max from one series"), "3");
     await userEvent.tab();
 
     expect(onChange).toHaveBeenCalledWith(
@@ -248,34 +248,22 @@ describe("ChannelPolicyFields", () => {
     expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: skipped");
   });
 
-  // The channel's strategy is what Ordering's "Inherit channel default" refers to. Rendered
-  // only when the caller supplies it, so the standalone policy form (no channel in scope) is
-  // unchanged rather than showing a control it cannot save.
-  it("hides the playback control when no channel strategy is supplied", () => {
-    render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
+  // Channel.Strategy is provenance for the unset policy value, not a second editable knob.
+  it("names the resolved channel strategy in the one play-order control", () => {
+    render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} strategy="sequential" />);
+
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent(
+      "Use channel strategy (In order)",
+    );
     expect(screen.queryByLabelText("Playback")).not.toBeInTheDocument();
   });
 
-  it("reports a strategy change through its own callback, not onChange", async () => {
-    const onChange = vi.fn();
-    const onStrategyChange = vi.fn();
-    render(
-      <ChannelPolicyFields
-        policy={EMPTY}
-        onChange={onChange}
-        strategy="sequential"
-        onStrategyChange={onStrategyChange}
-      />,
-    );
+  it("says blank repeat fields use built-in spacing", () => {
+    render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} show="ordering" />);
 
-    await userEvent.click(screen.getByLabelText("Playback"));
-    // `findBy`: the listbox popup mounts asynchronously (Base UI portals it after the click
-    // resolves, where Radix had it in the DOM already).
-    await userEvent.click(await screen.findByRole("option", { name: "Shuffled" }));
-
-    // Separate callbacks because strategy is a CHANNEL field: it takes its own PATCH, and
-    // folding it into the policy object would send it where the server does not read it.
-    expect(onStrategyChange).toHaveBeenCalledWith("shuffle");
-    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Same movie")).toHaveAttribute("placeholder", "Use built-in");
+    expect(screen.getByLabelText("Same episode")).toHaveAttribute("placeholder", "Use built-in");
+    expect(screen.getByLabelText("Same series")).toHaveAttribute("placeholder", "Use built-in");
+    expect(screen.getByLabelText("Max from one series")).toHaveAttribute("placeholder", "Use built-in");
   });
 });

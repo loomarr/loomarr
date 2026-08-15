@@ -42,10 +42,9 @@ interface ChannelProgrammingProps {
   lineup: LineupEntryDTO[];
   policy: ChannelPolicy;
   onPolicyChange: (next: ChannelPolicy) => void;
-  // The channel's playback strategy. Not part of ChannelPolicy and saved by its own PATCH,
-  // but edited here because Ordering's "inherit channel default" refers to it.
+  // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
+  // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
   strategy?: string;
-  onStrategyChange?: (next: string) => void;
   // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
   // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
   // control says so instead of offering a setting the job would skip.
@@ -79,7 +78,6 @@ const ChannelProgramming = ({
   policy,
   onPolicyChange,
   strategy,
-  onStrategyChange,
   intentRef,
   onRefined,
 }: ChannelProgrammingProps) => {
@@ -131,13 +129,7 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields
-          policy={policy}
-          onChange={onPolicyChange}
-          show="ordering"
-          strategy={strategy}
-          onStrategyChange={onStrategyChange}
-        />
+        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" strategy={strategy} />
       </Block>
 
       <Block
