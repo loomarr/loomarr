@@ -1308,8 +1308,8 @@ also defers source-backed track probing until the first decoded frame so optiona
 contend with the active Channel's cold open and seek.
 
 The Web adapter retains its one hls.js controller while the mounted Watch surface changes Channel
-parameters. A same-element replacement transfers the controller's open MediaSource, removes its old
-SourceBuffers, and lets hls.js create fresh buffers for the independent Channel timeline; if that
+parameters. A same-element replacement transfers the controller's open MediaSource and compatible
+SourceBuffers, then clears their old ranges before the independent Channel timeline attaches; if that
 standard MSE handoff is unavailable or cannot be cleared, replacement falls back to a full MediaSource
 reset. It never retains old media bytes, reconstructs hls.js, recompiles its worker, or allocates a
 second player. The synchronous replacement attach cancels a zero-delay disposal; leaving Watch lets

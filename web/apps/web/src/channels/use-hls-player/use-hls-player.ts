@@ -34,6 +34,34 @@ interface UseHlsPlayer {
   attach: (video: HTMLVideoElement) => () => void;
 }
 
+const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["transferMedia"]>>) => {
+  for (const track of Object.values(transferred.tracks)) {
+    const buffer = track?.buffer;
+    if (!buffer) continue;
+    if (buffer.updating) buffer.abort();
+    if (buffer.buffered.length === 0) continue;
+    const start = buffer.buffered.start(0);
+    const end = buffer.buffered.end(buffer.buffered.length - 1);
+    await new Promise<void>((resolve, reject) => {
+      const done = () => {
+        buffer.removeEventListener("updateend", complete);
+        buffer.removeEventListener("error", failed);
+      };
+      const complete = () => {
+        done();
+        resolve();
+      };
+      const failed = () => {
+        done();
+        reject(new Error("source buffer clear failed"));
+      };
+      buffer.addEventListener("updateend", complete, { once: true });
+      buffer.addEventListener("error", failed, { once: true });
+      buffer.remove(start, end);
+    });
+  }
+};
+
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   const [state, setState] = useState<{ channelId: string; status: PlayerStatus; error?: string }>({
     channelId,
@@ -169,22 +197,19 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.destroy();
           }
         };
-        // Preserve the open MediaSource but never its Channel-relative timeline. transferMedia()
-        // is hls.js's public in-place handoff; removing the old SourceBuffers through standard MSE
-        // gives the new manifest fresh timestamp state without WebKit's expensive source close/open
-        // cycle. An updating/closed source falls back to hls.js's normal full reset below.
+        // Preserve the open MediaSource AND its compatible SourceBuffers, but never their outgoing
+        // Channel-relative bytes. transferMedia() is hls.js's public in-place handoff; clearing the
+        // buffered ranges through standard MSE avoids both WebKit's expensive MediaSource close/open
+        // and its equally expensive SourceBuffer remove/recreate cycle. A closed source or failed
+        // clear falls back to hls.js's normal full reset below.
         let transferred = hls.url && hls.media === video ? hls.transferMedia() : null;
+        let clearing: Promise<void> | undefined;
         if (transferred?.mediaSource?.readyState === "open") {
-          try {
-            for (const buffer of Array.from(transferred.mediaSource.sourceBuffers)) {
-              if (buffer.updating) buffer.abort();
-              transferred.mediaSource.removeSourceBuffer(buffer);
-            }
-            transferred.tracks = {};
-          } catch {
-            hls.attachMedia(transferred);
-            transferred = null;
-          }
+          // Do not serialize manifest I/O behind the asynchronous MSE remove. hls.js detects an
+          // updating transferred SourceBuffer and blocks only the append queue, so the replacement
+          // manifest and init segment can arrive while WebKit clears the old range.
+          clearing = clearTransferredBuffers(transferred);
+          video.currentTime = 0;
         } else if (transferred) {
           hls.attachMedia(transferred);
           transferred = null;
@@ -192,6 +217,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.loadSource(url);
         if (transferred) hls.attachMedia(transferred);
         else if (hls.media !== video) hls.attachMedia(video);
+        void clearing?.catch(() => hls.recoverMediaError());
         if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
         else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
