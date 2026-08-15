@@ -52,7 +52,13 @@ func TestLivePreparedPackagerUsesDetectedHardware(t *testing.T) {
 	packager := prepared.NewFFmpegPackager(bin, func(r prepared.RenditionContract) (prepared.VideoPlan, error) {
 		return PreparedVideoArgs(capability.Chosen, r)
 	})
-	preparer := prepared.NewPreparer(library, packager)
+	readiness, err := prepared.OpenReadiness(library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager, Readiness: readiness,
+	})
 	publication, err := preparer.Prepare(ctx, prepared.Request{
 		Source: prepared.Source{Path: source}, Rendition: rendition,
 	})

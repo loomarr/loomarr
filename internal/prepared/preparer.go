@@ -25,14 +25,14 @@ var (
 // Source is the exact local input and selected tracks preparation reads. Track selection is source
 // identity: two airings selecting different audio tracks must never reuse the same publication.
 type Source struct {
-	Path       string
-	AudioTrack int
+	Path       string `json:"path"`
+	AudioTrack int    `json:"audioTrack"`
 }
 
 // Request describes one reusable prepared rendition without naming a Channel or client platform.
 type Request struct {
-	Source    Source
-	Rendition RenditionContract
+	Source    Source            `json:"source"`
+	Rendition RenditionContract `json:"rendition"`
 }
 
 // Packager writes every immutable media file for a request into workspace and declares the
@@ -45,12 +45,12 @@ type Packager interface {
 // Lookup performs only a stat, warmed fingerprint lookup, and immutable Library lookup, making it
 // safe for the tune path without turning a cold request into work.
 type Preparer struct {
-	library  *Library
-	packager Packager
+	library   *Library
+	packager  Packager
+	readiness *Readiness
 
-	mu           sync.Mutex
-	fingerprints map[fileVersion]string
-	locks        map[fileVersion]*fingerprintLock
+	mu    sync.Mutex
+	locks map[fileVersion]*fingerprintLock
 }
 
 type fileVersion struct {
@@ -65,31 +65,35 @@ type fingerprintLock struct {
 	refs int
 }
 
-func NewPreparer(library *Library, packager Packager) *Preparer {
+type PreparerDependencies struct {
+	Library   *Library
+	Packager  Packager
+	Readiness *Readiness
+}
+
+func NewPreparer(deps PreparerDependencies) *Preparer {
 	return &Preparer{
-		library: library, packager: packager,
-		fingerprints: make(map[fileVersion]string), locks: make(map[fileVersion]*fingerprintLock),
+		library: deps.Library, packager: deps.Packager, readiness: deps.Readiness,
+		locks: make(map[fileVersion]*fingerprintLock),
 	}
 }
 
 // Lookup reports a complete publication specification only when the source fingerprint has already
 // been warmed by Prepare. It never reads source bytes and never calls Packager.
 func (p *Preparer) Lookup(request Request) (Specification, bool, error) {
-	if p == nil || p.library == nil {
+	if p == nil || p.library == nil || p.readiness == nil {
 		return Specification{}, false, nil
 	}
 	_, version, err := sourceVersion(request.Source)
 	if err != nil {
 		return Specification{}, false, err
 	}
-	p.mu.Lock()
-	fingerprint, warmed := p.fingerprints[version]
-	p.mu.Unlock()
+	fingerprint, warmed := p.readiness.fingerprint(version)
 	if !warmed {
 		return Specification{}, false, nil
 	}
 	spec := Specification{SourceFingerprint: fingerprint, Rendition: request.Rendition}
-	_, ready, err := p.library.Lookup(spec)
+	_, ready, err := p.library.Peek(spec)
 	if err != nil || !ready {
 		return Specification{}, false, err
 	}
@@ -99,7 +103,7 @@ func (p *Preparer) Lookup(request Request) (Specification, bool, error) {
 // Prepare computes stable content identity and publishes the requested rendition. Concurrent and
 // cross-Channel requests for the same source/rendition share the fingerprint and Library build.
 func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, error) {
-	if p == nil || p.library == nil || p.packager == nil {
+	if p == nil || p.library == nil || p.packager == nil || p.readiness == nil {
 		return Publication{}, ErrPackagerUnavailable
 	}
 	source, version, err := sourceVersion(request.Source)
@@ -147,7 +151,7 @@ func sourceVersion(source Source) (Source, fileVersion, error) {
 
 func (p *Preparer) fingerprint(ctx context.Context, source Source, version fileVersion) (string, error) {
 	p.mu.Lock()
-	if fingerprint, ok := p.fingerprints[version]; ok {
+	if fingerprint, ok := p.readiness.fingerprint(version); ok {
 		p.mu.Unlock()
 		return fingerprint, nil
 	}
@@ -170,9 +174,7 @@ func (p *Preparer) fingerprint(ctx context.Context, source Source, version fileV
 		p.mu.Unlock()
 	}()
 
-	p.mu.Lock()
-	fingerprint, ok := p.fingerprints[version]
-	p.mu.Unlock()
+	fingerprint, ok := p.readiness.fingerprint(version)
 	if ok {
 		return fingerprint, nil
 	}
@@ -198,9 +200,9 @@ func (p *Preparer) fingerprint(ctx context.Context, source Source, version fileV
 		return "", ErrSourceChanged
 	}
 	fingerprint = "sha256:" + hex.EncodeToString(hash.Sum(nil)) + fmt.Sprintf(":audio:%d", source.AudioTrack)
-	p.mu.Lock()
-	p.fingerprints[version] = fingerprint
-	p.mu.Unlock()
+	if err := p.readiness.rememberFingerprint(version, fingerprint); err != nil {
+		return "", err
+	}
 	return fingerprint, nil
 }
 

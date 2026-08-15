@@ -11,12 +11,13 @@ import (
 )
 
 type fixedCandidates struct {
-	items []Candidate
-	err   error
+	items     []Candidate
+	protected []Specification
+	err       error
 }
 
-func (f fixedCandidates) Candidates(context.Context, time.Time, time.Time) ([]Candidate, error) {
-	return f.items, f.err
+func (f fixedCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+	return ReadinessPlan{Candidates: f.items, Protected: f.protected}, f.err
 }
 
 type recordingPreparation struct {
@@ -137,23 +138,28 @@ func TestPlannerContinuesPastOneBadSource(t *testing.T) {
 }
 
 type recordingRetainer struct {
-	calls  int
-	budget int64
-	result PruneResult
-	err    error
+	calls     int
+	budget    int64
+	protected []Specification
+	result    PruneResult
+	err       error
 }
 
-func (r *recordingRetainer) Prune(_ context.Context, budget int64) (PruneResult, error) {
+func (r *recordingRetainer) Prune(
+	_ context.Context, budget int64, protected []Specification,
+) (PruneResult, error) {
 	r.calls++
 	r.budget = budget
+	r.protected = append([]Specification(nil), protected...)
 	return r.result, r.err
 }
 
 func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
 	pool := media.NewEncodePool(func() int { return 1 }) // no background slot by contract
 	retainer := &recordingRetainer{result: PruneResult{RemainingBytes: 700, BudgetBytes: 512}}
+	protected := Specification{SourceFingerprint: "scheduled", Rendition: baselineRendition()}
 	p := NewPlanner(PlannerDependencies{
-		Resolver: fixedCandidates{items: []Candidate{
+		Resolver: fixedCandidates{protected: []Specification{protected}, items: []Candidate{
 			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
 		}},
 		Preparation: &recordingPreparation{}, Pool: pool, Retainer: retainer,
@@ -163,7 +169,7 @@ func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if retainer.calls != 1 || retainer.budget != 512 {
+	if retainer.calls != 1 || retainer.budget != 512 || len(retainer.protected) != 1 || retainer.protected[0] != protected {
 		t.Fatalf("retention calls = %d at %d bytes, want one at 512", retainer.calls, retainer.budget)
 	}
 }
