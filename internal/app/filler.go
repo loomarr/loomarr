@@ -493,6 +493,9 @@ func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
 }
+func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineFiled(ctx, hash, at)
+}
 
 // ⚠ Translates the store's ErrNotFound into the DOMAIN's ErrProposalGone. `internal/filler` does
 // not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
@@ -681,8 +684,23 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}
+	// Read the parent identity before Confirm deletes the proposal. The parent remains in the
+	// catalog for lineage (§10 V45), but accepting the remaining proposal is its terminal pipeline
+	// decision: leaving it at `review` makes Incoming claim the reel is still being prepared after
+	// the operator has finished it.
+	proposal, err := a.splitClips.GetSplitProposal(ctx, proposalID)
+	if err != nil {
+		return err
+	}
 	spawned, err := a.splitter.Confirm(ctx, proposalID, segments)
 	if err != nil {
+		return err
+	}
+	now := time.Now
+	if a.now != nil {
+		now = a.now
+	}
+	if err := a.splitClips.MarkPipelineFiled(ctx, proposal.ClipHash, now().UTC()); err != nil {
 		return err
 	}
 	// ⚠ Enrol the cuts, exactly as the split RUNG does (§10 V51b). Without this a segment an
