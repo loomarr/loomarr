@@ -118,6 +118,24 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	}
 }
 
+func TestOriginNormalizesOptionalNilDependencies(t *testing.T) {
+	t.Parallel()
+	origin := NewOrigin(OriginDependencies{})
+
+	// Degraded construction deliberately leaves prepared and HLS delivery unavailable. Lifecycle
+	// teardown must remain safe because the Postgres listener closes admission during startup.
+	origin.StopChannel("ch-one")
+	origin.StopAll()
+
+	for _, delivery := range []Delivery{DeliveryMPEGTS, DeliveryHLS} {
+		if _, err := origin.Tune(context.Background(), TuneRequest{
+			ChannelID: "ch-one", Plan: PlanFull, Delivery: delivery,
+		}); !errors.Is(err, ErrUnsupportedDelivery) {
+			t.Fatalf("Tune delivery %d error = %v, want ErrUnsupportedDelivery", delivery, err)
+		}
+	}
+}
+
 func TestOriginAcquireAdmissionDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
 	t.Parallel()
 	wantReadErr := errors.New("checkpoint unavailable")

@@ -149,7 +149,21 @@ type OriginDependencies struct {
 
 // NewOrigin assembles prepared delivery and the current bounded live fallback behind one seam.
 func NewOrigin(deps OriginDependencies) *Origin {
-	o := newOrigin(deps.Prepared, deps.LiveSessions, deps.LiveHLS)
+	// A nil concrete pointer stored directly in an interface is non-nil. Normalize every optional
+	// implementation here so degraded construction cannot call through a typed-nil dependency.
+	var prepared preparedDelivery
+	if deps.Prepared != nil {
+		prepared = deps.Prepared
+	}
+	var sessions sessionAttacher
+	if deps.LiveSessions != nil {
+		sessions = deps.LiveSessions
+	}
+	var hls hlsOrigin
+	if deps.LiveHLS != nil {
+		hls = deps.LiveHLS
+	}
+	o := newOrigin(prepared, sessions, hls)
 	o.available = deps.Available
 	o.eligible = deps.Eligible
 	return o
