@@ -190,7 +190,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `session.ttl` (`SESSION_TTL`) | duration | `720h` | How long you stay signed in before needing to log in again. |
-| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
+| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(advanced; one of: auto \| always \| never)_ |
 
 ## Single sign-on
 

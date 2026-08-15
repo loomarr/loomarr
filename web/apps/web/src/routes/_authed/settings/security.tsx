@@ -22,11 +22,20 @@ const SsoNote = () => (
 const SecuritySettings = () => (
   <SettingsPage
     title="Security"
-    description="Sessions, cookies, and how often Loomarr re-syncs media-server accounts."
+    description="Control sign-in sessions and optional single sign-on. Deployment-specific cookie policy stays under Advanced."
     entries={useSettingsEntries()}
     blocks={[
-      { group: "users_security", title: "Sessions and sync" },
-      { group: "sso", title: "Single sign-on" },
+      {
+        group: "users_security",
+        title: "Sign-in sessions",
+        description:
+          "Choose how long sign-ins last. Loomarr's automatic secure-cookie policy is the recommended default.",
+      },
+      {
+        group: "sso",
+        title: "Single sign-on",
+        description: "Optional. Let existing Loomarr people prove their identity with your provider.",
+      },
     ]}
     footer={
       <>
