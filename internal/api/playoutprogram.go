@@ -87,6 +87,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
+	if !ok {
+		return
+	}
+	defer admission.Release()
+	r = r.WithContext(admission.Context)
 
 	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
 	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner
@@ -97,6 +103,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	encPlan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
 
 	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
+	if r.Context().Err() != nil {
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -399,6 +408,9 @@ type liveChild struct {
 func (s *Server) startChild(
 	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, args []string,
 ) *liveChild {
+	if ctx.Err() != nil {
+		return nil
+	}
 	// The child dies with the request. cancel is handed to the caller (pipeChild) which owns the
 	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
 	// orphan before the next ladder step.

@@ -27,16 +27,18 @@ func chTunarrID(t *testing.T, st store.Store, id string) string {
 // asked with (§10 redesign: BuildFillerList returns program uuids for the channel's
 // Tunarr filler-list, not per-gap slots).
 type fakePods struct {
-	calls int
-	seeds []int64
-	sels  []filler.Selection // the selection each call received
-	ids   []string           // the pool to return; nil → ok=false (no filler)
+	calls    int
+	hasCalls int
+	seeds    []int64
+	sels     []filler.Selection // the selection each call received
+	ids      []string           // the pool to return; nil → ok=false (no filler)
 }
 
 // HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
 // keys on the same `ids` so a test that seeds clips gets breaks, and one that seeds none does
 // not — the behaviour the gate actually depends on.
 func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ filler.Selection) bool {
+	f.hasCalls++
 	return len(f.ids) > 0
 }
 
@@ -83,6 +85,46 @@ func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 	// The program slot is untouched (filler never displaces a program).
 	if programCount(ch) != 1 {
 		t.Errorf("program count changed: %+v", ch.Desired)
+	}
+}
+
+// Internal playout fills breaks from local clip paths, not Tunarr program uuids. Reconcile
+// must ask HasPool and persist the break gaps without ever building a Tunarr filler-list.
+func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	pods := &fakePods{ids: []string{"local-clip"}}
+	e := channels.New(st, nil, avail, nil, channels.Config{
+		ReconcileTTL:  10 * time.Minute,
+		BreaksPerHour: 30,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).WithPods(pods)
+	seedChannel(t, st, "internal-pods", 5,
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	if err := e.Reconcile(context.Background(), "internal-pods"); err != nil {
+		t.Fatal(err)
+	}
+	if pods.hasCalls != 1 {
+		t.Fatalf("HasPool calls = %d, want 1", pods.hasCalls)
+	}
+	if pods.calls != 0 {
+		t.Fatalf("internal reconcile built a Tunarr filler-list %d times", pods.calls)
+	}
+	ch, err := st.GetChannel(context.Background(), "internal-pods")
+	if err != nil {
+		t.Fatal(err)
+	}
+	breaks := 0
+	for _, slot := range ch.Desired {
+		if slot.Kind == schedule.SlotFiller {
+			breaks++
+		}
+	}
+	if breaks == 0 {
+		t.Fatalf("local filler pool did not materialize break gaps: %+v", ch.Desired)
 	}
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,22 @@ import (
 
 	"github.com/mantonx/loomarr/internal/playout"
 )
+
+func TestAuthorizePlayoutUsesCurrentReplicaTokenForRawAndSignedCredentials(t *testing.T) {
+	const rotated = "rotated-token-abcdefghijklmnop"
+	s := serverWithToken("stale-process-token-abcdefghijklmnop")
+	s.playoutSecretCurrent = func(context.Context) (string, error) { return rotated, nil }
+	if !authorizeWith(s, "ch1", "?token="+rotated) {
+		t.Fatal("durable rotated device token was rejected in favor of stale process cache")
+	}
+	if authorizeWith(s, "ch1", "?token=stale-process-token-abcdefghijklmnop") {
+		t.Fatal("stale process token remained authorized after durable rotation")
+	}
+	sig := signPlayoutWithKey(rotated, "ch1", time.Now().Add(time.Hour))
+	if !authorizeWith(s, "ch1", "?sig="+sig) {
+		t.Fatal("signature made with durable rotated key was rejected by stale replica cache")
+	}
+}
 
 // authorizeWith runs authorizePlayout against a synthetic request carrying `query` and a path
 // value of `id`, returning whether it authorized. Exercises the real branch the HLS routes use

@@ -17,6 +17,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 	"log/slog"
 )
 
@@ -56,6 +57,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		Auth:            api.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutSecret:   func() string { return playoutToken },
+		Playout:         &testkit.Playout{},
 		PlayoutResolver: &chainResolver{profile: profile, n: &requests, src: srcFile},
 		PlayoutEncoder: func(ctx context.Context, args []string, onProgress func(playout.Progress)) (*playout.Process, error) {
 			return playout.Start(ctx, bin, args, nil, onProgress)

@@ -4,15 +4,15 @@
 **Audience:** coding agents + maintainer
 **Working name:** `loomarr` — weaves your library into TV channels, and follows the *arr / Servarr naming convention since it lives in that stack (alongside Sonarr/Radarr, which it drives). Container image `loomarr`. Rename freely.
 
-> Supersedes the earlier "Channel Content Provisioner" framing. The app's purpose is to **build and maintain virtual TV channels end to end**: from a natural-language intent, through content acquisition, to a live Tunarr channel that stays filled. "Provisioning" is one subsystem of that, not the product.
+> Supersedes the earlier "Channel Content Provisioner" framing. The app's purpose is to **build and maintain virtual TV channels end to end**: from a natural-language intent, through content acquisition, to a live channel on the selected playout backend that stays filled. "Provisioning" is one subsystem of that, not the product.
 
 ---
 
 ## 1. Purpose
 
-`loomarr` turns *"I want a channel that feels like X"* into an actual, running Tunarr channel — and keeps it populated as content comes and goes. It closes the full loop:
+`loomarr` turns *"I want a channel that feels like X"* into an actual, running virtual channel — and keeps it populated as content comes and goes. It closes the full loop:
 
-**intent → suggest a lineup → acquire what's missing → build the schedule → push it to Tunarr → backfill and maintain.**
+**intent → suggest a lineup → acquire what's missing → build the schedule → converge the selected playout backend → backfill and maintain.**
 
 The app has **five cooperating subsystems**:
 
@@ -20,7 +20,7 @@ The app has **five cooperating subsystems**:
 | --- | --- | --- |
 | **Suggester** (§8) | intent → proposal | *what* content belongs on the channel |
 | **Provisioner** (§3–§7) | acquire missing titles, track to available | *whether/when* content exists |
-| **Scheduler** (§9) | build lineup, insert pods, push to Tunarr, backfill | *order, timing, and delivery* |
+| **Scheduler** (§9) | build lineup, insert pods, materialize locally, project to Tunarr when selected, backfill | *order, timing, and delivery* |
 | **Filler** (§10) | filler ingestion, clip catalog, pod assembly | *what plays in the breaks* |
 | **Web** (§12) | human control surface | *approval and oversight* |
 
@@ -28,7 +28,7 @@ The app has **five cooperating subsystems**:
 - Natural-language channel intent → grounded proposal (lineup + acquisitions).
 - Acquire missing titles via Seerr (or Sonarr/Radarr) and track each to `available`/`unavailable`.
 - **Build channel programming** (order, time-slots, shuffle/blocks) and insert **era/audience-matched commercial pods** with their own filler sourcing pipeline (§10).
-- **Push channels to Tunarr** via its API and **reconcile** desired vs. actual channel state.
+- **Reconcile every channel's durable desired state** and, when Tunarr is selected, project it through Tunarr's API with a desired-vs-actual diff.
 - **Backfill loop:** go live immediately with available content + filler; swap in real titles as acquisitions land; substitute on give-up.
 - Persist all state to **Postgres or SQLite**.
 - **Multi-user login with Emby/Jellyfin accounts** (Seerr-style import/sync), roles, per-user quotas, and audited approvals (§11).
@@ -123,7 +123,7 @@ The subsystem names above map **many-to-many** onto package names, and four pack
 | --- | --- | --- |
 | Channel identity, `DesiredLineup`, `ChannelPolicy`, the ordering/relaxation/seasonal math — **pure, no I/O** | `internal/schedule` | `internal/scheduler` |
 | The cron/job runner — named jobs, tunable intervals, leases, "Run now". **Nothing to do with TV** | `internal/scheduler` | `internal/schedule` |
-| Making a channel real in Tunarr: diff desired-vs-actual, apply minimal calls, own the per-channel mutex | `internal/channels` | `internal/reconcile` |
+| Materializing a channel's desired state and, when selected, converging its Tunarr projection; own the per-channel mutex | `internal/channels` | `internal/reconcile` |
 | The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/reconcile` | `internal/channels` |
 | Turning an **approved proposal** into a channel (create or patch, preserving operator edits) | `internal/binder` | `internal/channels` |
 | Periodically re-evaluating a channel's intent and evolving its lineup, through the approval gate | `internal/recurate` | `internal/suggest` |
@@ -156,9 +156,9 @@ flowchart TD
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
-  p_schedule["schedule<br/><small>12 importers</small>"]
+  p_schedule["schedule<br/><small>13 importers</small>"]
   p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>13 importers</small>"]
+  p_store["store<br/><small>14 importers</small>"]
   p_suggest["suggest<br/><small>5 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
@@ -207,7 +207,7 @@ flowchart TD
 
 - **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
-- **`schedule`** · 12 importers · → `provision`
+- **`schedule`** · 13 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -216,7 +216,7 @@ flowchart TD
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`playout`** · 3 importers · → `prepared`, `provision`, `schedule`
+- **`playout`** · 4 importers · → `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
@@ -251,7 +251,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 6 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 13 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -260,15 +260,17 @@ flowchart TD
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`auth`** · 3 importers · → `library`, `store`
   Issues and validates Loomarr sessions (design §11).
+- **`backendtransition`** · 1 importer · → `schedule`, `store`
+  Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 5 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into an actual, filled Tunarr channel and keeps it that way.
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
 - **`setup`** · 1 importer · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist.
-- **`testkit`** · → `images`, `llm`, `programmer`, `provision`, `schedule`, `store`
+  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
+- **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 9**
@@ -298,7 +300,7 @@ flowchart TD
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -548,6 +550,20 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
   a whole-lineup replacement could erase an approved title the operator never saw. The revision
   is internal concurrency state, not `updated_at`: timestamps are second-resolution presentation
   metadata and cannot serialize replicas.
+- **Global playout-backend mutation and publication hold one store-owned workflow lock.** SQLite
+  serializes it with an in-process mutex. Postgres uses a database-namespaced advisory lock on a dedicated
+  connection across the transition-affecting settings mutation, durable-state load, idempotent
+  external prepare/refresh/retire effects, and checkpoint saves. A queued replica refreshes its
+  settings snapshot, including provenance and environment-override ownership, only after acquiring
+  that lock and before it decides whether or how to mutate. This refresh runs even when the eventual
+  mutation is pinned or otherwise ineffective. It then resolves desired from the same snapshot;
+  controllers targeting the same or opposing backends therefore cannot overlap publication, and a
+  newer desired or ownership write cannot commit midway through an older publication.
+- **Publication reads do not trust a process-local transition cache on Postgres.** Each ordinary
+  channel reconcile attempt and each routing request reads the one durable checkpoint row once,
+  then carries that immutable snapshot through the operation. These reads do not take the workflow
+  lock: the row is atomically committed, and blocking M3U/HLS reads behind publisher work would
+  create an outage. A missing, corrupt, or unavailable checkpoint fails the operation closed.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
 ### Migrating SQLite → PostgreSQL (V11)
@@ -676,15 +692,15 @@ The scheduler drives Tunarr's REST API (documented OpenAPI at `tunarr.com/api-do
 
 **Content-id resolution (Programmer adapter).** A lineup slot carries the *media-server* item id (the Emby/Jellyfin id, from the provisioner). Tunarr's manual-programming API does **not** accept that id directly — a programming entry references Tunarr's *own* program id (a stable uuid Tunarr assigns when it scans the item). So the adapter resolves media-server-item-id → Tunarr-program-id before pushing: it reads Tunarr's persisted library index (`GET /api/media-libraries/{libraryId}/programs`, where each program carries `identifiers[{type:"emby"|"jellyfin"},…]` + its uuid) and builds a cached `{external item id → program uuid}` map (refreshed on a miss / TTL). This covers movies and TV episodes uniformly (episodes are indexed individually; a series pick expands to its episodes' ids). If a slot's item isn't in Tunarr's index yet (library not scanned, or a just-landed acquisition Tunarr hasn't picked up), that slot degrades to flex — never dead air (§9) — and resolves on a later reconcile once Tunarr has scanned it. **To close that gap without waiting on Tunarr's own scan cadence, a reconcile that produced any unresolved program slot triggers a Tunarr media-library scan** (`POST /api/media-sources/{src}/libraries/{lib}/scan`, each non-`local` source's enabled libraries) so the next reconcile finds the now-indexed episodes and promotes those flex gaps to real content. It is **debounced** (one scan pass per reconcile-that-had-misses) and **best-effort** (Tunarr scanning is async + idempotent, the flex fallback is already on-air, and a scan failure never fails the push). NB: Tunarr's browse endpoint (`/api/emby/{src}/libraries/{lib}/items`) returns *ephemeral* handles that change per request; only the persisted `/programs` index yields ids valid for programming.
 
-### Live TV wiring — Tunarr → Emby/Jellyfin (tuner + guide)
+### Live TV wiring — applied playout backend → Emby/Jellyfin (tuner + guide)
 
-For Loomarr's channels to appear in the family's TV guide, the media server must consume Tunarr's **tuner + guide** surface. This is **one-time wiring of Tunarr as a tuner/guide source — never per-channel registration.** Once wired, every channel Loomarr creates/renames/deletes propagates through Tunarr's M3U/XMLTV output; Loomarr then pokes the media server so the change appears in minutes rather than after its nightly refresh. **The poke is operation-specific (§9):** a *new or removed* channel needs a **tuner re-scan** (re-read the M3U channel list — a guide refresh alone won't surface it); an *existing* channel's lineup change needs a **guide refresh** (EPG data).
+For Loomarr's channels to appear in the family's TV guide, the media server consumes the **tuner + guide** surface of the durably applied playout backend: Loomarr's own M3U/XMLTV routes for internal playout, or Tunarr's routes for Tunarr playout. This is one owned tuner/listing pair, never per-channel registration. Once wired, channel changes propagate through the selected backend's output; Loomarr then pokes the media server so the change appears in minutes rather than after its nightly refresh. **The poke is operation-specific (§9):** a *new or removed* channel needs a **tuner re-scan** (re-read the M3U channel list — a guide refresh alone won't surface it); an *existing* channel's lineup change needs a **guide refresh** (EPG data).
 
-- **Endpoints (both flavors, Emby lineage):** `POST /LiveTv/TunerHosts` (type `m3u`, `Url` = Tunarr's playlist URL) and `POST /LiveTv/ListingProviders` (type `xmltv`, `Url` = Tunarr's guide URL), using the admin `LIBRARY_TOKEN`. **M3U is preferred over HDHomeRun emulation** — explicit and discovery-free, so registration is deterministic.
-- **One-time & never silent.** There is no per-channel media-server call, ever. Wiring happens once, as a consequence of the operator saving their Tunarr connection — it is idempotent and fully derived from that connection, so it auto-runs on a Connections save rather than needing a separate button (`autoWireAfterSave`; the `livetv` setup check reports the result). Loomarr never reconfigures a media server unasked: saving the connection *is* the ask. `POST /v1/setup/livetv-reconnect` (admin — §7) force re-wires when a stale channel→stream binding needs clearing. *There is no `livetv-connect` route; it was removed when the wiring became automatic, and `scripts/check-retired.sh` now bans the name.*
-- **Idempotent & self-healing on URL change.** Enumerate first via **`GET /System/Configuration/livetv`** — one read that returns `{TunerHosts, ListingProviders}` — and if Tunarr is already registered the connect is a no-op. Duplicate tuners are a classic Emby mess; tests assert **second-call-no-op** (Phase 10 gate). **Reconcile is by *identity*, not URL string.** Loomarr tags every tuner it registers with `FriendlyName: "loomarr"`, so `Connect` owns exactly the tuners it created: when the Tunarr URL *changes* (the operator repoints `TUNARR_URL`), enumerate-first finds a Loomarr-owned tuner whose `Url` no longer matches the desired M3U, **DELETEs the stale one** (`DELETE /LiveTv/TunerHosts?Id=<id>` → 204, Phase-0 capture), and registers the new — so a URL change *moves* the tuner instead of orphaning a dead one alongside a live one. A tuner the household added by hand (any other `FriendlyName`) is **never touched** (§9 ownership: Loomarr owns only what it created). Listing providers carry no `FriendlyName`, so the stale one is identified as the Loomarr-shaped `xmltv` provider whose `Path` is a Tunarr guide URL that no longer matches; it is likewise DELETEd (`DELETE /LiveTv/ListingProviders?Id=<id>` → 204) and re-added. **A connect that changed anything (added or retired a tuner/listing) then pokes the media server — a tuner re-scan *and* a guide refresh — so the freshly-registered tuner's channels are discovered and their EPG populated immediately, rather than after the media server's nightly scan** (the newly-wired tuner has zero channels in the media server's view until it re-reads the M3U — a guide refresh alone won't surface them; §9 poke semantics). Both pokes are **best-effort**: a poke failure degrades freshness but never fails the wiring. A no-op connect (nothing changed) skips the pokes — there is nothing new to discover. *The Emby-lineage `GET /LiveTv/TunerHosts` / `GET /LiveTv/ListingProviders` are **write-only on Jellyfin** — `POST` works, `GET` returns **405** (verified against Jellyfin 10.10.3). Enumerating through them therefore failed on every Jellyfin install, so the idempotency check could not run and the connect either errored or duplicated the tuner on each attempt. The Phase-10 capture was Emby-only, which is how it survived: §6 claims both flavors, and only Emby was ever exercised. The config endpoint answers 200 on **both**, so this is one code path rather than a flavor branch.*
+- **Endpoints (both flavors, Emby lineage):** `POST /LiveTv/TunerHosts` (type `m3u`, `Url` = the applied backend's playlist URL) and `POST /LiveTv/ListingProviders` (type `xmltv`, `Url` = its guide URL), using the admin `LIBRARY_TOKEN`. **M3U is preferred over HDHomeRun emulation** — explicit and discovery-free, so registration is deterministic.
+- **One-time & never silent.** There is no per-channel media-server registration. Wiring is an idempotent consequence of saving a relevant backend, URL, media-server connection, or playout-token setting. Those mutations and every prepare/publish/retire effect run inside the durable transition coordinator described in §9.1 and `config-design.md` §8. `POST /v1/setup/livetv-reconnect` (admin — §7) force-repairs the durably applied internal or Tunarr target under that same cross-replica lock when a stale channel→stream binding needs clearing: it enumerates, removes, and re-adds both the Loomarr-owned tuner and listing provider, and fails visibly if any wiring operation fails. *There is no `livetv-connect` route; it was removed when wiring became automatic, and `scripts/check-retired.sh` bans the name.*
+- **Idempotent & self-healing on URL change.** Enumerate first via **`GET /System/Configuration/livetv`** — one read that returns `{TunerHosts, ListingProviders}` — and if the applied pair is already registered the connect is a no-op. Duplicate tuners are a classic Emby mess; tests assert **second-call-no-op** (Phase 10 gate). **Reconcile is by *identity*, not URL string.** Loomarr tags every tuner it registers with `FriendlyName: "loomarr"`, so `Connect` owns exactly the tuners it created: when the applied URL pair changes (for example, the operator repoints `TUNARR_URL`), it first **prepares** the new pair by adding and verifying both the target tuner and target listing while the old pair remains registered. Only after both target registrations exist does it **retire** the stale Loomarr-owned pair (`DELETE /LiveTv/TunerHosts?Id=<id>` and `DELETE /LiveTv/ListingProviders?Id=<id>` → 204, Phase-0 capture). A failed tuner or listing add therefore leaves the working pair untouched; a retry completes the missing half idempotently. A tuner the household added by hand (any other `FriendlyName`) is **never touched** (§9 ownership: Loomarr owns only what it created). Listing providers carry no `FriendlyName`, so the stale one is identified as the Loomarr-shaped `xmltv` provider whose `Path` is a Tunarr or internal-playout guide URL that no longer matches. Preparation, freshness, and retirement are separate connector operations: a backend transition may publish a prepared internal feed before asking the media server to re-scan it, durably activate that backend, and retire the old pair afterward. The ordinary `Connect` composition still performs all three in one call. **A connect that changed anything (added or retired a tuner/listing) then pokes the media server — a tuner re-scan *and* a guide refresh — so the freshly-registered tuner's channels are discovered and their EPG populated immediately, rather than after the media server's nightly scan** (the newly-wired tuner has zero channels in the media server's view until it re-reads the M3U — a guide refresh alone won't surface them; §9 poke semantics). Both pokes are **best-effort**: a poke failure degrades freshness but never fails the wiring. A no-op connect (nothing changed) skips the pokes — there is nothing new to discover. *The Emby-lineage `GET /LiveTv/TunerHosts` / `GET /LiveTv/ListingProviders` are **write-only on Jellyfin** — `POST` works, `GET` returns **405** (verified against Jellyfin 10.10.3). Enumerating through them therefore failed on every Jellyfin install, so the idempotency check could not run and the connect either errored or duplicated the tuner on each attempt. The Phase-10 capture was Emby-only, which is how it survived: §6 claims both flavors, and only Emby was ever exercised. The config endpoint answers 200 on **both**, so this is one code path rather than a flavor branch.*
 - **Version fragility → live capture.** The endpoints exist on both flavors, but **payload fields and the guide-refresh task id drift across versions.** A Phase-0-style maintainer-supervised capture (folded into Phase 10, §21) pins the exact accepted request/response payloads + the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; the adapter is written against those pins, not memory. Any contract deviation ⇒ update this doc first.
-- **Division of labor is unchanged (§1 non-goals):** Loomarr decides *what plays and when*; Tunarr owns playout/transcode/EPG and the HDHR/M3U/XMLTV tuner surface; Emby/Jellyfin consume that tuner + guide like any HDHomeRun. Loomarr never builds streaming; the escape hatch is a second `Programmer` adapter (ErsatzTV).
+- **Division of labor follows the selected backend (§9.1):** Loomarr always decides *what plays and when*. With internal playout it also owns streaming/transcode and M3U/XMLTV publication; with Tunarr playout it projects the schedule through `Programmer` and Tunarr owns those runtime surfaces. Emby/Jellyfin consume whichever one the durable applied checkpoint publishes.
 
 ### Suggester / Catalog — LLM
 See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hosted); catalog tool grounds it against the real library + TMDB. In-app provider/model selection with live probe + hot-swap: §8.1.
@@ -701,14 +717,14 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | DELETE | `/v1/titles/{key}` | Give up / cancel. |
 | POST | `/v1/channels` | Create a channel (admin). From an **approved proposal** (`intentRef` → its grounded lineup + policy), a **hand-made single-series** channel (`series`), or an **empty hand-made** channel (neither given → name/number/strategy only, no lineup — then fill it via the manual lineup editor or Refine-with-AI on its page). The channel **`id` is optional**: the client may pass a stable caller-assigned id, or omit it and the **server assigns one** (`ch_…`) — so the UI's "New channel" action needs no client-side id scheme. Duplicate id, number, or non-empty `intentRef` → 409. |
 | GET | `/v1/channels` / `/v1/channels/{id}` | Channel definition + current status. The **single-channel** GET additionally resolves each lineup entry's `state` — `available` (in the library, plays now), `acquiring` (wanted/requested/downloading — on its way), `pending` (added but nothing requested it yet — the manual-add case with no provision Record), or `unavailable` (acquisition gave up) — derived from the `provision.Record` per key, so the editor's "not here yet" badge is durable across reloads rather than known only at add-time. The list endpoint omits per-entry state (its cards show counts, not entries) to avoid an N-query fan-out. |
-| PATCH | `/v1/channels/{id}` | Edit a channel (admin). A **partial** update of the identity fields (`name`, `number`, `group`, `logo`), the per-channel programming `policy` (§8, `programming-design.md`), `status` for pause/resume (`paused`↔`building` only), and the **`lineup`** entries. The body must carry the `revision` returned by the channel read; a stale revision returns 409 rather than overwriting an intervening approval, reconcile, or operator edit. Renumber is unique-checked (409 on a collision). `policy.applied` is reconcile-owned and rejected on write. **Policy ownership is sticky (§8.2 / `programming-design.md` §2):** the `policy` blob mixes proposal-owned fields (scope, audience, ordering, separation, seasonal — the suggester extracts them) with operator-owned ones (filler, window, auto-curate). A PATCH that sets a proposal-owned field **marks it operator-set**, and a later refine/re-curate then **cannot overwrite it** (untouched fields still refresh from the fresh proposal); the audience ceiling is additionally never relaxed. Curation `rules` carry **provenance** (`llm` or `operator`): a refine replaces only the LLM-authored rules and preserves the operator's, so shaping rules by refine and by hand compose instead of clobbering. **Every edit auto-reconciles** (best-effort, like create) — there is **no manual "rebuild" step**; the change reaches Tunarr on its own and the UI reflects it live via the `channel` SSE frame. **Editing the lineup** is a **whole-list replace** (the client sends the full ordered list of entries): add = a new entry, remove = an omitted entry, reorder = the same entries in a new order — one idempotent payload, diffed server-side. Each entry's `key` is validated (`provision.ParseKey`; a malformed key → 422). The handler mutates `ch.Lineup` only and lets the reconcile derive `desired` — it never computes slots itself (§9). Entries that carry richer scheduling metadata already on the channel (a series' season range, `officialRating`, runtime) are **preserved by key**: an incoming entry whose key already exists keeps that metadata; the read DTO is deliberately lossy, so a reorder must not silently drop a season scope. **Safety (prime directive #3):** a manually-added key that is not `available` in the library is inert — it renders as a **pending slot** (flex to Tunarr, never content) and swaps to a program in place only if/when that title independently reaches `available` through the acquisition pipeline. Manual editing therefore cannot make unapproved content play, and does not itself trigger acquisition. |
+| PATCH | `/v1/channels/{id}` | Edit a channel (admin). A **partial** update of the identity fields (`name`, `number`, `group`, `logo`), the per-channel programming `policy` (§8, `programming-design.md`), `status` for pause/resume (`paused`↔`building` only), and the **`lineup`** entries. The body must carry the `revision` returned by the channel read; a stale revision returns 409 rather than overwriting an intervening approval, reconcile, or operator edit. Renumber is unique-checked (409 on a collision). `policy.applied` is reconcile-owned and rejected on write. **Policy ownership is sticky (§8.2 / `programming-design.md` §2):** the `policy` blob mixes proposal-owned fields (scope, audience, ordering, separation, seasonal — the suggester extracts them) with operator-owned ones (filler, window, auto-curate). A PATCH that sets a proposal-owned field **marks it operator-set**, and a later refine/re-curate then **cannot overwrite it** (untouched fields still refresh from the fresh proposal); the audience ceiling is additionally never relaxed. Curation `rules` carry **provenance** (`llm` or `operator`): a refine replaces only the LLM-authored rules and preserves the operator's, so shaping rules by refine and by hand compose instead of clobbering. **Every edit auto-reconciles** (best-effort, like create) — there is **no manual "rebuild" step**; the selected backend converges on its own and the UI reflects it live via the `channel` SSE frame. **Editing the lineup** is a **whole-list replace** (the client sends the full ordered list of entries): add = a new entry, remove = an omitted entry, reorder = the same entries in a new order — one idempotent payload, diffed server-side. Each entry's `key` is validated (`provision.ParseKey`; a malformed key → 422). The handler mutates `ch.Lineup` only and lets the reconcile derive `desired` — it never computes slots itself (§9). Entries that carry richer scheduling metadata already on the channel (a series' season range, `officialRating`, runtime) are **preserved by key**: an incoming entry whose key already exists keeps that metadata; the read DTO is deliberately lossy, so a reorder must not silently drop a season scope. **Safety (prime directive #3):** a manually-added key that is not `available` in the library is inert — it renders as a **pending slot** (flex remotely, offline internally, never content) and swaps to a program in place only if/when that title independently reaches `available` through the acquisition pipeline. Manual editing therefore cannot make unapproved content play, and does not itself trigger acquisition. |
 | POST | `/v1/channels/{id}/refine` | Refine a channel with the LLM (admin). Takes free-text ("add more Schwarzenegger, drop the slow ones"); builds an intent from the channel's **current lineup** + the ask, runs the SAME grounded suggester → proposal (§8), and returns a `jobId`. Approving that proposal patches THIS channel (idempotent on its `intentRef`, same as re-approval). The review shows a **diff** (kept / added / removed); an approve step appears **only if the re-proposal actually differs**. This is the "shape a channel over time by talking to it" path — no create-a-channel-from-scratch detour. |
 | GET | `/v1/channels/{id}/pods` | Preview the commercial pool this channel would get from its **saved** filler selection (§10, §12). Assembles WITHOUT touching Tunarr, through the same code path and seed as reconcile, so preview and reality cannot disagree. Returns the ordered entries, total duration, and the `matchLevel` reached on the fallback ladder — the answer to "why are my commercials wrong". Read-only, so any authenticated user may call it. |
 | POST | `/v1/channels/{id}/pods/preview` | Preview the pool a **draft** filler selection would produce, WITHOUT saving it (§10, §12) — the live sandbox on the channel's Filler section. Body is a `FillerSelection` (the unsaved draft); the handler runs the SAME assembler as `GET …/pods`/reconcile but with the draft in place of the persisted selection, and returns the SAME shape (entries + `matchLevel` + total). One assembler ⇒ the sandbox shows exactly what will air once applied. Admin-only (it's an authoring tool); applying is a normal `PATCH …/{id}` of `policy.filler`. |
 | POST | `/v1/channels/{id}/programming/preview` | Preview a **whole-definition draft** `{lineup?, policy?}` (§8.1) — the cycle slots (which rule wins at `at`, the resolved window) **and** the assembled break pool — WITHOUT saving or touching Tunarr. Generalizes `GET …/cycle` + `POST …/pods/preview` into one call over an unsaved edit; runs the SAME `ComputeDesiredAt` + pod assembler as reconcile, so the preview can't drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool). |
 | GET | `/v1/programming/vocabulary` | The closed WHEN/WHAT/HOW curation-rule presets (§6.6): each token + label + the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server, so the FE no longer hand-mirrors the lowering table (drift-killed). Read-only; any authenticated user. |
-| POST | `/v1/channels/{id}/reconcile` | Force desired→Tunarr reconciliation. Internal/idempotent (§9); NOT a user-facing "rebuild" — edits reconcile automatically, and the periodic sweep is the guarantee. |
-| DELETE | `/v1/channels/{id}` | Remove channel; `?purge=true` also deletes the Tunarr channel (default detaches only). |
+| POST | `/v1/channels/{id}/reconcile` | Force channel convergence: materialize local desired state and, only for a Tunarr-backed channel, reconcile its remote projection. Idempotent (§9); NOT a user-facing "rebuild" — edits reconcile automatically, and the periodic sweep is the guarantee. |
+| DELETE | `/v1/channels/{id}` | Remove channel; `?purge=true` hard-deletes local state plus any retained managed Tunarr projection (default detaches only). |
 | POST | `/v1/proposals` | Start a suggestion job from an intent. |
 | GET | `/v1/proposals?status=…&mine=true` | List proposals by status (`submitted` = the admin approval queue). **`mine=true` scopes the list to the caller's own proposals** — the "My requests" surface (§12). Scoping is resolved **server-side from the session**, never from a client-supplied user id: a `?user=` parameter would let any member read another's requests by editing a URL. A break-glass `API_TOKEN` caller has no user record, so `mine=true` returns **empty** rather than everyone's — an unscopable caller asking for "mine" must not silently receive all. |
 | GET | `/v1/proposals/{id}` | Job status + proposal (the source of truth on SSE reconnect; generation progress streams over `/v1/events` as `suggestion` frames, not a per-job endpoint). |
@@ -745,7 +761,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/users/{id}/sessions` | List a user's live sessions (admin). Each is `{id, userId, createdAt, expiresAt, current}` where `id` is the stored token **hash** — the revocation handle, never a token. `current` marks the caller's own session so an admin does not sign themselves out by accident. |
 | DELETE | `/v1/sessions/{hash}` | Revoke one session (admin). **Idempotent** — revoking an already-dead session succeeds, because the list an admin clicks from can go stale between render and click. |
 | GET | `/v1/users/candidates` | List media-server accounts available to import, each flagged `imported` (admin). The read side of §11's explicit-import model — the wizard's step-5 picker and Settings→Users render from this; without it an admin would have to know raw media-server user ids. |
-| GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). Each check is `{name, ok, hint, docHref}` where `docHref` deep-links its Troubleshooting section. Covers the connection probes (`media_server`, `requester`/Seerr, `tunarr`, `llm` incl. tool-calling, `tmdb`, and `filler` when configured), the wiring checks `livetv` ("Tunarr wired as tuner + guide in the media server") and `tunarr_library` ("Tunarr's Emby/Jellyfin source is wired + scanned" — §6). |
+| GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). Each check is `{name, ok, hint, docHref}` where `docHref` deep-links its Troubleshooting section. Covers the connection probes (`media_server`, `requester`/Seerr, `tunarr`, `llm` incl. tool-calling, `tmdb`, and `filler` when configured), the wiring checks `livetv` ("the durably applied backend is wired as tuner + guide in the media server") and `tunarr_library` ("Tunarr's Emby/Jellyfin source is wired + scanned" — §6). |
 | GET | `/v1/setup/state` | **Unauthenticated.** `{bootstrapped: bool}` — whether the install has an owning admin yet (§11). Exists so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass: the app is a static bundle, so with no unauthenticated signal every entry point resolves to `/login`, and a brand-new install has no account to log in with — a dead end that only an operator who guesses `/wizard` escapes. Deliberately the *only* fact it exposes, and it leaks nothing `POST /v1/setup/bootstrap` doesn't already reveal by answering 409-vs-created. It carries no counts, no names, and no configuration. |
 | GET | `/v1/docs` | The Help table of contents: the embedded pages' slugs + titles (§13). Any authenticated user. |
 | GET | `/v1/docs/{slug}` | One help page as **raw markdown** — the frontend renders it and searches it client-side (§7.2), which needs the source, not a rendered blob. Any authenticated user. |
@@ -754,9 +770,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/settings` | Settings registry with per-key provenance; secret values masked (admin, §15). |
 | PATCH | `/v1/settings` | Update settings; validates, persists, hot-applies; env-pinned keys rejected (admin). An empty value clears an optional key — except a secret, which is replace-only (`config-design.md` §9). |
 | DELETE | `/v1/settings/{key}` | Explicitly clear a key's stored override (reverts to env/default); the only way to unset a secret. 204 · 404 unknown · 409 env-pinned (admin, `config-design.md` §8). |
-| GET | `/v1/settings/secrets/{name}` | Reveal a displayable generated secret (admin; API_TOKEN per §4's eye-toggle. SESSION_SECRET returns `displayable:false`, value withheld). Reading never rotates. |
-| POST | `/v1/settings/secrets/{name}/regenerate` | Regenerate a generated secret (admin; SESSION_SECRET regen invalidates sessions). |
-| POST | `/v1/setup/livetv-reconnect` | Force re-wire of Tunarr as an M3U tuner + XMLTV guide source in Emby/Jellyfin — removes and re-adds the tuner, then re-scans, clearing a stale channel→stream binding (admin; idempotent — §6). The *initial* wiring needs no call: it auto-runs on a Connections save. |
+| GET | `/v1/settings/secrets/{name}` | Reveal a generated API or playout token (admin; eye-toggle + copy per `config-design.md` §4). Reading never rotates. |
+| POST | `/v1/settings/secrets/{name}/regenerate` | Regenerate `API_TOKEN` or `PLAYOUT_TOKEN` (admin; old token dies immediately). |
+| POST | `/v1/setup/livetv-reconnect` | Force re-wire of the durably applied internal or Tunarr M3U tuner + XMLTV guide source in Emby/Jellyfin — serialized with backend transitions, removes and re-adds the tuner, then re-scans to clear a stale channel→stream binding (admin; idempotent — §6). Initial wiring is automatic after relevant settings saves. |
 | POST | `/v1/setup/tunarr-connect` | One-time wiring of the Emby/Jellyfin library as *Tunarr's* media source: ensure the source (Loomarr's admin token), enable the movie/show libraries, trigger a scan (admin; idempotent — §6). Distinct from `livetv-connect` (opposite direction: Tunarr→media-server vs media-server→Tunarr). |
 | GET | `/v1/system/llm` | Probe the LLM host + machine and recommend a provider/model (admin, §8.1): active provider + model, the **local** model catalog (for `ollama`: detected VRAM/version, per-model fit + recommended default, pulled flags), and the **hosted** catalog (OpenRouter + a Custom template — base URLs, recommended models, `keyConfigured`). API keys are never returned. Read-only. |
 | POST | `/v1/system/llm/select` | Set the active provider + model (admin, §8.1). Persists to the settings store and **hot-swaps** the running suggester (no restart); settings override the §15 env defaults. Local model must be pulled (409 else). Hosted: accepts an optional `apiKey`, **validates** it live before committing (401/502 on a bad key), stores it as a secret (never echoed). |
@@ -931,30 +947,30 @@ The suggester can also propose **era/genre-matched filler** (90s ads → 90s sit
 
 ## 9. Scheduler / lineup builder — *the point of the app*
 
-Turns an approved proposal + live availability into an actual, filled Tunarr channel, and keeps it that way. Everything upstream exists to feed this.
+Turns an approved proposal + live availability into a durable, filled channel on its selected playout backend, and keeps it that way. Everything upstream exists to feed this.
 
 ### Responsibilities
-- Own a **Channel**: intent ref, target Tunarr channel (number, name, logo, group), scheduling strategy, filler policy.
+- Own a **Channel**: intent ref, identity (number, name, logo, group), optional Tunarr projection id, scheduling strategy, filler policy.
 - Compute **desired programming** from the approved lineup per strategy.
-- **Reconcile desired → actual** in Tunarr (create/update channel, set lineup, filler lists, flex) — idempotent, minimal-diff.
+- **Reconcile local desired state for every active channel**, then, only when Tunarr is the effective backend, reconcile desired → remote actual (create/update channel, set lineup, filler lists, flex) — idempotent, minimal-diff.
 - Run the **backfill loop** so a channel is live immediately and improves as content lands.
 - Keep channels from running dry; refresh on library changes.
 
 ### Scheduler domain (persisted in the same store, §5)
-- `Channel`: id, intent ref, Tunarr channel id/number, strategy, filler-list ref, status.
+- `Channel`: id, intent ref, number, strategy, status, and an optional Tunarr projection id/filler-list ref.
 - `DesiredLineup`: ordered `Slot`s referencing external ids (some not-yet-available).
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
-- **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; the downstream Tunarr programming push requires it.
+- **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
 - **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.
   - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
 
-### Scheduling strategies (map onto Tunarr)
+### Scheduling strategies (shared by both playout backends)
 - **Ordered/sequential** (e.g., a series in episode order).
 - **Shuffle** (random rotation).
 - **Time-slot / block** (fixed start times, themed blocks — cartoons AM, movies PM).
 
 ### Filler & commercials
-Ad pods, bumpers, and station IDs between programs are what make a channel read as broadcast rather than a playlist. This is a first-class capability with its own sourcing pipeline and matching logic — see **§10**. The scheduler is the component that inserts the pods (via Tunarr Flex + filler lists) as it builds each channel.
+Ad pods, bumpers, and station IDs between programs are what make a channel read as broadcast rather than a playlist. This is a first-class capability with its own sourcing pipeline and matching logic — see **§10**. The scheduler inserts break slots as it builds each channel; internal playout resolves local clips at airtime, while Tunarr fills Flex gaps from an attached filler list.
 
 ### Backfill loop (async correctness)
 - On approval: build the channel from currently-available items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative.
@@ -963,12 +979,12 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 - The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with the active-rule attribution for proposal review and the channel's Programming surface.
 - **Policy defaults:** omitted policy fields resolve to **built-in Go constants**. V55 removed the unused registry-default middle tier; per-channel policy is the only operator-authored override.
 - **Ordering has one operator-facing knob (`policy.ordering`), not two.** The canonical 3-tier precedence is **per-rule `How.Ordering` (within that rule's window) > `policy.ordering` > `Channel.Strategy` (the stored default)**. `Channel.Strategy` is the create-time default the suggester/binder seed and is consulted only when `policy.ordering` is unset (inherit); it is **not** a separately-editable field on the channel page — the operator edits `policy.ordering`. (`programming-design.md` §5 is authoritative for the ladder.)
-- Reconciliation is **desired-vs-actual and idempotent**: recompute desired lineup, diff against Tunarr's current channel state, apply the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`).
-- **Periodic sweep (correctness):** a channel-reconcile ticker (`CHANNEL_RECONCILE_EVERY`, default `10m`) re-derives every channel's desired lineup from the store and reconciles — so availability **events are a latency optimization, never load-bearing**. This is what makes backfill survive a crash between event and re-push, and what makes Postgres multi-replica correct without cross-instance event delivery (an in-memory event can't reach another replica; the sweep can). The sweep also **revalidates every program slot against the library** (§4 invariant 1): if a scheduled item has vanished (deleted, replaced, re-id'd), the slot is substituted via `alternates[]`/fallback pool and the channel is flagged on the Channels view — an old `available` is never trusted forever. Postgres `LISTEN/NOTIFY` as a faster cross-replica signal is future work (§20).
+- Reconciliation is **backend-neutral and idempotent**. Every active channel recomputes and persists its desired lineup, applied policy, status, healed metadata, and next deadline. An internal channel stops there and never calls the `Programmer`; a Tunarr-backed channel additionally diffs the remote channel and applies the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`). Internal break eligibility uses Loomarr's local filler catalog (`HasPool`); Tunarr program UUIDs and filler-list attachment are projection details and are never required for internal playout.
+- **Periodic sweep (correctness):** a channel-reconcile ticker (`CHANNEL_RECONCILE_EVERY`, default `10m`) re-derives every channel's desired lineup from the store and converges its effective backend — so availability **events are a latency optimization, never load-bearing**. This is what makes backfill survive a crash between event and convergence, and what makes Postgres multi-replica correct without cross-instance event delivery (an in-memory event can't reach another replica; the sweep can). The sweep also **revalidates every program slot against the library** (§4 invariant 1): if a scheduled item has vanished (deleted, replaced, re-id'd), the slot is substituted via `alternates[]`/fallback pool and the channel is flagged on the Channels view — an old `available` is never trusted forever. Postgres `LISTEN/NOTIFY` as a faster cross-replica signal is future work (§20).
 - ⚠ **A zero `reconcile_deadline` means DUE NOW, and the sweep's claim must never exclude it (V54).** The claim predicate carried an `AND reconcile_deadline > 0` guard, and the deadline's **only** writer is the *last* step of a *successful* reconcile. A channel whose very first reconcile failed therefore kept `0` and was invisible to the sweep **forever** — stranded in `building`, never pushed to Tunarr, with no UI affordance to retry (nothing in the frontend calls `POST /v1/channels/{id}/reconcile`). The binder's own comment said failures were fine because "the sweep retries"; the sweep retried every channel *except* the one case it existed to cover. Found in the wild: an approved channel sat at `building`/`deadline=0`/`tunarr_id=''` with a fully-built 19-airing schedule Loomarr never shipped. **The guard is gone** — `0` sorts first and is claimed immediately, which also heals already-stranded rows with no migration. A channel is additionally stamped due-now at creation, but that is belt-and-braces: the invariant that matters is that no non-`detached`/`paused` channel can ever be unreachable by the sweep. The states that opt OUT of reconciliation are named in the status filter, never encoded as a magic deadline.
 - ⚠ **A channel number must be free in TUNARR too, and a collision moves LOOMARR'S channel (V54).** `nextFreeChannelNumber` consulted only Loomarr's own store, so on an install where Tunarr already held channels — an earlier install, a reset database, one the operator made by hand — an approved channel was handed a number Tunarr was already using. `POST /api/channels` then answers **`500` with an empty body**, which is unmatchable, so the create failed identically forever. Numbering now unions Loomarr's store with Tunarr's channel list, and the reconcile re-checks occupancy immediately before a create (the list is authoritative at push time, not at approve time). **A collision renumbers Loomarr's own channel and never the occupant** — §9's "channels Loomarr didn't create are never touched" holds, and it has to: after a database reset Loomarr cannot distinguish its own orphan from a stranger's channel, so it must assume stranger. The move is reported (log + `activity`), never silent: the number is what a viewer tunes to. Both reads are best-effort — an unreachable Tunarr falls back to store-only numbering rather than blocking a bind. ⚠ **The rule binds every path that assigns a number, not just the one that PICKS one.** It was first applied only to `nextFreeChannelNumber` (the approve path), leaving `POST /v1/channels` and the `PATCH` renumber — the two places an operator *types* a number — checking `GetChannelByNumber` alone. The result was a visible inconsistency from one handler: a clash with a Loomarr channel was refused up front with a `409`, while a clash with a channel that exists only in Tunarr was accepted with a `201` and then renumbered underneath the operator by the reconcile. Both now ask `binder.NumberInUse`, which unions the same two sources. ⚠ There is deliberately **no "except this channel" escape** on that check: Tunarr's channel list is a bare number set with no identity, so a live channel's own number legitimately reports in-use from the Tunarr side; the renumber handler therefore only asks when the number actually changes.
 - ⚠ **A failed first reconcile is recorded, not just logged.** It was a `log.Warn` that scrolled out of the terminal, so the one question worth answering afterwards — *why* did it fail — had no durable answer. It now logs at ERROR with the cause and writes an `activity` row, which is the mechanism that already survives a restart and surfaces on the Dashboard.
-- **Ownership semantics:** Loomarr-managed Tunarr channels are **desired-state authoritative** — manual edits made in Tunarr's own UI will be overwritten by the next sweep, by design (that's what idempotent reconcile means). The UI labels these channels "Managed by Loomarr" (§12) so nobody loses an hour of hand-tweaking to the robot. Channels Loomarr didn't create are never touched.
+- **Ownership semantics:** Loomarr is authoritative for every channel's persisted local desired state. For a Tunarr-backed channel it is also authoritative for the managed Tunarr projection — manual edits made in Tunarr's own UI will be overwritten by the next sweep. The UI labels these channels "Managed by Loomarr" (§12) so nobody loses an hour of hand-tweaking to the robot. Channels Loomarr didn't create are never touched. Moving a channel to internal playout preserves any historical `tunarr_id` and remote channel but performs no remote calls; backend selection is reversible and does not imply destructive cleanup. Explicit purge remains the destructive operation.
 - **Time zones:** time-slot schedules are computed in the container's `TZ` (standard env; set it in compose). Slots are **wall-clock** — "cartoons at 8 AM" stays 8 AM across DST transitions, accepting the one skipped/doubled hour a year. Per-channel time zones are future work (§20).
 
 ### Tunarr integration
@@ -998,9 +1014,33 @@ So the poke is **operation-specific**: a reconcile that **added or removed a cha
 > below — this is not a free win, and it is not reversible cheaply.
 
 **A channel names its backend.** `playout.backend` is a registry setting (§15) with a **per-channel
-override** — switching the global default affects *new* channels only; channels already on the other
-backend keep playing exactly as they are, and one can be moved from its own page. There is never a
-fleet-wide flip.
+override**. A channel set to “Follow the default” resolves the live global value; a channel pinned to
+`internal` or `tunarr` keeps that choice when the default changes. This inherited shape is intentional:
+the UI says which channels follow the default, while a per-channel pin is the way to exclude one from
+a fleet-wide default change. Reconciliation resolves the effective backend once per attempt so one
+operation never straddles two targets.
+
+A global backend write is a fleet transition, not a URL flip: Loomarr first records the durable
+in-progress target, then reconciles every active inherited channel against it before rewiring the
+media server's single owned tuner/listing pair. Pinned, paused, and detached channels are excluded.
+If convergence fails, the existing tuner registration remains in place and the transition stays
+pending for retry (configuration mechanics in `config-design.md` §8).
+
+The publication checkpoint is a **system-owned row in the §5 settings KV**, not a registry setting:
+`system.playout_backend_transition` stores versioned JSON `{version, applied, prepared}`. `applied`
+names the backend whose tuner/listing pair is currently published to the media server; `prepared` is
+empty in steady state and names the durable in-progress target during a transition. It is recorded
+before fleet convergence and therefore is not proof that convergence completed; every retry runs
+the idempotent fleet barrier again before publisher work.
+Internal device routes are readable while internal is either applied **or prepared**, so the target
+M3U/XMLTV exists before the connector points the media server at it. Publication may advance `applied`
+only to non-empty `prepared`, then clears `prepared`. The row has no environment variable, Settings API
+field, or UI control — it records transition progress, not operator intent. On upgrade, a missing row
+initializes `applied` from the currently resolved desired backend and initializes `prepared` empty.
+Older supported releases had no separate applied checkpoint, and channel presence is not evidence of
+which tuner was published. Unknown versions, malformed JSON, missing fields, and unknown backend names
+fail closed without replacing the row, so corruption can never silently point the media server at an
+unprepared backend.
 
 | | **Loomarr (internal)** | **Tunarr** |
 | --- | --- | --- |
@@ -1013,6 +1053,14 @@ fleet-wide flip.
 **Tunarr is not deprecated.** It remains first-class and supported: the honest answer for hardware
 that can't transcode is "let Tunarr do it", and an install that already works should never be forced
 to migrate.
+
+⚠ **Per-channel overrides are not yet a complete mixed-tuner installation.** Reconciliation,
+playback routing, and now/next resolve the backend per channel, but the media-server connector owns
+one Loomarr tuner/listing pair selected by the global backend. A channel pinned to the non-global
+backend therefore does not automatically appear in Emby/Jellyfin Live TV. Full mixed delivery needs
+two owned tuner/listing pairs (or one aggregate Loomarr feed) and is follow-up work; the override is
+still useful for direct/in-app internal playback and controlled backend migration, but the UI must
+not imply that a mixed media-server guide is already wired.
 
 ### How internal playout reads media — DIRECT PLAY is the default (V47)
 
@@ -1080,6 +1128,43 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
   its already-keyframe-aligned bytes into a rolling playlist.
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
+
+Both device-facing documents expose the **transport-published internal catalog**: effective-internal
+channels that are on air. This normally equals the in-app surfable catalog; while internal is the
+durable `prepared` target it additionally includes inherited channels so the media server can read
+the target feed before cutover, without exposing that target through ordinary UI routing. Paused,
+detached, and empty channels remain visible in
+Loomarr's own Guide as channel rows for diagnosis and control, but their now/next and upcoming
+programme answers are empty; they are absent from M3U/XMLTV and direct internal tune requests return
+404. When an internal channel leaves this catalog through a lifecycle write (pause, detach, purge,
+or an effective-backend change), the committed write immediately stops every live MPEG-TS session
+and HLS remux for that channel and re-scans the media-server tuner. Reconciliation from live to empty
+also re-scans so the dead channel is removed. Additions re-scan too: a transition from empty to its
+first playable programme changes the tuner channel list and cannot use only an EPG refresh.
+
+On Postgres that stop is cross-replica and commit-ordered. Lifecycle-sensitive channel writes and
+the system-owned backend-publication checkpoint emit a `LISTEN/NOTIFY` invalidation from the same
+database statement or transaction as the durable write; Postgres delivers it only after commit.
+Every replica holds a dedicated listener, applies each committed stop transition to its process-local
+MPEG-TS sessions and HLS remuxes, and performs a full durable reconciliation after subscribing or
+re-subscribing. A listener disconnect or a durable reconciliation/read failure closes new playout
+admission and retires every local live delivery before reconnecting, so a missed notification cannot
+leave an encoder running or admit a replacement session. Admission reopens only after `LISTEN` is
+active and the durable channel/checkpoint state has converged locally. A five-second connection
+heartbeat bounds detection of a half-open listener socket; it probes liveness, not lifecycle state.
+The Postgres playout seam also revalidates durable channel/checkpoint eligibility at each MPEG-TS,
+HLS playlist, and HLS asset admission boundary; a read failure denies admission, and ordering that
+check with teardown prevents a request admitted just before commit from escaping the stop. This is
+event-driven delivery,
+not the channel scheduler's periodic sweep: “immediately” means Postgres queues the invalidation at
+commit and a connected replica handles it on receipt, subject to ordinary database/network scheduling;
+there is no polling interval in the off-air path. SQLite remains single-replica and uses the existing
+post-commit in-process stop.
+
+Pause is local ownership state in v1. Loomarr stops its own playout and guide answers, but a retained
+managed Tunarr projection keeps playing its last lineup; detach and internal/Tunarr transitions
+likewise preserve that historical projection until explicit purge. Making a remote Tunarr projection
+durably off-air requires persisted projection lifecycle state and retry, not a one-shot lineup clear.
 
 ### One playout module, prepared first — not a second playback stack (V55–V56)
 
@@ -1500,8 +1585,11 @@ one-encoder-per-channel model.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's
-wiring — guide entries survive, playback stops until Live TV is re-connected — so the UI gates it
-behind a typed confirmation.
+old wiring credential and invokes the durable Live TV publication repair, so the UI gates it behind
+a typed confirmation. On Postgres the durable generated-secret row is read at publication and
+request-authorization boundaries, so a rotation handled by one replica cannot leave another accepting
+the old token, rejecting the new tuner URL, or repairing the registration back to stale credentials.
+SQLite keeps the in-process value because its contract permits only one replica.
 
 **Segment auth is a second authorization path, and §11 says so explicitly.** A television cannot hold
 a session cookie, so segment routes authenticate a **device** by token, not a **person** by session.
@@ -3754,7 +3842,7 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 - **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. When the server advertises that this route is mounted, the web login route calls it once automatically; a failure falls back to the visible dev-login button rather than looping. The repository's secondary-worktree harness is the only automatic provisioning companion: `make bootstrap` opens that worktree's already-isolated SQLite database, creates a random-password `developer` through the same first-admin `Provisioner` used by the wizard, writes `setup.completed=true`, and enables the server-side dev-login gate. The primary worktree is untouched, and `AGENT_DEV_IDENTITY=0` preserves a genuinely unclaimed database for wizard work. Thus neither the endpoint nor application startup gains a user-creation path. It is not a credential path in the sense the other three are — it is a sanctioned bypass of the *credential check*, for the maintainer's dev loop, and must never be reachable in a shipped install. (The phrase "the only sanctioned third credential path" here predated SSO, V8; the distinction that matters is bypass-vs-credential, not the count.)
 - **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), and — critically — only proceeds if the user id is already an allowlisted row. Media-server passwords are never persisted or logged.
 - **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby accepts the equivalent `X-Emby-Authorization` header. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
-- Either path issues Loomarr's **own session**: HTTP-only, `SameSite=Strict` cookie signed with the generated `SESSION_SECRET` (config-design §4). Sessions are rows in the store (revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one), not stateless JWTs — disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Session tokens are random 256-bit values, **SHA-256-hashed at rest** (a DB read never yields a usable cookie). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
+- Either path issues Loomarr's **own session**: an opaque random 256-bit token in an HTTP-only, `SameSite=Strict` cookie. The token is **SHA-256-hashed at rest** and resolved against its database row on every request; it is not signed configuration and a DB read never yields a usable cookie. Sessions are therefore revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one — and disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
 
@@ -3974,7 +4062,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   ✅ **The Channels/Guide fold is DONE** (2026-07-26). It was blocked for several phases on one thing — the grid had no origination affordance, so removing the card list would have stranded the everyday way a channel gets made. The v2 mock settles it: its **Guide screen is headed "Channels"** and carries the `✦ Add a channel` button in its header, with the inline describe panel and the "Dead air" empty state beneath. The affordance moved to the grid; `/channels` and `/suggest` are now **redirects** to `/guide`, kept so existing bookmarks and deep links do not 404. `/channels/{id}` is untouched — evolution still lives there.
 
   The **channel detail page is five surfaces, organized by intent, with two audiences** — the everyday **Overview and Watch are viewer surfaces; the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
-  - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
+  - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with real airtimes from the backend streaming that channel (`GET …/{id}/upcoming`; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
   - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. The live timeline is inspectable rather than seekable; its hover card uses landscape episode stills and movie backdrops so every programme preview matches the 16:9 frame, preserving the complete artwork rather than cropping it. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** is **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so it re-picks the track for the shared stream (§9.1 — a member sees the current value, only an admin changes it). Subtitle discovery is read-only until the encoder implements an actual subtitle path. "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
   - **Programming** (admin) — *"What plays, and when?"* One surface with a visible hierarchy: **what plays** (the lineup + scope: era, genres, audience ceiling + unrated, runtimeMax, and the *only these shows* series picker) → **how it's ordered** (ordering, separation) → **when it changes** (the wall-clock curation rules, `programming-design.md` §6.5, plus **seasonal**/holiday behaviour on the calendar clock). These are intent sections, not one continuous form: **What plays opens by default; ordering, scheduling rules, and the verification preview are collapsed until requested**, retaining their state and remaining reachable to find-in-page through the shared collapsible primitive. The `GET …/cycle` **cycle preview docks here** as the shared verification pane ("what airs Saturday 9am, and which rule wins"). **Refine-with-AI is a verb on this surface, not a separate place** — a header action opens the describe→review→apply loop (§8) acting on the *same* object the manual controls edit; the review shows a diff including **policy deltas** (so a refine can't silently change era/ceiling — §8.2 ownership).
   - **Filler** (admin) — *"What plays between shows?"* The per-channel selection (era/audience/category/kinds + pin/exclude) with a **live sandbox** — every change re-assembles the actual break against an unsaved draft (`POST …/pods/preview`, §7/§10) so you see exactly what airs before you **Apply**. Because this is already a dedicated route, it is a normal page rather than a permanently-open accordion nested inside that page. Era and audience stay visible; the large category vocabulary opens only while choosing categories, selected categories remain visible, pin/exclude is an optional disclosure, and catalog coverage is a diagnostic disclosure below the live break rather than a wall between the controls and their result.
@@ -4115,7 +4203,7 @@ Two personas with different problems. The **operator** faces an integration prob
 **(Supersedes the earlier "wizard validates, does not store" rule.)** Loomarr follows the *arr-ecosystem convention — connections and integration settings (media server URL + token, Seerr, Tunarr, TMDB, LLM) are configured **in the app**, like Sonarr and Seerr — because fix-in-place beats "edit compose, restart, return." The dual-source-of-truth wound is prevented not by banning a source but by **deterministic precedence with visible provenance**: every setting resolves `env > database > default`, per key, through one typed settings registry (§15). An env var that is set **wins and locks its UI field** with a "set via environment" chip; unset, the field is editable and persisted. GitOps/compose-template users pin what they want and lose nothing. Full mechanics: `config-design.md`.
 
 Consequences, embraced:
-- **Generated secrets:** `SESSION_SECRET` and `API_TOKEN` are auto-generated at first migration (like the instance id), viewable/regenerable in Settings — the Sonarr API-key model. Env override remains possible, never required.
+- **Generated secrets:** `API_TOKEN` and `PLAYOUT_TOKEN` are auto-generated on first boot, viewable/regenerable in Settings — the Sonarr API-key model. Env override remains possible, never required. Authentication sessions use independent opaque database-backed tokens (§11), not a signing secret.
 - **Zero-required-env first run:** with `DATABASE_URL` defaulting to the SQLite volume path, `docker run -v loomarr-data:/data loomarr` boots straight into the wizard.
 - **The wizard becomes configure → validate → save:** each step is a real settings form with a live test; the checklist still re-runs from Settings for the life of the install.
 - **The LLM provider/model is configured in-app** (§8.1): the AI settings step probes the host, lists a fit-ranked model catalog, tests a hosted key, and hot-swaps — the persisted `llm.*` settings override their env defaults like any other key.
@@ -4305,7 +4393,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **39 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **41 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -4346,6 +4434,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | Package | Job |
 | --- | --- |
 | `store` | One Store interface, two backends, one conformance suite (§5) |
+| `backendtransition` | Durable publication state for playout-backend fleet transitions (§9.1), stored as a non-registry system row |
 | `settings` | The typed registry; `env > database > default` (config-design) |
 | `config` | ENV-ONLY bootstrap — the handful of values needed before the store opens |
 | `scheduler` | Recurring work as named, tunable, on-demand jobs (§18.1) |
@@ -4398,7 +4487,6 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 | Setting (env override) | Notes |
 | --- | --- |
-| `SESSION_SECRET` | Signs session cookies (§11). Regenerating invalidates all sessions. |
 | `API_TOKEN` | Machine access + break-glass admin (§11) — the Sonarr API-key model. |
 | `PLAYOUT_TOKEN` | Read-only device credential for tuner and segment URLs (§9.1). |
 
@@ -4418,7 +4506,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 | Env | Meaning / default |
 | --- | --- |
-| `PLAYOUT_BACKEND` | `internal` (default) or `tunarr` — who streams a channel. **Overridable per channel** via `policy.playout.backend`, which rides `policy_json` (no schema change, like `rules`/`filler`/`window`/`autoCurate`). Nil per-channel = inherit this global, which is what makes "changing the default affects new channels only" true rather than aspirational. |
+| `PLAYOUT_BACKEND` | `internal` (default) or `tunarr` — who streams a channel. **Overridable per channel** via `policy.playout.backend`, which rides `policy_json` (no schema change, like `rules`/`filler`/`window`/`autoCurate`). Nil per-channel means **follow the live global value**; changing the default moves every inherited channel, while an explicit per-channel value pins that channel. |
 | `PLAYOUT_ENCODER` | ffmpeg encoder (e.g. `libx264`, `h264_vaapi`, `h264_nvenc`). Empty ⇒ the best one the transcode check found. |
 | `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
@@ -4559,7 +4647,6 @@ services:
       SEERR_URL: ${SEERR_URL}
       SEERR_API_KEY: ${SEERR_API_KEY}
       TUNARR_URL: ${TUNARR_URL}
-      SESSION_SECRET: ${SESSION_SECRET}
       API_TOKEN: ${API_TOKEN:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_URL: ${LLM_URL:-http://ollama:11434}
@@ -4689,7 +4776,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Availability jobs (§4, §6).** Poll-based availability runs as scheduler jobs: **`library-scan`** (incremental, default every 5m — `RecentlyAdded(since)` within `job.library_scan.lookback`) and **`library-full-scan`** (daily safety net — `AllItems()`). The scan confirms any in-flight (`requested`/`downloading`) title now present in the media server → `available`, correlating by `provision.Key`. This is the mechanism that replaces the retired inbound `/hooks/arr` webhook.
 - **Arr queue poller (§6, arr provider only).** When `requester.provider=arr`, a **`arr-queue-poll`** job (default every 1m) reads each configured arr's `/api/v3/queue` and correlates records to in-flight titles by `provision.Key` (via the arr's lookup id). A title with a live download record is **`Grabbed`** → `downloading` (resetting the deadline), and its **download progress is persisted on the title record** — `progress` (0..1), `eta_text`, and `download_status` (the arr's own status string, passed through so a `warning`/`stalled` download reads as such rather than fake healthy progress). Persisting (rather than an in-memory cache) means `GET /v1/titles` reads progress straight from the store and it survives a restart. A grabbed-but-stalled title still ages out under the reconciler's deadline discipline (§4). Availability itself still comes from the library scan; the poller adds the grabbed transition + progress, never the `available` flip.
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
-- **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and reconciles them with Tunarr. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
+- **Channel maintenance (§5, §9).** A **`channel-maintenance`** job (default every ten minutes) first re-enumerates channel-referenced shows whose cached episode lists have aged past `episodes.max_age`, then rebuilds upcoming schedules and converges each channel's effective playout backend. The stages keep separate failure detail internally but share the operator outcome and cadence: keep live channels current. The episode set is bounded to channel lineups; it is not coupled to acquisition-only library scans.
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
 - **Housekeeping (§5, §12, V32).** A **`housekeeping`** job (default daily) removes expired sessions, feed rows older than `activity.retention`, finished jobs past `JOBS_RETENTION`, and denied proposals past `PROPOSALS_RETENTION`. **Proposals precede jobs**, so the purge never creates an orphaned `proposals.job_id`. All stages are attempted even if one fails; in-flight work and the approval audit trail remain exempt.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.

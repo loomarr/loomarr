@@ -25,7 +25,7 @@ Loomarr's model is the *arr convention with one addition:
 - **Env still wins.** A GitOps pin is never overridden by something the wizard wrote; the wizard reports the key as pinned instead, the same contract the registry's `pinned` provenance already gives the Settings UI.
 - **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
-- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
+- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
 
 **The per-channel tier (added with `programming-design.md`):** a policy instance is channel
@@ -172,16 +172,19 @@ exactly the old contract.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
-- `SESSION_SECRET` has nothing to paste anywhere — **never displayed**; the only affordance is Regenerate.
 - Integration secrets you *entered* (Emby token, Seerr key, TMDB, LLM key) — masked after save (`set · …a1b2` preview), replace-only. The API returns `{set: true, preview, provenance}` — never the value. (The §8.1 hosted `llm.api_key.<provider>` keys follow this exact rule: stored, previewed, never echoed by any GET.)
+
+Authentication sessions have no generated signing secret. A session token is an opaque random
+credential stored only as a SHA-256 hash in the database; cookie authentication resolves that hash
+and the owning user on every request. Session revocation therefore happens through the session row
+or user-disable workflow, never by rotating unrelated application configuration.
 
 **Regeneration side-effects (typed-confirmation dialogs, effects stated up front):**
 
 | Secret | Immediate effect | UX contract |
 | --- | --- | --- |
-| `SESSION_SECRET` | **All sessions revoked — including yours** | Confirm → regen → redirect to login. `API_TOKEN` remains as break-glass, so you cannot lock yourself out. |
 | `API_TOKEN` | Old token dead instantly | Show the new token once prominently; remind that machine clients/scripts must update. |
-| `PLAYOUT_TOKEN` | Every media-server tuner stops — the M3U and XMLTV URLs carry the old token | Show the new `/playout/tuner.m3u?token=…` URL; the media server's tuner entry has to be updated to match, or Live TV goes empty. |
+| `PLAYOUT_TOKEN` | Existing device and signed URLs stop authorizing; the durable Live TV workflow republishes the tuner/listing pair with the new token | Show the new `/playout/tuner.m3u?token=…` URL for manual consumers; automatic wiring is repaired through the backend-transition coordinator. |
 
 **Redaction is systemic, not per-callsite:** the settings service exposes a `Redactor` (the current set of secret values) wired into the `slog` handler — a secret value appearing in any log line is replaced before write. Secrets are excluded from `/v1/setup/status`, from validation error strings (validators must never echo the value), and from RFC 7807 bodies. There is a test that greps captured logs for a known secret and demands zero hits.
 
@@ -348,7 +351,7 @@ action. Being closer to the affected clips is not permission to introduce an unc
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 
-**Wiring is an effect of saving, not a manual action.** Registering Tunarr as a tuner/guide source in the media server (`livetv`) and pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from the saved connection values* — there is no decision to make and re-running is a no-op. So a Connections save runs them server-side automatically (`settingsPatch` → both connectors, best-effort and non-fatal: a wiring failure never fails the save and surfaces on the relevant connection's own status). The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the Tunarr connection (the Connections step) already auto-wires the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the Tunarr connection's own verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
+**Wiring is an effect of saving, not a manual action.** Registering the durably applied internal-or-Tunarr tuner/guide pair in the media server (`livetv`) and, on the Tunarr path, pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from saved connection values* — there is no decision to make and re-running is a no-op. Relevant saves run publication through the durable backend-transition coordinator; a later effect failure never rolls back the saved setting and surfaces on the relevant connection's own status. The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the selected backend's connection settings already publishes the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the media-server verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
 
 ---
 
@@ -394,9 +397,51 @@ does not exist.
 - `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
+- **Backend hot-apply is a durable mutate → prepare → publish → retire transition, not merely an
+  immediate callback.** PATCH, clear, environment takeover/hand-back, and `PLAYOUT_TOKEN` rotation
+  enter one coordinator before their durable mutation. The coordinator holds the same workflow lock
+  across that mutation and every follow-on phase. Guide/now-next and in-app routing continue to read
+  the durable `applied` backend while
+  active inherited channels are prepared for the target; ordinary reconcile reads non-empty
+  `prepared` first (then `applied`) so concurrent maintenance cannot undo partially converged target
+  state. Explicitly pinned, paused, and detached channels do not join that fleet barrier. The target
+  is checkpointed in `prepared` before convergence starts, and every retry re-runs the idempotent
+  fleet barrier, so cancellation, failure, or restart cannot mistake the checkpoint for proof of
+  completed convergence. Preparing internal playout durably
+  opens its token-authenticated M3U/XMLTV/direct transport before the media server refreshes the new
+  tuner/listing pair, but does not switch ordinary UI routes early. Only after target refresh and
+  cutover succeed is `applied` advanced; stale Loomarr-owned registrations retire last. A failure
+  before publication preserves the old routes and registration, while a retirement failure leaves
+  the new backend applied and retries cleanup. The system checkpoint survives restart, and both a
+  later relevant settings write and channel maintenance resume it (including URL-only repair when
+  the backend name did not change). A URL-only repair replays the inherited-channel fleet barrier
+  before publisher preparation and refresh; failure or restart retries that ordering instead of
+  exposing a newly configured publisher ahead of its channels. Desired is re-read inside the
+  coordinator's serialization boundary, so an older maintenance retry cannot publish after a newer
+  save. On Postgres that boundary is a store-owned, database-scoped advisory lock held across the relevant setting write,
+  checkpoint load, every external publisher phase, and checkpoint save; separate replicas therefore
+  cannot insert a newer desired write midway through an older publication. Only after acquiring it
+  does a replica refresh both setting values and provenance, then mutate and resolve desired. The
+  refresh precedes even a mutation that becomes a no-op: whether a PATCH is environment-pinned, or
+  whether an env-override handoff made it writable, must be decided from the durable snapshot rather
+  than stale process memory. A queued process therefore cannot reject or reverse a newer ownership
+  handoff when its work finally runs. SQLite uses the same interface with
+  its single-process mutex, consistent with SQLite's one-replica contract. Failure to acquire the
+  workflow lock means the mutation did not run and the write request returns unavailable. Once the
+  durable checkpoint is initialized, each reconcile attempt and routing request reads it once rather
+  than trusting the controller's process-local mirror; this makes `prepared` transport and `applied`
+  routing visible immediately on every Postgres replica. These reads are lock-free and fail closed.
+  A committed mutation remains successful when a later transition phase fails; the transition stays
+  pending for maintenance retry.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
-- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
-- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
+- `GET /v1/settings/secrets/{name}` → reveal a generated token's value (`{value}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
+- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating
+  `PLAYOUT_TOKEN` invokes the same durable publication repair because internal tuner/guide URLs
+  embed it; the publisher reads the durable token inside the workflow lock, and Postgres request
+  authorization reads that same row so every replica admits the new device URL and rejects the old
+  one immediately. A repair failure leaves the rotation successful and the transition pending.
+  `API_TOKEN` bearer authorization uses the same replica-coherent read (SQLite remains cache-only);
+  rotating `API_TOKEN` has no Live TV consequence.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.
 
@@ -428,6 +473,6 @@ does not exist.
 
 - **Phase 1 (built as a cross-phase retrofit, 2026-07-15):** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target. The settings table gains its `updated_at`/`updated_by` audit columns (§3) via **forward-only migration `00008`** (an `ALTER TABLE settings ADD COLUMN …`, the second real ALTER after `00007`'s `policy_json`; the bare `(key,value)` KV from `00001` never drops). The proposed registry middle tier for ChannelPolicy was later retired in V55 because no production scheduling path consumed it; channel policy now resolves directly to the scheduler's documented built-ins.
 - **Phase 8:** the §8 API surface.
-- **Phase 9:** generated secrets + regeneration side-effects (auth interplay).
+- **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.

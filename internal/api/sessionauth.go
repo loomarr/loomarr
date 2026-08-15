@@ -12,13 +12,25 @@ import (
 // (§11), falling back to the API_TOKEN Bearer (admin break-glass, §11). This is
 // the Phase-9 fill of the Phase-8 Authorizer seam.
 type sessionAuthorizer struct {
-	mgr      *auth.Manager
-	apiToken string
+	mgr             *auth.Manager
+	apiToken        string
+	apiTokenCurrent func(context.Context) (string, error)
 }
 
 // NewSessionAuthorizer builds the session+token authorizer.
 func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
 	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
+}
+
+// NewSessionAuthorizerCurrent builds the production session authorizer with a
+// request-boundary API token resolver. Postgres uses it to observe a rotation
+// performed by another replica; resolver errors fail only the bearer fallback
+// closed and never interfere with a valid user session.
+func NewSessionAuthorizerCurrent(
+	mgr *auth.Manager,
+	apiToken func(context.Context) (string, error),
+) Authorizer {
+	return &sessionAuthorizer{mgr: mgr, apiTokenCurrent: apiToken}
 }
 
 func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
@@ -36,12 +48,21 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 			return roleOf(u), &user
 		}
 	}
-	// API_TOKEN Bearer → admin (machine access + break-glass, §11).
-	if a.apiToken != "" {
-		const prefix = "Bearer "
-		h := r.Header.Get("Authorization")
-		if len(h) > len(prefix) && h[:len(prefix)] == prefix &&
-			constantEq(h[len(prefix):], a.apiToken) {
+	// API_TOKEN Bearer → admin (machine access + break-glass, §11). Resolve only
+	// after session auth failed; a normal human request should not pay a durable
+	// generated-secret read merely because Postgres replicas are enabled.
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) > len(prefix) && h[:len(prefix)] == prefix {
+		apiToken := a.apiToken
+		if a.apiTokenCurrent != nil {
+			var err error
+			apiToken, err = a.apiTokenCurrent(r.Context())
+			if err != nil {
+				apiToken = "" // credential state unavailable: fail bearer auth closed.
+			}
+		}
+		if apiToken != "" && constantEq(h[len(prefix):], apiToken) {
 			return RoleAdmin, nil
 		}
 	}

@@ -341,10 +341,10 @@ describe("Settings page footers", () => {
     stubSettings();
 
     renderAt("/settings/security");
-    // The three generated secrets are a closed set held in the component (config-design
+    // The two operator-facing credentials are a closed set held in the component (config-design
     // §4), not a fetched list — so the assertion is that the panel is on the page at all.
     expect(await screen.findByText(/API token/i)).toBeInTheDocument();
-    expect(screen.getByText(/Session secret/i)).toBeInTheDocument();
+    expect(screen.getByText(/Playback token/i)).toBeInTheDocument();
   });
 });
 
