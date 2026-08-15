@@ -11,6 +11,8 @@ files may add interface conveniences, but they do not override this file.
 - `PROGRESS.md` records active and shipped work. Read its **Active work** table first; do not load the
   historical tables unless the task needs them.
 - Generated artifacts are changed through their generators, never by hand.
+- Frontend packages are deep modules — read [`web/packages/README.md`](web/packages/README.md) before
+  adding one or importing from one.
 
 ## Session lifecycle
 

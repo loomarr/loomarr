@@ -5,10 +5,10 @@
   "type": "module",
   "description": "Test Card design tokens — source of truth + generator (frontend-design §2.5).",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./index.ts",
     "./theme.css": "./generated/theme.css",
     "./preset": "./generated/tailwind-preset.cjs",
-    "./tokens.json": "./generated/tokens.json"
+    "./tokens.json": "./tokens-json.ts"
   },
   "scripts": {
     "generate": "tsx src/generate/generate.ts",
