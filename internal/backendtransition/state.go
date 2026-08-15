@@ -2,8 +2,8 @@
 // from publishing it to the media server. Controller orders fleet convergence, target publication,
 // cutover, and stale retirement around one versioned, system-owned checkpoint in the settings KV.
 // Runtime mirrors only durable checkpoints for request-path transport gating. The row is runtime
-// state, not a registry setting. Load and Save do not provide compare-and-swap: Controller
-// serializes transitions within one process; cross-process leadership belongs to composition.
+// state, not a registry setting. Load and Save remain small persistence primitives; Controller
+// holds the store-owned workflow lock around their complete load/effects/save sequence.
 package backendtransition
 
 import (
@@ -25,7 +25,7 @@ const (
 	// BackendInternal identifies Loomarr's internal playout.
 	BackendInternal = schedule.PlayoutBackendInternal
 	// BackendTunarr identifies Tunarr-owned playout.
-	BackendTunarr = "tunarr"
+	BackendTunarr = schedule.PlayoutBackendTunarr
 )
 
 // ErrInvalidState reports a checkpoint that cannot safely direct publication.
@@ -43,7 +43,6 @@ type State struct {
 // and checkpointing need. store.Store satisfies them for both SQLite and Postgres.
 type stateLoader interface {
 	GetSetting(ctx context.Context, key string) (string, error)
-	ListChannels(ctx context.Context) ([]store.Channel, error)
 }
 
 type stateWriter interface {
@@ -53,6 +52,11 @@ type stateWriter interface {
 type stateStore interface {
 	stateLoader
 	stateWriter
+}
+
+type controllerStore interface {
+	stateStore
+	WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) error
 }
 
 type persistedState struct {
@@ -67,9 +71,10 @@ type decodedState struct {
 	Prepared *string `json:"prepared"`
 }
 
-// Load returns the persisted checkpoint or initializes an absent one. A legacy
-// install with any channel is assumed to have published Tunarr; only a genuinely
-// empty fleet may initialize directly from the desired backend.
+// Load returns the persisted checkpoint or initializes an absent one from the
+// currently resolved desired backend. Releases that predate this checkpoint did
+// not have a separate applied-backend concept, so desired is the only supported
+// and observable upgrade state; channel presence is not evidence of Tunarr wiring.
 func Load(ctx context.Context, st stateStore, desired string) (State, error) {
 	if err := validateBackend(desired); err != nil {
 		return State{}, fmt.Errorf("%w: desired backend: %v", ErrInvalidState, err)
@@ -83,15 +88,7 @@ func Load(ctx context.Context, st stateStore, desired string) (State, error) {
 		return State{}, fmt.Errorf("load backend transition state: %w", err)
 	}
 
-	channels, err := st.ListChannels(ctx)
-	if err != nil {
-		return State{}, fmt.Errorf("inspect fleet for backend transition initialization: %w", err)
-	}
-	initial := desired
-	if len(channels) != 0 {
-		initial = BackendTunarr
-	}
-	state := State{applied: initial}
+	state := State{applied: desired}
 	if err := Save(ctx, st, state); err != nil {
 		return State{}, fmt.Errorf("initialize backend transition state: %w", err)
 	}
@@ -111,8 +108,8 @@ func (s State) PublishedInternal() bool {
 	return s.applied == BackendInternal || s.prepared == BackendInternal
 }
 
-// MarkPrepared records that fleet convergence completed for backend. It does not
-// publish that backend; Applied remains unchanged until PublishPrepared is called.
+// MarkPrepared records the durable in-progress target before fleet convergence begins.
+// It does not publish that backend; Applied remains unchanged until PublishPrepared.
 func (s State) MarkPrepared(backend string) (State, error) {
 	if err := s.validate(); err != nil {
 		return State{}, err

@@ -39,10 +39,10 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 	}
 }
 
-func TestLoadInitializesPreExistingFleetAsLegacyTunarr(t *testing.T) {
+func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
 	st := testkit.SQLiteStore(t)
 	_, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
-		ID: "legacy", Name: "Legacy", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
+		ID: "existing", Name: "Existing", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -52,13 +52,13 @@ func TestLoadInitializesPreExistingFleetAsLegacyTunarr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertState(t, state, BackendTunarr, "", false)
+	assertState(t, state, BackendInternal, "", true)
 
-	state, err = state.MarkPrepared(BackendInternal)
+	state, err = state.MarkPrepared(BackendTunarr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertState(t, state, BackendTunarr, BackendInternal, true)
+	assertState(t, state, BackendInternal, BackendTunarr, true)
 }
 
 func TestStatePreparesBeforePublishingAndSurvivesReload(t *testing.T) {

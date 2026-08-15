@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -12,6 +13,30 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
+
+func TestTransitionReconcileBackendUsesDurablePreparedTarget(t *testing.T) {
+	st := testkit.SQLiteStore(t)
+	fleetErr := errors.New("fleet interrupted")
+	controller := backendtransition.NewController(
+		st, failingTransitionFleet{err: fleetErr}, nil, nil,
+	)
+	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
+		return backendtransition.BackendTunarr, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Apply(context.Background(), backendtransition.BackendInternal); !errors.Is(err, fleetErr) {
+		t.Fatalf("Apply error = %v, want fleet interruption", err)
+	}
+
+	if got := transitionReconcileBackend(controller.Runtime(), func() string { return backendtransition.BackendTunarr }); got != backendtransition.BackendInternal {
+		t.Fatalf("reconcile backend during preparation = %q, want internal", got)
+	}
+}
+
+type failingTransitionFleet struct{ err error }
+
+func (f failingTransitionFleet) PrepareInheritedBackend(context.Context, string) error { return f.err }
 
 func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
@@ -74,7 +99,7 @@ func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) 
 	}
 }
 
-func TestBuildHandlerInitializesLegacyFleetWithoutRunningNetworkTransition(t *testing.T) {
+func TestBuildHandlerInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testkit.SQLiteStore(t)
@@ -94,7 +119,7 @@ func TestBuildHandlerInitializesLegacyFleetWithoutRunningNetworkTransition(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Applied() != backendtransition.BackendTunarr || state.Prepared() != "" {
+	if state.Applied() != backendtransition.BackendInternal || state.Prepared() != "" {
 		t.Fatalf("initialized checkpoint = applied %q prepared %q", state.Applied(), state.Prepared())
 	}
 	if tunarr.Creates != 0 || tunarr.Pushes != 0 {

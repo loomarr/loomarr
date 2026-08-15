@@ -1246,6 +1246,41 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	}
 }
 
+func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/prepared-lifecycle.db")
+	t.Cleanup(func() { _ = st.Close() })
+	playback := &testkit.Playout{}
+	rescanner := &testkit.TunerRescanner{}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
+		AppliedBackend:    func() string { return schedule.PlayoutBackendTunarr },
+		PublishedInternal: func() bool { return true },
+	}))
+	t.Cleanup(srv.Close)
+
+	mkChannel(t, srv, "pause-prepared", "Pause Prepared", 70)
+	mkChannel(t, srv, "detach-prepared", "Detach Prepared", 71)
+
+	pause := do(t, srv, http.MethodPatch, "/v1/channels/pause-prepared", adminToken,
+		channelPatchBody(t, st, "pause-prepared", `{"status":"paused"}`))
+	if pause.StatusCode != http.StatusOK {
+		t.Fatalf("pause prepared internal channel -> %d, want 200", pause.StatusCode)
+	}
+	detach := do(t, srv, http.MethodDelete, "/v1/channels/detach-prepared", adminToken, "")
+	if detach.StatusCode != http.StatusNoContent {
+		t.Fatalf("detach prepared internal channel -> %d, want 204", detach.StatusCode)
+	}
+
+	if got, want := playback.StoppedChannels(), []string{"pause-prepared", "detach-prepared"}; !slices.Equal(got, want) {
+		t.Fatalf("stopped prepared channels = %v, want %v", got, want)
+	}
+	if got := rescanner.Calls(); got != 2 {
+		t.Fatalf("prepared tuner rescans = %d, want one per removal", got)
+	}
+}
+
 func TestUpdateChannel_RejectsBadStatus(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)

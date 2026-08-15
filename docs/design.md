@@ -543,6 +543,12 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
   a whole-lineup replacement could erase an approved title the operator never saw. The revision
   is internal concurrency state, not `updated_at`: timestamps are second-resolution presentation
   metadata and cannot serialize replicas.
+- **Global playout-backend publication holds one store-owned workflow lock.** SQLite serializes it
+  with an in-process mutex. Postgres uses a database-namespaced advisory lock on a dedicated
+  connection across durable-state load, idempotent external prepare/refresh/retire effects, and
+  checkpoint saves. A queued replica refreshes its settings snapshot and resolves the desired
+  backend only after acquiring that lock; controllers targeting the same or opposing backends
+  therefore cannot overlap publication or let a stale snapshot reverse a newer durable save.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
 ### Migrating SQLite → PostgreSQL (V11)
@@ -999,23 +1005,25 @@ the UI says which channels follow the default, while a per-channel pin is the wa
 a fleet-wide default change. Reconciliation resolves the effective backend once per attempt so one
 operation never straddles two targets.
 
-A global backend write is a fleet transition, not a URL flip: Loomarr first reconciles every active
-inherited channel against the new backend, then rewires the media server's single owned tuner/listing
-pair. Pinned, paused, and detached channels are excluded. If convergence fails, the existing tuner
-registration remains in place and the transition stays pending for retry (configuration mechanics in
-`config-design.md` §8).
+A global backend write is a fleet transition, not a URL flip: Loomarr first records the durable
+in-progress target, then reconciles every active inherited channel against it before rewiring the
+media server's single owned tuner/listing pair. Pinned, paused, and detached channels are excluded.
+If convergence fails, the existing tuner registration remains in place and the transition stays
+pending for retry (configuration mechanics in `config-design.md` §8).
 
 The publication checkpoint is a **system-owned row in the §5 settings KV**, not a registry setting:
 `system.playout_backend_transition` stores versioned JSON `{version, applied, prepared}`. `applied`
 names the backend whose tuner/listing pair is currently published to the media server; `prepared` is
-empty in steady state and names the converged backend awaiting publication during a transition.
+empty in steady state and names the durable in-progress target during a transition. It is recorded
+before fleet convergence and therefore is not proof that convergence completed; every retry runs
+the idempotent fleet barrier again before publisher work.
 Internal device routes are readable while internal is either applied **or prepared**, so the target
 M3U/XMLTV exists before the connector points the media server at it. Publication may advance `applied`
 only to non-empty `prepared`, then clears `prepared`. The row has no environment variable, Settings API
 field, or UI control — it records transition progress, not operator intent. On upgrade, a missing row
-with any pre-existing channel initializes `applied` to `tunarr`, the only backend legacy releases could
-have published; a genuinely empty fleet initializes `applied` from the desired backend. Both cases
-initialize `prepared` empty. Unknown versions, malformed JSON, missing fields, and unknown backend names
+initializes `applied` from the currently resolved desired backend and initializes `prepared` empty.
+Older supported releases had no separate applied checkpoint, and channel presence is not evidence of
+which tuner was published. Unknown versions, malformed JSON, missing fields, and unknown backend names
 fail closed without replacing the row, so corruption can never silently point the media server at an
 unprepared backend.
 
@@ -1106,8 +1114,11 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
 
-Both device-facing documents expose the same **surfable internal catalog** as in-app tuning:
-effective-internal channels that are on air. Paused, detached, and empty channels remain visible in
+Both device-facing documents expose the **transport-published internal catalog**: effective-internal
+channels that are on air. This normally equals the in-app surfable catalog; while internal is the
+durable `prepared` target it additionally includes inherited channels so the media server can read
+the target feed before cutover, without exposing that target through ordinary UI routing. Paused,
+detached, and empty channels remain visible in
 Loomarr's own Guide as channel rows for diagnosis and control, but their now/next and upcoming
 programme answers are empty; they are absent from M3U/XMLTV and direct internal tune requests return
 404. When an internal channel leaves this catalog (pause, detach, purge, or an effective-backend

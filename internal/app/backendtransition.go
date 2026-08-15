@@ -28,7 +28,26 @@ type backendPublisher struct {
 // a newer saved value.
 type currentBackendTransition struct {
 	controller *backendtransition.Controller
-	desired    func() string
+	desired    func(context.Context) (string, error)
+}
+
+// transitionReconcileBackend keeps ordinary channel maintenance on the same durable target as
+// an in-progress fleet barrier. Request routing continues to use Applied; reconcile must use
+// Prepared when present or it can overwrite channels the barrier has already moved.
+func transitionReconcileBackend(runtime *backendtransition.Runtime, fallback func() string) string {
+	if runtime != nil {
+		snapshot := runtime.Snapshot()
+		if snapshot.Prepared != "" {
+			return snapshot.Prepared
+		}
+		if snapshot.Applied != "" {
+			return snapshot.Applied
+		}
+	}
+	if fallback == nil {
+		return ""
+	}
+	return fallback()
 }
 
 func (t currentBackendTransition) Apply(ctx context.Context, _ string) error {

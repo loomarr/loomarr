@@ -447,6 +447,12 @@ type ActivityStore interface {
 type SettingStore interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
+	// WithSettingLock serializes one system-owned settings workflow. SQLite is a
+	// single-process backend, so its lock is local; Postgres holds a session-level
+	// advisory lock so replicas cannot overlap the protected external effects.
+	// The callback must be idempotent because a process can still stop after an
+	// external effect and before its durable checkpoint is written.
+	WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) error
 	// ListSettings returns every persisted override with its audit metadata
 	// (config-design §3). The settings service loads this into its snapshot; the
 	// API surfaces updatedBy/updatedAt per field.

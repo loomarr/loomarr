@@ -21,6 +21,8 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 	publisher := newPublisherAdapter(record)
 	cutover := &cutoverAdapter{record: record}
 	controller := NewController(st, fleet, publisher, cutover)
+	var fleetSnapshot Snapshot
+	fleet.observe = func() { fleetSnapshot = controller.Runtime().Snapshot() }
 
 	var snapshots []Snapshot
 	st.afterSave = func() { snapshots = append(snapshots, controller.Runtime().Snapshot()) }
@@ -29,8 +31,8 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 	}
 
 	wantOrder := []string{
-		"fleet:internal",
 		"save:tunarr/internal",
+		"fleet:internal",
 		"publisher.prepare:internal",
 		"publisher.refresh:internal",
 		"cutover:tunarr->internal",
@@ -45,6 +47,7 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 	}
 	assertSnapshot(t, snapshots[0], BackendTunarr, "", false)
 	assertSnapshot(t, snapshots[1], BackendTunarr, BackendInternal, true)
+	assertSnapshot(t, fleetSnapshot, BackendTunarr, BackendInternal, true)
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendInternal, "", true)
 	assertDurableState(t, base, BackendInternal, "")
 }
@@ -55,7 +58,9 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 	controller := NewController(st,
 		&fleetAdapter{record: record}, newPublisherAdapter(record), &cutoverAdapter{record: record})
 
-	if err := controller.Initialize(context.Background(), BackendInternal); err != nil {
+	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
+		return BackendInternal, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	assertDurableState(t, st, BackendInternal, "")
@@ -64,7 +69,9 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 		t.Fatalf("Initialize invoked transition adapters: %v", got)
 	}
 
-	if err := controller.Initialize(context.Background(), "external"); !errors.Is(err, ErrInvalidState) {
+	if err := controller.Initialize(context.Background(), func(context.Context) (string, error) {
+		return "external", nil
+	}); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("invalid desired error = %v, want ErrInvalidState from Load", err)
 	}
 	assertSnapshot(t, controller.Runtime().Snapshot(), BackendInternal, "", true)
@@ -76,7 +83,7 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 	crash := errors.New("simulated process interruption")
 	for _, phase := range []string{
-		"fleet", "save-prepared", "publisher-prepare", "refresh", "cutover", "save-published", "retire",
+		"save-prepared", "fleet", "publisher-prepare", "refresh", "cutover", "save-published", "retire",
 	} {
 		t.Run(phase, func(t *testing.T) {
 			base := initializedStore(t, BackendTunarr)
@@ -108,7 +115,7 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 
 			wantApplied, wantPrepared := BackendTunarr, ""
 			switch phase {
-			case "publisher-prepare", "refresh", "cutover", "save-published":
+			case "fleet", "publisher-prepare", "refresh", "cutover", "save-published":
 				wantPrepared = BackendInternal
 			case "retire":
 				wantApplied = BackendInternal
@@ -127,8 +134,9 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 			assertSnapshot(t, restarted.Runtime().Snapshot(), BackendInternal, "", true)
 
 			wantFleetCalls := 1
-			if phase == "fleet" || phase == "save-prepared" {
-				wantFleetCalls = 2 // no durable prepared checkpoint existed, so replay is required
+			if phase == "fleet" || phase == "publisher-prepare" || phase == "refresh" ||
+				phase == "cutover" || phase == "save-published" {
+				wantFleetCalls = 2 // a durable in-progress target always replays the fleet barrier
 			}
 			if got := fleet.callCount(); got != wantFleetCalls {
 				t.Fatalf("fleet calls = %d, want %d", got, wantFleetCalls)
@@ -137,7 +145,7 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 	}
 }
 
-func TestControllerDesiredReversalCancelsPreparedTargetBeforeRepair(t *testing.T) {
+func TestControllerDesiredReversalReplacesPreparedTargetBeforeRepair(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
 	ctx := context.Background()
 	state, err := Load(ctx, base, BackendTunarr)
@@ -164,16 +172,18 @@ func TestControllerDesiredReversalCancelsPreparedTargetBeforeRepair(t *testing.T
 		t.Fatal(err)
 	}
 	want := []string{
-		"save:tunarr/",
+		"save:tunarr/tunarr",
+		"fleet:tunarr",
 		"publisher.prepare:tunarr",
 		"publisher.refresh:tunarr",
+		"save:tunarr/",
 		"publisher.retire:tunarr",
 	}
 	if got := record.snapshot(); !slices.Equal(got, want) {
 		t.Fatalf("reversal phases = %v, want %v", got, want)
 	}
-	if fleet.callCount() != 0 || cutover.callCount() != 0 {
-		t.Fatalf("reversal replayed fleet/cutover: fleet=%d cutover=%d",
+	if fleet.callCount() != 1 || cutover.callCount() != 0 {
+		t.Fatalf("reversal fleet/cutover calls: fleet=%d cutover=%d, want 1/0",
 			fleet.callCount(), cutover.callCount())
 	}
 	assertDurableState(t, base, BackendTunarr, "")
@@ -183,7 +193,7 @@ func TestControllerDesiredReversalCancelsPreparedTargetBeforeRepair(t *testing.T
 	}
 }
 
-func TestControllerFailedCancellationRemainsDurableAndRetryable(t *testing.T) {
+func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t *testing.T) {
 	base := initializedStore(t, BackendTunarr)
 	ctx := context.Background()
 	state, _ := Load(ctx, base, BackendTunarr)
@@ -197,14 +207,14 @@ func TestControllerFailedCancellationRemainsDurableAndRetryable(t *testing.T) {
 	publisher := newPublisherAdapter(nil)
 	first := NewController(st, &fleetAdapter{}, publisher, nil)
 	if err := first.Apply(ctx, BackendTunarr); !errors.Is(err, cancelErr) {
-		t.Fatalf("Apply error = %v, want cancellation failure", err)
+		t.Fatalf("Apply error = %v, want target replacement failure", err)
 	}
 	assertDurableState(t, base, BackendTunarr, BackendInternal)
 	assertSnapshot(t, first.Runtime().Snapshot(), BackendTunarr, BackendInternal, true)
 
 	restarted := NewController(st, &fleetAdapter{}, publisher, nil)
 	if err := restarted.Apply(ctx, BackendTunarr); err != nil {
-		t.Fatalf("retry cancellation: %v", err)
+		t.Fatalf("retry target replacement: %v", err)
 	}
 	assertDurableState(t, base, BackendTunarr, "")
 }
@@ -328,9 +338,9 @@ func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *
 	resolved := make(chan struct{})
 	secondDone := make(chan error, 1)
 	go func() {
-		secondDone <- controller.ApplyCurrent(context.Background(), func() string {
+		secondDone <- controller.ApplyCurrent(context.Background(), func(context.Context) (string, error) {
 			close(resolved)
-			return desired
+			return desired, nil
 		})
 	}()
 	select {
@@ -443,6 +453,7 @@ type fleetAdapter struct {
 	entered     chan struct{}
 	release     chan struct{}
 	secondEntry chan struct{}
+	observe     func()
 }
 
 func (f *fleetAdapter) PrepareInheritedBackend(_ context.Context, target string) error {
@@ -459,6 +470,9 @@ func (f *fleetAdapter) PrepareInheritedBackend(_ context.Context, target string)
 	}
 	f.mu.Unlock()
 	f.record.add("fleet:" + target)
+	if f.observe != nil {
+		f.observe()
+	}
 	if call == 1 && f.release != nil {
 		<-f.release
 	}

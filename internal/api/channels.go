@@ -416,7 +416,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	before := ch
 	wasInternal := s.playsInternally(ch)
-	wasInAppPlayable := s.inAppPlayable(ch)
+	wasTransportPlayable := s.transportPlayable(ch)
 
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
@@ -502,7 +502,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		// value, so an error cannot leave this edit waiting behind an old future deadline.
 		ch.ReconcileDeadline = time.Time{}
 	}
-	isInAppPlayable := s.inAppPlayable(ch)
+	isTransportPlayable := s.transportPlayable(ch)
 
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
@@ -520,7 +520,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, err
 	}
 	ch = saved
-	s.applyInternalPlayoutLifecycle(ctx, ch.ID, wasInAppPlayable, isInAppPlayable)
+	s.applyInternalPlayoutLifecycle(ctx, ch.ID, wasTransportPlayable, isTransportPlayable)
 
 	// Auto-reconcile so the edit reaches the selected playout backend with no user action
 	// (§9 "self-maintaining"; there is no manual rebuild). Best-effort + skipped while paused:
@@ -640,7 +640,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	wasInAppPlayable := s.inAppPlayable(ch)
+	wasTransportPlayable := s.transportPlayable(ch)
 	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
 	// Tunarr projection through the channel service. This includes a historical projection
 	// preserved after switching the channel to internal playout.
@@ -655,7 +655,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't purge the channel",
 				"Loomarr couldn't hard-delete its local state and any retained managed Tunarr projection. Check the configured integrations and try again.", err)
 		}
-		if wasInAppPlayable && s.playout != nil {
+		if wasTransportPlayable && s.playout != nil {
 			s.playout.StopChannel(ch.ID)
 		}
 		return &deleteChannelOutput{}, nil
@@ -671,7 +671,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 		}
 		return nil, err
 	}
-	s.applyInternalPlayoutLifecycle(ctx, saved.ID, wasInAppPlayable, false)
+	s.applyInternalPlayoutLifecycle(ctx, saved.ID, wasTransportPlayable, false)
 	return &deleteChannelOutput{}, nil
 }
 
@@ -684,12 +684,12 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 // transitions, and the v1 pause contract retains their last lineup; durable remote pause needs a
 // separate projection state rather than a one-shot best-effort clear.
 func (s *Server) applyInternalPlayoutLifecycle(
-	ctx context.Context, channelID string, wasInAppPlayable, isInAppPlayable bool,
+	ctx context.Context, channelID string, wasTransportPlayable, isTransportPlayable bool,
 ) {
-	if wasInAppPlayable == isInAppPlayable {
+	if wasTransportPlayable == isTransportPlayable {
 		return
 	}
-	if wasInAppPlayable && s.playout != nil {
+	if wasTransportPlayable && s.playout != nil {
 		s.playout.StopChannel(channelID)
 	}
 	if s.tunerRescanner != nil {

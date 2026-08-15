@@ -288,6 +288,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var liveTVConnector *setup.LiveTVConnector
 	var backendController *backendtransition.Controller
 	var backendRuntime *backendtransition.Runtime
+	// A replica may enter the transition lock after another replica saved a newer
+	// target. Refreshing the settings snapshot inside that lock makes durable
+	// settings, rather than whichever process happened to enqueue first, authoritative.
+	resolveDesiredBackend := func(ctx context.Context) (string, error) {
+		if set.svc != nil {
+			if err := set.svc.Refresh(ctx); err != nil {
+				return "", fmt.Errorf("refresh settings before backend transition: %w", err)
+			}
+		}
+		return set.str("playout.backend"), nil
+	}
 	// Before the controller exists these closures are construction-only; no request or job can
 	// invoke them. After synchronous Initialize, they never fall back from a zero checkpoint to
 	// desired settings: doing so would publish an uncommitted transition.
@@ -296,6 +307,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			return backendRuntime.Snapshot().Applied
 		}
 		return set.str("playout.backend")
+	}
+	reconcileBackend := func() string {
+		return transitionReconcileBackend(backendRuntime, func() string { return set.str("playout.backend") })
 	}
 	publishedInternal := func() bool {
 		if backendRuntime != nil {
@@ -413,10 +427,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
-			// supplies only the applied global fallback, while schedule.PlaysInternally applies
-			// a channel's policy override. An internal channel must still derive + persist its
-			// desired state when Tunarr is entirely unconfigured.
-			ResolvePlayoutBackend: appliedBackend,
+			// supplies the durable in-progress target when one exists, otherwise the applied
+			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
+			// This keeps ordinary reconcile aligned with the fleet barrier during a transition.
+			ResolvePlayoutBackend: reconcileBackend,
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
@@ -748,7 +762,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			inheritedInternalCutover{channels: st, playout: playoutSvc},
 		)
 		backendRuntime = backendController.Runtime()
-		if err := backendController.Initialize(rootCtx, set.str("playout.backend")); err != nil {
+		if err := backendController.Initialize(rootCtx, resolveDesiredBackend); err != nil {
 			return nil, fmt.Errorf("initialize playout backend transition: %w", err)
 		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
@@ -776,7 +790,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// lease/batch are still constructed; only its standalone loop is gone.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
-			return backendController.ApplyCurrent(ctx, func() string { return set.str("playout.backend") })
+			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}))
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
@@ -1422,7 +1436,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Jobs:           jobsSvc,
 		Settings:       settingsSvc,
 		BackendTransition: currentBackendTransition{
-			controller: backendController, desired: func() string { return set.str("playout.backend") },
+			controller: backendController, desired: resolveDesiredBackend,
 		},
 		Guide:             guideSvc,
 		Provision:         provisionSvc,

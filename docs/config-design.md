@@ -396,9 +396,13 @@ does not exist.
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
 - **Backend hot-apply is a durable prepare → publish → retire transition, not merely an immediate
   callback.** PATCH, clear, and environment takeover save the desired value first, then invoke one
-  coordinator. Ordinary reconcile, Guide/now-next, and in-app routing continue to read the durable
-  `applied` backend while active inherited channels are prepared for the target; explicitly pinned,
-  paused, and detached channels do not join that fleet barrier. Preparing internal playout durably
+  coordinator. Guide/now-next and in-app routing continue to read the durable `applied` backend while
+  active inherited channels are prepared for the target; ordinary reconcile reads non-empty
+  `prepared` first (then `applied`) so concurrent maintenance cannot undo partially converged target
+  state. Explicitly pinned, paused, and detached channels do not join that fleet barrier. The target
+  is checkpointed in `prepared` before convergence starts, and every retry re-runs the idempotent
+  fleet barrier, so cancellation, failure, or restart cannot mistake the checkpoint for proof of
+  completed convergence. Preparing internal playout durably
   opens its token-authenticated M3U/XMLTV/direct transport before the media server refreshes the new
   tuner/listing pair, but does not switch ordinary UI routes early. Only after target refresh and
   cutover succeed is `applied` advanced; stale Loomarr-owned registrations retire last. A failure
@@ -406,8 +410,14 @@ does not exist.
   the new backend applied and retries cleanup. The system checkpoint survives restart, and both a
   later relevant settings write and channel maintenance resume it (including URL-only repair when
   the backend name did not change). Desired is re-read inside the coordinator's serialization
-  boundary, so an older maintenance retry cannot publish after a newer save. The setting mutation
-  remains successful when this follow-on transition is pending.
+  boundary, so an older maintenance retry cannot publish after a newer save. On Postgres that
+  boundary is a store-owned, database-scoped advisory lock held across checkpoint load, every
+  external publisher phase, and checkpoint save; separate replicas therefore cannot interleave
+  tuner publication. Only after acquiring it does a replica refresh its settings snapshot from the
+  durable store and resolve desired, so a stale process cannot reverse a newer save when its queued
+  work finally runs. SQLite uses the same interface with its single-process mutex, consistent with
+  SQLite's one-replica contract. The setting mutation remains successful when this follow-on
+  transition is pending.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
 - `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating

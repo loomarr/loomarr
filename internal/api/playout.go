@@ -439,8 +439,8 @@ func (s *Server) transportPlayable(ch store.Channel) bool {
 	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 		return false
 	}
-	if p := ch.Policy.Playout; p != nil && strings.TrimSpace(p.Backend) != "" {
-		return p.Backend == schedule.PlayoutBackendInternal
+	if schedule.HasExplicitPlayoutBackend(ch.Policy) {
+		return schedule.PlaysInternally(ch.Policy, schedule.PlayoutBackendTunarr)
 	}
 	if s.publishedInternal != nil {
 		return s.publishedInternal()

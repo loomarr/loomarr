@@ -69,13 +69,12 @@ func (r *Runtime) publish(state State) {
 }
 
 // Controller owns the complete prepare -> publish -> retire transition. Apply calls are
-// serialized within this process and always reload the durable checkpoint, so a new Controller
-// resumes exactly where a crashed one stopped. Store writes are not CAS; cross-process leadership
-// remains the composition layer's responsibility, matching the State persistence contract.
+// serialized within this process and through the store, then reload the durable checkpoint, so a
+// new Controller or another Postgres replica resumes exactly where the prior owner stopped.
 type Controller struct {
 	mu sync.Mutex
 
-	store     stateStore
+	store     controllerStore
 	fleet     Fleet
 	publisher Publisher
 	cutover   Cutover
@@ -85,7 +84,7 @@ type Controller struct {
 // NewController constructs a transition controller. Fleet and Publisher are required for a real
 // transition; Cutover is optional. Dependencies are accepted rather than constructed so the same
 // ordering is exercised by production adapters and tests.
-func NewController(st stateStore, fleet Fleet, publisher Publisher, cutover Cutover) *Controller {
+func NewController(st controllerStore, fleet Fleet, publisher Publisher, cutover Cutover) *Controller {
 	return &Controller{store: st, fleet: fleet, publisher: publisher, cutover: cutover}
 }
 
@@ -101,65 +100,83 @@ func (c *Controller) Runtime() *Runtime {
 // snapshot without performing fleet convergence or media-server I/O. Composition calls this before
 // request-serving so transport gates never infer a backend from Runtime's zero value. Desired
 // validation is intentionally delegated to Load, the single State validation path.
-func (c *Controller) Initialize(ctx context.Context, desired string) error {
+func (c *Controller) Initialize(ctx context.Context, desired func(context.Context) (string, error)) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("backend transition: store is unavailable")
 	}
+	if desired == nil {
+		return fmt.Errorf("backend transition: desired resolver is unavailable")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, err := c.load(ctx, desired)
-	return err
+	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+		target, err := desired(lockCtx)
+		if err != nil {
+			return fmt.Errorf("resolve desired backend: %w", err)
+		}
+		_, err = c.load(lockCtx, target)
+		return err
+	})
 }
 
 // Apply converges desired through five retryable phases:
 //
-//  1. prepare inherited channel state;
-//  2. durably mark the target prepared (which opens internal transport when applicable);
+//  1. durably mark the in-progress target prepared (which opens internal transport when applicable);
+//  2. prepare inherited channel state;
 //  3. prepare and refresh the target publisher registration;
 //  4. perform the optional cutover and durably publish the target;
 //  5. retire stale registrations.
 //
 // Failures through phase 4 preserve the previously applied backend. A phase-5 failure returns an
 // error but deliberately leaves the new backend applied; the next Apply repairs steady state and
-// retries retirement. Reversing desired while another target is merely prepared first cancels that
-// checkpoint durably, then repairs the still-applied backend.
+// retries retirement. Reversing desired while another target is in progress durably replaces that
+// target before repairing the fleet, so a crash cannot leave partially converged channel state with
+// no retryable in-progress checkpoint.
 func (c *Controller) Apply(ctx context.Context, desired string) error {
-	return c.applyResolved(ctx, func() string { return desired })
+	return c.applyResolved(ctx, func(context.Context) (string, error) { return desired, nil })
 }
 
 // ApplyCurrent resolves desired only after entering the controller's serialization boundary.
 // Composition uses it for settings-driven work so a maintenance retry that waited behind a newer
 // save cannot later publish the stale value it captured before waiting.
-func (c *Controller) ApplyCurrent(ctx context.Context, desired func() string) error {
+func (c *Controller) ApplyCurrent(ctx context.Context, desired func(context.Context) (string, error)) error {
 	if desired == nil {
 		return fmt.Errorf("backend transition: desired resolver is unavailable")
 	}
 	return c.applyResolved(ctx, desired)
 }
 
-func (c *Controller) applyResolved(ctx context.Context, resolveDesired func() string) error {
+func (c *Controller) applyResolved(ctx context.Context, resolveDesired func(context.Context) (string, error)) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("backend transition: store is unavailable")
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	desired := resolveDesired()
+	return c.store.WithSettingLock(ctx, stateKey, func(lockCtx context.Context) error {
+		desired, err := resolveDesired(lockCtx)
+		if err != nil {
+			return fmt.Errorf("resolve desired backend: %w", err)
+		}
+		return c.applyLocked(lockCtx, desired)
+	})
+}
 
+func (c *Controller) applyLocked(ctx context.Context, desired string) error {
 	state, err := c.load(ctx, desired)
 	if err != nil {
 		return err
 	}
 
 	if state.Prepared() != "" && state.Prepared() != desired {
-		cancelled, cerr := state.CancelPrepared()
-		if cerr != nil {
-			return fmt.Errorf("cancel prepared backend %q: %w", state.Prepared(), cerr)
+		replaced, rerr := state.MarkPrepared(desired)
+		if rerr != nil {
+			return fmt.Errorf("replace prepared backend %q with %q: %w", state.Prepared(), desired, rerr)
 		}
-		if err := c.save(ctx, cancelled); err != nil {
-			return fmt.Errorf("cancel prepared backend %q: %w", state.Prepared(), err)
+		if err := c.save(ctx, replaced); err != nil {
+			return fmt.Errorf("replace prepared backend %q with %q: %w", state.Prepared(), desired, err)
 		}
-		state = cancelled
+		state = replaced
 	}
 
 	// Steady state still runs the publisher repair path. URLs and credentials can change while
@@ -169,12 +186,6 @@ func (c *Controller) applyResolved(ctx context.Context, resolveDesired func() st
 	}
 
 	if state.Prepared() != desired {
-		if c.fleet == nil {
-			return fmt.Errorf("prepare inherited fleet for %q: fleet is unavailable", desired)
-		}
-		if err := c.fleet.PrepareInheritedBackend(ctx, desired); err != nil {
-			return fmt.Errorf("prepare inherited fleet for %q: %w", desired, err)
-		}
 		prepared, perr := state.MarkPrepared(desired)
 		if perr != nil {
 			return fmt.Errorf("mark backend %q prepared: %w", desired, perr)
@@ -183,6 +194,15 @@ func (c *Controller) applyResolved(ctx context.Context, resolveDesired func() st
 			return fmt.Errorf("save prepared backend %q: %w", desired, err)
 		}
 		state = prepared
+	}
+	// Prepared is a durable in-progress target, not proof that convergence completed. Re-run
+	// the idempotent fleet barrier on every attempt so a failure, cancellation, or process crash
+	// cannot leave a partially prepared fleet that later skips directly to publication.
+	if c.fleet == nil {
+		return fmt.Errorf("prepare inherited fleet for %q: fleet is unavailable", desired)
+	}
+	if err := c.fleet.PrepareInheritedBackend(ctx, desired); err != nil {
+		return fmt.Errorf("prepare inherited fleet for %q: %w", desired, err)
 	}
 
 	if c.publisher == nil {
