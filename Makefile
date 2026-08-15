@@ -194,7 +194,7 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build
+.PHONY: build rust-build image-cert
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -206,6 +206,17 @@ rust-build: ## build the required Rust image worker
 	LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(CARGO) build --release --locked -p loomarr-image
 	install -d $(BIN_DIR)
 	install -m 0755 target/release/loomarr-image $(BIN_DIR)/loomarr-image
+
+image-cert: rust-build ## certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_CERT_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-certification.json}"; \
+	  if [ -n "$${IMAGE_CERT_CORPUS:-}" ]; then \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report" --corpus "$$IMAGE_CERT_CORPUS"; \
+	  else \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report"; \
+	  fi
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
