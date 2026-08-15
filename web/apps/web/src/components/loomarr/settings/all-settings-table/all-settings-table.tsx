@@ -1,4 +1,5 @@
 import { type SettingEntry, SettingEntryProvenance } from "@loomarr/api";
+import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui";
 import { cn } from "@/lib";
@@ -118,6 +119,11 @@ const AllSettingsTable = ({
               label: entry.provenance.toUpperCase(),
               className: "bg-static-800 text-static-400",
             };
+            // llm.model is committed through the model-selection action, which also
+            // verifies capability, persists provider metadata, and hot-swaps the client.
+            // A generic text input here would bypass all three and accept Ollama tags
+            // for OpenRouter, so keep the key searchable but route edits to its owner.
+            const pickerOwned = entry.key === "llm.model";
             return (
               <div
                 key={entry.key}
@@ -144,14 +150,20 @@ const AllSettingsTable = ({
                 </div>
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
-                <SettingField
-                  entry={entry}
-                  compact
-                  labelledBy={`${entry.key}-label`}
-                  value={values[entry.key] ?? entry.value ?? ""}
-                  onChange={(v) => onEdit(entry.key, v)}
-                  onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
-                />
+                {pickerOwned ? (
+                  <span className="truncate font-mono text-muted-foreground text-xs">
+                    {(values[entry.key] ?? entry.value) || "Not selected"}
+                  </span>
+                ) : (
+                  <SettingField
+                    entry={entry}
+                    compact
+                    labelledBy={`${entry.key}-label`}
+                    value={values[entry.key] ?? entry.value ?? ""}
+                    onChange={(v) => onEdit(entry.key, v)}
+                    onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
+                  />
+                )}
                 {HOME_BY_GROUP[entry.group] ? (
                   <a
                     href={HOME_BY_GROUP[entry.group]}
@@ -170,14 +182,20 @@ const AllSettingsTable = ({
                 >
                   {prov.label}
                 </span>
-                <button
-                  type="button"
-                  disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
-                  onClick={() => onClear?.(entry)}
-                  className="w-fit text-muted-foreground text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:text-foreground enabled:hover:underline disabled:opacity-40"
-                >
-                  Use default
-                </button>
+                {pickerOwned ? (
+                  <Link to="/settings/ai" className="w-fit text-signal text-xs underline underline-offset-4">
+                    Choose model
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
+                    onClick={() => onClear?.(entry)}
+                    className="w-fit text-muted-foreground text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:text-foreground enabled:hover:underline disabled:opacity-40"
+                  >
+                    Use default
+                  </button>
+                )}
               </div>
             );
           })}

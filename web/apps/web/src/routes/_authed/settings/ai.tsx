@@ -11,7 +11,7 @@ const AiSettings = () => (
         group: "ai",
         title: "Lineup model",
         check: "llm",
-        keys: ["llm.provider", "llm.url", "llm.model", "llm.api_key", "llm.keep_alive"],
+        keys: ["llm.provider", "llm.url", "llm.api_key", "llm.keep_alive"],
       },
       {
         group: "filler",

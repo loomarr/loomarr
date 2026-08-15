@@ -373,12 +373,12 @@ func declared() []Setting {
 			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
 		},
 		{
-			// For a hosted service you type the model name; for Ollama the ranked model
-			// picker below is how you choose, so this free-text field is hidden there to
-			// avoid two controls setting the same thing.
+			// The normal AI page uses the ranked picker for both provider kinds so two
+			// controls never compete. This declaration remains for env compatibility and
+			// the explicit All Settings escape hatch.
 			Key: "llm.model", Label: "Hosted lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "",
-			Doc:      "The model name for your hosted AI service (e.g. gpt-4o-mini).",
+			Doc:      "The active hosted model id. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{

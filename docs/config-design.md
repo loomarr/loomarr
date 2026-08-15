@@ -194,7 +194,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | Page | Contents | Live tests |
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
-| **AI** | Model roles: lineup model/provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker still owns probe/catalog/hot-swap. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
+| **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (backend, quality, language/subtitles, detected encoder/capacity, guide, advanced paths) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. | per sub-tab where testable |
 | **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
@@ -229,6 +229,12 @@ same cross-tab buffer — env-pinned locking and the secret replace-flow (§4) b
 here. **The lookup half still governs presentation:** keys are monospace and verbatim, never
 humanized, because someone arrives holding a literal `job.workers` from a compose file and a row
 reading "Job workers" does not match the string they are carrying.
+
+The exception is an **action-owned value** whose safe write is more than a registry PATCH.
+`llm.model` stays searchable and shows its resolved value, but its action deep-links to the AI
+picker instead of rendering free text: selection also verifies tool capability, preserves the
+branded hosted provider, and hot-swaps the client. Letting the raw table bypass those effects
+would make the escape hatch a second, less-safe implementation of the same product decision.
 
 V55 closes the loophole that made this escape hatch the only home of ordinary settings. Every
 non-advanced key has an owning workflow page; the raw table links to that page, carries the same
