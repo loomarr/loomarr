@@ -8013,6 +8013,15 @@ paths:
             examples:
               - ch_abc123
             type: string
+        - description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+          explode: false
+          in: query
+          name: mode
+          schema:
+            description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+            enum:
+              - prepared
+            type: string
       responses:
         "200":
           content:
@@ -8022,12 +8031,8 @@ paths:
                 format: binary
                 type: string
           description: The HLS master playlist for the in-app and native players.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
+        "204":
+          description: No prepared presentation is currently available; live playout was not started.
       summary: Channel HLS master playlist (signed-URL authed)
       tags:
         - playout
