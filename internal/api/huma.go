@@ -13,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -134,9 +135,10 @@ type Server struct {
 	liveConfigBoolOn func(key string) bool
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
-	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
-	// "not running" rather than 404, so a half-configured install gets an explanation.
-	playoutSessions PlayoutSessions
+	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
+	playoutObserver PlayoutObserver
+	// preparedObserver supplies the readiness planner's immutable operational snapshot.
+	preparedObserver PreparedObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -148,10 +150,8 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
-	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
-	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
-	// without internal playout wired explains itself rather than 404ing.
-	playoutHLS PlayoutHLS
+	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
@@ -174,10 +174,9 @@ type Server struct {
 	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
 	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
 	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
-	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
-	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
-	hwEncodeGate *hwEncodeGate
+	// encodePool is the one host-wide hardware-encode admission boundary shared with preparation.
+	// Nil preserves the pre-gate behavior for tests and installs without a capability probe.
+	encodePool *media.EncodePool
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -251,26 +250,28 @@ type SettingEnumOption struct {
 }
 
 type SettingEntry struct {
-	Key         string              `json:"key"`
-	Group       string              `json:"group"`
-	Kind        string              `json:"kind"`
-	Value       string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
-	Set         bool                `json:"set" doc:"For secrets: whether a value is stored."`
-	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
-	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
-	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
-	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
-	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
-	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
-	Advanced    bool                `json:"advanced"`
-	Secret      bool                `json:"secret"`
-	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
-	EnumOptions []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
-	ShowWhen    map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
-	RequiredFor string              `json:"requiredFor,omitempty"`
-	Doc         string              `json:"doc"`
-	UpdatedBy   string              `json:"updatedBy,omitempty"`
-	UpdatedAt   string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+	Key          string              `json:"key"`
+	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
+	Group        string              `json:"group"`
+	Kind         string              `json:"kind"`
+	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance   string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution      bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable  bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride  bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar       string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
+	Advanced     bool                `json:"advanced"`
+	Secret       bool                `json:"secret"`
+	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
+	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
+	RequiredFor  string              `json:"requiredFor,omitempty"`
+	Doc          string              `json:"doc"`
+	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
 // SettingResult is one key's PATCH outcome (config-design §8).
@@ -757,9 +758,10 @@ type Options struct {
 	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
-	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
-	// playout.Manager. Nil ⇒ the routes mount but report "not running".
-	PlayoutSessions PlayoutSessions
+	// PlayoutObserver supplies operational snapshots and program progress.
+	PlayoutObserver PlayoutObserver
+	// PreparedObserver supplies prepared readiness and retention status without rescanning.
+	PreparedObserver PreparedObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
@@ -767,9 +769,8 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
-	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
-	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
-	PlayoutHLS PlayoutHLS
+	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
@@ -794,10 +795,9 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
-	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
-	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
-	HWEncodeSlots func(ctx context.Context) int
+	// EncodePool is the one host-wide hardware-encode admission boundary. Live playout uses
+	// foreground leases; the readiness planner uses its preemptible background lease.
+	EncodePool *media.EncodePool
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

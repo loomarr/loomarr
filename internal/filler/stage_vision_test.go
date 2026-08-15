@@ -75,7 +75,7 @@ func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte
 }
 
 func (s *scriptedVision) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedVision) BlackSilence(context.Context, string) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
 func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
@@ -239,6 +239,24 @@ func TestVisionStage_DropsCategoryNotInTheTaxonomy(t *testing.T) {
 	}
 	if got := st.tags["silent.mp4"].category; got != "" {
 		t.Errorf("category = %q, want it DROPPED — it is not in the taxonomy", got)
+	}
+}
+
+// One malformed optional field must not erase the independently readable evidence beside it.
+// llava:7b produced this exact shape live (`category: 0`), and the default struct decoder retried
+// the whole vision rung even though the object and its visible text were otherwise usable.
+func TestVisionStage_DropsWrongTypedFieldWithoutDiscardingAnswer(t *testing.T) {
+	st := newFakeVisionStore()
+	prov := &scriptedProvider{answer: `{"visibleText":"FORD 1994","brand":"Ford","era":"1994","category":0}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("ford.mp4"))) {
+		t.Fatal("the clip did not apply")
+	}
+	got := st.tags["ford.mp4"]
+	if got.brand != "Ford" || got.era != 1994 {
+		t.Errorf("grounded = %+v, want valid brand and string-encoded era preserved", got)
+	}
+	if got.category != "" {
+		t.Errorf("category = %q, want the wrong-typed field dropped", got.category)
 	}
 }
 

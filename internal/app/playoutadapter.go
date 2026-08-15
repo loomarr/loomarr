@@ -746,11 +746,19 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the concat demuxer asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-func (r *playoutResolver) AudioTrackFor(ctx context.Context, streamURL string) int {
+func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamURL string) int {
 	if r.audioLanguage == nil || r.probeAudio == nil || streamURL == "" {
 		return 0
 	}
 	prefer := r.audioLanguage()
+	// A channel override wins over the instance default. Failure to reload the channel is
+	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
+	// to the global preference is better than taking the programme off air for an optional track.
+	if r.channels != nil && channelID != "" {
+		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
+			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
+		}
+	}
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
 		// entirely rather than paying for an answer that cannot change the outcome.

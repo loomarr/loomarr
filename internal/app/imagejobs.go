@@ -12,6 +12,13 @@ import (
 	"github.com/mantonx/loomarr/internal/scheduler"
 )
 
+const (
+	// Provider protection and compliance are policy, not settings. Letting an operator
+	// raise either value can only cause throttling or a terms violation.
+	imageRemoteConcurrency = 12
+	imageRemoteTTL         = 180 * 24 * time.Hour
+)
+
 // The image service's job wiring (§22, §18.1 — V52 phase 3b).
 //
 // ⚠ **Registration is the whole point of this file, and it is the step with no unit test.** Phase
@@ -28,7 +35,7 @@ import (
 func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return set.boolv("images.remote_fetch_enabled") },
-		func() int { return set.intv("images.remote_max_concurrency") },
+		func() int { return imageRemoteConcurrency },
 		func() []string { return imageFetchHosts(set) },
 		log)
 
@@ -72,7 +79,7 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 		notify = rec
 	}
 	reg.Add(images.GCJob(images.NewGC(svc, st,
-		func() time.Duration { return set.dur("images.remote_ttl") },
+		func() time.Duration { return imageRemoteTTL },
 		func() int { return set.intv("images.cache_budget_mb") },
 		notify, log)))
 

@@ -87,6 +87,7 @@ func TestJobSet(t *testing.T) {
 		"images-rehydrate | 0 45 4 * * * | job.images_rehydrate.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",
+		"playout-prepare | 0 * * * * * | job.playout_prepare.schedule",
 		"reconcile | 0 */5 * * * * | job.reconcile.schedule",
 		"retention-purge | 0 30 4 * * * | job.retention_purge.schedule",
 		"seerr-queue-poll | 0 * * * * * | job.seerr_queue_poll.schedule",

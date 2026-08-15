@@ -50,11 +50,11 @@ func TestProbeStage_RefusesWhatIsNotAClip(t *testing.T) {
 		// ⚠ A video-only file plays as dead air in the middle of a break, which reads to a viewer
 		// as the stream having dropped. That is why silence is a REJECT and not a warning.
 		{"no audio stream", filler.Probed{DurationMs: 30_000, Height: 480, Silent: true}, filler.ReasonNoAudio},
-		{"no video stream", filler.Probed{DurationMs: 30_000}, filler.ReasonNoVideo},
+		{"no video stream", filler.Probed{DurationMs: 30_000, NoVideo: true}, filler.ReasonNoVideo},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := &probeMemStore{}
-			s := filler.NewProbeStage(proberReturning(tc.probed, nil), st, "/clips", floor, nil, nil, nil)
+			s := filler.NewProbeStage(proberReturning(tc.probed, nil), st, "/clips", floor, nil, nil)
 
 			out, err := s.Run(context.Background(), probeClip())
 			if err != nil {
@@ -77,7 +77,7 @@ func TestProbeStage_RefusesWhatIsNotAClip(t *testing.T) {
 // after MaxAttempts. ffprobe failing on a file still being copied is the ordinary case, and
 // tombstoning on the first attempt would refuse clips that are merely mid-download.
 func TestProbeStage_AProbeFailureIsRetryableNotFatal(t *testing.T) {
-	s := filler.NewProbeStage(proberReturning(filler.Probed{}, fmt.Errorf("moov atom not found")), nil, "/clips", nil, nil, nil, nil)
+	s := filler.NewProbeStage(proberReturning(filler.Probed{}, fmt.Errorf("moov atom not found")), nil, "/clips", nil, nil, nil)
 
 	out, err := s.Run(context.Background(), probeClip())
 	if err == nil {
@@ -91,7 +91,7 @@ func TestProbeStage_AProbeFailureIsRetryableNotFatal(t *testing.T) {
 // A good probe writes duration + quality back, and only when something actually changed.
 func TestProbeStage_PersistsWhatItMeasured(t *testing.T) {
 	st := &probeMemStore{}
-	s := filler.NewProbeStage(proberReturning(filler.Probed{DurationMs: 30_000, Height: 480}, nil), st, "/clips", nil, nil, nil, nil)
+	s := filler.NewProbeStage(proberReturning(filler.Probed{DurationMs: 30_000, Height: 480}, nil), st, "/clips", nil, nil, nil)
 
 	out, err := s.Run(context.Background(), probeClip())
 	if err != nil {
@@ -110,6 +110,25 @@ func TestProbeStage_PersistsWhatItMeasured(t *testing.T) {
 	}
 	if len(st.upserts) != 1 {
 		t.Errorf("an unchanged measurement was written again (%d writes)", len(st.upserts))
+	}
+}
+
+// Probe must not decode an hour-long file merely to decide that it is not an advert. Duration
+// quarantines it immediately; the split stage is the single owner of boundary detection.
+func TestProbeStage_OverlongClipBecomesCompositeFromDuration(t *testing.T) {
+	st := &probeMemStore{}
+	maxAdvert := func() time.Duration { return 2 * time.Minute }
+	s := filler.NewProbeStage(
+		proberReturning(filler.Probed{DurationMs: int64((3 * time.Hour) / time.Millisecond), Height: 480}, nil),
+		st, "/clips", nil, maxAdvert, nil,
+	)
+
+	out, err := s.Run(context.Background(), probeClip())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Clip.IsComposite || len(st.composites) != 1 || st.composites[0] != "c1" {
+		t.Fatalf("overlong clip was not quarantined as a composite: out=%+v marks=%v", out, st.composites)
 	}
 }
 

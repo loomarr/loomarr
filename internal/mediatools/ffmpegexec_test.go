@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -130,6 +131,34 @@ func TestExtractSpanWAV_CutsOnlyTheRequestedSpan(t *testing.T) {
 	}
 	if info.Size() < 8_000 {
 		t.Errorf("extracted only %d bytes — the span produced (almost) no samples", info.Size())
+	}
+}
+
+func TestCut_LateSpanUsesDurationNotAbsoluteEnd(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	dir := t.TempDir()
+	src := srcWithTone(t, dir) // 3 seconds
+	dst := filepath.Join(dir, "late.wav")
+	tools := NewFFmpegTools("ffmpeg", "ffprobe", "", "", "")
+	if err := tools.Cut(context.Background(), src, 1_000, 2_000, dst); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1", dst).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration < 0.8 || duration > 1.2 {
+		t.Fatalf("late 1s cut duration = %.3fs; absolute -to would produce about 2s", duration)
 	}
 }
 

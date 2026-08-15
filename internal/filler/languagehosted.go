@@ -91,6 +91,22 @@ func NewHostedLanguage(asker func() AudioAsker, model func() string, ffmpegPath,
 	return &HostedLanguage{Asker: asker, Model: model, FFmpegPath: ffmpegPath, tmpDir: tmpDir}
 }
 
+// UnavailableReason checks configuration only; reachability and model capability remain work-time
+// failures and therefore keep the retry protection. The closures are deliberately resolved on
+// every call so an in-app hosted selection becomes ready without reconstructing this detector.
+func (h *HostedLanguage) UnavailableReason() string {
+	switch {
+	case h.FFmpegPath == "":
+		return "audio extraction is not configured (set playout.ffmpeg_path)"
+	case h.Model == nil || h.Model() == "":
+		return "the hosted language model is not configured"
+	case h.Asker == nil || h.Asker() == nil:
+		return "the hosted language service is not configured"
+	default:
+		return ""
+	}
+}
+
 func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {
 	// Resolved HERE, per call, not captured at construction — see the field comment. An install
 	// that has not configured a hosted client yields nil, which keeps every clip.

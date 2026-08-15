@@ -90,6 +90,10 @@ func imageServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	t.Setenv("API_TOKEN", "test-app-token")
 	t.Setenv("IMAGES_DIR", t.TempDir())
+	// Deliberately unreachable from a browser. Machine clients need this configured absolute
+	// address, but an ImageDTO is consumed by the in-app browser and must stay on the page's own
+	// origin. If the DTO leaks this value, its ThumbHash paints while every real rendition fails.
+	t.Setenv("SERVER_PUBLIC_URL", "http://machine-client-only.invalid:8080")
 
 	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/img.db", true)
 	if err != nil {
@@ -136,6 +140,12 @@ func TestImageRoutesAreWired(t *testing.T) {
 	}
 	if uploaded.Placeholder == "" {
 		t.Error("upload returned an empty placeholder; the ThumbHash is what renders before the image loads")
+	}
+	if !strings.HasPrefix(uploaded.Src, "/v1/images/") {
+		t.Errorf("upload src = %q, want a same-origin image path; server.public_url is for machine clients, not the in-app browser", uploaded.Src)
+	}
+	if strings.Contains(uploaded.SrcSetWebP, "machine-client-only.invalid") {
+		t.Errorf("upload srcSetWebp = %q, want same-origin candidates; an off-origin public URL strands every browser image behind its ThumbHash", uploaded.SrcSetWebP)
 	}
 
 	// --- read the record ------------------------------------------------------------------

@@ -160,6 +160,16 @@ describe("Guide", () => {
     expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
   });
 
+  it("keeps the floating airing detail from blocking nearby guide rows", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    renderAt("/guide");
+
+    await user.hover(await screen.findByRole("button", { name: /The Matrix/ }));
+    expect(await screen.findByTestId("guide-detail-card")).toBeInTheDocument();
+    expect(screen.getByTestId("guide-detail-positioner")).toHaveClass("pointer-events-none");
+  });
+
   it("has no manual rebuild/refresh — edits are seamless (§9) — and each row opens its channel", async () => {
     stubGuide();
     renderAt("/guide");

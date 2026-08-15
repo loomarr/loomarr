@@ -86,6 +86,15 @@ func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target
 	}, nil
 }
 
+func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
+	chunks, release, err := f.Attach(ctx, request.ChannelID, request.Plan)
+	return playout.Presentation{Stream: chunks, Release: release}, err
+}
+
+func (f *fakePlayoutSessions) OpenAsset(string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+	return playout.Asset{}, false, nil
+}
+
 // reports returns the ReportProgram calls seen so far.
 func (f *fakePlayoutSessions) reports() []reportedProgram {
 	f.mu.Lock()
@@ -100,8 +109,7 @@ func (f *fakePlayoutSessions) detachCount() int {
 }
 
 type playoutOpts struct {
-	sessions   api.PlayoutSessions
-	hls        api.PlayoutHLS
+	sessions   *fakePlayoutSessions
 	token      string
 	publicURL  string
 	backend    string
@@ -125,11 +133,13 @@ func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Stor
 	}
 
 	opts := api.Options{
-		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
-		Log:             slog.New(slog.DiscardHandler),
-		PlayoutSessions: o.sessions,
-		PlayoutHLS:      o.hls,
+		Store: st,
+		Auth:  api.NewTokenAuthorizer(adminToken),
+		Log:   slog.New(slog.DiscardHandler),
+	}
+	if o.sessions != nil {
+		opts.Playout = o.sessions
+		opts.PlayoutObserver = o.sessions
 	}
 	if !o.noSecret {
 		opts.PlayoutSecret = func() string { return o.token }

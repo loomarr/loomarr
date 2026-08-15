@@ -105,7 +105,10 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 			// moved it to its hash. The catalog would show clips appearing and vanishing with
 			// nothing wrong on disk. Skipped by NAME so it holds however `filler.watch_dir` is
 			// configured, including when it is somewhere else entirely and this never matches.
-			if path != dir && d.Name() == WatchDirName {
+			// Dot-directories are Loomarr's generated/staging data. In particular, the transcode
+			// rung builds a fully-probed replacement under `.transcode` before publishing it at its
+			// content-addressed path; cataloguing that work-in-progress would create a second clip.
+			if path != dir && (d.Name() == WatchDirName || strings.HasPrefix(d.Name(), ".")) {
 				return fs.SkipDir
 			}
 			return nil
@@ -143,14 +146,18 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 		// **33-millisecond** truncated download passed it — then sat filed and airable in the dev
 		// catalog. "Has a readable duration" and "is a usable clip" are different questions.
 		//
-		// A missing AUDIO stream is the other one: a video-only file plays as dead air in the
-		// middle of a break, which reads to a viewer as the stream having dropped. (Loudness is
+		// Missing streams are the other hard failures: a video-only file plays as dead air in the
+		// middle of a break, while an audio-only file gives a channel nothing to show. (Loudness is
 		// NOT judged here — a quiet clip is normalisation's problem at playout, not a reject.)
 		if minMs > 0 && pr.DurationMs < minMs {
 			skipped++
 			return nil
 		}
 		if pr.Silent {
+			skipped++
+			return nil
+		}
+		if pr.NoVideo {
 			skipped++
 			return nil
 		}
@@ -312,18 +319,22 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	height, hasAudio := 0, false
+	height, hasAudio, hasVideo := 0, false, false
 	for _, s := range probed.Streams {
-		if height == 0 && s.CodecType == "video" && s.Height > 0 {
-			height = s.Height
+		if s.CodecType == "video" {
+			hasVideo = true
+			if height == 0 && s.Height > 0 {
+				height = s.Height
+			}
 		}
 		if s.CodecType == "audio" {
 			hasAudio = true
 		}
 	}
-	// A missing height is NOT an error: quality is display-only, and refusing the clip would
-	// mean one odd file costs a channel its commercials.
-	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio}, nil
+	// A missing height is not a probe error, because the caller owns the policy decision. ScanDir
+	// and ProbeStage both reject it as an audio-only file; keeping that decision out of FFprobe
+	// also lets callers distinguish "valid media with no video" from "could not inspect media".
+	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
 }
 
 // ShardDepth is how many 2-character directory levels a clip is filed under.
@@ -475,7 +486,7 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	if rejected > 0 && d.Log != nil {
 		d.Log("filler: some files were rejected at the scan boundary",
 			"rejected", rejected, "catalogued", len(clips),
-			"hint", "unreadable, shorter than filler.min_duration, or carrying no audio stream")
+			"hint", "unreadable, shorter than filler.min_duration, or missing an audio/video stream")
 	}
 	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
 	// catalog UI and have nothing to do with whether Tunarr is reachable.

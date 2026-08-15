@@ -1,3 +1,4 @@
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -79,15 +80,6 @@ const NOW_TICK_MS = 30_000;
 // in one click; a 24-entry list is a scroll, not a choice.
 const START_HOURS = [0, 3, 6, 7, 8, 9, 12, 15, 18, 20, 21, 22] as const;
 
-// Geometry the detail card is positioned against. These mirror GuideGrid's own rail/row/header
-// sizes at zoom 1 — the card only needs to land in the right neighbourhood, so tracking zoom
-// exactly is not worth threading the value through for a hover readout.
-const RAIL_PX = 220;
-const ROW_PX = 56;
-const GRID_HEADER_PX = 30;
-// Past this row a downward card would open below the fold, so it flips upward instead.
-const FLIP_AFTER_ROW = 2;
-
 const hourLabel = (h: number) => {
   const suffix = h < 12 ? "AM" : "PM";
   const twelve = h % 12 === 0 ? 12 : h % 12;
@@ -112,12 +104,9 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   const [zoomIndex, setZoomIndex] = useState<number>(DEFAULT_ZOOM_INDEX);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [inspected, setInspected] = useState<GuideAiring | null>(null);
-  // Where the inspected block sits, so the detail card opens beside it. Kept when `inspected`
-  // clears so the card fades from where it was rather than jumping to a default first.
-  const [anchor, setAnchor] = useState<{ leftPct: number; rowIndex: number }>({
-    leftPct: 0,
-    rowIndex: 0,
-  });
+  // The real inspected block, not an estimated row/percentage. The floating positioner reads
+  // its current viewport geometry, follows Guide scrolling and resolves edge collisions.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [dayOffset, setDayOffset] = useState<number>(0);
   const [windowMinutes, setWindowMinutes] = useState<number>(DEFAULT_WINDOW_MINUTES);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
@@ -508,31 +497,29 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
               <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
             )}
           />
-          {/* The card opens BESIDE the block being inspected, not in a fixed corner — a card
-              pinned bottom-right for a block on the far left makes the reader look away from
-              what they are pointing at. Both axes are edge-aware:
-                · x — clamped so the card never runs off the right edge (the mock's 0.72 cap),
-                      and offset past the rail so it never covers the channel it describes.
-                · y — opens BELOW its row normally, but flips ABOVE once the row is far enough
-                      down that a downward card would fall out of the viewport.
-              pointer-events-none throughout: this is a readout, and it sits over the very
-              blocks you are moving the pointer across. */}
-          {inspected && (
-            <div
-              className="pointer-events-none absolute z-40"
-              style={{
-                left: `calc(${RAIL_PX}px + (100% - ${RAIL_PX}px) * ${Math.min(0.72, Math.max(0, anchor.leftPct / 100))})`,
-                // Flipping upward anchors the card's BOTTOM to the top of its own row, so it
-                // rises just far enough to clear the block. Anchoring to the container's
-                // bottom instead would make a card for the last row cover every row above it.
-                ...(anchor.rowIndex >= FLIP_AFTER_ROW
-                  ? { bottom: `calc(100% - ${GRID_HEADER_PX + anchor.rowIndex * ROW_PX - 4}px)` }
-                  : { top: GRID_HEADER_PX + (anchor.rowIndex + 1) * ROW_PX + 4 }),
-              }}
-            >
-              <GuideDetailCard airing={inspected} />
-            </div>
-          )}
+          {/* A portal keeps the readout clear of the Guide's overflow container. The actual
+              block is its anchor, and Base UI flips then shifts the card against the browser
+              viewport — no row-number threshold can account for virtualization, browser
+              height, or the different heights of programme and filler cards. */}
+          <TooltipPrimitive.Root open={inspected !== null && anchor !== null}>
+            <TooltipPrimitive.Portal>
+              <TooltipPrimitive.Positioner
+                anchor={anchor}
+                side="bottom"
+                align="start"
+                sideOffset={4}
+                positionMethod="fixed"
+                collisionBoundary={document.documentElement}
+                collisionPadding={8}
+                data-testid="guide-detail-positioner"
+                className="pointer-events-none z-40"
+              >
+                <TooltipPrimitive.Popup className="pointer-events-none">
+                  <GuideDetailCard airing={inspected} />
+                </TooltipPrimitive.Popup>
+              </TooltipPrimitive.Positioner>
+            </TooltipPrimitive.Portal>
+          </TooltipPrimitive.Root>
         </div>
       )}
     </div>

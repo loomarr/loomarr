@@ -2,7 +2,7 @@ import type { SettingEntry } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AllSettingsTable } from "./all-settings-table";
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry =>
@@ -151,5 +151,30 @@ describe("AllSettingsTable", () => {
       <Harness entries={[entry({ key: "job.workers", value: "2", provenance: "env" })]} />,
     );
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
+  });
+
+  it("links a group to the workflow that owns it", () => {
+    render(<Harness entries={[entry()]} />);
+    expect(screen.getByRole("link", { name: "connections.media_server" })).toHaveAttribute(
+      "href",
+      "/settings/connections",
+    );
+  });
+
+  it("can clear a database value back to its default", async () => {
+    const onClear = vi.fn();
+    const dbEntry = entry();
+    render(
+      <AllSettingsTable
+        entries={[dbEntry]}
+        query=""
+        onQueryChange={vi.fn()}
+        values={{}}
+        onEdit={vi.fn()}
+        onClear={onClear}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Use default" }));
+    expect(onClear).toHaveBeenCalledWith(dbEntry);
   });
 });

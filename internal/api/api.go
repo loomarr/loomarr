@@ -6,7 +6,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -60,19 +59,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,
 		liveConfigBoolOn: opts.LiveConfigBoolOn, ready: ready,
 		binder:          opts.Binder,
-		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
+		playoutObserver: opts.PlayoutObserver, preparedObserver: opts.PreparedObserver,
+		playoutSecret:   opts.PlayoutSecret,
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
-		playoutHLS:   opts.PlayoutHLS,
+		playout:      opts.Playout,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
 		playoutTonemap:  opts.PlayoutTonemap,
 		timelineThumbs:  opts.TimelineThumbs,
 		reclaimVRAM:     opts.ReclaimVRAM,
 		residentLLMVRAM: opts.ResidentLLMVRAM,
-	}
-	if opts.HWEncodeSlots != nil {
-		// The gate reads the slot count lazily on first use, on a background context — the capability
-		// probe outlives any one request and must not be cancelled by the viewer who triggered it.
-		srv.hwEncodeGate = newHWEncodeGate(func() int { return opts.HWEncodeSlots(context.Background()) })
+		encodePool:      opts.EncodePool,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)

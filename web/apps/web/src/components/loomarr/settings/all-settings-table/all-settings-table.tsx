@@ -46,12 +46,29 @@ const PROVENANCE: Record<string, { label: string; className: string }> = {
   [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800 text-static-400" },
 };
 
+const HOME_BY_GROUP: Record<string, string> = {
+  "connections.media_server": "/settings/connections",
+  "connections.requester": "/settings/connections",
+  "connections.tunarr": "/settings/connections",
+  "connections.tmdb": "/settings/connections",
+  ai: "/settings/ai",
+  channels: "/settings/defaults",
+  filler: "/filler/settings",
+  playout: "/settings/system/playback",
+  backup: "/settings/system/backup",
+  images: "/settings/system/storage",
+  users_security: "/settings/security",
+  sso: "/settings/security",
+};
+
 const AllSettingsTable = ({
   entries,
   query,
   onQueryChange,
   values,
   onEdit,
+  onEnvOverride,
+  onClear,
   className,
 }: AllSettingsTableProps) => {
   const q = query.trim().toLowerCase();
@@ -80,70 +97,91 @@ const AllSettingsTable = ({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border">
-        <div className="grid grid-cols-[1.5fr_1.2fr_110px_128px] gap-3 border-border border-b px-4 py-2 font-mono text-2xs text-muted-foreground uppercase tracking-wide">
-          <div>Key</div>
-          <div>Value</div>
-          <div>Group</div>
-          <div>Provenance</div>
-        </div>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="min-w-[780px]">
+          <div className="grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-border border-b px-4 py-2 font-mono text-2xs text-muted-foreground uppercase tracking-wide">
+            <div>Key</div>
+            <div>Value</div>
+            <div>Group</div>
+            <div>Provenance</div>
+            <div>Action</div>
+          </div>
 
-        {rows.length === 0 && (
-          <p className="px-4 py-6 text-center text-muted-foreground text-sm">
-            {`No setting matches “${query}”.`}
-          </p>
-        )}
+          {rows.length === 0 && (
+            <p className="px-4 py-6 text-center text-muted-foreground text-sm">
+              {`No setting matches “${query}”.`}
+            </p>
+          )}
 
-        {rows.map((entry) => {
-          const prov = PROVENANCE[entry.provenance] ?? {
-            label: entry.provenance.toUpperCase(),
-            className: "bg-static-800 text-static-400",
-          };
-          return (
-            <div
-              key={entry.key}
-              className="grid grid-cols-[1.5fr_1.2fr_110px_128px] items-center gap-3 border-border border-b px-4 py-2 last:border-b-0"
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                {/* The visible label for this row's control (see `labelledBy` below) — which is
+          {rows.map((entry) => {
+            const prov = PROVENANCE[entry.provenance] ?? {
+              label: entry.provenance.toUpperCase(),
+              className: "bg-static-800 text-static-400",
+            };
+            return (
+              <div
+                key={entry.key}
+                className="grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-border border-b px-4 py-2 last:border-b-0"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}
-                <span id={`${entry.key}-label`} className="truncate font-mono text-xs">
-                  {entry.key}
-                </span>
-                {/* ADV marks a key that is hidden behind its home page's disclosure. It belongs
+                  <span id={`${entry.key}-label`} className="truncate font-mono text-xs">
+                    {entry.key}
+                  </span>
+                  {/* ADV marks a key that is hidden behind its home page's disclosure. It belongs
                     HERE especially: this is the surface someone reaches precisely because the
                     key was not where they looked, and "it's advanced" is the answer. */}
-                {entry.advanced && (
-                  <span
-                    title="advanced: also shown behind its home page's disclosure"
-                    className="shrink-0 rounded-sm border border-border px-1 font-mono text-2xs text-muted-foreground"
-                  >
-                    ADV
-                  </span>
-                )}
-              </div>
-              {/* The control, not a rendering of the value. A secret still never shows its
+                  {entry.advanced && (
+                    <span
+                      title="advanced: also shown behind its home page's disclosure"
+                      className="shrink-0 rounded-sm border border-border px-1 font-mono text-2xs text-muted-foreground"
+                    >
+                      ADV
+                    </span>
+                  )}
+                </div>
+                {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
-              <SettingField
-                entry={entry}
-                compact
-                labelledBy={`${entry.key}-label`}
-                value={values[entry.key] ?? entry.value ?? ""}
-                onChange={(v) => onEdit(entry.key, v)}
-              />
-              <span className="truncate text-muted-foreground text-xs">{entry.group}</span>
-              <span
-                className={cn(
-                  "w-fit rounded-sm px-1.5 py-0.5 font-mono text-2xs uppercase tracking-wide",
-                  prov.className,
+                <SettingField
+                  entry={entry}
+                  compact
+                  labelledBy={`${entry.key}-label`}
+                  value={values[entry.key] ?? entry.value ?? ""}
+                  onChange={(v) => onEdit(entry.key, v)}
+                  onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
+                />
+                {HOME_BY_GROUP[entry.group] ? (
+                  <a
+                    href={HOME_BY_GROUP[entry.group]}
+                    className="truncate text-muted-foreground text-xs underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    {entry.group}
+                  </a>
+                ) : (
+                  <span className="truncate text-muted-foreground text-xs">{entry.group}</span>
                 )}
-              >
-                {prov.label}
-              </span>
-            </div>
-          );
-        })}
+                <span
+                  className={cn(
+                    "w-fit rounded-sm px-1.5 py-0.5 font-mono text-2xs uppercase tracking-wide",
+                    prov.className,
+                  )}
+                >
+                  {prov.label}
+                </span>
+                <button
+                  type="button"
+                  disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
+                  onClick={() => onClear?.(entry)}
+                  className="w-fit text-muted-foreground text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:text-foreground enabled:hover:underline disabled:opacity-40"
+                >
+                  Use default
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

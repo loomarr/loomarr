@@ -59,7 +59,7 @@ func (f *fakeResolver) Profile(context.Context) playout.Profile {
 
 // AudioTrackFor returns whatever the test set, defaulting to the file's first track — the same
 // answer the real resolver gives when no language preference is configured.
-func (f *fakeResolver) AudioTrackFor(context.Context, string) int { return f.audioTrack }
+func (f *fakeResolver) AudioTrackFor(context.Context, string, string) int { return f.audioTrack }
 
 // Tracks returns whatever the test set (empty by default) — the Watch pickers' media-derived
 // options. These tests exercise the program/stream path, not the pickers, so empty is the right
@@ -133,7 +133,7 @@ type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
 	noToken  bool
-	sessions api.PlayoutSessions
+	sessions api.PlayoutObserver
 	// config overlays LiveConfig, for tests about a setting the handler reads live —
 	// `filler.target_lufs` (§10 V40) is the first.
 	config map[string]string
@@ -160,7 +160,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
-		PlayoutSessions: o.sessions,
+		PlayoutObserver: o.sessions,
 		LiveConfig:      func(k string) string { return cfg[k] },
 		ReclaimVRAM:     o.reclaimVRAM,
 	}

@@ -19,9 +19,9 @@ type MediaTools interface {
 	// splits for free). An empty slice means none, which is the common case
 	// (6 of 8 measured sources had none).
 	Chapters(ctx context.Context, file string) ([]Chapter, error)
-	// BlackSilence runs blackdetect + silencedetect in ONE pass and returns both
-	// interval sets (boundaries the coarse split cuts at).
-	BlackSilence(ctx context.Context, file string) (blacks, silences []Interval, err error)
+	// Boundaries runs blackdetect + silencedetect over [startMs,endMs) in one pass. The sources
+	// stay separate because detector agreement is the strongest boundary-confidence evidence.
+	Boundaries(ctx context.Context, file string, startMs, endMs int64) (black, silence []Interval, err error)
 	// Transcribe runs whisper over [startMs,endMs) and returns timestamped
 	// utterances relative to that span. Errors when whisper is unrunnable — the
 	// caller then marks the segment Unsplittable rather than guessing.
@@ -49,6 +49,13 @@ type MediaTools interface {
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
 
+// SpanTranscriber is the swappable speech-to-text seam inside FFmpegTools. The local adapter is
+// whisper-cli; the hosted adapter extracts the same span and calls the selected provider. A
+// closure selects it so changing the provider setting applies to the next clip without restart.
+type SpanTranscriber interface {
+	Transcribe(ctx context.Context, file string, startMs, endMs int64) ([]TranscriptSegment, error)
+}
+
 // FFmpegTools is the real MediaTools over the vendored binaries (§14).
 type FFmpegTools struct {
 	FFmpegPath  string
@@ -57,8 +64,16 @@ type FFmpegTools struct {
 	// pipeline turns into Unsplittable segments — never into guessed cuts (§15).
 	WhisperPath  string
 	WhisperModel string
+	transcriber  func() SpanTranscriber
 	// tmpDir holds whisper's wav/json intermediates; os.MkdirTemp when empty.
 	tmpDir string
+}
+
+// WithTranscriber attaches a live-selected override. Returning nil from selectTranscriber keeps
+// the local whisper implementation, so one FFmpegTools value can hot-switch both directions.
+func (t *FFmpegTools) WithTranscriber(selectTranscriber func() SpanTranscriber) *FFmpegTools {
+	t.transcriber = selectTranscriber
+	return t
 }
 
 // NewFFmpegTools builds the real tool bridge. tmpDir may be "" (system temp).
@@ -80,26 +95,38 @@ func (t *FFmpegTools) Chapters(ctx context.Context, file string) ([]Chapter, err
 	return parseFFprobeChapters(out)
 }
 
-func (t *FFmpegTools) BlackSilence(ctx context.Context, file string) ([]Interval, []Interval, error) {
+func (t *FFmpegTools) Boundaries(ctx context.Context, file string, startMs, endMs int64) ([]Interval, []Interval, error) {
+	if startMs < 0 || endMs <= startMs {
+		return nil, nil, fmt.Errorf("invalid boundary span %d..%d", startMs, endMs)
+	}
 	// pix_th=0.20, not the 0.10 default: measured (plan §6.4), two of six
 	// compilations fade to dark GREY rather than black and score 60–67% at 0.10.
-	// Both detectors report on stderr; the null muxer discards the decode.
+	// Both detectors report on stderr; the null muxer discards the decode. Reset timestamps so
+	// detector output is relative to this seeked span, then offset it back to the file timeline.
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file,
-		"-vf", "blackdetect=d=0.1:pix_th=0.20",
-		"-af", "silencedetect=n=-35dB:d=0.3",
+		"-vf", "setpts=PTS-STARTPTS,blackdetect=d=0.1:pix_th=0.20",
+		"-af", "asetpts=PTS-STARTPTS,silencedetect=n=-35dB:d=0.3",
 		"-f", "null", "-")
 	cmd.Stderr = &stderr
 	// ffmpeg exits 0 on a successful null-muxer pass; the detector output is on
 	// stderr either way, so a nonzero exit is the only failure signal.
 	if err := cmd.Run(); err != nil {
-		return nil, nil, fmt.Errorf("ffmpeg black/silence detect %s: %w: %s", file, err, stderr.String())
+		return nil, nil, fmt.Errorf("ffmpeg boundary detect %s at %d..%d: %w: %s", file, startMs, endMs, err, stderr.String())
 	}
-	return parseBlackdetect(stderr.String()), parseSilencedetect(stderr.String()), nil
+	black, silence := boundaryGaps(stderr.String(), startMs, endMs)
+	return black, silence, nil
 }
 
 func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endMs int64) ([]TranscriptSegment, error) {
+	if t.transcriber != nil {
+		if transcriber := t.transcriber(); transcriber != nil {
+			return transcriber.Transcribe(ctx, file, startMs, endMs)
+		}
+	}
 	if t.WhisperPath == "" || t.WhisperModel == "" {
 		return nil, fmt.Errorf("whisper not configured (ingest.whisper_path / ingest.whisper_model, §15)")
 	}
@@ -109,12 +136,11 @@ func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endM
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span.
+	// whisper.cpp wants 16kHz mono wav; use the shared span extractor so local and hosted
+	// transcription cannot drift on seek/duration semantics.
 	wav := filepath.Join(dir, "span.wav")
-	if out, err := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
-		"-i", file, "-ar", "16000", "-ac", "1", "-y", wav).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("ffmpeg wav extract: %w: %s", err, out)
+	if err := ExtractSpanWAV(ctx, t.FFmpegPath, file, startMs, endMs, wav); err != nil {
+		return nil, err
 	}
 	base := filepath.Join(dir, "out")
 	if out, err := exec.CommandContext(ctx, t.WhisperPath,
@@ -133,7 +159,7 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 	// per-frame Hamming 1.1 for a re-encoded duplicate vs 27.6–32.2 different).
 	var stdout bytes.Buffer
 	cmd := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-vf", "fps=1/3,scale=9:8", "-pix_fmt", "gray",
 		"-f", "rawvideo", "-")
 	cmd.Stdout = &stdout
@@ -232,7 +258,7 @@ func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64
 	// Stream copy (§10 — no re-encode): fast, lossless, and the boundaries being
 	// cut at are scene changes, which is where keyframes cluster.
 	if combined, err := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-c", "copy", "-avoid_negative_ts", "make_zero", "-y", out).CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg cut %s: %w: %s", out, err, combined)
 	}

@@ -6,6 +6,12 @@ interface SettingsBlock {
   // The registry `group` value(s) this block renders.
   group: string;
   title: string;
+  // One sentence explaining the decision this block contains. Setting docs explain individual
+  // controls; this explains why the controls belong together.
+  description?: string;
+  // Optional ordered subset when one registry group has several user-facing sections.
+  // The key remains declared once; this is only placement on the owning workflow page.
+  keys?: string[];
   // The named connection check this block can run, when it has one (§8 per-block Test).
   check?: string;
   // A note pinned to the bottom of this block's body, below its fields and its Test row — for

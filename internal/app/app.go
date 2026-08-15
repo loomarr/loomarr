@@ -26,8 +26,10 @@ import (
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
@@ -281,14 +283,20 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var tunarrConnectSvc api.TunarrConnector
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
-	var playoutSessions api.PlayoutSessions
+	var playoutObserver api.PlayoutObserver
+	// Prepared readiness is observed through the planner itself; the API only snapshots it.
+	var preparedObserver api.PreparedObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
-	var playoutHLS api.PlayoutHLS
+	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
 	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
 	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
 	var hwEncodeSlots func(context.Context) int
+	// One host-wide pool arbitrates the measured hardware slots between live playout and prepared
+	// media. It is created beside the resolver that owns capability detection, then handed to both
+	// consumers; neither may maintain a private GPU counter.
+	var encodePool *media.EncodePool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -364,7 +372,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		chanNumbers = tunarrNumbers{pusher}
 		engine := channels.New(st, pusher, avail, connector, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
-			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
+			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
 			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
 			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density
@@ -548,13 +556,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
 			})
 		})
-		playoutSessions = playoutMgr
+		playoutObserver = playoutMgr
 
 		// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
 		// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
 		// failure to create its scratch root is not fatal — the media-server streams work without
 		// it — so log and leave the /playout/hls routes reporting "not running" rather than
 		// refusing to boot.
+		var liveHLS *playout.HLSManager
 		if hlsMgr, herr := playout.NewHLSManager(
 			playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
 			playout.DefaultGrace, log,
@@ -562,7 +571,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
 				"err", herr)
 		} else {
-			playoutHLS = hlsMgr
+			liveHLS = hlsMgr
 			go func() {
 				<-rootCtx.Done()
 				hlsMgr.Stop()
@@ -607,6 +616,77 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Info("playout: hardware encode admission", "hw_slots", n)
 			return n
 		}
+		encodePool = media.NewEncodePool(func() int {
+			if playout.Encoder(set.str("playout.encoder")) == playout.EncoderSoftware {
+				return 0 // an explicit software choice must not start hardware preparation.
+			}
+			return hwEncodeSlots(rootCtx)
+		})
+
+		// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
+		// fallback. Construction may fail on an unwritable volume without taking live TV down; the
+		// task remains visible with the exact reason instead of silently disappearing.
+		var preparedOrigin *playout.PreparedOrigin
+		preparedLibrary, preparedErr := prepared.NewLibrary(set.str("playout.prepared_dir"))
+		if preparedErr != nil {
+			reason := "the prepared media directory is unavailable: " + preparedErr.Error()
+			log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Pool: encodePool, Now: time.Now, Log: log, UnavailableReason: reason,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, reason))
+		} else {
+			readiness, readinessErr := prepared.OpenReadiness(preparedLibrary)
+			if readinessErr != nil {
+				log.Warn("playout: prepared readiness index unavailable — live fallback remains active", "err", readinessErr)
+			}
+			packager := prepared.NewFFmpegPackager(
+				set.str("playout.ffmpeg_path"),
+				func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
+					encoder := playout.Encoder(set.str("playout.encoder"))
+					if encoder == "" {
+						encoder = playoutRes.detectedEncoder(rootCtx)
+					}
+					return playout.PreparedVideoArgs(encoder, contract)
+				},
+			)
+			preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+				Library: preparedLibrary, Packager: packager, Readiness: readiness,
+			})
+			preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
+				Channels: st, Timeline: playoutRes, Inputs: lib, Lookup: preparer,
+				Now: time.Now, Readiness: readiness,
+				PathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+				Policy: func() string {
+					return preparedSourcePolicy(
+						set.str("playout.quality_tier"),
+						set.str("playout.audio_language"),
+						set.str("library.path_map"),
+					)
+				},
+				GlobalBackend: func() string { return set.str("playout.backend") },
+				Rendition: func() prepared.RenditionContract {
+					return playout.CanonicalPreparedRendition(
+						playout.TierFor(set.str("playout.quality_tier")),
+					)
+				},
+			})
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
+				Retainer: preparedLibrary,
+				BudgetBytes: func() int64 {
+					return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
+				},
+				Now: time.Now, Log: log,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, ""))
+			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
+		}
+		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+		})
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -710,11 +790,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
 			tmdbClient = ov.TMDB
 		}
-		// The Watch timeline's preview images (§9.1 V47) — a series episode's still or a movie's
-		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
-		// renders with no images, which is a supported (image-less) rendering.
+		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
+		// from the provisioning key. The shared fetcher warms cold interactive artwork before the
+		// response returns; without TMDB the surfaces use their supported image-less rendering.
 		if tmdbClient != nil {
-			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc}
+			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
 		}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
@@ -1279,9 +1359,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutSessions: playoutSessions,
+		PlayoutObserver:  playoutObserver,
+		PreparedObserver: preparedObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
-		PlayoutHLS:      playoutHLS,
+		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
 		PlayoutGuide:   playoutGuideSvc,
@@ -1317,11 +1398,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLMVRAMFn,
-		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
-		// the gate that routes an over-capacity channel to software up front instead of stalling on a
-		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
-		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
-		HWEncodeSlots: hwEncodeSlots,
+		// The same pool is consumed by live playout here and by the prepared-media planner. Live work
+		// has foreground priority; preparation is cancellable and cannot consume the final slot.
+		EncodePool: encodePool,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

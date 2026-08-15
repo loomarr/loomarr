@@ -249,7 +249,24 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
-    getGetPlayoutStatusMockHandler({ running: false, channels: [], gpu: { contended: false } }),
+    getGetPlayoutStatusMockHandler({
+      running: false,
+      channels: [],
+      gpu: { contended: false },
+      prepared: {
+        available: false,
+        running: false,
+        channels: 0,
+        readyChannels: 0,
+        scheduledBindings: 0,
+        readyBindings: 0,
+        missingBindings: 0,
+        queuedPublications: 0,
+        remainingBytes: 0,
+        budgetBytes: 0,
+        protectedBytes: 0,
+      },
+    }),
     getGetProgrammingVocabularyMockHandler({ what: [], when: [], how: [] }),
     getSystemBackupsListMockHandler({
       backups: [],
@@ -468,7 +485,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // or be sent actually mounts the panel, not merely that a click within one page swaps it.
     // The tab's own presence is asserted separately below.
     renderAt("/channels/ch-1/filler");
-    const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
+    const found = await screen.findAllByText(/preview break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
 

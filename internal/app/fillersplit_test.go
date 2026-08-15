@@ -25,7 +25,7 @@ type splitFakeTools struct {
 func (f splitFakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
 	return f.chapters, nil
 }
-func (f splitFakeTools) BlackSilence(context.Context, string) ([]filler.Interval, []filler.Interval, error) {
+func (f splitFakeTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
 func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {

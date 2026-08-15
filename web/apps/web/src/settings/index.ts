@@ -3,5 +3,6 @@ export * from "./provider-title";
 export * from "./secrets-settings";
 export * from "./settings-edits";
 export * from "./settings-page";
+export * from "./settings-save-bar-host";
 export * from "./tasks-page";
 export * from "./use-settings-entries";

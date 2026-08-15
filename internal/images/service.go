@@ -58,7 +58,7 @@ type IngestRequest struct {
 // after a reboot. A struct of plain values would have quietly frozen all four at boot while this
 // comment claimed otherwise, which is the failure worth designing out.
 //
-// All three funcs tolerate being nil; New fills in the declared defaults.
+// Both funcs tolerate being nil; New fills in the declared defaults.
 type Config struct {
 	Dir string
 	// MaxUploadBytes caps an ingested original. Enforced on the READ, never on a declared size.
@@ -70,16 +70,9 @@ type Config struct {
 	// icon URL persistently. Empty falls back to a relative URL, which is safe and works whenever
 	// the fetcher resolves Loomarr at the same origin.
 	PublicBaseURL func() string
-	// Formats is the rendition set, in <picture> preference order — `images.formats`.
-	//
-	// ⚠ This was declared and never read: the field existed, New defaulted it, and nothing
-	// consulted it, so dropping `avif` or `jpeg` from the setting would have changed nothing while
-	// the docs said it saved CPU or storage. `Produces` is the reader; the AVIF job and the record
-	// handler both go through it.
-	Formats func() []Format
 }
 
-// DefaultFormats is the rendition set when `images.formats` says nothing — §22's full ladder.
+// DefaultFormats is §22's fixed compatibility ladder.
 func DefaultFormats() []Format { return []Format{FormatAVIF, FormatWebP, FormatJPEG} }
 
 // Service is the concrete implementation.
@@ -106,9 +99,6 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 	if cfg.PublicBaseURL == nil {
 		cfg.PublicBaseURL = func() string { return "" }
 	}
-	if cfg.Formats == nil {
-		cfg.Formats = DefaultFormats
-	}
 	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), now: now}
 }
 
@@ -117,12 +107,9 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 // read rather than treating a nil func as "no limit".
 const defaultMaxUploadBytes = 8 << 20
 
-// Produces reports whether this install emits a format, per `images.formats`.
-//
-// The one reader of cfg.Formats, so the setting has exactly one meaning. AVIF asks before
-// encoding; the record handler asks before advertising a <source> that will never exist.
+// Produces reports whether the image module's fixed compatibility ladder emits a format.
 func (s *Service) Produces(f Format) bool {
-	for _, want := range s.cfg.Formats() {
+	for _, want := range DefaultFormats() {
 		if want == f {
 			return true
 		}
@@ -134,7 +121,7 @@ func (s *Service) Produces(f Format) bool {
 //
 // ⚠ **This is the difference between "we would emit AVIF" and "AVIF is there right now", and
 // conflating them shipped a bug that broke every image in the app.** `Produces` answers the first
-// from `images.formats`; only this answers the second. AVIF is job-produced (§22 makes its coverage
+// from the fixed compatibility ladder; only this answers the second. AVIF is job-produced (§22 makes its coverage
 // eventually consistent on purpose), so a freshly-ingested image has none for up to an hour.
 //
 // The consequence is not a missing optimisation, it is a BROKEN IMAGE: `<picture>` selects a source
@@ -200,6 +187,7 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		Width:       b.Dx(),
 		Height:      b.Dy(),
 		Bytes:       int64(len(data)),
+		Animated:    isAnimatedWebP(data, mime),
 		Placeholder: Placeholder(img),
 		DominantHex: DominantHex(img),
 		Meta:        req.Meta,
@@ -323,6 +311,21 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 		// An animation has one rendition and skips the ladder entirely; resizing it per breakpoint
 		// costs far more than it saves.
 		w = rec.Width
+		if f == FormatWebP && rec.MIME == "image/webp" {
+			// The original is already the card-sized animated WebP. Passing it through Decode +
+			// Encode would preserve only frame zero, which is precisely the hover regression this
+			// branch prevents. It is the one rendition; no derivative row or duplicate file exists.
+			path, pathErr := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+			if pathErr != nil {
+				return Rendition{}, ErrNotFound
+			}
+			size, ok := s.blob.Stat(path)
+			if !ok {
+				return Rendition{}, ErrNotFound
+			}
+			_ = s.store.TouchImage(ctx, hash, s.now())
+			return Rendition{Path: path, ContentType: rec.MIME, Bytes: size, Hash: hash}, nil
+		}
 	}
 
 	dst, err := s.blob.DerivativePath(hash, w, f)
@@ -394,15 +397,24 @@ func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w in
 	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: int64(len(out)), Hash: rec.Hash}, nil
 }
 
-// URLFor builds the public URL of one rendition.
+// PathFor builds the same-origin path of one rendition for an in-app browser.
+//
+// A browser already has the right origin. Binding its image requests to server.public_url would
+// make every real rendition fail when that machine-client address is container-only or otherwise
+// unreachable from the viewer, while the inline ThumbHash misleadingly keeps painting.
+func (s *Service) PathFor(hash string, width int, f Format) string {
+	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, f.Ext())
+}
+
+// URLFor builds the public URL of one rendition for a machine/off-origin client.
 //
 // ⚠ Built from the operator-configured public base, never from a request header — see Config.
 func (s *Service) URLFor(hash string, width int, f Format) string {
 	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL()), "/")
-	return fmt.Sprintf("%s/v1/images/%s/w%d.%s", base, hash, width, f.Ext())
+	return base + s.PathFor(hash, width, f)
 }
 
-// SrcSet builds a `srcset` value for a role's whole ladder in one format.
+// SrcSet builds a same-origin `srcset` value for a role's whole ladder in one format.
 //
 // Width descriptors (`w`), not density (`2x`): the browser multiplies our `sizes` by the device's
 // DPR when choosing, so `w` already covers retina and a density list would be a second, redundant
@@ -411,7 +423,7 @@ func (s *Service) SrcSet(hash string, role Role, f Format) string {
 	widths := role.Widths()
 	parts := make([]string, 0, len(widths))
 	for _, w := range widths {
-		parts = append(parts, fmt.Sprintf("%s %dw", s.URLFor(hash, w, f), w))
+		parts = append(parts, fmt.Sprintf("%s %dw", s.PathFor(hash, w, f), w))
 	}
 	return strings.Join(parts, ", ")
 }

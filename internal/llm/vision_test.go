@@ -133,6 +133,9 @@ func TestOllama_AskAboutImages_SetsImagesArray(t *testing.T) {
 	if path != "/api/chat" {
 		t.Errorf("path = %q, want /api/chat", path)
 	}
+	if sentReq["format"] != "json" {
+		t.Errorf("format = %v, want json so local vision cannot spend retries on malformed syntax", sentReq["format"])
+	}
 
 	msgs, _ := sentReq["messages"].([]any)
 	if len(msgs) != 1 {

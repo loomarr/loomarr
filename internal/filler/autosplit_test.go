@@ -203,7 +203,8 @@ func TestAutoConfirmable_RefusesASegmentBelowTheClipFloor(t *testing.T) {
 	}
 }
 
-// §10: a dedup match is a FLAG and never a silent drop — so it is never a silent keep either.
+// Defense in depth: the automated stage prunes duplicates before the gate, but an uncurated
+// proposal handed directly to the gate must still refuse rather than silently create it.
 func TestAutoConfirmable_RefusesAFlaggedDuplicate(t *testing.T) {
 	dup := goodSeg(1, 30_000, 60_000)
 	dup.DupOf = "cc/dd/existing.mp4"

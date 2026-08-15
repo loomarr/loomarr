@@ -130,18 +130,76 @@ func TestRegistry_Invariants(t *testing.T) {
 	}
 }
 
-// The AI provider keys are the conditional-field showcase (config-design §5): url + key
-// are hidden for Ollama (local, no key), shown for a hosted OpenAI-compatible service.
+// The hosted key is conditional, while the endpoint remains visible for both providers:
+// non-default/remote Ollama hosts must be configurable too.
 func TestRegistry_AIConditionalFields(t *testing.T) {
 	reg := NewRegistry()
-	for _, key := range []string{"llm.url", "llm.api_key"} {
-		s, ok := reg.Get(key)
+	url, ok := reg.Get("llm.url")
+	if !ok {
+		t.Fatal("llm.url not declared")
+	}
+	if len(url.ShowWhen) != 0 {
+		t.Errorf("llm.url must be visible for Ollama and hosted providers, got %v", url.ShowWhen)
+	}
+	key, ok := reg.Get("llm.api_key")
+	if !ok {
+		t.Fatal("llm.api_key not declared")
+	}
+	allowed := key.ShowWhen["llm.provider"]
+	if len(allowed) != 1 || allowed[0] != "openai" {
+		t.Errorf("llm.api_key should ShowWhen llm.provider=openai, got %v", key.ShowWhen)
+	}
+}
+
+func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
+	r := NewRegistry()
+	for _, s := range r.All() {
+		if s.Group != GroupFiller {
+			continue
+		}
+		if s.Label == "" {
+			t.Errorf("%s: filler workflow controls need a human label", s.Key)
+		}
+	}
+
+	for _, key := range []string{"filler.dir", "filler.watch_dir", "ingest.ytdlp_path", "ingest.ffmpeg_path", "ingest.whisper_path", "ingest.whisper_model", "filler.language_model"} {
+		s, ok := r.Get(key)
 		if !ok {
 			t.Fatalf("%s not declared", key)
 		}
-		allowed := s.ShowWhen["llm.provider"]
-		if len(allowed) != 1 || allowed[0] != "openai" {
-			t.Errorf("%s should ShowWhen llm.provider=openai, got %v", key, s.ShowWhen)
+		if s.Presentation != PresentationPath {
+			t.Errorf("%s presentation = %q, want path", key, s.Presentation)
+		}
+	}
+
+	for child, controller := range map[string]string{
+		"filler.autofile.min_confidence":     "filler.autofile.enabled",
+		"filler.autofile.normalize_loudness": "filler.autofile.enabled",
+		"filler.autosplit.min_confidence":    "filler.autosplit.enabled",
+	} {
+		s, ok := r.Get(child)
+		if !ok {
+			t.Fatalf("%s not declared", child)
+		}
+		allowed := s.ShowWhen[controller]
+		if len(allowed) != 1 || allowed[0] != "true" {
+			t.Errorf("%s should ShowWhen %s=true, got %v", child, controller, s.ShowWhen)
+		}
+	}
+}
+
+func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
+	r := NewRegistry()
+	for _, key := range []string{"guide.timezone", "guide.retention_hours"} {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		if s.Advanced {
+			t.Errorf("%s should be visible without opening Advanced", key)
+		}
+		if s.Label == "" {
+			t.Errorf("%s needs a human label", key)
 		}
 	}
 }
@@ -163,13 +221,10 @@ func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
 func TestRegistry_MovedDefaults(t *testing.T) {
 	r := NewRegistry()
 	cases := map[string]string{
-		"request.ttl":      "48h",
-		"session.ttl":      "720h",
-		"reconcile.every":  "5m",
-		"job.workers":      "2",
-		"season.precision": "series",
-		"llm.provider":     "ollama",
-		"sched.ordering":   "syndication",
+		"request.ttl":  "48h",
+		"session.ttl":  "720h",
+		"job.workers":  "2",
+		"llm.provider": "ollama",
 	}
 	for key, want := range cases {
 		s, ok := r.Get(key)

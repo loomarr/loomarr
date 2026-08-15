@@ -2045,9 +2045,9 @@ components:
           type: integer
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: The preview image's record, for srcset and placeholder rendering
+          description: The preview image's record, for srcset, animation and placeholder rendering
         thumbUrl:
-          description: Image-service preview URL (episode still or poster); empty for breaks or when unavailable
+          description: Same-origin image-service preview path; empty when unavailable
           type: string
         title:
           description: The episode's name for a series, or the film's name
@@ -2309,13 +2309,13 @@ components:
           description: poster | backdrop | icon | thumb — decides the width ladder
           type: string
         src:
-          description: A single JPEG URL for the <img> fallback
+          description: A same-origin JPEG path for the <img> fallback
           type: string
         srcSetAvif:
-          description: srcset for AVIF; empty until the AVIF job has run
+          description: Same-origin srcset for AVIF; empty until the AVIF job has run
           type: string
         srcSetWebp:
-          description: srcset for WebP
+          description: Same-origin srcset for WebP
           type: string
         width:
           description: The original's width in pixels
@@ -3294,8 +3294,6 @@ components:
           type: string
         backend:
           type: string
-        subtitles:
-          type: string
       type: object
     PlayoutStatus:
       additionalProperties: false
@@ -3313,6 +3311,8 @@ components:
           type: array
         gpu:
           $ref: "#/components/schemas/PlayoutGPU"
+        prepared:
+          $ref: "#/components/schemas/PreparedReadiness"
         running:
           description: Internal playout is wired (false on a Tunarr-only install)
           type: boolean
@@ -3320,6 +3320,7 @@ components:
         - running
         - gpu
         - channels
+        - prepared
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -3504,6 +3505,67 @@ components:
         - eligible
         - untagged
         - channels
+      type: object
+    PreparedReadiness:
+      additionalProperties: false
+      properties:
+        available:
+          description: Whether durable prepared playout is available
+          type: boolean
+        budgetBytes:
+          format: int64
+          type: integer
+        channels:
+          description: Channels with scheduled programmes in the resolved window
+          format: int64
+          type: integer
+        lastError:
+          type: string
+        lastRunAt:
+          description: Last completed readiness pass; absent means no pass has completed
+          format: date-time
+          type: string
+        missingBindings:
+          format: int64
+          type: integer
+        protectedBytes:
+          format: int64
+          type: integer
+        queuedPublications:
+          description: Deduplicated publications exposed to the bounded warming frontier
+          format: int64
+          type: integer
+        readyBindings:
+          format: int64
+          type: integer
+        readyChannels:
+          description: Channels whose scheduled bindings are all prepared
+          format: int64
+          type: integer
+        remainingBytes:
+          format: int64
+          type: integer
+        running:
+          description: Whether a readiness pass is currently running
+          type: boolean
+        scheduledBindings:
+          description: Channel and library-item bindings in the resolved window
+          format: int64
+          type: integer
+        unavailableReason:
+          type: string
+      required:
+        - available
+        - running
+        - channels
+        - readyChannels
+        - scheduledBindings
+        - readyBindings
+        - missingBindings
+        - queuedPublications
+        - remainingBytes
+        - budgetBytes
+        - protectedBytes
       type: object
     PreviewCycleOutputBody:
       additionalProperties: false
@@ -4445,6 +4507,12 @@ components:
         key:
           type: string
         kind:
+          type: string
+        label:
+          description: Registry-owned human label for workflow forms.
+          type: string
+        presentation:
+          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
           type: string
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
@@ -8406,6 +8474,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
@@ -8425,7 +8494,7 @@ paths:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.
       operationId: secret-regenerate
       parameters:
         - description: Which generated secret to rotate.
@@ -8437,6 +8506,7 @@ paths:
             enum:
               - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
