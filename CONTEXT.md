@@ -53,6 +53,10 @@ _Avoid_: download, request (a request is the downstream act, not the pick)
 The operator's natural-language description of a channel — the input to the Suggester.
 _Avoid_: prompt, query, description
 
+**Proposal Job**:
+One execution of an Intent, distinct from the optional Proposal artifact that may result.
+_Avoid_: request, suggestion job, generation job, Proposal
+
 **Proposal**:
 The Suggester's grounded answer to an Intent: a lineup of picks plus an extracted policy.
 Statuses are `submitted`, `approved`, `denied` (§7, §8).
@@ -65,7 +69,7 @@ among five `*-proposal` siblings in the same file — so one resource was submit
 "suggestion" and read, approved and denied as a "proposal". A glossary nothing follows is not a
 glossary. `scripts/check-retired.sh` now guards the old path.
 
-⚠ Two survivors are deliberate, and both are the VERB, not the artifact. The suggester job's
+⚠ Two survivors are deliberate, and both are the VERB, not the artifact. The Proposal Job's
 persisted `kind` is `"suggest"` (renaming it is a data migration, and the job is not the
 proposal), and the SSE frame `"suggestion"` reports that job's PHASE — its Go→TS handler pairing
 has no drift guard, so churning it is real risk for no glossary gain. The banned noun is the name
