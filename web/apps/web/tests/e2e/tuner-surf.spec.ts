@@ -73,8 +73,11 @@ const measureFreshMediaSourceBaseline = async (page: Page): Promise<number[]> =>
       // cost and can certify a runner that is incapable of the operation the product actually uses.
       await sample();
       await sample();
+      // Twenty observations are the minimum useful nearest-rank p95 sample: with five, p95 is
+      // merely the maximum and one unrelated scheduler interruption invalidates an otherwise-fast
+      // runner. This keeps the same 500 ms p95 contract while measuring the percentile it names.
       const samples: number[] = [];
-      for (let index = 0; index < 5; index++) samples.push(await sample());
+      for (let index = 0; index < 20; index++) samples.push(await sample());
       return samples;
     } finally {
       video.remove();

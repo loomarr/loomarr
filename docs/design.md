@@ -1554,8 +1554,9 @@ per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox
 Each engine must complete one bounded cold decode before the surf samples begin; those samples measure
 an already-running tuner, while the real-runtime gate and shipping-browser soak own cold boot timing.
 The matrix also runs a raw MediaSource control with the same representative bytes and the same one
-persistent video element: two unmeasured decoder-startup replacements followed by five steady-state
-replacements whose p95 must be below 500 ms. A fresh element per sample is not equivalent; it hides
+persistent video element: two unmeasured decoder-startup replacements followed by twenty steady-state
+replacements whose nearest-rank p95 must be below 500 ms. Five observations make p95 merely the
+maximum and cannot distinguish an isolated runner scheduling interruption. A fresh element per sample is not equivalent; it hides
 the replacement lifecycle this gate exists to measure. This is a runner-validity signal only; it
 never normalizes, subtracts from, or changes the product budgets above. Playback join is judged from
 media-event timestamps captured inside the
