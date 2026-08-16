@@ -96,3 +96,14 @@ Don't — a warning printed by a job that exits 0 is one nobody reads.
 
 The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
 executes it.
+
+## Scheduled Rust maintenance
+
+`rust-maintenance.yml` is intentionally outside the required PR gate. Every Monday, and on manual
+dispatch, it installs pinned cargo-deny and cargo-fuzz versions, checks both Cargo lockfiles for
+RustSec advisories, approved SPDX licences, and untrusted sources, then fuzzes the worker's bounded
+JSON-to-decoder boundary under nightly libFuzzer. A crash retains its reproducer for 30 days.
+
+This job is allowed to be expensive and network-sensitive. The fast deterministic protections stay
+in `make check`: Cargo lock enforcement, clippy/tests, and `#![forbid(unsafe_code)]` on Loomarr-owned
+shipping crates.

@@ -149,6 +149,47 @@ type FetchResult struct {
 	StoppedBy string
 }
 
+// FetchStatus is the current answer to “why will auto-fetch do no work?”. It is recomputed from the
+// same live limits and catalog/disk measurements Run uses, so the UI does not infer health from a
+// stale last-run log line.
+type FetchStatus struct {
+	Enabled      bool
+	StoppedBy    string
+	CatalogClips int
+	MaxCatalog   int
+	DiskBytes    int64
+	MaxDiskBytes int64
+}
+
+func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
+	status := FetchStatus{Enabled: f.enabled == nil || f.enabled()}
+	paths, err := f.store.CatalogPaths(ctx)
+	if err != nil {
+		return status, fmt.Errorf("read catalog: %w", err)
+	}
+	status.CatalogClips = len(paths)
+	status.MaxCatalog = f.limits.MaxCatalogClips()
+	if status.Enabled && status.MaxCatalog > 0 && status.CatalogClips >= status.MaxCatalog {
+		status.StoppedBy = "catalog"
+	}
+	maxDiskGB := f.limits.MaxDiskGB()
+	if maxDiskGB > 0 && f.dir != "" {
+		status.MaxDiskBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
+		size, err := f.statFS(f.dir)
+		if err != nil {
+			return status, fmt.Errorf("measure drop-folder: %w", err)
+		}
+		status.DiskBytes = size
+		// Run checks catalog first and returns before checking disk. Preserve that same answer when
+		// both ceilings are reached; otherwise the status endpoint tells the operator to fix a
+		// different limit from the one the next scheduled pass will actually report.
+		if status.Enabled && status.StoppedBy == "" && size >= status.MaxDiskBytes {
+			status.StoppedBy = "disk"
+		}
+	}
+	return status, nil
+}
+
 // Run polls every enabled source once.
 func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 	var res FetchResult

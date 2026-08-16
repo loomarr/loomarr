@@ -83,10 +83,11 @@ const AskRow = ({
   onEditTags,
   onDismiss,
   onFile,
+  onReclassify,
 }: {
   ask: IncomingClipDTO;
   busy: boolean;
-} & Pick<IncomingPanelProps, "onConfirmEra" | "onEditTags" | "onDismiss" | "onFile">) => {
+} & Pick<IncomingPanelProps, "onConfirmEra" | "onEditTags" | "onDismiss" | "onFile" | "onReclassify">) => {
   const guessed = (ask.suggestedEra ?? 0) > 0;
 
   return (
@@ -149,6 +150,24 @@ const AskRow = ({
             Don't use it
           </Button>
         )}
+        {onReclassify && ask.pipeline && (
+          <details className="relative">
+            <summary className="cursor-pointer rounded-md px-3 py-1.5 text-muted-foreground text-xs hover:bg-accent hover:text-accent-foreground">
+              More
+            </summary>
+            <div className="absolute right-0 z-10 mt-1 rounded-md border border-border bg-popover p-1 shadow-md">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => onReclassify(ask)}
+                title="Run classification again after changing an AI provider or model. Upstream media work is preserved."
+              >
+                Re-run AI
+              </Button>
+            </div>
+          </details>
+        )}
       </div>
     </li>
   );
@@ -169,6 +188,8 @@ const IncomingPanel = ({
   onEditTags,
   onDismiss,
   onFile,
+  onReclassify,
+  onRetryStage,
   onFileAllAsSuggested,
   onSendBack,
   onRestore,
@@ -264,9 +285,16 @@ const IncomingPanel = ({
                   {...(onEditTags ? { onEditTags } : {})}
                   {...(onDismiss ? { onDismiss } : {})}
                   {...(onFile ? { onFile } : {})}
+                  {...(onReclassify ? { onReclassify } : {})}
                 />
               ) : (
-                <PreparingRow key={clip.hash} clip={clip} ladder={ladder} />
+                <PreparingRow
+                  key={clip.hash}
+                  clip={clip}
+                  ladder={ladder}
+                  busy={busyPath === clip.path}
+                  {...(onRetryStage ? { onRetryStage } : {})}
+                />
               ),
             )}
           </ul>

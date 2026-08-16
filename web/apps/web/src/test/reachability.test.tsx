@@ -306,7 +306,13 @@ const stubReachable = () => {
       loomarr: { name: "Loomarr", ok: true },
       rows: [],
     }),
-    getListTaxonomyMockHandler({ taxa: [] }),
+    getListTaxonomyMockHandler({
+      taxa: [],
+      totalClips: 0,
+      taggedClips: 0,
+      unclassifiedClips: 0,
+      axisCoverage: [],
+    }),
     getPreviewDraftChannelPodsMockHandler({
       entries: [],
       totalMs: 0,

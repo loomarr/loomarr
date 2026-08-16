@@ -1,0 +1,60 @@
+name: Rust maintenance
+
+on:
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: Seconds to fuzz the bounded protocol and decoder boundary
+        required: true
+        default: "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-maintenance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  supply-chain:
+    name: Advisories, licences, and sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: Check the production dependency graph
+        run: cargo deny check advisories licenses sources
+      - name: Check the fuzz dependency graph
+        run: cargo deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
+
+  fuzz:
+    name: Bounded protocol and decoder fuzz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FUZZ_SECONDS: ${{ inputs.fuzz_seconds }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install nightly Rust for libFuzzer
+        run: rustup toolchain install nightly-2026-08-14 --profile minimal
+      - name: Install pinned cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Fuzz the one-shot control and decoder boundary
+        working-directory: rust/loomarr-image
+        run: |
+          seconds="${FUZZ_SECONDS:-60}"
+          cargo +nightly-2026-08-14 fuzz run protocol_decoder -- -max_total_time="$seconds" -max_len=1048576
+      - name: Keep crash and timeout artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-image-fuzz-artifacts
+          path: rust/loomarr-image/fuzz/artifacts/protocol_decoder
+          if-no-files-found: ignore
+          retention-days: 30

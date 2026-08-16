@@ -20,7 +20,7 @@ import (
 // convention `UpsertClip`'s DO UPDATE list has to remember.
 
 const clipPipelineSelect = `SELECT clip_hash, stage, status, progress, disposition,
-	reject_reason, reject_detail, attempts, next_run, stages_json, enrolled_at, updated_at
+	reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at
 	FROM filler_clip_pipeline`
 
 // scanClipPipeline reads one row, decoding the ladder.
@@ -41,7 +41,7 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 		updatedAt  int64
 	)
 	if err := sc.Scan(&p.ClipHash, &stage, &status, &p.Progress, &dispo,
-		&reason, &p.RejectDetail, &p.Attempts, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
+		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
 		return filler.ClipPipeline{}, err
 	}
 	p.Stage = filler.StageID(stage)
@@ -75,16 +75,17 @@ func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, stage, status, progress, disposition,
-		   reject_reason, reject_detail, attempts, next_run, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
 		   disposition=excluded.disposition, reject_reason=excluded.reject_reason,
 		   reject_detail=excluded.reject_detail, attempts=excluded.attempts,
+		   force_run=excluded.force_run,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
 		p.ClipHash, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
-		string(p.RejectReason), p.RejectDetail, p.Attempts, epoch(p.NextRun), string(raw),
+		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw),
 		epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)

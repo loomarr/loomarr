@@ -224,7 +224,7 @@ flowchart TD
 - **`mediatools`** · 2 importers · → `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §18).
+  Loomarr's Prometheus surface (design §7 /metrics, §17).
 
 **Layer 4**
 
@@ -688,9 +688,19 @@ Availability under the direct requester comes from the same **library scan** (§
 ### Programmer — Tunarr
 The scheduler drives Tunarr's REST API (documented OpenAPI at `tunarr.com/api-docs.html`): channels CRUD, programming/lineup, filler lists, flex, custom shows. **Decided: hand-write a thin client** against only the endpoints we use — generating from Tunarr's full pre-1.0 spec would couple us to its schema churn. Pin and record the Tunarr version tested against in the README. Tunarr ships with no authentication (Phase-0 finding: empty `securitySchemes`) and Loomarr reaches it machine-to-machine on the same network, so there is **no Tunarr API-key config** — just the URL. (An operator who fronts Tunarr with their own auth proxy would terminate that at the proxy; Loomarr does not model it.) Tunarr owns transcoding/streaming/EPG/HDHR+M3U output; `loomarr` owns lineup + filler. **Important:** Tunarr must have the same Emby/Jellyfin library configured as *its* media source **with that library enabled and scanned** — Tunarr streams the underlying files and indexes them into its own program table. `loomarr` and Tunarr agree on titles via the library.
 
+**Live configuration is snapshotted per operation.** Each public Programmer operation reads
+`tunarr.url`, `tunarr.transcode_config_id`, and the filler attach policy from one settings snapshot
+before its first request, then carries that immutable value through every read and write in the
+operation. A save therefore affects the next operation without allowing one multi-request reconcile
+to start against one Tunarr instance and finish against another, or to mix old and new channel
+policy. Any data learned from Tunarr endpoints — including the resolved default transcode profile
+and media-server-item→program indexes — is scoped to the normalized Tunarr base URL. Repointing the
+URL invalidates those endpoint-derived caches, so ids learned from one Tunarr instance are never
+applied to another.
+
 **Loomarr wires this for the operator** (`POST /v1/setup/tunarr-connect`, admin — §7): it ensures the Emby/Jellyfin media source exists in Tunarr, then enables the movie + show libraries and triggers a scan — the same **enumerate-first, idempotent** pattern as the Live TV wiring (below) and filler (§10). It reuses Loomarr's **existing admin API key** as the source's access token (Tunarr accepts the admin `X-Emby-Token` directly — verified against Tunarr 1.3.8 + Emby 4.10; no separate Emby *user* login, so Loomarr stores no extra credential). This closes a **silent-failure** gap: without the scan, a channel's slots find no Tunarr program and degrade to flex/dead-air (§9), yet the rest of the wizard reads all-green — so `/v1/setup/status` carries a **`tunarr_library`** check that fails until the source is wired + scanned. Division of labor is unchanged (§6/§1): Tunarr still owns streaming/indexing; Loomarr only performs the one-time setup the operator would otherwise do by hand. It does **not** poll or re-scan on a timer — the one exception is *demand-driven*: a reconcile that finds a program slot Tunarr hasn't indexed yet triggers a library scan so that content becomes playable (§ Content-id resolution below), which is a targeted response to real unresolved content, not a routine background sweep.
 
-**Content-id resolution (Programmer adapter).** A lineup slot carries the *media-server* item id (the Emby/Jellyfin id, from the provisioner). Tunarr's manual-programming API does **not** accept that id directly — a programming entry references Tunarr's *own* program id (a stable uuid Tunarr assigns when it scans the item). So the adapter resolves media-server-item-id → Tunarr-program-id before pushing: it reads Tunarr's persisted library index (`GET /api/media-libraries/{libraryId}/programs`, where each program carries `identifiers[{type:"emby"|"jellyfin"},…]` + its uuid) and builds a cached `{external item id → program uuid}` map (refreshed on a miss / TTL). This covers movies and TV episodes uniformly (episodes are indexed individually; a series pick expands to its episodes' ids). If a slot's item isn't in Tunarr's index yet (library not scanned, or a just-landed acquisition Tunarr hasn't picked up), that slot degrades to flex — never dead air (§9) — and resolves on a later reconcile once Tunarr has scanned it. **To close that gap without waiting on Tunarr's own scan cadence, a reconcile that produced any unresolved program slot triggers a Tunarr media-library scan** (`POST /api/media-sources/{src}/libraries/{lib}/scan`, each non-`local` source's enabled libraries) so the next reconcile finds the now-indexed episodes and promotes those flex gaps to real content. It is **debounced** (one scan pass per reconcile-that-had-misses) and **best-effort** (Tunarr scanning is async + idempotent, the flex fallback is already on-air, and a scan failure never fails the push). NB: Tunarr's browse endpoint (`/api/emby/{src}/libraries/{lib}/items`) returns *ephemeral* handles that change per request; only the persisted `/programs` index yields ids valid for programming.
+**Content-id resolution (Programmer adapter).** A lineup slot carries the *media-server* item id (the Emby/Jellyfin id, from the provisioner). Tunarr's manual-programming API does **not** accept that id directly — a programming entry references Tunarr's *own* program id (a stable uuid Tunarr assigns when it scans the item). So the adapter resolves media-server-item-id → Tunarr-program-id before pushing: it reads Tunarr's persisted library index (`GET /api/media-libraries/{libraryId}/programs`, where each program carries `identifiers[{type:"emby"|"jellyfin"},…]` + its uuid) and builds a URL-scoped cached `{external item id → program uuid}` map (refreshed on a miss). This covers movies and TV episodes uniformly (episodes are indexed individually; a series pick expands to its episodes' ids). If a slot's item isn't in Tunarr's index yet (library not scanned, or a just-landed acquisition Tunarr hasn't picked up), that slot degrades to flex — never dead air (§9) — and resolves on a later reconcile once Tunarr has scanned it. **To close that gap without waiting on Tunarr's own scan cadence, a reconcile that produced any unresolved program slot triggers a Tunarr media-library scan** (`POST /api/media-sources/{src}/libraries/{lib}/scan`, each non-`local` source's enabled libraries) so the next reconcile finds the now-indexed episodes and promotes those flex gaps to real content. It is **debounced** (one scan pass per reconcile-that-had-misses) and **best-effort** (Tunarr scanning is async + idempotent, the flex fallback is already on-air, and a scan failure never fails the push). NB: Tunarr's browse endpoint (`/api/emby/{src}/libraries/{lib}/items`) returns *ephemeral* handles that change per request; only the persisted `/programs` index yields ids valid for programming.
 
 ### Live TV wiring — applied playout backend → Emby/Jellyfin (tuner + guide)
 
@@ -730,8 +740,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/proposals/{id}` | Job status + proposal (the source of truth on SSE reconnect; generation progress streams over `/v1/events` as `suggestion` frames, not a per-job endpoint). |
 | POST | `/v1/proposals/{id}/approve` | Approve (admin) → enqueue acquisitions **+ create/patch the channel**, returning its id. This is the primary path from an approved intent to a live channel — §13's flow is describe → review → approve, so **the everyday way to make a channel is to describe one, not fill out a form** (the two other origination seeds — a hand-made single-series or empty channel via `POST /v1/channels` — are express doors into the same object, not a separate "create screen" model; see §12 origination-vs-evolution). **The local result is one commit:** the audited approval, title insertions, and intent-bound channel either all persist or none do; a local planning or store failure leaves the proposal submitted and retryable. That transaction rejects an older proposal when the same job already has an approved proposal created in the same persisted second or later; second-resolution ties fail closed with 409 rather than guessing an order and rolling the channel back. **Idempotent on `intentRef`** (the suggestion job id): re-approving the same intent patches that channel rather than minting a second one, enforced by a partial unique database index for non-empty intent refs. The channel is created `building` with the proposal's lineup + grounded policy, then codec derivation and reconciliation run after commit (§9 "live immediately — never dead air"). An immediate external failure does not undo the approval: the due `building` row is durable retry state for the channel sweep. **Number** = the lowest free positive integer across both Loomarr and Tunarr, so an operator never has to think about numbering to get on air; **name** = the intent description, trimmed to a channel-sized label. Both are ordinary editable fields afterwards (§7 `PATCH /v1/channels/{id}`) — the point is that approving is *sufficient*, not that the derived values are final. A channel is **shaped over time** after creation: direct edits (name/number/rules/lineup) via `PATCH`, or by *refining* it with the LLM (`POST /v1/channels/{id}/refine` → review the diff → approve → the same idempotent patch). |
 | POST | `/v1/proposals/{id}/deny` | Deny (admin) with optional reason; proposal → `denied`, member sees it in My proposals. |
-| GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, plus `q` for a `name LIKE` search (§7.2 — clip search lives here, not in `/v1/search`). |
+| GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, by `taxon` (an exact graph node whose descendant rollups match too), by `unclassified` (no directly asserted taxonomy tags on any axis), or by `withoutAxis` (no direct assertion on one named axis; neutral because cue axes are intentionally sparse), plus `q` across name, brand, visible text, and tags (§7.2 — clip search lives here, not in `/v1/search`). |
 | PATCH | `/v1/filler/tags` | Edit a clip's tags — including **confirming an era suggestion** (§10): setting `era` on a clip that carries one clears the suggestion. The suggestion itself is never settable directly; only the tagger writes it, and only when the year is not in the source text. ⚠ **The clip is identified by its content `hash` in the BODY** (V45a) — completing the V38c identity change up through the API. The wire identity is the hash (hex, no slashes), NOT the path: the path is a disk *location* the server keeps to itself, and putting a slash-bearing path in a URL or body was the source of a routing/proxy 404. Every clip-addressing route (this, split, and the byte routes below) takes the hash. |
+| POST | `/v1/filler/rewind` | Re-run one clip from a named ingest stage (admin, §10 V55). This is the recovery path after a configuration or provider problem has been fixed: it resets that stage and every dependent stage, durably forces the selected rung past its ordinary applicability shortcut, clears only derived artifacts safe for that rung to replace, and puts the pipeline row back on the conveyor. Rewinding `transcode` is refused unless `force:true`, because it can replace the playable bytes; routine UI actions expose only non-destructive rewinds. |
 | GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier); sending both searches **within that collection**, which is what a registered source row promises. The `collection`-only mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
@@ -743,7 +754,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. The PATCH body also carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
-| GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?}` — everything the page header's pill renders, computed on the SERVER. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
+| GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips being prepared or waiting on a human, compilations mid-split, and the rejected/auto-filed audit feeds. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`, `recentlyFiledTotal`); a large import cannot create an unbounded response or make the tab badge collapse to the page length. Confidence is the real grounding-capped score (§10 V38), never model self-assessment; each item also carries the measured reason for its state. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
@@ -1829,9 +1840,10 @@ a correctness constraint the compiler cannot enforce:
   one. The same applies to the mux, the store handle, and the scheduler.
 - **Global registries are the loud failure.** `prometheus.MustRegister`, `http.HandleFunc` on
   `DefaultServeMux`, `expvar.Publish` and `sql.Register` all panic on a second registration.
-  Loomarr uses **none** of them except Prometheus, and `metrics.RegisterStoreCollector` already
-  tolerates `AlreadyRegisteredError` — written for "a second boot in one test process", which is
-  precisely a restart iteration.
+  Loomarr uses **none** of them except Prometheus. The store collector is registered once for the
+  process and atomically rebound to each generation's live store; merely tolerating
+  `AlreadyRegisteredError` would leave later scrapes querying the previous generation's closed
+  handle.
 - ⚠ **`sync.Once` is the quiet failure**, and the one to watch: a package-level `Once` guarding a
   resource makes iteration 2 inherit iteration 1's closed handle, with no panic and no log line.
   Every `sync.Once` in this repo is closure-local or a struct field, so it rebuilds with its
@@ -1947,6 +1959,12 @@ all fail toward doing less:
 3. **A limit that is reached is REPORTED, never silent.** An operator whose catalog stopped
    growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
    indistinguishable from one that is broken.
+
+The report is a **live measurement**, not a remembered fetch result: the filler status read counts
+the tracked catalog (including held clips already on disk) and measures the storage root against the same configured bounds the fetcher
+uses. The UI names the bound and its current/maximum values. This makes "nothing new arrived" an
+answerable state even after restart, and makes the warning disappear as soon as curation or a
+settings change creates room.
 
 ⚠ **Archive.org collections are the case the limits exist for.** A collection is thousands of
 items; `max_per_run` is what stops "add a source" from meaning "download 8,000 files tonight".
@@ -2511,7 +2529,7 @@ its own sub-phase, landing BEFORE the composites UI so the UI renders tags from 
 
 **A clip carries a SET of tags, each a `taxon`** — `{slug, label, parent, synonyms, kind}` — where
 `parent` forms a **forest by axis**, not one tree, because a clip is tagged on independent axes at
-once: **product** (`beer` → `alcohol` → `drinks`), **format** (`psa`, `movie_trailer`, `ident`),
+once: **product** (`beer` → `alcohol` → `drinks`), **format** (`commercial`, `psa`, `ident`),
 **seasonal** (`christmas`, reusing the §10 holiday keyword IDs), **audience-cue** (hints, kept
 separate from the `audience` enum). A Christmas beer ad is `{beer, alcohol, christmas}`.
 
@@ -2531,13 +2549,51 @@ Four properties make it robust, curation-ready, and LLM-friendly:
   with a default forest, forward-only migration. An operator adds `energy-drink` under `drinks`
   without a code change.
 
+Both text and vision classifiers receive this live vocabulary and return a tag set, never a
+hard-coded legacy category. A vision pass commits its grounded frame facts and additive asserted
+tags in one transaction; compilation-segment vision carries those assertions through confirmation
+onto the content-addressed child clips. The `category` column is only the most-specific product-axis
+compatibility shadow and is never a classifier-owned source of truth.
+
+⚠ **An asserted tag is not the same thing as a graph leaf.** `clip_tags.leaf` is the historical
+column name for “asserted by the classifier/operator”; it is not a promise that the taxon currently
+has no children. A broad but honest assertion such as `food` is valid when the evidence cannot
+support `cereal`, and it stays asserted if an operator later adds children beneath it. API reads
+therefore expose asserted tags separately from the full asserted-plus-rollup set. Editors write only
+the asserted set; feeding rollups back through an editor would promote derived ancestors into facts
+that survive later graph changes.
+
+⚠ **The graph is valid or the edit does not happen.** A taxon slug is stable, normalised, and unique
+across canonical slugs, synonyms, and retired aliases. Its parent must exist on the same axis; cycles,
+self-parenting, dangling parents, cross-axis edges, and resolver collisions are rejected. A graph edit,
+its closure rebuild, the set-based clip-rollup rebuild, and the derived `category` shadow refresh
+commit in one store transaction. Deleting a
+taxon with directly asserted clips is refused until those clips are retagged; deleting an unused
+intermediate node reparents its children to the grandparent. This keeps an operator mistake from
+silently erasing classification or leaving the catalog between graph generations.
+
+⚠ **The taxonomy surface is an accounting view, not just a vocabulary picker.** It shows the forest
+by axis and hierarchy, distinguishes playable direct assertions from descendant matches, and reports
+overall plus per-axis catalog coverage. A clip with a seasonal cue but no product/topic assertion is
+therefore visible in both dimensions rather than flattened into one “classified” bit. Every taxon
+count and axis population links back to the matching catalog. Axis absence is neutral—seasonal and
+audience cues are intentionally sparse—not an automatic cleanup task. Synonyms and retired aliases remain progressive detail
+because they help the classifier but are not another set of tags the operator must manage day to day.
+Brand, clip kind, era, and audience remain adjacent
+structured facts rather than being folded into the taxonomy: the forest answers thematic/type
+membership, while those fields keep their existing grounded or structural semantics. The clip
+editor exposes brand correction and explicit clearing because an additive classifier will not
+overwrite an existing grounded value; an operator is the recovery authority for a bad guess.
+Deletion safety uses a separate all-stored assignment count, including held, removed, and composite
+records, so the UI never offers a deletion the backend must refuse to preserve hidden knowledge.
+
 ⚠ **Rollups are stored DENORMALISED** (a tag of `beer` writes `beer`+`alcohol`+`drinks` rows, each
 flagged leaf-vs-rollup), so `WHERE taxon = 'food'` is one index hit — pod assembly runs it per break
-per reconcile, so the read must be cheap. The cost accepted: a **reindex** recomputes rollup rows
+per reconcile, so the read must be cheap. The cost accepted: the owning write recomputes rollup rows
 when a clip is re-tagged or the graph changes; the graph is source of truth, the denormalised rows a
 derived cache (the same "synced cache" shape `clips` already is).
 
-⚠ **The reindex is a SET-BASED rebuild, not a per-clip loop, because the catalog is not bounded to a
+⚠ **A graph-edit rebuild is SET-BASED, not a per-clip loop, because the catalog is not bounded to a
 few thousand.** The `filler.fetch.max_catalog_clips` ceiling (§14, default 2000) only throttles
 *auto-fetch* — an operator who raises it or bulk-imports a large archive can reach tens of thousands
 of clips, at which point a Go loop issuing one write transaction per clip is an N+1 that holds a job
@@ -2554,16 +2610,19 @@ taxa_closure ON descendant = leaf` — identical SQL on both dialects, O(closure
 engine, no per-clip round trip. The graph-walk logic therefore lives in Go *once* (to fill the
 closure) and never in two SQL dialects; the hot rebuild path touches no recursion.
 
-⚠ **This IS still a background job** (cron, off by default, a sibling of the transcribe/vision jobs
-in shape and wiring) — the *trigger* is "the graph changed / clips were re-tagged", the *work* runs
-decoupled on the scheduler, same reconcile-on-a-timer shape the provisioner uses. What changed from
-the earlier framing is only the job's *body*: it calls the store's set-based `RebuildRollups`, it
-does not iterate clips. `category` survives as a **derived shadow** (the primary product leaf) so
-existing readers do not break during the migration.
+⚠ **A graph edit is synchronous and atomic, not a background repair promise.** Its semantic store
+operation updates the node, closure, denormalised rollups, and the `category` compatibility shadow in
+one transaction. The heavy catalog operations are set-based SQL, so the API never acknowledges a
+vocabulary generation while matching still sees the previous one. Clip re-tagging remains a
+per-clip transaction because it changes one assertion set, not the graph. It expands against the
+store's current closure and refreshes the category shadow before commit; callers cannot supply a
+stale forest snapshot. Startup performs the same locked, set-based projection rebuild as an upgrade
+backstop, healing any drift from pre-atomic releases or restored/manual data without an operator job.
 
 ⚠ **The taxonomy owns thematic matching.** The embedding prototype failed at the topic/season/theme
 case this graph makes explicit, while persisted dHash owns the separate near-duplicate problem. The
-reindex remains a set-based SQL rebuild over `taxa_closure`; there is no re-embed job or vector column.
+graph-edit rollup maintenance remains a set-based SQL rebuild over `taxa_closure`; there is no
+re-embed job or vector column.
 Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
 
 #### The curation confidence this produces
@@ -3203,8 +3262,8 @@ now exercises the writer itself.
 
 ### Ingest is a pipeline, and it is watchable (V51b)
 
-Filler grew one cron job per capability: `filler-sync`, `filler-fetch`, `filler-language`,
-`filler-split`, `filler-transcribe`, `filler-vision`, `filler-reindex`. Each **sweeps the whole
+Filler grew one cron job per capability: sync, fetch, language, split, transcribe, vision, and
+taxonomy repair. Each **sweeps the whole
 catalog looking for its own kind of work**, on its own schedule, knowing nothing about what the
 others have done to a clip.
 
@@ -3239,6 +3298,16 @@ simply waited for the next tick and a permanently-broken clip was retried at ful
 Stages now retry 5m / 30m / 2h and then resolve: a `probe` failure is a **reject** (a file we
 cannot measure is not a clip), while `transcribe`/`vision`/`language` **skip and advance** — a
 missing transcript must never strand a clip.
+
+**Recovery rewinds the dependency suffix, not the whole clip.** Once an operator fixes the cause
+(for example a model or provider setting), an admin may restart at the failed stage. The rewind
+removes that stage and each downstream rung from the ladder, clears only their safely replaceable
+derived state, resets retry attempts/backoff, persists an explicit force-run marker, and returns the
+existing row to `queued`. The worker bypasses that selected rung's ordinary applicability shortcut
+even after a restart, then clears the marker when the rung resolves; upstream measurements and
+operator-authored tags survive. A transcode rewind is exceptional and requires an explicit force
+flag because it may replace source bytes. This is deliberately a pipeline operation rather than a
+delete-and-rescan workaround: recovery must preserve identity, provenance, and operator decisions.
 
 #### Stage state is persisted, in a sibling table
 
@@ -4331,7 +4400,7 @@ On a fresh instance the UI then walks the owner through, in order:
 
 **Tunarr stays first-class, not legacy** (§9.1): the choice is a fork, not a migration path, and it is re-decidable per channel afterwards. The wizard writes the *instance default*.
 
-The checklist is backed by `GET /v1/setup/status` (runs all checks, returns structured results) and is **re-runnable from Settings** — the same panel doubles as the troubleshooting console for the life of the install.
+The checklist is backed by `GET /v1/setup/status` (runs all checks, returns structured results) and is **re-runnable from Settings** — the same panel doubles as the troubleshooting console for the life of the install. The `filler` check is behavioral: it resolves the effective storage and watch directories, proves they are directories that Loomarr can read and write with a temporary-file probe, and removes the probe. A non-empty setting is not evidence that clips can arrive.
 
 **No wiring step may hold the wizard hostage.** The blocking set is the shortest honest path to a live channel (config-design §6), which since §9.1 **depends on the playout backend**: `media_server` alone on the default internal path, `media_server` + `tunarr` when Tunarr is doing the streaming. (It was hardcoded to the latter, which blocked every internal install behind a service it would never use — see "The playout choice shapes the wizard" above.) The wiring steps that exist on a given path (guide, webhooks, library) are all **skippable**, and skipping records a deliberate `skipped`, not an unfinished step. This is not a convenience: an install that doesn't use its media server's Live TV, or has no *arr apps, can never turn those checks green, and a step that blocks on a check the operator cannot satisfy is a dead end with no way around it — the wizard offers only Back/Continue, so a hard gate strands them on that screen forever. It bit hardest on the *library* step, whose whole purpose (§6) is to prevent channels scheduling slots with no program: gating it behind Live TV meant an operator whose guide wiring failed could never reach the guard against dead air.
 
@@ -4406,7 +4475,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
 | Image rendering runtime | **the required Rust `loomarr-image` one-shot worker**, over a versioned bounded-JSON/file-manifest protocol | Static and animated decoding is an untrusted, allocation-heavy boundary. A sibling process contains panics and native-code crashes without making the Go server use cgo, returns all worker memory to the OS after each Image, and can be killed on cancellation. One invocation renders a complete requested ladder, amortising process startup. A persistent daemon adds supervision and retained-memory complexity before measurement justifies it; in-process FFI would let a decoder fault take down Loomarr. The worker is part of Loomarr, ships in the one image, and is mandatory: a missing or incompatible worker prevents readiness, with no Go codec fallback (§22). |
-| Rust image dependencies | **pinned `serde`/`serde_json` + `sha2` + `base64` + `thumbhash` + `image` + `fast_image_resize` + `webp`/`webp-animation`, locked by `Cargo.lock`; `png` is direct only in tests** | Serde is the bounded worker protocol rather than a hand-written parser; `sha2` verifies content identity on both sides of the process boundary; `base64` and `thumbhash` produce the existing placeholder wire format. `image` supplies one animation-decoder contract for GIF, APNG, and WebP; the direct test-only `png` edge generates a standards-valid APNG fixture instead of checking in opaque bytes. `fast_image_resize` supplied the measured static speed/RSS win; `webp` provides static encoding while `webp-animation` exposes libwebp's incremental encoder so a timeline does not accumulate full-frame buffers. A pure-Rust `zenwebp` replacement remains contingent on the corpus proving dependency, licence, deterministic-output, malformed-input, and both-architecture gates rather than novelty. The complete resolved graph ships in the SBOM. |
+| Rust image dependencies | **pinned `serde`/`serde_json` + `sha2` + `base64` + `thumbhash` + `image` + `fast_image_resize` + `webp`/`webp-animation`, locked by `Cargo.lock`; `png` is direct only in tests and `libfuzzer-sys` only in the excluded fuzz workspace** | Serde is the bounded worker protocol rather than a hand-written parser; `sha2` verifies content identity on both sides of the process boundary; `base64` and `thumbhash` produce the existing placeholder wire format. `image` supplies one animation-decoder contract for GIF, APNG, and WebP; the direct test-only `png` edge generates a standards-valid APNG fixture instead of checking in opaque bytes. `fast_image_resize` supplied the measured static speed/RSS win; `webp` provides static encoding while `webp-animation` exposes libwebp's incremental encoder so a timeline does not accumulate full-frame buffers. `libfuzzer-sys` is the standard cargo-fuzz bridge and exists only to drive the bounded control/decoder boundary in a scheduled non-shipping workspace; it is excluded from the release workspace and binary. A pure-Rust `zenwebp` replacement remains contingent on the corpus proving dependency, licence, deterministic-output, malformed-input, and both-architecture gates rather than novelty. The production and fuzz graphs have separate lockfiles and both pass the scheduled advisory/licence/source policy; the complete production graph ships in the SBOM. |
 | AVIF encode | **the required Rust image worker, using the pure-Rust `ravif` path behind `image`, background-only** | AVIF remains outside request latency so a cold grid cannot multiply expensive encodes. The worker's startup self-test performs a real encode; no ffmpeg or Go image fallback survives. |
 | Image placeholder (LQIP) | **the Rust `thumbhash` crate inside `loomarr-image`** | The ~25-byte blur preview stored on every image row (§22). ThumbHash carries alpha, which avoids black placeholder boxes for transparent channel logos. The worker emits the existing base64 wire format, so the frontend contract does not change. |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
@@ -4909,7 +4978,10 @@ Genuinely future work:
 - **Local (non-media-server) accounts** and finer-grained permissions beyond admin/member (§11's v1 keeps two roles).
 - **Notification agents** (email/Discord/webhook on approval, channel-live, give-ups) — Seerr users will expect these; v1 is in-app status only (§13).
 - ~~**DB-backed settings UI** as an alternative to env-only config, if demand warrants the dual-source complexity (§13's wizard deliberately validates rather than stores).~~ **Resolved and superseded** by `config-design.md`: settings are DB-backed with `env > database > default` resolution, and the wizard **writes** through the same `PATCH` path as Settings (configure → validate → save → advance). The parenthetical above described the opposite rule and was dead text.
-- **Vision-based filler tagging** (video models) beyond text-signal + transcript classification (§10). Transcript-based tagging (whisper.cpp) landed with compilation splitting (V34).
+- ~~**Vision-based filler tagging** beyond text-signal + transcript classification.~~ **Resolved:**
+  keyframe vision is a bounded pipeline stage and a compilation-segment grounder. Both use the live
+  taxonomy vocabulary, resolve-or-drop their tag sets, and persist direct assertions rather than a
+  standalone legacy category (§10 V44/V55).
 - ~~**Mid-roll ad insertion** via content segmentation, if Tunarr ever supports it (§10's honest limitation).~~ **Resolved:** internal playout (§9.1) owns the encoder and therefore the cut points, so mid-roll is in scope for internal-playout channels without waiting on Tunarr. See §10 "Break placement: a per-backend capability".
 - **Second Programmer target** (ErsatzTV) once the Tunarr adapter is proven.
 - **Leader election** if Postgres scale-out is needed beyond `SKIP LOCKED`.
@@ -5053,6 +5125,15 @@ of them wrong:
 The load-bearing reason is **concurrency and request latency**. AVIF is produced by the pure-Rust
 `ravif` path with one encoder thread, but a cold grid must still not queue expensive worker processes
 in front of HTTP responses. The background job drains that work under the same global worker cap.
+The one-thread limit is measured policy, not a library default: `make image-parallelism-bench`
+compares equal logical-CPU budgets as multiple one-thread processes versus fewer processes with
+2/4/8 rav1e threads. The worker accepts that override only on an explicit benchmark command; the
+production protocol has no thread knob. Across the 2-, 4-, and 8-CPU profiles, encoder threading
+reduced one process's latency but lost aggregate Image and Rendition throughput to independent
+one-thread workers: the two-thread shapes were 15.6%, 12.6%, and 22.4% slower respectively in the
+three-sample poster medians. They also emitted different AVIF byte counts, so adoption would require
+a new immutable recipe rather than a scheduling-only change. It did not earn weighted permits, and
+production remains one thread.
 
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
@@ -5096,6 +5177,12 @@ publication. Every missing AVIF ladder is one worker request. Go atomically rena
 file, then commits the complete derivative-row set in one Store transaction; any file or Store
 failure removes every file promoted by that request, so a partial ladder is never servable. Rust
 never sees the Store or canonical publication paths.
+
+The opt-in benchmark command may append `--benchmark-avif-threads 1..8`; it is deliberately absent
+from application composition and exists only to measure the fixed production decision through the
+same executable and manifest validation. Benchmark reports record the CPU profile, concurrent
+processes, encoder threads, throughput, worker duration, output bytes, and aggregate child peak RSS.
+They are evidence, never a timing gate.
 
 The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
 canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,

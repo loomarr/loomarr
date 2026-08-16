@@ -192,7 +192,7 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 			noFrames++
 			continue
 		}
-		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt, frames)
+		resp, err := s.vision.Provider.AskAboutImages(ctx, visionPrompt(forest), frames)
 		if err != nil {
 			// ⚠ NOT marked, and the loop STOPS: a provider that is failing will fail for every
 			// remaining segment too, so marking would burn the whole reel on one outage. Next pass
@@ -207,9 +207,10 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 			continue
 		}
 		v := groundVisionTags(out, forest)
-		if v.Category != "" || v.Era > 0 {
+		if len(v.Tags) > 0 || v.Era > 0 {
 			learned++
 		}
+		segs[i].Tags = unionLeaves(segs[i].Tags, v.Tags)
 		segs[i].Category = v.Category
 		segs[i].Era = v.Era
 		// ⚠ `SuggestedEra` is deliberately NOT stamped here, though the vision RUNG does stamp it.

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ import (
 // ⚠ Hash and Path must never be equal here, and this is the whole point of the helper. They were
 // the same string until V41, and that single fact hid two production defects for two releases:
 // `DeleteClipsNotIn` wiped the entire catalog on every sync (see the post-mortem on
-// `store.SetClipsRemoved`), and `UpdateClipTags`/`RecordClipPlay` were being called with a path
+// `store.SetClipsRemoved`), and `UpdateClipClassification`/`RecordClipPlay` were called with a path
 // against a `WHERE hash = ?` — so the AI tagger aborted on its first clip and play counters never
 // moved. Every assertion passed throughout, because a fixture where the two keys are equal cannot
 // tell them apart. A key-confusion bug is invisible by construction against such a fixture.
@@ -62,7 +63,7 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	// would make every assertion a wall of hex and would test nothing extra.
 	//
 	// ⚠ But `Path` must NOT be the id as well. It was until V41, and hash-keyed and path-keyed
-	// store methods became indistinguishable to this suite: `UpdateClipTags` (`WHERE hash = ?`)
+	// store methods became indistinguishable to this suite: `UpdateClipClassification` (`WHERE hash = ?`)
 	// was being called with a path in production and every test still passed. See `clipAt` for
 	// the full post-mortem. Keep the two fields distinct in every fixture, always.
 	c.Hash = id
@@ -182,7 +183,10 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
 
 	// Tag the untagged clip (the AI-tagging job path).
-	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", 0, true, now); err != nil {
+	if err := s.SetClipTags(ctx, "u1", []string{"cereal"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateClipClassification(ctx, "u1", 1994, "kids", 0, true, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
@@ -193,29 +197,29 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", 0, false, now); err != ErrNotFound {
-		t.Errorf("UpdateClipTags(missing) = %v, want ErrNotFound", err)
+	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); err != ErrNotFound {
+		t.Errorf("UpdateClipClassification(missing) = %v, want ErrNotFound", err)
 	}
 
 	// Era suggestions (§10 V34) — the conditional suggested_era write:
 	//  **record** an ungrounded suggestion on an era-less clip,
 	//  **keep** it across a tag edit that carries neither era nor suggestion,
 	//  **clear** it in the same write that sets era (the operator confirming).
-	if err := s.UpdateClipTags(ctx, "keep", 0, "family", "", 1985, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 0, "family", 1985, false, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
 	if got.SuggestedEra != 1985 || got.Era != 0 {
 		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
 	}
-	if err := s.UpdateClipTags(ctx, "keep", 0, "general", "", 0, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 0, "general", 0, false, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
 	if got.SuggestedEra != 1985 {
 		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
 	}
-	if err := s.UpdateClipTags(ctx, "keep", 1985, "", "", 0, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 1985, "", 0, false, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
@@ -324,7 +328,7 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("seed clip: %v", err)
 	}
 
-	// ⚠ Read by HASH, not path. `GetClip`, `RecordClipPlay` and `UpdateClipTags` are all keyed
+	// ⚠ Read by HASH, not path. `GetClip`, `RecordClipPlay` and `UpdateClipClassification` are all keyed
 	// `WHERE hash = ?`; passing a path returns ErrNotFound. This test used `c.Path` throughout
 	// while the fixture made the two equal, so it could not distinguish the two keys — and the
 	// production callers that passed a path went undetected for two releases (see `clipAt`).
@@ -418,12 +422,12 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("GetClip(hash) = %v, want it to resolve", err)
 	}
 
-	// UpdateClipTags is hash-keyed, and its ErrNotFound is fatal to the tagging job.
-	if err := s.UpdateClipTags(ctx, c.Path, 1994, "kids", "cereal", 0, true, now); err != ErrNotFound {
-		t.Errorf("UpdateClipTags(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
+	// UpdateClipClassification is hash-keyed, and its ErrNotFound is fatal to the tagging job.
+	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); err != ErrNotFound {
+		t.Errorf("UpdateClipClassification(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
 	}
-	if err := s.UpdateClipTags(ctx, c.Hash, 1994, "kids", "cereal", 0, true, now); err != nil {
-		t.Errorf("UpdateClipTags(hash) = %v, want it to apply", err)
+	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, true, now); err != nil {
+		t.Errorf("UpdateClipClassification(hash) = %v, want it to apply", err)
 	}
 
 	// RecordClipPlay is hash-keyed and deliberately silent on a miss, so assert the COUNTER
@@ -477,11 +481,11 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("vision_tagged set by a TEXT brand write — SetClipBrand must not masquerade as a vision pass")
 	}
 
-	// SetClipVisionTags records the on-screen text, a grounded brand, and (here) a category. era is
-	// passed 0, so the era set by UpdateClipTags above (1994) must SURVIVE — the CASE guard, not a
+	// ApplyClipVision records the on-screen text, a grounded brand, and (here) a taxonomy tag. era is
+	// passed 0, so the era set by UpdateClipClassification above (1994) must SURVIVE — the CASE guard, not a
 	// blanket overwrite. It overwrites the text-grounded brand above, which is fine — both are
 	// grounded writers of the same column.
-	if err := s.SetClipVisionTags(ctx, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 0, "cereal", now); err != nil {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 0, []string{"cereal"}, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
@@ -491,10 +495,20 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Era != 1994 {
 		t.Errorf("era = %d after a vision write with era=0, want 1994 preserved — the CASE guard must not blank an existing era", got.Era)
 	}
+	if got.Category != "cereal" || len(got.AssertedTags) != 1 || got.AssertedTags[0] != "cereal" {
+		t.Errorf("vision taxonomy = category %q / asserted %v, want cereal / [cereal]", got.Category, got.AssertedTags)
+	}
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Uncommitted", "SHOULD ROLL BACK", 0, 0, []string{"not-a-live-taxon"}, now); !errors.Is(err, ErrTaxonConflict) {
+		t.Fatalf("invalid vision taxonomy error = %v, want ErrTaxonConflict", err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" {
+		t.Errorf("invalid vision taxonomy partially committed facts: brand=%q text=%q", got.Brand, got.VisibleText)
+	}
 	// ⚠ A grounded era SUPPRESSES the frame-heuristic suggestion: this clip already has era 1994, so
 	// passing suggestedEra=1960 must NOT set suggested_era — a clip with a known era has no question
 	// to ask. This pins the "era = 0" precondition in the store's CASE guard.
-	if err := s.SetClipVisionTags(ctx, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 1960, "cereal", now); err != nil {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 1960, []string{"cereal"}, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
@@ -509,7 +523,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, hintClip); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetClipVisionTags(ctx, hintClip.Path, "", "", 0, 1960, "", now); err != nil {
+	if err := s.ApplyClipVision(ctx, hintClip.Hash, hintClip.Path, "", "", 0, 1960, nil, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, hintClip.Hash)
@@ -566,11 +580,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	taxa, err := s.ListTaxa(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetClipTags(ctx, old.Hash, []string{"cereal"}, taxonomy.New(taxa), now); err != nil {
+	if err := s.SetClipTags(ctx, old.Hash, []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
 	pipeline := filler.ClipPipeline{
@@ -588,7 +598,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	channel.Policy.Filler = &schedule.FillerSelection{
 		Pinned: []string{"keep", old.Hash}, Excluded: []string{old.Hash, "other"},
 	}
-	channel, err = s.SaveChannel(ctx, channel)
+	channel, err := s.SaveChannel(ctx, channel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -857,9 +867,16 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if _, ok := forest.Get("beer"); !ok {
 		t.Fatal("seeded forest missing 'beer' — the seed did not load from SeedForest")
 	}
+	for _, hash := range []string{"clipA", "clipB"} {
+		c := sampleClip(hash, hash+".mp4", filler.Commercial, 0, "", "")
+		c.Held = true
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	// Tag a clip `beer` → the denormalised set must be beer(leaf) + alcohol + drinks (rollups).
-	if err := s.SetClipTags(ctx, "clipA", []string{"beer"}, forest, now); err != nil {
+	if err := s.SetClipTags(ctx, "clipA", []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
 	full, _ := s.GetClipTags(ctx, "clipA", false)
@@ -868,7 +885,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	assertSet(t, "clipA leaves", leaves, []string{"beer"})
 
 	// Two leaves sharing an ancestor: beer + spirits → alcohol/drinks stored ONCE (as rollups).
-	if err := s.SetClipTags(ctx, "clipB", []string{"beer", "spirits"}, forest, now); err != nil {
+	if err := s.SetClipTags(ctx, "clipB", []string{"beer", "spirits", "beer"}); err != nil {
 		t.Fatal(err)
 	}
 	full, _ = s.GetClipTags(ctx, "clipB", false)
@@ -887,7 +904,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, realClip); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetClipTags(ctx, "clipReal", []string{"beer"}, forest, now); err != nil {
+	if err := s.SetClipTags(ctx, "clipReal", []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetClip(ctx, "clipReal")
@@ -895,6 +912,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	assertSet(t, "GetClip loads Tags (full rollup set)", got.Tags, []string{"alcohol", "beer", "drinks"})
+	assertSet(t, "GetClip loads only authored AssertedTags", got.AssertedTags, []string{"beer"})
 	listed, err := s.ListClips(ctx, ClipFilter{})
 	if err != nil {
 		t.Fatal(err)
@@ -904,6 +922,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 		if c.Hash == "clipReal" {
 			found = true
 			assertSet(t, "ListClips loads Tags (full rollup set)", c.Tags, []string{"alcohol", "beer", "drinks"})
+			assertSet(t, "ListClips loads only authored AssertedTags", c.AssertedTags, []string{"beer"})
 		}
 	}
 	if !found {
@@ -912,101 +931,198 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 
 	// ⚠ Re-tag REPLACES, never accumulates: clipA re-tagged `cereal` must lose beer/alcohol/drinks and
 	// gain cereal/food — not keep the old alcohol lineage.
-	if err := s.SetClipTags(ctx, "clipA", []string{"cereal"}, forest, now); err != nil {
+	if err := s.SetClipTags(ctx, "clipA", []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
 	full, _ = s.GetClipTags(ctx, "clipA", false)
 	assertSet(t, "clipA after re-tag", full, []string{"cereal", "food"})
-
-	// The reindex work list: every clip's asserted leaves (clipA→cereal, clipB→beer,spirits).
-	leavesByClip, _ := s.ListClipHashesLeaves(ctx)
-	assertSet(t, "clipA leaves in worklist", leavesByClip["clipA"], []string{"cereal"})
-	assertSet(t, "clipB leaves in worklist", leavesByClip["clipB"], []string{"beer", "spirits"})
+	if err := s.SetClipTags(ctx, "clipA", []string{"taxonomy-changed-under-editor"}); !errors.Is(err, ErrTaxonConflict) {
+		t.Fatalf("retag with missing current taxon = %v, want ErrTaxonConflict", err)
+	}
+	full, _ = s.GetClipTags(ctx, "clipA", false)
+	assertSet(t, "rejected retag preserves prior generation", full, []string{"cereal", "food"})
+	clipA, err := s.GetClip(ctx, "clipA")
+	if err != nil || clipA.Category != "cereal" {
+		t.Fatalf("rejected retag category = %q, err=%v; want cereal", clipA.Category, err)
+	}
 
 	// Operator edit: add a taxon; it must appear in ListTaxa (the CRUD path).
-	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "energy-drink", Label: "Energy drink", Parent: "drinks", Axis: taxonomy.AxisProduct}, now); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{Slug: "energy-drink", Label: "Energy drink", Parent: "drinks", Axis: taxonomy.AxisProduct}}, now); err != nil {
 		t.Fatal(err)
 	}
 	taxa2, _ := s.ListTaxa(ctx)
 	if _, ok := taxonomy.New(taxa2).Get("energy-drink"); !ok {
-		t.Error("UpsertTaxon did not persist the new taxon")
+		t.Error("ApplyTaxonomyEdit did not persist the new taxon")
 	}
 
-	testReindex(t, s, ctx, now)
+	// Invalid graph edits are rejected atomically: a cross-axis parent must change neither the row
+	// nor the closure/rollups the catalog is matching against.
+	bad := taxonomy.Taxon{Slug: "energy-drink", Label: "Energy drink", Parent: "promo", Axis: taxonomy.AxisProduct}
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Slug: bad.Slug, Taxon: bad}, now); !errors.Is(err, taxonomy.ErrInvalidForest) {
+		t.Fatalf("cross-axis edit = %v, want ErrInvalidForest", err)
+	}
+	if got, _ := taxonomy.New(mustList(t, s, ctx)).Get("energy-drink"); got.Parent != "drinks" {
+		t.Errorf("rejected edit changed parent to %q, want drinks", got.Parent)
+	}
+
+	// Concurrent editors must serialize around the WHOLE graph generation. Postgres otherwise lets
+	// both requests validate the same snapshot, then interleave their closure replacement so one
+	// newly-added node has no ancestry. SQLite serializes writes itself; the same test pins both.
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for _, slug := range []string{"sports-drink", "sparkling-water"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{
+				Slug: slug, Label: slug, Parent: "drinks", Axis: taxonomy.AxisProduct,
+			}}, now)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent taxonomy edit: %v", err)
+		}
+	}
+	concurrentForest := taxonomy.New(mustList(t, s, ctx))
+	sqls, ok := s.(*sqlStore)
+	if !ok {
+		t.Fatalf("taxonomy conformance store = %T, want *sqlStore", s)
+	}
+	for _, slug := range []string{"sports-drink", "sparkling-water"} {
+		if got := concurrentForest.Ancestors(slug); len(got) != 1 || got[0] != "drinks" {
+			t.Errorf("concurrent taxon %q ancestors = %v, want [drinks]", slug, got)
+		}
+		var closureRows int
+		if err := sqls.db.QueryRowContext(ctx, sqls.ph(
+			`SELECT COUNT(*) FROM taxa_closure WHERE ancestor = ? AND descendant = ?`), "drinks", slug).Scan(&closureRows); err != nil {
+			t.Fatal(err)
+		}
+		if closureRows != 1 {
+			t.Errorf("concurrent taxon %q closure rows = %d, want drinks ancestor committed atomically", slug, closureRows)
+		}
+	}
+
+	// A used asserted taxon cannot be deleted: vocabulary cleanup may not erase library knowledge.
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "beer"}, now); !errors.Is(err, ErrTaxonConflict) {
+		t.Fatalf("delete asserted beer = %v, want ErrTaxonConflict", err)
+	}
+	usage, err := s.TaxonomyUsage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.TotalClips != 1 || usage.TaggedClips != 1 {
+		t.Errorf("taxonomy coverage = %d total/%d tagged, want 1/1", usage.TotalClips, usage.TaggedClips)
+	}
+	if got := usage.ByTaxon["beer"]; got.Asserted != 1 || got.Matched != 1 {
+		t.Errorf("beer usage = %+v, want asserted=1 matched=1", got)
+	}
+	if got := usage.ByTaxon["beer"].Stored; got != 2 {
+		t.Errorf("beer stored assignments = %d, want 2 including the non-playable fixture", got)
+	}
+	if got := usage.ByTaxon["drinks"]; got.Asserted != 0 || got.Matched != 1 {
+		t.Errorf("drinks usage = %+v, want asserted=0 matched=1", got)
+	}
+	if usage.ByAxis[taxonomy.AxisProduct] != 1 || usage.ByAxis[taxonomy.AxisFormat] != 0 {
+		t.Errorf("axis coverage product=%d format=%d, want 1/0 unique playable clips", usage.ByAxis[taxonomy.AxisProduct], usage.ByAxis[taxonomy.AxisFormat])
+	}
+
+	// `category` is a compatibility shadow consumed by pod matching. A graph edit that moves an
+	// asserted node off the product axis must clear it in the SAME transaction as the graph and
+	// rollups, or the catalog and scheduler disagree about what the clip is.
+	shadowTaxon := taxonomy.Taxon{Slug: "shadow-product", Label: "Shadow product", Axis: taxonomy.AxisProduct}
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: shadowTaxon}, now); err != nil {
+		t.Fatal(err)
+	}
+	shadowClip := Clip{Clip: clipAt("shadow.mp4", "Shadow", filler.Commercial, 30_000), UpdatedAt: now}
+	if err := s.UpsertClip(ctx, shadowClip); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipTags(ctx, shadowClip.Hash, []string{shadowTaxon.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	beforeShadow, err := s.GetClip(ctx, shadowClip.Hash)
+	if err != nil || beforeShadow.Category != shadowTaxon.Slug {
+		t.Fatalf("per-clip taxonomy write category = %q, err=%v; want %q", beforeShadow.Category, err, shadowTaxon.Slug)
+	}
+	shadowTaxon.Axis = taxonomy.AxisFormat
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Slug: shadowTaxon.Slug, Taxon: shadowTaxon}, now); err != nil {
+		t.Fatal(err)
+	}
+	gotShadow, err := s.GetClip(ctx, shadowClip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotShadow.Category != "" || len(gotShadow.AssertedTags) != 1 || gotShadow.AssertedTags[0] != shadowTaxon.Slug {
+		t.Errorf("axis edit left category/assertions = %q / %v, want empty / [%s]", gotShadow.Category, gotShadow.AssertedTags, shadowTaxon.Slug)
+	}
+
+	testAtomicTaxonomyEdit(t, s, ctx, now)
 }
 
-// testReindex pins the V45a bulk reindex (§10): the set-based RebuildClosure+RebuildRollups must
-// produce the SAME rollups the per-clip SetClipTags does (the two-writer equivalence), and a graph
-// edit followed by a reindex must re-derive rollups against the NEW graph. Runs on the store
-// testTaxonomy leaves behind (default forest, clipA=cereal, clipB=beer+spirits).
-func testReindex(t *testing.T, s Store, ctx context.Context, now time.Time) {
-	// Snapshot what the per-clip writer produced, before the bulk writer touches anything.
-	beforeA, _ := s.GetClipTags(ctx, "clipA", false)
-	beforeB, _ := s.GetClipTags(ctx, "clipB", false)
-
-	// ⚠ TWO-WRITER EQUIVALENCE. Rebuild the closure from the current graph, then rebuild ALL rollups
-	// in one set-based statement. The result must MATCH what SetClipTags wrote per clip — if the bulk
-	// SQL join and the Go WithRollups loop ever disagreed, a re-tag and a reindex would race to
-	// different answers. This is the invariant the whole closure-table design turns on.
-	taxa, _ := s.ListTaxa(ctx)
-	if err := s.RebuildClosure(ctx, taxonomy.New(taxa), now); err != nil {
+// testAtomicTaxonomyEdit pins the V55 contract: changing the graph re-derives every affected
+// clip's rollups before the semantic edit returns. There is no second public rebuild operation or
+// scheduled repair job that can expose two vocabulary generations.
+func testAtomicTaxonomyEdit(t *testing.T, s Store, ctx context.Context, now time.Time) {
+	// Insert an intermediate parent above cereal. clipA already asserts cereal, so the graph edit
+	// itself must add breakfast to that existing clip while preserving its direct assertion.
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{
+		Slug: "breakfast", Label: "Breakfast", Parent: "food", Axis: taxonomy.AxisProduct,
+	}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RebuildRollups(ctx); err != nil {
+	cereal, ok := taxonomy.New(mustList(t, s, ctx)).Get("cereal")
+	if !ok {
+		t.Fatal("seed taxonomy has no cereal taxon")
+	}
+	cereal.Parent = "breakfast"
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Slug: cereal.Slug, Taxon: cereal}, now); err != nil {
 		t.Fatal(err)
 	}
-	afterA, _ := s.GetClipTags(ctx, "clipA", false)
-	afterB, _ := s.GetClipTags(ctx, "clipB", false)
-	assertSet(t, "clipA rollups: bulk reindex == per-clip write", afterA, beforeA)
-	assertSet(t, "clipB rollups: bulk reindex == per-clip write", afterB, beforeB)
-
-	// ⚠ Leaves must SURVIVE the rollup rebuild — RebuildRollups deletes only rollup rows (leaf=false)
-	// and re-derives the rest; an asserted leaf is never touched. (Sabotage check: if RebuildRollups
-	// deleted leaves too, these go empty and the equivalence above would also have failed.)
+	fullA, _ := s.GetClipTags(ctx, "clipA", false)
+	assertSet(t, "graph edit atomically reindexes existing clip", fullA, []string{"cereal", "breakfast", "food"})
 	leavesA, _ := s.GetClipTags(ctx, "clipA", true)
-	assertSet(t, "clipA leaves survive reindex", leavesA, []string{"cereal"})
-	leavesB, _ := s.GetClipTags(ctx, "clipB", true)
-	assertSet(t, "clipB leaves survive reindex", leavesB, []string{"beer", "spirits"})
+	assertSet(t, "graph edit preserves asserted leaves", leavesA, []string{"cereal"})
 
-	// ⚠ GRAPH EDIT → REINDEX picks up the new lineage. Insert a taxon BETWEEN an existing leaf and its
-	// parent, so the rollup set genuinely changes. `lager` under a new `ale-family` under `beer`.
-	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "ale-family", Label: "Ale family", Parent: "beer", Axis: taxonomy.AxisProduct}, now); err != nil {
+	// ⚠ A graph edit updates existing clip lineages. Insert a taxon BETWEEN an existing leaf and its
+	// parent, so the rollup set genuinely changes. `pilsner` under a new `ale-family` under `beer`.
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{Slug: "ale-family", Label: "Ale family", Parent: "beer", Axis: taxonomy.AxisProduct}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "lager", Label: "Lager", Parent: "ale-family", Axis: taxonomy.AxisProduct}, now); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{Slug: "pilsner", Label: "Pilsner", Parent: "ale-family", Axis: taxonomy.AxisProduct}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetClipTags(ctx, "clipC", []string{"lager"}, taxonomy.New(mustList(t, s, ctx)), now); err != nil {
+	clipC := sampleClip("clipC", "clipC.mp4", filler.Commercial, 0, "", "")
+	clipC.Held = true
+	if err := s.UpsertClip(ctx, clipC); err != nil {
 		t.Fatal(err)
 	}
-	// With the ale-family hop present: lager → ale-family → beer → alcohol → drinks.
+	if err := s.SetClipTags(ctx, "clipC", []string{"pilsner"}); err != nil {
+		t.Fatal(err)
+	}
+	// With the ale-family hop present: pilsner → ale-family → beer → alcohol → drinks.
 	afterC, _ := s.GetClipTags(ctx, "clipC", false)
-	assertSet(t, "clipC rollups with ale-family hop", afterC, []string{"lager", "ale-family", "beer", "alcohol", "drinks"})
+	assertSet(t, "clipC rollups with ale-family hop", afterC, []string{"pilsner", "ale-family", "beer", "alcohol", "drinks"})
 
 	// ⚠ DELETE the MIDDLE taxon: DeleteTaxon REPARENTS lager to the grandparent (beer), so the lineage
 	// survives minus the removed level — it does NOT orphan lager or leave a phantom 'ale-family'
 	// rollup. This is the "remove a middle category" behaviour, and the direction a stale closure OR a
 	// dangling-parent Ancestors would get wrong.
-	if err := s.DeleteTaxon(ctx, "ale-family"); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "ale-family"}, now); err != nil {
 		t.Fatal(err)
 	}
-	// Confirm the reparent landed at the graph level before reindexing.
-	if lg, ok := taxonomy.New(mustList(t, s, ctx)).Get("lager"); !ok || lg.Parent != "beer" {
-		t.Fatalf("DeleteTaxon did not reparent lager to beer: got parent %q (ok=%v)", lg.Parent, ok)
-	}
-	taxa2 := mustList(t, s, ctx)
-	if err := s.RebuildClosure(ctx, taxonomy.New(taxa2), now); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.RebuildRollups(ctx); err != nil {
-		t.Fatal(err)
+	// Confirm the reparent landed at the graph level.
+	if lg, ok := taxonomy.New(mustList(t, s, ctx)).Get("pilsner"); !ok || lg.Parent != "beer" {
+		t.Fatalf("ApplyTaxonomyEdit did not reparent pilsner to beer: got parent %q (ok=%v)", lg.Parent, ok)
 	}
 	afterC, _ = s.GetClipTags(ctx, "clipC", false)
 	// ale-family is GONE (reparented away, not a phantom ancestor); the rest of the lineage survives.
-	assertSet(t, "clipC rollups after middle-taxon delete", afterC, []string{"lager", "beer", "alcohol", "drinks"})
-	// lager itself (the asserted leaf) survives the graph edit.
+	assertSet(t, "clipC rollups after middle-taxon delete", afterC, []string{"pilsner", "beer", "alcohol", "drinks"})
+	// pilsner itself (the asserted leaf) survives the graph edit.
 	leavesC, _ := s.GetClipTags(ctx, "clipC", true)
-	assertSet(t, "clipC leaf survives ancestor deletion", leavesC, []string{"lager"})
+	assertSet(t, "clipC leaf survives ancestor deletion", leavesC, []string{"pilsner"})
 }
 
 // mustList fetches the whole taxonomy or fails the test — a small helper for the reindex assertions
@@ -2029,7 +2145,7 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	p := filler.ClipPipeline{
 		ClipHash: clip.Hash, Stage: filler.StageTag, Status: filler.StatusRunning,
 		Progress: 40, Disposition: filler.DispositionRunning,
-		Attempts: 1, NextRun: now, EnrolledAt: now, UpdatedAt: now,
+		Attempts: 1, ForceRun: true, NextRun: now, EnrolledAt: now, UpdatedAt: now,
 		Stages: []filler.StageRecord{
 			{Stage: filler.StageProbe, Status: filler.StatusDone, At: now},
 			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: now},
@@ -2051,6 +2167,9 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.Stage != filler.StageTag || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
 		t.Errorf("header round-trip lost fields: %+v", got)
+	}
+	if !got.ForceRun {
+		t.Error("pipeline round-trip lost the explicit rerun marker")
 	}
 	// The LADDER is what the Incoming tab renders as history — including WHY a stage was skipped.
 	// A skip with no note reads as "nothing happened", which is a different and false claim.
@@ -2411,7 +2530,7 @@ func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
 	}
 	// ⚠ A REAL slug from the seeded forest, tagged through the real writer — a hand-inserted
 	// clip_tags row would not carry the rollups, and the search must match those too.
-	if err := s.SetClipTags(ctx, "s1", []string{"cereal"}, taxonomy.New(mustList(t, s, ctx)), time.Unix(1_800_000_000, 0).UTC()); err != nil {
+	if err := s.SetClipTags(ctx, "s1", []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
 

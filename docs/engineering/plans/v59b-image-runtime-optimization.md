@@ -60,12 +60,36 @@ Correctness remains owned by `make image-cert`; the benchmark never substitutes 
 - Adopt weighted permits only if the measured throughput and p95 interactive queue wait improve
   without breaching peak-RSS ceilings. Single-thread AVIF remains the default otherwise.
 
+**Checkpoint 4 decision:** retain one-thread AVIF and do not add weighted permits. The opt-in
+`make image-parallelism-bench` matrix invokes the release worker through the production manifest
+seam while varying only an explicit benchmark CLI argument. At equal CPU budgets the multi-process,
+one-thread shape delivered the highest aggregate throughput in every local 2/4/8-CPU profile. Three
+measured poster runs produced 15.57 versus 13.15 Images/min at 2 CPUs (2x1-thread versus 1x2-thread),
+27.71 versus 24.20 at 4 CPUs (4x1 versus 2x2), and 60.58 versus 47.02 at 8 CPUs (8x1 versus 4x2).
+Larger per-worker thread counts fell further. Per-Image output bytes also changed with the thread
+count (49,151 at one thread; 50,043 at two; 51,355 at four; 52,732 at eight), so adoption would
+require a recipe advance and cache-identity migration.
+Interactive queue wait is already held at zero while capacity is at least two by checkpoint 3's
+reserved slot, so a weighted policy cannot improve that admission result; it would add policy for a
+throughput loser. The production CLI and recipe remain unchanged.
+
 ### 5. Harden Rust dependency operations
 
 - Add Cargo update grouping and review policy, advisory/license checks, an explicit unsafe-code
   policy for Loomarr-owned crates, and scheduled fuzzing of the bounded protocol/decoder boundary.
 - Keep expensive supply-chain and fuzz work scheduled or manually dispatched unless it is both fast
   and deterministic enough for the required PR gate.
+
+**Checkpoint 5 implementation:** Cargo minor/patch updates are one weekly Dependabot group across
+the production and excluded fuzz workspaces; majors remain deliberate one-crate reviews. Pinned
+cargo-deny checks RustSec advisories, an explicit SPDX allow-list, and crates.io-only sources for
+both lockfiles. Both owned shipping crate roots forbid unsafe code. A pinned cargo-fuzz/libFuzzer job
+drives valid bounded JSON around arbitrary and seed-mutated image bytes for 60 seconds weekly or on
+manual dispatch, retaining crash reproducers. These network-sensitive tools remain outside
+`make check`; lock enforcement, clippy/tests, and the unsafe prohibition stay in the fast gate.
+The first audit found RUSTSEC-2026-0204 in the transitive `crossbeam-epoch` graph and advanced the
+lockfile to 0.9.20. The non-shipping fuzz workspace is excluded from the container context, keeping
+its large local compile cache out of ordinary image builds.
 
 ### 6. Choose the next Rust capability from evidence
 

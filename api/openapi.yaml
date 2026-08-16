@@ -766,6 +766,11 @@ components:
           type: string
         aiTagged:
           type: boolean
+        assertedTags:
+          description: Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip
+          items:
+            type: string
+          type: array
         audience:
           enum:
             - kids
@@ -1090,6 +1095,43 @@ components:
       required:
         - username
         - password
+      type: object
+    CreateTaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/CreateTaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          type: string
+        parent:
+          type: string
+        retiredAliases:
+          items:
+            type: string
+          type: array
+        slug:
+          description: Stable machine id — immutable after creation
+          type: string
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - slug
+        - label
+        - axis
       type: object
     CycleSlotDTO:
       additionalProperties: false
@@ -1737,6 +1779,32 @@ components:
         - progress
         - disposition
       type: object
+    FillerFetchStatusDTO:
+      additionalProperties: false
+      properties:
+        catalogClips:
+          format: int64
+          type: integer
+        diskBytes:
+          format: int64
+          type: integer
+        enabled:
+          type: boolean
+        maxCatalog:
+          format: int64
+          type: integer
+        maxDiskBytes:
+          format: int64
+          type: integer
+        stoppedBy:
+          enum:
+            - catalog
+            - disk
+          type: string
+      required:
+        - enabled
+        - catalogClips
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -1975,6 +2043,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoFetch:
+          $ref: "#/components/schemas/FillerFetchStatusDTO"
         clips:
           format: int64
           type: integer
@@ -3145,12 +3215,29 @@ components:
           format: uri
           readOnly: true
           type: string
+        axisCoverage:
+          items:
+            $ref: "#/components/schemas/TaxonomyAxisCoverageDTO"
+          type: array
+        taggedClips:
+          format: int64
+          type: integer
         taxa:
           items:
             $ref: "#/components/schemas/TaxonDTO"
           type: array
+        totalClips:
+          format: int64
+          type: integer
+        unclassifiedClips:
+          format: int64
+          type: integer
       required:
         - taxa
+        - totalClips
+        - taggedClips
+        - unclassifiedClips
+        - axisCoverage
       type: object
     ListUserSessionsOutputBody:
       additionalProperties: false
@@ -3317,6 +3404,10 @@ components:
             - general
             - late_night
             - ""
+          type: string
+        brand:
+          description: Grounded advertiser name. Omit to leave unchanged; send an empty string to clear.
+          maxLength: 120
           type: string
         era:
           format: int64
@@ -4233,6 +4324,36 @@ components:
         - streamingChannels
         - restartRequired
         - available
+      type: object
+    RewindFillerClipInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RewindFillerClipInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        force:
+          type: boolean
+        from:
+          enum:
+            - probe
+            - transcode
+            - split
+            - language
+            - transcribe
+            - tag
+            - vision
+            - score
+          type: string
+        hash:
+          minLength: 1
+          type: string
+      required:
+        - hash
+        - from
       type: object
     RuleOrdering:
       additionalProperties: false
@@ -5378,6 +5499,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        assertedClips:
+          description: Playable catalog clips directly asserted with this taxon
+          format: int64
+          type: integer
         axis:
           description: The independent dimension this taxon lives on
           enum:
@@ -5389,6 +5514,10 @@ components:
         label:
           description: Human display form
           type: string
+        matchedClips:
+          description: Playable catalog clips matching this taxon, including descendant rollups
+          format: int64
+          type: integer
         parent:
           description: Parent slug on the same axis; empty for an axis root
           type: string
@@ -5400,6 +5529,10 @@ components:
         slug:
           description: Stable machine id — the token the tagger emits and clip_tags references
           type: string
+        storedClips:
+          description: All stored clips directly assigned this taxon, including held, removed, and compilation records; blocks deletion
+          format: int64
+          type: integer
         synonyms:
           items:
             type: string
@@ -5408,6 +5541,32 @@ components:
         - slug
         - label
         - axis
+        - assertedClips
+        - matchedClips
+        - storedClips
+      type: object
+    TaxonomyAxisCoverageDTO:
+      additionalProperties: false
+      properties:
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        taggedClips:
+          description: Playable clips with at least one direct assertion on this axis
+          format: int64
+          type: integer
+        untaggedClips:
+          description: Playable clips without a direct assertion on this axis; absence may be valid for sparse cue axes
+          format: int64
+          type: integer
+      required:
+        - axis
+        - taggedClips
+        - untaggedClips
       type: object
     TimelineOutputBody:
       additionalProperties: false
@@ -5618,6 +5777,39 @@ components:
           type: string
       required:
         - revision
+      type: object
+    UpdateTaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/UpdateTaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          type: string
+        parent:
+          type: string
+        retiredAliases:
+          items:
+            type: string
+          type: array
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - label
+        - axis
       type: object
     UploadIconOutputBody:
       additionalProperties: false
@@ -6844,6 +7036,32 @@ paths:
           name: category
           schema:
             type: string
+        - description: Match clips carrying this taxon directly or through a descendant rollup
+          explode: false
+          in: query
+          name: taxon
+          schema:
+            description: Match clips carrying this taxon directly or through a descendant rollup
+            type: string
+        - description: Only playable clips with no directly asserted taxonomy tags on any axis
+          explode: false
+          in: query
+          name: unclassified
+          schema:
+            description: Only playable clips with no directly asserted taxonomy tags on any axis
+            type: boolean
+        - description: Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes
+          explode: false
+          in: query
+          name: withoutAxis
+          schema:
+            description: Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes
+            enum:
+              - product
+              - format
+              - seasonal
+              - audience-cue
+            type: string
         - description: Only commercials missing match tags
           explode: false
           in: query
@@ -7391,6 +7609,28 @@ paths:
       summary: Decline a pull
       tags:
         - filler
+  /v1/filler/rewind:
+    post:
+      description: Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. Re-running transcode requires force because the original bytes are no longer available and another encode loses quality.
+      operationId: rewind-filler-clip
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindFillerClipInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-run a clip's ingest pipeline from one stage
+      tags:
+        - filler
   /v1/filler/sources:
     get:
       description: Admin only. Derived from the configured drop-folder and library scan plus live per-source clip counts — there is no sources table (§10). A source the install could use but has not configured is returned with configured:false rather than omitted.
@@ -7635,7 +7875,7 @@ paths:
         - filler
   /v1/filler/tags:
     patch:
-      description: Admin only. The clip is identified by `path` in the body (§10 V45a).
+      description: Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).
       operationId: tag-filler-clip
       requestBody:
         content:
@@ -7656,7 +7896,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Edit a clip's tags
+      summary: Edit a clip's classification
       tags:
         - filler
   /v1/filler/watch:
@@ -9307,13 +9547,13 @@ paths:
       tags:
         - filler
     post:
-      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      description: Admin only. Updates the graph and catalog tags atomically (§10 V45a).
       operationId: create-taxon
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TaxonDTO"
+              $ref: "#/components/schemas/CreateTaxonDTO"
         required: true
       responses:
         "200":
@@ -9333,7 +9573,7 @@ paths:
         - filler
   /v1/taxonomy/{slug}:
     delete:
-      description: Admin only. Children are reparented to the grandparent; reindexes (§10 V45a).
+      description: Admin only. Children are reparented and catalog tags update atomically (§10 V45a).
       operationId: delete-taxon
       parameters:
         - in: path
@@ -9354,7 +9594,7 @@ paths:
       tags:
         - filler
     put:
-      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      description: Admin only. Updates the graph and catalog tags atomically (§10 V45a).
       operationId: update-taxon
       parameters:
         - in: path
@@ -9366,7 +9606,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TaxonDTO"
+              $ref: "#/components/schemas/UpdateTaxonDTO"
         required: true
       responses:
         "200":

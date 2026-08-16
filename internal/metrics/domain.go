@@ -3,6 +3,8 @@ package metrics
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,11 +68,17 @@ func LoginResult(success bool) {
 // Reading on scrape (not on every mutation) keeps the gauges correct without
 // threading a recorder through the provisioning, job, and session write paths.
 type storeCollector struct {
-	counts   StoreCounts
-	now      func() time.Time
+	binding  atomic.Pointer[storeCollectorBinding]
 	titles   *prometheus.Desc
 	jobs     *prometheus.Desc
 	sessions *prometheus.Desc
+}
+
+// storeCollectorBinding is published as one immutable value so a scrape never
+// combines a generation's store with another generation's clock.
+type storeCollectorBinding struct {
+	counts StoreCounts
+	now    func() time.Time
 }
 
 func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -82,8 +90,9 @@ func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	binding := c.binding.Load()
 
-	if byState, err := c.counts.CountTitlesByState(ctx); err != nil {
+	if byState, err := binding.counts.CountTitlesByState(ctx); err != nil {
 		storeScrapeErrors.WithLabelValues("titles").Inc()
 	} else {
 		for _, st := range knownStates {
@@ -92,7 +101,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if byStatus, err := c.counts.CountJobsByStatus(ctx); err != nil {
+	if byStatus, err := binding.counts.CountJobsByStatus(ctx); err != nil {
 		storeScrapeErrors.WithLabelValues("jobs").Inc()
 	} else {
 		for _, status := range knownJobStatuses {
@@ -101,7 +110,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if n, err := c.counts.CountActiveSessions(ctx, c.now()); err != nil {
+	if n, err := binding.counts.CountActiveSessions(ctx, binding.now()); err != nil {
 		storeScrapeErrors.WithLabelValues("sessions").Inc()
 	} else {
 		ch <- prometheus.MustNewConstMetric(c.sessions, prometheus.GaugeValue, float64(n))
@@ -111,9 +120,7 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 // newStoreCollector builds the collector with its metric descriptors. Split from
 // registration so tests can gather it through a private registry.
 func newStoreCollector(counts StoreCounts, now func() time.Time) *storeCollector {
-	return &storeCollector{
-		counts: counts,
-		now:    now,
+	c := &storeCollector{
 		titles: prometheus.NewDesc("loomarr_titles",
 			"Provisioning records currently in each state.", []string{"state"}, nil),
 		jobs: prometheus.NewDesc("loomarr_jobs",
@@ -121,16 +128,33 @@ func newStoreCollector(counts StoreCounts, now func() time.Time) *storeCollector
 		sessions: prometheus.NewDesc("loomarr_active_sessions",
 			"Unexpired sessions right now.", nil, nil),
 	}
+	c.rebind(counts, now)
+	return c
+}
+
+func (c *storeCollector) rebind(counts StoreCounts, now func() time.Time) {
+	c.binding.Store(&storeCollectorBinding{counts: counts, now: now})
 }
 
 // RegisterStoreCollector wires the state-gauge collector into the default
-// registry so /metrics includes it. Called once at boot with the app's store
-// and clock. A duplicate registration (e.g. a second boot in one test process)
-// is tolerated; any other registration error is returned for the caller to log.
+// registry so /metrics includes it. App generations rebuild their stores while
+// the registry lives for the process, so a duplicate registration rebinds the
+// existing collector to the new store. Any other error is returned for the
+// caller to log.
 func RegisterStoreCollector(counts StoreCounts, now func() time.Time) error {
-	if err := prometheus.Register(newStoreCollector(counts, now)); err != nil {
+	return registerStoreCollector(prometheus.DefaultRegisterer, counts, now)
+}
+
+func registerStoreCollector(reg prometheus.Registerer, counts StoreCounts, now func() time.Time) error {
+	candidate := newStoreCollector(counts, now)
+	if err := reg.Register(candidate); err != nil {
 		var already prometheus.AlreadyRegisteredError
 		if errors.As(err, &already) {
+			existing, ok := already.ExistingCollector.(*storeCollector)
+			if !ok {
+				return fmt.Errorf("store metric descriptors already owned by %T", already.ExistingCollector)
+			}
+			existing.rebind(counts, now)
 			return nil
 		}
 		return err

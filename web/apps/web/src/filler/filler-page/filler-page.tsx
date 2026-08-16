@@ -3,7 +3,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
-import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
+import { formatBytes, formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
@@ -32,6 +32,7 @@ import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesTab } from "../sources-tab";
+import { TaxonomyTab } from "../taxonomy-tab";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
@@ -173,12 +174,15 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     q = "",
     kind = "",
     audience = "",
+    taxon = "",
+    unclassified = false,
+    withoutAxis,
     untagged = false,
     view = "grid",
     page = 1,
     parent: parentHash,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
-  const filtered = Boolean(q || kind || audience || untagged);
+  const filtered = Boolean(q || kind || audience || taxon || unclassified || withoutAxis || untagged);
   // ⚠ **Every filter change RESETS the page, and this is the single highest-risk line on the
   // page** (§10 V51d). `setFilters` merges blindly; without the reset, typing in the search box
   // while on page 7 lands on an empty page 7 of a two-page result and renders "No clips match"
@@ -221,6 +225,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(q ? { q } : {}),
     ...(kind ? { kind } : {}),
     ...(audience ? { audience } : {}),
+    ...(taxon ? { taxon } : {}),
+    ...(unclassified ? { unclassified } : {}),
+    ...(withoutAxis ? { withoutAxis } : {}),
     ...(untagged ? { untagged } : {}),
     ...(view !== "grid" ? { view } : {}),
     // ⚠ The page rides back too: returning to Catalog from Incoming should land where you left,
@@ -249,6 +256,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(q ? { q } : {}),
     ...(kind ? { kind: kind as never } : {}),
     ...(audience ? { audience: audience as never } : {}),
+    ...(taxon ? { taxon } : {}),
+    ...(unclassified ? { unclassified: true } : {}),
+    ...(withoutAxis ? { withoutAxis } : {}),
     ...(untagged ? { untagged: true } : {}),
     ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
     limit: CATALOG_PAGE_SIZE,
@@ -416,8 +426,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   });
 
   // Era-suggestion confirm (§10 V34). ⚠ The PATCH body must carry the clip's CURRENT
-  // audience/category: UpdateClipTags writes all three columns unconditionally, so a
-  // bare `{era}` would wipe the other two. Setting era confirms and clears the
+  // audience: UpdateClipClassification writes both scalar fields unconditionally, so a
+  // bare `{era}` would wipe it. Setting era confirms and clears the
   // suggestion in the same write (the BE's rule).
   // ⚠ `invalidateLifecycle`, not just the clip list. A retag can move a clip between the queue
   // and the catalog and changes what the pool can cover, so all three views are now stale —
@@ -433,11 +443,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // `{...(cond ? {...} : {})}` trips the TSX parser on the generic-looking annotation.
   const cycleFor = (clip: ClipDTO) => (change: TagChange) => retag(clip, change);
 
-  // ⚠ THE ONLY WAY THIS PAGE WRITES ONE TAG. `UpdateClipTags` overwrites era, audience AND
-  // category on every call, so a PATCH carrying just the field being changed silently wipes
-  // the other two. Cycling a chip makes that a per-click hazard rather than a once-per-dialog
-  // one, so the whole tag row is assembled HERE from the clip and the single change — no
-  // call site gets to remember or forget the siblings.
+  // ⚠ THE ONLY WAY THIS PAGE WRITES ONE SCALAR CLASSIFICATION. `UpdateClipClassification`
+  // overwrites era and audience on every call, so a PATCH carrying just the changed field silently
+  // wipes the other. The taxonomy and its category shadow are a separate transaction.
   const retag = (clip: ClipDTO, change: TagChange) =>
     confirmEra.mutate({
       data: {
@@ -631,13 +639,33 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           strip answers "what does my catalog hold and can it fill a break" — which is the context
           for reading CLIPS. The Sources tab is about where clips come from, and a coverage strip
           above it invites the reading that a source is at fault for a channel's weak coverage. */}
-        {pool && tab !== "sources" && (
+        {pool && tab !== "sources" && tab !== "taxonomy" && (
           <PoolHealth
             pool={pool}
             {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
             proposing={proposePull.isPending}
           />
         )}
+
+        {watch?.autoFetch?.stoppedBy ? (
+          <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">Automatic fetching is paused</p>
+              <p className="mt-0.5 text-muted-foreground text-sm">
+                {watch.autoFetch.stoppedBy === "catalog"
+                  ? `${watch.autoFetch.catalogClips.toLocaleString()} of ${(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.`
+                  : `${formatBytes(watch.autoFetch.diskBytes ?? 0)} of ${formatBytes(watch.autoFetch.maxDiskBytes ?? 0)} filler storage is in use.`}{" "}
+                Manual queueing still works; curate the library or raise this ceiling to resume unattended
+                fetching.
+              </p>
+            </div>
+            {isAdmin ? (
+              <Button variant="outline" size="sm" render={<Link to="/filler/settings" />}>
+                Review limits
+              </Button>
+            ) : null}
+          </Card>
+        ) : null}
 
         {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
           ⚠ There is no Discover tab any more. Finding clips used to be its own destination; it
@@ -669,6 +697,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
               : []),
             { id: "sources", label: "Sources", to: "/filler/sources" },
+            { id: "taxonomy", label: "Taxonomy", to: "/filler/taxonomy" },
             ...(isAdmin ? [{ id: "settings", label: "Settings", to: "/filler/settings" }] : []),
           ]}
           activeId={tab}
@@ -683,6 +712,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
           // out of the shell costs the header nothing.
           <SourcesTab />
+        ) : tab === "taxonomy" ? (
+          <TaxonomyTab isAdmin={isAdmin} />
         ) : (
           <div className="flex flex-col gap-6">
             {split.error != null && <ErrorState error={split.error} />}
@@ -696,6 +727,27 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setFilters({ parent: undefined })}>
                   Back to top-level catalog
+                </Button>
+              </div>
+            ) : null}
+
+            {taxon || unclassified || withoutAxis ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/30 bg-signal/5 p-3">
+                <p className="min-w-0 flex-1 text-sm">
+                  {unclassified
+                    ? "Showing clips with no directly assigned taxonomy tags"
+                    : withoutAxis
+                      ? `Showing clips without a directly assigned ${withoutAxis} tag`
+                      : `Showing clips matching “${taxon}”, including descendants`}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })
+                  }
+                >
+                  Clear taxonomy filter
                 </Button>
               </div>
             ) : null}
@@ -891,6 +943,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                             q: undefined,
                             kind: undefined,
                             audience: undefined,
+                            taxon: undefined,
+                            unclassified: undefined,
+                            withoutAxis: undefined,
                             untagged: undefined,
                           }),
                       },

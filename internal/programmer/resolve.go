@@ -45,24 +45,26 @@ type persistedProgram struct {
 }
 
 // contentResolver maps external media-server item ids → Tunarr program uuids,
-// caching the index so a reconcile doesn't re-page 26k rows every time. A miss
-// triggers one refresh (a just-scanned item may be new); a still-missing id is
-// reported so the caller can degrade that slot to flex (never dead air, §9).
+// caching the index per normalized Tunarr URL so a reconcile doesn't re-page 26k
+// rows every time or reuse one instance's UUIDs on another. A miss triggers one
+// refresh (a just-scanned item may be new); a still-missing id is reported so the
+// caller can degrade that slot to flex (never dead air, §9).
 type contentResolver struct {
-	mu      sync.Mutex
-	byExtID map[string]string // external item id → program uuid
-	loaded  bool
-	refresh func(ctx context.Context) (map[string]string, error)
+	mu       sync.Mutex
+	byExtID  map[string]string // external item id → program uuid
+	loaded   bool
+	cacheKey string // normalized Tunarr base URL that owns byExtID
+	refresh  func(ctx context.Context) (map[string]string, error)
 }
 
 // resolve returns the Tunarr program uuid for an external item id, refreshing the
 // cache once on a miss (to catch newly-scanned items). ok=false ⇒ not in Tunarr's
 // index (unscanned / just-landed) → caller degrades the slot to flex.
-func (r *contentResolver) resolve(ctx context.Context, extID string) (string, bool, error) {
+func (r *contentResolver) resolve(ctx context.Context, cacheKey, extID string) (string, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.loaded {
-		if err := r.reloadLocked(ctx); err != nil {
+	if !r.loaded || r.cacheKey != cacheKey {
+		if err := r.reloadLocked(ctx, cacheKey); err != nil {
 			return "", false, err
 		}
 	}
@@ -70,20 +72,21 @@ func (r *contentResolver) resolve(ctx context.Context, extID string) (string, bo
 		return uuid, true, nil
 	}
 	// Miss: refresh once (Tunarr may have scanned the item since we last loaded).
-	if err := r.reloadLocked(ctx); err != nil {
+	if err := r.reloadLocked(ctx, cacheKey); err != nil {
 		return "", false, err
 	}
 	uuid, ok := r.byExtID[extID]
 	return uuid, ok, nil
 }
 
-func (r *contentResolver) reloadLocked(ctx context.Context) error {
+func (r *contentResolver) reloadLocked(ctx context.Context, cacheKey string) error {
 	m, err := r.refresh(ctx)
 	if err != nil {
 		return err
 	}
 	r.byExtID = m
 	r.loaded = true
+	r.cacheKey = cacheKey
 	return nil
 }
 

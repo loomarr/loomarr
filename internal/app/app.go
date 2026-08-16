@@ -49,7 +49,7 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(tunarr.url)
+	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
 	// TMDB overrides the grounding/validation client. tmdb.New uses a fixed base
 	// (api.themoviedb.org), so unlike library/seerr it isn't settings-routable to a
@@ -377,7 +377,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		prog := programmer.NewDynamic(set.tunarrConfig())
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
@@ -1066,7 +1066,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var fillerSvc api.FillerService
 	var podPreview api.PodPreviewer
 	if st != nil {
-		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		fillerProg := programmer.NewDynamic(set.tunarrConfig())
 		// The catalog comes from OUR OWN scan of FILLER_DIR (§9.1), with Tunarr consulted only
 		// to annotate each clip with its program uuid for Tunarr-backed filler-lists. That
 		// ordering is the fix: previously Tunarr's scan DEFINED the catalog, so an install
@@ -1086,6 +1086,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
 					"dir", dir, "err", err)
+			}
+			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
+			// default at boot so a fresh install is green before its first arrival; an explicitly
+			// configured, unusable watch path still fails visibly rather than being ignored.
+			watch := filler.WatchDir(dir, set.str("filler.watch_dir"))
+			if err := os.MkdirAll(watch, 0o750); err != nil {
+				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
+					"dir", watch, "err", err)
 			}
 		}
 		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
@@ -1141,24 +1149,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
 		fillerAdapter.pipeline = fillerPipeline
-		fillerSvc = fillerAdapter
 
 		// The split-review sweep (§10 V54): reels whose leftover cuts nobody reviewed expire, and
 		// their recordings are reclaimed. ⚠ No adapter — `SweepStore` is a pure SUBSET of
-		// `store.Store`, like the reindex job below. The clip dir is the same containment boundary
+		// `store.Store`. The clip dir is the same containment boundary
 		// the splitter uses; the window is read live so a change applies on the next run.
 		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
 			func() time.Duration { return set.dur("filler.split.review_window") },
 			time.Now, log)))
-
-		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
-		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
-		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a
-		// path-vs-hash mismatch. Off unless `filler.reindex.enabled`, read live inside Run, so the row
-		// stays visible on the Tasks page even when idle.
-		jobReg.Add(fillerReindexJob(filler.NewReindexJob(
-			st, func() bool { return set.boolv("filler.reindex.enabled") }, time.Now, log)))
 
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
@@ -1170,13 +1169,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// made for backups on Postgres.
 		autoFetch := filler.NewFetcher(
 			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerSvc, set.str("filler.dir"),
+			archiveDiscoverAdapter{}, fillerAdapter, set.str("filler.dir"),
 			filler.FetchLimits{
 				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
 				MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 			}, log,
 		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+		fillerAdapter.autoFetch = autoFetch
+		fillerSvc = fillerAdapter
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
 
@@ -1330,16 +1331,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// reports a DIFFERENT programme than the grid and the XMLTV the television reads — measured
 	// ~30 minutes apart on the dev install. See nowNextRouter.
 	//
-	// The Tunarr half still reads the LIVE connection through the settings snapshot, so saving a
-	// new Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
+	// The Tunarr half still reads LIVE config at the start of each operation, so saving a new
+	// Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
 	if st != nil {
 		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
-		// Its connection resolves per request, so adding tunarr.url later hot-applies; while
+		// Its config resolves per operation, so adding tunarr.url later hot-applies; while
 		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
 		var tunarrGuide tunarrGuideReader = guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+			tunarr: programmer.NewDynamic(set.tunarrConfig()),
 			window: 2 * time.Hour,
 		}
 		// playoutRes is nil when internal playout is not wired; the router then has no reader

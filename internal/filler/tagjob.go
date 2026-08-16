@@ -78,7 +78,7 @@ type TagStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags (the work list).
 	ListUntaggedCommercials(ctx context.Context) ([]StoreClip, error)
 	// ListTaxa returns the taxonomy graph — the vocabulary the tagger SERVES to the model and GROUNDS
-	// its answer against (§10 V45a). Loaded once per run and built into a Forest (the reindex pattern),
+	// its answer against (§10 V45a). Loaded once per run and built into a Forest,
 	// so a graph edit takes effect on the next run without a restart.
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	// GetClipTags returns a clip's asserted LEAF tags — what a fresh classification is UNIONed with, so
@@ -86,14 +86,13 @@ type TagStore interface {
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	// SetClipTags REPLACES a clip's tags with the rollup expansion of the given LEAVES (§10 V45a) — the
 	// per-clip taxonomy writer. The tagger calls it with the union of existing + newly-grounded leaves.
-	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
-	// UpdateClipTags writes era/audience/the DERIVED category shadow + ai_tagged (hash-keyed). `category`
-	// here is always PrimaryProductLeaf(the merged leaves) — the caller derives it; the column is the
-	// cheap read-path shadow of the tag set (§10 V45a).
-	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
+	// UpdateClipClassification writes the non-taxonomy classifier facts. The category shadow belongs
+	// to SetClipTags so a caller cannot persist tags and a category from different graph generations.
+	UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
 	// SetClipBrand records a GROUNDED advertiser from the TEXT tagger (§10 V44). Separate from
-	// UpdateClipTags because brand has a different key and a different writer story: it is
-	// PATH-keyed (like the transcript/vision writers it sits beside), while UpdateClipTags is
+	// UpdateClipClassification because brand has a different key and a different writer story: it is
+	// PATH-keyed (like the transcript/vision writers it sits beside), while classification is
 	// hash-keyed. Only a brand `Classify` already grounded reaches here — the store call writes
 	// what it is given, the grounding lives in validateTags.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error

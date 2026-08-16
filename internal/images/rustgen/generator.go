@@ -57,8 +57,9 @@ type errorManifest struct {
 
 // Generator is a verified handle to the required worker executable.
 type Generator struct {
-	executable string
-	contract   Contract
+	executable   string
+	contract     Contract
+	generateArgs []string
 }
 
 // Request is one source inspection plus zero or more Renditions. Product policy chooses targets;
@@ -177,6 +178,20 @@ func Open(executable string, expected Contract) (*Generator, error) {
 	return &Generator{executable: executable, contract: expected}, nil
 }
 
+// OpenBenchmark verifies the production worker, then opts Generate into the worker's explicit
+// measurement-only AVIF thread override. Production composition must use Open.
+func OpenBenchmark(executable string, expected Contract, avifThreads int) (*Generator, error) {
+	if avifThreads < 1 || avifThreads > 8 {
+		return nil, fmt.Errorf("images: benchmark AVIF threads must be 1..8")
+	}
+	gen, err := Open(executable, expected)
+	if err != nil {
+		return nil, err
+	}
+	gen.generateArgs = []string{"--benchmark-avif-threads", strconv.Itoa(avifThreads)}
+	return gen, nil
+}
+
 // Generate runs exactly one bounded worker process and accepts only the complete requested target
 // set. Files remain unpublished in StagingDir; package images is the sole publication authority.
 func (g *Generator) Generate(ctx context.Context, req Request) (manifest Manifest, err error) {
@@ -202,8 +217,9 @@ func (g *Generator) Generate(ctx context.Context, req Request) (manifest Manifes
 		return Manifest{}, fmt.Errorf("images: worker request JSON: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, g.executable,
-		"generate", "--protocol", strconv.Itoa(g.contract.Protocol))
+	args := []string{"generate", "--protocol", strconv.Itoa(g.contract.Protocol)}
+	args = append(args, g.generateArgs...)
+	cmd := exec.CommandContext(ctx, g.executable, args...)
 	cmd.Stdin = bytes.NewReader(payload)
 	stdout := newLimitBuffer(1 << 20)
 	stderr := newLimitBuffer(64 << 10)

@@ -42,6 +42,8 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make check` | ✅ | Rust + Go formatting, lint, harness, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `test` |
 | `make rust-check` |  | format, lint, and test the required Rust image worker |
+| `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make vet` |  | go vet |
@@ -61,6 +63,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make rust-build` |  | build the required Rust image worker |
 | `make image-cert` | ✅ | certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path <br>*runs:* `rust-build` |
 | `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
+| `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
@@ -144,7 +147,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

@@ -10,6 +10,7 @@
 
 GO      ?= go
 CARGO   ?= cargo
+RUST_FUZZ_TOOLCHAIN ?= nightly-2026-08-14
 PKG     := ./...
 BIN_DIR := bin
 
@@ -112,12 +113,21 @@ agent-harness-test: ## regression-test worktree isolation and shared-output clai
 .PHONY: check
 check: rust-check fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## Rust + Go formatting, lint, harness, and unit tests (the default gate)
 
-.PHONY: rust-check
+.PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
 	$(CARGO) fmt --all -- --check
 	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
 	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 	$(CARGO) test --workspace --all-features --locked
+
+rust-audit: ## check Rust advisories, licences, and dependency sources (needs cargo-deny)
+	$(CARGO) deny check advisories licenses sources
+	$(CARGO) deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
+
+rust-fuzz: ## fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz)
+	@seconds="$${FUZZ_SECONDS:-60}"; \
+	  cd rust/loomarr-image; \
+	  $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run protocol_decoder -- -max_total_time="$$seconds" -max_len=1048576
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -194,7 +204,7 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build image-cert image-bench
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -223,7 +233,15 @@ image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE
 	  report="$${IMAGE_BENCH_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-benchmark.json}"; \
 	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-bench \
 	    --worker "$(BIN_DIR)/loomarr-image" --report "$$report" \
-	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}"
+	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}" \
+	    --workers "$${IMAGE_BENCH_WORKERS:-1}" \
+	    --avif-threads "$${IMAGE_BENCH_AVIF_THREADS:-1}"
+
+image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report_dir="$${IMAGE_BENCH_REPORT_DIR:-$$LOOMARR_ARTIFACT_DIR/image-parallelism}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" GO="$(GO)" \
+	    ./scripts/image-parallelism-bench.sh "$(BIN_DIR)/loomarr-image" "$$report_dir"
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
