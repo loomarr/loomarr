@@ -96,7 +96,8 @@ that: one code path, no flavor branch — strictly simpler than what it replaced
 
 ## Fixture
 
-- `livetv_config_jellyfin.json` — a real `GET /System/Configuration/livetv` from Jellyfin 10.10.3
-  **after** wiring, so it carries a populated `TunerHosts` (m3u) and `ListingProviders` (xmltv).
-  URLs are the throwaway host's (`192.168.1.79:8001` — the smoke Tunarr); ids are Jellyfin's own.
-  Unscrubbed on purpose: nothing here is secret, and the whole server has ceased to exist.
+- `livetv_config_jellyfin.json` — the shape of a real `GET /System/Configuration/livetv` from
+  Jellyfin 10.10.3 **after** wiring, so it carries a populated `TunerHosts` (m3u) and
+  `ListingProviders` (xmltv).
+  The host is replaced with RFC 5737 TEST-NET address `192.0.2.79`, and the instance-generated
+  tuner/listing ids are deterministic fixture values. The response shape and roles are unchanged.

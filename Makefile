@@ -133,7 +133,7 @@ backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres b
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate)
+check: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, and unit tests (the default gate)
 
 .PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
@@ -159,6 +159,10 @@ fmt: ## gofmt -l (fails if any file needs formatting)
 .PHONY: shellcheck
 shellcheck: ## shellcheck every repository shell script
 	shellcheck -S style $(SHELL_SCRIPTS)
+
+.PHONY: privacy-verify
+privacy-verify: ## captured private fixture literals must not re-enter the tracked tree
+	@./scripts/check-private-fixtures.sh
 
 .PHONY: vet
 vet: ## go vet

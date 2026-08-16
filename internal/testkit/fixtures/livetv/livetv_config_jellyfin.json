@@ -3,8 +3,8 @@
     "EnableOriginalAudioWithEncodedRecordings": false,
     "TunerHosts": [
         {
-            "Id": "f31d60f93a5d4affa67b67c8a51174cc",
-            "Url": "http://192.168.1.79:8001/api/channels.m3u",
+            "Id": "22222222222222222222222222222201",
+            "Url": "http://192.0.2.79:8001/api/channels.m3u",
             "Type": "m3u",
             "FriendlyName": "loomarr",
             "ImportFavoritesOnly": false,
@@ -19,9 +19,9 @@
     ],
     "ListingProviders": [
         {
-            "Id": "b80c8842e8254f4ea56a2f8f2a43faa4",
+            "Id": "22222222222222222222222222222202",
             "Type": "xmltv",
-            "Path": "http://192.168.1.79:8001/api/xmltv.xml",
+            "Path": "http://192.0.2.79:8001/api/xmltv.xml",
             "EnabledTuners": [],
             "EnableAllTuners": true,
             "NewsCategories": [

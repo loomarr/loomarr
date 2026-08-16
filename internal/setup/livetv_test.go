@@ -403,8 +403,8 @@ func TestConnect_URLChange_RetiresStaleLoomarrTuner_KeepsHandAdded(t *testing.T)
 	lib := testkit.NewLiveTV()
 	ctx := context.Background()
 
-	oldURLs := setup.TunarrURLsFrom("http://100.123.114.40:8000") // the old Tunarr
-	newURLs := setup.TunarrURLsFrom("http://tunarr:8000")         // newConnector's URL
+	oldURLs := setup.TunarrURLsFrom("http://203.0.113.40:8000") // the old Tunarr
+	newURLs := setup.TunarrURLsFrom("http://tunarr:8000")       // newConnector's URL
 
 	// Pre-state: a Loomarr-owned tuner at the OLD url, plus a hand-added HDHomeRun.
 	lib.SeedTuner(oldURLs.M3U, "loomarr")

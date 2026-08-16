@@ -49,7 +49,7 @@ func TestTunerRegistered_MatchesByURL(t *testing.T) {
 	_, c := serveLiveTVConfig(t)
 
 	// The captured config holds one m3u tuner at this exact URL.
-	got, err := c.TunerRegistered(context.Background(), "http://192.168.1.79:8001/api/channels.m3u")
+	got, err := c.TunerRegistered(context.Background(), "http://192.0.2.79:8001/api/channels.m3u")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestListingRegistered_MatchesByPath(t *testing.T) {
 	_, c := serveLiveTVConfig(t)
 
 	// The xmltv provider's URL lives in `Path`, not `Url` (Phase-10 finding 1).
-	got, err := c.ListingRegistered(context.Background(), "http://192.168.1.79:8001/api/xmltv.xml")
+	got, err := c.ListingRegistered(context.Background(), "http://192.0.2.79:8001/api/xmltv.xml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +111,10 @@ func TestRescanTuner_Reposts_TheWholeHost(t *testing.T) {
 	defer srv.Close()
 	c := newLiveTVClient(srv.URL)
 
-	if err := c.RescanTuner(context.Background(), "http://192.168.1.79:8001/api/channels.m3u"); err != nil {
+	if err := c.RescanTuner(context.Background(), "http://192.0.2.79:8001/api/channels.m3u"); err != nil {
 		t.Fatal(err)
 	}
-	if posted["Id"] != "f31d60f93a5d4affa67b67c8a51174cc" {
+	if posted["Id"] != "22222222222222222222222222222201" {
 		t.Errorf("re-POST lost the host Id (%v) — the server would create a SECOND tuner", posted["Id"])
 	}
 	if posted["FriendlyName"] != "loomarr" {
@@ -206,12 +206,12 @@ func TestStaleLoomarrTuners_ByFriendlyNameAndURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stale) != 1 || stale[0] != "f31d60f93a5d4affa67b67c8a51174cc" {
+	if len(stale) != 1 || stale[0] != "22222222222222222222222222222201" {
 		t.Fatalf("expected the captured Loomarr tuner id as stale, got %v", stale)
 	}
 
 	// Desired URL == the captured tuner's URL → nothing stale (the no-op case).
-	none, err := c.StaleLoomarrTuners(ctx, "http://192.168.1.79:8001/api/channels.m3u")
+	none, err := c.StaleLoomarrTuners(ctx, "http://192.0.2.79:8001/api/channels.m3u")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,11 +230,11 @@ func TestStaleLoomarrListings_ByGuidePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stale) != 1 || stale[0] != "b80c8842e8254f4ea56a2f8f2a43faa4" {
+	if len(stale) != 1 || stale[0] != "22222222222222222222222222222202" {
 		t.Fatalf("expected the captured guide provider id as stale, got %v", stale)
 	}
 
-	none, err := c.StaleLoomarrListings(ctx, "http://192.168.1.79:8001/api/xmltv.xml")
+	none, err := c.StaleLoomarrListings(ctx, "http://192.0.2.79:8001/api/xmltv.xml")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,11 +34,5 @@ services:
       # (in-core since the sidecar was removed, §10); Tunarr scans it. Same path
       # inside Loomarr's FILLER_DIR and here.
       - ${FILLER_DROP_DIR:-../.filler-drop}:/filler
-    # Tunarr streams the underlying files, so it must reach the same Emby as loomarr (§6).
-    # Emby is on a Tailscale host; extra_hosts maps a stable name → its IP so the media-source
-    # config is portable. Override the IP per-host with MEDIA_SERVER_IP in your .env.
-    extra_hosts:
-      - "emby-media:${MEDIA_SERVER_IP:-100.75.125.45}"
-
 volumes:
   tunarr-dev-config:

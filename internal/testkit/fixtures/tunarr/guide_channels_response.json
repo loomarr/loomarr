@@ -54,17 +54,17 @@
                         {
                             "id": "1896831d-8863-495b-bc9d-7ce873f1b0b2",
                             "type": "poster",
-                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Primary"
+                            "path": "http://198.51.100.45:8096/Items/2677682/Images/Primary"
                         },
                         {
                             "id": "df3a6b6e-bd69-4e96-a146-ca7c76fe66c1",
                             "type": "banner",
-                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Banner"
+                            "path": "http://198.51.100.45:8096/Items/2677682/Images/Banner"
                         },
                         {
                             "id": "b2e56fe7-0201-4357-86d9-7af538912029",
                             "type": "thumbnail",
-                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Thumb"
+                            "path": "http://198.51.100.45:8096/Items/2677682/Images/Thumb"
                         }
                     ],
                     "state": "ok",
@@ -125,17 +125,17 @@
                         {
                             "id": "ee04d155-1b50-4f14-8aee-14e9473bfb68",
                             "type": "poster",
-                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Primary"
+                            "path": "http://198.51.100.45:8096/Items/2920908/Images/Primary"
                         },
                         {
                             "id": "2529927a-f63d-4fbd-a1f8-98a68fae23e2",
                             "type": "banner",
-                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Banner"
+                            "path": "http://198.51.100.45:8096/Items/2920908/Images/Banner"
                         },
                         {
                             "id": "4c4a8184-4640-4704-ab14-20067b3cf548",
                             "type": "thumbnail",
-                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Thumb"
+                            "path": "http://198.51.100.45:8096/Items/2920908/Images/Thumb"
                         }
                     ],
                     "state": "ok",

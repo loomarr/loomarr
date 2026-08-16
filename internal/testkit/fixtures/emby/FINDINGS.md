@@ -52,6 +52,15 @@ prime directive. For now the adapter follows §6 (split); this option is recorde
 `{Id, Name, Policy.IsAdministrator, Policy.IsDisabled}` (fixture `users_list.json`, 10 users).
 Exactly the fields §11 needs. Per-user item path `GET /Users/{id}/Items/Latest` → 200.
 
+The captured accounts included household names, Gmail addresses, server/user identifiers, and
+several profile PINs. Those are now shape-preserving fixture values: `example.invalid` addresses,
+deterministic 32-hex ids, and PIN `0000`. The PINs were credential-like values even though the
+fixture audit found no live API key or session token; the auth response retains only explicit
+`REDACTED-*` token placeholders.
+
+This sanitizes the current tracked fixtures; it does not rewrite existing Git history. Repository
+history remediation is a separate release/publishing decision.
+
 ## Wizard note
 
 `GET /System/Info/Public` is unauthenticated (200) but `LocalAddresses`/`RemoteAddresses` come

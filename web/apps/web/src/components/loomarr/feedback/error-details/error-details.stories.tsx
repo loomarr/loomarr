@@ -19,7 +19,7 @@ const Default: Story = { args: { message: "filler sync: no FILLER_DIR configured
 const LongMultiline: Story = {
   args: {
     message: [
-      "library scan: GET http://media.local:8096/Items?Recursive=true: dial tcp 100.75.125.45:8096:",
+      "library scan: GET http://media.local:8096/Items?Recursive=true: dial tcp 198.51.100.45:8096:",
       "connect: connection refused",
       "",
       "the media server was unreachable for the whole scan window; no titles were confirmed",

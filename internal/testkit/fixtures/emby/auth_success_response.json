@@ -1,10 +1,10 @@
 {
  "User": {
-  "Name": "Matt",
-  "ServerId": "cc163cf949c748f78447f954bd2ec883",
-  "Prefix": "M",
+  "Name": "Fixture Admin",
+  "ServerId": "11111111111111111111111111111111",
+  "Prefix": "F",
   "DateCreated": "2024-05-01T20:19:51.2191289Z",
-  "Id": "REDACTED-USER-ID",
+  "Id": "00000000000000000000000000000007",
   "HasPassword": true,
   "HasConfiguredPassword": true,
   "Configuration": {
@@ -83,5 +83,5 @@
  },
  "SessionInfo": "REDACTED",
  "AccessToken": "REDACTED-SESSION-TOKEN",
- "ServerId": "cc163cf949c748f78447f954bd2ec883"
+ "ServerId": "11111111111111111111111111111111"
 }
