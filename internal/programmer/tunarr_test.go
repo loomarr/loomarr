@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -119,6 +120,73 @@ func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
 	}
 	if configHits != 1 {
 		t.Errorf("resolved the transcode config %d times, want 1 (it must be cached)", configHits)
+	}
+}
+
+func TestEnsureChannel_LiveURLResolvesTranscodeConfigPerInstance(t *testing.T) {
+	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-a"})
+	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
+
+	baseURL := serverA.URL
+	client := programmer.NewDynamic(func() programmer.Config {
+		return programmer.Config{BaseURL: baseURL}
+	})
+	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+		t.Fatal(err)
+	}
+	baseURL = serverB.URL
+	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 2, Name: "B"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := serverA.CreatedTranscodeIDs(); len(got) != 1 || got[0] != "cfg-a" {
+		t.Errorf("server A channel creates = %v, want [cfg-a]", got)
+	}
+	if got := serverB.CreatedTranscodeIDs(); len(got) != 1 || got[0] != "cfg-b" {
+		t.Errorf("server B channel creates = %v, want [cfg-b]", got)
+	}
+}
+
+func TestEnsureChannel_UsesLiveExplicitTranscodeConfig(t *testing.T) {
+	srv := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{})
+
+	cfg := programmer.Config{BaseURL: srv.URL, TranscodeConfigID: "cfg-a"}
+	client := programmer.NewDynamic(func() programmer.Config { return cfg })
+	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg.TranscodeConfigID = "cfg-b"
+	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 2, Name: "B"}); err != nil {
+		t.Fatal(err)
+	}
+	sent := srv.CreatedTranscodeIDs()
+	if len(sent) != 2 || sent[0] != "cfg-a" || sent[1] != "cfg-b" {
+		t.Errorf("sent transcode configs = %v, want [cfg-a cfg-b]", sent)
+	}
+	if got := srv.TranscodeConfigHits(); got != 0 {
+		t.Errorf("explicit transcode config made %d auto-resolution requests, want 0", got)
+	}
+}
+
+func TestEnsureChannel_SnapshotsLiveConfigOnceForWholeOperation(t *testing.T) {
+	var current atomic.Pointer[programmer.Config]
+	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
+	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{
+		TranscodeConfigID: "cfg-a",
+		BeforeTranscodeConfigResponse: func() {
+			current.Store(&programmer.Config{BaseURL: serverB.URL, TranscodeConfigID: "cfg-b"})
+		},
+	})
+	current.Store(&programmer.Config{BaseURL: serverA.URL})
+
+	client := programmer.NewDynamic(func() programmer.Config { return *current.Load() })
+	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := serverB.RequestCount(); got != 0 {
+		t.Errorf("server B received %d requests during the server A operation", got)
+	}
+	if got := serverA.CreatedTranscodeIDs(); len(got) != 1 || got[0] != "cfg-a" {
+		t.Errorf("server A channel creates = %v, want operation snapshot [cfg-a]", got)
 	}
 }
 
@@ -422,6 +490,28 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 	// and it must scan ONLY the emby library, never the skipped `local` filler source.
 	if len(got.scans) != 1 || got.scans[0] != "lib-A" {
 		t.Errorf("auto-rescan hit %v, want exactly [lib-A] (a miss triggers one media-library scan)", got.scans)
+	}
+}
+
+func TestSetLineup_LiveURLUsesProgramIndexFromCurrentInstance(t *testing.T) {
+	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{ProgramID: "program-a"})
+	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{ProgramID: "program-b"})
+
+	cfg := programmer.Config{BaseURL: serverA.URL}
+	client := programmer.NewDynamic(func() programmer.Config { return cfg })
+	slots := []schedule.Slot{{Kind: schedule.SlotProgram, LibraryItemID: "library-item", DurationMs: 60_000}}
+	if err := client.SetLineup(context.Background(), "ch", slots); err != nil {
+		t.Fatal(err)
+	}
+	cfg.BaseURL = serverB.URL
+	if err := client.SetLineup(context.Background(), "ch", slots); err != nil {
+		t.Fatal(err)
+	}
+	if got := serverA.ProgrammedIDs("ch"); len(got) != 1 || got[0] != "program-a" {
+		t.Errorf("server A programmed ids = %v, want [program-a]", got)
+	}
+	if got := serverB.ProgrammedIDs("ch"); len(got) != 1 || got[0] != "program-b" {
+		t.Errorf("server B programmed ids = %v, want [program-b]", got)
 	}
 }
 

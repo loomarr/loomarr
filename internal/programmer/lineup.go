@@ -49,6 +49,7 @@ type lineupResponse struct {
 // content is still being acquired (the reconcile pads with flex upstream, so in
 // practice slots is non-empty, but SetLineup itself must be total).
 func (t *Tunarr) SetLineup(ctx context.Context, tunarrID string, slots []schedule.Slot) error {
+	ctx, _ = t.operation(ctx)
 	items := make([]tunarrLineupItem, 0, len(slots))
 	misses := 0 // program slots that couldn't resolve to Tunarr content (item not indexed yet)
 	for _, s := range slots {
@@ -119,6 +120,7 @@ func (t *Tunarr) rescanMediaLibraries(ctx context.Context) {
 // 400/404 as "no programming yet" → empty slice, so the diff sees "actual is
 // empty" rather than an error on a freshly-created channel.
 func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slot, error) {
+	ctx, _ = t.operation(ctx)
 	var resp lineupResponse
 	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet,
 		"/api/channels/"+tunarrID+"/programming", nil, &resp)
@@ -178,7 +180,7 @@ func flexItem(dur float64) tunarrLineupItem {
 // if Tunarr hasn't indexed the item yet. The bool is the resolution result: true = real
 // content, false = degraded to flex (a miss the caller counts to trigger a Tunarr rescan).
 func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (tunarrLineupItem, bool, error) {
-	uuid, ok, err := t.resolver.resolve(ctx, itemID)
+	uuid, ok, err := t.resolver.resolve(ctx, t.configFor(ctx).BaseURL, itemID)
 	if err != nil {
 		return tunarrLineupItem{}, false, err
 	}

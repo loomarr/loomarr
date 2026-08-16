@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fillerMock is a Tunarr double for the §10 filler endpoints: `local` media-source
@@ -118,7 +120,15 @@ func (m *fillerMock) server(t *testing.T) *httptest.Server {
 		defer m.mu.Unlock()
 		switch r.Method {
 		case http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "ch-1", "name": "Test", "fillerCollections": []any{}})
+			collections := []any{}
+			if m.attachedList != "" {
+				collections = append(collections, map[string]any{
+					"id": m.attachedList, "weight": 1, "cooldownSeconds": 0,
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "ch-1", "name": "Test", "fillerCollections": collections,
+			})
 		case http.MethodPut:
 			m.channelPUTs++
 			var body struct {
@@ -253,6 +263,29 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 	}
 }
 
+func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
+	srv := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{FillerProgramID: "clip"})
+
+	cfg := programmer.Config{BaseURL: srv.URL, FillerWeight: 2, FillerCooldownSeconds: 15}
+	client := programmer.NewDynamic(func() programmer.Config { return cfg })
+	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg.FillerWeight = 7
+	cfg.FillerCooldownSeconds = 90
+	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []testkit.TunarrFillerPolicy{
+		{Weight: 2, CooldownSeconds: 15},
+		{Weight: 7, CooldownSeconds: 90},
+	}
+	if got := srv.FillerPolicies("channel"); !reflect.DeepEqual(got, want) {
+		t.Errorf("same-channel filler policy history = %+v, want %+v", got, want)
+	}
+}
+
 // Regression: idempotency must compare CONTENTS, not just count. A re-tagged
 // catalog can yield a different but equal-sized pool; a count-only check would
 // wrongly no-op and leave stale commercials attached forever.
@@ -267,6 +300,7 @@ func TestEnsureFillerList_EqualCountDifferentPoolUpdates(t *testing.T) {
 	// A list already exists with the same COUNT (2) but different ids.
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
+	m.attachedList = "fl-1"
 	c := programmer.New(m.server(t).URL, "cfg")
 
 	// New desired pool is also size 2 but a different set → must UPDATE, not no-op.
@@ -291,6 +325,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 	}
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
+	m.attachedList = "fl-1"
 	c := programmer.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {

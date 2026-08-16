@@ -202,7 +202,7 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			if set.str("tunarr.url") == "" {
 				return false, "set the Tunarr URL"
 			}
-			prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id"))
+			prog := programmer.NewDynamic(set.tunarrConfig())
 			// A GET on a non-existent channel id is a cheap reachability probe: a
 			// transport error means unreachable; a clean (not-found) answer means up.
 			if _, _, err := prog.GetChannel(ctx, "loomarr-probe"); err != nil {

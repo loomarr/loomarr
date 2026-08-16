@@ -49,7 +49,7 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(tunarr.url)
+	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
 	// TMDB overrides the grounding/validation client. tmdb.New uses a fixed base
 	// (api.themoviedb.org), so unlike library/seerr it isn't settings-routable to a
@@ -377,7 +377,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		prog := programmer.NewDynamic(set.tunarrConfig())
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
@@ -1060,7 +1060,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var fillerSvc api.FillerService
 	var podPreview api.PodPreviewer
 	if st != nil {
-		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		fillerProg := programmer.NewDynamic(set.tunarrConfig())
 		// The catalog comes from OUR OWN scan of FILLER_DIR (§9.1), with Tunarr consulted only
 		// to annotate each clip with its program uuid for Tunarr-backed filler-lists. That
 		// ordering is the fix: previously Tunarr's scan DEFINED the catalog, so an install
@@ -1324,16 +1324,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// reports a DIFFERENT programme than the grid and the XMLTV the television reads — measured
 	// ~30 minutes apart on the dev install. See nowNextRouter.
 	//
-	// The Tunarr half still reads the LIVE connection through the settings snapshot, so saving a
-	// new Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
+	// The Tunarr half still reads LIVE config at the start of each operation, so saving a new
+	// Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
 	if st != nil {
 		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
-		// Its connection resolves per request, so adding tunarr.url later hot-applies; while
+		// Its config resolves per operation, so adding tunarr.url later hot-applies; while
 		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
 		var tunarrGuide tunarrGuideReader = guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+			tunarr: programmer.NewDynamic(set.tunarrConfig()),
 			window: 2 * time.Hour,
 		}
 		// playoutRes is nil when internal playout is not wired; the router then has no reader

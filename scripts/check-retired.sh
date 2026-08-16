@@ -42,6 +42,10 @@ RETIRED=(
   # that cannot revoke or validate any session. Historical migration rows may remain inert.
   'SESSION_SECRET|retired: opaque database-backed sessions do not use a signing secret'
   'session_secret|retired: opaque database-backed sessions do not use a signing secret'
+  # Tunarr 1.3.8 has no authentication contract. Keeping either spelling in examples or the
+  # prototype advertises an inert credential and implies Loomarr sends a header that it does not.
+  'TUNARR_API_KEY|retired: Tunarr has no API-key configuration; configure only its URL'
+  'tunarr.api_key|retired: Tunarr has no API-key setting; configure only tunarr.url'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'
   # The packaging question §10 says "keeps being re-decided": sidecar → opt-in tag → single
   # image. Both intermediate answers left instructions behind that read as current — a

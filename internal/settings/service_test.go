@@ -56,6 +56,23 @@ func TestResolve_Precedence(t *testing.T) {
 	}
 }
 
+func TestResolveMany_UsesOneSnapshotWithOrdinaryPrecedence(t *testing.T) {
+	s := newTestService(t,
+		map[string]string{"LIBRARY_URL": "http://env-emby:8096"},
+		map[string]string{"library.url": "http://db-emby:8096", "job.workers": "5"},
+	)
+	got := s.ResolveMany("library.url", "job.workers", "library.token")
+	if value := got["library.url"]; value.Value != "http://env-emby:8096" || value.Provenance != ProvenanceEnv {
+		t.Errorf("library.url = %v/%s, want env value", value.Value, value.Provenance)
+	}
+	if value := got["job.workers"]; value.Value != 5 || value.Provenance != ProvenanceDB {
+		t.Errorf("job.workers = %v/%s, want db value", value.Value, value.Provenance)
+	}
+	if value := got["library.token"]; value.Value != "" || value.Provenance != ProvenanceDefault {
+		t.Errorf("library.token = %v/%s, want empty default", value.Value, value.Provenance)
+	}
+}
+
 // A default resolves to the setting's TYPED value, not the raw string, exactly like the
 // env/db paths — because the real registry (declared.go) stores every default as a raw
 // STRING ("24h", "2", "true"), and a typed accessor (set.dur/intv/boolv → Value.(T)) must

@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
@@ -125,7 +126,7 @@ func (r resolved) libraryConn() func() (string, string) {
 	return func() (string, string) { return r.str("library.url"), r.str("library.token") }
 }
 
-// seerrConn / tunarrConn are the requester + Tunarr connection providers.
+// seerrConn is the Seerr connection provider.
 func (r resolved) seerrConn() func() (string, string) {
 	return func() (string, string) { return r.str("seerr.url"), r.str("seerr.api_key") }
 }
@@ -173,8 +174,36 @@ func (r resolved) seerrRequester() *requester.Seerr {
 	}
 	return requester.NewSeerrDynamic(r.seerrConn())
 }
-func (r resolved) tunarrConn() func() string {
-	return func() string { return r.str("tunarr.url") }
+
+// tunarrConfig snapshots every live Tunarr setting together at the start of one
+// programmer operation. This keeps a multi-request push internally coherent while
+// preserving hot-apply for the next operation (config-design §3).
+func (r resolved) tunarrConfig() func() programmer.Config {
+	return func() programmer.Config {
+		if r.svc == nil {
+			return programmer.Config{}
+		}
+		values := r.svc.ResolveMany(
+			"tunarr.url",
+			"tunarr.transcode_config_id",
+			"filler.weight",
+			"filler.cooldown_seconds",
+		)
+		stringValue := func(key string) string {
+			value, _ := values[key].Value.(string)
+			return value
+		}
+		intValue := func(key string) int {
+			value, _ := values[key].Value.(int)
+			return value
+		}
+		return programmer.Config{
+			BaseURL:               stringValue("tunarr.url"),
+			TranscodeConfigID:     stringValue("tunarr.transcode_config_id"),
+			FillerWeight:          intValue("filler.weight"),
+			FillerCooldownSeconds: intValue("filler.cooldown_seconds"),
+		}
+	}
 }
 
 // bootSettings builds the settings runtime at startup (config-design §11 Phase 1):
