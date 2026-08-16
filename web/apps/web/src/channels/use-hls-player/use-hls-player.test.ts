@@ -248,6 +248,12 @@ describe("useHlsPlayer", () => {
       requestVideoFrameCallback: vi.fn(() => 1),
       cancelVideoFrameCallback: vi.fn(),
     } as unknown as HTMLVideoElement;
+    const resetCurrentTime = vi.fn();
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => 1,
+      set: resetCurrentTime,
+    });
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
       initialProps: { id: "ch-1" },
     });
@@ -266,6 +272,7 @@ describe("useHlsPlayer", () => {
     await waitFor(() =>
       expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
     );
+    vi.mocked(video.requestVideoFrameCallback).mockClear();
 
     let finishRemoval!: () => void;
     const remove = vi.fn();
@@ -294,6 +301,10 @@ describe("useHlsPlayer", () => {
     });
 
     await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
+    // WebKit can hold removal at the current decode position for almost two seconds. Keep the
+    // outgoing element at its ended edge while SourceBuffer.remove runs, then rewind only after
+    // updateend releases the transferred buffers.
+    expect(resetCurrentTime).not.toHaveBeenCalled();
     expect(hls.instances).toHaveLength(2);
     expect(controller.destroy).not.toHaveBeenCalled();
     expect(video.play).not.toHaveBeenCalled();
@@ -320,12 +331,17 @@ describe("useHlsPlayer", () => {
     expect(video.play).not.toHaveBeenCalled();
 
     act(() => finishRemoval());
+    await waitFor(() => expect(resetCurrentTime).toHaveBeenCalledWith(0));
     await waitFor(() => expect(replacement.attachMedia).toHaveBeenLastCalledWith(transferred));
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalledOnce());
     await waitFor(() => expect(replacement.startLoad).toHaveBeenCalledOnce());
     expect(replacement.loadSource.mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.attachMedia.mock.invocationCallOrder.at(-1) ?? 0,
     );
     expect(replacement.attachMedia.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    expect(vi.mocked(video.requestVideoFrameCallback).mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
     );
     await waitFor(() => expect(video.play).toHaveBeenCalledOnce());

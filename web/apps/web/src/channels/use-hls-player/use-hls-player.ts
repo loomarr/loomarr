@@ -260,7 +260,6 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // SourceBuffer.remove/append transitions it back to `open`. Only a closed source (or failed
         // clear) needs hls.js's full MSE reset below.
         if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
-          video.currentTime = 0;
           try {
             await clearTransferredBuffers(transferred);
           } catch {
@@ -269,6 +268,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             // final reference when the element's blob URL is replaced.
             transferred = null;
           }
+          // Do not seek into the range being removed. WebKit can keep SourceBuffer.remove pending
+          // while its decoder still owns the current position, turning an otherwise cached tune
+          // into a multi-second stall. Rewind only after updateend releases the outgoing bytes.
+          video.currentTime = 0;
         } else {
           transferred = null;
         }
@@ -293,6 +296,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         }
         if (transferred) hls.attachMedia(transferred);
         else hls.attachMedia(video);
+        // Attachment is the first point where a frame callback can only belong to this source:
+        // transferred buffers are empty and a fresh attach has replaced the old MediaSource. Arm
+        // before startLoad so a fast cached append cannot present its first frame before the
+        // observer exists and leave certification (and the tuning overlay) waiting for a later one.
+        armFirstFrameWatch();
         replacementAttached = true;
         hls.startLoad();
         if (manifestParsed) playReplacement();
