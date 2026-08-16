@@ -62,6 +62,32 @@ const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["
   }
 };
 
+const releaseTransferredDecoder = async (
+  video: HTMLVideoElement,
+  transferred: NonNullable<ReturnType<Hls["transferMedia"]>>,
+) => {
+  let edge: number | undefined;
+  for (const track of Object.values(transferred.tracks)) {
+    const buffered = track?.buffer?.buffered;
+    if (!buffered?.length) continue;
+    const end = buffered.end(buffered.length - 1);
+    edge = edge === undefined ? end : Math.max(edge, end);
+  }
+  if (edge === undefined) return;
+
+  // SourceBuffer.remove can wait for WebKit's decoder to release the frame at currentTime. Park at
+  // the half-open range's end, then give the paused element one render turn to commit that seek;
+  // the held poster keeps the outgoing picture visible while no decoded byte is leased.
+  if (video.currentTime < edge) video.currentTime = edge;
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    queueMicrotask(resolve);
+  });
+};
+
 const createHlsController = (HlsController: typeof Hls): Hls =>
   new HlsController({
     // A source-scoped controller stays empty until its transferred MediaSource is attached. The
@@ -281,6 +307,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // clear) needs hls.js's full MSE reset below.
         if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
           try {
+            await releaseTransferredDecoder(video, transferred);
             await clearTransferredBuffers(transferred);
           } catch {
             // A failed range removal cannot be reused safely. Attaching the element directly gives
@@ -288,9 +315,9 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             // final reference when the element's blob URL is replaced.
             transferred = null;
           }
-          // Do not seek into the range being removed. WebKit can keep SourceBuffer.remove pending
-          // while its decoder still owns the current position, turning an otherwise cached tune
-          // into a multi-second stall. Rewind only after updateend releases the outgoing bytes.
+          // Do not rewind into the range being removed. WebKit can keep SourceBuffer.remove pending
+          // while its decoder still owns that position, turning an otherwise cached tune into a
+          // multi-second stall. Rewind only after updateend releases the outgoing bytes.
           video.currentTime = 0;
         } else {
           transferred = null;

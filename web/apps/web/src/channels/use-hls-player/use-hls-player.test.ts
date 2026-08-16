@@ -87,7 +87,10 @@ describe("useHlsPlayer", () => {
     hls.instances.length = 0;
     unwrap.mockReset().mockImplementation((res: unknown) => res);
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("mints a signed play-url for the channel, with a device quality hint", async () => {
     channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/master.m3u8" });
@@ -237,6 +240,12 @@ describe("useHlsPlayer", () => {
 
   it("reuses compatible SourceBuffers after a prepared playlist reaches ended", async () => {
     hls.supported = true;
+    let releaseDecoder!: FrameRequestCallback;
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      releaseDecoder = callback;
+      return 1;
+    });
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
     channelPlayUrl.mockImplementation((id: string) =>
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
@@ -254,7 +263,7 @@ describe("useHlsPlayer", () => {
     const resetCurrentTime = vi.fn();
     Object.defineProperty(video, "currentTime", {
       configurable: true,
-      get: () => 1,
+      get: () => 0.5,
       set: resetCurrentTime,
     });
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
@@ -304,15 +313,18 @@ describe("useHlsPlayer", () => {
       result.current.attach(video);
     });
 
-    await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
+    await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledOnce());
     expect(video.pause).toHaveBeenCalledOnce();
     expect(vi.mocked(video.pause).mock.invocationCallOrder.at(-1)).toBeLessThan(
-      remove.mock.invocationCallOrder.at(-1) ?? 0,
+      resetCurrentTime.mock.invocationCallOrder.at(-1) ?? 0,
     );
-    // WebKit can hold removal at the current decode position for almost two seconds. Keep the
-    // outgoing element at its ended edge while SourceBuffer.remove runs, then rewind only after
-    // updateend releases the transferred buffers.
-    expect(resetCurrentTime).not.toHaveBeenCalled();
+    expect(resetCurrentTime).toHaveBeenLastCalledWith(1);
+    expect(remove).not.toHaveBeenCalled();
+    // Give WebKit one render turn to commit the outgoing seek and release its decoder lease before
+    // removing the range. Removing immediately at currentTime can block until the compact VOD's
+    // natural end even though every replacement byte is already cached.
+    act(() => releaseDecoder(0));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
     expect(hls.instances).toHaveLength(2);
     expect(controller.destroy).not.toHaveBeenCalled();
     expect(video.play).not.toHaveBeenCalled();

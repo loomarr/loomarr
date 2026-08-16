@@ -1416,12 +1416,14 @@ cross-controller handoff to transfer the reusable MediaSource — `open`, or `en
 prepared publication — and compatible SourceBuffers from the active controller, then clears the old
 ranges. The adapter stops the outgoing loader and pauses the media element before transferring those
 buffers; the Watch surface's held poster preserves the last decoded picture while the decoder gives
-up its lease on the old range. The standby disables automatic media loading and remains source-empty
-while that clear is in flight. The element stays at the outgoing edge until every removal reaches
-`updateend`; seeking into the range being removed can hold WebKit's decoder on those bytes and turn
-a cached tune into a multi-second stall. After confirming that generation is still current, the
-adapter rewinds, attaches the cleared handoff, arms target-frame observation, loads the replacement
-source, queues its playback join, and then explicitly starts media loading; MSE reopens an ended
+up its lease on the old range. It parks the paused element at the half-open buffered range's end and
+allows one render turn before removal, preventing WebKit from holding `SourceBuffer.remove` until a
+compact outgoing publication's natural end. The standby disables automatic media loading and
+remains source-empty while that clear is in flight. The element stays at that outgoing edge until
+every removal reaches `updateend`; rewinding into the range being removed can hold WebKit's decoder
+on those bytes and turn a cached tune into a multi-second stall. After confirming that generation is
+still current, the adapter rewinds, attaches the cleared handoff, arms target-frame observation,
+loads the replacement source, queues its playback join, and then explicitly starts media loading; MSE reopens an ended
 source on that mutation. This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. Arming after attachment but before loading means the observer cannot
