@@ -922,4 +922,3 @@ func humaConfig() huma.Config {
 	registerWireAliases(cfg.Components.Schemas)
 	return cfg
 }
-

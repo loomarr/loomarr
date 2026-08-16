@@ -419,4 +419,3 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 	}
 	return out
 }
-

@@ -543,4 +543,3 @@ type Store interface {
 	// Close releases the underlying database handle.
 	Close() error
 }
-

@@ -998,4 +998,3 @@ func playoutSpawner(
 		return playout.Start(ctx, ffmpegBin, playout.ConcatArgs(playlistURL), log, nil)
 	}
 }
-

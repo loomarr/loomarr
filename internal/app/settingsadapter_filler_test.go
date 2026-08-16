@@ -75,4 +75,3 @@ func TestConnectionTests_FillerRejectsWatchContainingClipLibrary(t *testing.T) {
 		})
 	}
 }
-

@@ -577,4 +577,3 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	h.last, h.cur = v, p
 	return p, nil
 }
-

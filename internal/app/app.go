@@ -1588,4 +1588,3 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		replicaSettingsRefreshInterval, refreshSecretRedactor)
 	return handler, nil
 }
-

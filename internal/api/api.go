@@ -178,4 +178,3 @@ func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 		log.Debug("http", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 	})
 }
-

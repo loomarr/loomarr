@@ -323,4 +323,3 @@ func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, er
 func (a secretStoreAdapter) Set(ctx context.Context, k, v string) error {
 	return a.st.SetSetting(ctx, k, v)
 }
-

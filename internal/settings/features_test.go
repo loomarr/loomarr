@@ -253,4 +253,3 @@ func TestFeatureSet_AvailableAnswersEveryIngestGate(t *testing.T) {
 		}
 	}
 }
-
