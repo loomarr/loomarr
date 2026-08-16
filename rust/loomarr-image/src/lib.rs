@@ -45,7 +45,7 @@ fn worker_self_test() -> bool {
     ];
     let webp = webp::Encoder::from_rgba(&pixels, 2, 2).encode_simple(true, 80.0);
     let jpeg = encode_jpeg(&pixels, 2, 2);
-    let avif = encode_avif(&pixels, 2, 2);
+    let avif = encode_avif(&pixels, 2, 2, 1);
     let animation = (|| {
         let mut encoder = webp_animation::Encoder::new((2, 2)).ok()?;
         encoder.add_frame(&pixels, 0).ok()?;
@@ -173,6 +173,21 @@ impl WorkerError {
 }
 
 pub fn run_generate(input: impl Read, output: impl Write) -> Result<(), WorkerError> {
+    run_generate_with_avif_threads(input, output, 1)
+}
+
+#[doc(hidden)]
+pub fn run_generate_with_avif_threads(
+    input: impl Read,
+    output: impl Write,
+    avif_threads: usize,
+) -> Result<(), WorkerError> {
+    if !(1..=8).contains(&avif_threads) {
+        return Err(WorkerError::new(
+            "invalid_request",
+            "AVIF threads must be within the benchmark ceiling",
+        ));
+    }
     let mut input = input.take(MAX_CONTROL_BYTES + 1);
     let mut control = Vec::new();
     input
@@ -187,7 +202,7 @@ pub fn run_generate(input: impl Read, output: impl Write) -> Result<(), WorkerEr
     let request: GenerateRequest = serde_json::from_slice(&control)
         .map_err(|err| WorkerError::new("invalid_request", format!("request JSON: {err}")))?;
     let request_id = request.request_id.clone();
-    match generate(request) {
+    match generate(request, avif_threads) {
         Ok(result) => {
             serde_json::to_writer(output, &result)
                 .map_err(|err| WorkerError::new("internal", format!("result JSON: {err}")))?;
@@ -214,7 +229,7 @@ pub fn run_generate(input: impl Read, output: impl Write) -> Result<(), WorkerEr
     }
 }
 
-fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
+fn generate(request: GenerateRequest, avif_threads: usize) -> Result<GenerateResult, WorkerError> {
     if request.protocol != PROTOCOL {
         return Err(WorkerError::new("invalid_request", "protocol mismatch"));
     }
@@ -273,6 +288,7 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
                     height,
                     bytes: source.len() as u64,
                 },
+                avif_threads,
             )?
         }
         ImageFormat::Png => {
@@ -297,6 +313,7 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
                         height,
                         bytes: source.len() as u64,
                     },
+                    avif_threads,
                 )?
             } else {
                 None
@@ -318,6 +335,7 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
                         height,
                         bytes: source.len() as u64,
                     },
+                    avif_threads,
                 )?
             } else {
                 None
@@ -388,7 +406,7 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
                 "image/jpeg",
             ),
             "avif" => (
-                encode_avif(&resized, target_width, target_height)?,
+                encode_avif(&resized, target_width, target_height, avif_threads)?,
                 "avif",
                 "image/avif",
             ),
@@ -471,10 +489,15 @@ fn encode_jpeg(pixels: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Worker
     Ok(encoded)
 }
 
-fn encode_avif(pixels: &[u8], width: u32, height: u32) -> Result<Vec<u8>, WorkerError> {
+fn encode_avif(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    threads: usize,
+) -> Result<Vec<u8>, WorkerError> {
     let mut encoded = Vec::new();
     image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut encoded, 6, 70)
-        .with_num_threads(Some(1))
+        .with_num_threads(Some(threads))
         .write_image(pixels, width, height, image::ExtendedColorType::Rgba8)
         .map_err(|err| WorkerError::new("encode_failed", format!("encode AVIF: {err}")))?;
     Ok(encoded)
@@ -545,6 +568,7 @@ struct AnimationSource<'a> {
 fn generate_animation(
     request: &GenerateRequest,
     mut source: AnimationSource<'_>,
+    avif_threads: usize,
 ) -> Result<Option<GenerateResult>, WorkerError> {
     let first = source
         .frames
@@ -593,7 +617,7 @@ fn generate_animation(
                     "image/jpeg",
                 ),
                 "avif" => (
-                    encode_avif(&resized, target_width, target_height)?,
+                    encode_avif(&resized, target_width, target_height, avif_threads)?,
                     "avif",
                     "image/avif",
                 ),
@@ -959,7 +983,7 @@ mod tests {
                 max_output_bytes: 1 << 20,
             },
         };
-        let result = generate(request).expect("inspect APNG");
+        let result = generate(request, 1).expect("inspect APNG");
         assert!(result.source.animated);
         assert_eq!(result.source.frame_count, 2);
         assert_eq!(result.source.duration_ms, 33);
@@ -1006,7 +1030,7 @@ mod tests {
                 max_output_bytes: 1 << 20,
             },
         };
-        let err = generate(request).expect_err("SVG must be rejected");
+        let err = generate(request, 1).expect_err("SVG must be rejected");
         assert_eq!(err.code, "unsupported_input");
         fs::remove_dir_all(staging).expect("cleanup");
     }

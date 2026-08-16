@@ -5032,6 +5032,15 @@ of them wrong:
 The load-bearing reason is **concurrency and request latency**. AVIF is produced by the pure-Rust
 `ravif` path with one encoder thread, but a cold grid must still not queue expensive worker processes
 in front of HTTP responses. The background job drains that work under the same global worker cap.
+The one-thread limit is measured policy, not a library default: `make image-parallelism-bench`
+compares equal logical-CPU budgets as multiple one-thread processes versus fewer processes with
+2/4/8 rav1e threads. The worker accepts that override only on an explicit benchmark command; the
+production protocol has no thread knob. Across the 2-, 4-, and 8-CPU profiles, encoder threading
+reduced one process's latency but lost aggregate Image and Rendition throughput to independent
+one-thread workers: the two-thread shapes were 15.6%, 12.6%, and 22.4% slower respectively in the
+three-sample poster medians. They also emitted different AVIF byte counts, so adoption would require
+a new immutable recipe rather than a scheduling-only change. It did not earn weighted permits, and
+production remains one thread.
 
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
@@ -5075,6 +5084,12 @@ publication. Every missing AVIF ladder is one worker request. Go atomically rena
 file, then commits the complete derivative-row set in one Store transaction; any file or Store
 failure removes every file promoted by that request, so a partial ladder is never servable. Rust
 never sees the Store or canonical publication paths.
+
+The opt-in benchmark command may append `--benchmark-avif-threads 1..8`; it is deliberately absent
+from application composition and exists only to measure the fixed production decision through the
+same executable and manifest validation. Benchmark reports record the CPU profile, concurrent
+processes, encoder threads, throughput, worker duration, output bytes, and aggregate child peak RSS.
+They are evidence, never a timing gate.
 
 The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
 canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,

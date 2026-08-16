@@ -33,6 +33,43 @@ printf '%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-renditio
 	}
 }
 
+func TestOpenBenchmarkPassesBoundedAVIFThreadsOnlyToGenerate(t *testing.T) {
+	argsPath := filepath.Join(t.TempDir(), "args")
+	worker := testkit.Executable(t, "loomarr-image", fmt.Sprintf(`#!/bin/sh
+if [ "$1" = capabilities ]; then
+  printf '%%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}'
+  exit 0
+fi
+printf '%%s\n' "$*" > %q
+cat >/dev/null
+printf '%%s\n' '{"protocol":1,"status":"error","requestId":"bench","error":{"code":"unsupported_input","message":"test"}}'
+exit 1
+`, argsPath))
+	contract := rustgen.Contract{
+		Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v2",
+		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
+	}
+
+	gen, err := rustgen.OpenBenchmark(worker, contract, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = gen.Generate(context.Background(), rustgen.Request{RequestID: "bench"})
+	got, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "generate --protocol 1 --benchmark-avif-threads 4\n" {
+		t.Fatalf("generate args = %q", got)
+	}
+
+	for _, threads := range []int{0, 9} {
+		if _, err := rustgen.OpenBenchmark(worker, contract, threads); err == nil {
+			t.Errorf("OpenBenchmark accepted %d threads", threads)
+		}
+	}
+}
+
 func TestOpenRejectsEveryRequiredCapabilityMismatch(t *testing.T) {
 	tests := []struct {
 		name         string

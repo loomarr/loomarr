@@ -30,6 +30,9 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 		"--roles", "icon",
 		"--runs", "1",
 		"--warmups", "0",
+		"--workers", "2",
+		"--avif-threads", "2",
+		"--cpu-profile", "4",
 	}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run = %d; stderr = %s", code, stderr.String())
@@ -43,6 +46,9 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 		SchemaVersion int    `json:"schemaVersion"`
 		Corpus        string `json:"corpus"`
 		Strategy      string `json:"strategy"`
+		Workers       int    `json:"concurrentWorkers"`
+		AVIFThreads   int    `json:"avifThreadsPerWorker"`
+		CPUProfile    int    `json:"cpuProfile"`
 		Profiles      []struct {
 			Role         string `json:"role"`
 			SourceSHA256 string `json:"sourceSha256"`
@@ -60,8 +66,9 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
-	if report.SchemaVersion != 1 || report.Corpus != "synthetic-role-v1" ||
-		report.Strategy != "single-process-stepped-ladder-v2" || len(report.Profiles) != 1 {
+	if report.SchemaVersion != 2 || report.Corpus != "synthetic-role-v1" ||
+		report.Strategy != "concurrent-stepped-ladders-v3" || report.Workers != 2 ||
+		report.AVIFThreads != 2 || report.CPUProfile != 4 || len(report.Profiles) != 1 {
 		t.Fatalf("report envelope = %+v", report)
 	}
 	profile := report.Profiles[0]
@@ -75,13 +82,13 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 		t.Errorf("widths = %v, want %v", got, want)
 	}
 	sample := profile.Samples[0]
-	if sample.Processes != 1 || sample.Renditions != 3 || len(sample.WorkerTimesMS) != 1 {
-		t.Errorf("sample counts = %+v, want one real worker process for the complete ladder", sample)
+	if sample.Processes != 2 || sample.Renditions != 6 || len(sample.WorkerTimesMS) != 2 {
+		t.Errorf("sample counts = %+v, want two concurrent worker processes for complete ladders", sample)
 	}
 	if sample.OutputBytes <= 0 || sample.WallTimeMS <= 0 {
 		t.Errorf("sample measurements = %+v, want positive output and elapsed time", sample)
 	}
-	if !strings.Contains(stdout.String(), reportPath) || !strings.Contains(stdout.String(), "3 renditions") {
+	if !strings.Contains(stdout.String(), reportPath) || !strings.Contains(stdout.String(), "6 renditions") {
 		t.Errorf("stdout = %q", stdout.String())
 	}
 }

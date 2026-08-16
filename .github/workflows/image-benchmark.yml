@@ -43,11 +43,20 @@ jobs:
           IMAGE_BENCH_RUNS: ${{ inputs.runs }}
           IMAGE_BENCH_REPORT: ${{ runner.temp }}/image-benchmark-${{ matrix.platform }}.json
         run: make image-bench
+      - name: Compare AVIF process and thread shapes
+        env:
+          IMAGE_BENCH_RUNS: ${{ inputs.runs }}
+          IMAGE_BENCH_ROLES: poster
+          IMAGE_BENCH_CPU_PROFILES: "2,4"
+          IMAGE_BENCH_REPORT_DIR: ${{ runner.temp }}/image-parallelism-${{ matrix.platform }}
+        run: make image-parallelism-bench
       - name: Keep the machine-readable report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: rust-image-benchmark-${{ matrix.platform }}
-          path: ${{ runner.temp }}/image-benchmark-${{ matrix.platform }}.json
+          path: |
+            ${{ runner.temp }}/image-benchmark-${{ matrix.platform }}.json
+            ${{ runner.temp }}/image-parallelism-${{ matrix.platform }}/*.json
           if-no-files-found: ignore
           retention-days: 30

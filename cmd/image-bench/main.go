@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/images"
@@ -37,6 +38,9 @@ type benchmarkReport struct {
 	GOARCH        string             `json:"goarch"`
 	LogicalCPUs   int                `json:"logicalCpus"`
 	GOMAXPROCS    int                `json:"gomaxprocs"`
+	CPUProfile    int                `json:"cpuProfile"`
+	Workers       int                `json:"concurrentWorkers"`
+	AVIFThreads   int                `json:"avifThreadsPerWorker"`
 	Runs          int                `json:"runs"`
 	Warmups       int                `json:"warmups"`
 	Profiles      []benchmarkProfile `json:"profiles"`
@@ -107,6 +111,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	rolesArg := flags.String("roles", "poster,backdrop,icon", "comma-separated roles: poster, backdrop, icon")
 	runs := flags.Int("runs", runsDefault, "measured runs per role")
 	warmups := flags.Int("warmups", warmupsDefault, "unreported warm-up runs per role")
+	workers := flags.Int("workers", 1, "concurrent worker processes per measured batch")
+	avifThreads := flags.Int("avif-threads", 1, "rav1e threads per worker (benchmark only)")
+	cpuProfile := flags.Int("cpu-profile", runtime.GOMAXPROCS(0), "logical CPUs made available to this run")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -116,6 +123,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if *runs < 1 || *runs > 20 || *warmups < 0 || *warmups > 5 {
 		_, _ = fmt.Fprintln(stderr, "image-bench: runs must be 1..20 and warmups must be 0..5")
+		return 2
+	}
+	if *workers < 1 || *workers > 8 || *avifThreads < 1 || *avifThreads > 8 {
+		_, _ = fmt.Fprintln(stderr, "image-bench: workers and avif-threads must be 1..8")
+		return 2
+	}
+	if *cpuProfile < 1 || *cpuProfile > runtime.NumCPU() || (*workers)*(*avifThreads) > *cpuProfile {
+		_, _ = fmt.Fprintln(stderr, "image-bench: cpu-profile must cover workers times avif-threads and not exceed host CPUs")
 		return 2
 	}
 	profiles, err := selectProfiles(*rolesArg)
@@ -135,10 +150,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if release == "" {
 		release = "dev"
 	}
-	renderer, err := rustgen.Open(absoluteWorker, rustgen.Contract{
+	renderer, err := rustgen.OpenBenchmark(absoluteWorker, rustgen.Contract{
 		Protocol: 1, Release: release, Recipe: benchmarkRecipe,
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
-	})
+	}, *avifThreads)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "image-bench: %v\n", err)
 		return 1
@@ -146,7 +161,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	benchCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	report, err := benchmark(benchCtx, renderer, release, profiles, *runs, *warmups)
+	report, err := benchmark(benchCtx, renderer, release, profiles, *runs, *warmups, *workers, *avifThreads, *cpuProfile)
 	if writeErr := writeReport(*reportPath, report); writeErr != nil {
 		_, _ = fmt.Fprintf(stderr, "image-bench: write report: %v\n", writeErr)
 		return 1
@@ -160,12 +175,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func benchmark(ctx context.Context, renderer images.Renderer, release string, profiles []benchmarkProfile, runs, warmups int) (benchmarkReport, error) {
+func benchmark(ctx context.Context, renderer images.Renderer, release string, profiles []benchmarkProfile, runs, warmups, workers, avifThreads, cpuProfile int) (benchmarkReport, error) {
 	report := benchmarkReport{
-		SchemaVersion: 1, Corpus: "synthetic-role-v1", Strategy: "single-process-stepped-ladder-v2",
+		SchemaVersion: 2, Corpus: "synthetic-role-v1", Strategy: "concurrent-stepped-ladders-v3",
 		Recipe: benchmarkRecipe, Release: release,
 		GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, LogicalCPUs: runtime.NumCPU(),
-		GOMAXPROCS: runtime.GOMAXPROCS(0), Runs: runs, Warmups: warmups, Profiles: profiles,
+		GOMAXPROCS: runtime.GOMAXPROCS(0), CPUProfile: cpuProfile,
+		Workers: workers, AVIFThreads: avifThreads,
+		Runs: runs, Warmups: warmups, Profiles: profiles,
 	}
 	root, err := os.MkdirTemp("", "loomarr-image-bench-*")
 	if err != nil {
@@ -187,12 +204,12 @@ func benchmark(ctx context.Context, renderer images.Renderer, release string, pr
 		digest := fmt.Sprintf("%x", sha256.Sum256(data))
 		profile.SourceSHA256 = digest
 		for warmup := 0; warmup < warmups; warmup++ {
-			if _, err := measureLadder(ctx, renderer, root, source, digest, *profile, fmt.Sprintf("warmup-%d", warmup)); err != nil {
+			if _, err := measureConcurrentLadders(ctx, renderer, root, source, digest, *profile, fmt.Sprintf("warmup-%d", warmup), workers); err != nil {
 				return report, fmt.Errorf("%s warm-up %d: %w", profile.Role, warmup+1, err)
 			}
 		}
 		for measured := 0; measured < runs; measured++ {
-			sample, err := measureLadder(ctx, renderer, root, source, digest, *profile, fmt.Sprintf("run-%d", measured))
+			sample, err := measureConcurrentLadders(ctx, renderer, root, source, digest, *profile, fmt.Sprintf("run-%d", measured), workers)
 			if err != nil {
 				return report, fmt.Errorf("%s run %d: %w", profile.Role, measured+1, err)
 			}
@@ -205,6 +222,49 @@ func benchmark(ctx context.Context, renderer images.Renderer, release string, pr
 	}
 	summarizeReport(&report)
 	return report, nil
+}
+
+func measureConcurrentLadders(ctx context.Context, renderer images.Renderer, root, source, digest string, profile benchmarkProfile, runID string, workers int) (benchmarkSample, error) {
+	type result struct {
+		sample benchmarkSample
+		err    error
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan result, workers)
+	var started sync.WaitGroup
+	started.Add(workers)
+	batchStarted := time.Now()
+	for worker := range workers {
+		go func() {
+			started.Done()
+			started.Wait()
+			sample, err := measureLadder(ctx, renderer, root, source, digest, profile, fmt.Sprintf("%s-worker-%d", runID, worker))
+			results <- result{sample: sample, err: err}
+		}()
+	}
+	sample := benchmarkSample{}
+	var firstErr error
+	for range workers {
+		got := <-results
+		if got.err != nil {
+			if firstErr == nil {
+				firstErr = got.err
+				cancel()
+			}
+			continue
+		}
+		sample.Processes += got.sample.Processes
+		sample.Renditions += got.sample.Renditions
+		sample.OutputBytes += got.sample.OutputBytes
+		sample.PeakRSSBytes += got.sample.PeakRSSBytes
+		sample.WorkerTimesMS = append(sample.WorkerTimesMS, got.sample.WorkerTimesMS...)
+	}
+	if firstErr != nil {
+		return sample, firstErr
+	}
+	sample.WallTimeMS = max(1, time.Since(batchStarted).Milliseconds())
+	return sample, nil
 }
 
 func measureLadder(ctx context.Context, renderer images.Renderer, root, source, digest string, profile benchmarkProfile, runID string) (benchmarkSample, error) {
@@ -346,19 +406,20 @@ func summarizeProfile(profile benchmarkProfile) profileSummary {
 	summary.P50WorkerTimeMS = percentile(workerTimes, 50)
 	summary.P95WorkerTimeMS = percentile(workerTimes, 95)
 	summary.MaxWorkerTimeMS = percentile(workerTimes, 100)
-	summary.MedianImagesPerMinute = perMinute(1, summary.MedianWallTimeMS)
+	summary.MedianImagesPerMinute = perMinute(summary.ProcessesPerRun, summary.MedianWallTimeMS)
 	summary.MedianRenditionsPerMinute = perMinute(summary.RenditionsPerRun, summary.MedianWallTimeMS)
 	return summary
 }
 
 func summarizeReport(report *benchmarkReport) {
 	var medianWall int64
-	var renditions int
+	var images, renditions int
 	for _, profile := range report.Profiles {
 		medianWall += profile.Summary.MedianWallTimeMS
+		images += profile.Summary.ProcessesPerRun
 		renditions += profile.Summary.RenditionsPerRun
 	}
-	report.Summary.MedianImagesPerMinute = perMinute(len(report.Profiles), medianWall)
+	report.Summary.MedianImagesPerMinute = perMinute(images, medianWall)
 	report.Summary.MedianRenditionsPerMinute = perMinute(renditions, medianWall)
 }
 
