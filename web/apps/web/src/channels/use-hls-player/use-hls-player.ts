@@ -62,17 +62,54 @@ const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["
   }
 };
 
-const transferredBufferedEdge = (
+const transferredBufferedRange = (
   transferred: NonNullable<ReturnType<Hls["transferMedia"]>>,
-): number | undefined => {
-  let edge: number | undefined;
+): { start: number; end: number } | undefined => {
+  let start = Number.NEGATIVE_INFINITY;
+  let end = Number.POSITIVE_INFINITY;
+  let found = false;
   for (const track of Object.values(transferred.tracks)) {
     const buffered = track?.buffer?.buffered;
     if (!buffered?.length) continue;
-    const end = buffered.end(buffered.length - 1);
-    edge = edge === undefined ? end : Math.max(edge, end);
+    const last = buffered.length - 1;
+    start = Math.max(start, buffered.start(last));
+    end = Math.min(end, buffered.end(last));
+    found = true;
   }
-  return edge;
+  return found && start < end ? { start, end } : undefined;
+};
+
+const releaseTransferredDecoder = async (
+  video: HTMLVideoElement,
+  transferred: NonNullable<ReturnType<Hls["transferMedia"]>>,
+) => {
+  const range = transferredBufferedRange(transferred);
+  if (!range || video.currentTime + 0.05 >= range.end) return;
+
+  // TimeRanges.end() is a half-open boundary, not a presentable timestamp. WebKit can leave a seek
+  // to that exact value pending until live playback naturally reaches it. Park at the final
+  // presentable-frame interval instead, and cap the acknowledgement: a platform that cannot release
+  // this already-buffered seek promptly takes the bounded fresh-MSE fallback rather than delaying
+  // the viewer by the outgoing fragment remainder.
+  const target = Math.max(range.start, range.end - 0.05);
+  await new Promise<void>((resolve, reject) => {
+    let complete = false;
+    const finish = (error?: Error) => {
+      if (complete) return;
+      complete = true;
+      window.clearTimeout(timer);
+      video.removeEventListener("seeked", onSeeked);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSeeked = () => finish();
+    const timer = window.setTimeout(() => {
+      if (video.currentTime + 0.05 >= target) finish();
+      else finish(new Error("decoder release seek timed out"));
+    }, 100);
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.currentTime = target;
+  });
 };
 
 const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | undefined) => {
@@ -125,6 +162,17 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
   });
 
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
+  // TanStack commits the route parameter after the tuner has already activated its target. That
+  // commit can drop the transient attempt object while the Channel itself is unchanged. Retain the
+  // attempt for that Channel so VideoPlayer does not tear down and reattach the same live source
+  // immediately after its first frame; the next Channel replaces it atomically.
+  const retainedAttemptRef = useRef<{ channelId: string; attempt?: TuneAttempt }>({ channelId, attempt });
+  if (retainedAttemptRef.current.channelId !== channelId) {
+    retainedAttemptRef.current = { channelId, attempt };
+  } else if (attempt) {
+    retainedAttemptRef.current.attempt = attempt;
+  }
+  const playbackAttempt = retainedAttemptRef.current.attempt;
   const [state, setState] = useState<{ channelId: string; status: PlayerStatus; error?: string }>({
     channelId,
     status: "idle",
@@ -148,7 +196,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
     standbyFresh?: boolean;
     destroyTimer?: number;
   }>({});
-  const warmedPlayURL = attempt?.playURL;
+  const warmedPlayURL = playbackAttempt?.playURL;
 
   const bind = useCallback(
     async (video: HTMLVideoElement, url: string, current: () => boolean): Promise<() => void> => {
@@ -172,7 +220,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (firstFrame) return;
         firstFrame = true;
         if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
-        markTunePhase(attempt, "first-frame");
+        markTunePhase(playbackAttempt, "first-frame");
         setState({ channelId, status: "playing" });
         replenishAfterFirstFrame?.();
       };
@@ -272,7 +320,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         joinReplacementOnCanPlay = playReplacement;
         const onManifestParsed = () => {
           manifestParsed = true;
-          markTunePhase(attempt, "manifest");
+          markTunePhase(playbackAttempt, "manifest");
           playReplacement();
         };
         const onFragmentBuffered = () => {
@@ -318,29 +366,20 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
 
-        // Preserve an OPEN MediaSource only when its final decoded frame is already presented, but
-        // never preserve outgoing Channel-relative bytes. Seeking a live WebKit source to its exact
-        // half-open end can take the rest of the fragment, so an earlier position consumes the
-        // already-constructed standby with a fresh MediaSource instead. Ended and closed sources,
-        // plus failed clears, take that same bounded one-element/one-decoder branch.
+        // Preserve an OPEN MediaSource and compatible SourceBuffers, but never outgoing
+        // Channel-relative bytes. Decoder release seeks to the last presentable frame rather than
+        // the half-open end and is time-bounded; ended and closed sources, a seek timeout, and
+        // failed clears consume the standby's bounded fresh-MSE branch.
         let discardTransfer = false;
         if (transferred?.mediaSource?.readyState === "open") {
-          const edge = transferredBufferedEdge(transferred);
-          // Fifty milliseconds recognizes only the final-frame interval (20 fps or faster), not a
-          // meaningful earlier position whose decoder lease would serialize the replacement.
-          if (edge !== undefined && video.currentTime + 0.05 < edge) {
+          try {
+            await releaseTransferredDecoder(video, transferred);
+            await clearTransferredBuffers(transferred);
+          } catch {
+            // A decoder seek or range removal that cannot finish promptly cannot be reused safely.
+            // Attaching the element directly gives the replacement controller a fresh MediaSource.
             discardTransfer = true;
             transferred = null;
-          } else {
-            try {
-              await clearTransferredBuffers(transferred);
-            } catch {
-              // A failed range removal cannot be reused safely. Attaching the element directly gives
-              // the replacement controller a fresh MediaSource; the transferred source loses its
-              // final reference when the element's blob URL is replaced.
-              discardTransfer = true;
-              transferred = null;
-            }
           }
         } else {
           discardTransfer = Boolean(transferred);
@@ -414,7 +453,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // itself, doing its own ABR. Only reached when MSE is absent, so this is a genuine native-HLS
       // browser, not a Chromium false-positive.
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        const onManifest = () => markTunePhase(attempt, "manifest");
+        const onManifest = () => markTunePhase(playbackAttempt, "manifest");
         // Native HLS has no transport controller to detach the previous URL for us.
         video.removeAttribute("src");
         video.load();
@@ -437,7 +476,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       setState({ channelId, status: "error", error: "This browser can't play live channels." });
       return () => undefined;
     },
-    [attempt, channelId],
+    [channelId, playbackAttempt],
   );
 
   const attach = useCallback(
