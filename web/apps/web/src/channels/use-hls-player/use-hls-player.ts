@@ -315,6 +315,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // controller can fetch its init segment before the transferred SourceBuffers are adopted;
         // WebKit can then strand that controller without ever requesting the media fragment.
         hls.loadSource(url);
+        // Queue the target join before any media bytes can arrive. WebKit can decode a cached first
+        // append before MANIFEST_PARSED is delivered; waiting for that event leaves a real target
+        // frame paused. Later event joins remain necessary because loadstart can reset the element.
+        playReplacement();
         hls.startLoad();
         if (manifestParsed) playReplacement();
         return () => {

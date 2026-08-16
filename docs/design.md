@@ -1410,11 +1410,13 @@ while that clear is in flight. The element stays at the outgoing edge until ever
 `updateend`; seeking into the range being removed can hold WebKit's decoder on those bytes and turn
 a cached tune into a multi-second stall. After confirming that generation is still current, the
 adapter rewinds, attaches the cleared handoff, arms target-frame observation, loads the replacement
-source, explicitly starts media loading, and rejoins playback; MSE reopens an ended source on that
-mutation. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+source, queues its playback join, and then explicitly starts media loading; MSE reopens an ended
+source on that mutation. This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. Arming after attachment but before loading means the observer cannot
-attribute an outgoing frame and cannot miss a fast cached target.
+attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
+loading means that same cached target cannot decode while the element is still paused; manifest,
+fragment, and loaded-data joins remain generation-scoped recovery for later platform load resets.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
 destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
 before that frame retires the detached controller before creating its one-source replacement, so no

@@ -274,6 +274,7 @@ describe("useHlsPlayer", () => {
       expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
     );
     vi.mocked(video.requestVideoFrameCallback).mockClear();
+    vi.mocked(video.play).mockClear();
 
     let finishRemoval!: () => void;
     const remove = vi.fn();
@@ -347,6 +348,17 @@ describe("useHlsPlayer", () => {
     expect(vi.mocked(video.requestVideoFrameCallback).mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
     );
+    // A cached WebKit append can decode before MANIFEST_PARSED is delivered. The target must have
+    // a pending playback join before media loading starts so its first decoded frame cannot surface
+    // paused; later manifest/fragment/loadeddata joins still cover WebKit's queued load resets.
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    expect(replacement.loadSource.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      vi.mocked(video.play).mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    expect(vi.mocked(video.play).mock.invocationCallOrder.at(-1)).toBeLessThan(
+      replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    vi.mocked(video.play).mockClear();
     const manifestParsed = replacement.on.mock.calls
       .filter((call: unknown[]) => call[0] === "manifestParsed")
       .at(-1)?.[1] as (() => void) | undefined;
