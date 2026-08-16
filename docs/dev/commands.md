@@ -36,7 +36,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify release tag and OCI naming policy |
+| `make release-verify` |  | verify release tag, OCI naming, and immutable publication policy |
 
 ## The default gate
 

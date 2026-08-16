@@ -33,6 +33,14 @@ printf '%s\n' "$sqlite" | grep -q 'http://127.0.0.1:8082/ping'
 printf '%s\n' "$sqlite" | grep -q 'traefik.http.routers.loomarr.service: loomarr'
 printf '%s\n' "$sqlite" | grep -q 'traefik.http.services.loomarr.loadbalancer.server.port: "8080"'
 printf '%s\n' "$sqlite" | grep -q 'SERVER_PUBLIC_URL: http://192.0.2.10'
+printf '%s\n' "$sqlite" | grep -q -- '--image-tag'
+printf '%s\n' "$sqlite" | grep -q 'condition: service_completed_successfully'
+
+if "$ROOT/scripts/check-release-tag.sh" --image-tag latest >/dev/null 2>&1; then
+	echo 'compose-verify: release Compose validator accepts the mutable latest alias' >&2
+	exit 1
+fi
+"$ROOT/scripts/check-release-tag.sh" --image-tag "$VERSION"
 
 loomarr="$(printf '%s\n' "$sqlite" | sed -n '/^  loomarr:$/,/^  [a-zA-Z0-9_-][a-zA-Z0-9_-]*:$/p')"
 if printf '%s\n' "$loomarr" | grep -q '^    ports:'; then

@@ -1,12 +1,12 @@
 # First beta readiness
 
-Status: active  
-Target: `v0.1.0-beta.1`  
-Artifact: one signed OCI image for `linux/amd64` and `linux/arm64`, run directly on Linux or through Docker Desktop on macOS
+- Status: active
+- Target: `v0.1.0-beta.1`
+- Artifact: one signed OCI image for `linux/amd64` and `linux/arm64`, run directly on Linux or through Docker Desktop on macOS
 
 ## Release decision
 
-`origin/main` at `c1f24dc5` is not ready to tag. The repository has strong automated gates, a nonroot multi-architecture image, forward-only migrations, centralized authorization, generated-contract drift checks, and real integration seams. The remaining problems are not a reason to restart or redesign the product, but several are release blockers because they make the shortest documented path fail or make installation and recovery claims untrue.
+The initial audit baseline (`c1f24dc5`) was not ready to tag. The repository has strong automated gates, a nonroot multi-architecture image, forward-only migrations, centralized authorization, generated-contract drift checks, and real integration seams. The remaining problems are not a reason to restart or redesign the product, but several are release blockers because they make the shortest documented path fail or make installation and recovery claims untrue.
 
 The beta ships only when every blocker below is either closed on `main` or deliberately removed from the beta contract. “An active branch contains a fix” is not closed.
 
@@ -36,7 +36,7 @@ The beta ships only when every blocker below is either closed on `main` or delib
 | Channel status and post-approval routing assume Tunarr in some places and internal HLS in others. | `web/apps/web/src/routes/_authed/channels/$id/route.tsx`; `channel-watch.tsx`; `use-hls-player.ts`; `internal/api/channelplayurl.go` | Partly active first-channel/playback work. Remaining exit: use canonical `inAppPlayable`; route Tunarr to a real handoff rather than Watch. |
 | The product calls AI/TMDB optional while the only normal channel-origination UI requires suggestions. | `README.md`; `docs/install/index.md`; `docs/help/quickstart.md`; `internal/api/proposals.go`; `docs/design.md` §12 | Beta documentation now names TMDB and an LLM as prerequisites for the defining flow. Close after merge; a non-AI UI is not promised for this beta. |
 | `--profile postgres` starts Postgres but leaves Loomarr on SQLite. | `docker/compose.yaml`; `docs/install/docker.md`; `docs/help/quickstart.md` | `docker/compose.postgres.yaml` and `compose-verify` now wire and enforce the Postgres DSN. Close after merge and runtime restore proof. |
-| Install/upgrade Compose points at `loomarr:latest`, while releases publish GHCR. | `docker/compose.yaml`; `docs/install/upgrading.md`; `.github/workflows/release.yml` | Compose now requires an exact GHCR `LOOMARR_VERSION`; install, upgrade, and rollback use the same pin. Close after published-image install proof. |
+| Install/upgrade Compose points at `loomarr:latest`, while releases publish GHCR. | `docker/compose.yaml`; `docs/install/upgrading.md`; `.github/workflows/release.yml` | Compose now requires an exact GHCR `LOOMARR_VERSION` and rejects mutable or malformed tags in a preflight using the publisher's validation policy; install, upgrade, and rollback use the same pin. Close after published-image install proof. |
 | The release Compose path exposes Loomarr directly and has no Traefik edge or routing verification. | `docker/compose.yaml`; `docs/install/docker.md`; `scripts/check-compose.sh` | Digest-pinned Traefik now owns the only host port. Real amd64 routing/no-bypass passed; arm64 and Docker Desktop evidence remain. |
 | The release image is not rebuilt in CI for all Docker build inputs; tag publishing does not require or run the full gate. | `.github/workflows/ci.yml`; `Dockerfile`; `.github/workflows/release.yml` | Image inputs now cover Go, web, OpenAPI, and embedded help; release tags require successful main CI and prereleases cannot move `latest`. Close after the workflow runs on the merged commit. |
 | Distributed binary/model notices and integrity evidence are incomplete. | `Dockerfile`; `THIRD_PARTY_NOTICES.md` | Whisper binaries/libraries/models and SBOM limits are now inventoried. Executable archive digests, mutable ffmpeg source, and final NOTICE/legal review remain open. |

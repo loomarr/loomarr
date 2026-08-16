@@ -4697,8 +4697,13 @@ image worker's release/profile self-test. The web UI is embedded and served at `
 **One image (revised — supersedes "two tags, one binary").** Releases publish one image at
 `ghcr.io/mantonx/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
 `0.1.0-beta.1` never move `latest`, which is reserved for the newest stable release. Compose requires
-`LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. The
-release rejects an exact version already present in GHCR and publishes no mutable major/minor alias.
+`LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. A
+one-shot Compose preflight applies the same strict SemVer and OCI tag policy as the publisher, so
+mutable aliases such as `latest` fail before Loomarr starts. The release rejects an exact version
+already present in GHCR, publishes no mutable major/minor alias, and serializes publishers by exact
+Git tag. Registry lookup fails closed: only buildx's exact ref-qualified rendering of GHCR's
+`MANIFEST_UNKNOWN` response permits a push; generic 404, authentication, transport, rate-limit, and
+service errors stop publication. Fixture-style release-policy tests cover each of those classes.
 The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
 ran; a manual full release-candidate rerun is available when a docs-only final commit would
 otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
@@ -4735,6 +4740,9 @@ tools. The Go server stays cgo-free, and pixel buffers never cross the process b
   When the only labelled backend container stops, Docker discovery removes the router and the edge
   returns 404 until Loomarr restarts; recovery must not require a Traefik restart. The beta topology
   is deliberately one Loomarr replica.
+- **artifact preflight:** an unprofiled one-shot service validates `LOOMARR_VERSION` with the release
+  workflow's strict SemVer/OCI policy before Loomarr starts. Empty, malformed, overlong, and mutable
+  aliases such as `latest` fail the deployment rather than silently selecting a moving artifact.
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `docker/compose.postgres.yaml` replaces Loomarr's SQLite default with an explicit
   Postgres DSN and waits for `postgres:16` to become healthy. A profile can add a service but cannot
@@ -4753,6 +4761,11 @@ postgres backend has no `/data` volume — so the init runs under the `sqlite` p
 
 ```yaml
 services:
+  loomarr-version-check:
+    image: busybox:1.36
+    command: ["sh", "/check-release-tag.sh", "--image-tag", "${LOOMARR_VERSION:?pin an exact released SemVer version}"]
+    volumes: ["../scripts/check-release-tag.sh:/check-release-tag.sh:ro"]
+
   traefik:
     image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
     command:
@@ -4772,6 +4785,8 @@ services:
   loomarr:
     image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?pin a released version}
     depends_on:
+      loomarr-version-check:
+        condition: service_completed_successfully
       loomarr-init:
         condition: service_completed_successfully   # sqlite profile only
         required: false                             # postgres profile skips it

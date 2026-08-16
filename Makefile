@@ -119,8 +119,9 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
 .PHONY: release-verify
-release-verify: ## verify release tag and OCI naming policy
+release-verify: ## verify release tag, OCI naming, and immutable publication policy
 	@./scripts/check-release-tag.sh --self-test
+	@./scripts/check-release-image-absence.sh --self-test
 
 ## ---- the default gate ----------------------------------------------------
 

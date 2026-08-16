@@ -8,6 +8,12 @@ on:
   push:
     tags: ["v*"]
 
+# A recreated tag cannot race another publisher for the same immutable image
+# name. Queue rather than cancel so every attempt reaches an auditable result.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read # require a successful main CI run for the tagged commit
@@ -78,10 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          if docker buildx imagetools inspect "${IMAGE}:${version}" >/dev/null 2>&1; then
-            echo "refusing to overwrite published image tag ${IMAGE}:${version}" >&2
-            exit 1
-          fi
+          ./scripts/check-release-image-absence.sh "${IMAGE}:${version}"
 
       - name: Derive tags & labels
         id: meta
