@@ -1023,6 +1023,14 @@ Turns an approved proposal + live availability into a durable, filled channel on
 ### Scheduler domain (persisted in the same store, §5)
 - `Channel`: id, intent ref, number, strategy, status, and an optional Tunarr projection id/filler-list ref.
 - `DesiredLineup`: ordered `Slot`s referencing external ids (some not-yet-available).
+- `DesiredLineup` is also the **accepted broadcast snapshot**. Reconciliation persists it in the
+  channel row before it becomes observable; internal playout and the guide segment containing
+  `now` read that persisted value directly. `CyclePreview` remains the authoring/forecast surface
+  for unsaved drafts and future rolling windows, never a runtime substitute for the accepted
+  snapshot. This distinction is load-bearing: preview includes mutable airing-history and live
+  availability inputs, so recomputing it at a finite ffmpeg child's EOF can reorder the deck and
+  put the same wall clock in the middle of an unrelated episode. Persisted Desired plus the stable
+  per-channel epoch also means a process restart resumes the same schedule position.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
 - **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.
@@ -1172,6 +1180,13 @@ which no encoder change fixes, so a copy fails straight through. And it fires **
 the common case (hardware works first try) pays nothing, and the eviction in step 2 happens only when
 an encode genuinely could not fit.
 
+Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
+**tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an
+Airing and more than ten seconds remain. A child opened near the start of an Airing, or for its short
+remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the concat parent asks
+“what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
+return from a commercial block appear roughly ten seconds late.
+
 **This removes the old uniform-profile constraint.** Playout previously concatenated programs with a
 single `-c copy` parent that REQUIRED every program to share one profile (codec/resolution/fps/pixel
 format) — which is exactly why everything was transcoded into that profile. Programs now differ:
@@ -1190,6 +1205,11 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
   **browser or a native app** plays — a `<video>` element cannot consume raw MPEG-TS, so the same
   channel is *repackaged*, not re-encoded: a `-c copy` remux hangs off the channel encoder and fans
   its already-keyframe-aligned bytes into a rolling playlist.
+- **Scheduled break fallback is not an empty Channel.** If a filler pod has no playable clip, the
+  synthetic card says “We'll be right back,” preserves the break's wall-clock identity, and is
+  bounded by the time remaining in that break so it cannot cover the next programme. “Nothing
+  scheduled” is reserved for a genuinely empty/unairable lineup; transient source failures remain
+  “Program unavailable.”
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
 
@@ -1291,6 +1311,11 @@ if it does not, that one live child takes the existing software fallback rather 
 maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
 does not guess and it does not consume the only live slot. This priority contract is shared code;
 adding a second semaphore around ffmpeg is forbidden.
+
+The host capability benchmark is control-plane warming, never tune-time work. With no explicit
+encoder override, the first demand starts one process-lifetime probe in the background and plays
+immediately with the software fallback while it runs; later programme boundaries use the cached
+measured encoder and capacity. A viewer may not inherit the multi-second trial-encode benchmark.
 
 Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
 is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
@@ -1406,7 +1431,7 @@ Channel number, name, current programme, and `Tuning…`; it stays over the exis
 replacement produces a decoded frame, then fades. A failed tune keeps the target identity visible
 with a retry action rather than silently snapping back to the previous Channel.
 
-Adjacent warming is deliberately **prepared-only**. The client keeps signed play URLs for the
+Adjacent warming begins with a **prepared-only probe**. The client keeps signed play URLs for the
 previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
 least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
 presentation, but on a miss the handler returns `204 No Content` and MUST NOT attach a live session,
@@ -1419,6 +1444,101 @@ may be served `private, max-age=31536000, immutable`; live-remux assets remain `
 prepared-only flag is omitted from asset URLs in the returned manifest while the signature, plan,
 and quality remain, making the warmed asset URL byte-identical to the subsequent real tune. The
 manifest itself remains `no-store` because its media sequence and live edge follow wall clock.
+Prepared manifests name every immutable file with one opaque URL-safe `{asset}` path segment. The
+token binds the publication key and validated relative filename; its visible suffix retains the
+correct media content type. The Origin decodes that token and still applies the publication
+library's declared-file and containment checks before opening bytes.
+
+Adjacent warming is **prepared-first, bounded-live on a miss**. The controller first performs the
+read-only prepared probe described above. A hit warms its immutable init/media bytes. A `204` miss
+then fetches one normal signed HLS snapshot for only the previous and next surfable Channels. That
+snapshot may establish the existing bounded live Origin and its normal grace lease, but it never
+creates a browser player, MediaSource, or decoder; live admission remains authoritative and a
+capacity rejection is a harmless cold miss. This is the immediate hot-set path while whole-program
+preparation catches up: catalog size does not create work because only `current - 1`, `current`, and
+`current + 1` are requested. **The current Channel wins the network:** adjacent warming begins only
+after its first decoded frame, and a replacement tune aborts the previous warmers before attaching
+its source. A real tune reuses the exact signed URL and the already-ready remux. The Watch screen
+also defers source-backed track probing until the first decoded frame so optional work cannot
+contend with the active Channel's cold open and seek.
+
+Safari-family WebKit prefers the platform's native HLS capability before importing hls.js, even
+when Media Source Extensions are also present. A MIME-type answer alone is insufficient because
+Chromium can answer `maybe` without an HLS demuxer; the WebKit-family check prevents that false
+native route. This keeps shipping Safari on its AVFoundation-backed source swap, while Chromium and
+Firefox use hls.js. A WebKit build that does not expose native HLS (including the Linux Playwright
+port) uses the bounded hls.js fallback below for compatibility rather than standing in for Safari.
+
+The Web adapter resolves and retains the hls.js controller class once per document, then keeps a
+bounded pair of source-scoped controllers while the mounted Watch surface retains
+its one media element and decoder: one active controller and one fresh standby that has never owned
+a source URL. A same-element replacement consumes that standby. It stops the outgoing loader and
+the Watch surface's held poster preserves the last decoded picture during the handoff. Chromium and
+Firefox pause the media element and, for an `open` MediaSource, seek to the final presentable-frame interval
+(50 ms inside the shared half-open buffered end), wait at most 100 ms for the media acknowledgement,
+then uses hls.js's public cross-controller handoff to transfer its compatible SourceBuffers and clear
+the old Channel-relative ranges. Seeking to the exact non-presentable end can instead leave WebKit
+waiting for live playback to reach it naturally. The element stays at the accepted frame until every
+removal reaches `updateend`; rewinding into the range being removed can hold WebKit's decoder on
+those bytes and turn a cached tune into a multi-second stall.
+
+An open-source seek that misses that bound, an `ended` compact publication, or any non-native WebKit handoff
+takes the other bounded branch: the source-scoped standby attaches a fresh MediaSource to the same
+element instead of serializing replacement behind the outgoing fragment remainder. WebKit can retain the terminal
+decoded frame of an ended source for roughly two seconds even after pause and a render turn, and an
+open-source seek can block WebKit's event loop so its JavaScript timeout cannot honestly enforce the
+100 ms bound. Reusing either unreleased decoder range therefore misses the tuner latency contract.
+The WebKit branch preserves the element's playing intent rather than pausing before its immediate
+detach. It removes and revokes the outgoing blob URL but does not call `load()` on the empty element:
+WebKit can process that intermediate reset synchronously for more than a second, and the immediately
+attached fresh MediaSource performs the required load itself. A superseded generation with no
+replacement still performs the explicit empty reset. Every fresh branch releases the transferred source's blob URL before the
+standby attaches; hls.js deliberately leaves that URL owned by the receiver during a transfer, so
+discarding it without that release accumulates ended MediaSources and delays later WebKit source opens.
+It creates no second player or decoder, and the held poster still covers the single-element handoff. Closed sources and
+failed open-source clears use the same fresh branch. Committing the target route may retire its
+transient tune-attempt object after the first frame; the adapter retains that attempt for the same
+Channel so this bookkeeping transition cannot tear down and reattach the live source. After
+confirming that the generation is still current, the adapter rewinds, attaches the cleared open handoff,
+arms target-frame observation, loads the replacement source, queues its playback join, and then explicitly
+starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
+before the media request. A fresh-MSE replacement has no SourceBuffers to adopt, so it may load and
+parse its manifest before attachment while init/media loading remains explicitly stopped; that overlaps
+WebKit's controller scheduling with the element reset without creating detached media work. Arming
+after attachment but before media loading means the observer cannot
+attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
+loading minimizes the paused interval, while manifest, metadata, fragment, and loaded-data joins
+remain generation-scoped recovery for later platform load resets. WebKit may expose the first
+attributed frame callback immediately before it dispatches `playing`; the controller gate therefore
+keeps first-frame latency at that callback and separately requires the same target to enter an
+unpaused `playing` state within 250 ms, with no retry. In particular, the metadata join occurs after
+WebKit's queued source reset and before its target is ready to play. The browser fixture first proves
+one genuinely ended publication can hand off, then serves replacement publications with the same
+open, no-`ENDLIST` manifest contract PreparedOrigin emits; declaring every live replacement as VOD
+would force hls.js to end each MediaSource immediately after append and certify a transport Loomarr
+does not serve.
+Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
+destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
+before that frame retires the detached controller before creating its one-source replacement, so no
+more than two controllers are live even during a burst. Source metadata may be parsed while detached,
+but no init or media fragment can enter a detached state. hls.js's reference-counted worker remains
+enabled and shared across those controllers because the baseline HLS rendition carries MPEG-TS; its
+transmux therefore stays off the UI thread rather than trading controller setup time for stalled
+controls. If the source is closed or cannot be cleared, replacement falls back to a full MediaSource
+reset. It never retains old media bytes, re-resolves the cached hls.js module, or allocates a second
+player.
+Replacement playback starts only after that handoff attaches, and the target's first `loadeddata`
+joins playback again after any queued element reset. A synchronous replacement cancels the outgoing
+controller's zero-delay disposal; leaving Watch lets that disposal destroy it. Native-HLS clients
+keep the equivalent one-element source swap.
+
+The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
+viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink
+instead preserves the finite encoder startup burst in a lossless queue capped at 128 MiB; exceeding
+that bound fails and rebuilds only the remux rather than discarding MPEG-TS packets or growing
+without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory
+bound is independent of the full Guide size.
 
 The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
 request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
@@ -1430,8 +1550,9 @@ names are not placed in measure names. The product gates on a 100-Channel catalo
 - prepared adjacent request-to-first-frame p95 below **750 ms**.
 - prepared arbitrary request-to-first-frame p95 below **1.5 s**.
 - prepared manifest response p95 below **50 ms** on the local server.
-- a burst of twenty mixed Up/Down requests plays only the final target, leaves one video element,
-  and starts no live fallback for either adjacent prefetch.
+- a burst of twenty mixed Up/Down requests plays only the final target and leaves one video element;
+  durable prepared hits start no live fallback, while a prepared miss may create only the bounded
+  adjacent live hot set through the same Origin and admission policy as a real tune.
 
 V57 ships in reviewable checkpoints: first the controller, cancellation, controls, OSD, and timing;
 then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel
@@ -1446,10 +1567,31 @@ claims separate so one green test cannot silently stand in for another.
 
 The **controller matrix** runs the same 100-Channel catalog through Playwright Chromium, Firefox,
 and WebKit. Every engine must preserve latest-request-wins, one video element, exact warmed-URL reuse,
-prepared-only adjacent probes, and a genuinely decoded H.264 frame. Latency budgets remain measured
-per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox or WebKit sample.
-These projects certify browser engines in the pinned Linux image. WebKit is useful compatibility
-evidence, but only a run on shipping Safari may be called Safari certification.
+prepared-only adjacent probes, and a genuinely decoded H.264 frame. Chromium and Firefox enforce
+the absolute media first-frame budgets per engine rather than pooling their samples. Playwright
+WebKit records those two percentiles as diagnostics while retaining every correctness, OSD, manifest,
+and raw-runner gate: it cannot exercise branded Safari's native-HLS route and instead measures the
+non-shipping hls.js fallback. The shipping-browser soak enforces the same **1.5 s** arbitrary and
+**750 ms** adjacent budgets on real Safari; a fast Chromium sample cannot hide a slow shipping browser.
+Each engine must complete one bounded cold decode before the surf samples begin; those samples measure
+an already-running tuner, while the real-runtime gate and shipping-browser soak own cold boot timing.
+The matrix also runs a raw MediaSource control with the same representative bytes and the same one
+persistent video element: two unmeasured decoder-startup replacements followed by twenty steady-state
+replacements whose nearest-rank p95 must be below 500 ms. Five observations make p95 merely the
+maximum and cannot distinguish an isolated runner scheduling interruption. A fresh element per sample is not equivalent; it hides
+the replacement lifecycle this gate exists to measure. This is a runner-validity signal only; it
+never normalizes, subtracts from, or changes the product budgets above. Playback join is judged from
+media-event timestamps captured inside the
+browser. Playwright may wait longer to collect those timestamps, because driver polling latency is
+not playback latency, but the recorded frame-to-`playing` interval must still satisfy its 250 ms
+bound. Likewise, arbitrary navigation starts its clock inside the browser's trusted input handler;
+automation-driver delivery time is not work performed by the product.
+The controller matrix runs natively as a dedicated serial macOS CI job rather than after visual and
+wizard suites on a reused Linux runner. It retains zero retries and absolute Chromium/Firefox product
+thresholds; isolation removes unrelated browser lifecycle and CPU pressure, while macOS exercises the
+closest available WebKit compatibility target. Playwright WebKit remains correctness evidence rather
+than Safari performance certification; only a run on shipping Safari may certify Safari's native-HLS
+latency budgets.
 
 The **real-runtime gate** starts the real composition root over an isolated SQLite store, the real
 prepared library and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server
@@ -1457,7 +1599,10 @@ API and its library) may be test doubles, and they serve pinned representative m
 prebuilt HLS responses. The browser must bootstrap/authenticate through the real API, tune a real
 Channel, receive an HLS manifest produced by Loomarr, and report a decoded frame. A process restart
 then repeats the tune from the durable readiness index, proving cold boot and prepared reuse rather
-than only a warm in-process path. Missing and corrupt representative inputs must reach the designed
+than only a warm in-process path. A secondary worktree overrides `server.public_url` to its own
+isolated backend after sourcing shared integration credentials; otherwise the parent ffmpeg re-opens
+the primary port, emits zero bytes, and every HLS request hides that routing error behind its
+45-second readiness timeout. Missing and corrupt representative inputs must reach the designed
 offline/retry state instead of an unexplained black frame.
 
 The **shipping-browser and hardware soak** is maintainer-run evidence: current Chrome, Firefox, and

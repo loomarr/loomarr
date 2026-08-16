@@ -559,6 +559,15 @@ e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker imag
 	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
 
+.PHONY: tuner-e2e
+tuner-e2e: fe-build ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test --config=playwright.tuner.config.ts
+
+.PHONY: tuner-e2e-host
+tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installed browsers (§9.1)
+	cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts
+
 ## ---- Maintainer smoke (NOT CI) -------------------------------------------
 # §21's second half: the real-stack run. Deliberately NOT in CI and NOT part of `check` —
 # it needs the maintainer's .env and touches their live media server. Uses a throwaway

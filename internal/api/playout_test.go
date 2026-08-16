@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,9 @@ type fakePlayoutSessions struct {
 	stats    []playout.SessionStat
 	capacity int
 	reported []reportedProgram
+	asset    playout.Asset
+	assetOK  bool
+	opened   string
 	tunes    int
 	stopped  []string
 	admitErr error
@@ -98,8 +102,11 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 	return playout.Presentation{Stream: chunks, Release: release}, err
 }
 
-func (f *fakePlayoutSessions) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
-	return playout.Asset{}, false, nil
+func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string) (playout.Asset, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opened = rel
+	return f.asset, f.assetOK, nil
 }
 
 func (f *fakePlayoutSessions) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
@@ -323,6 +330,46 @@ func TestPlayout_UnknownPathDoesNotServeTheSPA(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if strings.Contains(strings.ToLower(string(body)), "<!doctype html") {
 		t.Error("an unknown playout path served the SPA; ffmpeg would read HTML as MPEG-TS")
+	}
+}
+
+// Prepared publications identify an immutable asset with one opaque path segment. Exercise the
+// real router here: a handler-only test can inject a slash into PathValue manually even though the
+// registered `{asset}` route would never match that URL, which is how the black-screen bug escaped.
+func TestPlayoutHLS_PreparedAssetMatchesTheRegisteredRoute(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "prepared-*.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("prepared init"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakePlayoutSessions{
+		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0), Immutable: true},
+		assetOK: true,
+	}
+	srv, _ := newPlayoutServer(t, playoutOpts{sessions: f})
+	const token = "p-aGVsbG8.mp4"
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/"+token+"?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 from the registered single-segment asset route", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "video/mp4" {
+		t.Fatalf("Content-Type = %q, want video/mp4 retained by the opaque token suffix", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || string(body) != "prepared init" {
+		t.Fatalf("body = %q, err=%v", body, err)
+	}
+	f.mu.Lock()
+	opened := f.opened
+	f.mu.Unlock()
+	if opened != token {
+		t.Fatalf("OpenAsset rel = %q, want %q", opened, token)
 	}
 }
 
