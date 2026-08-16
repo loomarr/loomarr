@@ -19,9 +19,9 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
     <section className={cn("flex flex-col gap-2", className)}>
       <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Up next</h3>
       {entries.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {live ? "Nothing scheduled right now." : "Not on the air yet."}
-        </p>
+        // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
+        // the same empty list. Do not infer broadcast state from a response that cannot prove it.
+        <p className="text-muted-foreground text-sm">Programme information isn't available.</p>
       ) : (
         <ol className="flex flex-col gap-0.5">
           {entries.map((entry, i) => {
