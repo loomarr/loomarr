@@ -5,7 +5,7 @@ import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
@@ -41,8 +41,11 @@ interface ChannelWatchProps {
   mediaServerName?: string;
   tuner?: {
     canSurf: boolean;
+    requestedChannel?: ChannelDTO;
     currentTitle?: string;
     attempt?: TuneAttempt;
+    acknowledging?: boolean;
+    ready: (channelId: string) => void;
     step: (direction: TuneDirection) => void;
     retry: () => void;
   };
@@ -112,6 +115,9 @@ const ChannelWatch = ({
   tuner,
 }: ChannelWatchProps) => {
   const player = useHlsPlayer(channel.id, tuner?.attempt);
+  useEffect(() => {
+    if (player.status === "playing") tuner?.ready(channel.id);
+  }, [channel.id, player.status, tuner?.ready]);
   // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
   // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
   // second click makes "open the channel" a two-step act to do the obvious thing.
@@ -131,7 +137,9 @@ const ChannelWatch = ({
 
   // The pickers' options are the tracks the airing programme actually carries — fetched, never
   // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
-  const tracks = channelsApi.useChannelTracks(channel.id, { query: { enabled: !paused, retry: false } });
+  const tracks = channelsApi.useChannelTracks(channel.id, {
+    query: { enabled: !paused && player.status === "playing", retry: false },
+  });
   const tracksBody = unwrap(tracks.data);
 
   // The mini-guide scrubber's data — the channel's schedule strip (now + next few + the commercial
@@ -171,6 +179,7 @@ const ChannelWatch = ({
   // The controls-row time (mock): elapsed / total + "N min left" for the programme airing now, from
   // the schedule (the player has no source for programme time, so channel-watch derives it).
   const timeLeft = programmeTime(airings);
+  const osdChannel = tuner?.requestedChannel ?? channel;
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
@@ -257,10 +266,10 @@ const ChannelWatch = ({
           <div className="flex flex-col gap-3 p-3">
             <div className="relative">
               {playerEl}
-              {player.status === "loading" && tuner && (
+              {(player.status === "loading" || tuner?.acknowledging) && tuner && (
                 <TunerOSD
-                  number={channel.number}
-                  name={channel.name}
+                  number={osdChannel.number}
+                  name={osdChannel.name}
                   currentTitle={tuner.currentTitle}
                   className="absolute top-4 left-4 z-[2]"
                 />

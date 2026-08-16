@@ -25,8 +25,8 @@ import (
 // The transcode flags below are each verified in Tunarr's source or against the live dev Emby
 // (prior-art §5a–§5c); the ones that look redundant are the ones a real failure found.
 
-// readrateInitialBurst is how many seconds of content ffmpeg may read flat-out before
-// settling to realtime pacing.
+// readrateInitialBurst is how many seconds of content ffmpeg may read flat-out on a genuine
+// mid-program tune-in before settling to realtime pacing.
 //
 // This is the TUNE-IN LATENCY FIX (prior-art §5a, Tunarr's ReadrateInputOption). Realtime
 // pacing alone is correct but feels broken: a player joining a live stream has an empty
@@ -36,6 +36,11 @@ import (
 // Deliberately NOT applied to synthetic sources — pacing a lavfi generator with a burst
 // stalls the pipeline (see TestCardArgs, which uses plain `-re`).
 const readrateInitialBurst = 10
+
+// tuneInBurstThreshold keeps ordinary programme boundaries on the wall clock. A new session that
+// joins at least this far into an airing needs the latency win; a child opened near offset zero is
+// the parent advancing normally and racing it ahead would make the next resolve replay its tail.
+const tuneInBurstThreshold = time.Duration(readrateInitialBurst) * time.Second
 
 // ProgramSpec is everything one program's encode needs. A struct rather than the old positional
 // ladder (ProgramArgs → …WithAudio → …Normalised, which had reached six parameters): the copy plan
@@ -141,11 +146,14 @@ func ProgramArgs(spec ProgramSpec) []string {
 		)
 	}
 
-	// Realtime pacing with a burst. See readrateInitialBurst.
-	args = append(args,
-		"-readrate", "1.0",
-		"-readrate_initial_burst", strconv.Itoa(readrateInitialBurst),
-	)
+	// Realtime pacing is unconditional. The burst is only for a genuine mid-program tune-in with
+	// enough media left to absorb it. Applying it at offset zero makes every child finish ten
+	// seconds before its wall-clock boundary; applying it to that short remaining tail repeats the
+	// same mistake. Both presented live as commercials arriving and leaving about ten seconds late.
+	args = append(args, "-readrate", "1.0")
+	if offset >= tuneInBurstThreshold && limit > tuneInBurstThreshold {
+		args = append(args, "-readrate_initial_burst", strconv.Itoa(readrateInitialBurst))
+	}
 
 	// THE SEEK, and its placement is load-bearing. `-ss` BEFORE `-i` makes ffmpeg seek —
 	// over HTTP the server serves a byte range, verified at 2.9s wall-clock for a 40-minute

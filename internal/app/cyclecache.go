@@ -40,11 +40,10 @@ import (
 //
 // # Why here and not in channels.Engine
 //
-// Engine.CyclePreview is shared with playoutResolver.AiringNow, which is what ffmpeg streams
-// (§9.1's one-source rule: the guide and the encoder must agree). Caching inside the Engine
-// would put this on the live broadcast path, where a stale entry means a viewer watching the
-// wrong programme. Sitting in the resolver's GUIDE methods keeps AiringNow on the live
-// computation: a bug here degrades a grid, never a broadcast.
+// Engine.CyclePreview forecasts future guide windows. AiringNow instead reads the persisted
+// accepted Desired cycle directly, and the guide substitutes that same snapshot for the window
+// containing now. Keeping this cache on forecast computation means an expiry can make future
+// listings slower or stale, never change the actual broadcast or its current guide block.
 //
 // Draft previews are never cached — CyclePreviewDraft with a non-nil draft is an unsaved
 // what-if whose whole purpose is to reflect the edit in hand.

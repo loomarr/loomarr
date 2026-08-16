@@ -94,15 +94,54 @@ container's writable layer and is lost on the next `up --force-recreate` or imag
 Back up SQLite:
 
 ```bash
-curl -sH "Authorization: Bearer $API_TOKEN" \
-  http://localhost:8080/v1/backup > loomarr-$(date +%F).db
+backup="loomarr-$(date +%F).db"
+umask 077
+curl -fsS -H "Authorization: Bearer $API_TOKEN" \
+  http://localhost:8080/v1/backup > "$backup.partial" &&
+  chmod 600 "$backup.partial" &&
+  mv "$backup.partial" "$backup"
 ```
 
-On Postgres use `pg_dump` — the image ships no Postgres client, so `/v1/backup` returns 501
-there. Backups contain secrets.
+On Postgres, create a custom archive so the documented restore command can consume it. Loomarr's
+image ships no Postgres client and the supported Compose stack keeps the database off the host
+network, so run the client inside the Postgres service and stream the archive to the trusted host;
+`/v1/backup` returns 501 there.
+
+```bash
+compose=(docker compose -f docker/compose.yaml -f docker/compose.postgres.yaml --profile postgres)
+archive="loomarr-$(date +%F).dump"
+umask 077
+"${compose[@]}" exec -T postgres sh -ceu \
+  'pg_dump --format=custom --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
+  > "$archive.partial" &&
+  chmod 600 "$archive.partial" &&
+  mv "$archive.partial" "$archive"
+```
+
+Backups contain secrets. Keep the SQLite file or Postgres archive at mode `0600`.
 
 Scheduled backups default to `/data/backups`, which protects against a bad migration or application
 change but not loss of the host disk or the whole volume. Copy them to another disk or host.
+
+Restore only while Loomarr is stopped. For SQLite, replace `/data/loomarr.db`, then set mode `0600`
+and ownership to `65532:65532` before starting the container. For Postgres, use the same Compose
+files as the running stack, stop Loomarr, and replace only its database:
+
+```bash
+compose=(docker compose -f docker/compose.yaml -f docker/compose.postgres.yaml --profile postgres)
+"${compose[@]}" stop loomarr
+"${compose[@]}" exec -T postgres sh -ceu '
+  dropdb --username="$POSTGRES_USER" --force "$POSTGRES_DB"
+  createdb --username="$POSTGRES_USER" --owner="$POSTGRES_USER" "$POSTGRES_DB"
+  pg_restore --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --exit-on-error
+' < loomarr-YYYY-MM-DD.dump
+"${compose[@]}" up -d loomarr traefik
+```
+
+After either restore, wait for `/v1/readyz`, sign in, and verify a channel before deleting the
+newer backup. Repository maintainers can exercise the same isolated recovery contract with
+`make backup-restore-verify` (SQLite, no Docker) or `make backup-restore-drill` (SQLite and
+Docker-backed Postgres).
 
 ## Checking it's up
 
