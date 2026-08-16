@@ -7,6 +7,9 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/library"
 )
 
 // Provenance is where a resolved value came from (config-design §3). It drives the
@@ -35,23 +38,19 @@ type Resolved struct {
 	EnvOverride bool
 }
 
-// Loader reads persisted overrides. The store implements it (accept-interfaces
-// idiom — settings does not import store). Returns the raw string and whether the
-// key had a stored value.
-type Loader interface {
-	Load(ctx context.Context, key string) (value string, ok bool, err error)
-	LoadAll(ctx context.Context) (map[string]string, error)
+// Snapshot is one coherent durable settings generation. Values and environment-
+// override ownership travel together because resolving them from separate reads
+// could pair a new value with old authority during another replica's PATCH.
+type Snapshot struct {
+	Values       map[string]string
+	EnvOverrides map[string]bool
 }
 
-// EnvOverrideLoader is an OPTIONAL Loader capability: the set of keys an admin has taken
-// back from the environment (config-design §3.1).
-//
-// Optional rather than folded into Loader so a loader that knows nothing about unlocking —
-// every in-memory test double, and any future source that has no such concept — keeps the
-// original contract exactly: no overrides, env always wins. A Loader that does not implement
-// this is not broken, it simply never unlocks anything.
-type EnvOverrideLoader interface {
-	LoadEnvOverrides(ctx context.Context) (map[string]bool, error)
+// Loader reads one coherent persisted settings generation. The store implements
+// it through one ListSettings query (accept-interfaces; settings does not import
+// store), so refresh cost is one table read rather than one read per key.
+type Loader interface {
+	LoadSnapshot(ctx context.Context) (Snapshot, error)
 }
 
 // Change is emitted on Watch channels when a watched key's value changes, so
@@ -67,7 +66,7 @@ type Service struct {
 	reg    *Registry
 	env    func(string) (string, bool) // injectable for tests; defaults to os.LookupEnv
 	log    *slog.Logger
-	loader Loader // kept for the post-write snapshot refresh (Patch hot-apply)
+	loader Loader // kept for post-write hot-apply and replica refresh
 
 	// execProbe reports whether a path is a runnable executable. Injectable so the
 	// `ingest` feature gate (the one environment-derived gate, config-design §7) can be
@@ -83,21 +82,15 @@ type Service struct {
 	execLookPath func(name string) (string, error)
 
 	mu sync.RWMutex
-	db map[string]string // persisted overrides (raw strings)
+	// refreshMu serializes durable reloads. Without it, a slow read that began before
+	// a local PATCH committed could publish its old generation after the PATCH's own
+	// reload and temporarily roll this process backward.
+	refreshMu sync.Mutex
+	db        map[string]string // persisted overrides (raw strings)
 	// unlocked holds the keys taken back from the environment (§3.1). Only true entries
 	// are present, so a missing key means "env still wins" — the default and the norm.
 	unlocked map[string]bool
 	watchers map[string][]chan Change
-}
-
-// loadUnlocked reads the env-override set when the loader supports it (§3.1). A loader
-// without the capability yields an empty set, which is the pre-3.1 contract.
-func loadUnlocked(ctx context.Context, loader Loader) (map[string]bool, error) {
-	el, ok := loader.(EnvOverrideLoader)
-	if !ok {
-		return map[string]bool{}, nil
-	}
-	return el.LoadEnvOverrides(ctx)
 }
 
 // New builds a Service over the registry, loading the current db overrides and
@@ -135,16 +128,18 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 			return nil, fmt.Errorf("invalid env %s: %w", set.EnvVar, perr)
 		}
 	}
-	db, err := loader.LoadAll(ctx)
+	snapshot, err := loader.LoadSnapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load settings overrides: %w", err)
 	}
-	s.db = db
-	unlocked, err := loadUnlocked(ctx, loader)
-	if err != nil {
-		return nil, fmt.Errorf("load settings env overrides: %w", err)
+	s.db = snapshot.Values
+	s.unlocked = snapshot.EnvOverrides
+	if s.db == nil {
+		s.db = map[string]string{}
 	}
-	s.unlocked = unlocked
+	if s.unlocked == nil {
+		s.unlocked = map[string]bool{}
+	}
 	return s, nil
 }
 
@@ -191,18 +186,6 @@ func (s *Service) envRaw(set Setting) (string, bool, error) {
 	}
 }
 
-// setUnlocked replaces the env-override snapshot after a write (§3.1 hot-apply).
-//
-// Deliberately does NOT emit Change events. A Change means "this key's VALUE moved, rebuild
-// what you built from it", and unlocking alone does not move a value — it seeds the store
-// with the env value it is taking over, so the resolved answer is identical either side of
-// the claim. The value write that follows emits its own Change through SetDB.
-func (s *Service) setUnlocked(next map[string]bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.unlocked = next
-}
-
 // IsUnlocked reports whether a key has been taken back from the environment (§3.1).
 func (s *Service) IsUnlocked(key string) bool {
 	s.mu.RLock()
@@ -214,33 +197,131 @@ func (s *Service) IsUnlocked(key string) bool {
 // notifies watchers of changed keys. Called by the write path once the DB commit
 // succeeds so the snapshot never leads the durable store.
 func (s *Service) SetDB(next map[string]string) {
+	s.publishSnapshot(Snapshot{Values: next})
+}
+
+// setSnapshot atomically publishes values and environment-override ownership from
+// one durable generation. ResolveMany therefore sees either the complete old
+// snapshot or the complete new one, never a tuple assembled across refreshes.
+func (s *Service) setSnapshot(next Snapshot) {
+	if next.Values == nil {
+		next.Values = map[string]string{}
+	}
+	if next.EnvOverrides == nil {
+		next.EnvOverrides = map[string]bool{}
+	}
+	s.publishSnapshot(next)
+}
+
+// publishSnapshot is the one publication path for values, authority, and watcher
+// notifications. A nil EnvOverrides map means a values-only SetDB update and
+// preserves current authority; durable snapshots are normalized by setSnapshot.
+func (s *Service) publishSnapshot(next Snapshot) {
+	if next.Values == nil {
+		next.Values = map[string]string{}
+	}
 	s.mu.Lock()
-	changed := changedKeys(s.db, next)
-	s.db = next
-	// Snapshot watcher channels under the lock; send after releasing it.
+	if next.EnvOverrides == nil {
+		next.EnvOverrides = s.unlocked
+	}
+	changed := changedKeys(s.db, next.Values)
+	changedSet := make(map[string]struct{}, len(changed))
+	for _, key := range changed {
+		changedSet[key] = struct{}{}
+	}
+	// Authority is part of the live resolution snapshot too. Re-locking a key can
+	// move it from a stored value back to a different env value even though the raw
+	// DB row did not change, so watchers must rebuild on ownership changes.
+	for key, wasUnlocked := range s.unlocked {
+		if wasUnlocked != next.EnvOverrides[key] {
+			if _, exists := changedSet[key]; !exists {
+				changed = append(changed, key)
+				changedSet[key] = struct{}{}
+			}
+		}
+	}
+	for key, unlocked := range next.EnvOverrides {
+		if unlocked != s.unlocked[key] {
+			if _, exists := changedSet[key]; !exists {
+				changed = append(changed, key)
+			}
+		}
+	}
+	s.db = next.Values
+	s.unlocked = next.EnvOverrides
 	var sends []struct {
 		ch  chan Change
 		key string
 	}
-	for _, k := range changed {
-		for _, ch := range s.watchers[k] {
+	for _, key := range changed {
+		for _, ch := range s.watchers[key] {
 			sends = append(sends, struct {
 				ch  chan Change
 				key string
-			}{ch, k})
+			}{ch: ch, key: key})
 		}
 	}
 	s.mu.Unlock()
-	for _, snd := range sends {
+	for _, send := range sends {
 		select {
-		case snd.ch <- Change{Key: snd.key}:
-		default: // non-blocking: a slow watcher never stalls a save
+		case send.ch <- Change{Key: send.key}:
+		default:
 		}
 	}
 }
 
+// RefreshEvery keeps an ordinary Postgres replica's in-memory snapshot within the
+// documented refresh bound. It blocks until ctx is cancelled; the composition root
+// owns the one goroutine per application generation and does not call this for SQLite.
+// A failed read keeps the last complete snapshot and is retried on the next tick.
+func (s *Service) RefreshEvery(ctx context.Context, interval time.Duration, after func()) {
+	if interval <= 0 {
+		panic("settings: refresh interval must be positive")
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	s.refreshOn(ctx, ticker.C, after)
+}
+
+// refreshOn is the deterministic clock seam for the periodic refresher's tests.
+func (s *Service) refreshOn(ctx context.Context, ticks <-chan time.Time, after func()) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			if err := s.Refresh(ctx); err != nil {
+				if ctx.Err() == nil {
+					s.log.Warn("settings replica refresh failed; keeping prior snapshot", "err", err)
+				}
+				continue
+			}
+			if after != nil {
+				after()
+			}
+		}
+	}
+}
+
+// LibraryConnection projects one coherent settings snapshot into the canonical
+// media-library connection used by runtime adapters and feature gating.
+func (s *Service) LibraryConnection() library.Connection {
+	values := s.ResolveMany("library.flavor", "library.url", "library.token")
+	stringValue := func(key string) string {
+		value, _ := values[key].Value.(string)
+		return strings.TrimSpace(value)
+	}
+	flavor, err := library.ParseFlavor(stringValue("library.flavor"))
+	if err != nil {
+		return library.Connection{}
+	}
+	return library.Connection{
+		Flavor: flavor, BaseURL: stringValue("library.url"), Token: stringValue("library.token"),
+	}
+}
+
 // Watch returns a channel that receives a Change whenever any of the given keys'
-// stored values change (config-design §3 hot-apply for long-lived clients).
+// live resolution inputs change (config-design §3 hot-apply for long-lived clients).
 func (s *Service) Watch(keys ...string) <-chan Change {
 	ch := make(chan Change, 8)
 	s.mu.Lock()

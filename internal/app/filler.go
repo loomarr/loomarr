@@ -220,14 +220,21 @@ func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string)
 	if a.lib == nil || name == "" {
 		return nil, nil
 	}
-	id, err := a.lib.LibraryIDByName(ctx, name)
+	lib := a.lib.Snapshot()
+	id, err := lib.LibraryIDByName(ctx, name)
+	if errors.Is(err, library.ErrConnectionRequired) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	if id == "" {
 		return nil, nil // no such library on this server
 	}
-	clips, err := a.lib.ListFillerClips(ctx, id)
+	clips, err := lib.ListFillerClips(ctx, id)
+	if errors.Is(err, library.ErrConnectionRequired) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

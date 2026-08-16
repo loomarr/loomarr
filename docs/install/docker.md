@@ -121,10 +121,17 @@ file-backed state still need the multi-replica investigation recorded in the bet
 
 ## Filler clips
 
-To play commercials between programmes, point `FILLER_DIR` at a folder of clips.
+Filler works without extra Compose configuration: Loomarr stores clips under `/data/filler` on
+the same persistent `loomarr-data` volume as the rest of `/data`.
 
-On the Tunarr backend, mount the same host folder into Tunarr at the same path so it can scan
-them.
+To use a different host folder, add an explicit bind mount whose container target is an absolute
+path, then set `FILLER_DIR` to that target. Saving `filler.dir` in Settings selects the desired
+library but the running generation keeps its current library until Loomarr restarts; Loomarr does
+not copy clips between the old and new folders.
+
+On the Tunarr backend, mount the same host folder or named volume into Tunarr at the same absolute
+container path so it can scan the clips. Internal playout reads Loomarr's own `/data/filler`
+directly and needs no second mount.
 
 ## When something's wrong
 

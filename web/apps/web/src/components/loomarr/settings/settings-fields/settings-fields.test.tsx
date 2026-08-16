@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind">)
   group: "ai",
   doc: "help",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: true,
   provenance: "db",

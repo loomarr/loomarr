@@ -19,7 +19,7 @@ func (s *Server) registerSettings(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-patch", Method: http.MethodPatch, Path: "/v1/settings",
-		Summary: "Update settings", Description: "Admin only. Per-key results (saved | invalid | pinned); hot-applies on success (config-design §8).",
+		Summary: "Update settings", Description: "Admin only. Per-key results (saved | invalid | pinned). A saved value follows that setting's apply contract: live on the next owning operation, or restart in the next app generation (config-design §3/§8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsPatch)
 
@@ -131,7 +131,8 @@ var mediaSourceWiringKeys = map[string]struct{}{
 // workflow, so there is no second transition algorithm in the HTTP layer.
 func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
-	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
+	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil &&
+		!s.unconfigured("tunarr.url") && !s.libraryUnconfigured() {
 		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
 			s.logw("auto-wire Tunarr media source failed after save", err)
 		} else if enabled > 0 {

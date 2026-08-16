@@ -46,12 +46,12 @@ container sees the card but every NVENC trial fails.
 
 ## Concurrent channels
 
-`PLAYOUT_MAX_CHANNELS` (default 4) caps how many stream at once. Loomarr also computes a
-per-encoder capacity from the boot trials, and a channel needing a full transcode counts for
-more than one that can be copied through.
+`PLAYOUT_MAX_CHANNELS` defaults to `0` (automatic), so Loomarr uses the per-encoder capacity its
+trial measured inside the container. A channel needing a full transcode counts against that budget;
+one that can be copied through does not.
 
-Raise the cap only as far as your hardware measured. Setting it higher causes stuttering, not
-capacity.
+Set a positive value only to lower the measured budget when real, complex content needs more
+headroom. A configured value can never raise capacity above what the trial proved.
 
 ## Checking what happened
 

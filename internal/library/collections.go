@@ -40,6 +40,10 @@ type collectionsResponse struct {
 // Sorted server-side by name so the picker's order is stable without a client sort.
 // Same /Items surface and same flavored header auth as every other call here.
 func (c *Client) Collections(ctx context.Context) ([]Collection, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
 	q.Set("IncludeItemTypes", "BoxSet")
 	q.Set("Recursive", "true")
@@ -50,7 +54,7 @@ func (c *Client) Collections(ctx context.Context) ([]Collection, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out collectionsResponse
 	if err := c.do(req, &out); err != nil {
@@ -79,6 +83,10 @@ func (c *Client) Collections(ctx context.Context) ([]Collection, error) {
 // non-zero ChildCount, THIS query is wrong — not the caller. The failure is loud (an
 // empty member list), never a silent mis-filter.
 func (c *Client) CollectionMembers(ctx context.Context, collectionID string) ([]SearchResult, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
 	q.Set("ParentId", collectionID)
 	q.Set("Recursive", "true")
@@ -88,7 +96,7 @@ func (c *Client) CollectionMembers(ctx context.Context, collectionID string) ([]
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out searchResponse
 	if err := c.do(req, &out); err != nil {

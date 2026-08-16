@@ -2,7 +2,6 @@ import type { SettingEntry } from "@loomarr/api";
 import {
   getBootstrapMockHandler,
   getLoginMockHandler,
-  getSettingsListMockHandler,
   getSettingsPatchMockHandler,
   getSetupStatusMockHandler,
   getSetupTestMockHandler,
@@ -11,7 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
+import { delay, HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { setting } from "@/test/fixtures/settings";
@@ -63,10 +62,60 @@ const stubWizard = (opts: {
   setupCompleted?: boolean;
   checks?: Array<{ name: string; ok: boolean; hint?: string }>;
   backend?: "internal" | "tunarr";
+  publicUrl?: string;
+  publicUrlPinned?: boolean;
+  settingsDelayMs?: number;
+  settingsFailures?: number;
 }) => {
   let authed = opts.authed;
+  let backend = opts.backend ?? "tunarr";
+  let publicUrl = opts.publicUrl ?? "http://loomarr:8080";
+  let settingsFailures = opts.settingsFailures ?? 0;
   const seq: string[] = [];
   const patches: string[] = [];
+
+  const settingsBody = () => ({
+    features: {},
+    settings: [
+      ...CONNECTION_ENTRIES,
+      {
+        ...entry("playout.backend", "playout"),
+        kind: "enum",
+        enum: ["internal", "tunarr"],
+        value: backend,
+      },
+      setting({
+        key: "server.public_url",
+        label: "Loomarr address",
+        group: "playout",
+        kind: "url",
+        doc: "Loomarr's own address as your media server can reach it.",
+        value: publicUrl,
+        provenance: opts.publicUrlPinned ? "env" : "db",
+        envVar: "SERVER_PUBLIC_URL",
+      }),
+      setting({
+        key: "setup.completed",
+        group: "advanced",
+        kind: "bool",
+        doc: "First-run wizard completed.",
+        advanced: true,
+        value: String(opts.setupCompleted ?? true),
+      }),
+    ],
+  });
+
+  const settingsListHandler = http.get("*/v1/settings", async () => {
+    if (settingsFailures > 0) {
+      settingsFailures -= 1;
+      return HttpResponse.json(
+        { title: "Settings unavailable", detail: "Loomarr could not load the setup settings." },
+        { status: 500 },
+      );
+    }
+    if (opts.settingsDelayMs) await delay(opts.settingsDelayMs);
+    return HttpResponse.json(settingsBody());
+  });
 
   server.use(
     http.get("*/v1/auth/me", () =>
@@ -90,29 +139,35 @@ const stubWizard = (opts: {
     }),
     getSettingsPatchMockHandler(async ({ request }) => {
       seq.push("patch");
-      patches.push(JSON.stringify(await request.json()));
-      return { results: [] };
+      const body = (await request.json()) as { edits?: Record<string, string> };
+      patches.push(JSON.stringify(body));
+      const results = Object.entries(body.edits ?? {}).map(([key, value]) => {
+        if (key === "server.public_url") {
+          if (opts.publicUrlPinned) return { key, status: "pinned" as const };
+          let address: URL | undefined;
+          try {
+            address = new URL(value);
+          } catch {
+            // The real settings validator returns the field result below.
+          }
+          if (!address?.protocol || !address.host) {
+            return {
+              key,
+              status: "invalid" as const,
+              problem: "Loomarr address needs a scheme and host, e.g. http://loomarr:8080.",
+            };
+          }
+          // The real server owns canonical persistence. Deliberately normalize the root slash
+          // so this test proves a successful save clears the draft and reveals refreshed server
+          // truth, rather than continuing to render exactly what the operator submitted.
+          publicUrl = value.replace(/\/$/, "");
+        }
+        if (key === "playout.backend" && (value === "internal" || value === "tunarr")) backend = value;
+        return { key, status: "saved" as const };
+      });
+      return { results };
     }),
-    getSettingsListMockHandler({
-      features: {},
-      settings: [
-        ...CONNECTION_ENTRIES,
-        {
-          ...entry("playout.backend", "playout"),
-          kind: "enum",
-          enum: ["internal", "tunarr"],
-          value: opts.backend ?? "tunarr",
-        },
-        setting({
-          key: "setup.completed",
-          group: "advanced",
-          kind: "bool",
-          doc: "First-run wizard completed.",
-          advanced: true,
-          value: String(opts.setupCompleted ?? true),
-        }),
-      ],
-    }),
+    settingsListHandler,
     ...appHandlers(),
   );
 
@@ -148,6 +203,39 @@ describe("first-run routing", () => {
 });
 
 describe("wizard", () => {
+  it("waits for the settings registry before deriving the wizard path", async () => {
+    stubWizard({
+      authed: true,
+      setupCompleted: false,
+      backend: "internal",
+      publicUrl: "",
+      settingsDelayMs: 150,
+    });
+    renderAt("/wizard");
+
+    expect(await screen.findByLabelText("Checking your setup")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces a settings-list failure with an idempotent retry instead of stranding the wizard", async () => {
+    stubWizard({
+      authed: true,
+      setupCompleted: false,
+      backend: "internal",
+      publicUrl: "",
+      settingsFailures: 1,
+    });
+    renderAt("/wizard");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Settings unavailable");
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(
+      await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
+    ).toBeInTheDocument();
+  });
+
   it("opens on bootstrap when no one is signed in", async () => {
     stubWizard({ authed: false });
     renderAt("/wizard");
@@ -422,6 +510,67 @@ describe("wizard", () => {
 
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
       expect(screen.queryByLabelText("Tunarr URL")).not.toBeInTheDocument();
+    });
+
+    it("requires a reachable Loomarr address on the internal playout step", async () => {
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal", publicUrl: "" });
+      renderAt("/wizard?step=playout");
+
+      const address = await screen.findByLabelText("Loomarr address");
+      expect(address).toBeEnabled();
+      expect(address).toHaveAccessibleDescription(
+        expect.stringMatching(/media server must be able to reach/i),
+      );
+      expect(screen.getByText(/media server must be able to reach this address/i)).toBeInTheDocument();
+      expect(screen.getByText(/loomarr address applies to the whole install/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    });
+
+    it("persists the internal playout address through the shared settings API", async () => {
+      const { patches } = stubWizard({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        publicUrl: "",
+      });
+      renderAt("/wizard?step=playout");
+
+      await userEvent.type(await screen.findByLabelText("Loomarr address"), "http://loomarr:8080/");
+      await userEvent.click(screen.getByRole("button", { name: "Save address" }));
+
+      await vi.waitFor(() => {
+        expect(patches).toContain(JSON.stringify({ edits: { "server.public_url": "http://loomarr:8080/" } }));
+      });
+      await vi.waitFor(() => expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled());
+      expect(screen.queryByRole("button", { name: "Save address" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Loomarr address")).toHaveValue("http://loomarr:8080");
+    });
+
+    it("keeps an invalid address as a draft and does not let it satisfy internal playout", async () => {
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal", publicUrl: "" });
+      renderAt("/wizard?step=playout");
+
+      await userEvent.type(await screen.findByLabelText("Loomarr address"), "loomarr:8080");
+      await userEvent.click(screen.getByRole("button", { name: "Save address" }));
+
+      expect(await screen.findByText(/needs a scheme and host/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Save address" })).toBeEnabled();
+    });
+
+    it("keeps an environment-pinned reachable address locked and accepts it", async () => {
+      stubWizard({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        publicUrl: "http://loomarr:8080",
+        publicUrlPinned: true,
+      });
+      renderAt("/wizard?step=playout");
+
+      expect(await screen.findByLabelText("Loomarr address")).toBeDisabled();
+      expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
     });
 
     it("falls back to the default block when a link names one that isn't a connection", async () => {

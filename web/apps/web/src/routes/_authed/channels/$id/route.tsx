@@ -124,8 +124,13 @@ const ChannelDetailLayout = () => {
   });
   const del = channelsApi.useDeleteChannel({
     mutation: {
-      onSuccess: () => {
-        toast.success("Channel deleted");
+      onSuccess: (_response, variables) => {
+        const purged = variables.params?.purge === true;
+        toast.success(purged ? "Channel deleted from Loomarr and Tunarr" : "Stopped managing channel", {
+          description: purged
+            ? "Its Loomarr record and any retained Tunarr channel were removed."
+            : "Loomarr kept its record and left any Tunarr channel in place.",
+        });
         void navigate({ to: "/guide" });
       },
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't delete the channel"),

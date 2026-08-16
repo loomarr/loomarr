@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -20,6 +21,7 @@ const base: SettingEntry = {
   kind: "url",
   doc: "Base URL of your Emby/Jellyfin server.",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: true,
   provenance: "db",

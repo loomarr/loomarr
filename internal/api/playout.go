@@ -18,6 +18,10 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
+const atCapacityDetail = "Loomarr is already using its measured transcode capacity. " +
+	"Please wait for a channel to stop, or choose a lower quality tier. " +
+	"If a safety cap is below measured capacity, increase or clear it; Loomarr will never exceed what it measured."
+
 // Internal playout's HTTP surface (§9.1, §11 device auth).
 //
 // These stream bytes (some forever), which Huma's typed-JSON MODEL cannot express — but that does
@@ -242,15 +246,13 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		ChannelID: channelID, Plan: playout.PlanFull, Delivery: playout.DeliveryMPEGTS,
 	})
 	if err != nil {
-		// At capacity is a real, actionable condition rather than a generic failure: the
-		// operator can raise playout.max_channels or lower the quality tier so more channels
-		// fit. 503 + Retry-After is also what makes a media server back off politely instead
-		// of hammering.
+		// At capacity is a real, actionable condition rather than a generic failure. 503 +
+		// Retry-After makes a media server back off politely instead of hammering; the detail
+		// offers only recovery choices that preserve the measured safety boundary.
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
-				"Loomarr is already encoding as many channels as it's configured to handle. "+
-					"Raise the channel limit in Settings → Playout, or choose a lower quality tier.")
+				atCapacityDetail)
 			return
 		}
 		s.log.Warn("playout: attach failed", "channel", channelID, "err", err)
@@ -564,8 +566,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
-				"Loomarr is already encoding as many channels as it's configured to handle. "+
-					"Raise the channel limit in Settings → Playout, or choose a lower quality tier.")
+				atCapacityDetail)
 			return
 		}
 		s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)

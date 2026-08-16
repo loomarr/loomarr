@@ -1,4 +1,5 @@
 import type { SettingEntry, SystemLLMStatus } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import {
   getSettingsListMockHandler,
   getSystemLlmDiscoverMockHandler,
@@ -16,6 +17,7 @@ const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key">): Setting
   group: "ai",
   kind: "string",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: false,
   doc: "",

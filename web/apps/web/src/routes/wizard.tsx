@@ -1,3 +1,4 @@
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -5,9 +6,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback";
 import { WizardShell } from "@/components/loomarr/setup/wizard-shell";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { BootstrapStep } from "@/wizard/bootstrap-step";
 import { ChecklistStep } from "@/wizard/checklist-step";
 import { FirstChannelStep } from "@/wizard/first-channel-step";
@@ -97,8 +98,10 @@ const WizardScreen = () => {
   // state, because it is a SETTING the operator may already have pinned via env or chosen on
   // a previous visit — and because it decides which steps exist, so a local copy would let
   // the rail and the resolver disagree.
-  const entries = useSettingsEntries();
+  const settings = settingsApi.useSettingsList({ query: { enabled: isAuthenticated, retry: false } });
+  const entries = unwrap(settings.data, (b) => b.settings) ?? [];
   const playoutEntry = entries.find((e) => e.key === "playout.backend");
+  const publicURLEntry = entries.find((e) => e.key === "server.public_url");
   const backend: PlayoutBackend = playoutEntry?.value === PLAYOUT_TUNARR ? PLAYOUT_TUNARR : PLAYOUT_INTERNAL;
   // An env-pinned backend cannot be changed here (config-design §3); the step says so rather
   // than offering a control whose write would come back `pinned`.
@@ -106,7 +109,7 @@ const WizardScreen = () => {
     playoutEntry?.provenance === SettingEntryProvenance.env
       ? (playoutEntry.envVar ?? "An environment variable")
       : undefined;
-  const stepCtx = { checks, isAuthenticated, backend };
+  const stepCtx = { checks, isAuthenticated, backend, publicURL: publicURLEntry?.value };
 
   const { step: requestedStep, conn: requestedConn } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -128,10 +131,22 @@ const WizardScreen = () => {
   // Land on the right step the FIRST time. The resume point is derived from server truth,
   // so computing it before `me` / `setup/status` settle would briefly show the wrong step
   // and then yank the operator forward — hold the paint instead of flashing.
-  if (authLoading || (isAuthenticated && status.isLoading)) {
+  if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background" aria-busy="true">
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Checking your setup" />
+      </main>
+    );
+  }
+
+  // The registry decides the backend-shaped route AND whether the internal path is complete.
+  // An empty list after a failed request would silently mean "Tunarr, unfinished", which can
+  // route the operator to a screen that cannot recover. Surface the request failure and keep
+  // retry local to this idempotent read instead.
+  if (isAuthenticated && settings.error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
       </main>
     );
   }
