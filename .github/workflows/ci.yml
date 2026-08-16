@@ -7,6 +7,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue dispatches batches as `merge_group`, NOT `pull_request`. Without this
+  # trigger the required `CI` check never runs for a queued PR and the queue stalls forever
+  # waiting on a status that cannot arrive.
+  merge_group:
   workflow_dispatch: # full release-candidate rerun on the exact main commit
 
 # Least privilege: CI only reads the repo.
@@ -14,9 +18,14 @@ permissions:
   contents: read
 
 # A newer push to the same ref cancels the older in-flight run.
+#
+# ⚠ NEVER cancel a merge-queue run. `merge_group` refs are unique per batch so collisions are
+# unlikely, but a cancelled queue run reports a non-success conclusion, which ejects the whole
+# batch from the queue — turning a harmless double-push into a merge that silently does not
+# happen. Only PR and branch runs are cancellable.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
   GO_VERSION: "1.26"
@@ -49,7 +58,14 @@ jobs:
       - name: Which trees moved
         id: filter
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # ⚠ `merge_group` carries NEITHER `pull_request.base.sha` NOR `before`. Left to fall
+          # through it hits the fail-safe below and every job runs — correct, but it makes the
+          # queue cost a full ~14-minute matrix for a docs-only batch. `merge_group.base_sha`
+          # is the main commit the batch is stacked on, which is exactly the right diff base.
+          BASE: >-
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
+             || github.event_name == 'merge_group' && github.event.merge_group.base_sha
+             || github.event.before }}
         run: |
           set -uo pipefail
           # No usable base (first push, force-push, a new branch): run everything. Skipping
