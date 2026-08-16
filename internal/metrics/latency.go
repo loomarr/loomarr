@@ -36,6 +36,14 @@ var (
 		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 	}, []string{"target"})
 
+	// outboundRetries counts actual additional attempts made by the shared
+	// outbound HTTP client. The reason label is deliberately a closed set; do
+	// not put raw errors or arbitrary status codes into it.
+	outboundRetries = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loomarr", Subsystem: "outbound", Name: "retries_total",
+		Help: "Outbound HTTP retry attempts by target service and bounded reason.",
+	}, []string{"target", "reason"})
+
 	// channelReconciles counts channel reconciles by outcome (§17).
 	channelReconciles = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loomarr", Subsystem: "channel", Name: "reconciles_total",
@@ -51,6 +59,31 @@ var (
 	})
 )
 
+// OutboundRetryReason is the bounded reason for an actual additional outbound
+// HTTP attempt. It is an enum rather than a string so callers cannot turn a
+// transport error or unexpected response into an unbounded Prometheus label.
+type OutboundRetryReason uint8
+
+const (
+	OutboundRetryTransport OutboundRetryReason = iota
+	OutboundRetryStatus408
+	OutboundRetryStatus429
+	OutboundRetryStatus500
+	OutboundRetryStatus502
+	OutboundRetryStatus503
+	OutboundRetryStatus504
+)
+
+var outboundRetryReasonLabels = [...]string{
+	"transport",
+	"408",
+	"429",
+	"500",
+	"502",
+	"503",
+	"504",
+}
+
 // InstrumentTransport wraps next (nil ⇒ http.DefaultTransport) so every request
 // it carries records latency + result under the given target label. Used by
 // httpx.NewNamed so instrumentation lives in one place, not per adapter.
@@ -59,6 +92,18 @@ func InstrumentTransport(target string, next http.RoundTripper) http.RoundTrippe
 		next = http.DefaultTransport
 	}
 	return &instrumentedTransport{target: target, next: next}
+}
+
+// OutboundRetried records one actual additional attempt made for target. The
+// shared HTTP factory calls this after a retry wait completes, so a retry that
+// is considered but abandoned due to cancellation or deadline pressure is not
+// counted. Unknown enum values stay in one bounded diagnostic bucket.
+func OutboundRetried(target string, reason OutboundRetryReason) {
+	label := "unknown"
+	if int(reason) < len(outboundRetryReasonLabels) {
+		label = outboundRetryReasonLabels[reason]
+	}
+	outboundRetries.WithLabelValues(target, label).Inc()
 }
 
 type instrumentedTransport struct {
