@@ -64,7 +64,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer func() { _ = os.RemoveAll(generated) }()
-		manifest, writeErr := images.WriteCertificationCorpus(generated)
+		manifest, writeErr := writeCertificationCorpus(generated)
 		if writeErr != nil {
 			_, _ = fmt.Fprintf(stderr, "image-cert: generate repository corpus: %v\n", writeErr)
 			return 1

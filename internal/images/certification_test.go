@@ -122,51 +122,6 @@ func TestCertifyRecordsAnExpectedStableRefusal(t *testing.T) {
 	}
 }
 
-func TestRepositoryCertificationCorpusCoversStaticAnimationAndLimits(t *testing.T) {
-	corpus := t.TempDir()
-	manifest, err := WriteCertificationCorpus(corpus)
-	if err != nil {
-		t.Fatalf("WriteCertificationCorpus: %v", err)
-	}
-	report, err := Certify(context.Background(), CertificationOptions{
-		CorpusDir: corpus, Renderer: testkit.RustImageRenderer(t),
-		Limits: DefaultCertificationLimits(), ExpectedRefusals: manifest.ExpectedRefusals,
-		BoundaryCases: manifest.BoundaryCases,
-	})
-	if err != nil {
-		t.Fatalf("repository corpus: %v; report = %+v", err, report)
-	}
-	if report.Summary.Passed != 7 || report.Summary.Refused != 11 || report.Summary.Failed != 0 {
-		t.Fatalf("summary = %+v, want 7 accepted and 11 stable refusals", report.Summary)
-	}
-	byPath := map[string]CertificationCase{}
-	for _, result := range report.Cases {
-		byPath[result.Path] = result
-	}
-	if got := byPath["fractional-zero-delay.apng"]; !got.Animated || got.FrameCount != 2 || got.DurationMS != 27 {
-		t.Errorf("APNG timeline = %+v", got)
-	}
-	if got := byPath["finite-loop.gif"]; !got.Animated || got.LoopCount == nil || *got.LoopCount != 2 {
-		t.Errorf("finite GIF loop = %+v", got)
-	}
-	if got := byPath["one-frame.gif"]; got.Animated || got.FrameCount != 1 || got.LoopCount != nil {
-		t.Errorf("one-frame GIF should be static: %+v", got)
-	}
-	if got := byPath["static.webp"]; got.MIME != "image/webp" || got.Animated {
-		t.Errorf("static WebP = %+v", got)
-	}
-	for path, code := range manifest.ExpectedRefusals {
-		if got := byPath[path]; got.Outcome != "refused" || got.ErrorCode != code {
-			t.Errorf("%s refusal = %+v, want %s", path, got, code)
-		}
-	}
-	for _, boundary := range manifest.BoundaryCases {
-		if got := byPath["@limits/"+boundary.Name]; got.Outcome != "refused" || got.ErrorCode != boundary.ExpectedCode {
-			t.Errorf("%s boundary = %+v, want %s", boundary.Name, got, boundary.ExpectedCode)
-		}
-	}
-}
-
 func TestCertifyRejectsAnEmptyCorpus(t *testing.T) {
 	_, err := Certify(context.Background(), CertificationOptions{
 		CorpusDir: t.TempDir(), Renderer: testkit.RustImageRenderer(t), Limits: DefaultCertificationLimits(),

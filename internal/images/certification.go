@@ -227,7 +227,7 @@ func certifyOne(ctx context.Context, renderer Renderer, root, source string, lim
 	observed := rustgen.WithObserver(ctx, func(observation rustgen.Observation) {
 		observations = append(observations, observation)
 	})
-	budget := certificationBudget()
+	budget := DefaultCertificationBudget()
 	inspectDir := filepath.Join(runRoot, "inspect")
 	if err := os.Mkdir(inspectDir, 0o700); err != nil {
 		result.ErrorCode = "io_error"
@@ -345,7 +345,9 @@ func certifyBoundary(ctx context.Context, renderer Renderer, root string, bounda
 	return result
 }
 
-func certificationBudget() rustgen.Budget {
+// DefaultCertificationBudget returns the worker ceilings used by the deterministic certification
+// corpus. It is exported only for cmd/image-cert, which owns generation of that non-shipping corpus.
+func DefaultCertificationBudget() rustgen.Budget {
 	return rustgen.Budget{
 		MaxInputBytes: certificationMaxInputBytes, MaxWidth: 16_384, MaxHeight: 16_384,
 		MaxCanvasPixels: 40_000_000, MaxFrames: 600, MaxTotalFramePixels: 600_000_000,

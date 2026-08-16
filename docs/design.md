@@ -5447,6 +5447,17 @@ time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are 
 (`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
 caller, or free-form error text.
 
+Those measurements are also the admission gate for another Rust capability. A proposal must name
+the production operation that dominates a captured worker-duration, queue-wait, peak-RSS, byte, or
+failure distribution, then reproduce it through the certification or benchmark seam. An operation
+does not move merely because it handles media or because a Rust implementation is possible. The
+Image service itself imports no Go `image` package; its deterministic corpus generator lives only in
+`cmd/image-cert`, and a source architecture test keeps that boundary closed. Filler-era frame hints
+remain in `internal/mediatools`: they sample at most 1,024 pixels per keyframe in background work and
+no captured Image-worker evidence identifies them as a bottleneck. Therefore V59b selects no next
+capability. A future measured case extends this worker protocol and resource boundary rather than
+creating a second Rust service.
+
 `make image-bench` is the performance companion to certification. It drives the installed release
 worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
 the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen

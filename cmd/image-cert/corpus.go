@@ -1,4 +1,4 @@
-package images
+package main
 
 import (
 	"bytes"
@@ -15,21 +15,22 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/images/rustgen"
 )
 
-// CertificationCorpusManifest describes the refusals deliberately planted in the repository
+// certificationCorpusManifest describes the refusals deliberately planted in the repository
 // corpus. Every other supported-looking file is expected to complete a real ladder.
-type CertificationCorpusManifest struct {
-	ExpectedRefusals map[string]string       `json:"expectedRefusals"`
-	BoundaryCases    []CertificationBoundary `json:"-"`
+type certificationCorpusManifest struct {
+	ExpectedRefusals map[string]string              `json:"expectedRefusals"`
+	BoundaryCases    []images.CertificationBoundary `json:"-"`
 }
 
-// WriteCertificationCorpus creates deterministic, tiny inputs that exercise the V59a format and
+// writeCertificationCorpus creates deterministic, tiny inputs that exercise the V59a format and
 // timeline matrix. The destination is disposable; callers should never point it at user data.
-func WriteCertificationCorpus(dir string) (CertificationCorpusManifest, error) {
+func writeCertificationCorpus(dir string) (certificationCorpusManifest, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	write := func(name string, data []byte) error {
 		return os.WriteFile(filepath.Join(dir, name), data, 0o600)
@@ -39,10 +40,10 @@ func WriteCertificationCorpus(dir string) (CertificationCorpusManifest, error) {
 	fillRGBA(opaque, color.RGBA{R: 24, G: 84, B: 160, A: 255})
 	var jpegData bytes.Buffer
 	if err := jpeg.Encode(&jpegData, opaque, &jpeg.Options{Quality: 88}); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("opaque-landscape.jpg", jpegData.Bytes()); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 
 	logo := image.NewRGBA(image.Rect(0, 0, 64, 64))
@@ -53,42 +54,42 @@ func WriteCertificationCorpus(dir string) (CertificationCorpusManifest, error) {
 	}
 	var pngData bytes.Buffer
 	if err := png.Encode(&pngData, logo); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("transparent-logo.png", pngData.Bytes()); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 
 	// Generated once with ffmpeg/libwebp from a 16x16 opaque green frame. Keeping the bytes fixed
 	// makes the corpus independent of ffmpeg and avoids asking the worker to generate its own input.
 	staticWebP, err := base64.StdEncoding.DecodeString("UklGRjgAAABXRUJQVlA4ICwAAADQAQCdASoQABAAAgA0JaACdLoB+AADsAD+8Oj3/yC5YXXI1/5sCua5+agAAA==")
 	if err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("static.webp", staticWebP); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 
 	if err := write("infinite-loop.gif", certificationGIF(0, 2)); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("finite-loop.gif", certificationGIF(2, 2)); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("one-frame.gif", certificationGIF(0, 1)); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("fractional-zero-delay.apng", certificationAPNG()); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("corrupt.png", append([]byte("\x89PNG\r\n\x1a\n"), []byte("truncated")...)); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 	if err := write("dimension-limit.png", dimensionOnlyPNG(20_000, 1)); err != nil {
-		return CertificationCorpusManifest{}, err
+		return certificationCorpusManifest{}, err
 	}
 
-	manifest := CertificationCorpusManifest{ExpectedRefusals: map[string]string{
+	manifest := certificationCorpusManifest{ExpectedRefusals: map[string]string{
 		"corrupt.png":         "corrupt_input",
 		"dimension-limit.png": "limit_exceeded",
 	}}
@@ -96,17 +97,17 @@ func WriteCertificationCorpus(dir string) (CertificationCorpusManifest, error) {
 	return manifest, nil
 }
 
-func certificationBoundaryCases() []CertificationBoundary {
-	base := certificationBudget()
-	limit := func(name, source string, mutate func(*rustgen.Budget)) CertificationBoundary {
+func certificationBoundaryCases() []images.CertificationBoundary {
+	base := images.DefaultCertificationBudget()
+	limit := func(name, source string, mutate func(*rustgen.Budget)) images.CertificationBoundary {
 		budget := base
 		mutate(&budget)
-		return CertificationBoundary{
+		return images.CertificationBoundary{
 			Name: name, Source: source, Budget: budget,
 			Targets: []rustgen.Target{}, ExpectedCode: "limit_exceeded",
 		}
 	}
-	boundaries := []CertificationBoundary{
+	boundaries := []images.CertificationBoundary{
 		limit("max-input-bytes", "transparent-logo.png", func(b *rustgen.Budget) { b.MaxInputBytes = 1 }),
 		limit("max-width", "transparent-logo.png", func(b *rustgen.Budget) { b.MaxWidth = 1 }),
 		limit("max-height", "transparent-logo.png", func(b *rustgen.Budget) { b.MaxHeight = 1 }),
@@ -122,7 +123,7 @@ func certificationBoundaryCases() []CertificationBoundary {
 	for i := range targets {
 		targets[i] = rustgen.Target{ID: fmt.Sprintf("webp-%02d", i), Format: "webp", Width: i + 1, Motion: "first_frame"}
 	}
-	boundaries = append(boundaries, CertificationBoundary{
+	boundaries = append(boundaries, images.CertificationBoundary{
 		Name: "max-targets", Source: "transparent-logo.png", Budget: base,
 		Targets: targets, ExpectedCode: "limit_exceeded",
 	})
