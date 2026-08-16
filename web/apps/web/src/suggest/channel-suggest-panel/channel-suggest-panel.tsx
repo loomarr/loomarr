@@ -112,6 +112,7 @@ const ChannelSuggestPanel = ({
       {!run.isRunning && run.failure && (
         <ProposalJobFailure
           failure={run.failure}
+          isAdmin={isAdmin}
           onRetry={run.retry}
           onEdit={
             run.failure.code === "no_grounded_titles"

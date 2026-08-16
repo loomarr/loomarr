@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { ProposalJobFailureProps } from "./proposal-job-failure.type";
 
-const ProposalJobFailure = ({ failure, onRetry, onEdit }: ProposalJobFailureProps) => {
+const ProposalJobFailure = ({ failure, isAdmin = false, onRetry, onEdit }: ProposalJobFailureProps) => {
   const alertRef = useRef<HTMLDivElement>(null);
   useEffect(() => alertRef.current?.focus(), []);
   const canEdit = failure.code === "no_grounded_titles" && onEdit !== undefined;
@@ -33,6 +33,15 @@ const ProposalJobFailure = ({ failure, onRetry, onEdit }: ProposalJobFailureProp
         {settingsLink && (
           <Button size="sm" variant="ghost" render={<Link to="/settings/ai" />}>
             Open AI settings
+          </Button>
+        )}
+        {failure.code === "generation_failed" && isAdmin && (
+          <Button
+            size="sm"
+            variant="ghost"
+            render={<Link to="/help" search={{ page: "troubleshooting", section: "llm" }} />}
+          >
+            Troubleshoot
           </Button>
         )}
       </div>

@@ -205,7 +205,7 @@ describe("ChannelSuggestPanel", () => {
         attempts: 1,
         createdAt: "2026-08-15T12:00:00Z",
         updatedAt: "2026-08-15T12:01:00Z",
-        failure: { code: "timed_out", message: "Channel generation took too long." },
+        failure: { code: "generation_failed", message: "Loomarr couldn't generate this channel." },
       }),
       getSubmitProposalMockHandler(async ({ request }) => {
         submissions.push(await request.json());
@@ -214,6 +214,10 @@ describe("ChannelSuggestPanel", () => {
     );
     renderPanel(() => {}, { jobId: "job-old", onJobIdChange });
 
+    expect(await screen.findByRole("link", { name: "Troubleshoot" })).toHaveAttribute(
+      "href",
+      "/help?page=troubleshooting&section=llm",
+    );
     await user.click(await screen.findByRole("button", { name: "Try again" }));
     await waitFor(() => {
       expect(submissions).toEqual([{ description: "Saturday cartoons", era: "1990s", tone: "playful" }]);

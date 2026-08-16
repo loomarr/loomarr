@@ -43,4 +43,37 @@ describe("ProposalJobFailure", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalledOnce();
   });
+
+  it("links an admin's generic generation failure to the LLM diagnostic guide", async () => {
+    render(
+      <RouterHarness
+        content={
+          <ProposalJobFailure
+            failure={{ code: "generation_failed", message: "Loomarr couldn't generate this channel." }}
+            isAdmin
+            onRetry={vi.fn()}
+          />
+        }
+      />,
+    );
+
+    const diagnostic = await screen.findByRole("link", { name: "Troubleshoot" });
+    expect(diagnostic).toHaveAttribute("href", "/help?page=troubleshooting&section=llm");
+  });
+
+  it("does not expose the admin diagnostic link to a member", () => {
+    render(
+      <RouterHarness
+        content={
+          <ProposalJobFailure
+            failure={{ code: "generation_failed", message: "Loomarr couldn't generate this channel." }}
+            isAdmin={false}
+            onRetry={vi.fn()}
+          />
+        }
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Troubleshoot" })).not.toBeInTheDocument();
+  });
 });

@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events";
 import { server } from "@/test/msw/server";
+import { RouterHarness } from "@/test/story-utils";
 import { RefinePanel } from "./refine-panel";
 
 const makeWrapper = () => {
@@ -181,9 +182,11 @@ describe("RefinePanel", () => {
     vi.stubGlobal("EventSource", MockEventSource);
     // The queue never lands a proposal for this job — a failed run produces none.
     const { starts } = stubRefine({ proposals: [], failure: true });
-    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeEventfulWrapper() });
+    render(<RouterHarness content={<RefinePanel channelId="ch-1" channelName="90s Action" />} />, {
+      wrapper: makeEventfulWrapper(),
+    });
 
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /refine with ai/i }));
     await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
     await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
 
@@ -192,6 +195,10 @@ describe("RefinePanel", () => {
 
     // Back on the form, with a recoverable error and the text intact — no diff, no Apply.
     expect(await screen.findByText(/couldn't complete/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Troubleshoot" })).toHaveAttribute(
+      "href",
+      "/help?page=troubleshooting&section=llm",
+    );
     expect(screen.getByLabelText("What to change")).toHaveValue("add more Schwarzenegger");
     expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
     // And the retry affordance is right there and starts a fresh request rather than

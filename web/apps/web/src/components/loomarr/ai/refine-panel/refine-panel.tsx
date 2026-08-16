@@ -100,6 +100,7 @@ const RefinePanel = ({
           {generationFailed && (
             <ProposalJobFailure
               failure={generationFailed}
+              isAdmin
               onRetry={() => {
                 setState("running");
                 refine.retry();
