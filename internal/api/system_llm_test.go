@@ -17,6 +17,9 @@ type fakeSystemLLM struct {
 	status      api.SystemLLMStatus
 	selectErr   error
 	testErr     error
+	verifyErr   error
+	verified    api.SelectRequest
+	verifyOut   api.ModelVerification
 	selected    api.SelectRequest
 	tested      string
 	pulled      string
@@ -42,6 +45,10 @@ func (f *fakeSystemLLM) Select(_ context.Context, req api.SelectRequest) error {
 func (f *fakeSystemLLM) Test(_ context.Context, provider, _, _ string) error {
 	f.tested = provider
 	return f.testErr
+}
+func (f *fakeSystemLLM) Verify(_ context.Context, req api.SelectRequest) (api.ModelVerification, error) {
+	f.verified = req
+	return f.verifyOut, f.verifyErr
 }
 func (f *fakeSystemLLM) Pull(_ context.Context, m string) (string, error) {
 	f.pulled = m
@@ -77,6 +84,7 @@ func TestSystemLLM_RequiresAdmin(t *testing.T) {
 		{http.MethodGet, "/v1/system/llm", ""},
 		{http.MethodPost, "/v1/system/llm/select", `{"model":"qwen3:8b"}`},
 		{http.MethodPost, "/v1/system/llm/test", `{"provider":"openrouter"}`},
+		{http.MethodPost, "/v1/system/llm/verify", `{"provider":"openrouter","model":"openai/gpt-4o-mini"}`},
 		{http.MethodPost, "/v1/system/llm/pull", `{"model":"qwen3:8b"}`},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // no token
@@ -98,9 +106,14 @@ func TestSystemLLM_NotConfigured501(t *testing.T) {
 // Status returns the probe + catalog + recommendation as admin.
 func TestSystemLLM_Status(t *testing.T) {
 	svc := &fakeSystemLLM{status: api.SystemLLMStatus{
-		Provider: "ollama", Model: "qwen3:8b", Local: true, Reachable: true,
+		Provider: "ollama", Model: "qwen3:8b", Local: true, Reachable: true, Configured: true,
+		ToolCapability: "verified", SemanticallyCertified: false,
 		VRAMGiB: 12, Recommended: "qwen3:8b",
-		Catalog: []api.LLMModelView{{Tag: "qwen3:8b", Fit: "fits", Pulled: true, Recommended: true}},
+		Catalog: []api.LLMModelView{
+			{Tag: "qwen3:8b", Fit: "fits", Pulled: true, Tools: true, ToolCapability: "verified", Recommended: true},
+			{Tag: "deepseek-r1:14b", Fit: "tight", Pulled: true, ToolCapability: "unsupported"},
+			{Tag: "show-failed:8b", Fit: "fits", Pulled: true, ToolCapability: "unverified"},
+		},
 	}}
 	srv := serverWithSystemLLM(t, svc)
 	resp := do(t, srv, http.MethodGet, "/v1/system/llm", adminToken, "")
@@ -109,8 +122,59 @@ func TestSystemLLM_Status(t *testing.T) {
 	}
 	var body api.SystemLLMStatus
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if body.Recommended != "qwen3:8b" || len(body.Catalog) != 1 || !body.Local {
+	if body.Recommended != "qwen3:8b" || len(body.Catalog) != 3 || !body.Local {
 		t.Errorf("unexpected status body: %+v", body)
+	}
+	if !body.Configured || body.ToolCapability != "verified" || body.SemanticallyCertified {
+		t.Errorf("readiness truth collapsed in status: %+v", body)
+	}
+	wantCapability := map[string]string{
+		"qwen3:8b": "verified", "deepseek-r1:14b": "unsupported", "show-failed:8b": "unverified",
+	}
+	for _, model := range body.Catalog {
+		if model.ToolCapability != wantCapability[model.Tag] {
+			t.Errorf("catalog model %q capability = %q, want %q", model.Tag, model.ToolCapability, wantCapability[model.Tag])
+		}
+	}
+}
+
+func TestSystemLLM_VerifyToolCallingWithoutSemanticClaim(t *testing.T) {
+	svc := &fakeSystemLLM{verifyOut: api.ModelVerification{
+		Provider: "custom", Model: "thin-model", Reachable: true,
+		ToolCapability: "verified", SemanticallyCertified: false,
+	}}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/verify", adminToken,
+		`{"provider":"custom","model":"thin-model","apiKey":"secret","baseUrl":"http://ai.internal/v1"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verify → %d, want 200", resp.StatusCode)
+	}
+	var body api.ModelVerification
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if !body.Reachable || body.ToolCapability != "verified" || body.SemanticallyCertified {
+		t.Errorf("verify body = %+v, want reachable/tool verified but never semantic certification", body)
+	}
+	if svc.verified.APIKey != "secret" || svc.verified.BaseURL != "http://ai.internal/v1" {
+		t.Errorf("service saw %+v", svc.verified)
+	}
+}
+
+func TestSystemLLM_SelectToolCapabilityErrors409(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"unsupported", api.ErrModelToolsUnsupported},
+		{"unverified", api.ErrModelToolsUnverified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := serverWithSystemLLM(t, &fakeSystemLLM{selectErr: tc.err})
+			resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+				`{"provider":"custom","model":"thin-model","baseUrl":"http://ai.internal/v1"}`)
+			if resp.StatusCode != http.StatusConflict {
+				t.Errorf("select %s model → %d, want 409", tc.name, resp.StatusCode)
+			}
+		})
 	}
 }
 

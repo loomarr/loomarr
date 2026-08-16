@@ -39,6 +39,10 @@ func idGen() func() string {
 }
 
 func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) *suggest.Service {
+	return buildServiceWithNow(t, st, llmMock, time.Now)
+}
+
+func buildServiceWithNow(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM, now func() time.Time) *suggest.Service {
 	ms := testkit.NewMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
@@ -46,7 +50,7 @@ func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) 
 	cat := catalog.New(lib, tm)
 	sug := suggest.New(llmMock, cat, tm, 10)
 	return suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
-		idGen(), time.Now, testkit.Logger())
+		idGen(), now, testkit.Logger())
 }
 
 // Submit caches generated CONTENT from a successful job, never its request
@@ -145,12 +149,25 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
-	svc := buildService(t, st, llmMock)
+	acceptedAt := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	now := acceptedAt
+	svc := buildServiceWithNow(t, st, llmMock, func() time.Time { return now })
+	type observation struct {
+		duration time.Duration
+		result   string
+	}
+	observed := make(chan observation, 1)
+	svc.WithJobObserver(func(duration time.Duration, result string) {
+		observed <- observation{duration: duration, result: result}
+	})
 
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "sci-fi"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Duration is accepted-to-terminal latency, including queue time, and uses the
+	// injected lifecycle clock rather than wall time.
+	now = acceptedAt.Add(3 * time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -176,6 +193,14 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	}
 	if queue[0].CreatedBy != "alice" {
 		t.Errorf("proposal created_by = %q, want alice", queue[0].CreatedBy)
+	}
+	select {
+	case got := <-observed:
+		if got.result != "success" || got.duration != 3*time.Second {
+			t.Errorf("observed = %+v, want success at 3s accepted-to-terminal", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("durably completed job was not observed")
 	}
 }
 
@@ -339,6 +364,8 @@ func TestWorker_FailuresPersistBoundedCodesAndPrivateDiagnostics(t *testing.T) {
 			base := newStore(t)
 			st := newLifecycleErrorStore(base)
 			svc := buildFailingService(t, st, tt.provider)
+			observed := make(chan string, 1)
+			svc.WithJobObserver(func(_ time.Duration, result string) { observed <- result })
 			terminal := newDoneEmitter()
 			svc.WithProgressEmitter(terminal)
 			jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "alice")
@@ -357,6 +384,14 @@ func TestWorker_FailuresPersistBoundedCodesAndPrivateDiagnostics(t *testing.T) {
 			}
 			if st.failureCode == "" {
 				t.Fatal("failure committed without a stable code")
+			}
+			select {
+			case result := <-observed:
+				if result != tt.wantCode {
+					t.Errorf("observed result = %q, want stable code %q", result, tt.wantCode)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("durably failed job was not observed")
 			}
 			if strings.Contains(st.failureCode, providerDetail) {
 				t.Fatalf("safe failure code leaked provider detail: %q", st.failureCode)
@@ -382,6 +417,8 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	st.failureErr = errors.New("write unavailable")
 	llmMock := testkit.NewLLM()
 	svc := buildService(t, st, llmMock)
+	observed := make(chan string, 1)
+	svc.WithJobObserver(func(_ time.Duration, result string) { observed <- result })
 	terminal := newDoneEmitter()
 	svc.WithProgressEmitter(terminal)
 	now := time.Now()
@@ -416,6 +453,11 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 		t.Fatal("worker emitted failed without a durable failed transition")
 	default:
 	}
+	select {
+	case result := <-observed:
+		t.Fatalf("worker observed undurable failure as %q", result)
+	default:
+	}
 	if llmMock.Calls != 0 {
 		t.Fatalf("malformed intent reached the model %d times", llmMock.Calls)
 	}
@@ -431,6 +473,8 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
+	observed := make(chan string, 1)
+	svc.WithJobObserver(func(_ time.Duration, result string) { observed <- result })
 	terminal := newDoneEmitter()
 	svc.WithProgressEmitter(terminal)
 	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "alice")
@@ -456,6 +500,11 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 		t.Fatal("worker emitted done without a durable success transition")
 	case <-terminal.failed:
 		t.Fatal("worker emitted failed for a stale execution")
+	default:
+	}
+	select {
+	case result := <-observed:
+		t.Fatalf("worker observed stale success as %q", result)
 	default:
 	}
 	job, err := base.GetJob(ctx, jobID)

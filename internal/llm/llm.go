@@ -25,6 +25,16 @@ import (
 	"fmt"
 )
 
+// ToolCapability is the evidence state for a model's ability to make native tool
+// calls. Missing metadata is deliberately distinct from a known negative.
+type ToolCapability string
+
+const (
+	ToolCapabilityVerified    ToolCapability = "verified"
+	ToolCapabilityUnsupported ToolCapability = "unsupported"
+	ToolCapabilityUnverified  ToolCapability = "unverified"
+)
+
 // Role is a chat message role.
 type Role string
 

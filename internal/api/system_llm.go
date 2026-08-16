@@ -21,6 +21,12 @@ var (
 	// ErrInvalidHostedModel: a curated hosted provider received a model id in the
 	// wrong provider-specific shape (for example an Ollama name:tag for OpenRouter).
 	ErrInvalidHostedModel = errors.New("hosted model must use a provider/model slug")
+	// ErrModelToolsUnsupported prevents a known no-tools model from being used by
+	// the grounded curation loop.
+	ErrModelToolsUnsupported = errors.New("model does not support tool calling")
+	// ErrModelToolsUnverified requires an explicit behavioral verification when a
+	// provider exposes no capability metadata.
+	ErrModelToolsUnverified = errors.New("model tool capability is unverified")
 )
 
 // SystemLLMService backs /v1/system/llm* (§8.1 model selection). Implemented in the
@@ -40,6 +46,9 @@ type SystemLLMService interface {
 	// Test validates a hosted provider + key WITHOUT swapping (the "test my key"
 	// button). Returns nil if reachable + authorized, else a descriptive error.
 	Test(ctx context.Context, provider, baseURL, apiKey string) error
+	// Verify performs one explicit, trivial tool-call inference without swapping or
+	// persisting the selection. It never establishes semantic certification.
+	Verify(ctx context.Context, req SelectRequest) (ModelVerification, error)
 	// Pull starts a background Ollama pull of a catalog model, streaming progress
 	// over the event bus. Returns a job id. ErrNotLocal if not a local provider.
 	Pull(ctx context.Context, model string) (jobID string, err error)
@@ -78,17 +87,30 @@ type SelectRequest struct {
 	BaseURL  string // required for the "custom" provider; ignored otherwise
 }
 
+// ModelVerification is the bounded operational result of an explicit behavioral
+// tool-call check. Semantic certification belongs to the canonical eval harness.
+type ModelVerification struct {
+	Provider              string `json:"provider"`
+	Model                 string `json:"model"`
+	Reachable             bool   `json:"reachable"`
+	ToolCapability        string `json:"toolCapability" enum:"verified,unsupported,unverified" doc:"Evidence for native tool-call support"`
+	SemanticallyCertified bool   `json:"semanticallyCertified"`
+}
+
 // SystemLLMStatus is the API view of the LLM host + selection (§8.1).
 type SystemLLMStatus struct {
-	Provider    string         `json:"provider" doc:"Active provider: ollama|openai"`
-	Model       string         `json:"model" doc:"Currently active model tag/id"`
-	Local       bool           `json:"local" doc:"True for local Ollama (probe + local catalog apply)"`
-	GPUName     string         `json:"gpuName,omitempty"`
-	VRAMGiB     float64        `json:"vramGiB,omitempty" doc:"Detected GPU VRAM (0 = unknown/none)"`
-	OllamaVer   string         `json:"ollamaVersion,omitempty"`
-	Reachable   bool           `json:"reachable" doc:"LLM host answered the probe"`
-	Recommended string         `json:"recommended,omitempty" doc:"Best-fit local model tag for this machine"`
-	Catalog     []LLMModelView `json:"catalog" doc:"Curated local models annotated for this machine"`
+	Provider              string         `json:"provider" doc:"Active provider: ollama|openai"`
+	Model                 string         `json:"model" doc:"Currently active model tag/id"`
+	Local                 bool           `json:"local" doc:"True for local Ollama (probe + local catalog apply)"`
+	GPUName               string         `json:"gpuName,omitempty"`
+	VRAMGiB               float64        `json:"vramGiB,omitempty" doc:"Detected GPU VRAM (0 = unknown/none)"`
+	OllamaVer             string         `json:"ollamaVersion,omitempty"`
+	Reachable             bool           `json:"reachable" doc:"LLM host answered the probe"`
+	Configured            bool           `json:"configured" doc:"An active model is configured"`
+	ToolCapability        string         `json:"toolCapability" enum:"verified,unsupported,unverified" doc:"Active model capability evidence"`
+	SemanticallyCertified bool           `json:"semanticallyCertified" doc:"True only with canonical eval-template evidence; connectivity and tool verification never set it"`
+	Recommended           string         `json:"recommended,omitempty" doc:"Best-fit local model tag for this machine"`
+	Catalog               []LLMModelView `json:"catalog" doc:"Curated local models annotated for this machine"`
 	// Hosted is the curated hosted-provider catalog (§8.1). Always present so the UI
 	// can offer a switch to a hosted provider. API keys are NEVER included — only a
 	// per-provider keyConfigured flag.
@@ -110,24 +132,26 @@ type HostedProviderView struct {
 
 // HostedModelView is one hosted model, ranked from live metadata (§8.1).
 type HostedModelView struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Why         string `json:"why,omitempty" doc:"Rule-derived rationale (from live pricing/context/tools metadata)"`
-	Recommended bool   `json:"recommended,omitempty" doc:"Rule-selected top pick (cheap + tool-capable)"`
-	Tools       bool   `json:"tools,omitempty" doc:"Provider advertises tool-calling for this model"`
+	ID             string `json:"id"`
+	Label          string `json:"label"`
+	Why            string `json:"why,omitempty" doc:"Rule-derived rationale (from live pricing/context/tools metadata)"`
+	Recommended    bool   `json:"recommended,omitempty" doc:"Rule-selected top pick (cheap + tool-capable)"`
+	Tools          bool   `json:"tools,omitempty" doc:"Provider advertises tool-calling for this model"`
+	ToolCapability string `json:"toolCapability" enum:"verified,unsupported,unverified" doc:"Evidence for native tool-call support"`
 }
 
 // LLMModelView is one catalog model annotated for the machine (§8.1).
 type LLMModelView struct {
-	Tag         string  `json:"tag"`
-	Label       string  `json:"label"`
-	VRAMGiB     float64 `json:"approxVramGiB"`
-	Fit         string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
-	Pulled      bool    `json:"pulled" doc:"Already present in the local Ollama"`
-	RuntimeOK   bool    `json:"runtimeOk" doc:"Detected Ollama version supports this model"`
-	Tools       bool    `json:"tools" doc:"Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable"`
-	Recommended bool    `json:"recommended"`
-	Why         string  `json:"why"`
+	Tag            string  `json:"tag"`
+	Label          string  `json:"label"`
+	VRAMGiB        float64 `json:"approxVramGiB"`
+	Fit            string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
+	Pulled         bool    `json:"pulled" doc:"Already present in the local Ollama"`
+	RuntimeOK      bool    `json:"runtimeOk" doc:"Detected Ollama version supports this model"`
+	Tools          bool    `json:"tools" doc:"Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable"`
+	ToolCapability string  `json:"toolCapability" enum:"verified,unsupported,unverified" doc:"Evidence for native tool-call support"`
+	Recommended    bool    `json:"recommended"`
+	Why            string  `json:"why"`
 }
 
 // registerSystemLLM mounts /v1/system/llm* (§8.1). Admin-only — model selection
@@ -158,6 +182,14 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"Returns ok + an error hint; a bad key is ok=false (not a 5xx).",
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemLLMTest)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "system-llm-verify", Method: http.MethodPost, Path: "/v1/system/llm/verify",
+		Summary: "Verify model tool calling",
+		Description: "Admin only. Makes one explicit trivial tool-call inference without swapping or persisting the model (§8.1). " +
+			"The bounded process-local result may establish reachability and tool capability, never semantic certification.",
+		Tags: []string{"system"},
+	}, RoleAdmin), s.systemLLMVerify)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-pull", Method: http.MethodPost, Path: "/v1/system/llm/pull",
@@ -247,6 +279,10 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 	case nil:
 	case ErrModelNotPulled:
 		return nil, errConflict("Model not ready", "Download this model before selecting it.")
+	case ErrModelToolsUnsupported:
+		return nil, errConflict("Tool calling unsupported", "This model is known not to support the tool calls required for grounded curation. Choose another model.")
+	case ErrModelToolsUnverified:
+		return nil, errConflict("Tool calling unverified", "Verify this model's tool calling before selecting it for grounded curation.")
 	case ErrUnknownProvider:
 		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	case ErrInvalidHostedModel:
@@ -262,6 +298,46 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 		return nil, apiErrWithCause(http.StatusBadGateway, "Model selected, status unavailable", "The model was activated, but Loomarr couldn't re-read the provider status. Refresh to see the current state.", err)
 	}
 	return &struct{ Body SystemLLMStatus }{Body: st}, nil
+}
+
+type systemLLMVerifyInput struct {
+	Body struct {
+		Provider string `json:"provider,omitempty" doc:"Provider: ollama, openrouter, or custom. Empty = ollama." example:"custom"`
+		Model    string `json:"model" doc:"Model tag/id to verify." example:"my-model"`
+		APIKey   string `json:"apiKey,omitempty" doc:"Hosted API key; omit to reuse a stored key."`
+		BaseURL  string `json:"baseUrl,omitempty" doc:"Required for provider=custom." example:"http://localhost:8000/v1"`
+	}
+}
+
+func (s *Server) systemLLMVerify(ctx context.Context, in *systemLLMVerifyInput) (*struct {
+	Body ModelVerification
+}, error) {
+	if s.systemLLM == nil {
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+	}
+	if in.Body.Model == "" {
+		return nil, errUnprocessable("Model required", "Choose a model to verify.")
+	}
+	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
+		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
+	}
+	result, err := s.systemLLM.Verify(ctx, SelectRequest{
+		Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL,
+	})
+	switch err {
+	case nil:
+	case ErrModelNotPulled:
+		return nil, errConflict("Model not ready", "Download this model before verifying it.")
+	case ErrUnknownProvider:
+		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
+	case ErrInvalidHostedModel:
+		return nil, errUnprocessable("Invalid hosted model", "OpenRouter models use a provider/model slug, such as openai/gpt-4o-mini.")
+	case ErrKeyInvalid:
+		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again.")
+	default:
+		return nil, apiErrWithCause(http.StatusBadGateway, "Verification failed", "Loomarr couldn't run the tool-call check. Check the AI provider connection and try again.", err)
+	}
+	return &struct{ Body ModelVerification }{Body: result}, nil
 }
 
 type systemLLMTestInput struct {

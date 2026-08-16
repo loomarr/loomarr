@@ -240,10 +240,23 @@ type systemLLMService struct {
 	discoverAt    time.Time
 	discoverVRAM  float64
 	discoverCache []api.DiscoverModelView
+
+	// Verification is operational evidence, not configuration. Keep only a bounded
+	// process-local FIFO keyed by provider/base/model; restart intentionally clears it.
+	verificationMu    sync.Mutex
+	verification      map[string]modelVerification
+	verificationOrder []string
 }
 
 // discoverTTL is how long a compatible-download list is reused before re-hitting HF.
 const discoverTTL = 10 * time.Minute
+
+const verificationCacheLimit = 32
+
+type modelVerification struct {
+	Capability llm.ToolCapability
+	Reachable  bool
+}
 
 // prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
 func (s *systemLLMService) prober() *llm.Prober { return llm.NewProber(s.ollamaBase()) }
@@ -253,9 +266,11 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 	local := sel.Provider == "ollama" || sel.Provider == ""
 
 	out := api.SystemLLMStatus{
-		Provider: sel.Provider,
-		Model:    sel.Model,
-		Local:    local,
+		Provider:       sel.Provider,
+		Model:          sel.Model,
+		Local:          local,
+		Configured:     sel.Model != "",
+		ToolCapability: string(llm.ToolCapabilityUnverified),
 	}
 
 	// Local catalog: only meaningful when the active provider is Ollama (a probe of
@@ -271,8 +286,18 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 			out.Catalog = append(out.Catalog, api.LLMModelView{
 				Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
 				Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
-				Tools: e.Tools, Recommended: e.Recommended, Why: e.Why,
+				Tools: e.Tools, ToolCapability: string(e.ToolCapability), Recommended: e.Recommended, Why: e.Why,
 			})
+		}
+		verification := s.cachedVerification("ollama", s.ollamaBase(), sel.Model)
+		out.ToolCapability = string(verification.Capability)
+		out.Reachable = out.Reachable || verification.Reachable
+		if active, ok := installedModel(probe.Installed, sel.Model); ok {
+			capability := active.ToolCapability
+			if capability == llm.ToolCapabilityUnverified {
+				capability = verification.Capability
+			}
+			out.ToolCapability = string(capability)
 		}
 	}
 
@@ -289,7 +314,15 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 	if !local {
 		for _, hv := range out.Hosted {
 			if hv.Active {
-				out.Reachable = hv.ModelsLive
+				verification := s.cachedVerification(hv.Key, hv.BaseURL, sel.Model)
+				out.Reachable = hv.ModelsLive || verification.Reachable
+				out.ToolCapability = string(verification.Capability)
+				for _, model := range hv.Models {
+					if model.ID == sel.Model {
+						out.ToolCapability = model.ToolCapability
+						break
+					}
+				}
 				break
 			}
 		}
@@ -323,8 +356,13 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 			Note: hp.Note, KeyConfigured: key != "", Active: isActive, ModelsLive: live,
 		}
 		for _, m := range models {
+			capability := normalizedHostedCapability(m)
+			if capability == llm.ToolCapabilityUnverified {
+				capability = s.cachedVerification(hp.Key, hp.BaseURL, m.ID).Capability
+			}
 			view.Models = append(view.Models, api.HostedModelView{
-				ID: m.ID, Label: m.Label, Why: m.Why, Recommended: m.Recommended, Tools: m.Tools,
+				ID: m.ID, Label: m.Label, Why: m.Why, Recommended: m.Recommended,
+				Tools: capability == llm.ToolCapabilityVerified, ToolCapability: string(capability),
 			})
 		}
 		views = append(views, view)
@@ -403,6 +441,14 @@ func (s *systemLLMService) selectLocal(ctx context.Context, model string) error 
 	if !containsModel(probe.PulledModels, model) {
 		return api.ErrModelNotPulled
 	}
+	installed, _ := installedModel(probe.Installed, model)
+	capability := installed.ToolCapability
+	if capability == llm.ToolCapabilityUnverified {
+		capability = s.cachedVerification("ollama", s.ollamaBase(), model).Capability
+	}
+	if err := requireToolCapability(capability); err != nil {
+		return err
+	}
 	sel := llm.Selection{Provider: "ollama", URL: s.ollamaBase(), Model: model}
 	if err := s.persist(ctx, sel); err != nil {
 		return err
@@ -447,6 +493,20 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	if model == "" {
 		return api.ErrUnknownProvider // nothing selectable — provider returned no models
 	}
+	models, _ := hp.LiveModels(ctx, apiKey)
+	capability := llm.ToolCapabilityUnverified
+	for _, candidate := range models {
+		if candidate.ID == model {
+			capability = normalizedHostedCapability(candidate)
+			break
+		}
+	}
+	if capability == llm.ToolCapabilityUnverified {
+		capability = s.cachedVerification(provider, hp.BaseURL, model).Capability
+	}
+	if err := requireToolCapability(capability); err != nil {
+		return err
+	}
 	sel := llm.Selection{Provider: provider, URL: hp.BaseURL, Model: model, APIKey: apiKey}
 	if err := s.persist(ctx, sel); err != nil {
 		return err
@@ -484,6 +544,145 @@ func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey s
 		apiKey = s.storedKeyFor(ctx, provider)
 	}
 	return llm.ValidateKey(ctx, hp.BaseURL, apiKey)
+}
+
+// Verify performs the one explicitly operator-triggered inference in the status
+// flow. It never swaps or persists a model, and never claims semantic quality.
+func (s *systemLLMService) Verify(ctx context.Context, req api.SelectRequest) (api.ModelVerification, error) {
+	provider := req.Provider
+	if provider == "" {
+		provider = "ollama"
+	}
+	selection := llm.Selection{Provider: provider, Model: req.Model}
+	metadataCapability := llm.ToolCapabilityUnverified
+
+	if provider == "ollama" {
+		probe := s.prober().Probe(ctx)
+		installed, ok := installedModel(probe.Installed, req.Model)
+		if !ok {
+			return api.ModelVerification{}, api.ErrModelNotPulled
+		}
+		metadataCapability = installed.ToolCapability
+		selection.URL = s.ollamaBase()
+	} else {
+		hp, ok := hostedBase(provider, req.BaseURL)
+		if !ok {
+			return api.ModelVerification{}, api.ErrUnknownProvider
+		}
+		if provider == "openrouter" && !validOpenRouterModelID(req.Model) {
+			return api.ModelVerification{}, api.ErrInvalidHostedModel
+		}
+		if req.APIKey == "" {
+			req.APIKey = s.storedKeyFor(ctx, provider)
+		}
+		selection.URL, selection.APIKey = hp.BaseURL, req.APIKey
+		models, live := hp.LiveModels(ctx, req.APIKey)
+		if live {
+			for _, model := range models {
+				if model.ID == req.Model {
+					metadataCapability = normalizedHostedCapability(model)
+					break
+				}
+			}
+		}
+	}
+
+	result := api.ModelVerification{
+		Provider: provider, Model: req.Model, Reachable: true,
+		ToolCapability: string(metadataCapability), SemanticallyCertified: false,
+	}
+	// Provider metadata is authoritative for a known negative; don't spend tokens
+	// asking a model the provider already says cannot call tools.
+	if metadataCapability == llm.ToolCapabilityUnsupported {
+		s.recordVerification(provider, selection.URL, req.Model, modelVerification{Capability: metadataCapability, Reachable: true})
+		return result, nil
+	}
+
+	temperature := 0.0
+	response, err := buildProviderFor(selection).Chat(ctx, []llm.Message{{
+		Role: llm.User, Content: "Call the loomarr_capability_check tool now. Do not answer in text.",
+	}}, llm.ChatOptions{
+		Tools: []llm.ToolSchema{{
+			Name: "loomarr_capability_check", Description: "Confirms native tool-call support.",
+			Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
+		}},
+		Temperature: &temperature, MaxTokens: 32,
+	})
+	if err != nil {
+		result.Reachable = false
+		return result, err
+	}
+	capability := llm.ToolCapabilityUnsupported
+	for _, call := range response.ToolCalls {
+		if call.Name == "loomarr_capability_check" {
+			capability = llm.ToolCapabilityVerified
+			break
+		}
+	}
+	result.ToolCapability = string(capability)
+	s.recordVerification(provider, selection.URL, req.Model, modelVerification{Capability: capability, Reachable: true})
+	return result, nil
+}
+
+func normalizedHostedCapability(model llm.HostedModel) llm.ToolCapability {
+	if model.ToolCapability != "" {
+		return model.ToolCapability
+	}
+	if model.Tools {
+		return llm.ToolCapabilityVerified
+	}
+	return llm.ToolCapabilityUnverified
+}
+
+func requireToolCapability(capability llm.ToolCapability) error {
+	switch capability {
+	case llm.ToolCapabilityVerified:
+		return nil
+	case llm.ToolCapabilityUnsupported:
+		return api.ErrModelToolsUnsupported
+	default:
+		return api.ErrModelToolsUnverified
+	}
+}
+
+func installedModel(models []llm.InstalledModel, tag string) (llm.InstalledModel, bool) {
+	for _, model := range models {
+		if model.Tag == tag || (!strings.Contains(tag, ":") && model.Tag == tag+":latest") {
+			return model, true
+		}
+	}
+	return llm.InstalledModel{}, false
+}
+
+func verificationKey(provider, baseURL, model string) string {
+	return provider + "\x00" + strings.TrimRight(baseURL, "/") + "\x00" + model
+}
+
+func (s *systemLLMService) cachedVerification(provider, baseURL, model string) modelVerification {
+	s.verificationMu.Lock()
+	defer s.verificationMu.Unlock()
+	if capability, ok := s.verification[verificationKey(provider, baseURL, model)]; ok {
+		return capability
+	}
+	return modelVerification{Capability: llm.ToolCapabilityUnverified}
+}
+
+func (s *systemLLMService) recordVerification(provider, baseURL, model string, verification modelVerification) {
+	key := verificationKey(provider, baseURL, model)
+	s.verificationMu.Lock()
+	defer s.verificationMu.Unlock()
+	if s.verification == nil {
+		s.verification = make(map[string]modelVerification)
+	}
+	if _, exists := s.verification[key]; !exists {
+		s.verificationOrder = append(s.verificationOrder, key)
+	}
+	s.verification[key] = verification
+	for len(s.verificationOrder) > verificationCacheLimit {
+		oldest := s.verificationOrder[0]
+		s.verificationOrder = s.verificationOrder[1:]
+		delete(s.verification, oldest)
+	}
 }
 
 // Discover returns downloadable local models compatible with THIS machine (§8.1):

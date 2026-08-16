@@ -49,7 +49,8 @@ type Service struct {
 	cacheTTL  time.Duration
 	newID     func() string
 	now       func() time.Time
-	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
+	emit      ProgressEmitter             // optional (§8 SSE progress); nil ⇒ no live frames
+	observe   func(time.Duration, string) // optional terminal lifecycle observer
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
 	// which is the correct default: the gate is closed unless something opens it.
 	auto *AutoApprover
@@ -114,6 +115,24 @@ func (s *Service) WithProgressEmitter(e ProgressEmitter) *Service {
 	return s
 }
 
+// WithJobObserver wires a terminal lifecycle observer. It runs only after the
+// done/failed transition is durably committed and receives a bounded public result
+// (`success` or one of FailureCode*), never a diagnostic.
+func (s *Service) WithJobObserver(observe func(time.Duration, string)) *Service {
+	s.observe = observe
+	return s
+}
+
+func (s *Service) observeJob(job store.Job, result string) {
+	if s.observe != nil {
+		duration := s.now().Sub(job.CreatedAt)
+		if duration < 0 {
+			duration = 0
+		}
+		s.observe(duration, result)
+	}
+}
+
 // emitPhase publishes one phase frame if an emitter is wired. round is 0 for the
 // phases emitted around the pipeline (done/failed) rather than inside its tool loop.
 func (s *Service) emitPhase(jobID string, p Phase, round int) {
@@ -174,6 +193,7 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 		job.Status = "done"
 		p, cloneErr := s.store.CloneSuggestionSuccess(ctx, cached.ID, job, s.newID())
 		if cloneErr == nil {
+			s.observeJob(job, "success")
 			s.considerAutomaticApproval(ctx, job, p)
 			return job.ID, nil
 		}
@@ -311,6 +331,7 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err))
 		return
 	}
+	s.observeJob(job, "success")
 	s.considerAutomaticApproval(ctx, job, p)
 	s.emitPhase(job.ID, PhaseDone, 0)
 }
@@ -366,6 +387,7 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 		}
 		return
 	}
+	s.observeJob(job, code)
 	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
 	s.emitPhase(job.ID, PhaseFailed, 0)
 }

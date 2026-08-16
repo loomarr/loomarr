@@ -2286,6 +2286,13 @@ components:
         recommended:
           description: Rule-selected top pick (cheap + tool-capable)
           type: boolean
+        toolCapability:
+          description: Evidence for native tool-call support
+          enum:
+            - verified
+            - unsupported
+            - unverified
+          type: string
         tools:
           description: Provider advertises tool-calling for this model
           type: boolean
@@ -2295,6 +2302,7 @@ components:
       required:
         - id
         - label
+        - toolCapability
       type: object
     HostedProviderView:
       additionalProperties: false
@@ -2960,6 +2968,13 @@ components:
           type: boolean
         tag:
           type: string
+        toolCapability:
+          description: Evidence for native tool-call support
+          enum:
+            - verified
+            - unsupported
+            - unverified
+          type: string
         tools:
           description: Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable
           type: boolean
@@ -2973,6 +2988,7 @@ components:
         - pulled
         - runtimeOk
         - tools
+        - toolCapability
         - recommended
         - why
       type: object
@@ -3362,6 +3378,38 @@ components:
         - quota
         - autoApprove
         - local
+      type: object
+    ModelVerification:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ModelVerification.json
+          format: uri
+          readOnly: true
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        reachable:
+          type: boolean
+        semanticallyCertified:
+          type: boolean
+        toolCapability:
+          description: Evidence for native tool-call support
+          enum:
+            - verified
+            - unsupported
+            - unverified
+          type: string
+      required:
+        - provider
+        - model
+        - reachable
+        - toolCapability
+        - semanticallyCertified
       type: object
     NowNextEntry:
       additionalProperties: false
@@ -5399,6 +5447,9 @@ components:
           items:
             $ref: "#/components/schemas/LLMModelView"
           type: array
+        configured:
+          description: An active model is configured
+          type: boolean
         gpuName:
           type: string
         hosted:
@@ -5423,6 +5474,16 @@ components:
         recommended:
           description: Best-fit local model tag for this machine
           type: string
+        semanticallyCertified:
+          description: True only with canonical eval-template evidence; connectivity and tool verification never set it
+          type: boolean
+        toolCapability:
+          description: Active model capability evidence
+          enum:
+            - verified
+            - unsupported
+            - unverified
+          type: string
         vramGiB:
           description: Detected GPU VRAM (0 = unknown/none)
           format: double
@@ -5432,6 +5493,9 @@ components:
         - model
         - local
         - reachable
+        - configured
+        - toolCapability
+        - semanticallyCertified
         - catalog
         - hosted
       type: object
@@ -5462,6 +5526,37 @@ components:
           type: string
       required:
         - provider
+      type: object
+    SystemLLMVerifyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SystemLLMVerifyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        apiKey:
+          description: Hosted API key; omit to reuse a stored key.
+          type: string
+        baseUrl:
+          description: Required for provider=custom.
+          examples:
+            - http://localhost:8000/v1
+          type: string
+        model:
+          description: Model tag/id to verify.
+          examples:
+            - my-model
+          type: string
+        provider:
+          description: "Provider: ollama, openrouter, or custom. Empty = ollama."
+          examples:
+            - custom
+          type: string
+      required:
+        - model
       type: object
     SystemReloadOutputBody:
       additionalProperties: false
@@ -9581,6 +9676,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Test a hosted provider + key
+      tags:
+        - system
+  /v1/system/llm/verify:
+    post:
+      description: Admin only. Makes one explicit trivial tool-call inference without swapping or persisting the model (§8.1). The bounded process-local result may establish reachability and tool capability, never semantic certification.
+      operationId: system-llm-verify
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemLLMVerifyInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVerification"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Verify model tool calling
       tags:
         - system
   /v1/system/reload:

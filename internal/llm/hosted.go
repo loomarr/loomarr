@@ -30,11 +30,12 @@ import (
 // most fields are derived from the provider's /models metadata; Recommended +Why
 // are computed by the ranking rules (rankModels), NOT hardcoded per id.
 type HostedModel struct {
-	ID          string `json:"id"`                    // exact model id for the API (LLM_MODEL)
-	Label       string `json:"label"`                 // human name (provider-supplied or the id)
-	Why         string `json:"why,omitempty"`         // rule-derived rationale ("cheap, tool-capable")
-	Recommended bool   `json:"recommended,omitempty"` // rule-selected as a top pick for grounding
-	Tools       bool   `json:"tools,omitempty"`       // provider advertises tool-calling for this model
+	ID             string         `json:"id"`                    // exact model id for the API (LLM_MODEL)
+	Label          string         `json:"label"`                 // human name (provider-supplied or the id)
+	Why            string         `json:"why,omitempty"`         // rule-derived rationale ("cheap, tool-capable")
+	Recommended    bool           `json:"recommended,omitempty"` // rule-selected as a top pick for grounding
+	Tools          bool           `json:"tools,omitempty"`       // compatibility projection of verified capability
+	ToolCapability ToolCapability `json:"toolCapability"`        // verified|unsupported|unverified
 }
 
 // HostedProvider is one curated OpenAI-compatible provider (§8.1). Only provider-
@@ -84,7 +85,7 @@ var hostedCatalog = []HostedProvider{
 		// supersedes this. Kept short + obvious; not an allowlist.
 		Fallback: []HostedModel{{
 			ID: "openai/gpt-4o-mini", Label: "GPT-4o mini",
-			Recommended: true, Tools: true,
+			Recommended: true, Tools: true, ToolCapability: ToolCapabilityVerified,
 			Why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
 		}},
 	},
@@ -251,29 +252,26 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 	if !rich {
 		// Thin provider: show the live ids as-is (current, unranked).
 		for _, m := range metas {
-			models = append(models, HostedModel{ID: m.ID, Label: labelOf(m)})
+			models = append(models, HostedModel{ID: m.ID, Label: labelOf(m), ToolCapability: ToolCapabilityUnverified})
 		}
 		return models, live
 	}
 
-	// Rich provider: keep tool-capable models, then rank for the USE CASE — best
+	// Rich provider: keep all models so a known negative remains visible, then rank
+	// verified tool-capable models first for the USE CASE — best
 	// grounded tool-caller first, not merely cheapest:
 	//   1. quality TIER (curated by family) descending — the durable judgment,
 	//   2. cost ascending within a tier — cheaper of two equally-good families,
 	//   3. bigger context as a final tie-break.
 	// A tool-capable model with no tier (tier 0) sorts AFTER all tiered ones, so the
 	// recommended set is always quality-first; untiered models remain selectable.
-	var capable []modelMeta
-	for _, m := range metas {
-		if m.supportsTools() {
-			capable = append(capable, m)
+	slices.SortStableFunc(metas, func(a, b modelMeta) int {
+		if a.supportsTools() != b.supportsTools() {
+			if a.supportsTools() {
+				return -1
+			}
+			return 1
 		}
-	}
-	if len(capable) == 0 {
-		// No tool-capable model advertised — unusual, but don't hide everything.
-		capable = metas
-	}
-	slices.SortStableFunc(capable, func(a, b modelMeta) int {
 		ta, _ := tierOf(a.ID)
 		tb, _ := tierOf(b.ID)
 		if ta != tb {
@@ -293,10 +291,14 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 	// we vouch for for grounding", not "cheapest capable-looking".
 	const recommendCount = 3
 	recommended := 0
-	for _, m := range capable {
+	for _, m := range metas {
 		tier, fam := tierOf(m.ID)
-		hm := HostedModel{ID: m.ID, Label: labelOf(m), Tools: m.supportsTools()}
-		if tier > 0 && recommended < recommendCount {
+		capability := ToolCapabilityUnsupported
+		if m.supportsTools() {
+			capability = ToolCapabilityVerified
+		}
+		hm := HostedModel{ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(), ToolCapability: capability}
+		if m.supportsTools() && tier > 0 && recommended < recommendCount {
 			hm.Recommended = true
 			hm.Why = whyFor(m, fam)
 			recommended++

@@ -73,6 +73,9 @@ func TestHostedCatalog_OpenRouterFallbackExplainsTheSafeDefault(t *testing.T) {
 	if !model.Recommended || !model.Tools || model.Why == "" {
 		t.Errorf("fallback = %+v, want recommended + tools + a plain-English rationale", model)
 	}
+	if model.ToolCapability != ToolCapabilityVerified {
+		t.Errorf("fallback capability = %q, want %q", model.ToolCapability, ToolCapabilityVerified)
+	}
 }
 
 // RICH provider (OpenRouter-shape): LiveModels ranks for the USE CASE — a curated
@@ -103,9 +106,10 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	if !live {
 		t.Fatal("expected live=true")
 	}
-	// non-tool filtered out; the other three remain.
-	if len(models) != 3 {
-		t.Fatalf("got %d tool-capable models, want 3", len(models))
+	// Known non-tool models remain visible, but are explicitly unsupported and sort
+	// after every verified option so the UI can explain why they cannot be selected.
+	if len(models) != 4 {
+		t.Fatalf("got %d models, want all 4 with honest capability", len(models))
 	}
 	// Quality tier wins: gpt-4o (tier 3) ranks first despite being pricier than the
 	// free coder and pricier than haiku.
@@ -129,6 +133,12 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	if coder.Recommended {
 		t.Error("an untiered model must never be recommended, even if cheapest")
 	}
+	if coder.ToolCapability != ToolCapabilityVerified {
+		t.Errorf("tool model capability = %q, want %q", coder.ToolCapability, ToolCapabilityVerified)
+	}
+	if got := models[len(models)-1]; got.ID != "no/tools" || got.ToolCapability != ToolCapabilityUnsupported {
+		t.Errorf("last model = %+v, want known no-tools model marked unsupported", got)
+	}
 }
 
 // THIN provider (OpenAI/Groq-shape: just ids, no metadata): rules can't rank, so it
@@ -147,6 +157,9 @@ func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
 	for _, m := range models {
 		if m.Recommended {
 			t.Error("thin metadata must NOT produce recommendations (no data to rank on)")
+		}
+		if m.ToolCapability != ToolCapabilityUnverified {
+			t.Errorf("thin model %q capability = %q, want %q", m.ID, m.ToolCapability, ToolCapabilityUnverified)
 		}
 	}
 }

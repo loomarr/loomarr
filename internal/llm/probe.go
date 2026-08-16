@@ -26,21 +26,22 @@ type Probe struct {
 	// Installed is the RICH view of each pulled model — its on-disk size (a VRAM proxy),
 	// parameter size / family / quant (from /api/tags), and whether it advertises tool
 	// calling (from /api/show `capabilities`). The catalog is built LIVE from these, so
-	// there is no hardcoded model list to go stale: a model you pulled that can tool-call
-	// shows up, one that can't (e.g. DeepSeek-R1 in the official registry) does not.
+	// there is no hardcoded model list to go stale: every pulled model remains visible,
+	// with verified/unsupported/unverified tool capability deciding whether it can be used.
 	Installed []InstalledModel `json:"installed"`
 	Reachable bool             `json:"reachable"` // Ollama /api/version answered
 }
 
 // InstalledModel is one locally-pulled model as reported by Ollama (§8.1).
 type InstalledModel struct {
-	Tag           string  `json:"tag"`           // exact pull tag, e.g. "qwen3:8b"
-	SizeBytes     int64   `json:"sizeBytes"`     // on-disk size — proxy for resident VRAM footprint
-	ParameterSize string  `json:"parameterSize"` // e.g. "7.6B" (details.parameter_size)
-	Family        string  `json:"family"`        // e.g. "qwen2" (details.family)
-	Quant         string  `json:"quant"`         // e.g. "Q4_K_M" (details.quantization_level)
-	Tools         bool    `json:"tools"`         // /api/show capabilities includes "tools"
-	VRAMGiB       float64 `json:"vramGiB"`       // SizeBytes → GiB (resident footprint proxy)
+	Tag            string         `json:"tag"`            // exact pull tag, e.g. "qwen3:8b"
+	SizeBytes      int64          `json:"sizeBytes"`      // on-disk size — proxy for resident VRAM footprint
+	ParameterSize  string         `json:"parameterSize"`  // e.g. "7.6B" (details.parameter_size)
+	Family         string         `json:"family"`         // e.g. "qwen2" (details.family)
+	Quant          string         `json:"quant"`          // e.g. "Q4_K_M" (details.quantization_level)
+	Tools          bool           `json:"tools"`          // compatibility projection of verified capability
+	ToolCapability ToolCapability `json:"toolCapability"` // verified|unsupported|unverified
+	VRAMGiB        float64        `json:"vramGiB"`        // SizeBytes → GiB (resident footprint proxy)
 }
 
 // Prober detects the machine + Ollama host. baseURL is the Ollama base
@@ -86,7 +87,8 @@ const bytesPerGiB = 1024 * 1024 * 1024
 
 // installedModels enumerates pulled models via /api/tags (name, size, details) and
 // annotates each with its tool-calling capability via /api/show. Best-effort: a model
-// whose /api/show fails is kept with Tools=false (it just won't be offered for grounding).
+// whose /api/show fails is kept with capability=unverified (it won't be offered
+// for grounding until the explicit behavioral verification succeeds).
 func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/tags", nil)
 	if err != nil {
@@ -116,14 +118,16 @@ func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
 	}
 	models := make([]InstalledModel, 0, len(out.Models))
 	for _, m := range out.Models {
+		capability := p.modelToolCapability(ctx, m.Name)
 		models = append(models, InstalledModel{
-			Tag:           m.Name,
-			SizeBytes:     m.Size,
-			ParameterSize: m.Details.ParameterSize,
-			Family:        m.Details.Family,
-			Quant:         m.Details.QuantizationLevel,
-			VRAMGiB:       float64(m.Size) / bytesPerGiB,
-			Tools:         p.modelHasTools(ctx, m.Name),
+			Tag:            m.Name,
+			SizeBytes:      m.Size,
+			ParameterSize:  m.Details.ParameterSize,
+			Family:         m.Details.Family,
+			Quant:          m.Details.QuantizationLevel,
+			VRAMGiB:        float64(m.Size) / bytesPerGiB,
+			Tools:          capability == ToolCapabilityVerified,
+			ToolCapability: capability,
 		})
 	}
 	return models
@@ -132,31 +136,34 @@ func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
 // modelHasTools asks /api/show whether a model advertises tool calling. Ollama exposes
 // this as a `capabilities` array (values: completion, tools, vision, …). This is the
 // live, authoritative signal that replaces a hand-maintained "tool-callers" list.
-func (p *Prober) modelHasTools(ctx context.Context, model string) bool {
+func (p *Prober) modelToolCapability(ctx context.Context, model string) ToolCapability {
 	body, err := json.Marshal(map[string]string{"model": model})
 	if err != nil {
-		return false
+		return ToolCapabilityUnverified
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/show", strings.NewReader(string(body)))
 	if err != nil {
-		return false
+		return ToolCapabilityUnverified
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return false
+		return ToolCapabilityUnverified
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return false
+		return ToolCapabilityUnverified
 	}
 	var out struct {
 		Capabilities []string `json:"capabilities"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return false
+		return ToolCapabilityUnverified
 	}
-	return slices.Contains(out.Capabilities, "tools")
+	if slices.Contains(out.Capabilities, "tools") {
+		return ToolCapabilityVerified
+	}
+	return ToolCapabilityUnsupported
 }
 
 // Catalog returns the curated model catalog annotated for THIS machine (fit,

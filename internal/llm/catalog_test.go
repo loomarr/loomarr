@@ -26,39 +26,55 @@ func TestClassifyFit(t *testing.T) {
 // scenario needs, tool-capable by default. The catalog is built LIVE from these — the
 // whole point of §8.1 — so tests seed Probe.Installed, never a hardcoded catalog.
 func installed(tag string, gib float64, params string, tools bool) InstalledModel {
+	capability := ToolCapabilityUnsupported
+	if tools {
+		capability = ToolCapabilityVerified
+	}
 	return InstalledModel{
-		Tag:           tag,
-		SizeBytes:     int64(gib * bytesPerGiB),
-		VRAMGiB:       gib,
-		ParameterSize: params,
-		Family:        "test",
-		Quant:         "Q4_K_M",
-		Tools:         tools,
+		Tag:            tag,
+		SizeBytes:      int64(gib * bytesPerGiB),
+		VRAMGiB:        gib,
+		ParameterSize:  params,
+		Family:         "test",
+		Quant:          "Q4_K_M",
+		Tools:          tools,
+		ToolCapability: capability,
 	}
 }
 
-// The catalog is built ONLY from installed models, and only the tool-capable ones —
-// a model Ollama doesn't report as tool-calling (e.g. a DeepSeek-R1 build) is useless
-// for grounded suggestions and must never appear (§8.1).
-func TestAnnotateCatalog_OnlyToolCapableInstalled(t *testing.T) {
+// Every installed model stays visible so unsupported and unverified are actionable,
+// but only verified models can be recommended or selected for grounded curation.
+func TestAnnotateCatalog_ExposesToolCapabilityHonestly(t *testing.T) {
+	unverified := installed("show-unavailable:8b", 5.0, "8B", false)
+	unverified.ToolCapability = ToolCapabilityUnverified
 	p := Probe{
 		VRAMGiB:   12,
 		Reachable: true,
 		Installed: []InstalledModel{
 			installed("qwen3:8b", 5.2, "8B", true),
-			installed("deepseek-r1:14b", 9.0, "14B", false), // no tools → excluded
+			installed("deepseek-r1:14b", 9.0, "14B", false),
+			unverified,
 		},
 	}
 	entries := annotateCatalog(p)
-	if len(entries) != 1 {
-		t.Fatalf("got %d catalog entries, want 1 (only the tool-capable model)", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("got %d catalog entries, want all 3 installed models", len(entries))
 	}
-	if entries[0].Tag != "qwen3:8b" {
-		t.Errorf("kept %q, want qwen3:8b (the only tool-capable model)", entries[0].Tag)
+	want := map[string]ToolCapability{
+		"qwen3:8b":            ToolCapabilityVerified,
+		"deepseek-r1:14b":     ToolCapabilityUnsupported,
+		"show-unavailable:8b": ToolCapabilityUnverified,
 	}
-	if !entries[0].Pulled || !entries[0].RuntimeOK {
-		t.Errorf("installed model must be Pulled + RuntimeOK, got pulled=%v runtimeOk=%v",
-			entries[0].Pulled, entries[0].RuntimeOK)
+	for _, entry := range entries {
+		if got := entry.ToolCapability; got != want[entry.Tag] {
+			t.Errorf("%s capability = %q, want %q", entry.Tag, got, want[entry.Tag])
+		}
+		if entry.Tools != (entry.ToolCapability == ToolCapabilityVerified) {
+			t.Errorf("%s compatibility Tools disagrees with capability", entry.Tag)
+		}
+		if entry.Recommended && entry.ToolCapability != ToolCapabilityVerified {
+			t.Errorf("%s is %q but was recommended", entry.Tag, entry.ToolCapability)
+		}
 	}
 }
 

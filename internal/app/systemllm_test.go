@@ -3,18 +3,186 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+func newSystemLLMTestService(t *testing.T, baseURL string) *systemLLMService {
+	t.Helper()
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "system-llm.db"), true)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return &systemLLMService{
+		swap:         llm.NewSwappable(buildProviderFor, llm.Selection{Provider: "ollama", URL: baseURL}),
+		ollamaBase:   func() string { return baseURL },
+		saveSettings: func(context.Context, map[string]string) error { return nil },
+		store:        st,
+		log:          slog.New(slog.DiscardHandler),
+	}
+}
+
+func TestSelectHosted_RejectsKnownToolUnsupportedModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"no-tools","supported_parameters":["temperature"]}]}`))
+		case "/chat/completions":
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	sut := newSystemLLMTestService(t, srv.URL)
+	err := sut.Select(context.Background(), api.SelectRequest{
+		Provider: "custom", BaseURL: srv.URL, Model: "no-tools", APIKey: "key",
+	})
+	if !errors.Is(err, api.ErrModelToolsUnsupported) {
+		t.Fatalf("select known no-tools model = %v, want ErrModelToolsUnsupported", err)
+	}
+}
+
+func TestVerifyMakesExplicitToolCallAndUnlocksUnverifiedModel(t *testing.T) {
+	var toolCalls int
+	modelsAvailable := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			if !modelsAvailable {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":"thin-model"}]}`))
+		case "/chat/completions":
+			var body struct {
+				Tools []json.RawMessage `json:"tools"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Tools) == 0 {
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+				return
+			}
+			toolCalls++
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"loomarr_capability_check","arguments":"{}"}}]}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	sut := newSystemLLMTestService(t, srv.URL)
+	req := api.SelectRequest{Provider: "custom", BaseURL: srv.URL, Model: "thin-model", APIKey: "key"}
+	if err := sut.Select(context.Background(), req); !errors.Is(err, api.ErrModelToolsUnverified) {
+		t.Fatalf("select before verify = %v, want ErrModelToolsUnverified", err)
+	}
+	verification, err := sut.Verify(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if verification.ToolCapability != "verified" || verification.SemanticallyCertified || toolCalls != 1 {
+		t.Fatalf("verification = %+v toolCalls=%d, want tool verified only with one explicit inference", verification, toolCalls)
+	}
+	if err := sut.Select(context.Background(), req); err != nil {
+		t.Fatalf("select after verify: %v", err)
+	}
+	modelsAvailable = false // cached operational evidence survives a metadata outage
+	status, err := sut.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if !status.Configured || status.ToolCapability != "verified" || status.SemanticallyCertified {
+		t.Errorf("status = %+v, want distinct configured/tool-verified/not-semantically-certified truth", status)
+	}
+}
+
+func TestModelVerificationCacheIsBounded(t *testing.T) {
+	sut := &systemLLMService{}
+	for i := 0; i < verificationCacheLimit+5; i++ {
+		model := fmt.Sprintf("model-%d", i)
+		sut.recordVerification("custom", "http://ai.internal/v1", model, modelVerification{
+			Capability: llm.ToolCapabilityVerified, Reachable: true,
+		})
+	}
+	if got := len(sut.verification); got != verificationCacheLimit {
+		t.Fatalf("verification cache size = %d, want bounded at %d", got, verificationCacheLimit)
+	}
+	if got := sut.cachedVerification("custom", "http://ai.internal/v1", "model-0"); got.Capability != llm.ToolCapabilityUnverified {
+		t.Errorf("oldest verification was not evicted: %+v", got)
+	}
+	if got := sut.cachedVerification("custom", "http://ai.internal/v1", fmt.Sprintf("model-%d", verificationCacheLimit+4)); !got.Reachable || got.Capability != llm.ToolCapabilityVerified {
+		t.Errorf("newest verification missing: %+v", got)
+	}
+}
+
+func TestSystemLLMStatusProjectsEveryLocalToolCapability(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			_, _ = w.Write([]byte(`{"version":"1.0"}`))
+		case "/api/tags":
+			_, _ = w.Write([]byte(`{"models":[
+				{"name":"verified:latest","size":1000},
+				{"name":"unsupported:latest","size":900},
+				{"name":"unverified:latest","size":800}
+			]}`))
+		case "/api/show":
+			var body struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switch body.Model {
+			case "verified:latest":
+				_, _ = w.Write([]byte(`{"capabilities":["tools"]}`))
+			case "unsupported:latest":
+				_, _ = w.Write([]byte(`{"capabilities":["completion"]}`))
+			default:
+				w.WriteHeader(http.StatusBadGateway)
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	sut := newSystemLLMTestService(t, srv.URL)
+	sut.swap.Set(llm.Selection{Provider: "ollama", URL: srv.URL, Model: "verified:latest"})
+	status, err := sut.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	want := map[string]string{
+		"verified:latest": "verified", "unsupported:latest": "unsupported", "unverified:latest": "unverified",
+	}
+	if len(status.Catalog) != len(want) {
+		t.Fatalf("catalog = %+v, want all three installed models", status.Catalog)
+	}
+	for _, model := range status.Catalog {
+		if model.ToolCapability != want[model.Tag] {
+			t.Errorf("%s capability = %q, want %q", model.Tag, model.ToolCapability, want[model.Tag])
+		}
+		if model.Recommended && model.ToolCapability != "verified" {
+			t.Errorf("%s was recommended with capability %q", model.Tag, model.ToolCapability)
+		}
+	}
+}
 
 // Selecting a model must HOT-APPLY, not merely land in the settings table
 // (config-design §3, which names the §8.1 selection as its example of hot-apply).

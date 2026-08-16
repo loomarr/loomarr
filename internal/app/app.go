@@ -1015,7 +1015,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
+		}, newID, time.Now, log).
+			WithProgressEmitter(emitter).
+			WithJobObserver(metrics.ProposalJobObserved) // §8 SSE + §17 bounded terminal metrics
 
 		// The §11 auto-approve grant, hard-gated by the pending-acquisition cap. The
 		// default limit is read PER CALL so raising suggest.max_acquisitions takes

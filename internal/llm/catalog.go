@@ -11,11 +11,11 @@ import (
 // tool (Open WebUI included) enumerates a downloadable list; the ecosystem pattern is
 // "browse ollama.com, pull by name, and let the app tell you what fits". So Loomarr
 // builds this catalog from what the operator has actually PULLED (probe.Installed via
-// /api/tags), keeps only models Ollama reports as TOOL-CAPABLE (/api/show capabilities
-// — the authoritative signal that replaces any hand-maintained "tool-callers" list),
-// and ranks by VRAM fit using each model's real on-disk size. A model like DeepSeek-R1
-// that doesn't advertise tools simply never appears — no curation needed, nothing to
-// go stale. Discovery + pull-by-name live in probe.go / the pull endpoint.
+// /api/tags), exposes Ollama's TOOL-CAPABILITY evidence (/api/show capabilities), and
+// ranks verified options by VRAM fit using each model's real on-disk size. Unsupported
+// and unverified models remain visible so the UI can explain or verify them, but they
+// are never recommended for grounded curation. Discovery + pull-by-name live in
+// probe.go / the pull endpoint.
 
 // ModelInfo describes one catalog model, built from the live probe.
 type ModelInfo struct {
@@ -75,37 +75,37 @@ func classifyFit(m ModelInfo, vramGiB float64) Fit {
 // CatalogEntry is one model annotated for a specific machine (fit + availability).
 type CatalogEntry struct {
 	ModelInfo
-	Fit         Fit  `json:"fit"`
-	Pulled      bool `json:"pulled"`      // already present in the local Ollama
-	RuntimeOK   bool `json:"runtimeOk"`   // an installed model runs on the installed Ollama (always true here)
-	Tools       bool `json:"tools"`       // Ollama reports tool-calling — REQUIRED to ground suggestions
-	Recommended bool `json:"recommended"` // the single best-fit default for this machine
+	Fit            Fit            `json:"fit"`
+	Pulled         bool           `json:"pulled"`         // already present in the local Ollama
+	RuntimeOK      bool           `json:"runtimeOk"`      // an installed model runs on the installed Ollama (always true here)
+	Tools          bool           `json:"tools"`          // Ollama reports tool-calling — REQUIRED to ground suggestions
+	ToolCapability ToolCapability `json:"toolCapability"` // verified|unsupported|unverified
+	Recommended    bool           `json:"recommended"`    // the single best-fit default for this machine
 }
 
 // annotateCatalog builds the local catalog LIVE from the probe's installed models
-// (§8.1): only TOOL-CAPABLE models (Ollama's /api/show `capabilities`) are included —
-// grounding is impossible without tool-calling — each ranked by VRAM fit from its real
-// on-disk size. It flags the single recommended default: the largest model that fits
-// comfortably; failing that, the largest that fits tight; nothing if none fit.
+// (§8.1): every installed model is included with its capability evidence, and each is
+// ranked by VRAM fit from its real on-disk size. It flags the single recommended
+// VERIFIED default: the largest model that fits comfortably; failing that, the largest
+// verified model that fits tight; nothing if no verified model fits.
 func annotateCatalog(p Probe) []CatalogEntry {
 	entries := make([]CatalogEntry, 0, len(p.Installed))
 	for _, m := range p.Installed {
-		if !m.Tools {
-			continue // not tool-capable → useless for grounded suggestions; omit it
-		}
+		capability := normalizedInstalledCapability(m)
 		info := ModelInfo{
 			Tag:           m.Tag,
 			Label:         modelLabel(m.Tag),
 			ApproxVRAMGiB: m.VRAMGiB,
-			Why:           installedWhy(m),
+			Why:           installedWhy(m, capability),
 			Rank:          paramRank(m.ParameterSize),
 		}
 		entries = append(entries, CatalogEntry{
-			ModelInfo: info,
-			Fit:       classifyFit(info, p.VRAMGiB),
-			Pulled:    true, // everything discovered here is, by definition, pulled
-			RuntimeOK: true, // the installed model runs on the installed Ollama
-			Tools:     true,
+			ModelInfo:      info,
+			Fit:            classifyFit(info, p.VRAMGiB),
+			Pulled:         true, // everything discovered here is, by definition, pulled
+			RuntimeOK:      true, // the installed model runs on the installed Ollama
+			Tools:          capability == ToolCapabilityVerified,
+			ToolCapability: capability,
 		})
 	}
 	// Recommend the largest comfortably-fitting model (bigger ⇒ more capable), falling
@@ -113,7 +113,7 @@ func annotateCatalog(p Probe) []CatalogEntry {
 	best := -1
 	bestScore := -1
 	for i, e := range entries {
-		if e.Fit == FitWontFit {
+		if e.Fit == FitWontFit || e.ToolCapability != ToolCapabilityVerified {
 			continue
 		}
 		score := e.Rank
@@ -132,12 +132,36 @@ func annotateCatalog(p Probe) []CatalogEntry {
 		if entries[a].Recommended != entries[b].Recommended {
 			return entries[a].Recommended
 		}
+		if capabilityOrder(entries[a].ToolCapability) != capabilityOrder(entries[b].ToolCapability) {
+			return capabilityOrder(entries[a].ToolCapability) < capabilityOrder(entries[b].ToolCapability)
+		}
 		if fitOrder(entries[a].Fit) != fitOrder(entries[b].Fit) {
 			return fitOrder(entries[a].Fit) < fitOrder(entries[b].Fit)
 		}
 		return entries[a].Rank > entries[b].Rank
 	})
 	return entries
+}
+
+func normalizedInstalledCapability(model InstalledModel) ToolCapability {
+	if model.ToolCapability != "" {
+		return model.ToolCapability
+	}
+	if model.Tools {
+		return ToolCapabilityVerified
+	}
+	return ToolCapabilityUnverified
+}
+
+func capabilityOrder(capability ToolCapability) int {
+	switch capability {
+	case ToolCapabilityVerified:
+		return 0
+	case ToolCapabilityUnverified:
+		return 1
+	default:
+		return 2
+	}
 }
 
 func fitOrder(f Fit) int {
@@ -164,7 +188,7 @@ func modelLabel(tag string) string {
 
 // installedWhy is the one-line rationale from what Ollama actually reports about the
 // model — family, parameter size, quant — rather than a hand-authored blurb.
-func installedWhy(m InstalledModel) string {
+func installedWhy(m InstalledModel, capability ToolCapability) string {
 	parts := make([]string, 0, 3)
 	if m.Family != "" {
 		parts = append(parts, m.Family)
@@ -176,9 +200,22 @@ func installedWhy(m InstalledModel) string {
 		parts = append(parts, m.Quant)
 	}
 	if len(parts) == 0 {
-		return "Tool-capable local model."
+		switch capability {
+		case ToolCapabilityVerified:
+			return "Tool-capable local model."
+		case ToolCapabilityUnsupported:
+			return "Local model without tool calling."
+		default:
+			return "Local model; tool calling is unverified."
+		}
 	}
-	return strings.Join(parts, " · ") + " · tool-calling"
+	suffix := "tool-calling unverified"
+	if capability == ToolCapabilityVerified {
+		suffix = "tool-calling"
+	} else if capability == ToolCapabilityUnsupported {
+		suffix = "no tool-calling"
+	}
+	return strings.Join(parts, " · ") + " · " + suffix
 }
 
 // paramRank scores a model by parameter count so the recommendation prefers the most
