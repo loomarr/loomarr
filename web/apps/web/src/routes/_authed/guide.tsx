@@ -1,4 +1,5 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { createFileRoute } from "@tanstack/react-router";
 import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
@@ -7,23 +8,26 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 // the app's one origination door. Readable by any authenticated user: the guide is
 // viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// `?intent=` is part of the route contract. The wizard's guided first channel hands off here
-// with a template prefilled (§13's blank-page killer) — the page forwards it into the inline
-// describe panel and opens it, so the handoff lands on a filled form rather than an empty grid
-// with the operator wondering where their template went.
+// `?preset=` is the wizard's stable template handoff. `?intent=` remains the legacy free-text
+// deep-link contract. Either opens the inline describe panel, but only a known preset id resolves
+// the canonical constraints authored with that preset.
 interface GuideSearch {
   intent?: string;
+  preset?: string;
 }
 
 const GuideScreen = () => {
-  const { intent } = Route.useSearch();
-  return <GuidePage initialIntent={intent} />;
+  const { intent, preset } = Route.useSearch();
+  const template = CHANNEL_TEMPLATES.find((candidate) => candidate.id === preset);
+  const initialIntent = template?.intent ?? (intent ? { description: intent } : undefined);
+  return <GuidePage initialIntent={initialIntent} />;
 };
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
   validateSearch: (search: Record<string, unknown>): GuideSearch => ({
     intent: typeof search.intent === "string" ? search.intent : undefined,
+    preset: typeof search.preset === "string" ? search.preset : undefined,
   }),
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole

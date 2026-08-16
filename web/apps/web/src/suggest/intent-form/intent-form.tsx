@@ -12,19 +12,32 @@ import type { IntentFormProps } from "./intent-form.type";
 // blank-page problem is solved by ONE good sentence, not by a form — but they are here,
 // and they now actually reach the server (`runtimeTargetMin` was unreachable until the
 // submit body was typed from the domain).
-const IntentForm = ({ initialDescription = "", onSubmit, submitting = false }: IntentFormProps) => {
-  const [description, setDescription] = useState(initialDescription);
+const IntentForm = ({ initialIntent, onSubmit, submitting = false }: IntentFormProps) => {
+  const [description, setDescription] = useState(initialIntent?.description ?? "");
   const [refining, setRefining] = useState(false);
-  const [era, setEra] = useState("");
-  const [tone, setTone] = useState("");
-  const [runtime, setRuntime] = useState("");
-  const [maxAcq, setMaxAcq] = useState("");
+  const [era, setEra] = useState(initialIntent?.era ?? "");
+  const [tone, setTone] = useState(initialIntent?.tone ?? "");
+  const [runtime, setRuntime] = useState(initialIntent?.runtimeTargetMin?.toString() ?? "");
+  const [maxAcq, setMaxAcq] = useState(initialIntent?.maxAcquisitions?.toString() ?? "");
   // mustInclude/mustExclude have been in the shared schema and consumed by the scorer
   // (score.go weights a must-include match) since the beginning — with no way to set
   // them short of hand-crafting an API call. Comma-separated because these are a few
   // titles or terms, not a managed list; a tag editor would be more UI than the job needs.
-  const [mustInclude, setMustInclude] = useState("");
-  const [mustExclude, setMustExclude] = useState("");
+  const [mustInclude, setMustInclude] = useState(initialIntent?.mustInclude?.join(", ") ?? "");
+  const [mustExclude, setMustExclude] = useState(initialIntent?.mustExclude?.join(", ") ?? "");
+
+  const selectTemplate = (id: string) => {
+    const template = CHANNEL_TEMPLATES.find((candidate) => candidate.id === id);
+    if (!template) return;
+    const intent = template.intent;
+    setDescription(intent.description);
+    setEra(intent.era ?? "");
+    setTone(intent.tone ?? "");
+    setRuntime(intent.runtimeTargetMin?.toString() ?? "");
+    setMaxAcq(intent.maxAcquisitions?.toString() ?? "");
+    setMustInclude(intent.mustInclude?.join(", ") ?? "");
+    setMustExclude(intent.mustExclude?.join(", ") ?? "");
+  };
 
   // "" → undefined (omitted), never [] — an empty array is a claim ("nothing required"),
   // absence is the truth ("the user didn't say").
@@ -56,9 +69,10 @@ const IntentForm = ({ initialDescription = "", onSubmit, submitting = false }: I
       <IntentInput
         value={description}
         onValueChange={setDescription}
+        onTemplateSelect={selectTemplate}
         onSubmit={submit}
         submitting={submitting}
-        templates={CHANNEL_TEMPLATES.map((t) => ({ label: t.label, value: t.description }))}
+        templates={CHANNEL_TEMPLATES.map((t) => ({ id: t.id, label: t.label, value: t.intent.description }))}
       />
 
       <button

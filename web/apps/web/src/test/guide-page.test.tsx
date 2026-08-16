@@ -6,7 +6,9 @@ import {
   getListTitlesMockHandler,
   getMeMockHandler,
   getSettingsListMockHandler,
+  getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
@@ -152,12 +154,12 @@ const renderAt = (path: string) => {
 describe("Guide", () => {
   it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
     stubGuide();
-    renderAt("/guide");
+    const view = renderAt("/guide");
     // The heading is "Channels", not "Guide": one surface, and the mock names it for the
     // objects it lists rather than the view it uses (§12).
-    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByText("Saturday Cartoons")).toBeInTheDocument();
-    expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
+    expect(await view.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(view.getByText("Saturday Cartoons")).toBeInTheDocument();
+    expect(view.getByText(/The Matrix/)).toBeInTheDocument();
   });
 
   it("keeps everyday time controls visible and precise view controls behind one disclosure", async () => {
@@ -295,6 +297,33 @@ describe("Guide", () => {
     // the operator wondering where their template went.
     const intent = await screen.findByLabelText("Channel intent");
     expect(intent).toHaveValue("saturday-morning cartoons");
+  });
+
+  it("submits the complete Saturday preset handed off by stable id", async () => {
+    const user = userEvent.setup();
+    const submissions: unknown[] = [];
+    const saturday = CHANNEL_TEMPLATES.find((template) => template.id === "saturday-cartoons");
+    stubGuide();
+    server.use(
+      getSubmitProposalMockHandler(async ({ request }) => {
+        submissions.push(await request.json());
+        return { jobId: "job-saturday" };
+      }),
+    );
+    renderAt("/guide?preset=saturday-cartoons");
+
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue(saturday?.intent.description);
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    await expect
+      .poll(() => submissions)
+      .toEqual([
+        {
+          description: saturday?.intent.description,
+          era: "1990s",
+          tone: "playful",
+        },
+      ]);
   });
 });
 

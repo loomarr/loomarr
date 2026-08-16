@@ -16,7 +16,7 @@ describe("IntentInput", () => {
       <IntentInput
         value=""
         onValueChange={onValueChange}
-        templates={[{ label: "Cozy mysteries", value: "cozy sunday mysteries" }]}
+        templates={[{ id: "cozy-mystery", label: "Cozy mysteries", value: "cozy sunday mysteries" }]}
       />,
     );
     fireEvent.click(screen.getByText("Cozy mysteries"));

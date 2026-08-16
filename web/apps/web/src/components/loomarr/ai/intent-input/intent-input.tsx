@@ -11,6 +11,7 @@ import type { IntentInputProps } from "./intent-input.type";
 const IntentInput = ({
   value,
   onValueChange,
+  onTemplateSelect,
   onSubmit,
   templates = [],
   submitting = false,
@@ -43,10 +44,13 @@ const IntentInput = ({
         <div className="flex flex-wrap gap-2">
           {templates.map((t) => (
             <button
-              key={t.value}
+              key={t.id}
               type="button"
               disabled={submitting}
-              onClick={() => onValueChange(t.value)}
+              onClick={() => {
+                onValueChange(t.value);
+                onTemplateSelect?.(t.id);
+              }}
               className="cursor-pointer rounded-full border border-border bg-static-800 px-3 py-1 text-static-400 text-xs transition-colors hover:border-suggest hover:text-suggest-300 disabled:opacity-50"
             >
               {t.label}

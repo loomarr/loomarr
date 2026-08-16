@@ -5,6 +5,7 @@ import {
   getMeMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -102,6 +103,19 @@ describe("ChannelSuggestPanel", () => {
     await waitFor(() => {
       expect(submissions).toHaveLength(1);
       expect(submissions[0]).toMatchObject({ description: "80s teen comedies" });
+    });
+  });
+
+  it.each(CHANNEL_TEMPLATES)("submits the complete $label preset intent", async ({ label, intent }) => {
+    const user = userEvent.setup();
+    const { submissions } = stubSuggest();
+    renderPanel(() => {});
+
+    await user.click(await screen.findByRole("button", { name: label }));
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    await waitFor(() => {
+      expect(submissions).toEqual([intent]);
     });
   });
 

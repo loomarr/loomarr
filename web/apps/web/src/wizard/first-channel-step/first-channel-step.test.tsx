@@ -52,7 +52,7 @@ describe("FirstChannelStep", () => {
     }
   });
 
-  it("picking a template completes setup and hands off to the Guide with the intent", async () => {
+  it("picking a template completes setup and hands off its stable id to the Guide", async () => {
     const { patches } = stubSettings();
     const router = renderStep();
 
@@ -63,7 +63,7 @@ describe("FirstChannelStep", () => {
     await waitFor(() => expect(patches).toEqual([{ edits: { "setup.completed": "true" } }]));
     await waitFor(() => {
       expect(router.history.location.pathname).toBe("/guide");
-      expect(decodeURIComponent(router.history.location.search)).toContain(String(first?.description));
+      expect(router.history.location.search).toBe(`?preset=${first?.id}`);
     });
   });
 

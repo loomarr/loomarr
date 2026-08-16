@@ -1,9 +1,9 @@
 import type { Intent } from "@loomarr/api/models/intent";
 
 interface IntentFormProps {
-  // Prefills the description — the wizard's guided first channel hands off a template
-  // this way (§13), and the ⌘K palette will too.
-  initialDescription?: string;
+  // Prefills the complete typed intent. A legacy free-text Guide link is represented as
+  // an Intent with only `description`; a preset also carries its authored constraints.
+  initialIntent?: Intent;
   onSubmit: (intent: Intent) => void;
   submitting?: boolean;
 }

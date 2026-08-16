@@ -257,9 +257,9 @@ const pendingPull: PullDTO = {
 };
 
 const intentTemplates = [
-  { label: "90s action", value: sampleIntent },
-  { label: "Cozy mysteries", value: "cozy sunday-afternoon mysteries" },
-  { label: "Saturday cartoons", value: "saturday-morning cartoons for the kids" },
+  { id: "action-marathon", label: "90s action", value: sampleIntent },
+  { id: "cozy-mystery", label: "Cozy mysteries", value: "cozy sunday-afternoon mysteries" },
+  { id: "saturday-cartoons", label: "Saturday cartoons", value: "saturday-morning cartoons for the kids" },
 ];
 
 const bumperClip: ClipDTO = {

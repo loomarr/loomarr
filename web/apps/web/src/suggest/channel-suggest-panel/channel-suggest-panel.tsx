@@ -67,7 +67,7 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
 
       {/* Idle — the describe form (with optional constraints). */}
       {!run.isRunning && !proposal && (
-        <IntentForm initialDescription={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
+        <IntentForm initialIntent={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
       )}
 
       {run.error != null && <ErrorState error={run.error} />}

@@ -12,7 +12,7 @@ describe("channel templates", () => {
   // would hand the user a broken starting point.
   it("every template is a valid intent", () => {
     for (const t of CHANNEL_TEMPLATES) {
-      const parsed = intentSchema.safeParse({ description: t.description, era: t.era, tone: t.tone });
+      const parsed = intentSchema.safeParse(t.intent);
       expect(parsed.success).toBe(true);
     }
   });

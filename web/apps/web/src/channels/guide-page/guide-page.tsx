@@ -125,9 +125,9 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // read once at mount, so closing it stays closed.
   const [adding, setAdding] = useState(() => Boolean(initialIntent));
 
-  // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
-  // panel with a template the operator already dismissed — and right after the wizard, on a
-  // first-run install, a refresh is likely rather than exotic. `replace: true` keeps the
+  // Closing also CLEARS the preset or legacy intent search. Leaving it would make a refresh
+  // silently re-open the panel with an Intent the operator already dismissed — and right after
+  // the wizard, on a first-run install, a refresh is likely rather than exotic. `replace: true` keeps the
   // dismissal out of history: closing a panel is not a place you navigate back to.
   const closePanel = () => {
     setAdding(false);
@@ -139,7 +139,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   const onCreated = (id: string) => {
     setAdding(false);
     void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
-    // Navigating away to the new channel drops `?intent=` with the rest of the URL, so this
+    // Navigating away to the new channel drops the preset/intent search with the rest of the URL, so this
     // needs no explicit clear the way closePanel does.
     void navigate({ to: "/channels/$id", params: { id } });
   };

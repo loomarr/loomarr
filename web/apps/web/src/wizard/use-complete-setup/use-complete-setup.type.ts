@@ -1,6 +1,8 @@
 interface FinishOptions {
-  to: "/suggest" | "/channels";
-  // Prefills the Suggest workspace from a template (§13's blank-page killer).
+  to: "/guide";
+  // Stable identity for the wizard's preset handoff.
+  preset?: string;
+  // Retained for callers that hand off free text rather than a canonical preset.
   intent?: string;
 }
 

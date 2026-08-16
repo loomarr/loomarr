@@ -7,7 +7,7 @@ import { useCompleteSetup } from "../use-complete-setup";
 
 // Wizard step 7 — the guided first channel (§13). It hands off rather than rebuilding:
 // picking a template marks setup complete and drops the operator on the Guide — the channels
-// surface (§12) — with `?intent=` prefilled, which auto-opens its inline describe panel where
+// surface (§12) — with `?preset=` carrying stable identity, which auto-opens its inline panel where
 // the real pipeline (generate → review → approve) lives. Templates are the blank-page killer
 // (§13) and ship in packages/core, so this step and the panel always offer the same set.
 const FirstChannelStep = () => {
@@ -18,7 +18,7 @@ const FirstChannelStep = () => {
     const template = CHANNEL_TEMPLATES.find((t) => t.id === id);
     if (!template) return;
     setChosen(id);
-    complete.finish({ to: "/guide", intent: template.description });
+    complete.finish({ to: "/guide", preset: template.id });
   };
 
   return (
@@ -46,7 +46,7 @@ const FirstChannelStep = () => {
               )}
               <span className="min-w-0">
                 <span className="block font-medium text-sm">{t.label}</span>
-                <span className="block text-muted-foreground text-sm">{t.description}</span>
+                <span className="block text-muted-foreground text-sm">{t.intent.description}</span>
               </span>
             </button>
           </li>
