@@ -35,7 +35,7 @@ type tagMemStore struct {
 	// `Score` produced a correct number for two phases while nothing persisted it (§10 V51a).
 	confidence map[string]int
 	// tags records SetClipTags writes keyed by HASH (§10 V45a) — the LEAVES the tagger persisted. A
-	// test asserts the grounded tag set here; hash-keyed like UpdateClipTags (and unlike the
+	// test asserts the grounded tag set here; hash-keyed like UpdateClipClassification (and unlike the
 	// path-keyed brand map), so it MISSES a caller that passed a path, the same discipline the rest of
 	// this double keeps.
 	tags map[string][]string
@@ -70,7 +70,7 @@ func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.Store
 	return out, nil
 }
 
-// ⚠ SetClipsHeld is keyed by PATH and UpdateClipTags by HASH, mirroring the real store exactly
+// ⚠ SetClipsHeld is keyed by PATH and UpdateClipClassification by HASH, mirroring the real store exactly
 // (`WHERE path IN (…)` vs `WHERE hash = ?`). A mock that accepted either — which this one did
 // until V41, because every fixture set hash == path — cannot catch a caller passing the wrong
 // key, and that is precisely the bug that shipped. Both methods now MISS loudly on a wrong key
@@ -95,7 +95,7 @@ func (m *tagMemStore) SetClipsHeld(_ context.Context, paths []string, held, auto
 }
 
 // SetClipBrand is keyed by PATH (the real store is `WHERE path = ?`), like SetClipsHeld and unlike
-// the hash-keyed UpdateClipTags — so it MISSES on a wrong key rather than quietly succeeding, which
+// the hash-keyed classification update — so it MISSES on a wrong key rather than quietly succeeding, which
 // is what would let a caller passing the hash slip through. It writes only `brand`, never
 // `VisionTagged`: a text-grounded brand is not a vision-read one.
 func (m *tagMemStore) SetClipBrand(_ context.Context, path, brand string, _ time.Time) error {
@@ -139,7 +139,7 @@ func (m *tagMemStore) hashByPath(path string) (string, bool) {
 	return "", false
 }
 
-func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, _ time.Time) error {
+func (m *tagMemStore) UpdateClipClassification(_ context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, _ time.Time) error {
 	c, ok := m.clips[id]
 	if !ok {
 		// The real store returns store.ErrNotFound here, and the tagger treats it as FATAL —
@@ -149,13 +149,13 @@ func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audi
 	}
 	c.Era = era
 	c.Audience = filler.Audience(audience)
-	c.Category = category
 	c.AITagged = aiTagged
 	if era > 0 {
 		c.SuggestedEra = 0 // confirming clears (the store's conditional write)
 	} else if suggestedEra > 0 {
 		c.SuggestedEra = suggestedEra
 	}
+	m.clips[id] = c
 	m.updates[id] = c
 	return nil
 }
@@ -167,21 +167,25 @@ func (m *tagMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
 	return taxonomy.SeedForest(), nil
 }
 
-// GetClipTags returns the LEAVES a clip already has — HASH-keyed like UpdateClipTags, so the union
+// GetClipTags returns the LEAVES a clip already has — HASH-keyed like UpdateClipClassification, so the union
 // the tagger does reads back exactly what it wrote. leavesOnly is honoured trivially: the double
 // stores only leaves (rollup expansion is the real store's job, not modelled here).
 func (m *tagMemStore) GetClipTags(_ context.Context, clipHash string, _ bool) ([]string, error) {
 	return m.tags[clipHash], nil
 }
 
-// SetClipTags records the persisted leaf set, HASH-keyed. Like UpdateClipTags it MISSES loudly on a
+// SetClipTags records the persisted leaf set, HASH-keyed. Like UpdateClipClassification it MISSES loudly on a
 // wrong key — a caller that passed a path finds no clip, the same not-quietly-succeed discipline the
 // rest of this double keeps ([[loomarr-fixture-collapsed-keys]]).
-func (m *tagMemStore) SetClipTags(_ context.Context, clipHash string, leaves []string, _ *taxonomy.Forest, _ time.Time) error {
-	if _, ok := m.clips[clipHash]; !ok {
+func (m *tagMemStore) SetClipTags(_ context.Context, clipHash string, leaves []string) error {
+	c, ok := m.clips[clipHash]
+	if !ok {
 		return errTagClipNotFound
 	}
 	m.tags[clipHash] = leaves
+	c.Category = taxonomy.New(taxonomy.SeedForest()).PrimaryProductLeaf(leaves)
+	m.clips[clipHash] = c
+	m.updates[clipHash] = c
 	return nil
 }
 
@@ -191,7 +195,7 @@ func (m *tagMemStore) SetClipTags(_ context.Context, clipHash string, leaves []s
 //
 // ⚠ Hash and Path are DELIBERATELY different. They were both `id` until V41, which made this
 // mock unable to tell a hash-keyed call from a path-keyed one — so the tagger passing `clip.Path`
-// into the hash-keyed `UpdateClipTags` passed every test here while failing on every real clip
+// into the hash-keyed classification update passed every test here while failing on every real clip
 // in production. `id` is the identity; the path is derived from it.
 func untaggedClip(id, name string) filler.StoreClip {
 	c := filler.StoreClip{}
@@ -692,7 +696,7 @@ func TestTagger_GroundsTheEraOnTheOriginalFilename(t *testing.T) {
 	//
 	// ⚠ Keyed by its HASH. This said "keyed by its PATH, which is what the tagger updates by"
 	// until V41 — a comment that documented the bug as the design. The tagger passed a path into
-	// the hash-keyed `UpdateClipTags`, so in production the write matched nothing; here it landed
+	// the hash-keyed classification update, so in production the write matched nothing; here it landed
 	// because the fixture was keyed to match the defect. The sidecar is still found by PATH.
 	const hash = "a3f9deadbeef"
 	clip := untaggedClip(hash, "a3f9deadbeef")

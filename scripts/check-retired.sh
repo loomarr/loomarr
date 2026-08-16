@@ -16,6 +16,22 @@ RETIRED=(
   'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  # V55 made graph mutation one atomic store operation: the node, closure, rollups, and category
+  # shadow commit together. A disabled repair job left correctness behind an operator toggle and
+  # exposed two public half-operations that callers could run in separate transactions.
+  'filler-reindex|V55: taxonomy graph edits synchronously rebuild closure and rollups in one transaction'
+  'filler.reindex.enabled|V55: taxonomy consistency is unconditional, not an operator setting'
+  'FILLER_REINDEX_ENABLED|V55: taxonomy consistency is unconditional, not an operator setting'
+  'job.filler_reindex.schedule|V55: taxonomy consistency is part of the graph edit, not a scheduled job'
+  'JOB_FILLER_REINDEX_SCHEDULE|V55: taxonomy consistency is part of the graph edit, not a scheduled job'
+  'ReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
+  'NewReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
+  'ReindexStore|V55: the store exposes one semantic ApplyTaxonomyEdit operation'
+  'ReindexResult|V55: there is no asynchronous taxonomy repair result'
+  'RebuildClosure|V55: closure rebuilding is private to boot and ApplyTaxonomyEdit'
+  'RebuildRollups|V55: rollup rebuilding is private to ApplyTaxonomyEdit'
+  'ListClipHashesLeaves|V55: the scheduled taxonomy repair work list was retired with its job'
+  'UpdateClipTags|V55: taxonomy writes and scalar classification updates now have separate owners'
   # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
   # an answer, because every long recording reaches the split rung as it is ingested. An operator
   # told to raise this to split more often would be tuning nothing; the real bound is

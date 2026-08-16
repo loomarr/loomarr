@@ -44,7 +44,7 @@ type RewindStore interface {
 	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
 	// ClearClipVisionTags removes the `vision_tagged` stamp and the text it read.
 	//
-	// ⚠ A separate narrow method rather than widening `SetClipVisionTags`, whose doc pins it as
+	// ⚠ A separate narrow method rather than widening `ApplyClipVision`, whose doc pins it as
 	// the ONLY writer of visible_text/vision_tagged and which writes what it is GIVEN. Passing it
 	// empty strings would work by accident today and break the first time it learns to gap-fill.
 	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
@@ -120,6 +120,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	}
 	row.Stages = kept
 	row.Stage, row.Status, row.Attempts, row.Progress = from, StatusQueued, 0, 0
+	row.ForceRun = true
 	row.Disposition = DispositionRunning
 	// ⚠ The reject is cleared as well. A rewound clip is no longer refused — leaving the reason
 	// behind would show a clip that is visibly running AND visibly rejected, and the Incoming tab

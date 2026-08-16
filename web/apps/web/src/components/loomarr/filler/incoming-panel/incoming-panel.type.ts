@@ -52,6 +52,9 @@ interface IncomingPanelProps {
   onConfirmEra?: (clip: IncomingClipDTO) => void;
   // Opens the full tag editor for a clip whose guess was wrong, or which has no guess at all.
   onEditTags?: (clip: IncomingClipDTO) => void;
+  /** Re-run the classifier after its provider/configuration was fixed. This preserves the clip
+   * and upstream pipeline work; the server resets tag and dependent stages only. */
+  onReclassify?: (clip: IncomingClipDTO) => void;
   // Removes a clip from the catalog. ⚠ A tombstone, never a file delete.
   onDismiss?: (clip: IncomingClipDTO) => void;
   /**
@@ -72,6 +75,8 @@ interface IncomingPanelProps {
    * row and the file both stay, which is what separates it from `onDismiss`.
    */
   onSendBack?: (clip: IncomingClipDTO) => void;
+  /** Retry a failed stage immediately, clearing its attempts/backoff and dependent stage state. */
+  onRetryStage?: (clip: IncomingClipDTO, stage: string) => void;
   // Which clip path is currently being written, so its row can say so.
   busyPath?: string;
   className?: string;

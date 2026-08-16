@@ -75,7 +75,6 @@ const FillerOperations = () => {
             "filler.ai_tagging",
             "filler.transcribe.enabled",
             "filler.vision.enabled",
-            "filler.reindex.enabled",
             "filler.autosplit.enabled",
             "filler.autosplit.min_confidence",
             "filler.autosplit.max_duration",

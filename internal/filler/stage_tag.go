@@ -33,9 +33,9 @@ type TagClipStore interface {
 	// with (leavesOnly=true; keyed by hash).
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	// SetClipTags REPLACES a clip's tags with the rollup expansion of the given LEAVES.
-	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
-	// UpdateClipTags writes era/audience/the derived category shadow + ai_tagged (hash-keyed).
-	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
+	// UpdateClipClassification writes non-taxonomy classifier facts (hash-keyed).
+	UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
 	// SetClipBrand records a GROUNDED advertiser (path-keyed, unlike the tag write).
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
 	// SetClipConfidence persists the grounding-capped score (§10 V51a).
@@ -143,14 +143,14 @@ func (s *TagStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 		return StageResult{Verdict: VerdictContinue, Note: "the text signals did not say what this is"}, nil
 	}
 
-	// ⚠ Hash, not Path. `UpdateClipTags` is keyed `WHERE hash = ?` while the brand and confidence
+	// ⚠ Hash, not Path. `UpdateClipClassification` is keyed `WHERE hash = ?` while brand and confidence
 	// writers below are path-keyed — the same operation legitimately needs both, and getting it
 	// wrong is silent: a hash-keyed call handed a path matches nothing and reports not-found.
-	if err := s.store.UpdateClipTags(ctx, c.Hash, era, audience, category, suggestedEra, true, s.now().UTC()); err != nil {
+	if err := s.store.UpdateClipClassification(ctx, c.Hash, era, audience, suggestedEra, true, s.now().UTC()); err != nil {
 		return StageResult{}, err
 	}
 	if gainedLeaves {
-		if err := s.store.SetClipTags(ctx, c.Hash, mergedLeaves, forest, s.now().UTC()); err != nil {
+		if err := s.store.SetClipTags(ctx, c.Hash, mergedLeaves); err != nil {
 			return StageResult{}, err
 		}
 	}

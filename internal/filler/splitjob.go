@@ -42,6 +42,8 @@ type SplitStore interface {
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 	UpsertClip(ctx context.Context, c StoreClip) error
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
 	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
 	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
@@ -53,15 +55,6 @@ type SplitStore interface {
 	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
 	// grounds the answer against it.
-	//
-	// ⚠ The split job still does NOT call SetClipTags, but the REASON it could not has gone.
-	// This said "a segment clip has no content hash at confirm time (it gets one from the intake
-	// pipeline when its cut file is hashed)" — which described the bug, not a constraint: segments
-	// were written with an empty hash and only acquired one if a later sync happened to re-file
-	// them. V51a hashes each cut before it is upserted, so a segment has its identity here and
-	// tag rows would resolve. Persisting them is deliberately left to the tag stage rather than
-	// added alongside a bug fix; until then the segment's grounded Tags ride the proposal for the
-	// reviewer and the TAG JOB writes them, as before.
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
@@ -141,6 +134,9 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 		out[i].Looked = out[i].Looked || g.Looked
 		if g.Category != "" {
 			out[i].Category = g.Category
+		}
+		if len(g.Tags) > 0 {
+			out[i].Tags = unionLeaves(out[i].Tags, g.Tags)
 		}
 		if g.Era > 0 {
 			out[i].Era = g.Era
@@ -758,6 +754,22 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != "" || len(c.seg.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
+		}
+		// Persist grounded proposal tags now that the cut has a stable content hash. Union with an
+		// identical existing clip so deduplication never lets AI erase operator-authored knowledge.
+		segmentTags := append([]string(nil), c.seg.Tags...)
+		if len(segmentTags) == 0 && c.seg.Category != "" {
+			// Upgrade compatibility for proposals stored before the wire carried the tag set.
+			segmentTags = append(segmentTags, c.seg.Category)
+		}
+		if len(segmentTags) > 0 {
+			existing, err := sp.store.GetClipTags(ctx, c.hash, true)
+			if err != nil {
+				return nil, err
+			}
+			if err := sp.store.SetClipTags(ctx, c.hash, unionLeaves(existing, segmentTags)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// ⚠ V45 KEEPS the parent, marking it a composite — it does NOT delete the row or the file (the

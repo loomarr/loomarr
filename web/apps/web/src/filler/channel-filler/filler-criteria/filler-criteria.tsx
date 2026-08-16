@@ -23,13 +23,29 @@ const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: s
 // ⚠ The hardcoded category mirror is GONE (§10 V45a). Categories are now the PRODUCT-axis taxa of the
 // operator-editable taxonomy graph, fetched live from /v1/taxonomy — the one source of truth, so this
 // selector cannot drift from what the backend accepts. Selecting a ROLLUP node (e.g. `food`) now
-// matches every descendant (`cereal`, `candy`…) via the server's rollup-set intersection — the power
-// the flat list could not offer. `useProductCategories` returns {slug,label} for the product axis.
+// matches every descendant (`cereal`, `candy`…) via the server's rollup-set intersection. The label
+// is a breadcrumb rather than a flattened leaf, so "Food › Cereal" explains why broad and specific
+// choices both exist.
 const useProductCategories = (): { slug: string; label: string }[] => {
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. Match the page's own pattern.
   const taxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : [];
-  return taxa.filter((t) => t.axis === "product").map((t) => ({ slug: t.slug, label: t.label }));
+  const products = taxa.filter((t) => t.axis === "product");
+  const bySlug = new Map(products.map((taxon) => [taxon.slug, taxon]));
+  const breadcrumb = (slug: string) => {
+    const labels: string[] = [];
+    const seen = new Set<string>();
+    let current = bySlug.get(slug);
+    while (current && !seen.has(current.slug)) {
+      seen.add(current.slug);
+      labels.unshift(current.label);
+      current = current.parent ? bySlug.get(current.parent) : undefined;
+    }
+    return labels.join(" › ");
+  };
+  return products
+    .map((taxon) => ({ slug: taxon.slug, label: breadcrumb(taxon.slug) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 };
 
 // Audiences from the generated ClipDTOAudience enum, minus the "" (any) sentinel — "Any"
@@ -53,9 +69,6 @@ const AUDIENCE_LABEL: Record<(typeof AUDIENCES)[number], string> = {
   general: "General",
   late_night: "Late night",
 };
-
-// prettyCategory — "fast_food" → "Fast food" for the chip label, without a per-value map.
-const prettyCategory = (c: string): string => c.replace(/_/g, " ").replace(/^./, (m) => m.toUpperCase());
 
 // toggle — add/remove a value from a selection list, returning undefined for an empty
 // result so the wire carries "any" (omitted) rather than an empty array. Keeps
@@ -218,17 +231,17 @@ const FillerCriteria = ({
         </Select>
       </div>
 
-      {/* Categories — a multi-select of removable chips over the closed set. No selection
-          means "any category", the widest pool. */}
+      {/* Product/topic tags — a multi-select over the live product-axis hierarchy. No selection
+          means any product/topic, the widest pool. */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Narrow to certain kinds of ad. None selected draws from every category.">
-          Categories
+        <FieldLabel help="Narrow by what a clip is about. A broad tag such as Food includes every descendant; none selected draws from all products and topics.">
+          Products & topics
         </FieldLabel>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground text-sm">
             {categories.length === 0
-              ? "All categories"
-              : `${categories.length} ${categories.length === 1 ? "category" : "categories"} selected`}
+              ? "All products & topics"
+              : `${categories.length} ${categories.length === 1 ? "tag" : "tags"} selected`}
           </span>
           <Button
             type="button"
@@ -238,7 +251,7 @@ const FillerCriteria = ({
             aria-expanded={choosingCategories}
             onClick={() => setChoosingCategories((current) => !current)}
           >
-            {choosingCategories ? "Done" : "Choose categories"}
+            {choosingCategories ? "Done" : "Choose products & topics"}
           </Button>
         </div>
         {(choosingCategories || categories.length > 0) && (
@@ -297,4 +310,4 @@ const FillerCriteria = ({
   );
 };
 
-export { AUDIENCE_LABEL, FillerCriteria, KIND_LABEL, prettyCategory, toggle };
+export { AUDIENCE_LABEL, FillerCriteria, KIND_LABEL, toggle };

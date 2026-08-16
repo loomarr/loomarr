@@ -24,6 +24,30 @@ type watchBody struct {
 	Clips        int    `json:"clips"`
 	Held         int    `json:"held"`
 	LastScanAt   string `json:"lastScanAt"`
+	AutoFetch    *struct {
+		Enabled      bool
+		StoppedBy    string
+		CatalogClips int
+		MaxCatalog   int
+		DiskBytes    int64
+		MaxDiskBytes int64
+	} `json:"autoFetch"`
+}
+
+func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchStatus = filler.FetchStatus{
+		Enabled: true, StoppedBy: "catalog",
+		CatalogClips: 2000, MaxCatalog: 2000, DiskBytes: 3 << 30, MaxDiskBytes: 20 << 30,
+	}
+
+	body, code := getWatch(t, srv.URL, memberToken)
+	if code != http.StatusOK {
+		t.Fatalf("watch → %d, want 200", code)
+	}
+	if body.AutoFetch == nil || body.AutoFetch.StoppedBy != "catalog" || body.AutoFetch.CatalogClips != 2000 || body.AutoFetch.MaxCatalog != 2000 {
+		t.Fatalf("autoFetch = %+v, want live catalog ceiling 2000/2000", body.AutoFetch)
+	}
 }
 
 // seedHeldClip is a clip that ARRIVED but has not been filed — the state auto-fetch leaves

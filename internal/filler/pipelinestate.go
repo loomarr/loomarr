@@ -132,6 +132,10 @@ type ClipPipeline struct {
 	RejectReason RejectReason
 	RejectDetail string
 	Attempts     int
+	// ForceRun bypasses the current stage's ordinary Applies check. Rewind sets it because the
+	// operator explicitly asked that rung to run again; step clears it before moving on. It is
+	// durable so a restart between the click and the worker does not turn the request into a skip.
+	ForceRun bool
 	// NextRun is when this row is next eligible. Zero means "now".
 	NextRun    time.Time
 	Stages     []StageRecord
@@ -195,7 +199,7 @@ type PipelineFilter struct {
 //
 // ⚠ `UpsertClipPipeline` is the ONLY writer of this table, which is what keeps the state machine
 // in one place. Every other filler column keeps its existing owner (SetClipLanguage,
-// SetClipTranscript, SetClipVisionTags, SetClipsHeld, …) — this phase adds no second writer to any
+// SetClipTranscript, ApplyClipVision, SetClipsHeld, …) — this phase adds no second writer to any
 // of them, which is why the 1600-line store conformance suite needs no rework to accept it.
 type PipelineStore interface {
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first.

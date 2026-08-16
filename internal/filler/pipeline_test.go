@@ -246,6 +246,75 @@ func TestPipeline_WalksEveryStageAndFiles(t *testing.T) {
 	}
 }
 
+func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "stuck")
+	row := st.rows["stuck"]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Attempts = 3
+	row.Disposition = filler.DispositionReview
+	for _, id := range filler.StageOrder {
+		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
+	}
+	st.rows["stuck"] = row
+
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(context.Background(), "stuck", filler.StageTag, false); err != nil {
+		t.Fatal(err)
+	}
+	got := st.rows["stuck"]
+	if got.Stage != filler.StageTag || got.Status != filler.StatusQueued || got.Attempts != 0 || got.Disposition != filler.DispositionRunning {
+		t.Fatalf("rewound row = %+v, want tag/queued/running with fresh attempts", got)
+	}
+	if !got.ForceRun {
+		t.Fatal("rewind did not persist the explicit rerun instruction")
+	}
+	if len(got.Stages) != filler.StageIndex(filler.StageTag) {
+		t.Fatalf("kept %d stages, want only %d stages before tag", len(got.Stages), filler.StageIndex(filler.StageTag))
+	}
+}
+
+func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "already-tagged")
+	row := st.rows["already-tagged"]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Disposition = filler.DispositionReview
+	st.rows["already-tagged"] = row
+
+	tag := stage(filler.StageTag)
+	tag.applies = false
+	tag.note = "already fully tagged"
+	p := newPipe(st, []filler.Stage{tag}, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(context.Background(), "already-tagged", filler.StageTag, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if tag.runs != 1 {
+		t.Fatalf("tag runs = %d, want 1 after an explicit rewind", tag.runs)
+	}
+	if st.rows["already-tagged"].ForceRun {
+		t.Fatal("forced rerun marker survived the requested stage")
+	}
+}
+
+func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "encoded")
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	before := st.rows["encoded"]
+	if err := p.Rewind(context.Background(), "encoded", filler.StageTranscode, false); !errors.Is(err, filler.ErrTranscodeNeedsForce) {
+		t.Fatalf("rewind transcode = %v, want ErrTranscodeNeedsForce", err)
+	}
+	if got := st.rows["encoded"]; got.Stage != before.Stage || got.Status != before.Status {
+		t.Errorf("refused rewind mutated row: before=%+v after=%+v", before, got)
+	}
+}
+
 func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudget(t *testing.T) {
 	dir := t.TempDir()
 	st := newPipeMemStore()

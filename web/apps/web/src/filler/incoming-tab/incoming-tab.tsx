@@ -75,12 +75,22 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't remove those clips"),
     },
   });
+  const rewind = fillerApi.useRewindFillerClip({
+    mutation: {
+      onSettled: settle,
+      onSuccess: () => {
+        toast.success("Clip queued again", { description: "Completed upstream work was preserved." });
+        invalidateLifecycle();
+      },
+      onError: (error) => toast.error(toProblem(error).title ?? "Couldn't retry that clip"),
+    },
+  });
   // ⚠ The era-confirm PATCH mutation that used to live here is GONE, not merely unused (§10 V54).
   // "Looks right" files through `fileClips` with `asSuggested`, so the single-clip tag route has no
   // caller on this tab — and a mutation left wired to nothing is how a later reader concludes there
   // are two ways to confirm an era and picks the one that no longer files. The route still exists
   // and is still the Catalog's tag dialog's writer; what is deleted is this tab's second path to it.
-  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending;
+  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending || rewind.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -133,6 +143,14 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         // is shared with the Catalog tab, whose rows are keyed that way — and handing it a path
         // meant the lookup matched nothing and no dialog ever opened.
         onEditTags={(ask) => onEditTags(ask.hash)}
+        onReclassify={(ask) => {
+          setBusyClip(ask.path);
+          rewind.mutate({ data: { hash: ask.hash, from: "tag" as never } });
+        }}
+        onRetryStage={(clip, stage) => {
+          setBusyClip(clip.path);
+          rewind.mutate({ data: { hash: clip.hash, from: stage as never } });
+        }}
         // "Don't use it" removes the clip from the CATALOG. The file stays where the operator
         // put it — the server's action is a tombstone, never a delete.
         onDismiss={(ask) => {

@@ -104,9 +104,13 @@ type Clip struct {
 	// Tags is the clip's DENORMALISED taxonomy tag set (§10 V45a): the full leaf+rollup expansion
 	// from `clip_tags`, loaded alongside the row. This is the source of truth for curation matching
 	// and selection; `Category` is derived from it. Empty for a clip the tagger has not reached.
-	Tags       []string
-	DurationMs int64  // from ffprobe (the core probes now — §14 bundles it for playout)
-	Rating     string // optional content rating
+	Tags []string
+	// AssertedTags is the operator/classifier-authored subset of Tags. The remaining tags are
+	// rollups derived from the taxonomy graph. Editors MUST round-trip this set, never Tags: saving
+	// the full expansion would promote derived ancestors into assertions that survive graph edits.
+	AssertedTags []string
+	DurationMs   int64  // from ffprobe (the core probes now — §14 bundles it for playout)
+	Rating       string // optional content rating
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//

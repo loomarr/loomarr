@@ -14,6 +14,15 @@ type FillerSearch = {
   q?: string;
   kind?: string;
   audience?: string;
+  // A taxonomy node. The server matches its derived rollup, so a parent such as `food`
+  // includes clips asserted with descendant tags such as `cereal`.
+  taxon?: string;
+  // The taxonomy coverage gap: clips with no direct graph tags on any axis. This differs from
+  // `untagged`, which asks whether a commercial has every scheduling match field.
+  unclassified?: boolean;
+  // A per-axis inventory slice: clips may have taxonomy knowledge on one dimension (for example a
+  // seasonal cue) and none on another. Absence is neutral because cue axes are intentionally sparse.
+  withoutAxis?: "product" | "format" | "seasonal" | "audience-cue";
   untagged?: boolean;
   // Grid (default, absent) or the dense list (V35b). In the URL for the same reason the
   // filters are: a shared link should show what the sender was looking at. ⚠ Selection is
@@ -34,11 +43,18 @@ type FillerSearch = {
 
 const KINDS = ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
 const AUDIENCES = ["kids", "family", "general", "late_night"];
+const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue"] as const;
 
 const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch => {
   const q = typeof search.q === "string" && search.q ? search.q : undefined;
   const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;
   const audience = AUDIENCES.includes(search.audience as string) ? (search.audience as string) : undefined;
+  const taxon =
+    typeof search.taxon === "string" && /^[a-z0-9_-]{1,64}$/.test(search.taxon) ? search.taxon : undefined;
+  const unclassified = search.unclassified === true || search.unclassified === "true" ? true : undefined;
+  const withoutAxis = TAXONOMY_AXES.includes(search.withoutAxis as (typeof TAXONOMY_AXES)[number])
+    ? (search.withoutAxis as (typeof TAXONOMY_AXES)[number])
+    : undefined;
   const untagged = search.untagged === true || search.untagged === "true" ? true : undefined;
   // Only "list" is carried; "grid" is the default and stays out of the URL so the common
   // view has a clean link. An unknown value falls back to the grid rather than erroring.
@@ -52,6 +68,9 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
     ...(q ? { q } : {}),
     ...(kind ? { kind } : {}),
     ...(audience ? { audience } : {}),
+    ...(taxon ? { taxon } : {}),
+    ...(unclassified ? { unclassified } : {}),
+    ...(withoutAxis ? { withoutAxis } : {}),
     ...(untagged ? { untagged } : {}),
     ...(view ? { view } : {}),
     ...(page ? { page } : {}),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // Clip is the persisted form of a filler clip (§10). It embeds the domain
@@ -47,6 +48,16 @@ type ClipFilter struct {
 	Era      int
 	Audience filler.Audience
 	Category string
+	// Taxon matches the denormalised full tag set, so selecting a parent includes descendants.
+	Taxon string
+	// WithoutTaxonomyTags restricts to playable clips with no asserted taxonomy rows.
+	// It answers the taxonomy manager's coverage gap; unlike UntaggedOnly it is not commercial-only
+	// and says nothing about era/audience completeness. Derived-only rows do not count as knowledge.
+	WithoutTaxonomyTags bool
+	// WithoutTaxonomyAxis restricts to playable clips with no direct assertion on one axis. Axis
+	// absence is a neutral browse fact, not necessarily a defect: seasonal and audience cues are
+	// intentionally sparse.
+	WithoutTaxonomyAxis taxonomy.Axis
 	// UntaggedOnly restricts to clips missing era/audience/category — the AI
 	// tagging job's work list (§10).
 	UntaggedOnly bool
@@ -238,9 +249,9 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// block above states for language/removed_at/held/counters. The folder scan knows none of
 		// them; if they rode the update list, one re-sync would blank a transcribed or vision-tagged
 		// clip and re-trigger ~341s of Whisper or a paid vision call over work already done. Their
-		// writers are the job methods below — SetClipTranscript owns `transcript`, SetClipVisionTags
+		// writers are the job methods below — SetClipTranscript owns `transcript`, ApplyClipVision
 		// owns `visible_text`/`vision_tagged`, and `brand` is written by whichever grounded it
-		// (SetClipBrand from text, SetClipVisionTags from the frame).
+		// (SetClipBrand from text, ApplyClipVision from the frame).
 		//
 		// ⚠ is_composite / parent_hash (§10 V45, migration 00039) are also INSERTed but OMITTED from
 		// DO UPDATE. Set by intake/detection and by split Confirm; the folder scan does not know a
@@ -599,6 +610,20 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		where = append(where, "category = ?")
 		args = append(args, f.Category)
 	}
+	if f.Taxon != "" {
+		where = append(where, "EXISTS (SELECT 1 FROM clip_tags tx WHERE tx.clip_hash = clips.hash AND tx.taxon = ?)")
+		args = append(args, f.Taxon)
+	}
+	if f.WithoutTaxonomyTags {
+		where = append(where, "NOT EXISTS (SELECT 1 FROM clip_tags tx WHERE tx.clip_hash = clips.hash AND tx.leaf = ?)")
+		args = append(args, true)
+	}
+	if f.WithoutTaxonomyAxis != "" {
+		where = append(where, `NOT EXISTS (SELECT 1 FROM clip_tags tx
+			JOIN taxa tt ON tt.slug = tx.taxon
+			WHERE tx.clip_hash = clips.hash AND tx.leaf = ? AND tt.axis = ?)`)
+		args = append(args, true, string(f.WithoutTaxonomyAxis))
+	}
 	if f.Query != "" {
 		// LOWER() on both sides so the match is case-insensitive on BOTH dialects:
 		// SQLite's LIKE folds case for ASCII by default while Postgres's does not, and
@@ -710,21 +735,21 @@ func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) 
 	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true, IncludeHeld: true})
 }
 
-func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
 	res, err := s.db.ExecContext(ctx, s.ph(
 		// ⚠ suggested_era is CONDITIONAL (§10 era grounding, V34): writing an era confirms
 		// the suggestion, so it clears in the same write; a NEW suggestion overwrites; and a
 		// write carrying NEITHER (an era-less tag edit) leaves the existing suggestion alone —
 		// the tag job re-classifies untagged clips every run, so wiping on a no-era result
 		// would make the suggestion flap run to run.
-		`UPDATE clips SET era = ?, audience = ?, category = ?,
+		`UPDATE clips SET era = ?, audience = ?,
 		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 THEN ? ELSE suggested_era END,
 		   ai_tagged = ?, updated_at = ? WHERE hash = ?`),
 		// ⚠ A real bool, not boolToInt — `ai_tagged` became BOOLEAN on Postgres when 00033 rebuilt
 		// the table (V38c). This writer and the upsert must agree, and they did not for a moment.
-		era, audience, category, era, suggestedEra, suggestedEra, aiTagged, epoch(updatedAt), id)
+		era, audience, era, suggestedEra, suggestedEra, aiTagged, epoch(updatedAt), id)
 	if err != nil {
-		return fmt.Errorf("update clip tags %s: %w", id, err)
+		return fmt.Errorf("update clip classification %s: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -905,7 +930,8 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 	return out, rows.Err()
 }
 
-// attachTags loads the taxonomy tag set (§10 V45a) for a batch of clips and fills each Clip.Tags.
+// attachTags loads the taxonomy tag set (§10 V45a) for a batch of clips and fills both the full
+// Clip.Tags match set and Clip.AssertedTags, the subset an editor may safely round-trip.
 //
 // ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
 // the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
@@ -926,7 +952,7 @@ func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
 		placeholders[i] = "?"
 		args[i] = c.Hash
 	}
-	q := `SELECT clip_hash, taxon FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
+	q := `SELECT clip_hash, taxon, leaf FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
 	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
 	if err != nil {
 		return fmt.Errorf("attach clip tags: %w", err)
@@ -934,11 +960,15 @@ func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var hash, taxon string
-		if err := rows.Scan(&hash, &taxon); err != nil {
+		var asserted bool
+		if err := rows.Scan(&hash, &taxon, &asserted); err != nil {
 			return err
 		}
 		if i, ok := idx[hash]; ok {
 			clips[i].Tags = append(clips[i].Tags, taxon)
+			if asserted {
+				clips[i].AssertedTags = append(clips[i].AssertedTags, taxon)
+			}
 		}
 	}
 	return rows.Err()
@@ -1221,9 +1251,10 @@ func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript strin
 	return nil
 }
 
-// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44, migration 00038).
+// SetClipBrand records a GROUNDED advertiser found by the text tagger or confirmed by an operator
+// (§10 V44, migration 00038).
 //
-// ⚠ Writes `brand` and nothing else — deliberately narrower than SetClipVisionTags, which also
+// ⚠ Writes `brand` and nothing else — deliberately narrower than ApplyClipVision, which also
 // stamps `vision_tagged` and owns `visible_text`. The text tagger grounds a brand in the clip's
 // text signals (filename, sidecar, or the persisted transcript); the vision pass grounds one in the
 // on-screen text. Both are legitimate writers of `brand`, and each writes only what it is entitled
@@ -1232,7 +1263,7 @@ func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript strin
 //
 // The caller has already applied the grounding rule (validateTags keeps a brand only when it
 // appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
-// and vision writers it sits beside and unlike the hash-keyed UpdateClipTags — the job carries the
+// and vision writers it sits beside and unlike the hash-keyed classification update — the job carries the
 // path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
 // other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.
 func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
@@ -1245,9 +1276,9 @@ func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time
 	return nil
 }
 
-// SetClipVisionTags records what a vision pass read off a clip's keyframes (§10 V44, migration
-// 00038): the on-screen text it saw, a grounded brand, and — when the frame supported them — an
-// era and category. It stamps `vision_tagged` so a re-run does not pay for the same clip twice.
+// ApplyClipVision records one semantic vision pass (§10 V44/V55): the on-screen text it saw, a
+// grounded brand and era, and the taxonomy assertions supported by the frames. The facts, direct
+// assertions, rollups, and category compatibility shadow commit together.
 //
 // ⚠ **The ONLY writer of `visible_text` and `vision_tagged`.** `brand` it SHARES with SetClipBrand
 // (the text tagger's grounded writer) — both write `brand` and only `brand`, and this one must not
@@ -1256,46 +1287,75 @@ func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time
 // already applied the grounding rule (a brand/era/category survives only if `visibleText` supports
 // it), so this method writes what it is given — the validation lives in the domain, not the SQL.
 //
-// era and category are written only when > 0 / non-empty, so a vision pass that grounded a brand
-// but no era leaves an existing text-tagged era untouched. Keyed by PATH, like its neighbours.
-func (s *sqlStore) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		// COALESCE-style guards inline: only overwrite era/category when the vision pass produced a
-		// grounded value, otherwise keep what text tagging already found. brand and visible_text are
-		// vision's own to own, so they are written unconditionally.
-		//
-		// ⚠ suggested_era is written ONLY when the pass grounded NO era (the ? > 0 guard on
-		// suggestedEra) AND does not clobber an existing suggestion: it is the frame-heuristic tier's
-		// output (B&W + 4:3 ⇒ "pre-1970s?"), a QUESTION for the operator, never a fact — the same
-		// role validateTags gives an ungrounded LLM year. A grounded era needs no suggestion, so a
-		// pass that read a year off the frame leaves suggested_era alone.
-		`UPDATE clips SET brand = ?, visible_text = ?, vision_tagged = ?,
+// A blank vision brand preserves a brand grounded by the text tier. Era behaves the same way. Tags
+// are additive: vision can contribute evidence without erasing an operator or the text classifier.
+func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("apply clip vision: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if s.dialect == DialectPostgres {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
+			return fmt.Errorf("apply clip vision: lock: %w", err)
+		}
+	}
+	result, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE clips SET
+		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
+		   visible_text = ?, vision_tagged = ?,
 		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
 		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
-		   category = CASE WHEN ? <> '' THEN ? ELSE category END,
-		   updated_at = ? WHERE path = ?`),
-		brand, visibleText, true,
+		   updated_at = ? WHERE hash = ? AND path = ?`),
+		brand, brand, visibleText, true,
 		era, era,
 		era, suggestedEra, suggestedEra,
-		category, category,
-		epoch(at), path)
+		epoch(at), hash, path)
 	if err != nil {
-		return fmt.Errorf("set clip vision tags %s: %w", path, err)
+		return fmt.Errorf("apply clip vision %s: %w", path, err)
 	}
-	return nil
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+
+	rows, err := tx.QueryContext(ctx, s.ph(
+		`SELECT taxon FROM clip_tags WHERE clip_hash = ? AND leaf = ? ORDER BY taxon`), hash, true)
+	if err != nil {
+		return fmt.Errorf("apply clip vision: list asserted tags: %w", err)
+	}
+	merged := append([]string(nil), leaves...)
+	for rows.Next() {
+		var leaf string
+		if err := rows.Scan(&leaf); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("apply clip vision: scan asserted tag: %w", err)
+		}
+		merged = append(merged, leaf)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("apply clip vision: close asserted tags: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("apply clip vision: list asserted tags: %w", err)
+	}
+	if err := s.setClipTagsTx(ctx, tx, hash, merged); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ClearClipVisionTags removes the vision stamp so the rung will look again (§10 V51b) — the
 // invalidation half of `Rewind`.
 //
 // ⚠ **It clears the STAMP and the text vision read; it does NOT clear brand, era or category.**
-// Those three are SHARED with the text tagger — `SetClipBrand` and `UpdateClipTags` write the same
+// Those three are SHARED with the text tagger — `SetClipBrand` and the classification update write the same
 // columns — and nothing on the row records which tier put a value there. Blanking them would
 // therefore destroy a text-grounded brand, or an era an operator confirmed by hand, in order to
 // re-run a tier that may not even find one. A re-read simply overwrites what it can ground, which
-// is the same additive contract `SetClipVisionTags` has.
+// is the same additive contract `ApplyClipVision` has.
 //
-// ⚠ A separate narrow method rather than calling `SetClipVisionTags` with empty strings: that one
+// ⚠ A separate narrow method rather than calling `ApplyClipVision` with empty strings: that one
 // is pinned as the ONLY writer of visible_text/vision_tagged and writes what it is GIVEN, so the
 // empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
 func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {

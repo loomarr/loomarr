@@ -52,13 +52,6 @@ func TestJobSet(t *testing.T) {
 		// Every two minutes, far tighter than the hourly sweeps: a pass is bounded by the budget
 		// rather than the catalog, and this is the only thing that advances a new download.
 		"filler-pipeline | filler | 0 */2 * * * * | job.filler_pipeline.schedule",
-		// ⚠ The taxonomy reindex (§10 V45a). A lifecycle sibling of the media jobs (its own row,
-		// registered unconditionally, default-off) but NOT an expensive one — its body is two bulk SQL
-		// statements (rebuild the closure, then every clip's rollups), no whisper/vision, no per-clip
-		// loop. It stays a cron job rather than a rung deliberately: it is bulk SQL over the whole
-		// catalog after a GRAPH edit, not per-clip work, and folding it in would make a taxonomy
-		// edit wait behind a whisper backlog.
-		"filler-reindex | filler | 0 5 * * * * | job.filler_reindex.schedule",
 		// ⚠ Added in V54. Daily at 04:45 and off-peak on purpose: the window it enforces is
 		// measured in WEEKS, so a faster cadence buys nothing and only widens the chance of a pass
 		// landing while an operator is mid-review on a reel one hour past its expiry.

@@ -45,7 +45,7 @@ func (s *Server) registerFiller(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
-		Summary: "Edit a clip's tags", Description: "Admin only. The clip is identified by `path` in the body (§10 V45a).", Tags: []string{"filler"},
+		Summary: "Edit a clip's classification", Description: "Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
@@ -59,6 +59,14 @@ func (s *Server) registerFiller(api huma.API) {
 		Summary: "AI-tag untagged clips", Description: "Admin only. Text-signal classification (§10).",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.tagFiller)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "rewind-filler-clip", Method: http.MethodPost, Path: "/v1/filler/rewind",
+		Summary: "Re-run a clip's ingest pipeline from one stage",
+		Description: "Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. " +
+			"Re-running transcode requires force because the original bytes are no longer available and another encode loses quality.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.rewindFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
@@ -174,6 +182,37 @@ func (s *Server) registerFiller(api huma.API) {
 	}, "The clip's own bytes.", "video/*", "audio/*"), RoleMember, s.serveFillerMedia)
 }
 
+type rewindFillerClipInput struct {
+	Body struct {
+		Hash  string `json:"hash" minLength:"1"`
+		From  string `json:"from" enum:"probe,transcode,split,language,transcribe,tag,vision,score"`
+		Force bool   `json:"force,omitempty"`
+	}
+}
+
+func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput) (*struct{}, error) {
+	rewinder, ok := s.filler.(FillerRewinder)
+	if !ok {
+		return nil, huma.Error501NotImplemented("the filler pipeline is not configured")
+	}
+	if _, err := s.store.GetClip(ctx, in.Body.Hash); errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Clip not found", "That clip is no longer in the catalog.")
+	} else if err != nil {
+		return nil, err
+	}
+	err := rewinder.Rewind(ctx, in.Body.Hash, filler.StageID(in.Body.From), in.Body.Force)
+	switch {
+	case errors.Is(err, filler.ErrUnknownStage):
+		return nil, errUnprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")
+	case errors.Is(err, filler.ErrTranscodeNeedsForce):
+		return nil, errConflict("Re-encoding needs confirmation", err.Error())
+	case err != nil:
+		return nil, err
+	default:
+		return &struct{}{}, nil
+	}
+}
+
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
 // store has keyed on hash since V38c, and V45a makes the wire identity the hash too, so a
 // slash-bearing path never crosses the API (the source of the routing/proxy 404 class).
@@ -194,9 +233,12 @@ type ClipDTO struct {
 	Category string `json:"category,omitempty" doc:"Derived primary product-leaf tag; the full set is in tags (§10 V45a)"`
 	// Tags is the clip's taxonomy tag set (§10 V45a) — the full leaf+rollup expansion, so a client can
 	// show every tag and a curation rule can match any ancestor. Empty for a clip not yet tagged.
-	Tags       []string `json:"tags,omitempty" doc:"The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)"`
-	DurationMs int64    `json:"durationMs"`
-	Source     string   `json:"source,omitempty"`
+	Tags []string `json:"tags,omitempty" doc:"The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)"`
+	// AssertedTags is what the classifier/operator actually chose. Editors round-trip this field;
+	// Tags includes derived ancestors and must never be sent back as assertions.
+	AssertedTags []string `json:"assertedTags,omitempty" doc:"Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip"`
+	DurationMs   int64    `json:"durationMs"`
+	Source       string   `json:"source,omitempty"`
 	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
 	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
 	// it existed in the store for two phases with no way to see it.
@@ -345,7 +387,7 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []store.Clip) fu
 func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
-		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags,
+		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
@@ -366,11 +408,14 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 }
 
 type listFillerInput struct {
-	Kind     string `query:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
-	Era      int    `query:"era"`
-	Audience string `query:"audience" enum:"kids,family,general,late_night"`
-	Category string `query:"category"`
-	Untagged bool   `query:"untagged" doc:"Only commercials missing match tags"`
+	Kind         string `query:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Era          int    `query:"era"`
+	Audience     string `query:"audience" enum:"kids,family,general,late_night"`
+	Category     string `query:"category"`
+	Taxon        string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
+	Unclassified bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
+	WithoutAxis  string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
+	Untagged     bool   `query:"untagged" doc:"Only commercials missing match tags"`
 	// Q is the clip corpus's search box (§7.2). Clip search lives here rather than on
 	// /v1/search because a clip is not a provisionable title (§10) and cannot be a
 	// federated Candidate without leaking a non-title into the LLM grounding path.
@@ -436,22 +481,25 @@ type listFillerOutput struct {
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
 	f := store.ClipFilter{
-		Kind:              filler.Kind(in.Kind),
-		Era:               in.Era,
-		Audience:          filler.Audience(in.Audience),
-		Category:          in.Category,
-		UntaggedOnly:      in.Untagged,
-		Query:             in.Q,
-		QueryTranscript:   in.SearchTranscript,
-		IncludeHeld:       in.IncludeHeld,
-		IncludeComposites: in.IncludeComposites,
-		TopLevelOnly:      in.TopLevel,
-		ParentHash:        in.ParentHash,
-		Hashes:            in.Hashes,
-		Sort:              store.ClipSort(in.Sort),
-		Desc:              in.Order == "desc",
-		Limit:             in.Limit,
-		Offset:            in.Offset,
+		Kind:                filler.Kind(in.Kind),
+		Era:                 in.Era,
+		Audience:            filler.Audience(in.Audience),
+		Category:            in.Category,
+		Taxon:               in.Taxon,
+		WithoutTaxonomyTags: in.Unclassified,
+		WithoutTaxonomyAxis: taxonomy.Axis(in.WithoutAxis),
+		UntaggedOnly:        in.Untagged,
+		Query:               in.Q,
+		QueryTranscript:     in.SearchTranscript,
+		IncludeHeld:         in.IncludeHeld,
+		IncludeComposites:   in.IncludeComposites,
+		TopLevelOnly:        in.TopLevel,
+		ParentHash:          in.ParentHash,
+		Hashes:              in.Hashes,
+		Sort:                store.ClipSort(in.Sort),
+		Desc:                in.Order == "desc",
+		Limit:               in.Limit,
+		Offset:              in.Offset,
 	}
 	clips, err := s.store.ListClips(ctx, f)
 	if err != nil {
@@ -495,6 +543,10 @@ type patchClipInput struct {
 		// rejected), and `category` is DERIVED from the accepted set (the primary product leaf). A nil
 		// Tags means "leave the tags alone"; an explicit empty array clears them.
 		Tags *[]string `json:"tags,omitempty" doc:"The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a)."`
+		// Brand is a grounded advertiser name, deliberately separate from the taxonomy. Pointer
+		// semantics distinguish omission (leave it alone) from an explicit empty string (clear a
+		// bad model guess). The operator is a valid grounding source.
+		Brand *string `json:"brand,omitempty" maxLength:"120" doc:"Grounded advertiser name. Omit to leave unchanged; send an empty string to clear."`
 		// Kind is correctable by hand (§10). Detection at sync gets it wrong in one
 		// direction often enough to matter — a trailer scanned as a commercial — and
 		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
@@ -510,7 +562,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
-	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/`UpdateClipTags`/
+	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/classification update/
 	// `UpdateClipKind`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
 	// to 404 a missing clip synchronously and to read the pre-edit tags below.
 	clip, err := s.store.GetClip(ctx, in.Body.Hash)
@@ -523,9 +575,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
 	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
 	// grounded (forest.Resolve) exactly as the tagger grounds the model — an unknown slug is a 422,
-	// never silently persisted — and `category` is DERIVED from the accepted set, never taken from the
-	// client, so the stored shadow always equals PrimaryProductLeaf(the persisted leaves).
-	category := clip.Category // unchanged unless Tags is being edited
+	// never silently persisted. The store derives `category` from the accepted set in the same
+	// transaction, against its current graph; the client never supplies that compatibility shadow.
 	if in.Body.Tags != nil {
 		taxa, err := s.store.ListTaxa(ctx)
 		if err != nil {
@@ -546,26 +597,27 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			}
 		}
 		sort.Strings(leaves)
-		if err := s.store.SetClipTags(ctx, clip.Hash, leaves, forest, now); err != nil {
+		if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
+			if errors.Is(err, store.ErrTaxonConflict) {
+				return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
+			}
 			return nil, err
 		}
-		category = forest.PrimaryProductLeaf(leaves)
 	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
 	// CONFIRMS and clears any suggestion in the same write, while an era-less edit
 	// leaves the operator's unanswered question alone (§10, V34). `category` is the
-	// value derived from the tag edit above (or the clip's existing shadow, untouched).
-	if err := s.store.UpdateClipTags(ctx, clip.Hash, in.Body.Era, in.Body.Audience, category, 0, false, now); err != nil {
+	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, 0, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
 		return nil, err
 	}
-	// Kind is a separate write because the AI tagging job shares UpdateClipTags and must
+	// Kind is a separate write because the AI tagging job shares UpdateClipClassification and must
 	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
 	// safe to retry if the second fails.
 	if in.Body.Kind != "" {
@@ -573,6 +625,12 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
+			return nil, err
+		}
+	}
+	if in.Body.Brand != nil {
+		brand := strings.TrimSpace(*in.Body.Brand)
+		if err := s.store.SetClipBrand(ctx, clip.Path, brand, now); err != nil {
 			return nil, err
 		}
 	}

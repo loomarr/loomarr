@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -81,7 +82,23 @@ type fillerWatchOutput struct {
 		// fetched, so the client omits the clause entirely rather than rendering "never" — which
 		// would read as a failure on a drop-folder working exactly as intended.
 		LastScanAt string `json:"lastScanAt,omitempty" doc:"RFC3339; absent if nothing has ever been fetched"`
+		// AutoFetch names an intentional ceiling that currently stops unattended acquisition. It is
+		// omitted when this runtime has no auto-fetcher rather than guessed from settings alone.
+		AutoFetch *FillerFetchStatusDTO `json:"autoFetch,omitempty"`
 	}
+}
+
+type FillerFetchStatusDTO struct {
+	Enabled      bool   `json:"enabled"`
+	StoppedBy    string `json:"stoppedBy,omitempty" enum:"catalog,disk"`
+	CatalogClips int    `json:"catalogClips"`
+	MaxCatalog   int    `json:"maxCatalog,omitempty"`
+	DiskBytes    int64  `json:"diskBytes,omitempty"`
+	MaxDiskBytes int64  `json:"maxDiskBytes,omitempty"`
+}
+
+type fillerFetchStatusService interface {
+	FetchStatus(context.Context) (filler.FetchStatus, error)
 }
 
 func (s *Server) registerFillerWatch(api huma.API) {
@@ -154,6 +171,20 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 
 	out.Body.SourcesOn, out.Body.SourcesTotal = on, total
 	out.Body.Clips, out.Body.Held = clipCount, heldCount
+	if svc, ok := s.filler.(fillerFetchStatusService); ok {
+		status, serr := svc.FetchStatus(ctx)
+		if serr != nil {
+			if s.log != nil {
+				s.log.Warn("read filler auto-fetch status", "err", serr)
+			}
+		} else {
+			out.Body.AutoFetch = &FillerFetchStatusDTO{
+				Enabled: status.Enabled, StoppedBy: status.StoppedBy,
+				CatalogClips: status.CatalogClips, MaxCatalog: status.MaxCatalog,
+				DiskBytes: status.DiskBytes, MaxDiskBytes: status.MaxDiskBytes,
+			}
+		}
+	}
 	if !newest.IsZero() {
 		out.Body.LastScanAt = newest.UTC().Format(time.RFC3339)
 	}
