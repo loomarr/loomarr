@@ -6,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 // A fixed-width frame so `w-full` components (IntentInput, ProposalReview, SearchCommand,
 // …) render at a realistic size inside the centered story canvas — the snapshot then
@@ -41,6 +41,11 @@ const NAV_PATHS = [
 // starting at `initialPath`. Anything using Link/route hooks then renders the same
 // offline + deterministic way it would inside the real app router — TanStack `Link`
 // needs a RouterProvider even in isolation (the migration's one harness cost).
+// Carries the harness's children to whichever route matched. See the note in RouterHarness for
+// why this is context rather than a closure over `content`.
+const ContentContext = createContext<ReactNode>(null);
+const ContentSlot = () => <>{useContext(ContentContext)}</>;
+
 const RouterHarness = ({ content, initialPath = "/guide" }: { content: ReactNode; initialPath?: string }) => {
   // ⚠ THROW on an unregistered path rather than letting the router render "Not Found".
   //
@@ -60,15 +65,30 @@ const RouterHarness = ({ content, initialPath = "/guide" }: { content: ReactNode
         `instead of the component. Add it to NAV_PATHS in story-utils.tsx. Registered: ${NAV_PATHS.join(", ")}`,
     );
   }
-  const rootRoute = createRootRoute();
-  const routes = NAV_PATHS.map((path) =>
-    createRoute({ getParentRoute: () => rootRoute, path, component: () => <>{content}</> }),
+  // ⚠ The router is built ONCE per path, not once per render. Constructing it in the render body
+  // handed `RouterProvider` a brand-new router every re-render, restarting its async mount;
+  // @tanstack/react-router tolerated that up to 1.170.18 and stopped at 1.170.27, where a
+  // `rerender()` left the body empty and every findBy* after it failed.
+  //
+  // ⚠ `content` reaches the routes through CONTEXT, not a closure or a ref. A memoised router
+  // holds whichever `content` it was built with, so a closure goes stale and a ref updates
+  // without re-rendering — both make a controlled-prop `rerender()` silently assert the OLD
+  // tree. Context re-renders the slot, which is the whole point of the harness.
+  const router = useMemo(() => {
+    const rootRoute = createRootRoute();
+    const routes = NAV_PATHS.map((path) =>
+      createRoute({ getParentRoute: () => rootRoute, path, component: ContentSlot }),
+    );
+    return createRouter({
+      routeTree: rootRoute.addChildren(routes),
+      history: createMemoryHistory({ initialEntries: [initialPath] }),
+    });
+  }, [initialPath]);
+  return (
+    <ContentContext.Provider value={content}>
+      <RouterProvider router={router} />
+    </ContentContext.Provider>
   );
-  const router = createRouter({
-    routeTree: rootRoute.addChildren(routes),
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
-  });
-  return <RouterProvider router={router} />;
 };
 
 const withRouter =

@@ -1,6 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+// Where Starlight BELIEVES the docs collection lives. It derives this internally as
+// `<srcDir>/content/<collection>` and strips exactly that prefix off each entry's `filePath`
+// to build the sidebar tree, so entries must be reported relative to it even though nothing
+// is actually stored there — this loader reads the repository's docs/ tree in place.
+const DOCS_COLLECTION_ROOT = "src/content/docs";
+
 /**
  * A content loader that reads the repository's `docs/` tree IN PLACE.
  *
@@ -67,15 +73,23 @@ export const repoDocs = ({ base, include }) => ({
         data: { ...frontmatter, title: resolvedTitle },
       });
 
-      // ⚠ `filePath` is deliberately NOT set. Astro's data store requires it to be relative to
-      // the site root, and these files live OUTSIDE this project by design — every path here
-      // would start with `../`. It is optional metadata (edit links, error messages), so the
-      // honest move is to omit it rather than fabricate an in-project path that resolves to
-      // nothing.
+      // ⚠ `filePath` USED to be omitted here, on the reasoning that it is optional metadata
+      // (edit links, error messages) and that anything honest would start with `../`, since
+      // these files live outside this project by design.
+      //
+      // Starlight 0.39+ made it mandatory in practice: sidebar autogeneration calls
+      // `route.entry.filePath.replace(...)` with no guard, so an omitted value is a build
+      // crash ("Cannot read properties of undefined") pointing at Starlight internals rather
+      // than at this loader.
+      //
+      // It is set to the collection-relative path — the shape Starlight parses to derive the
+      // sidebar tree — rather than a real on-disk path. A `../` prefix would survive the
+      // `replace` and put every page at the wrong depth in the tree.
       store.set({
         id,
         data,
         body,
+        filePath: `${DOCS_COLLECTION_ROOT}/${path.relative(root, filePath)}`,
         digest: generateDigest(body),
         rendered: await renderMarkdown(body),
       });

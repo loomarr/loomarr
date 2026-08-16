@@ -53,7 +53,6 @@ const KNOWN_GAPS = new Set([
   "channels/guide-page/guide-page.tsx",
   "channels/guide-window/guide-window.ts",
   "channels/use-delete-confirm/use-delete-confirm.ts",
-  "channels/use-tunarr-ready/use-tunarr-ready.ts",
   "components/loomarr/channels/channel-rules-editor/label/label.ts",
   "components/loomarr/channels/channel-rules-editor/presets/presets.ts",
   "components/loomarr/settings/settings-save-bar/settings-save-bar.tsx",

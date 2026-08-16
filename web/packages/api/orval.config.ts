@@ -24,7 +24,6 @@ export default defineConfig({
       client: "zod",
       fileExtension: ".zod.ts",
       clean: true,
-      prettier: false,
       override: {
         zod: {
           // Request-side schemas are what the forms compose from; `response` backs the
@@ -45,7 +44,10 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       clean: true,
-      prettier: false,
+      // NOTE: orval 8.24 removed the `prettier` output option outright (it is absent from
+      // OutputOptions, not deprecated). It was set to `false` here to stop orval formatting
+      // its own output; 8.24 no longer formats, so dropping it changes nothing at runtime —
+      // but leaving it in is a tsc error, which is how this surfaced.
       // MSW handlers per operation (V53d). What is generated here is the WIRING — the URL, the
       // method, the status — and that is the part worth generating: when a route is renamed, a
       // regenerate fixes every handler, where hand-written ones would silently stop matching.
@@ -61,19 +63,37 @@ export default defineConfig({
       // back to faker. Setting it would imply a guarantee that does not hold — measured before
       // V53b: 0 of 53 example tags used. (V53b did fix the OTHER half of this: non-nullable
       // arrays took never-populated list mocks from 137 to 0.)
+      // orval 8.24 replaced the single-generator `mock: { type }` with a `generators` ARRAY,
+      // and throws on the old shape rather than falling back — so this is a hard migration,
+      // not a deprecation. Per-generator options (`delay`) moved onto the entry: the
+      // normalizer reads only `generators`, `indexMockFiles`, and `path` at mock level, so a
+      // `delay` left out here would be silently dropped and every handler would go back to a
+      // random delay.
+      //
+      // ⚠ Listing ONLY msw is deliberate. `mock: true` now expands to msw + faker, and adding
+      // the faker generator here would emit a second, separate mock surface this repo does
+      // not use.
       mock: {
-        type: "msw",
-        delay: false, // the default is a random delay — pure flakiness in a test suite
+        generators: [
+          { type: "msw", delay: false }, // the default is a random delay — pure flakiness in a test suite
+        ],
       },
       override: {
         mutator: {
           path: "./src/mutator/mutator.ts",
           name: "customFetch",
         },
+        // ⚠ DO NOT set `useQuery` or `useMutation` here. Under orval 8.24 they are not method
+        // hints — they are blanket overrides applied to EVERY operation, and the two collide
+        // on the base hook name:
+        //   both true  → the mutation shadows the query, so `useSystemLlmStatus` (a GET) came
+        //                back as a UseMutationResult and its query key vanished.
+        //   useQuery   → PATCH/POST become queries, so `useSettingsPatch` lost `.mutate`.
+        //   only       (this is the shape that broke `users-step` and `wizard-ai-block`.)
+        // Omitted, orval classifies by HTTP METHOD — GET to a query, everything else to a
+        // mutation — which is what every caller in this app already assumes.
         query: {
-          useQuery: true,
           useInfinite: false,
-          useMutation: true,
         },
       },
     },

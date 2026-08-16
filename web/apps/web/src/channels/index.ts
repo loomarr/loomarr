@@ -11,4 +11,3 @@ export * from "./tuner-timing";
 export * from "./use-channel-lineup";
 export * from "./use-channel-tuner";
 export * from "./use-delete-confirm";
-export * from "./use-tunarr-ready";
