@@ -4309,12 +4309,12 @@ components:
           description: Whether this process can restart itself
           type: boolean
         pendingKeys:
-          description: Boot-time settings waiting on a restart, e.g. DATABASE_URL
+          description: Restart-scoped settings waiting on a restart, e.g. DATABASE_URL or filler.dir
           items:
             type: string
           type: array
         restartRequired:
-          description: A boot-time setting has changed and needs a restart to apply
+          description: A restart-scoped setting has changed and needs a restart to apply
           type: boolean
         streamingChannels:
           description: Channels Loomarr is streaming that will drop
@@ -4735,6 +4735,12 @@ components:
       properties:
         advanced:
           type: boolean
+        apply:
+          description: "When a saved value becomes active: live on the next owning operation, or restart in the next app generation."
+          enum:
+            - live
+            - restart
+          type: string
         caution:
           description: A stored value self-healed to default (§3).
           type: boolean
@@ -4807,6 +4813,7 @@ components:
         - key
         - group
         - kind
+        - apply
         - set
         - provenance
         - advanced
@@ -8852,7 +8859,7 @@ paths:
       tags:
         - settings
     patch:
-      description: Admin only. Per-key results (saved | invalid | pinned); hot-applies on success (config-design §8).
+      description: "Admin only. Per-key results (saved | invalid | pinned). A saved value follows that setting's apply contract: live on the next owning operation, or restart in the next app generation (config-design §3/§8)."
       operationId: settings-patch
       requestBody:
         content:
@@ -9453,7 +9460,7 @@ paths:
         - system
   /v1/system/restart:
     get:
-      description: Admin only. The live count of channels Loomarr is streaming (which drop for a few seconds; Tunarr-backed channels keep playing), plus any boot-time setting waiting on a restart. Read-only — this does not restart anything.
+      description: Admin only. The live count of channels Loomarr is streaming (which drop for a few seconds; Tunarr-backed channels keep playing), plus any restart-scoped setting waiting on a restart. Read-only — this does not restart anything.
       operationId: system-restart-cost
       responses:
         "200":

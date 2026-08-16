@@ -111,9 +111,10 @@ type playoutResolver struct {
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
 	// one-assembler rule. Nil ⇒ breaks fall back to the offline card.
 	pods api.PodPreviewer
-	// fillerDir resolves a clip's relative id to a file on disk. A func so a settings change
-	// applies without a restart, like the other live reads above.
-	fillerDir func() string
+	// fillerDir resolves a clip's relative id to a file on disk. It is immutable for the
+	// generation: catalog paths, scan and playout must never interpret one row under different
+	// roots while a saved layout change is waiting on restart.
+	fillerDir string
 
 	// pathMap resolves the parsed `library.path_map` (§15, V47) live, so a mapping edit applies
 	// without a restart. Empty ⇒ no mapping ⇒ ResolveInput uses the media server's HTTP stream.
@@ -671,7 +672,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 func (r *playoutResolver) airingFiller(
 	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
-	if r.pods == nil || r.fillerDir == nil {
+	if r.pods == nil || r.fillerDir == "" {
 		// Filler unconfigured: the break becomes the offline card rather than an error. A
 		// channel with no commercials should still play.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
@@ -706,7 +707,7 @@ func (r *playoutResolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir(), e.Path, "")
+			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
 				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 			}

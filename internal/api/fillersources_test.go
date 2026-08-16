@@ -26,11 +26,16 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *h
 			t.Fatalf("seed clip %s: %v", c.Path, err)
 		}
 	}
+	layout, err := filler.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
+	if err != nil {
+		t.Fatalf("filler.NewLayout: %v", err)
+	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:      st,
-		Auth:       api.NewTokenAuthorizer(adminToken),
-		Log:        slog.New(slog.DiscardHandler),
-		LiveConfig: func(k string) string { return cfg[k] },
+		Store:        st,
+		Auth:         api.NewTokenAuthorizer(adminToken),
+		Log:          slog.New(slog.DiscardHandler),
+		FillerLayout: layout,
+		LiveConfig:   func(k string) string { return cfg[k] },
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -140,27 +145,45 @@ func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
 	}
 }
 
-// filler.dir hot-applies, so the row must read it live — a value captured at construction
-// would report the old folder on the very screen an operator checks after changing it.
-func TestFillerSources_ReadsTheDirLive(t *testing.T) {
+// A saved filesystem-root change is desired state until restart. The operational Sources view
+// must keep describing the applied generation, or its Fetch action would claim to target a path
+// that scan and intake do not yet use.
+func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	cfg := map[string]string{"filler.dir": "/data/filler"}
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
+	layout, err := filler.NewLayout(cfg["filler.dir"], "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:      st,
-		Auth:       api.NewTokenAuthorizer(adminToken),
-		Log:        slog.New(slog.DiscardHandler),
-		LiveConfig: func(k string) string { return cfg[k] },
+		Store:        st,
+		Auth:         api.NewTokenAuthorizer(adminToken),
+		Log:          slog.New(slog.DiscardHandler),
+		FillerLayout: layout,
+		LiveConfig:   func(k string) string { return cfg[k] },
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+	readSources := func() sourcesBody {
+		req := httptest.NewRequest(http.MethodGet, "/v1/filler/sources", nil)
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET sources → %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		var body sourcesBody
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
 
-	if got := getSources(t, srv).Sources[0].Target; got != "/data/filler" {
+	if got := readSources().Sources[0].Target; got != "/data/filler" {
 		t.Fatalf("target = %q, want the configured dir", got)
 	}
-	cfg["filler.dir"] = "/srv/clips" // the operator changes it; no restart
-	if got := getSources(t, srv).Sources[0].Target; got != "/srv/clips" {
-		t.Errorf("target = %q after a settings change, want /srv/clips — the dir must be read live", got)
+	cfg["filler.dir"] = "/srv/clips" // saved desired state; this generation remains on /data/filler
+	if got := readSources().Sources[0].Target; got != "/data/filler" {
+		t.Errorf("target = %q after a settings change, want applied /data/filler until restart", got)
 	}
 }
 
@@ -196,6 +219,13 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 		Store: st,
 		Auth:  api.NewTokenAuthorizer(adminToken),
 		Log:   slog.New(slog.DiscardHandler),
+		FillerLayout: func() filler.Layout {
+			layout, layoutErr := filler.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
+			if layoutErr != nil {
+				t.Fatalf("filler.NewLayout: %v", layoutErr)
+			}
+			return layout
+		}(),
 		// Wired exactly as the composition root wires them, typed per Kind.
 		LiveConfig: func(k string) string { return svc.String(k) },
 		LiveConfigBoolOn: func(k string) bool {

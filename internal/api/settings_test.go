@@ -189,9 +189,9 @@ func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 	return []api.SettingEntry{
-		{Key: "library.url", Group: "connections.media_server", Kind: "url", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
-		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
-		{Key: "job.workers", Group: "advanced", Kind: "int", Value: "2", Provenance: "env", Doc: "x"},
+		{Key: "library.url", Group: "connections.media_server", Kind: "url", Apply: "live", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
+		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Apply: "live", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
+		{Key: "job.workers", Group: "advanced", Kind: "int", Apply: "live", Value: "2", Provenance: "env", Doc: "x"},
 	}
 }
 

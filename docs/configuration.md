@@ -133,8 +133,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
-| `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. |
+| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
+| `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often Loomarr drains the drop folder and reconciles its own clip library. _(advanced)_ |
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Classify untagged commercials against the grounded era, audience, brand, and taxonomy vocabulary. |
@@ -198,4 +198,3 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `auth.sso.issuer` (`AUTH_SSO_ISSUER`) | url | — | Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there. |
 | `auth.sso.client_id` (`AUTH_SSO_CLIENT_ID`) | string | — | The client ID your provider issued for Loomarr. |
 | `auth.sso.client_secret` (`AUTH_SSO_CLIENT_SECRET`) | secret | (secret) | The client secret your provider issued for Loomarr. |
-

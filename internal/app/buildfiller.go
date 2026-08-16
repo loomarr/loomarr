@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -39,7 +37,7 @@ import (
 // the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, *filler.Tagger) {
+func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) (llm.Provider, *filler.Tagger) {
 	if !set.boolv("filler.ai_tagging") {
 		return nil, nil
 	}
@@ -48,15 +46,9 @@ func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, 
 		return nil, nil
 	}
 
-	// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars ingest writes
-	// beside each clip (§10). An unset FILLER_DIR yields a nil FS and tagging falls back to
-	// filenames — the same result as a drop-folder clip that never had a sidecar.
-	var drop fs.FS
-	if dir := set.str("filler.dir"); dir != "" {
-		drop = os.DirFS(dir)
-	}
-
-	tagger := filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log).
+	// The generation's clip-root FS lets tagging read the info-JSON sidecars ingest writes beside
+	// each clip (§10). A zero layout yields nil and tagging falls back to filenames.
+	tagger := filler.NewTagger(fillerTagStoreAdapter{st}, provider, layout.FS(), time.Now, log).
 		// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the threshold
 		// is filed without a human. Closures, not captured values, so a changed threshold
 		// applies on the next run rather than the next restart.
@@ -75,20 +67,19 @@ func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, 
 
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
 //
-// ⚠ Every switch here is read LIVE rather than captured, because these settings hot-apply
-// (config-design §3): an operator who turns the drop-folder off expects the next scheduled pass
-// to stop, not a restart to be required. `Dir`, `MinDuration`, `WithEnabled` and `WithWatchDir`
-// are all closures for that reason.
+// ⚠ Policy remains live, while the storage layout is immutable for this application generation.
+// The source switch and minimum duration therefore remain closures, but scan and intake share the
+// one captured root/watch pair so a settings write cannot move files between generations.
 //
 // ⚠ The library scanner is nil when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: folder rows still drain and library rows simply do no
 // work. Wiring a non-nil scanner over an absent media server would turn an optional service back
 // into a precondition — the dependency §9.1 removed.
-func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slog.Logger,
+func buildSyncer(rootCtx context.Context, st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
 	fillerProg *programmer.Tunarr) *filler.Syncer {
 	src := filler.DirSource{
-		Dir:   func() string { return set.str("filler.dir") },
-		Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		Layout: layout,
+		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
 		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
 		// points that setting at a custom build (the whole reason it exists — see the
@@ -113,11 +104,8 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slo
 		configured: func() bool { return set.str("tunarr.url") != "" },
 	}
 
-	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
-		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
-		// An empty value resolves to `<filler.dir>/_watch`, so the watch folder is configured on
-		// every install whether or not the operator has ever set it.
-		WithWatchDir(func() string { return set.str("filler.watch_dir") })
+	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
+		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") })
 
 	var libScanner *filler.LibraryScanner
 	if set.str("library.url") != "" {
@@ -144,7 +132,7 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slo
 // ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
+func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger) *clipfetch.Ingestor {
 	ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
 	if ffPath == "" {
@@ -160,7 +148,7 @@ func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
 		ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), set.str("filler.dir"), log)
+	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), layout.WatchDir(), log)
 }
 
 // buildSplitter constructs the compilation splitter (§10, V34). Nil without a drop-folder — clip
@@ -173,8 +161,8 @@ func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
 //
 // The LLM provider wires whenever one is configured — splitting's rescue and classification are
 // operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
-func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Splitter {
-	dir := set.str("filler.dir")
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) *filler.Splitter {
+	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
 	}
@@ -244,7 +232,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
@@ -291,13 +279,9 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	// they run on files already on disk regardless of whether yt-dlp is present).
 	fillerTools := buildFillerMediaTools(set)
 
-	// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
-	// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
-	// MORE work, never wrongly skips).
-	var fillerDrop fs.FS
-	if dir := set.str("filler.dir"); dir != "" {
-		fillerDrop = os.DirFS(dir)
-	}
+	// The generation's clip-root FS reads the info-JSON sidecars ingest writes beside each clip.
+	// nil ⇒ every clip reads as thin-sourced and filename-only tagged.
+	fillerDrop := layout.FS()
 
 	// Vision: keyframes → a multimodal model, resolved LIVE (§10 V54a).
 	//
@@ -330,7 +314,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	// ("vision tagging is off", "no language backend is configured"). Registering all of them
 	// and letting `Applies` answer is what makes the ladder explain an install rather than
 	// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
-	clipDir := set.str("filler.dir")
+	clipDir := layout.ClipDir()
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,

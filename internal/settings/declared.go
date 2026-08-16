@@ -2,6 +2,8 @@ package settings
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -86,6 +88,37 @@ func breakDuration(v any) error {
 		return fmt.Errorf("want at least 30s (got %s) — shorter values are clamped by Tunarr and would make playout backends disagree", d)
 	}
 	return nil
+}
+
+// storagePath validates the two generation-scoped filler paths without importing
+// filler back into settings. Absolute paths keep a catalog row anchored to one
+// unambiguous root; filler.Layout owns canonical cleaning for the generation so
+// legacy trailing slashes and equivalent spellings remain upgrade-compatible.
+// Refusing the filesystem root prevents a bad edit from turning a scan into a walk
+// of the whole mounted host/container filesystem.
+func storagePath(optional bool) ValidateFunc {
+	return func(v any) error {
+		path, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("want a filesystem path")
+		}
+		path = strings.TrimSpace(path)
+		if path == "" {
+			if optional {
+				return nil
+			}
+			return fmt.Errorf("want a non-empty absolute path")
+		}
+		clean := filepath.Clean(path)
+		if !filepath.IsAbs(clean) {
+			return fmt.Errorf("want an absolute path (got %q)", path)
+		}
+		root := filepath.VolumeName(clean) + string(filepath.Separator)
+		if clean == root {
+			return fmt.Errorf("the filesystem root cannot be used as a clip folder")
+		}
+		return nil
+	}
 }
 
 func declared() []Setting {
@@ -454,7 +487,7 @@ func declared() []Setting {
 			// neighbours both defaulted; that asymmetry made the whole feature opt-in by
 			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", Label: "Clip library", EnvVar: "FILLER_DIR", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "/data/filler", Required: FeatureFiller,
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "/data/filler", Required: FeatureFiller, Validate: storagePath(false),
 			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
@@ -474,7 +507,7 @@ func declared() []Setting {
 			// scan skips `_watch` by name so a waiting file is never catalogued from its arrival
 			// path (which would then be pruned the moment intake moved it).
 			Key: "filler.watch_dir", Label: "Drop folder", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "",
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true),
 			Doc: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
 		},
 		{

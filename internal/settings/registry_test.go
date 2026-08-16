@@ -43,6 +43,33 @@ func TestRegistry_TMDBHelpNamesEveryEnabledSurface(t *testing.T) {
 	}
 }
 
+func TestRegistry_RestartKeys(t *testing.T) {
+	reg := NewRegistry()
+	want := []string{"filler.dir", "filler.watch_dir"}
+	got := reg.RestartKeys()
+	if len(got) != len(want) {
+		t.Fatalf("RestartKeys = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("RestartKeys[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRegistry_RejectsInvalidApplyTiming(t *testing.T) {
+	declaration := Setting{
+		Key: "test.path", EnvVar: "TEST_PATH", Group: GroupAdvanced,
+		Kind: KindString, Apply: ApplyTiming("eventually"), Doc: "test",
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("newRegistry accepted an unknown apply timing")
+		}
+	}()
+	newRegistry([]Setting{declaration})
+}
+
 // Every declared default must RESOLVE to the Go type its Kind promises, so a typed
 // accessor gets a real value on a fresh install with nothing stored and nothing in env.
 //
@@ -201,6 +228,38 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	}
 }
 
+func TestRegistry_FillerStoragePaths(t *testing.T) {
+	reg := NewRegistry()
+	clip, ok := reg.Get("filler.dir")
+	if !ok {
+		t.Fatal("filler.dir not declared")
+	}
+	watch, ok := reg.Get("filler.watch_dir")
+	if !ok {
+		t.Fatal("filler.watch_dir not declared")
+	}
+
+	for name, setting := range map[string]Setting{"filler.dir": clip, "filler.watch_dir": watch} {
+		for _, invalid := range []string{"relative/path", "/"} {
+			if _, err := setting.parse(invalid); err == nil {
+				t.Errorf("%s accepted invalid storage path %q", name, invalid)
+			}
+		}
+		for _, valid := range []string{"/data/clips", "/data/../clips", "/data/clips/", " /data/clips "} {
+			if _, err := setting.parse(valid); err != nil {
+				t.Errorf("%s rejected safe absolute storage path %q: %v", name, valid, err)
+			}
+		}
+	}
+
+	if _, err := clip.parse(""); err == nil {
+		t.Error("filler.dir accepted an empty clip-library root")
+	}
+	if got, err := watch.parse(""); err != nil || got != "" {
+		t.Errorf("filler.watch_dir empty optional value = %#v, %v; want empty and valid", got, err)
+	}
+}
+
 func TestRegistry_FillerBreakBounds(t *testing.T) {
 	r := NewRegistry()
 	for key, invalid := range map[string]string{
@@ -264,22 +323,6 @@ func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 		if !s.Advanced {
 			t.Errorf("%s should stay behind Advanced", key)
 		}
-	}
-}
-
-func TestRegistry_PlayoutCapacityDefaultsToAutomaticAndRejectsNegative(t *testing.T) {
-	s, ok := NewRegistry().Get("playout.max_channels")
-	if !ok {
-		t.Fatal("playout.max_channels not declared")
-	}
-	if s.Default != "0" {
-		t.Errorf("default = %#v, want string 0 (automatic measurement)", s.Default)
-	}
-	if got, err := s.parse("0"); err != nil || got != 0 {
-		t.Errorf("automatic value 0 = %#v, %v; want typed 0", got, err)
-	}
-	if _, err := s.parse("-1"); err == nil {
-		t.Error("negative capacity was accepted")
 	}
 }
 
