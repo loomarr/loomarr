@@ -23,7 +23,7 @@ import (
 // The adapter that makes internal playout work (§9.1) — where three separately-verified pieces
 // finally compose:
 //
-//	channels.CyclePreview  → what this channel airs (the SAME call reconcile and the UI use)
+//	store.Channel.Desired  → the accepted cycle reconciliation committed for broadcast
 //	playout.AiringAt       → which program that puts on right now, and at what offset
 //	library.StreamURL      → the URL ffmpeg can actually read
 //
@@ -64,9 +64,10 @@ type airingRecorder interface {
 	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
 }
 
-// channelReader is the one store method the arranged-cycle cache needs: the channel whose
-// lineup and policy the cache fingerprints (see cyclecache.go). Narrowed like the readers above
-// — fingerprinting is a READ, and the cache must not be able to mutate what it is keyed on.
+// channelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
+// the accepted cycle reconciliation committed; guide also fingerprints Lineup and Policy when it
+// forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
+// are reads, and neither path may mutate the channel it observes.
 type channelReader interface {
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
 }
@@ -153,29 +154,32 @@ type playoutResolver struct {
 	// don't store", never to a failed bind.
 	codecs codecWriter
 	cycles *cycleCache
-	// detectOnce / detected cache the measured encoder choice (detectedEncoder).
+	// detectOnce / detected cache the measured encoder choice (detectedEncoder). detectStart lets
+	// the first tune kick that work off without waiting for it; detectReady publishes the completed
+	// fields atomically so later programme boundaries use the measured hardware result.
 	//
 	// Cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far too
 	// slow on the per-program path. NOT a plain field set at construction: probing eagerly
 	// would add ~20s to every boot for a value most installs never override.
-	detectOnce  sync.Once
-	detected    playout.Encoder
-	maxChannels atomic.Int64
+	detectOnce    sync.Once
+	detectStart   sync.Once
+	detectReady   atomic.Bool
+	detectContext context.Context
+	detected      playout.Encoder
+	maxChannels   atomic.Int64
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
 //
-// It asks the SAME CyclePreview the reconciler and the UI's cycle preview call, which is the
-// whole point: what plays cannot drift from what the preview promised. A private "what should
-// playout air" path would be the §10 shared-assembler mistake in a new place — two answers to one
-// question, guaranteed to disagree eventually.
+// It reads the persisted Desired cycle that reconciliation ACCEPTED. CyclePreview is an authoring
+// and forecasting surface: it includes mutable availability and airing-history inputs, so invoking
+// it here would let the deck change at a programme EOF. Desired is also what makes the answer
+// survive a process restart; the deterministic channel epoch supplies the matching wall-clock
+// position.
 func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
 	now := r.now()
 
-	// `at` is `now`, not zero: CyclePreview treats a zero time as "now" via its own injected
-	// clock, and passing our clock explicitly keeps this resolvable in tests without reaching
-	// into the engine's.
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, now)
+	slots, err := r.acceptedCycle(ctx, channelID)
 	if err != nil {
 		return playout.Airing{}, "", err
 	}
@@ -239,6 +243,20 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, src.URL, nil
+}
+
+// acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
+// current guide own reads. Keeping the seam here makes it impossible for a programme boundary to
+// accidentally call the mutable authoring preview again.
+func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) ([]schedule.Slot, error) {
+	if r.channels == nil {
+		return nil, errors.New("read accepted channel schedule: channel reader is not configured")
+	}
+	ch, err := r.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("read accepted channel schedule %s: %w", channelID, err)
+	}
+	return ch.Desired, nil
 }
 
 // ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
@@ -405,9 +423,8 @@ func majorityBroadcastCodec(codecs []string) string {
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
 //
-// Deliberately on the SAME type as AiringNow, reading the SAME CyclePreview: the guide and the
-// encoder must agree, and the cheapest way to guarantee that is to give them one source rather
-// than two that happen to match today.
+// Deliberately on the SAME type as AiringNow. The rolling window containing now reads the SAME
+// persisted Desired cycle as the encoder; only other windows use CyclePreview as a forecast.
 //
 // `at` is the window's START, not `now`. CyclePreview evaluates curation rules at an instant —
 // a rule that switches the channel to horror at 21:00 changes the lineup — and a guide built at
@@ -434,7 +451,14 @@ func (r *playoutResolver) cycleAt(
 ) ([]schedule.Slot, time.Duration, error) {
 	if r.cycles == nil || r.channels == nil {
 		_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, window, err
+		if err != nil || r.channels == nil {
+			return slots, window, err
+		}
+		ch, cerr := r.channels.GetChannel(ctx, channelID)
+		if cerr == nil && ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+			return ch.Desired, window, nil
+		}
+		return slots, window, nil
 	}
 
 	ch, err := r.channels.GetChannel(ctx, channelID)
@@ -456,6 +480,9 @@ func (r *playoutResolver) cycleAt(
 	}
 
 	if slots, window, hit := r.cycles.get(key); hit {
+		if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+			return ch.Desired, window, nil
+		}
 		return slots, window, nil
 	}
 
@@ -464,7 +491,24 @@ func (r *playoutResolver) cycleAt(
 		return nil, 0, err
 	}
 	r.cycles.put(key, slots, window)
+	if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
+		return ch.Desired, window, nil
+	}
 	return slots, window, nil
+}
+
+// sameRollingWindow identifies the one forecast segment that is observed state: the segment that
+// contains the resolver's current wall clock. An unbounded cycle has only one window. Window
+// boundaries use Unix time, matching schedule.windowIndex and segmentedBroadcasts.
+func sameRollingWindow(a, b time.Time, window time.Duration) bool {
+	if window <= 0 {
+		return true
+	}
+	seconds := int64(window / time.Second)
+	if seconds <= 0 {
+		return true
+	}
+	return a.Unix()/seconds == b.Unix()/seconds
 }
 
 // maxGuideSegments bounds how many rolling windows one guide request will re-resolve.
@@ -483,10 +527,10 @@ const maxGuideSegments = 8
 //
 // The scheduler ROTATES: windowSlice advances its start by the window index, so day 0 airs one
 // slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
-// airs"). The encoder sees that, because AiringNow resolves the cycle at NOW — every programme it
-// spawns asks again. The guide did not: it resolved ONE cycle at `from` and looped it across the
-// whole requested span, so everything past the first window boundary was a forecast of a
-// rotation that will never happen.
+// airs"). Reconciliation commits that rotation into Desired at the new window; AiringNow reads the
+// accepted value. A multi-day guide still has to forecast the later windows: resolving ONE cycle
+// at `from` and looping it across the whole requested span would advertise a rotation that will
+// never happen.
 //
 // Measured on a 27-title channel at the same instant 24h out: the guide advertised RoboCop / The
 // Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon / Lethal
@@ -674,9 +718,9 @@ func (r *playoutResolver) airingFiller(
 	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
 	if r.pods == nil || r.fillerDir == "" {
-		// Filler unconfigured: the break becomes the offline card rather than an error. A
-		// channel with no commercials should still play.
-		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+		// Filler unconfigured: the break becomes a bounded break card rather than an error. Keep
+		// the gap itself so the handler knows this is scheduled airtime and where it ends.
+		return gap, "", nil
 	}
 
 	// PreviewAt, not Preview: the pod is seeded from THIS break's start, so consecutive
@@ -690,7 +734,7 @@ func (r *playoutResolver) airingFiller(
 		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
 		// bottoms out at "nothing matched", and a channel must not fail to tune because it has
 		// no ads.
-		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+		return gap, "", nil
 	}
 
 	// Walk the pod to the instant we are at INSIDE the break. gap.Offset is how far into the
@@ -704,13 +748,13 @@ func (r *playoutResolver) airingFiller(
 		if into < d {
 			// The embedded fallback bumper card has no file — it is generated, not played.
 			if e.Path == "" {
-				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+				return gap, "", nil
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
 			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
-				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+				return gap, "", nil
 			}
 			// Count the airing (V28). THIS is the honest write point, and the two
 			// tempting alternatives are both wrong:
@@ -754,7 +798,7 @@ func (r *playoutResolver) airingFiller(
 	// The pod is shorter than the break gap. Real: a 30s break with 20s of clips. The remainder
 	// is the offline card rather than a repeat, because repeating would mean the same ad twice
 	// in one break — worse than a moment of card.
-	return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+	return gap, "", nil
 }
 
 // Profile is the encode profile for the next program, resolved against live load.
@@ -869,7 +913,9 @@ func (r *playoutResolver) PlanFor(
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
-		// No operator override ⇒ ASK THE HARDWARE, once.
+		// No operator override ⇒ warm the measured answer once, but NEVER make this viewer wait
+		// for the machine benchmark. Until it completes, software is the conservative encoder that
+		// is immediately available; later programme boundaries switch to the cached hardware result.
 		//
 		// This used to fall straight through to libx264 with a comment claiming the
 		// capability prober's choice "was stored at wizard time" — but nothing ever stored
@@ -878,17 +924,35 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 		// measured rather than inferred from `ffmpeg -encoders` (which lists encoders the
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
-		enc = r.detectedEncoder(ctx)
+		r.warmEncoderDetection(ctx)
+		enc = playout.EncoderSoftware
+		if r.detectReady.Load() {
+			enc = r.detected
+		}
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
 }
 
-// detectedEncoder returns the best encoder that actually WORKS here, probing once.
+// warmEncoderDetection starts the expensive host probe once without putting it on a viewer's
+// critical path. The composition root's lifetime wins over an individual request context so one
+// TV disconnecting cannot discard the result every later tune needs.
+func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
+	r.detectStart.Do(func() {
+		ctx := r.detectContext
+		if ctx == nil {
+			ctx = context.WithoutCancel(fallback)
+		}
+		go r.detectedEncoder(ctx)
+	})
+}
+
+// detectedEncoder returns the best encoder that actually WORKS here, probing once. Control-plane
+// callers may wait for it; Profile deliberately uses warmEncoderDetection + detectReady instead.
 //
 // Lazily and exactly once, which is the only workable timing: Detect trial-encodes every
 // candidate (~5s each), so it is far too slow for the per-program path and would add ~20s to
-// every boot if done eagerly — for a value most installs never need. The first program to need
-// it pays; everything after reads the cached answer.
+// every boot if done eagerly — for a value most installs never need. The first demand starts it
+// asynchronously; everything after completion reads the cached answer.
 //
 // An operator who changes their hardware (adds GPU passthrough, which is a compose change and
 // needs a restart anyway) gets a fresh probe on the next start.
@@ -919,6 +983,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 				"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
 				"skipped", skipped)
 		}
+		r.detectReady.Store(true)
 	})
 	return r.detected
 }

@@ -111,7 +111,8 @@ for the LLM. Details in [`docs/design.md`](docs/design.md) §14.
   `/readyz` also work.
 - **Metrics** — `/v1/metrics` in Prometheus format: HTTP rates and latency, Go runtime, state
   gauges, per-dependency outbound timing, and channel reconcile timing.
-- **Backup** — `GET /v1/backup` for SQLite, `pg_dump` for Postgres. Backups contain secrets.
+- **Backup** — `GET /v1/backup` for SQLite; a mode-`0600` `pg_dump --format=custom` archive for
+  Postgres. Backups contain secrets; restore procedures are in the install and upgrade guides.
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
@@ -30,6 +30,35 @@ const mmss = (seconds: number): string => {
 
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
+
+// Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
+// This is a poster, not a hidden player or decoder: transport teardown can release immediately,
+// while the viewer keeps the last honest frame until the replacement produces its first one.
+const holdDecodedFrame = (video: HTMLVideoElement) => {
+  if (
+    video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+    video.videoWidth < 1 ||
+    video.videoHeight < 1
+  ) {
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  try {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    video.poster = canvas.toDataURL("image/png");
+  } catch {
+    // A cross-origin source without canvas permission cannot be captured. Leave the element's
+    // existing poster alone; source replacement still proceeds normally.
+  }
+};
+
+const clearHeldFrame = (video: HTMLVideoElement) => {
+  if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
+};
 
 const VideoPlayer = ({
   src,
@@ -72,13 +101,26 @@ const VideoPlayer = ({
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
 
-  // Custom source binding (hls.js). `attach(el)` runs on mount and its cleanup on unmount. Stays in
-  // the component because it wires the caller's `attach` onto the element the component owns.
-  useEffect(() => {
+  // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
+  // effects behind outgoing media work; the Tuner has already painted its acknowledgement before
+  // changing this source. Stays here because it wires `attach` onto the element this component owns.
+  useLayoutEffect(() => {
     if (!attach) return;
     const el = videoRef.current;
     if (!el) return;
-    return attach(el);
+    const release = attach(el);
+    const onReplacementFrame = () => clearHeldFrame(el);
+    // Registering rVFC immediately can observe the outgoing decoded frame that cleanup just
+    // captured, while registering it after loadeddata can miss a compact replacement's only
+    // presented frame. loadeddata itself means the replacement has current frame data, which is
+    // exactly when the held poster should give way.
+    const onReplacementLoadedData = onReplacementFrame;
+    el.addEventListener("loadeddata", onReplacementLoadedData, { once: true });
+    return () => {
+      el.removeEventListener("loadeddata", onReplacementLoadedData);
+      holdDecodedFrame(el);
+      release();
+    };
   }, [attach]);
 
   // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows

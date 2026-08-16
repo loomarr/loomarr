@@ -81,22 +81,30 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 		t.Fatalf("Tune = (_, %v, %v), want prepared hit", hit, err)
 	}
 	manifest := string(presentation.Manifest)
+	initAsset := preparedAssetToken(pub.Key, "init.mp4")
+	seg0 := preparedAssetToken(pub.Key, "seg-0.m4s")
+	seg1 := preparedAssetToken(pub.Key, "seg-1.m4s")
+	seg2 := preparedAssetToken(pub.Key, "seg-2.m4s")
+	for _, token := range []string{initAsset, seg0, seg1, seg2} {
+		if strings.Contains(token, "/") {
+			t.Fatalf("prepared asset token %q spans multiple route segments", token)
+		}
+	}
 	for _, want := range []string{
 		"#EXT-X-MEDIA-SEQUENCE:500", "#EXT-X-PROGRAM-DATE-TIME:1970-01-01T00:16:40Z",
-		fmt.Sprintf(`#EXT-X-MAP:URI="%s/init.mp4"`, pub.Key),
-		pub.Key + "/seg-0.m4s", pub.Key + "/seg-1.m4s", pub.Key + "/seg-2.m4s",
+		fmt.Sprintf(`#EXT-X-MAP:URI="%s"`, initAsset), seg0, seg1, seg2,
 	} {
 		if !strings.Contains(manifest, want) {
 			t.Errorf("manifest missing %q:\n%s", want, manifest)
 		}
 	}
-	for _, unwanted := range []string{pub.Key + "/seg-3.m4s", "#EXT-X-ENDLIST"} {
+	for _, unwanted := range []string{preparedAssetToken(pub.Key, "seg-3.m4s"), "#EXT-X-ENDLIST"} {
 		if strings.Contains(manifest, unwanted) {
 			t.Errorf("manifest contains %q:\n%s", unwanted, manifest)
 		}
 	}
 
-	asset, ok, err := preparedOrigin.OpenAsset("ch-one", PlanBaseline, pub.Key+"/seg-2.m4s")
+	asset, ok, err := preparedOrigin.OpenAsset("ch-one", PlanBaseline, seg2)
 	if err != nil || !ok {
 		t.Fatalf("OpenAsset = (_, %v, %v), want hit", ok, err)
 	}
@@ -107,6 +115,9 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	}
 	if !asset.Immutable {
 		t.Fatal("prepared asset is not marked immutable")
+	}
+	if _, ok, err := preparedOrigin.OpenAsset("ch-one", PlanBaseline, seg2+".ts"); err != nil || ok {
+		t.Fatalf("asset with a forged content-type suffix = (_, %v, %v), want miss", ok, err)
 	}
 }
 
@@ -186,9 +197,9 @@ func TestPreparedOriginCarriesThePreviousAiringAcrossADiscontinuity(t *testing.T
 	}
 	manifest := string(presentation.Manifest)
 	wantOrder := []string{
-		previous.Key + "/seg-2.m4s", previous.Key + "/seg-3.m4s",
-		"#EXT-X-DISCONTINUITY", fmt.Sprintf(`#EXT-X-MAP:URI="%s/init.mp4"`, current.Key),
-		current.Key + "/seg-0.m4s",
+		preparedAssetToken(previous.Key, "seg-2.m4s"), preparedAssetToken(previous.Key, "seg-3.m4s"),
+		"#EXT-X-DISCONTINUITY", fmt.Sprintf(`#EXT-X-MAP:URI="%s"`, preparedAssetToken(current.Key, "init.mp4")),
+		preparedAssetToken(current.Key, "seg-0.m4s"),
 	}
 	position := 0
 	for _, want := range wantOrder {
