@@ -16,7 +16,7 @@ graph LR
   C -->|"web/, Makefile"| F
   C --> W
   C -->|"docs/, README, docs-site/"| D
-  C -->|"Dockerfile only"| I
+  C -->|"all Docker build inputs"| I
   G --> OK
   P --> OK
   F --> OK
@@ -42,9 +42,15 @@ the doc-claims test reads them, and `scripts/` is there because the job executes
 
 ## The image job is the exception
 
-`Makefile` and workflow changes trigger Go and Frontend, but not the image, which gates on
-`Dockerfile` and `.dockerignore` only. It builds both release platforms under QEMU — about half
-an hour of billed CI — and neither of those files changes what `docker build` produces.
+The image filter follows every source family copied by the Dockerfile: Docker metadata, packaged
+LICENSE/notices, Cargo and Rust sources, Go sources/modules/embedded migrations, embedded help, the frontend,
+OpenAPI, and the bundle guard. `Makefile` and workflow-only changes do not change image bytes and
+therefore do not trigger it.
+
+It builds each release platform on a native runner, loads the resulting image without pushing it,
+and inspects the packaged LICENSE/notices and OCI labels. The Dockerfile's build-time commands prove
+the bundled tools; the post-build inspection proves the final runtime filesystem rather than a
+comment or an intermediate stage.
 
 It's also the only job with a `timeout-minutes`; GitHub's default is six hours.
 
@@ -76,13 +82,14 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 
 ## Hand-maintained lists, and what guards them
 
-Two lists in this repo are written by hand and would rot silently. Each has a script that fails
-when it drifts, and both run in CI:
+Three lists in this repo are written by hand and would rot silently. Each has an executable guard
+that fails when it drifts, and all three run in CI:
 
 | List | Guard | Runs via |
 | --- | --- | --- |
 | `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of `make check` |
 | Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, its own CI step |
+| Release-image source-family probes | `releaseverify.VerifyCIImageInputs` | `make release-verify`, part of `make check` |
 
 `tags-verify` compares the tags in `//go:build` lines against `TAGS` and fails **both ways**:
 

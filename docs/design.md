@@ -198,6 +198,8 @@ flowchart TD
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`releaseverify`**
+  Validates the repository's release publication policy.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`web`** · 1 importer
@@ -4909,6 +4911,16 @@ already present in GHCR, publishes no mutable major/minor alias, and serializes 
 Git tag. Registry lookup fails closed: only buildx's exact ref-qualified rendering of GHCR's
 `MANIFEST_UNKNOWN` response permits a push; generic 404, authentication, transport, rate-limit, and
 service errors stop publication. Fixture-style release-policy tests cover each of those classes.
+The release build pushes an untagged, canonical manifest digest containing exactly `linux/amd64` and
+`linux/arm64`; no public name exists at that point. Cosign is fixed at `v2.6.5` and signs
+`IMAGE@DIGEST` keylessly, then verifies that same reference against the exact workflow identity and
+GitHub Actions OIDC issuer. Only after both operations succeed does the publisher promote the digest
+to the immutable SemVer tag and, for stable releases only, `latest`. It then re-resolves every public
+name to the signed digest and exact platform set. Signing or identity verification failure therefore
+cannot publish a public tag. The policy parser rejects duplicate YAML keys, anchors/aliases, custom
+tags, hidden build tags, mutable third-party action refs, and reordered publication steps; publisher
+tests inject signing and verification failures and prove neither reaches promotion. Every third-party
+GitHub Action used by repository workflows is pinned to a full commit SHA.
 The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
 ran; a manual full release-candidate rerun is available when a docs-only final commit would
 otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
@@ -4945,6 +4957,16 @@ split storage model.
 Every non-Go binary is invoked via `exec`. `loomarr-image` is required application code; `yt-dlp`,
 `ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are vendored
 tools. The Go server stays cgo-free, and pixel buffers never cross the process boundary.
+
+The runtime packages Loomarr's `LICENSE` and `THIRD_PARTY_NOTICES.md` under
+`/usr/share/doc/loomarr/`, and its OCI metadata links directly to that notice. The aggregate license
+expression includes MIT and GPL-3.0-or-later: BtbN's GPL build enables version 3, and upstream states
+the official yt-dlp standalone executables combine GPLv3+ dependencies. No "mere aggregation"
+conclusion is made in product documentation. Release verification fails closed if those files,
+metadata, upstream licensing citations, or the explicit open-review section disappear. This is
+packaging honesty, not legal closure: exact corresponding source for ffmpeg and yt-dlp's bundled GPL
+dependencies, DejaVu/font and transitive license texts, Prometheus NOTICE review, immutable base
+images/package inputs, and final legal review remain beta blockers.
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
@@ -5698,4 +5720,3 @@ render through the shared frontend `Image` primitive. An animated filler hover m
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
-

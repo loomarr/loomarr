@@ -113,6 +113,15 @@ FROM debian:stable-slim AS runtime
 ARG TARGETARCH
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
+# Release-asset digests were copied from the upstream GitHub release records. Some
+# upstream records are mutable, so the committed checksums — not the record itself —
+# are the fail-closed identity. Keep both architectures explicit: a version tag alone
+# does not stop an asset from being replaced, and one architecture must never inherit
+# the other's checksum.
+ARG YTDLP_AMD64_SHA256=6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae
+ARG YTDLP_ARM64_SHA256=b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1
+ARG DENO_AMD64_SHA256=934d1bd5cb09eaed7f2e4a4fc58208d04a3c5c0fcde9f319d93d735265c67a4a
+ARG DENO_ARM64_SHA256=310b8f48e59964ff18890d35e64f64fb90e8b1cc5d9ebff8c818327d5afb16d2
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AGAINST THE NEW BUILD.
 #
 # **ffmpeg n9 BREAKS INTERNAL PLAYOUT ENTIRELY** (§9.1), so this pin has a CEILING, not just a
@@ -147,6 +156,8 @@ ARG DENO_VERSION=v2.9.2
 # the full `make test-ffmpeg` playout suite is green against it.
 ARG FFMPEG_TAG=n8.1-latest
 ARG WHISPER_VERSION=v1.9.1
+ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
+ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
 # The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
 # that silently changes content changes transcription, and transcription decides where
 # clips get cut. Same reasoning as the version pins above, higher stakes.
@@ -166,8 +177,8 @@ ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1b
 ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) YTDLP_ASSET=yt-dlp_linux;         DENO_ARCH=x86_64;  FFMPEG_ARCH=linux64;    WHISPER_ARCH=x64 ;; \
-      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; DENO_ARCH=aarch64; FFMPEG_ARCH=linuxarm64; WHISPER_ARCH=arm64 ;; \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's asset name repeats the release series in the SUFFIX
@@ -239,9 +250,11 @@ RUN set -eux; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
     curl -fsSL -o /usr/local/bin/yt-dlp \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
+    echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod +x /usr/local/bin/yt-dlp; \
     curl -fsSL -o /tmp/deno.zip \
       "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
+    echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
     unzip -q /tmp/deno.zip -d /usr/local/bin; \
     chmod +x /usr/local/bin/deno; \
     rm -f /tmp/deno.zip; \
@@ -278,6 +291,7 @@ RUN set -eux; \
     # at load with "libgomp.so.1: cannot open shared object file".
     curl -fsSL -o /tmp/whisper.tar.gz \
       "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
+    echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/whisper.tar.gz -C /tmp; \
     install -d /usr/local/lib/whisper; \
     cp "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"/libwhisper.so* \
@@ -351,6 +365,7 @@ RUN set -eux; \
 ARG VERSION=""
 COPY --from=build /out/loomarr /loomarr
 COPY --from=image-worker /src/target/release/loomarr-image /usr/local/bin/loomarr-image
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/
 RUN contract="$(/usr/local/bin/loomarr-image capabilities --protocol 1 --self-test)"; \
     echo "$contract" | grep -q '"selfTest":true'; \
     echo "$contract" | grep -q "\"release\":\"${VERSION:-dev}\""
@@ -387,12 +402,14 @@ ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
     INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin \
     FILLER_LANGUAGE_MODEL=/usr/local/share/whisper/ggml-tiny.bin
 ARG COMMIT=""
-# licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the
-# bundled GPL ffmpeg. See THIRD_PARTY_NOTICES.md for the source offer.
+# licenses is the SPDX expression for the aggregate image: Loomarr source (MIT),
+# bundled ffmpeg and the official yt-dlp standalone executable (both
+# GPL-3.0-or-later). The packaged notice records redistribution blockers honestly.
 LABEL org.opencontainers.image.title="loomarr" \
       org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
       org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
-      org.opencontainers.image.licenses="MIT AND GPL-3.0-only" \
+      org.opencontainers.image.documentation="https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md" \
+      org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
 EXPOSE 8080
