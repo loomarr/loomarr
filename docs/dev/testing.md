@@ -36,7 +36,7 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | Visual + a11y | `make fe-visual` | Every story, two viewports, pixel + axe | CI |
 | e2e | `make e2e` | The embedded SPA through first-run | CI |
 | ffmpeg | `make test-ffmpeg` | Programmes sequence through real ffmpeg | manual |
-| LLM eval | `make eval` | Real intents against a real model | manual |
+| LLM eval | `make eval` | Exact shipped template Intents and the wider corpus against a real model | manual |
 | Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
 | Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
@@ -77,6 +77,57 @@ Each of these has happened here:
 Pod assembly and shuffling take an explicit seed. The visual suite pins the timezone to UTC.
 Baselines are Linux-only, generated in the pinned Docker image; local macOS or Windows runs
 write differently-suffixed files that are gitignored.
+
+## First-channel acceptance
+
+The acceptance path is one product journey, not a set of component demos: fresh setup → choose a
+canonical template in the wizard or Guide → durable proposal-job progress → Proposal review →
+approve → `building` → `live` → the same Channel appears in Guide and Watch. The browser test
+submits the template's **complete typed Intent**, not just its description. While the Channel is
+`building`, Watch must make no HLS request; a Channel SSE frame may accelerate the transition, but an
+authoritative refetch is what permits playback.
+
+Proposal-job interface tests pin these distinct outcomes:
+
+1. `queued` or `running`, with no Proposal yet;
+2. `done` with a `submitted` Proposal;
+3. `done` with the newest already-`approved` or `denied` Proposal;
+4. `failed` with no Proposal and a bounded safe failure code.
+
+Run each recovery assertion once with SSE disabled or its terminal frame dropped. Preserve the active
+`jobId` across reload and require the GET projection to restore status, full Intent, failure, and
+Proposal. Retry submits that same full Intent into a **fresh** job; Edit opens a populated form.
+Exercise `no_grounded_titles`, timeout/provider failure, and the generic safe fallback without
+exposing raw provider text. A member can read their own job but gets 403 for another member's; an
+admin can read both. Equal Intents submitted by two users must have different job ids, Proposal ids,
+ownership, and decision histories even when the semantic cache supplies the content.
+
+The end-to-end integration has two filler fixtures. With zero eligible clips, approval still creates
+the Channel, reconcile writes real programs with no break slots, and playback is back-to-back. With
+seeded eligible clips, the same path attaches filler through the existing assembler. Reconcile each
+variant twice to prove idempotence. Filler availability is never a prerequisite assertion for first
+channel success.
+
+## Semantic template certification
+
+`make eval` is manual and networked by design; it never joins `make check`. Its template cases load
+the **same canonical product data** the wizard and Guide ship, including stable id, description,
+`era`, `tone`, runtime target, and must-include/exclude fields. A separately retyped sentence is not a
+template certification, even if it sounds equivalent.
+
+Certification runs all four exact template Intents through the real grounded suggester and records
+the provider, model, catalog fixture or fingerprint, and time. Every case requires a non-empty
+grounded result and zero fabricated ids. It additionally asserts the promise each template makes:
+
+- **90s Saturday Morning Cartoons:** 1990–1999 binding and a kids-safe ceiling/lineup;
+- **Cozy Mystery Nights:** mystery theme with the stated non-gruesome safety intent preserved;
+- **Late-Night Sci-Fi:** science-fiction theme and the canonical atmospheric tone;
+- **Action Movie Marathon:** action theme and no content above the stated PG-13 ceiling.
+
+These are semantic expectations, so certification scores theme fit without pinning one stochastic
+title list. Connectivity and tool-capability probes are prerequisites, not substitutes: they can be
+green while template certification fails. The run must be explicit because a hosted provider can
+cost money; setup/status polling and ordinary health checks never invoke it.
 
 ## Fixtures
 

@@ -355,16 +355,37 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
 1. Shorten `episodeNoRepeat`/`movieNoRepeat` (halve, floor 24h).
 2. Relax `seriesMinGap`/`blockMax`.
 3. Widen `era` by ±2 years per step (never past the intent's decade boundary if one was stated).
-4. Pad with filler pods (§10 main doc — never dead air).
+4. Pad with filler pods when the saved selection resolves eligible clips (§10 main doc). With no
+   eligible filler, emit no break slots and run the real programs back-to-back; an optional catalog
+   cannot become a channel-creation gate.
 
-**Never relaxed, ever:** `audience` and explicit scope filters (series/seasons). A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
+**Never relaxed, ever:** `audience` and explicit scope filters (series/seasons). A too-small kids'
+pool becomes a smaller safe cycle, padded with eligible filler when it exists — it does not become a
+less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or
+identity.
 
 ## 8. Pipeline placement & proposal surface
 
-- **Suggester (§8):** output contract gains `policy` (schema above), grounded like everything else; templates ship pre-filled policies ("90s Saturday Morning" carries `TV-Y7` + era + genres out of the box); intent-hint copy teaches the constraint vocabulary.
+- **Suggester (§8):** output contract gains `policy` (schema above), grounded like everything else.
+  The four shipped templates are canonical, complete typed Intents shared by the wizard, Guide, and
+  semantic harness — never four descriptions copied between layers. Their expected policy facts are
+  certification assertions over real suggester output (for example the Saturday template must bind
+  the 1990s and a kids ceiling), not presentation-only policy silently injected after generation.
+  Intent-hint copy teaches the same constraint vocabulary.
+- **Proposal job vs Proposal (§7/§8):** the job owns execution, failure, retry, and requester
+  visibility; only a successful job produces the grounded Proposal carrying this policy. A failure
+  has no empty policy artifact. Approval and every later merge consume the Proposal, never an SSE
+  progress frame or a browser reconstruction of the Intent.
 - **Proposal review + channel editor (§12):** policy renders as editable chips (ceiling, seasons, era, ordering, seasonal mode) + the exclusion report (§4) + a **cycle preview** (§8.1 `GET …/cycle?at=` — first N slots with the active-rule attribution) so "did old-school bind?" and "what airs Saturday 9am?" are answerable by looking.
   - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** — it has no column and no event to put one in, and the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
-- **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`, so it round-trips and inherits the same "omitted = any" default; a new channel seeds its filler era from `scope.era`.
+- **Filler is an optional part of the channel editor (§10):** `policy.filler` (the
+  `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria
+  (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox
+  (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply.
+  It also rides `policy_json`, so it round-trips and inherits the same "omitted = any" default; a new
+  channel seeds its filler era from `scope.era`. If that selection resolves no clips, creation and
+  approval still proceed and the builder writes programs back-to-back with no break slots. Adding
+  clips later lets ordinary reconcile attach filler; it is tuning, not repair of a failed Channel.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
 
 ## 8.1. The cycle-preview endpoint & the rules editor (making the engine legible + editable)
