@@ -198,3 +198,4 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `auth.sso.issuer` (`AUTH_SSO_ISSUER`) | url | — | Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there. |
 | `auth.sso.client_id` (`AUTH_SSO_CLIENT_ID`) | string | — | The client ID your provider issued for Loomarr. |
 | `auth.sso.client_secret` (`AUTH_SSO_CLIENT_SECRET`) | secret | (secret) | The client secret your provider issued for Loomarr. |
+
