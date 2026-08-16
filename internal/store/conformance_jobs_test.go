@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -64,6 +65,25 @@ func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetJob(ctx, "nope"); err != ErrNotFound {
 		t.Errorf("GetJob(missing) = %v, want ErrNotFound", err)
+	}
+
+	// The new failure code is backward-compatible with a pre-00059 writer that
+	// omits it: the schema default must make that row readable as no failure.
+	legacyID := "job-old-writer"
+	sqlStore := s.(*sqlStore)
+	if _, err := sqlStore.db.ExecContext(ctx, sqlStore.ph(
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, deadline, attempts, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		legacyID, "suggest", "queued", `{}`, "legacy-hash", "user-1", "",
+		epoch(now), 0, epoch(now), epoch(now)); err != nil {
+		t.Fatalf("insert job through old column set: %v", err)
+	}
+	legacy, err := s.GetJob(ctx, legacyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.FailureCode != "" {
+		t.Errorf("old-writer failure code = %q, want empty migration default", legacy.FailureCode)
 	}
 }
 
@@ -152,6 +172,8 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	job := sampleJob("job-success", "hash-success", now, now)
 	job.Status = "running"
+	job.FailureCode = "previous_failure"
+	job.LastError = "previous private diagnostic"
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +188,8 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotJob.Status != "done" || !gotJob.UpdatedAt.Equal(now.Add(time.Minute)) {
+	if gotJob.Status != "done" || gotJob.FailureCode != "" || gotJob.LastError != "" ||
+		!gotJob.UpdatedAt.Equal(now.Add(time.Minute)) {
 		t.Fatalf("completed job = status %q updated %v", gotJob.Status, gotJob.UpdatedAt)
 	}
 	gotProposal, err := s.GetProposal(ctx, proposal.ID)
@@ -215,14 +238,16 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateJob(ctx, failed); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts, "provider unavailable", now.Add(time.Minute)); err != nil {
+	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts,
+		"provider_unavailable", "provider returned secret diagnostic", now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	gotFailed, err := s.GetJob(ctx, failed.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" || gotFailed.Attempts != 2 {
+	if gotFailed.Status != "failed" || gotFailed.FailureCode != "provider_unavailable" ||
+		gotFailed.LastError != "provider returned secret diagnostic" || gotFailed.Attempts != 2 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
 	}
 
@@ -263,7 +288,8 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CommitSuggestionSuccess(ctx, stale.ID, stale.Attempts, staleProposal, now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale success = %v, want ErrJobNotRunning", err)
 	}
-	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts, "old failure", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts,
+		"provider_unavailable", "old failure", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale failure = %v, want ErrJobNotRunning", err)
 	}
 	winner, err := s.GetJob(ctx, stale.ID)
@@ -285,6 +311,8 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	job := sampleJob("job-requeue", "hash-original", now, now)
 	job.Status = "done"
 	job.Attempts = 1
+	job.FailureCode = "previous_failure"
+	job.LastError = "previous private diagnostic"
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +336,8 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queued.Status != "queued" || queued.Attempts != 1 || queued.IntentHash != "hash-refine-a" {
+	if queued.Status != "queued" || queued.Attempts != 1 || queued.IntentHash != "hash-refine-a" ||
+		queued.FailureCode != "" || queued.LastError != "" {
 		t.Fatalf("stale requeue overwrote winner: %+v", queued)
 	}
 
@@ -363,6 +392,8 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	cloneJob := sampleJob("job-clone", source.IntentHash, now.Add(time.Minute), now.Add(time.Minute))
 	cloneJob.Status = "done"
 	cloneJob.CreatedBy = "bob"
+	cloneJob.FailureCode = "stale_failure"
+	cloneJob.LastError = "stale private diagnostic"
 	clone, err := s.CloneSuggestionSuccess(ctx, source.ID, cloneJob, "proposal-clone")
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +408,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotJob.Status != "done" || gotJob.CreatedBy != "bob" {
+	if gotJob.Status != "done" || gotJob.CreatedBy != "bob" || gotJob.FailureCode != "" || gotJob.LastError != "" {
 		t.Fatalf("cloned job = %+v", gotJob)
 	}
 
@@ -485,15 +516,136 @@ func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateJob(ctx, other); err != nil {
 		t.Fatal(err)
 	}
+	foreign := Proposal{
+		ID: "proposal-foreign-owner", JobID: other.ID, Status: "submitted", CreatedBy: "mallory",
+		ProposalJSON: `{"name":"foreign"}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CreateProposal(ctx, foreign); err != nil {
+		t.Fatal(err)
+	}
 	otherSnapshot, err := s.GetProposalJob(ctx, other.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if otherSnapshot.Proposal != nil {
-		t.Fatalf("snapshot joined another job's proposal: %+v", otherSnapshot)
+		t.Fatalf("snapshot joined a proposal from another owner: %+v", otherSnapshot)
 	}
 	if _, err := s.GetProposalJob(ctx, "missing-job"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing snapshot = %v, want ErrNotFound", err)
+	}
+}
+
+func testListProposalJobs(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	create := func(id, creator, status string, offset time.Duration) Job {
+		t.Helper()
+		job := sampleJob(id, "hash-"+id, now.Add(offset), now.Add(offset))
+		job.CreatedBy = creator
+		job.Status = status
+		if status == "failed" {
+			job.FailureCode = "provider_unavailable"
+			job.LastError = "private diagnostic"
+		}
+		if err := s.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		return job
+	}
+	proposal := func(job Job, id, status string) {
+		t.Helper()
+		p := Proposal{
+			ID: id, JobID: job.ID, Status: status, CreatedBy: job.CreatedBy,
+			ProposalJSON: `{}`, CreatedAt: job.CreatedAt, UpdatedAt: job.CreatedAt,
+		}
+		if status == "approved" {
+			p.ApprovedBy = "admin"
+			p.ApprovedAt = p.CreatedAt
+		}
+		if status == "denied" {
+			p.DenyReason = "not this one"
+		}
+		if err := s.CreateProposal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	queued := create("list-queued", "alice", "queued", 0)
+	proposal(queued, "proposal-hidden-queued", "approved")
+	submitted := create("list-submitted", "alice", "done", time.Second)
+	proposal(submitted, "proposal-submitted", "submitted")
+	failed := create("list-failed", "alice", "failed", 2*time.Second)
+	approved := create("list-approved", "bob", "done", 3*time.Second)
+	proposal(approved, "proposal-approved", "approved")
+	running := create("list-running", "alice", "running", 4*time.Second)
+	proposal(running, "proposal-hidden-running", "approved")
+	denied := create("list-denied", "alice", "done", 5*time.Second)
+	proposal(denied, "proposal-denied", "denied")
+
+	got, err := s.ListProposalJobs(ctx, ProposalJobFilter{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Job.ID != denied.ID || got[1].Job.ID != running.ID {
+		t.Fatalf("newest two proposal jobs = %+v", got)
+	}
+	if got[0].Proposal == nil || got[0].Proposal.Status != "denied" {
+		t.Fatalf("done decided proposal = %+v", got[0])
+	}
+	if got[1].Proposal != nil {
+		t.Fatalf("active job exposed old proposal = %+v", got[1])
+	}
+
+	aliceDone, err := s.ListProposalJobs(ctx, ProposalJobFilter{CreatedBy: "alice", Status: "done", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliceDone) != 2 || aliceDone[0].Job.ID != denied.ID || aliceDone[1].Job.ID != submitted.ID {
+		t.Fatalf("creator + status filters = %+v", aliceDone)
+	}
+
+	failedOnly, err := s.ListProposalJobs(ctx, ProposalJobFilter{Status: "failed", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failedOnly) != 1 || failedOnly[0].Job.ID != failed.ID || failedOnly[0].Proposal != nil ||
+		failedOnly[0].Job.FailureCode != "provider_unavailable" {
+		t.Fatalf("failed proposal jobs = %+v", failedOnly)
+	}
+
+	bob, err := s.ListProposalJobs(ctx, ProposalJobFilter{CreatedBy: "bob", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bob) != 1 || bob[0].Job.ID != approved.ID || bob[0].Proposal == nil || bob[0].Proposal.Status != "approved" {
+		t.Fatalf("owner-filtered decided proposal = %+v", bob)
+	}
+	empty, err := s.ListProposalJobs(ctx, ProposalJobFilter{CreatedBy: "missing", Limit: 10})
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("missing creator list = %+v, %v", empty, err)
+	}
+
+	if _, err := s.ListProposalJobs(ctx, ProposalJobFilter{Status: "submitted", Limit: 10}); !errors.Is(err, ErrInvalidProposalJobFilter) {
+		t.Fatalf("proposal status used as job status = %v, want ErrInvalidProposalJobFilter", err)
+	}
+	if _, err := s.ListProposalJobs(ctx, ProposalJobFilter{Limit: -1}); !errors.Is(err, ErrInvalidProposalJobFilter) {
+		t.Fatalf("negative limit = %v, want ErrInvalidProposalJobFilter", err)
+	}
+
+	// The caller cannot turn this into an unbounded audit-table scan. All bulk
+	// fixtures are older than the six semantic cases, so the newest result still
+	// independently proves ordering while the count proves the cap.
+	for i := 0; i < 101; i++ {
+		create(fmt.Sprintf("list-bulk-%03d", i), "bulk", "queued", time.Duration(i-1000)*time.Second)
+	}
+	capped, err := s.ListProposalJobs(ctx, ProposalJobFilter{Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(capped) != 100 || capped[0].Job.ID != denied.ID {
+		t.Fatalf("capped proposal jobs = %d, first %+v", len(capped), capped[0].Job)
 	}
 }
 

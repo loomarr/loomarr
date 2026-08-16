@@ -50,6 +50,10 @@ var ErrJobNotTerminal = errors.New("store: suggestion job is not terminal")
 // mistake from moving generated content across user audit lifecycles.
 var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
 
+// ErrInvalidProposalJobFilter reports a list bound the store cannot safely or
+// meaningfully execute (unknown lifecycle status or a negative limit).
+var ErrInvalidProposalJobFilter = errors.New("store: invalid proposal job filter")
+
 // ErrChannelConflict reports that a channel write lost a uniqueness race (normally
 // number or non-empty intent binding). Approval transactions have rolled back
 // completely when returning it, so their caller may safely reload and replan.
@@ -134,6 +138,10 @@ type JobStore interface {
 	// proposal is hidden while a reused refine job is queued/running/failed;
 	// only a done job exposes its newest proposal in any decision state.
 	GetProposalJob(ctx context.Context, id string) (ProposalJob, error)
+	// ListProposalJobs returns newest executions first through the same consistent
+	// projection as GetProposalJob. Empty creator/status filters mean all; limit 0
+	// uses a bounded default and overlarge limits are capped.
+	ListProposalJobs(ctx context.Context, filter ProposalJobFilter) ([]ProposalJob, error)
 	UpdateJob(ctx context.Context, j Job) error
 	// ClaimDueJobs atomically claims up to limit queued jobs whose deadline is
 	// at/before now, for the worker pool (§8). The claim also moves each job to
@@ -150,7 +158,7 @@ type JobStore interface {
 	// CommitSuggestionFailure moves a running job to failed without rewriting
 	// stale intent or ownership fields. A lost transition leaves the newer
 	// lifecycle untouched.
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, failureCode, diagnostic string, updatedAt time.Time) error
 	// RequeueSuggestionJob replaces the intent only when the caller's observed
 	// terminal execution is still current. Attempts are preserved; the next claim
 	// increments them to create a new execution token.

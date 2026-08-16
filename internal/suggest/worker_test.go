@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -207,14 +210,19 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	if j.LastError == "" {
 		t.Error("failed job should record the timeout error")
 	}
+	if j.FailureCode != "timed_out" {
+		t.Fatalf("hung job failure code = %q, want timed_out", j.FailureCode)
+	}
 }
 
 type lifecycleErrorStore struct {
 	store.Store
-	successErr    error
-	failureErr    error
-	successCalled chan struct{}
-	failureCalled chan struct{}
+	successErr        error
+	failureErr        error
+	successCalled     chan struct{}
+	failureCalled     chan struct{}
+	failureCode       string
+	failureDiagnostic string
 }
 
 func newLifecycleErrorStore(st store.Store) *lifecycleErrorStore {
@@ -244,9 +252,12 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	cause string,
+	code string,
+	diagnostic string,
 	updatedAt time.Time,
 ) error {
+	s.failureCode = code
+	s.failureDiagnostic = diagnostic
 	select {
 	case s.failureCalled <- struct{}{}:
 	default:
@@ -254,7 +265,114 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	if s.failureErr != nil {
 		return s.failureErr
 	}
-	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, updatedAt)
+	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, code, diagnostic, updatedAt)
+}
+
+type failingProvider struct {
+	err error
+}
+
+func (p failingProvider) Name() string { return "failing-provider" }
+
+func (p failingProvider) Chat(context.Context, []llm.Message, llm.ChatOptions) (llm.Response, error) {
+	return llm.Response{}, p.err
+}
+
+func buildFailingService(t *testing.T, st suggest.ProposalStore, provider llm.Provider) *suggest.Service {
+	t.Helper()
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	cat := catalog.New(lib, tm)
+	sug := suggest.New(provider, cat, tm, 10)
+	return suggest.NewService(st, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+		idGen(), time.Now, testkit.Logger())
+}
+
+func TestWorker_FailuresPersistBoundedCodesAndPrivateDiagnostics(t *testing.T) {
+	providerDetail := `upstream said "account api-key suffix 1234"`
+	tests := []struct {
+		name       string
+		provider   llm.Provider
+		wantCode   string
+		wantDetail string
+	}{
+		{
+			name: "no grounded titles",
+			provider: testkit.NewLLM(testkit.FinalResponse(
+				`{"picks":[{"mediaType":"movie","tmdbId":999999,"name":"Invented"}]}`,
+			)),
+			wantCode: "no_grounded_titles",
+		},
+		{
+			name: "provider transport unavailable",
+			provider: failingProvider{err: &url.Error{
+				Op: "Post", URL: "https://llm.invalid/v1/chat", Err: syscall.ECONNREFUSED,
+			}},
+			wantCode:   "provider_unavailable",
+			wantDetail: "connection refused",
+		},
+		{
+			name:       "provider service unavailable",
+			provider:   failingProvider{err: errors.New("openai chat: status 503")},
+			wantCode:   "provider_unavailable",
+			wantDetail: "status 503",
+		},
+		{
+			name:       "provider authentication rejection is not availability",
+			provider:   failingProvider{err: errors.New("openai chat: status 401")},
+			wantCode:   "generation_failed",
+			wantDetail: "status 401",
+		},
+		{
+			name:       "unclassified provider response",
+			provider:   failingProvider{err: errors.New(providerDetail)},
+			wantCode:   "generation_failed",
+			wantDetail: providerDetail,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			base := newStore(t)
+			st := newLifecycleErrorStore(base)
+			svc := buildFailingService(t, st, tt.provider)
+			terminal := newDoneEmitter()
+			svc.WithProgressEmitter(terminal)
+			jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "alice")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go svc.Run(runCtx)
+			waitForFailedEvent(t, terminal)
+
+			if st.failureCode != tt.wantCode {
+				t.Fatalf("failure code = %q, want %q (diagnostic %q)",
+					st.failureCode, tt.wantCode, st.failureDiagnostic)
+			}
+			if st.failureCode == "" {
+				t.Fatal("failure committed without a stable code")
+			}
+			if strings.Contains(st.failureCode, providerDetail) {
+				t.Fatalf("safe failure code leaked provider detail: %q", st.failureCode)
+			}
+			if tt.wantDetail != "" && !strings.Contains(st.failureDiagnostic, tt.wantDetail) {
+				t.Fatalf("private diagnostic = %q, want detail %q", st.failureDiagnostic, tt.wantDetail)
+			}
+			job, err := base.GetJob(ctx, jobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.Status != "failed" {
+				t.Fatalf("job status = %q, want failed", job.Status)
+			}
+		})
+	}
 }
 
 func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
@@ -281,6 +399,10 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	case <-st.failureCalled:
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker never attempted to persist the failure")
+	}
+	if st.failureCode != "generation_failed" || !strings.Contains(st.failureDiagnostic, "bad intent json") {
+		t.Fatalf("failure persistence attempt = code %q diagnostic %q",
+			st.failureCode, st.failureDiagnostic)
 	}
 	job, err := base.GetJob(ctx, "bad-intent")
 	if err != nil {

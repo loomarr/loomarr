@@ -61,7 +61,7 @@ WITH due AS (
 )
 UPDATE jobs j SET deadline = $1, status = 'running', attempts = j.attempts + 1, updated_at = $2
 FROM due WHERE j.id = due.id
-RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
+RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.failure_code, j.last_error,
           j.deadline, j.attempts, j.created_at, j.updated_at`
 
 // postgresScheduledJobClaimSQL leases every due scheduled job (§18.1) via SKIP LOCKED so two

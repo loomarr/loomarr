@@ -8,7 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +32,7 @@ type ProposalStore interface {
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, code, diagnostic string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 }
@@ -67,7 +71,14 @@ type ChannelAutoCurator interface {
 const (
 	jobKindSuggest  = "suggest"
 	jobKindRecurate = "recurate"
+
+	FailureCodeNoGroundedTitles    = "no_grounded_titles"
+	FailureCodeTimedOut            = "timed_out"
+	FailureCodeProviderUnavailable = "provider_unavailable"
+	FailureCodeGenerationFailed    = "generation_failed"
 )
+
+var providerUnavailableStatus = regexp.MustCompile(`(?:^|: )(?:openai|ollama) chat: status ([0-9]{3})$`)
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
 // composition root, where the settings service and the full store are both available.
@@ -344,7 +355,8 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
-	if err := s.store.CommitSuggestionFailure(ctx, job.ID, job.Attempts, cause.Error(), s.now()); err != nil {
+	code := classifyFailure(cause)
+	if err := s.store.CommitSuggestionFailure(ctx, job.ID, job.Attempts, code, cause.Error(), s.now()); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
 				"cause", cause, "err", err)
@@ -356,6 +368,34 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	}
 	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
 	s.emitPhase(job.ID, PhaseFailed, 0)
+}
+
+func classifyFailure(cause error) string {
+	if errors.Is(cause, ErrNoGroundedTitles) {
+		return FailureCodeNoGroundedTitles
+	}
+	if errors.Is(cause, context.DeadlineExceeded) {
+		return FailureCodeTimedOut
+	}
+	var netErr net.Error
+	if errors.As(cause, &netErr) && netErr.Timeout() {
+		return FailureCodeTimedOut
+	}
+	var urlErr *url.Error
+	if errors.As(cause, &urlErr) {
+		return FailureCodeProviderUnavailable
+	}
+	var opErr *net.OpError
+	if errors.As(cause, &opErr) {
+		return FailureCodeProviderUnavailable
+	}
+	if match := providerUnavailableStatus.FindStringSubmatch(cause.Error()); len(match) == 2 {
+		status, err := strconv.Atoi(match[1])
+		if err == nil && (status == 429 || status >= 500 && status <= 599) {
+			return FailureCodeProviderUnavailable
+		}
+	}
+	return FailureCodeGenerationFailed
 }
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field
