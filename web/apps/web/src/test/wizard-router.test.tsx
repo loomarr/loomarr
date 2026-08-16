@@ -63,6 +63,8 @@ const stubWizard = (opts: {
   setupCompleted?: boolean;
   checks?: Array<{ name: string; ok: boolean; hint?: string }>;
   backend?: "internal" | "tunarr";
+  publicUrl?: string;
+  publicUrlPinned?: boolean;
 }) => {
   let authed = opts.authed;
   const seq: string[] = [];
@@ -103,6 +105,16 @@ const stubWizard = (opts: {
           enum: ["internal", "tunarr"],
           value: opts.backend ?? "tunarr",
         },
+        setting({
+          key: "server.public_url",
+          label: "Loomarr address",
+          group: "playout",
+          kind: "url",
+          doc: "Loomarr's own address as your media server can reach it.",
+          value: opts.publicUrl ?? "http://loomarr:8080",
+          provenance: opts.publicUrlPinned ? "env" : "db",
+          envVar: "SERVER_PUBLIC_URL",
+        }),
         setting({
           key: "setup.completed",
           group: "advanced",
@@ -422,6 +434,47 @@ describe("wizard", () => {
 
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
       expect(screen.queryByLabelText("Tunarr URL")).not.toBeInTheDocument();
+    });
+
+    it("requires a reachable Loomarr address on the internal playout step", async () => {
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal", publicUrl: "" });
+      renderAt("/wizard?step=playout");
+
+      expect(await screen.findByLabelText("Loomarr address")).toBeEnabled();
+      expect(screen.getByText(/media server must be able to reach this address/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    });
+
+    it("persists the internal playout address through the shared settings API", async () => {
+      const { patches } = stubWizard({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        publicUrl: "",
+      });
+      renderAt("/wizard?step=playout");
+
+      await userEvent.type(await screen.findByLabelText("Loomarr address"), "http://loomarr:8080");
+      await userEvent.click(screen.getByRole("button", { name: "Save address" }));
+
+      await vi.waitFor(() => {
+        expect(patches).toContain(JSON.stringify({ edits: { "server.public_url": "http://loomarr:8080" } }));
+      });
+    });
+
+    it("keeps an environment-pinned reachable address locked and accepts it", async () => {
+      stubWizard({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        publicUrl: "http://loomarr:8080",
+        publicUrlPinned: true,
+      });
+      renderAt("/wizard?step=playout");
+
+      expect(await screen.findByLabelText("Loomarr address")).toBeDisabled();
+      expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
     });
 
     it("falls back to the default block when a link names one that isn't a connection", async () => {

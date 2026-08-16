@@ -99,6 +99,7 @@ const WizardScreen = () => {
   // the rail and the resolver disagree.
   const entries = useSettingsEntries();
   const playoutEntry = entries.find((e) => e.key === "playout.backend");
+  const publicURLEntry = entries.find((e) => e.key === "server.public_url");
   const backend: PlayoutBackend = playoutEntry?.value === PLAYOUT_TUNARR ? PLAYOUT_TUNARR : PLAYOUT_INTERNAL;
   // An env-pinned backend cannot be changed here (config-design §3); the step says so rather
   // than offering a control whose write would come back `pinned`.
@@ -106,7 +107,7 @@ const WizardScreen = () => {
     playoutEntry?.provenance === SettingEntryProvenance.env
       ? (playoutEntry.envVar ?? "An environment variable")
       : undefined;
-  const stepCtx = { checks, isAuthenticated, backend };
+  const stepCtx = { checks, isAuthenticated, backend, publicURL: publicURLEntry?.value };
 
   const { step: requestedStep, conn: requestedConn } = Route.useSearch();
   const navigate = Route.useNavigate();
