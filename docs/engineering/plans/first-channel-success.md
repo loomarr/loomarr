@@ -1,8 +1,9 @@
 # First-channel success
 
-**Status:** proposed. Planning worktree `../loomarr-first-channel-success`, branch
-`first-channel-success-plan`, based on `origin/main` `4c6f08c2`. `make agent-baseline` was green on
-2026-08-15.
+**Status:** implementing in `../loomarr-first-channel-success` on branch
+`first-channel-success-plan`. The committed implementation has passed the full frontend gate,
+Postgres conformance, OpenAPI verification, documentation lint, and rendered recovery journeys;
+the remaining release gates are recorded in `PROGRESS.md`.
 
 ## Outcome
 
@@ -13,38 +14,33 @@ state. Reloading the page or losing SSE must never erase the outcome.
 This is the product proof for Loomarr's premise: an old-fashioned channel is simple to ask for, while
 LLM curation, acquisition, scheduling, filler, and playout stay sophisticated behind that request.
 
-## Current truth
+## Implementation truth
 
-The architecture has already achieved most of the premise:
+The first-channel path now has the durable seams this plan called for:
 
-- Natural-language intents enter a grounded tool loop and produce typed proposals.
-- Approval is the single gate into acquisitions and channel materialization. The local approval,
-  title, and channel writes are atomic.
-- Approved channels reconcile into schedules, Guide rows, Tunarr or internal playout, and Watch.
-- Filler V54 is complete. Empty filler is a supported program-only channel, while a populated pool is
-  inherited and assembled through the same scheduler seam.
-- A real-model semantic harness already exists under `internal/eval`.
+- Proposal Jobs are authoritative persisted executions, independently readable before a Proposal
+  exists and after it has been approved or denied. Success, failure, cache cloning, ownership, and
+  retry identities are caller-owned atomic transitions.
+- Guide, Refine, and My requests share one reload-safe tracker. SSE accelerates progress; generated
+  Proposal Job reads and polling restore queued, running, failed, submitted, approved, and denied
+  outcomes when events are absent.
+- The four shipped presets come from one canonical typed source used by wizard, Guide, and the eval
+  corpus. Stable preset ids preserve the complete Intent at the HTTP submission seam.
+- Approval remains the only acquisition/materialization gate. Review exposes persisted counts,
+  policy, refusals, and decision state; members can submit and follow their work but cannot approve
+  or read another member's Proposal Job.
+- Empty filler remains a supported program-only channel, and seeded filler continues through the
+  existing assembler. Approval is never blocked on filler availability.
+- Model status distinguishes configuration, reachability, verified tool calling, and semantic
+  certification. Tool verification is explicit; status polling never spends an inference call.
+- Rendered journeys now cover exact preset handoff, dropped-SSE recovery, safe retry/edit failures,
+  member waiting, optional filler, approval, and the building-to-live route.
 
-The missing proof is concentrated before and immediately after approval:
-
-1. A generation job is durable in the store, but there is no authoritative job read interface.
-   `GET /v1/proposals/{id}` currently reads a proposal id even though design §7/§8 promises job status
-   plus an optional proposal.
-2. The frontend treats SSE as the only source of terminal failure and exposes only the initial POST
-   error. A background failure therefore drops back to a blank form with no reason.
-3. Successful outcomes can disappear too: the hook searches only submitted proposals, so an
-   auto-approved, already-decided, cached, or missed-final-event result is not recoverable.
-4. The successful-job cache reuses lifecycle identity across requesters. Equal intent text can return
-   another request's old job instead of giving the new requester a fresh auditable request.
-5. The four presets carry typed `era` and `tone` fields, but wizard and Guide handoff submit only their
-   descriptions. The semantic corpus is separately authored, so it does not prove the exact presets
-   that ship.
-6. Existing browser coverage stops before the complete journey: wizard coverage ends at Guide and
-   approval coverage begins later in Queue.
-
-The resulting assessment is: **the channel appliance exists, but the first-channel acceptance
-contract is not yet release-grade.** This plan closes that contract without redesigning the scheduler,
-approval gate, or filler engine.
+Two acceptance proofs remain open while implementation is in progress: the configured certification
+model must pass all four exact semantic cases, and Watch must defer play-URL/HLS work while the new
+Channel is `building` before starting automatically from an authoritative `live` refetch. Neither is
+hidden behind a readiness claim: failed semantic evidence remains failed, and the browser transport
+assertion remains red until the playback seam is available to change.
 
 ## Non-goals
 
