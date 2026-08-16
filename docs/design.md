@@ -1438,23 +1438,27 @@ its source. A real tune reuses the exact signed URL and the already-ready remux.
 also defers source-backed track probing until the first decoded frame so optional work cannot
 contend with the active Channel's cold open and seek.
 
-The Web adapter keeps a bounded pair of hls.js controllers while the mounted Watch surface retains
+The Web adapter resolves and retains the hls.js controller class once per document, then keeps a
+bounded pair of source-scoped controllers while the mounted Watch surface retains
 its one media element and decoder: one active controller and one fresh standby that has never owned
 a source URL. A same-element replacement consumes that standby. It stops the outgoing loader and
-pauses the media element; the Watch surface's held poster preserves the last decoded picture during
-the handoff. For an `open` MediaSource, the adapter seeks to the final presentable-frame interval
-(50 ms inside the shared half-open buffered end), waits at most 100 ms for the media acknowledgement,
+the Watch surface's held poster preserves the last decoded picture during the handoff. Chromium and
+Firefox pause the media element and, for an `open` MediaSource, seek to the final presentable-frame interval
+(50 ms inside the shared half-open buffered end), wait at most 100 ms for the media acknowledgement,
 then uses hls.js's public cross-controller handoff to transfer its compatible SourceBuffers and clear
 the old Channel-relative ranges. Seeking to the exact non-presentable end can instead leave WebKit
 waiting for live playback to reach it naturally. The element stays at the accepted frame until every
 removal reaches `updateend`; rewinding into the range being removed can hold WebKit's decoder on
 those bytes and turn a cached tune into a multi-second stall.
 
-An open-source seek that misses that bound, or an `ended` compact publication, takes the other
-bounded branch: the source-scoped standby attaches a fresh MediaSource to the same element instead
+An open-source seek that misses that bound, an `ended` compact publication, or any WebKit handoff
+takes the other bounded branch: the source-scoped standby attaches a fresh MediaSource to the same element instead
 of serializing replacement behind the outgoing fragment remainder. WebKit can retain the terminal
-decoded frame of an ended source for roughly two seconds even after pause and a render turn. Reusing
-either unreleased decoder range therefore misses the tuner latency contract. This branch explicitly
+decoded frame of an ended source for roughly two seconds even after pause and a render turn, and an
+open-source seek can block WebKit's event loop so its JavaScript timeout cannot honestly enforce the
+100 ms bound. Reusing either unreleased decoder range therefore misses the tuner latency contract.
+The WebKit branch preserves the element's playing intent rather than pausing before its immediate
+detach. Every fresh branch explicitly
 unloads and revokes the transferred source's blob URL before the
 standby attaches; hls.js deliberately leaves that URL owned by the receiver during a transfer, so
 discarding it without that release accumulates ended MediaSources and delays later WebKit source opens. It creates no second
@@ -1462,11 +1466,14 @@ player or decoder, and the held poster still covers the single-element handoff. 
 failed open-source clears use the same fresh branch. Committing the target route may retire its
 transient tune-attempt object after the first frame; the adapter retains that attempt for the same
 Channel so this bookkeeping transition cannot tear down and reattach the live source. After
-confirming that the generation is still current, the adapter rewinds, attaches the cleared open handoff or the
-fresh element, arms target-frame observation, loads the replacement source, queues its playback
-join, and then explicitly starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+confirming that the generation is still current, the adapter rewinds, attaches the cleared open handoff,
+arms target-frame observation, loads the replacement source, queues its playback join, and then explicitly
+starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
-before the media request. Arming after attachment but before loading means the observer cannot
+before the media request. A fresh-MSE replacement has no SourceBuffers to adopt, so it may load and
+parse its manifest before attachment while init/media loading remains explicitly stopped; that overlaps
+WebKit's controller scheduling with the element reset without creating detached media work. Arming
+after attachment but before media loading means the observer cannot
 attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
 loading minimizes the paused interval, while manifest, metadata, fragment, and loaded-data joins
 remain generation-scoped recovery for later platform load resets. WebKit may expose the first
@@ -1486,7 +1493,7 @@ but no init or media fragment can enter a detached state. hls.js's reference-cou
 enabled and shared across those controllers because the baseline HLS rendition carries MPEG-TS; its
 transmux therefore stays off the UI thread rather than trading controller setup time for stalled
 controls. If the source is closed or cannot be cleared, replacement falls back to a full MediaSource
-reset. It never retains old media bytes, reloads the cached hls.js module, or allocates a second
+reset. It never retains old media bytes, re-resolves the cached hls.js module, or allocates a second
 player.
 Replacement playback starts only after that handoff attaches, and the target's first `loadeddata`
 joins playback again after any queued element reset. A synchronous replacement cancels the outgoing
@@ -4429,7 +4436,7 @@ Consequences, embraced:
 
 On a fresh instance the UI then walks the owner through, in order:
 1. **Bootstrap** — create the owning admin (local username + password, `POST /v1/setup/bootstrap`, §11). Works with zero media-server config; succeeds once (while no admin exists), then this step is done forever. **Once done it renders read-only**, naming the owner: the step cannot run twice, so offering the form again is a dead end an operator can only discover by submitting it.
-2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. The form is the ordinary `ConnectionBlock` + settings-group fields with its live Test, so it writes through the same PATCH path as everything else (config-design §6).
+2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. **Choosing Loomarr reveals the ordinary `server.public_url` field on this same step and the step remains incomplete until a valid address has been persisted.** The copy says this must be an address the media server can reach; inferring it from the browser or request headers would give a containerised media server an often-unreachable host. An environment-pinned `SERVER_PUBLIC_URL` remains locked and satisfies the step when non-empty. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. Both forms are ordinary registry-backed settings fields, so they write through the same PATCH path as everything else (config-design §6).
 3. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
 4. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
 5. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
@@ -4444,6 +4451,7 @@ On a fresh instance the UI then walks the owner through, in order:
 | | Internal (default) | Tunarr |
 | --- | --- | --- |
 | Blocking checks | `media_server` | `media_server` + `tunarr` |
+| Required playout address | persisted `server.public_url` on the Playout step | absent |
 | Tunarr connection form | absent | **on the Playout step**, never in Connections |
 | "Give Tunarr your library" step | absent | present |
 

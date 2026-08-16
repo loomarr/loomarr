@@ -34,6 +34,8 @@ interface UseHlsPlayer {
   attach: (video: HTMLVideoElement) => () => void;
 }
 
+let cachedHlsController: typeof Hls | undefined;
+
 const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["transferMedia"]>>) => {
   for (const track of Object.values(transferred.tracks)) {
     const buffer = track?.buffer;
@@ -110,6 +112,12 @@ const releaseTransferredDecoder = async (
     video.addEventListener("seeked", onSeeked, { once: true });
     video.currentTime = target;
   });
+};
+
+const webKitRequiresFreshMSEHandoff = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  const agent = navigator.userAgent;
+  return /AppleWebKit/i.test(agent) && !/(?:Chromium|Chrome|CriOS|Edg)/i.test(agent);
 };
 
 const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | undefined) => {
@@ -205,7 +213,11 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // Fetch it only after the signed URL arrives; the page paints first, then playback attaches.
       // The generation check matters because a channel switch can happen while this chunk is in
       // flight — an obsolete import must never attach its stream to the replacement video.
-      const { default: Hls } = await import("hls.js");
+      // WebKit can defer even an already-resolved dynamic import behind media work for hundreds of
+      // milliseconds. Resolve the transport class once per document; every later tune takes the
+      // synchronous cached value while the bounded controller pool still owns runtime resources.
+      const Hls = cachedHlsController ?? (await import("hls.js")).default;
+      cachedHlsController = Hls;
       if (!current()) return () => undefined;
 
       // Name the generation on the element before any decoded-frame observer is armed. The tuner
@@ -276,6 +288,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // larger than the frame; low-latency off — this is live TV, and the steadier buffer survives a
       // flaky link.
       if (Hls.isSupported()) {
+        const discardTransferForWebKit = webKitRequiresFreshMSEHandoff();
         const previous = hlsRef.current.instance;
         let transferred: ReturnType<Hls["transferMedia"]> = null;
         let transferredObjectURL: string | undefined;
@@ -285,7 +298,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           // holds the still-playing outgoing bytes until their natural end, adding roughly the
           // remaining segment duration to an otherwise cached adjacent tune. VideoPlayer keeps the
           // last decoded frame as the handoff poster until the replacement produces its own frame.
-          video.pause();
+          // WebKit's fresh-MSE branch detaches the outgoing source immediately below. Avoid
+          // explicitly changing the element to paused first: preserving its active playback intent
+          // lets the replacement join as soon as its first bytes are ready.
+          if (!discardTransferForWebKit) video.pause();
           transferredObjectURL = video.currentSrc || video.src;
           transferred = previous.transferMedia();
         } else {
@@ -372,14 +388,23 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // failed clears consume the standby's bounded fresh-MSE branch.
         let discardTransfer = false;
         if (transferred?.mediaSource?.readyState === "open") {
-          try {
-            await releaseTransferredDecoder(video, transferred);
-            await clearTransferredBuffers(transferred);
-          } catch {
-            // A decoder seek or range removal that cannot finish promptly cannot be reused safely.
-            // Attaching the element directly gives the replacement controller a fresh MediaSource.
+          // Hosted and shipping WebKit can block its event loop while seeking an open live source,
+          // so a JavaScript timer cannot honestly bound that transfer path. Consume the already-
+          // constructed fresh standby instead. Chromium and Firefox keep the lower-allocation
+          // transfer path, whose in-range seek remains explicitly time-bounded.
+          if (discardTransferForWebKit) {
             discardTransfer = true;
             transferred = null;
+          } else {
+            try {
+              await releaseTransferredDecoder(video, transferred);
+              await clearTransferredBuffers(transferred);
+            } catch {
+              // A decoder seek or range removal that cannot finish promptly cannot be reused safely.
+              // Attaching the element directly gives the replacement controller a fresh MediaSource.
+              discardTransfer = true;
+              transferred = null;
+            }
           }
         } else {
           discardTransfer = Boolean(transferred);
@@ -405,7 +430,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           }
           return () => undefined;
         }
-        if (discardTransfer) discardTransferredMedia(video, transferredObjectURL);
+        let sourceLoaded = false;
+        if (discardTransfer) {
+          discardTransferredMedia(video, transferredObjectURL);
+          // A fresh controller has no SourceBuffers to adopt, so manifest parsing can overlap its
+          // MediaSource attachment safely. autoStartLoad remains false: init/media bytes still wait
+          // for attachment and the generation-scoped start below.
+          hls.loadSource(url);
+          sourceLoaded = true;
+        }
         // Do not rewind into the range being removed. WebKit can keep SourceBuffer.remove pending
         // while its decoder still owns that position, turning an otherwise cached tune into a
         // multi-second stall. Rewind only after updateend releases the outgoing bytes, and only
@@ -421,8 +454,9 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         replacementAttached = true;
         // hls.js transfer is an attach-before-source transaction. Parsing a source on a detached
         // controller can fetch its init segment before the transferred SourceBuffers are adopted;
-        // WebKit can then strand that controller without ever requesting the media fragment.
-        hls.loadSource(url);
+        // WebKit can then strand that controller without ever requesting the media fragment. The
+        // fresh branch above has no transferred buffers and deliberately overlaps manifest parse.
+        if (!sourceLoaded) hls.loadSource(url);
         // Queue the target join before any media bytes can arrive. WebKit can decode a cached first
         // append before MANIFEST_PARSED is delivered; waiting for that event leaves a real target
         // frame paused. Later event joins remain necessary because loadstart can reset the element.

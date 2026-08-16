@@ -87,6 +87,7 @@ describe("useHlsPlayer", () => {
     hls.supported = false;
     hls.instances.length = 0;
     unwrap.mockReset().mockImplementation((res: unknown) => res);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Firefox/142.0");
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -493,6 +494,94 @@ describe("useHlsPlayer", () => {
     await waitFor(() =>
       expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-17/master.m3u8"),
     );
+  });
+
+  it("uses the bounded fresh-MSE branch for an open WebKit handoff", async () => {
+    hls.supported = true;
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+    );
+    channelPlayUrl.mockImplementation((id: string) =>
+      Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
+    );
+    let seekListenerInstalled = false;
+    const video = {
+      ...videoEl(),
+      addEventListener: vi.fn((event: string) => {
+        if (event === "seeked") seekListenerInstalled = true;
+      }),
+      requestVideoFrameCallback: vi.fn(() => 1),
+      cancelVideoFrameCallback: vi.fn(),
+    } as unknown as HTMLVideoElement;
+    video.src = "blob:http://localhost/webkit-open-source";
+    Object.defineProperty(video, "currentSrc", {
+      configurable: true,
+      get: () => video.src,
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => 0.5,
+      set: vi.fn(),
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
+      initialProps: { id: "ch-1" },
+    });
+
+    let release!: () => void;
+    act(() => {
+      release = result.current.attach(video);
+    });
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as {
+      loadSource: ReturnType<typeof vi.fn>;
+      transferMedia: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() =>
+      expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
+    );
+    const remove = vi.fn();
+    controller.transferMedia.mockReturnValue({
+      media: video,
+      mediaSource: { readyState: "open" },
+      tracks: {
+        video: {
+          buffer: {
+            updating: false,
+            buffered: { length: 1, start: () => 0, end: () => 4 },
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            remove,
+          },
+        },
+      },
+    });
+
+    act(() => release());
+    rerender({ id: "ch-2" });
+    act(() => {
+      result.current.attach(video);
+    });
+
+    await waitFor(() => expect(hls.instances).toHaveLength(2));
+    const replacement = hls.instances[1] as {
+      attachMedia: ReturnType<typeof vi.fn>;
+      loadSource: ReturnType<typeof vi.fn>;
+      startLoad: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() => expect(replacement.attachMedia).toHaveBeenCalledWith(video));
+    await waitFor(() =>
+      expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8"),
+    );
+    expect(replacement.startLoad).toHaveBeenCalledOnce();
+    expect(replacement.loadSource.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      replacement.attachMedia.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    expect(video.pause).not.toHaveBeenCalled();
+    expect(seekListenerInstalled).toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+    expect(video.load).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/webkit-open-source");
   });
 
   it("replaces an ended MediaSource without waiting on its decoded range", async () => {
