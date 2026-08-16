@@ -644,7 +644,25 @@ there is no copy-only mode that can leave two diverging databases behind.
 ## 6. External contracts
 
 ### Client resilience defaults (apply to every adapter below)
-Every outbound client is built from a shared HTTP factory with **hard timeouts**: media server 10s, Seerr 10s, TMDB 10s, Tunarr 20s (lineup pushes are chunky), LLM 120s per call. **Retry philosophy:** jittered-backoff retries only for idempotent GETs; *writes never client-retry* — write recovery is owned by the idempotent reconcile loops and periodic sweeps, which is why they exist. A down dependency degrades the relevant feature (and lights up the §13 checklist), never wedges the process.
+Every outbound client is built from a shared HTTP factory with **hard timeouts**: media server 10s, Seerr 10s, TMDB 10s, Tunarr 20s (lineup pushes are chunky), LLM 120s per call. The timeout covers the **whole logical request** — all attempts, response-body reads, and retry waits — rather than restarting for every attempt.
+
+**Retry philosophy:** the factory makes at most **four attempts total**, and only for an exact
+`GET`. Writes and every other method never client-retry — write recovery is owned by the idempotent
+reconcile loops and periodic sweeps, which is why they exist. A `GET` with a request body is
+retryable only when `GetBody` can reproduce that body. The retryable outcomes are transport errors
+while the request context is still live, plus HTTP `408`, `429`, `500`, `502`, `503`, and `504`.
+Before another attempt the client drains a bounded portion of the discarded response body and
+closes it, preserving connection reuse without letting an unbounded error body wedge the call.
+It never retries a failure that occurs while the caller is reading a successful response body.
+
+Retry waits use full-jitter exponential backoff from a 200ms base, capped at 2s. The effective delay
+is the greater of that jittered backoff and a valid integer or HTTP-date `Retry-After`, but it is
+still bounded: when the server asks for more than the 2s delay cap, or the wait cannot fit inside the
+request's remaining context deadline, the client returns that response instead of retrying early.
+The ordinary GET redirect policy remains; a redirect following any other method is returned to the
+caller rather than converted into a GET.
+A down dependency therefore degrades the relevant feature (and lights up the §13 checklist), never
+wedges the process.
 
 ### Library — Emby & Jellyfin
 Both share `GET /Items?Recursive=true&AnyProviderIdEquals=<provider>&IncludeItemTypes=<Movie|Series>&Limit=1`; provider `tmdb.<id>` / `tvdb.<id>`; present iff `Items` non-empty → `Items[0].Id`. Use **header** auth (never `api_key` query param — leaks to logs; Jellyfin deprecates legacy auth from 10.11+):
@@ -1427,8 +1445,11 @@ An `ended` compact publication takes the other bounded branch: the source-scoped
 fresh MediaSource to the same element instead of waiting on `SourceBuffer.remove`. WebKit can retain
 the terminal decoded frame of an ended source for roughly two seconds even after pause, edge-seek,
 and a render turn; reusing that ended SourceBuffer therefore misses the tuner latency contract. This
-branch creates no second player or decoder, and the held poster still covers the single-element
-handoff. Closed sources and failed open-source clears use the same fresh branch. After confirming
+branch explicitly unloads and revokes the transferred source's blob URL before the standby attaches;
+hls.js deliberately leaves that URL owned by the receiver during a transfer, so discarding it without
+that release accumulates ended MediaSources and delays later WebKit source opens. It creates no second
+player or decoder, and the held poster still covers the single-element handoff. Closed sources and
+failed open-source clears use the same fresh branch. After confirming
 that the generation is still current, the adapter rewinds, attaches the cleared open handoff or the
 fresh element, arms target-frame observation, loads the replacement source, queues its playback
 join, and then explicitly starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
@@ -4903,7 +4924,7 @@ The first-run wizard (§13) walks these checks interactively — the list below 
 
 ## 17. Observability
 - **Logging:** structured (`slog`); one line per provisioning transition and per channel reconcile (diff summary).
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions. Log lines carry the relevant job/proposal/channel id as a correlation field.
+- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`). Log lines carry the relevant job/proposal/channel id as a correlation field.
 - **Readiness** true only after DB connectivity + migrations, and (soft) Tunarr reachability.
 
 ---

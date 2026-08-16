@@ -235,7 +235,10 @@ const adjacentNumbers = (number: number): [number, number] => [
 
 const latestWarmAt = (page: Page, number: number) =>
   page.evaluate(
-    (name) => performance.getEntriesByName(name, "mark").at(-1)?.startTime ?? -1,
+    (name) => {
+      const mark = performance.getEntriesByName(name, "mark").at(-1);
+      return mark ? performance.timeOrigin + mark.startTime : -1;
+    },
     adjacentWarmMarkName(channelId(number)),
   );
 
@@ -373,6 +376,8 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   const resetWarmCounts = await adjacentWarmCounts(page, 50);
   await page.goto(`/channels/${channelId(50)}/watch`);
   await waitForDecodedFrame(page);
+  // Warm proof uses an absolute timestamp, so this full-document reset cannot make a new mark look
+  // older merely because performance.startTime restarted from zero.
   await waitForAdjacentWarm(page, 50, resetWarmCounts);
 
   await page.evaluate(() => {

@@ -88,6 +88,26 @@ const releaseTransferredDecoder = async (
   });
 };
 
+const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | undefined) => {
+  // transferMedia deliberately leaves the MediaSource object URL on the element so another hls.js
+  // controller can adopt it. The fresh-MSE branch does not adopt that transfer. Replacing src
+  // without first revoking the abandoned URL leaves WebKit retaining each ended MediaSource and its
+  // decoder lease; over repeated tunes, opening the next source then drifts into multi-second waits.
+  // Detach it explicitly while the held poster owns continuity, then let the fresh controller bind.
+  let detached = false;
+  if (objectURL && (video.src === objectURL || video.currentSrc === objectURL)) {
+    video.removeAttribute("src");
+    detached = true;
+  }
+  for (const source of video.querySelectorAll("source")) {
+    if (objectURL && source.src !== objectURL) continue;
+    source.remove();
+    detached = true;
+  }
+  if (detached) video.load();
+  if (objectURL?.startsWith("blob:")) URL.revokeObjectURL(objectURL);
+};
+
 const createHlsController = (HlsController: typeof Hls): Hls =>
   new HlsController({
     // A source-scoped controller stays empty until its transferred MediaSource is attached. The
@@ -215,6 +235,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       if (Hls.isSupported()) {
         const previous = hlsRef.current.instance;
         let transferred: ReturnType<Hls["transferMedia"]> = null;
+        let transferredObjectURL: string | undefined;
         if (previous?.url && previous.media === video) {
           previous.stopLoad();
           // Freeze the decoder before removing its current SourceBuffer range. WebKit otherwise
@@ -222,6 +243,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           // remaining segment duration to an otherwise cached adjacent tune. VideoPlayer keeps the
           // last decoded frame as the handoff poster until the replacement produces its own frame.
           video.pause();
+          transferredObjectURL = video.currentSrc || video.src;
           transferred = previous.transferMedia();
         } else {
           previous?.stopLoad();
@@ -305,6 +327,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // after pause/edge-seek. Consuming the already-constructed standby with a fresh MediaSource
         // is faster and still preserves the one-element/one-decoder invariant. Only open sources
         // take the in-place clear path; ended, closed, or failed clears take the bounded fresh path.
+        let discardTransfer = false;
         if (transferred?.mediaSource?.readyState === "open") {
           try {
             await releaseTransferredDecoder(video, transferred);
@@ -313,16 +336,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             // A failed range removal cannot be reused safely. Attaching the element directly gives
             // the replacement controller a fresh MediaSource; the transferred source loses its
             // final reference when the element's blob URL is replaced.
+            discardTransfer = true;
             transferred = null;
           }
-          // Do not rewind into the range being removed. WebKit can keep SourceBuffer.remove pending
-          // while its decoder still owns that position, turning an otherwise cached tune into a
-          // multi-second stall. Rewind only after updateend releases the outgoing bytes.
-          video.currentTime = 0;
         } else {
+          discardTransfer = Boolean(transferred);
           transferred = null;
         }
         if (!current()) {
+          if (discardTransfer) discardTransferredMedia(video, transferredObjectURL);
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
@@ -341,6 +363,12 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           }
           return () => undefined;
         }
+        if (discardTransfer) discardTransferredMedia(video, transferredObjectURL);
+        // Do not rewind into the range being removed. WebKit can keep SourceBuffer.remove pending
+        // while its decoder still owns that position, turning an otherwise cached tune into a
+        // multi-second stall. Rewind only after updateend releases the outgoing bytes, and only
+        // while this generation still owns the element.
+        if (transferred) video.currentTime = 0;
         if (transferred) hls.attachMedia(transferred);
         else hls.attachMedia(video);
         // Attachment is the first point where a frame callback can only belong to this source:

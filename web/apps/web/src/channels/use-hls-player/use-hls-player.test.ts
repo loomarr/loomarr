@@ -77,6 +77,7 @@ const videoEl = (canPlay = "") =>
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     removeAttribute: vi.fn(),
+    querySelectorAll: vi.fn().mockReturnValue([]),
     load: vi.fn(),
   }) as unknown as HTMLVideoElement;
 
@@ -407,6 +408,14 @@ describe("useHlsPlayer", () => {
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
     const video = videoEl();
+    video.src = "blob:http://localhost/ended-source";
+    Object.defineProperty(video, "currentSrc", {
+      configurable: true,
+      get: () => video.src,
+    });
+    const source = { src: video.src, remove: vi.fn() };
+    vi.mocked(video.querySelectorAll).mockReturnValue([source] as unknown as NodeListOf<HTMLSourceElement>);
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
       initialProps: { id: "ch-1" },
     });
@@ -459,6 +468,13 @@ describe("useHlsPlayer", () => {
     expect(replacement.startLoad).toHaveBeenCalledOnce();
     expect(requestAnimationFrame).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
+    expect(video.removeAttribute).toHaveBeenCalledWith("src");
+    expect(source.remove).toHaveBeenCalledOnce();
+    expect(video.load).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/ended-source");
+    expect(vi.mocked(video.load).mock.invocationCallOrder.at(-1)).toBeLessThan(
+      replacement.attachMedia.mock.invocationCallOrder.at(-1) ?? 0,
+    );
   });
 
   it("does not attach or load a superseded generation after its transferred clear finishes", async () => {
@@ -530,6 +546,7 @@ describe("useHlsPlayer", () => {
       loadSource: ReturnType<typeof vi.fn>;
     };
     await waitFor(() => expect(current.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-3/master.m3u8"));
+    video.currentTime = 7;
 
     act(() => finishRemoval());
     await act(async () => undefined);
@@ -539,6 +556,7 @@ describe("useHlsPlayer", () => {
     expect(superseded.destroy).not.toHaveBeenCalled();
     expect(superseded.attachMedia).not.toHaveBeenCalled();
     expect(superseded.startLoad).not.toHaveBeenCalled();
+    expect(video.currentTime).toBe(7);
 
     act(() => currentRelease());
     await waitFor(() => expect(current.destroy).toHaveBeenCalled());
