@@ -27,9 +27,9 @@ import (
 type PlayoutTelemetry struct {
 	// Sessions is one row per channel currently encoding, sorted by channel id.
 	Sessions []playout.SessionStat `json:"sessions"`
-	// Active and Capacity are the "2 / 4" load line. Capacity is `playout.max_channels`, the
-	// admission bound — the point at which a new viewer is refused rather than someone else's
-	// channel being evicted (§9.1).
+	// Active and Capacity are the "2 / 4" load line. Capacity is the effective measured admission
+	// bound after any operator safety cap and VRAM shading — the point at which a new viewer is
+	// refused rather than someone else's channel being evicted (§9.1).
 	Active   int `json:"active"`
 	Capacity int `json:"capacity"`
 	// Running reports whether internal playout is wired at all. False on a Tunarr-only

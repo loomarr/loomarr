@@ -552,9 +552,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//
 		// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
 		// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
-		//   1. MEASURED capacity — what Detect's encoder trial found this box sustains (playoutRes,
-		//      set async at adapter start). The source of truth for "how many encodes fit".
-		//   2. OPERATOR OVERRIDE — playout.max_channels, applied as a HARD CAP (min): an operator may
+		//   1. MEASURED capacity — what Detect's lazy encoder trial found this box sustains
+		//      (playoutRes.maxChannels). The source of truth for "how many encodes fit"; until the first
+		//      trial completes, EffectiveCapacity deliberately permits one conservative transcode.
+		//   2. OPERATOR SAFETY CAP — playout.max_channels, applied as a HARD CAP (min): an operator may
 		//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
 		//      proved. 0/unset ⇒ no cap, use the measurement.
 		//   3. VRAM SHADING — a resident LLM steals VRAM each hardware encode needs for its device
@@ -565,32 +566,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		playoutBudget := func() int {
 			measured := 0
 			if playoutRes != nil {
-				measured = playoutRes.maxChannels // set async by Detect at adapter start; stable after
+				measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
 			}
-			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
-			// measured capacity is a conservative estimate that can under-count a capable GPU (the
-			// 3080-Ti-read-as-1 bug), so an operator who sets playout.max_channels is trusted to RAISE
-			// above it as well as lower it. Unset (0) ⇒ use the measurement, which is now warm-measured
-			// and clamped to a sane floor so it is a reasonable default on its own.
-			budget := measured
-			if override := set.intv("playout.max_channels"); override > 0 {
-				budget = override
-			}
-			// Shade by resident-LLM VRAM. ~4 GiB per hardware encode is a conservative device-context
-			// estimate; a resident 8B model (~6 GiB) thus costs ~1–2 slots, which matches the live
-			// black-screen incident. Never shade below 1 while any capacity exists — a resident model
-			// should degrade headroom, not take playout to zero.
+			residentGiB := 0.0
 			if residentVRAM != nil {
-				if gib, _ := residentVRAM(rootCtx); gib > 0 {
-					const gibPerEncode = 4.0
-					shaded := budget - int(gib/gibPerEncode)
-					if shaded < 1 && budget >= 1 {
-						shaded = 1
-					}
-					budget = shaded
-				}
+				residentGiB, _ = residentVRAM(rootCtx)
 			}
-			return budget
+			return playout.EffectiveCapacity(measured, set.intv("playout.max_channels"), residentGiB)
 		}
 		playoutMgr := playout.NewManager(
 			playoutSpawner(set.str("playout.ffmpeg_path"),
@@ -623,7 +605,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
-			capacity: func() int { return set.intv("playout.max_channels") },
+			capacity: playoutBudget,
 			// fillerDir is read live like every other setting; `pods` is assigned after the
 			// pod adapter is built further down (it needs the filler catalog, which is wired
 			// later) — see "playoutRes.pods" below.
@@ -869,7 +851,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			playoutMgr.Stop()
 		}()
 		log.Info("internal playout registered",
-			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels", set.intv("playout.max_channels"))
+			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
 
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep

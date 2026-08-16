@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -158,7 +159,7 @@ type playoutResolver struct {
 	// would add ~20s to every boot for a value most installs never override.
 	detectOnce  sync.Once
 	detected    playout.Encoder
-	maxChannels int
+	maxChannels atomic.Int64
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -901,7 +902,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		}
 		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
 		r.detected = cap.Chosen
-		r.maxChannels = cap.MaxChannels
+		r.maxChannels.Store(int64(cap.MaxChannels))
 		if r.log != nil {
 			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
 			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
@@ -930,7 +931,7 @@ func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
 	if r.detectedEncoder(ctx) == playout.EncoderSoftware {
 		return 0
 	}
-	return r.maxChannels
+	return int(r.maxChannels.Load())
 }
 
 // playoutEpoch anchors a channel's cycle on the wall clock.

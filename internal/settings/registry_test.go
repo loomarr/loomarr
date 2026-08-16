@@ -267,6 +267,22 @@ func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 	}
 }
 
+func TestRegistry_PlayoutCapacityDefaultsToAutomaticAndRejectsNegative(t *testing.T) {
+	s, ok := NewRegistry().Get("playout.max_channels")
+	if !ok {
+		t.Fatal("playout.max_channels not declared")
+	}
+	if s.Default != "0" {
+		t.Errorf("default = %#v, want string 0 (automatic measurement)", s.Default)
+	}
+	if got, err := s.parse("0"); err != nil || got != 0 {
+		t.Errorf("automatic value 0 = %#v, %v; want typed 0", got, err)
+	}
+	if _, err := s.parse("-1"); err == nil {
+		t.Error("negative capacity was accepted")
+	}
+}
+
 func TestRegistry_ConnectionAndSecurityOverridesStayAdvanced(t *testing.T) {
 	r := NewRegistry()
 	for _, key := range []string{

@@ -291,9 +291,9 @@ func declared() []Setting {
 			Doc: "Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart.",
 		},
 		{
-			Key: "playout.max_channels", Label: "Maximum live transcodes", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
-			Kind: KindInt, Default: "4",
-			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
+			Key: "playout.max_channels", Label: "Live transcode safety cap", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
+			Kind: KindInt, Default: "0", Validate: nonNegativeWholeNumber,
+			Doc: "Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it.",
 		},
 
 		{
