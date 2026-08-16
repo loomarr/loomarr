@@ -238,9 +238,10 @@ test("6 · wiring Tunarr to the real library makes tunarr_library green, idempot
 // this proves.
 test("7 · a real intent becomes a grounded proposal from the operator's own Ollama", async ({ page }) => {
   await signIn(page);
-  await page.goto("/suggest");
+  await page.goto("/guide");
+  await page.getByRole("button", { name: /add a channel/i }).click();
 
-  await page.getByRole("textbox").first().fill("90s Saturday morning cartoons for the kids");
+  await page.getByLabel("Channel intent").fill("90s Saturday morning cartoons for the kids");
   await page.getByRole("button", { name: /suggest a lineup/i }).click();
 
   // A real local model on real hardware: minutes, not milliseconds. The proposal landing
@@ -299,15 +300,11 @@ test("8 · approving materializes a channel, and Tunarr really has it", async ({
   const queued = (await (await page.request.get("/v1/proposals?status=submitted")).json()).proposals?.[0];
 
   if (queued) {
-    await page.goto("/suggest");
-    // The QUEUE's button is "Approve" — "Approve & acquire" belongs to the run's own
-    // review card, which only exists while a suggestion run is on screen. An admin
-    // acting on someone else's earlier proposal (the whole point of the queue, §11)
-    // sees the queue, so that is what this drives.
-    await page
-      .getByRole("button", { name: /^approve/i })
-      .first()
-      .click();
+    expect(queued.jobId, "a persisted proposal must retain its authoritative job id").toBeTruthy();
+    // Restore the durable request through the Guide's real Proposal Job route. This is the
+    // same cross-browser path a member's admin uses; the old `/suggest` shell no longer exists.
+    await page.goto(`/guide?jobId=${encodeURIComponent(queued.jobId)}`);
+    await page.getByRole("button", { name: /approve & acquire/i }).click();
     // The UI navigates to the channel it just made (§7 returns its id) — that landing is
     // the operator-visible proof that approving produced something.
     await expect(page).toHaveURL(/\/channels\//, { timeout: 60_000 });

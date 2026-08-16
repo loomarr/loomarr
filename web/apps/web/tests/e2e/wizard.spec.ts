@@ -84,9 +84,12 @@ test.describe("operator first-run wizard", () => {
 
     // Finishing the wizard flips setup.completed (so `/` stops routing here) and hands off to
     // the GUIDE with the template's intent prefilled — `/suggest` folded into the channels
-    // surface (§12), and `?intent=` auto-opens its inline describe panel (§13's blank-page
-    // killer), so the operator lands on a filled form rather than an empty grid.
-    await expect(page).toHaveURL(/\/guide\?intent=/);
+    // surface (§12), and the stable preset id auto-opens its inline describe panel (§13's
+    // blank-page killer), so copy edits to the template never break a saved handoff URL.
+    await expect(page).toHaveURL(/\/guide\?preset=saturday-cartoons$/);
+    await expect(page.getByLabel("Channel intent")).toHaveValue(
+      "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+    );
     expect(backend.state.edits["setup.completed"]).toBe("true");
   });
 
