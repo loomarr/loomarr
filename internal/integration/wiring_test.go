@@ -191,8 +191,8 @@ func assertFillerLibraryScanned(t *testing.T, requests []testkit.MediaServerRequ
 		if isItems {
 			foundItems = true
 		}
-		if (isFolder || isItems) && !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
-			t.Fatalf("filler library request Authorization = %q, want token %q", request.Authorization, token)
+		if isFolder || isItems {
+			assertJellyfinAuthorization(t, "filler library request", request.Authorization, token)
 		}
 	}
 	if !foundFolder || !foundItems {
@@ -207,10 +207,7 @@ func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest,
 		if request.Path != "/Users" {
 			continue
 		}
-		if !strings.HasPrefix(request.Authorization, "MediaBrowser ") ||
-			!strings.Contains(request.Authorization, `Token="`+token+`"`) {
-			t.Fatalf("Jellyfin user-list Authorization = %q, want token %q", request.Authorization, token)
-		}
+		assertJellyfinAuthorization(t, "Jellyfin user-list", request.Authorization, token)
 		if request.EmbyToken != "" {
 			t.Fatalf("Jellyfin user-list sent X-Emby-Token %q", request.EmbyToken)
 		}
@@ -226,16 +223,21 @@ func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerReques
 		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
 			continue
 		}
-		if !strings.HasPrefix(request.Authorization, "MediaBrowser ") ||
-			!strings.Contains(request.Authorization, `Token="`+token+`"`) {
-			t.Fatalf("Jellyfin search Authorization = %q, want token %q", request.Authorization, token)
-		}
+		assertJellyfinAuthorization(t, "Jellyfin search", request.Authorization, token)
 		if request.EmbyToken != "" {
 			t.Fatalf("Jellyfin search sent X-Emby-Token %q", request.EmbyToken)
 		}
 		return
 	}
 	t.Fatalf("no media-server search request found in %+v", requests)
+}
+
+func assertJellyfinAuthorization(t *testing.T, surface, authorization, token string) {
+	t.Helper()
+	if !strings.HasPrefix(authorization, "MediaBrowser ") ||
+		!strings.Contains(authorization, `Token="`+token+`"`) {
+		t.Fatalf("%s Authorization = %q, want token %q", surface, authorization, token)
+	}
 }
 
 // TestWiring_FreshInstall pins the composition-root contract for a store-only
