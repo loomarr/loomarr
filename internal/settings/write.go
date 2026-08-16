@@ -5,11 +5,26 @@ import (
 	"time"
 )
 
+// PersistedSetting is one validated, canonical setting value ready for durable storage.
+type PersistedSetting struct {
+	Key   string
+	Value string
+}
+
+// PersistenceBatch is one PATCH's valid durable mutations. Invalid and environment-pinned
+// edits never enter the batch; all included upserts and deletes commit together.
+type PersistenceBatch struct {
+	Upserts   []PersistedSetting
+	Deletes   []string
+	UpdatedBy string
+	UpdatedAt time.Time
+}
+
 // Persister is the write half of the store the service needs for PATCH
 // (accept-interfaces; no store import). The composition root adapts store.Store.
 type Persister interface {
-	Upsert(ctx context.Context, key, value, updatedBy string, at time.Time) error
-	Delete(ctx context.Context, key string) error
+	// Apply durably commits every mutation in batch or none of them.
+	Apply(ctx context.Context, batch PersistenceBatch) error
 }
 
 // EnvOverrideSetter is the write half for §3.1's unlock. Separate from Persister because
@@ -94,7 +109,7 @@ type PatchResult struct {
 	Problem string // set when Status == PatchInvalid; never echoes a secret (§4)
 }
 
-// Patch applies per-key edits (config-design §8), persisting each valid change,
+// Patch applies per-key edits (config-design §8), persisting all valid changes together,
 // then refreshes the snapshot so the change hot-applies. Order per key:
 //   - unknown key      → invalid
 //   - env-pinned key   → pinned (the env wins; a UI write can't override it, §3)
@@ -108,7 +123,12 @@ type PatchResult struct {
 func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]string, updatedBy string) ([]PatchResult, error) {
 	now := time.Now()
 	results := make([]PatchResult, 0, len(edits))
-	changed := false
+	batch := PersistenceBatch{
+		Upserts:   make([]PersistedSetting, 0, len(edits)),
+		Deletes:   make([]string, 0, len(edits)),
+		UpdatedBy: updatedBy,
+		UpdatedAt: now,
+	}
 
 	for key, raw := range edits {
 		set, ok := s.reg.Get(key)
@@ -136,10 +156,7 @@ func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]strin
 				})
 				continue
 			}
-			if err := p.Delete(ctx, key); err != nil {
-				return nil, err
-			}
-			changed = true
+			batch.Deletes = append(batch.Deletes, key)
 			results = append(results, PatchResult{Key: key, Status: PatchSaved})
 			continue
 		}
@@ -153,14 +170,14 @@ func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]strin
 			results = append(results, PatchResult{Key: key, Status: PatchInvalid, Problem: patchProblem(set, err)})
 			continue
 		}
-		if err := p.Upsert(ctx, key, ValueString(parsed), updatedBy, now); err != nil {
-			return nil, err
-		}
-		changed = true
+		batch.Upserts = append(batch.Upserts, PersistedSetting{Key: key, Value: ValueString(parsed)})
 		results = append(results, PatchResult{Key: key, Status: PatchSaved})
 	}
 
-	if changed {
+	if len(batch.Upserts) > 0 || len(batch.Deletes) > 0 {
+		if err := p.Apply(ctx, batch); err != nil {
+			return nil, err
+		}
 		if err := s.reload(ctx); err != nil {
 			return results, err
 		}
@@ -180,7 +197,9 @@ func (s *Service) Clear(ctx context.Context, p Persister, key string) (PatchResu
 	if s.Provenance(key) == ProvenanceEnv {
 		return PatchResult{Key: key, Status: PatchPinned, Problem: "set via environment"}, nil
 	}
-	if err := p.Delete(ctx, key); err != nil {
+	if err := p.Apply(ctx, PersistenceBatch{
+		Deletes: []string{key}, UpdatedAt: time.Now(),
+	}); err != nil {
 		return PatchResult{}, err
 	}
 	res := PatchResult{Key: key, Status: PatchSaved}
@@ -205,28 +224,20 @@ func (s *Service) reload(ctx context.Context) error {
 	if s.loader == nil {
 		return nil
 	}
-	db, err := s.loader.LoadAll(ctx)
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	snapshot, err := s.loader.LoadSnapshot(ctx)
 	if err != nil {
 		return err
 	}
-	// The env-override set is refreshed on the SAME path as the values (§3.1). Reloading
-	// one without the other would leave a just-unlocked key resolving to env until the
-	// next restart — the hot-apply gap that makes an unlock look like it did nothing.
-	unlocked, err := loadUnlocked(ctx, s.loader)
-	if err != nil {
-		return err
-	}
-	s.SetDB(db)
-	s.setUnlocked(unlocked)
+	s.setSnapshot(snapshot)
 	return nil
 }
 
-// Refresh forces the in-memory snapshot to re-read the durable store — the public
-// entry point behind reload. The snapshot normally refreshes only on a write through
-// this service (Patch/Clear), so anything that changes the store OUT OF BAND leaves the
-// snapshot stale: another replica's write (§18 Postgres), a restore, or a direct edit.
-// A connection Test reading a stale snapshot reports the OLD value's result (e.g. "set a
-// media server flavor" right after the operator saved one elsewhere), which is the most
-// confusing place for drift to surface — so the test path calls this first. A no-op when
-// no loader is wired (unit tests that construct the service without a store).
+// Refresh forces the in-memory snapshot to re-read the durable store through the
+// same serialized path used after local writes and by the Postgres replica refresher.
+// The periodic refresher provides bounded convergence for other replicas' writes;
+// explicit callers such as a connection test use Refresh when they need an immediate
+// view. SQLite has no periodic reader because it runs as a single replica. Refresh is
+// a no-op when no loader is wired (unit tests without a store).
 func (s *Service) Refresh(ctx context.Context) error { return s.reload(ctx) }

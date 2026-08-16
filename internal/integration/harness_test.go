@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // harness drives the REAL composition root (app.BuildHandler) end to end, faking
@@ -42,6 +42,7 @@ type harnessConfig struct {
 	llm           *testkit.LLM
 	seerr         bool
 	connections   bool // false ⇒ fresh install: seed NO connection settings
+	fillerStorage bool // true ⇒ seed only the local filler layout, not external connections
 	tunarrPlayout bool // true ⇒ explicitly select Tunarr instead of the internal default
 }
 
@@ -61,6 +62,11 @@ func withTunarrPlayout() harnessOpt { return func(c *harnessConfig) { c.tunarrPl
 // withoutConnections builds a store-only "fresh install" (the FE's initial state):
 // no library/tunarr/llm/... external connection is configured.
 func withoutConnections() harnessOpt { return func(c *harnessConfig) { c.connections = false } }
+
+// withFillerStorage gives a fresh-install harness a writable, generation-applied filler layout.
+// It deliberately does not configure any external connection; lifecycle tests can then prove the
+// always-wired library source is dormant until a complete media-server triple is saved live.
+func withFillerStorage() harnessOpt { return func(c *harnessConfig) { c.fillerStorage = true } }
 
 func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	t.Helper()
@@ -106,15 +112,17 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 
 	if cfg.connections {
 		h.seedConnections(cfg)
+	} else if cfg.fillerStorage {
+		h.seedFillerStorage()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
 	handler, err := app.BuildHandler(ctx, st, testkit.Logger(), app.Overrides{
-		Programmer: h.tun,
-		LLM:        h.llm,
-		TMDB:       tmdb.NewWithBase(h.tmdb.URL, "test-key"),
+		Programmer:  h.tun,
+		LLM:         h.llm,
+		TMDBBaseURL: h.tmdb.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -151,6 +159,19 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	if h.seerr != nil {
 		set("seerr.url", h.seerr.URL)
 		set("seerr.api_key", "seerr-key")
+	}
+}
+
+func (h *harness) seedFillerStorage() {
+	root := h.t.TempDir()
+	for key, value := range map[string]string{
+		"filler.dir":        filepath.Join(root, "clips"),
+		"filler.watch_dir":  filepath.Join(root, "incoming"),
+		"filler.sync_every": "9999h",
+	} {
+		if err := h.store.SetSetting(context.Background(), key, value); err != nil {
+			h.t.Fatal(err)
+		}
 	}
 }
 

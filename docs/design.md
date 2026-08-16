@@ -152,7 +152,7 @@ flowchart TD
   p_catalog["catalog<br/><small>5 importers</small>"]
   p_filler["filler<br/><small>6 importers</small>"]
   p_httpx["httpx<br/><small>5 importers</small>"]
-  p_library["library<br/><small>6 importers</small>"]
+  p_library["library<br/><small>7 importers</small>"]
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
@@ -198,8 +198,6 @@ flowchart TD
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`settings`** · 1 importer
-  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`web`** · 1 importer
@@ -251,7 +249,7 @@ flowchart TD
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 6 importers · → `filler`, `httpx`
+- **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
@@ -270,6 +268,8 @@ flowchart TD
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`settings`** · 1 importer · → `library`
+  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
@@ -566,6 +566,19 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
   then carries that immutable snapshot through the operation. These reads do not take the workflow
   lock: the row is atomically committed, and blocking M3U/HLS reads behind publisher work would
   create an outage. A missing, corrupt, or unavailable checkpoint fails the operation closed.
+- **Filesystem topology is identical on every replica and rolls generation by generation.** A
+  shared `filler.dir` setting cannot make a host mount exist, and the in-app restart endpoint affects
+  only the replica that handled it. A Postgres operator changing the filler layout must present the
+  same target paths to every replica and restart every replica; until that roll completes, each
+  process honestly reports drift against its own applied generation. A database advisory lock is
+  not a substitute for deployment orchestration over host filesystems.
+- **Runtime settings converge on ordinary Postgres replicas within 30 seconds.** Each application
+  generation owns one cancellable periodic reader. A tick performs one `ListSettings` statement,
+  carrying values and environment-override ownership as one coherent snapshot, then atomically
+  replaces the process-local view; a failed read preserves the last complete generation and is
+  retried on the next tick. Per-operation consumers still use `ResolveMany` so a refresh cannot
+  assemble a media-server or Tunarr connection from different generations. SQLite starts no
+  reader and pays zero polling reads because it remains single-process by contract.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
 ### Migrating SQLite → PostgreSQL (V11)
@@ -644,7 +657,25 @@ there is no copy-only mode that can leave two diverging databases behind.
 ## 6. External contracts
 
 ### Client resilience defaults (apply to every adapter below)
-Every outbound client is built from a shared HTTP factory with **hard timeouts**: media server 10s, Seerr 10s, TMDB 10s, Tunarr 20s (lineup pushes are chunky), LLM 120s per call. **Retry philosophy:** jittered-backoff retries only for idempotent GETs; *writes never client-retry* — write recovery is owned by the idempotent reconcile loops and periodic sweeps, which is why they exist. A down dependency degrades the relevant feature (and lights up the §13 checklist), never wedges the process.
+Every outbound client is built from a shared HTTP factory with **hard timeouts**: media server 10s, Seerr 10s, TMDB 10s, Tunarr 20s (lineup pushes are chunky), LLM 120s per call. The timeout covers the **whole logical request** — all attempts, response-body reads, and retry waits — rather than restarting for every attempt.
+
+**Retry philosophy:** the factory makes at most **four attempts total**, and only for an exact
+`GET`. Writes and every other method never client-retry — write recovery is owned by the idempotent
+reconcile loops and periodic sweeps, which is why they exist. A `GET` with a request body is
+retryable only when `GetBody` can reproduce that body. The retryable outcomes are transport errors
+while the request context is still live, plus HTTP `408`, `429`, `500`, `502`, `503`, and `504`.
+Before another attempt the client drains a bounded portion of the discarded response body and
+closes it, preserving connection reuse without letting an unbounded error body wedge the call.
+It never retries a failure that occurs while the caller is reading a successful response body.
+
+Retry waits use full-jitter exponential backoff from a 200ms base, capped at 2s. The effective delay
+is the greater of that jittered backoff and a valid integer or HTTP-date `Retry-After`, but it is
+still bounded: when the server asks for more than the 2s delay cap, or the wait cannot fit inside the
+request's remaining context deadline, the client returns that response instead of retrying early.
+The ordinary GET redirect policy remains; a redirect following any other method is returned to the
+caller rather than converted into a GET.
+A down dependency therefore degrades the relevant feature (and lights up the §13 checklist), never
+wedges the process.
 
 ### Library — Emby & Jellyfin
 Both share `GET /Items?Recursive=true&AnyProviderIdEquals=<provider>&IncludeItemTypes=<Movie|Series>&Limit=1`; provider `tmdb.<id>` / `tvdb.<id>`; present iff `Items` non-empty → `Items[0].Id`. Use **header** auth (never `api_key` query param — leaks to logs; Jellyfin deprecates legacy auth from 10.11+):
@@ -654,6 +685,16 @@ Flavor via `LIBRARY_FLAVOR`. A series counts as in-library when the show exists;
 availability is not inferred from a registry switch. Provider-name casing in
 `AnyProviderIdEquals` can differ across versions — if a known-present title returns empty, check
 casing first.
+
+**Live configuration is one per-operation connection snapshot.** The library adapter is always
+constructed, including on an install where the connection is empty. At the start of each public
+operation it resolves `library.flavor`, `library.url`, and `library.token` together from one settings
+snapshot and carries that immutable `{flavor, url, token}` through every nested or batched request.
+All three values must be present and valid before the operation makes an outbound request. Saving a
+complete Emby or Jellyfin connection therefore enables the next operation without rebuilding
+`BuildHandler`; changing flavor, repointing the URL, rotating the token, or clearing any member takes
+effect on the next operation. A concurrent save can never send one server's credential to another
+server or choose authentication headers from a different generation of settings.
 
 **Bulk scan (poll-based availability, §4 + §18.1).** Beyond the id-only `Lookup`, the library adapter exposes two bulk reads that drive the `library-scan`/`library-full-scan` jobs — one call returns *many* items with their provider ids, so availability is confirmed without an N-lookup storm:
 
@@ -781,7 +822,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/system/version` | Version/commit/build time + the readiness `/readyz` reports, plus what the **About** page (§16, V12) shows an operator writing a bug report: **Go runtime + os/arch**, **`startedAt`** (the process start, from which the UI derives uptime), and the **applied schema version** with the backend. The typed, authenticated twin of the ops probes. ⚠ *This used to add that the probes "stay OUTSIDE the versioned API and unauthenticated… putting auth in front of a container health probe would be the wrong trade". The trade was real; the premise no longer is. `RolePublic` makes non-authentication an explicit property of an operation, so `/v1/healthz` and `/v1/readyz` are versioned, typed AND anonymous, with their bare paths kept as permanent aliases. This endpoint still earns its place: it carries the version, build and schema information an operator quotes in a bug report, which a liveness probe has no business returning.* ⚠ **`startedAt`, never a pre-computed uptime**: a duration is stale the moment it is serialized, so the server sends the instant and the client renders the elapsed time it can keep current. |
 | POST | `/v1/setup/test` | Run one named check (powers per-block Test buttons; `config-design.md` §8). |
 | GET | `/v1/settings` | Settings registry with per-key provenance; secret values masked (admin, §15). |
-| PATCH | `/v1/settings` | Update settings; validates, persists, hot-applies; env-pinned keys rejected (admin). An empty value clears an optional key — except a secret, which is replace-only (`config-design.md` §9). |
+| PATCH | `/v1/settings` | Update settings; validates and persists immediately, then applies by the key's runtime lifecycle (`config-design.md` §3); env-pinned keys rejected (admin). An empty value clears an optional key — except a secret, which is replace-only (`config-design.md` §9). |
 | DELETE | `/v1/settings/{key}` | Explicitly clear a key's stored override (reverts to env/default); the only way to unset a secret. 204 · 404 unknown · 409 env-pinned (admin, `config-design.md` §8). |
 | GET | `/v1/settings/secrets/{name}` | Reveal a generated API or playout token (admin; eye-toggle + copy per `config-design.md` §4). Reading never rotates. |
 | POST | `/v1/settings/secrets/{name}/regenerate` | Regenerate `API_TOKEN` or `PLAYOUT_TOKEN` (admin; old token dies immediately). |
@@ -795,7 +836,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB. Any authenticated user. Clips are not a scope — see §7.2; use `/v1/filler?q=`. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
 | POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down every playout process tree, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, with the same lifecycle guarantee on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
-| GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any boot-time setting is pending (`restartRequired`). |
+| GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any restart-scoped setting is pending (`restartRequired`, with the specific desired-vs-applied keys). |
 | GET | `/v1/system/services` | The Dashboard's **Services** panel (admin, §12, V31): one row per configured integration with its probe result and the **target** it was probed against, plus a `loomarr` row carrying version/backend/schema. Runs the **same `runConnectionChecks`** the wizard checklist and `/v1/system/reload` use — one probe implementation, asserted by a test, so three surfaces cannot disagree about whether Emby is reachable. |
 | GET | `/v1/activity?limit=` | The Dashboard's **Recent activity** feed (admin, §12, V32), newest first. Reads the persisted `activity` table (§5) rather than the SSE bus, so the feed survives a restart and is not subject to the bus's deliberate lossiness. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
@@ -848,6 +889,16 @@ Two consequences worth stating, because both look like details and are not:
 **Decision: Loomarr builds no search index.** Every searchable corpus is already indexed by its owner: the media server exposes `SearchTerm` on the same `/Items` surface as §6 (with `IncludeItemTypes` + `Recursive=true`, flavor auth as usual); TMDB has `/search/multi`; the clip catalog is thousands of rows where a `name LIKE` filter in the store suffices. Dual-dialect full-text (SQLite FTS5 *and* Postgres tsvector, which diverge substantially) to re-index data we don't own is explicitly rejected — revisit only if enormous filler catalogs demand it (§20).
 
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
+
+**Scopes follow live configuration, not boot-time construction.** `library` requires a current,
+complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current
+`tmdb.api_key`. `all` (and an omitted scope) searches
+whichever of those corpora are configured now: both when both are available, or the one usable
+corpus when only one is. It returns 501 only when neither corpus is configured, rather than making
+TMDB a hidden prerequisite for searching a perfectly usable media library (or vice versa). The
+adapters stay constructed across configuration changes, so saving or clearing either connection
+changes the next request without a restart. Channel icon suggestions have no library-only fallback
+and therefore remain gated on the live TMDB key even though their adapter also stays constructed.
 
 Channel/proposal/Board filtering and Help search stay **client-side** — household-scale lists and already-embedded markdown need no backend.
 
@@ -930,7 +981,7 @@ The grounding rules (above) are untouched — provider/model selection changes *
 - `scores` — **deterministic** post-scoring (theme fit, runtime/era balance, availability ratio) layered on the LLM output so ranking isn't pure vibes (à la SmarTunarr's multi-criterion scoring; keep criteria configurable). **Theme fit measures the intent's terms against each item's genres + overview** (not the title string — a "90s action" intent rarely appears in a *title*, so title-substring scoring is near-useless); it stays deterministic (same inputs → same score). `Candidate`/`ProposalItem` therefore carry `genres` + `overview` (populated from TMDB and the media server; §7.2 output contract, in the OpenAPI spec).
 
 ### Human-in-the-loop (non-negotiable default)
-Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant **hard-gated by the pending-acquisition cap** (§11): a proposal auto-approves only while its requester stays within quota, and otherwise falls back to the admin queue rather than being denied. `approved_by` records `auto` for that path, so the audit distinguishes a machine decision from a human one.
+Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant **hard-gated by the pending-acquisition cap** (§11): a proposal auto-approves only while its requester stays within quota, and otherwise falls back to the admin queue rather than being denied. `approved_by` records `auto` for that path, so the audit distinguishes a machine decision from a human one. Every approval for one requester — manual or automatic — enters the same **store-owned, requester-scoped ordering**, but only automatic approval evaluates and may be rejected by the unattended-spend cap. SQLite uses an in-process keyed semaphore (SQLite remains single-instance). Postgres takes a transaction-scoped database advisory lock, performs the quota reads through that transaction's read view, and commits the approval on the same transaction and connection; a lost session therefore rolls back the guarded work instead of releasing its ordering while another pooled connection can still commit. Waiting approvals use only their own transaction connection, so the holder never needs a second pooled connection to finish. Ordering ends with the durable commit or rollback, before best-effort post-commit channel reconciliation. Any ordering or quota-read failure leaves the proposal `submitted`; a manual admin approval remains exempt from quota rejection because the admin *is* the approval gate.
 
 ### Execution model
 Generation is a **job**, persisted in the store (§5) and executed by the in-process worker pool (§14; `JOB_WORKERS` default 2, per-job `JOB_TIMEOUT` default 10m — so one hung LLM call can never starve the queue) — on Postgres replicas, jobs are claimed via the same `SKIP LOCKED` pattern as titles. Proposals are persisted too, each recording `created_by` (powers My proposals, §12): the approval queue (`GET /v1/proposals?status=submitted`) and pending approvals must survive restarts. Generation progress streams over the shared `/v1/events` SSE bus (§7) as `suggestion` frames — payload `{jobId, phase, round}` where phase advances `searching` (the model is calling the catalog tool) → `reasoning` (the model is composing the grounded lineup) → `scoring` (deterministic post-scoring) → `done`/`failed`; on reconnect, `GET /v1/proposals/{id}` is the source of truth (dropped progress events are a latency bug, never a correctness bug).
@@ -1533,8 +1584,9 @@ The budget is **not a static magic number**. It is `playout.Manager`'s injected 
 re-read on every admission, composed from three live sources:
 
 1. **Measured capacity** — what `Detect`'s representative encoder trial found this box sustains (not a
-   guess; the same number that seeds the `playout.max_channels` default).
-2. **Operator override** — `playout.max_channels`, applied as a **hard cap** (`min`): an operator may
+   guess; the automatic default uses this live result directly). Before measurement completes, or if
+   it is unavailable, the conservative budget is one transcode — never unlimited.
+2. **Operator safety cap** — `playout.max_channels`, applied as a **hard cap** (`min`): an operator may
    only *lower* below the measurement (a safety throttle), never claim more than the hardware proved.
 3. **VRAM shading** — a resident LLM steals the VRAM each hardware encode needs for its device context
    (the original black-screen incident was an encoder that could not allocate under a resident model),
@@ -1725,6 +1777,15 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
 loop — `for { app := Build(); app.Run(); app.Shutdown() }` — and a restart request ends the
 current iteration so the next one constructs a fresh store, handler, scheduler and HTTP server.
 Same PID, no re-exec, **no supervisor required**.
+
+**A generation is also the application boundary for storage topology.** Registry persistence and
+runtime application are deliberately separate for `filler.dir` + `filler.watch_dir`: saving either
+records the desired layout immediately, while the running generation keeps one immutable applied
+pair for scan, intake, fetch, split, pipeline, artwork adoption, byte serving and playout. The
+restart-cost endpoint derives drift by comparing that pair with current resolution and names the
+pending keys; reverting the edit clears the warning. The next loop iteration resolves the pair once
+and hands it to every consumer. This is the filesystem equivalent of taking one connection snapshot
+for a multi-request operation, at the longer lifetime the resource requires.
 
 The three mechanisms were weighed against the constraint that an operator must never be left
 with a dead service and no way back:
@@ -2850,6 +2911,31 @@ so a zero-config install has one without the operator mounting a second volume.
 
 **`FILLER_DIR` (`filler.dir`) — the clip folder.** Loomarr's own store. Every clip lives as
 `<hash>.<ext>` with `<hash>.info.json` beside it, sharded two levels (`a3/f9/<hash>.mp4`).
+
+**The two paths are one immutable generation layout, not independently hot-applied strings.** A
+catalog row stores a path relative to the clip folder, so changing the root changes the meaning of
+every row. The watch folder is coupled to it because every sync drains arrivals from watch into
+root. The composition root therefore resolves both once per application generation and every
+filesystem consumer receives that same applied layout. Saving a different value persists the
+desired layout and marks the key restart-required; it does not make media serving jump ahead of the
+pipeline, nor make a newly-saved watch folder drain into the old clip root.
+
+The layout retains two clip-root spellings deliberately: Loomarr resolves filesystem aliases for
+safe local traversal, while Tunarr registration receives the operator-configured shared-volume
+spelling. Resolving a symlink before registration can manufacture a path that exists only in
+Loomarr's container namespace. Every registered folder source is identity-checked against the
+local traversal root in both directions before intake; aliases, ancestors, and shard descendants
+are skipped rather than allowed to re-file or delete the live catalog.
+
+**Changing the layout does not move data.** Loomarr neither copies the old clip library to the new
+root nor removes the old files. The operator makes the desired mount/path available, deliberately
+moves or copies data if wanted, uses the Filler connection Test to prove both desired directories
+are readable and writable, and restarts. The new generation reconciles the catalog against that
+root. A missing root can be materialized; a later create/scan failure is visible and never becomes
+a successful empty scan that prunes the last known catalog. If an existing path ancestor cannot be
+inspected far enough to prove the watch and clip trees do not alias, the new generation fails
+closed before filler starts — running destructive intake on an unverifiable topology is unsafe.
+An accessible empty root is an intentional empty library selection and reconciles as such.
 
 ⚠ **The clip folder keeps the EXISTING key rather than gaining a `filler.clip_dir` twin.**
 `filler.dir` has always meant "where the clips are", which is exactly what the clip folder is —
@@ -4053,7 +4139,7 @@ Internal playout (§9.1) serves segments to a **television**, which cannot hold 
 
 ### Explicit import & sync (admin-only, never implicit)
 - `GET {LIBRARY_URL}/Users` with Loomarr's admin `library.token` lists server users; `GET /v1/users/candidates` (admin-only) surfaces that list to the UI with an `imported` flag per account, so picking is a choice from real names rather than pasted ids. `POST /v1/users/import` (admin-only) takes an explicit set of media-server user ids and upserts them as allowlisted rows (`password_hash` null; media-server admins may map to `admin` at the importing admin's choice, default `member`). This is the **only** way a media-server user gains access.
-- `POST /v1/users/sync` (and a periodic sync, same pattern as the filler catalog) refreshes **already-imported** users: name + disabled state from the source. It **never adds** new users — sync reconciles the allowlist, import defines it. **This route is registered only when a media server is configured**, yet it is unconditionally present in the committed spec (which is generated in schema-only mode), so the generated client would otherwise offer a call that 404s. The computed `user_sync` feature (config-design §7) gates it, mirroring the same `library.flavor` condition the wiring uses. Users disabled/deleted server-side are disabled in Loomarr on next sync, and their sessions revoked. Local users are untouched by sync.
+- `POST /v1/users/sync` (and a periodic sync, same pattern as the filler catalog) refreshes **already-imported** users: name + disabled state from the source. It **never adds** new users — sync reconciles the allowlist, import defines it. The route and its adapter are always registered; the live, complete `{flavor, url, token}` connection gates each operation, so an empty or cleared connection returns the supported unconfigured response instead of turning the committed route into a boot-dependent 404. The computed `user_sync` feature (config-design §7) follows that same complete-connection predicate. Users disabled/deleted server-side are disabled in Loomarr on next sync, and their sessions revoked. Local users are untouched by sync.
 
 ### Roles & quotas (v1: deliberately simple)
 - **`admin`** — approve proposals/acquisitions, manage channels destructively, manage users (import/disable/role), settings, filler ingestion.
@@ -4192,7 +4278,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | origination (describe → approve) | approve (`POST /v1/proposals/{id}/approve`) | **Guide header** → `✦ Add a channel` (inline describe panel; the "Dead air" empty state opens the same one); the **approval queue** for the edit-before-approve path (drop/add/note ride the same call) | admin |
   | hand-made channel | `POST /v1/channels` | **none — API-ONLY BY DECISION** (C8, 2026-07-26). Not an orphan: §12 gives the UI exactly one origination door (describe → approve) and says so. The single-series/empty seeds stay for scripted and restore use, where a caller supplies every field deliberately. `strategy` is REQUIRED by this body, so it is unsettable at creation from a form — which is consistent with there being no form, and would need a §7 default before any UI could offer one. | admin |
 
-- **Dashboard** (admin, route `/dashboard`, V16) — *"is everything alright?"* Four stat cards (on air · needs you · acquiring · filler), each a link to the surface it summarizes, over a **Transcoding** panel showing live internal-playout telemetry: one row per encoding channel with its viewer count, resolved encoder (hardware vs software — the difference between four concurrent streams and one), realtime speed and buffer-ahead, plus an `active / capacity` load line against `playout.max_channels`.
+- **Dashboard** (admin, route `/dashboard`, V16) — *"is everything alright?"* Four stat cards (on air · needs you · acquiring · filler), each a link to the surface it summarizes, over a **Transcoding** panel showing live internal-playout telemetry: one row per encoding channel with its viewer count, resolved encoder (hardware vs software — the difference between four concurrent streams and one), realtime speed and buffer-ahead, plus an `active / capacity` load line against the effective measured budget after any safety cap and VRAM shading.
 
   Data comes from `GET /v1/playout/sessions` (admin-only), with the **`playout` SSE frame as the latency path**: the frame fires when a channel starts or stops, and the dashboard re-reads the endpoint. Deliberately not per progress sample — those arrive about once a second per stream, and republishing each would push several frames a second at every open browser for numbers that move by fractions. This is §8's standing rule applied: SSE is a latency optimization, the GET is truth on reconnect.
 
@@ -4230,7 +4316,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
-- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, hot-apply, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
+- **Settings** (admin, route `/settings`) — **six tabs** (V9, restructured to the v2 mock): *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and the four inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.
 - **Global search (⌘K)** — command palette over `/v1/search` + channels + help; the single fast entry point. **Hand-rolled, not cmdk** (revised — §12 described shadcn `Command`/cmdk, which was never built and is not a dependency; adding one is a §14 conversation, and the ARIA pattern is small enough not to need it). It implements the combobox/listbox pattern directly: `role="combobox"` on the input, `role="listbox"` over the results, one `role="group"` per scope, and `aria-activedescendant` — so focus stays in the input while ↑/↓/Home/End move the active option and Enter selects it. `Escape` is bound once at the window level (`useCommandShortcut`), never inside the component, so it cannot close twice. The search call deliberately omits `scope`, which the API defaults to `all` — the right corpus for a palette; channels, clips, and help are merged in from their own sources (clips are not a `/v1/search` scope, §7.2).
 
@@ -4292,7 +4378,7 @@ Consequences, embraced:
 
 On a fresh instance the UI then walks the owner through, in order:
 1. **Bootstrap** — create the owning admin (local username + password, `POST /v1/setup/bootstrap`, §11). Works with zero media-server config; succeeds once (while no admin exists), then this step is done forever. **Once done it renders read-only**, naming the owner: the step cannot run twice, so offering the form again is a dead end an operator can only discover by submitting it.
-2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. The form is the ordinary `ConnectionBlock` + settings-group fields with its live Test, so it writes through the same PATCH path as everything else (config-design §6).
+2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. **Choosing Loomarr reveals the ordinary `server.public_url` field on this same step and the step remains incomplete until a valid address has been persisted.** The copy says this must be an address the media server can reach; inferring it from the browser or request headers would give a containerised media server an often-unreachable host. An environment-pinned `SERVER_PUBLIC_URL` remains locked and satisfies the step when non-empty. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. Both forms are ordinary registry-backed settings fields, so they write through the same PATCH path as everything else (config-design §6).
 3. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
 4. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
 5. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
@@ -4307,6 +4393,7 @@ On a fresh instance the UI then walks the owner through, in order:
 | | Internal (default) | Tunarr |
 | --- | --- | --- |
 | Blocking checks | `media_server` | `media_server` + `tunarr` |
+| Required playout address | persisted `server.public_url` on the Playout step | absent |
 | Tunarr connection form | absent | **on the Playout step**, never in Connections |
 | "Give Tunarr your library" step | absent | present |
 
@@ -4375,7 +4462,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | --- | --- | --- |
 | HTTP router | **stdlib `net/http` ServeMux** (Go 1.22 method+path patterns) via Huma's `humago` adapter | No third-party router; the embedded same-origin SPA also means **no CORS layer at all** |
 | API framework | **Huma v2** (code-first OpenAPI 3.1 + validation + docs UI) | §7.1's single-source-of-truth requirement; `oapi-codegen`/`swaggo` rejected (spec-first ceremony / weakest drift guarantee) |
-| Config | `caarlos0/env` (struct tags) for the bootstrap/env layer, feeding one **typed settings registry** (`env > database > default`, hot-apply, `config-design.md`) | Boring, maintained; the registry is the single source of truth (§15) |
+| Config | `caarlos0/env` (struct tags) for the bootstrap/env layer, feeding one **typed settings registry** (`env > database > default`, lifecycle-aware application, `config-design.md`) | Boring, maintained; the registry is the single source of truth (§15) |
 | DB access | **`database/sql` for both backends** — `modernc.org/sqlite` + `pgx` via its stdlib shim | One store code path; dialect differences live only in migrations + `ClaimDue*` |
 | Migrations | **`goose`** with `embed.FS`, per-dialect dirs | Simple embedded-FS story; golang-migrate rejected as heavier for no gain here |
 | Jobs | **hand-rolled jobs table in the Store** + in-process worker | Forced, not preferred: River is Postgres-only, Asynq needs Redis — both break the SQLite promise. Claiming reuses the `SKIP LOCKED` pattern |
@@ -4425,6 +4512,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
+- Docker edge: **Traefik v3.7.1**, pinned by multi-architecture manifest digest in the supported Compose path. It is the smallest cross-platform way to put one health-aware HTTP edge in front of the compiled application on Docker Engine and Docker Desktop, and it leaves an explicit load-balancer seam for the scale investigation. The Docker provider uses `exposedByDefault=false` plus a Loomarr-specific constraint label; its read-only socket mount is still control-plane access, so the stack belongs only on a trusted Docker host. Ping stays on an unexposed admin entrypoint. **One Loomarr replica remains the beta support boundary** until shared Postgres, jobs, recurring schedulers, auth, playout/ffmpeg ownership, file-backed state, and graceful shutdown pass a multi-replica test. A proxy distributing requests is not by itself proof that the application scales.
 
 ### Documentation tooling
 
@@ -4544,7 +4632,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 
 ## 15. Configuration — layered settings
 
-**Full subsystem design — registry schema, resolution semantics, secrets lifecycle, Settings IA, wizard integration — lives in `config-design.md`.** Every setting resolves **`env > database > default`**, per key, through one **typed settings registry** (backed by the §5 settings store; all subsystems read via the settings service, never `os.Getenv` directly). An env var that is set wins and **locks its UI field** ("set via environment"); unset, the setting is managed in the app (§13). Connection settings **hot-apply** on save (adapters read through the service; intervals re-read per tick; the LLM provider hot-swaps per §8.1) — the rare restart-required keys are exactly the bootstrap set below.
+**Full subsystem design — registry schema, resolution semantics, secrets lifecycle, Settings IA, wizard integration — lives in `config-design.md`.** Every setting resolves **`env > database > default`**, per key, through one **typed settings registry** (backed by the §5 settings store; all subsystems read via the settings service, never `os.Getenv` directly). An env var that is set wins and **locks its UI field** ("set via environment"); unset, the setting is managed in the app (§13). Runtime application is per key: connection operations snapshot live values, policies resolve per run, and generation-scoped resources wait for restart. `filler.dir` + `filler.watch_dir` are the first app-managed generation-scoped pair; bootstrap keys below remain restart-scoped for their pre-database reason.
 
 ### Bootstrap (needed before/independent of the DB) — `env > file > default`
 
@@ -4593,20 +4681,20 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
 | `PLAYOUT_PREPARED_DIR` | `/data/prepared` — persistent immutable prepared publications shared across Channels and restarts. Separate from `PLAYOUT_HLS_DIR`, which is viewer-scoped scratch. Read at construction; changing it requires restart so keyed assets cannot split across roots. |
 | `PLAYOUT_PREPARED_BUDGET_GB` | `512` — soft cap for complete prepared publications. The minute-level preparation pass evicts cold whole publications after readiness work; anything used in the last fifteen minutes remains protected even when that leaves the store temporarily over budget. Hot-applies without restart (§9.1 V56). |
-| `PLAYOUT_MAX_CHANNELS` | `4` — concurrent encodes. The wizard's transcode check measures a realistic figure; a test pattern encodes cheaper than film grain, so treat any measurement as a starting estimate. |
+| `PLAYOUT_MAX_CHANNELS` | `0` (automatic) — use the encoder trial's measured concurrent-transcode capacity. A positive value is an optional safety cap and may only lower that measurement, never raise it. A test pattern encodes cheaper than film grain, so lower the cap if real content cannot sustain the measured budget. |
 | `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
 
 **Backup (§16 — added with the Backup UI).**
 
 | Env | Meaning / default |
 | --- | --- |
-| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly instance backup. A backup is the whole instance (settings, channels, people, generated secrets), so treat the file as a credential. |
+| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads; protect `/data` separately when those files matter. |
 | `BACKUP_RETAIN` | `7` — how many to keep before pruning the oldest. |
 | `BACKUP_DIR` | `/data/backups` — inside the documented volume by default; point elsewhere to keep backups off the database's disk. |
 | `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:8b` (or `qwen3:14b` at **Q6_K** — stock Q4 degrades tool-calling/JSON). **Initial defaults only:** an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model` + per-provider secret `llm.api_key.<provider>`) **overrides** them and hot-swaps the running suggester, so a UI choice survives a reboot without editing env. |
 | `LLM_API_KEY` | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own per-provider key in the settings store, overriding this — §8.1; **never echoed** by any API.)* |
 | `LLM_KEEP_ALIVE` | `30m` — how long a **local** Ollama model stays resident between calls (§8.2). Loading an 8B model costs ~9s vs ~0.5s warm, and Ollama unloads after 5m idle, so the stock behavior makes a describe→read→refine cycle re-pay the load every time. `0` disables (stock unload) for a memory-tight host. Ignored by hosted providers, which have no residency to manage. |
-| `TMDB_API_KEY` | *(secret; grounds suggestions — required if the suggester is enabled)* |
+| `TMDB_API_KEY` | *(secret; enables TMDB search, channel icon suggestions, and AI grounding — required if the suggester is enabled)* |
 | `IMAGES_DIR` | `/data/images` — where the image service (§22) stores originals and derivatives, inside the documented volume. ⚠ **Not covered by the application backup**, which is a database backup: `/data` is one volume and the volume is what to back up. Everything here is regenerable or re-fetchable **except** operator uploads. |
 | `IMAGES_MAX_UPLOAD_BYTES` | `8388608` (8 MiB) — the ceiling on an uploaded image, enforced on the read as well as the declared size. |
 | `IMAGES_REMOTE_FETCH_ENABLED` | `true` — whether to ingest remote artwork (TMDB, media-server) at all. `false` keeps the service to locally-produced images only; no outbound image requests are made. |
@@ -4624,8 +4712,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `channel-maintenance` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
-| `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and a watch folder that vanishes silently loses whatever had not been filed yet. The scan skips it by name, so a file waiting there is never catalogued from its arrival path |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |
+| `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and an unmounted watch folder loses anything not yet filed on the next restart — silently, because an empty folder is also what success looks like. The scan skips it by name, so a file waiting there is never catalogued from its arrival path. **Generation-scoped with `FILLER_DIR`:** saving both can never apply the new watch against the old root; one immutable pair takes effect after restart |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_BREAK_DURATION` / `FILLER_POD_MAX` | `4` / `5m` / `4`. Break frequency is the inherited channel default (`policy.breaksPerHour`: absent = follow it, `0` = no breaks, positive = custom). Break length is also inherited (`policy.breakDuration`: absent = follow it, minimum `30s`) and never uses zero as off. Pod size is a global preferred clip count, automatically raised when the matching catalog's median clip duration needs more clips to fill the resolved break length. |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
@@ -4662,11 +4750,24 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
 Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
 the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
-already require that base. `HEALTHCHECK` → `/healthz`; readiness additionally requires the bundled
+already require that base. The container `HEALTHCHECK` uses the binary's `/v1/readyz` probe;
+readiness additionally requires the bundled
 image worker's release/profile self-test. The web UI is embedded and served at `/`.
 
-**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published
-tag. It contains the Go server and its required release-matched `loomarr-image` Rust worker, and
+**One image (revised — supersedes "two tags, one binary").** Releases publish one image at
+`ghcr.io/mantonx/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
+`0.1.0-beta.1` never move `latest`, which is reserved for the newest stable release. Compose requires
+`LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. A
+one-shot Compose preflight applies the same strict SemVer and OCI tag policy as the publisher, so
+mutable aliases such as `latest` fail before Loomarr starts. The release rejects an exact version
+already present in GHCR, publishes no mutable major/minor alias, and serializes publishers by exact
+Git tag. Registry lookup fails closed: only buildx's exact ref-qualified rendering of GHCR's
+`MANIFEST_UNKNOWN` response permits a push; generic 404, authentication, transport, rate-limit, and
+service errors stop publication. Fixture-style release-policy tests cover each of those classes.
+The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
+ran; a manual full release-candidate rerun is available when a docs-only final commit would
+otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
+its required release-matched `loomarr-image` Rust worker, and
 vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
 model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
 **~1.3GB measured before the Rust worker** (amd64 uncompressed rootfs; **~821MB before whisper-cli**).
@@ -4678,6 +4779,17 @@ sizes for a tree that no longer exists, and mixing the two units is how the earl
 What an operator downloads is the compressed pull, which is smaller.
 
 It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh named volume inherits nonroot ownership and the documented `docker run -v loomarr-data:/data loomarr` boots. Without that the volume arrives root-owned and boot dies with *"unable to open database file (14)"* — a failure that was **masked** while `DATABASE_URL` had no default (§15), because the app never tried to open a file. Compose's one-shot chown init container stays for **bind mounts**, which the image cannot pre-seed.
+
+**Storage-path portability is explicit.** In the supported Linux Docker deployment,
+`/data/filler` lives on the persistent `/data` volume and any alternative `filler.dir` is an
+**in-container** path whose bind/named volume must already be present and writable by uid 65532.
+Saving a host path cannot add a mount; change Compose first, then apply the saved layout by
+restarting/recreating every Loomarr replica. On a native macOS source/binary run, `/data/filler` is
+the container-oriented default and is commonly not writable, so the operator/development harness
+must set an explicit writable absolute path. A future native-install default belongs to one
+platform data-root decision covering the database, images, prepared media, backups and filler
+together; inventing a filler-only `~/Library/Application Support` exception would create another
+split storage model.
 
 *Superseded model, recorded because the reversal matters:* the project previously published a 31MB `loomarr:latest` with no media tooling plus a 549MB `loomarr:filler` variant that added it, so an operator opted in with a tag change and a restart. That split existed to keep media tooling out of the default image — the same goal that had earlier motivated a separate ingest sidecar, itself already reversed in favour of the opt-in tag.
 
@@ -4691,13 +4803,27 @@ tools. The Go server stays cgo-free, and pixel buffers never cross the process b
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
-### Compose (profiles: sqlite · postgres · ai)
+### Compose (Traefik edge; profiles: sqlite · postgres · ai)
+- **edge:** digest-pinned `traefik:v3.7.1` owns the published host port and routes only the explicitly
+  labelled Loomarr service on a private network. Loomarr exposes `8080` to that network but has no
+  host port. `SERVER_PUBLIC_URL` is required at Compose interpolation time and names the canonical
+  Traefik URL embedded in stream links. Traefik probes `/v1/readyz` and its dashboard is disabled.
+  When the only labelled backend container stops, Docker discovery removes the router and the edge
+  returns 404 until Loomarr restarts; recovery must not require a Traefik restart. The beta topology
+  is deliberately one Loomarr replica.
+- **artifact preflight:** an unprofiled one-shot service validates `LOOMARR_VERSION` with the release
+  workflow's strict SemVer/OCI policy before Loomarr starts. Empty, malformed, overlong, and mutable
+  aliases such as `latest` fail the deployment rather than silently selecting a moving artifact.
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
-- **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
+- **postgres:** `docker/compose.postgres.yaml` replaces Loomarr's SQLite default with an explicit
+  Postgres DSN and waits for `postgres:16` to become healthy. A profile can add a service but cannot
+  conditionally replace another service's environment; `--profile postgres` without the override is
+  therefore not a supported selection mechanism. External Postgres uses the same override with an
+  operator-supplied `DATABASE_URL`.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama). The service ships **ready-to-use but model-less** — model choice is the wizard's job (§8.1: it depends on the user's GPU), so no model is baked in. Three deploy affordances, all optional and design-aligned: (1) a **healthcheck + `depends_on` gate** so `loomarr` waits for Ollama before its first probe (no transient "AI host unreachable" on first load) — the `depends_on` is `required:false`, so a hosted/external-LLM deploy that omits the `ai` profile skips it; (2) **opt-in GPU passthrough** via a separate overlay (`docker/compose.gpu.yaml`, NVIDIA + nvidia-container-toolkit; mirrors the dev Tunarr overlay) — without it Ollama runs on CPU (works, but slow); (3) **opt-in model preload** — set `LLM_MODEL` and a one-shot `ollama-pull` fetches it on first boot for a zero-wizard-step install; left empty (the default), the wizard picks the model, preserving the §8.1 "the user picks" default.
 **Filler ingest needs no profile, no tag, and no service.** The vendored yt-dlp + ffmpeg + deno ship in the single image (§16), so in-app clip downloads work out of the box — mount a drop-folder and go. *Revised: this supersedes both the `filler` compose profile and the opt-in `loomarr:filler` tag that replaced it; see §10's history note for why the question moved three times (retired-ok).*
 
-The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
+The image is **non-root** (Debian `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
 `/data/loomarr.db` (`SQLITE_CANTOPEN`) on first run. Fix it **in compose**, not by running
 the app as root: a one-shot `loomarr-init` sidecar chowns the volume to uid 65532 before
@@ -4706,6 +4832,20 @@ postgres backend has no `/data` volume — so the init runs under the `sqlite` p
 
 ```yaml
 services:
+  loomarr-version-check:
+    image: busybox:1.36
+    command: ["sh", "/check-release-tag.sh", "--image-tag", "${LOOMARR_VERSION:?pin an exact released SemVer version}"]
+    volumes: ["../scripts/check-release-tag.sh:/check-release-tag.sh:ro"]
+
+  traefik:
+    image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+    command:
+      - --entrypoints.web.address=:8080
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+    ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
+    volumes: [/var/run/docker.sock:/var/run/docker.sock:ro]
+
   # sqlite-only: chown the fresh /data volume to the nonroot uid before loomarr starts.
   loomarr-init:
     image: busybox:1.36
@@ -4714,13 +4854,16 @@ services:
     volumes: ["loomarr-data:/data"]
 
   loomarr:
-    image: loomarr:latest
+    image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?pin a released version}
     depends_on:
+      loomarr-version-check:
+        condition: service_completed_successfully
       loomarr-init:
         condition: service_completed_successfully   # sqlite profile only
         required: false                             # postgres profile skips it
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:?set the Traefik URL}
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
       LIBRARY_URL: ${LIBRARY_URL}
       LIBRARY_TOKEN: ${LIBRARY_TOKEN}
@@ -4734,7 +4877,11 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       TMDB_API_KEY: ${TMDB_API_KEY}
       AUTO_MIGRATE: "true"
-    ports: ["8080:8080"]
+    expose: ["8080"]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.loomarr.rule: PathPrefix(`/`)
+      traefik.http.services.loomarr.loadbalancer.server.port: "8080"
     volumes: ["loomarr-data:/data"]   # sqlite backend only
     restart: unless-stopped
     # depends_on: [postgres]       # postgres profile
@@ -4803,7 +4950,7 @@ The first-run wizard (§13) walks these checks interactively — the list below 
 
 ## 17. Observability
 - **Logging:** structured (`slog`); one line per provisioning transition and per channel reconcile (diff summary).
-- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions. Log lines carry the relevant job/proposal/channel id as a correlation field.
+- **Metrics (Prometheus):** records by state; requests submitted / give-ups; webhook events by type; library-lookup + reconcile-loop latency; **channel reconciles, Tunarr API latency/errors, slots pending-vs-filled per channel**; LLM latency + (hosted) token/cost, proposals generated, acquisitions proposed/approved/rejected, grounding-dropped candidates; filler clips synced/tagged/untagged and pod fallback-ladder depth (how often matching degrades); logins (success/failure) and active sessions; job queue depth + janitor purge counts; slot-drift substitutions. Outbound request count and latency wrap the retrying transport, so four attempts remain **one logical request** in those series; `loomarr_outbound_retries_total{target,reason}` separately counts each actual additional attempt with a bounded reason (`transport`, `408`, `429`, `500`, `502`, `503`, or `504`). Log lines carry the relevant job/proposal/channel id as a correlation field.
 - **Readiness** true only after DB connectivity + migrations, and (soft) Tunarr reachability.
 
 ---
@@ -5395,3 +5542,4 @@ render through the shared frontend `Image` primitive. An animated filler hover m
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
+

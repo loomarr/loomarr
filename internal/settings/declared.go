@@ -2,6 +2,8 @@ package settings
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -86,6 +88,37 @@ func breakDuration(v any) error {
 		return fmt.Errorf("want at least 30s (got %s) — shorter values are clamped by Tunarr and would make playout backends disagree", d)
 	}
 	return nil
+}
+
+// storagePath validates the two generation-scoped filler paths without importing
+// filler back into settings. Absolute paths keep a catalog row anchored to one
+// unambiguous root; filler.Layout owns canonical cleaning for the generation so
+// legacy trailing slashes and equivalent spellings remain upgrade-compatible.
+// Refusing the filesystem root prevents a bad edit from turning a scan into a walk
+// of the whole mounted host/container filesystem.
+func storagePath(optional bool) ValidateFunc {
+	return func(v any) error {
+		path, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("want a filesystem path")
+		}
+		path = strings.TrimSpace(path)
+		if path == "" {
+			if optional {
+				return nil
+			}
+			return fmt.Errorf("want a non-empty absolute path")
+		}
+		clean := filepath.Clean(path)
+		if !filepath.IsAbs(clean) {
+			return fmt.Errorf("want an absolute path (got %q)", path)
+		}
+		root := filepath.VolumeName(clean) + string(filepath.Separator)
+		if clean == root {
+			return fmt.Errorf("the filesystem root cannot be used as a clip folder")
+		}
+		return nil
+	}
 }
 
 func declared() []Setting {
@@ -291,9 +324,9 @@ func declared() []Setting {
 			Doc: "Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart.",
 		},
 		{
-			Key: "playout.max_channels", Label: "Maximum live transcodes", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
-			Kind: KindInt, Default: "4",
-			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
+			Key: "playout.max_channels", Label: "Live transcode safety cap", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
+			Kind: KindInt, Default: "0", Validate: nonNegativeWholeNumber,
+			Doc: "Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it.",
 		},
 
 		{
@@ -324,7 +357,7 @@ func declared() []Setting {
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
 			Kind: KindCron, Default: "0 30 3 * * *",
-			Doc: "When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential.",
+			Doc: "When to write the nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads.",
 		},
 		{
 			Key: "backup.retain", Label: "Backups to keep", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
@@ -369,7 +402,7 @@ func declared() []Setting {
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
 			Kind: KindSecret, Default: "", Required: FeatureSuggestions,
-			Doc: "A free TMDB API key. Needed for AI channel suggestions.",
+			Doc: "A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
@@ -454,7 +487,7 @@ func declared() []Setting {
 			// neighbours both defaulted; that asymmetry made the whole feature opt-in by
 			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", Label: "Clip library", EnvVar: "FILLER_DIR", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "/data/filler", Required: FeatureFiller,
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "/data/filler", Required: FeatureFiller, Validate: storagePath(false),
 			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
@@ -474,7 +507,7 @@ func declared() []Setting {
 			// scan skips `_watch` by name so a waiting file is never catalogued from its arrival
 			// path (which would then be pruned the moment intake moved it).
 			Key: "filler.watch_dir", Label: "Drop folder", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "",
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true),
 			Doc: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
 		},
 		{

@@ -13,7 +13,7 @@ func TestLLMConnectionCheck_AcceptsSelectedProvidersNamespacedKey(t *testing.T) 
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	ok, detail := connectionTests(set)["llm"](context.Background())
+	ok, detail := connectionTests(set, nil, nil)["llm"](context.Background())
 	if !ok {
 		t.Fatalf("configured OpenRouter reported unavailable: %s", detail)
 	}

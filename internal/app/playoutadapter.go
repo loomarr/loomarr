@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -110,9 +111,10 @@ type playoutResolver struct {
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
 	// one-assembler rule. Nil ⇒ breaks fall back to the offline card.
 	pods api.PodPreviewer
-	// fillerDir resolves a clip's relative id to a file on disk. A func so a settings change
-	// applies without a restart, like the other live reads above.
-	fillerDir func() string
+	// fillerDir resolves a clip's relative id to a file on disk. It is immutable for the
+	// generation: catalog paths, scan and playout must never interpret one row under different
+	// roots while a saved layout change is waiting on restart.
+	fillerDir string
 
 	// pathMap resolves the parsed `library.path_map` (§15, V47) live, so a mapping edit applies
 	// without a restart. Empty ⇒ no mapping ⇒ ResolveInput uses the media server's HTTP stream.
@@ -158,7 +160,7 @@ type playoutResolver struct {
 	// would add ~20s to every boot for a value most installs never override.
 	detectOnce  sync.Once
 	detected    playout.Encoder
-	maxChannels int
+	maxChannels atomic.Int64
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -348,6 +350,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 	if r.pathMap != nil {
 		pm = r.pathMap()
 	}
+	lib := r.lib.Snapshot()
 
 	var codecs []string
 	probed := 0
@@ -360,7 +363,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := r.lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
+		src := lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
 		if src.URL == "" {
 			continue
 		}
@@ -670,7 +673,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 func (r *playoutResolver) airingFiller(
 	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
-	if r.pods == nil || r.fillerDir == nil {
+	if r.pods == nil || r.fillerDir == "" {
 		// Filler unconfigured: the break becomes the offline card rather than an error. A
 		// channel with no commercials should still play.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
@@ -705,7 +708,7 @@ func (r *playoutResolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir(), e.Path, "")
+			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
 				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 			}
@@ -901,7 +904,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		}
 		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
 		r.detected = cap.Chosen
-		r.maxChannels = cap.MaxChannels
+		r.maxChannels.Store(int64(cap.MaxChannels))
 		if r.log != nil {
 			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
 			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
@@ -930,7 +933,7 @@ func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
 	if r.detectedEncoder(ctx) == playout.EncoderSoftware {
 		return 0
 	}
-	return r.maxChannels
+	return int(r.maxChannels.Load())
 }
 
 // playoutEpoch anchors a channel's cycle on the wall clock.

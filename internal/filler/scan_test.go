@@ -326,7 +326,7 @@ func TestDirSource_NoTunarrStillProducesAFullCatalog(t *testing.T) {
 	writeFile(t, dir, "ad1.mp4")
 	writeFile(t, dir, "ad2.mp4")
 
-	src := filler.DirSource{Dir: func() string { return dir }, Probe: fakeProbe(30000)}
+	src := filler.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}
 	clips, err := src.ListLocalClips(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -344,6 +344,52 @@ func TestDirSource_NoTunarrStillProducesAFullCatalog(t *testing.T) {
 	}
 }
 
+func TestDirSource_ExcludesAppliedCustomWatchSubtree(t *testing.T) {
+	dir := t.TempDir()
+	watch := filepath.Join(dir, "inbox")
+	writeFile(t, dir, "filed.mp4")
+	writeFile(t, dir, "inbox/still-arriving.mp4")
+
+	src := filler.DirSource{Layout: testLayout(dir, watch), Probe: fakeProbe(30000)}
+	clips, err := src.ListLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Path != "filed.mp4" {
+		t.Fatalf("custom-watch scan = %+v, want only the filed clip", clips)
+	}
+}
+
+func TestDirSource_ExcludesAliasedNestedWatchSubtree(t *testing.T) {
+	realRoot := t.TempDir()
+	aliases := t.TempDir()
+	aliasA := filepath.Join(aliases, "a")
+	aliasB := filepath.Join(aliases, "b")
+	if err := os.Symlink(realRoot, aliasA); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(realRoot, aliasB); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	layout, err := filler.NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(layout.WatchDir(), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, layout.ClipDir(), "filed.mp4")
+	writeFile(t, layout.WatchDir(), "still-arriving.mp4")
+
+	clips, err := (filler.DirSource{Layout: layout, Probe: fakeProbe(30000)}).ListLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Path != "filed.mp4" {
+		t.Fatalf("aliased-watch scan = %+v, want only the filed clip", clips)
+	}
+}
+
 // When Tunarr IS configured its uuids are attached, so Tunarr-backed channels still build
 // filler-lists from the same catalog.
 func TestDirSource_AnnotatesWithTunarrIDsWhenAvailable(t *testing.T) {
@@ -351,7 +397,7 @@ func TestDirSource_AnnotatesWithTunarrIDsWhenAvailable(t *testing.T) {
 	writeFile(t, dir, "ad1.mp4")
 
 	src := filler.DirSource{
-		Dir: func() string { return dir }, Probe: fakeProbe(30000),
+		Layout: testLayout(dir), Probe: fakeProbe(30000),
 		Tunarr: stubTunarr{ids: map[string]string{"ad1": "tun-123"}},
 	}
 	clips, err := src.ListLocalClips(context.Background())
@@ -374,7 +420,7 @@ func TestDirSource_TunarrFailureDoesNotFailTheScan(t *testing.T) {
 	writeFile(t, dir, "ad1.mp4")
 
 	src := filler.DirSource{
-		Dir: func() string { return dir }, Probe: fakeProbe(30000),
+		Layout: testLayout(dir), Probe: fakeProbe(30000),
 		Tunarr: stubTunarr{err: os.ErrDeadlineExceeded},
 	}
 	clips, err := src.ListLocalClips(context.Background())

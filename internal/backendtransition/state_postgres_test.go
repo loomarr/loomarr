@@ -345,16 +345,19 @@ func desiredSnapshot(svc *settings.Service) func(context.Context) (string, error
 
 type postgresSettingsWriter struct{ store.Store }
 
-func (w postgresSettingsWriter) Upsert(
-	ctx context.Context, key, value, updatedBy string, at time.Time,
-) error {
-	return w.UpsertSetting(ctx, store.SettingRow{
-		Key: key, Value: value, UpdatedBy: updatedBy, UpdatedAt: at,
-	})
-}
-
-func (w postgresSettingsWriter) Delete(ctx context.Context, key string) error {
-	return w.DeleteSetting(ctx, key)
+func (w postgresSettingsWriter) Apply(ctx context.Context, batch settings.PersistenceBatch) error {
+	storeBatch := store.SettingBatch{
+		Upserts:   make([]store.SettingMutation, 0, len(batch.Upserts)),
+		Deletes:   append([]string(nil), batch.Deletes...),
+		UpdatedBy: batch.UpdatedBy,
+		UpdatedAt: batch.UpdatedAt,
+	}
+	for _, row := range batch.Upserts {
+		storeBatch.Upserts = append(storeBatch.Upserts, store.SettingMutation{
+			Key: row.Key, Value: row.Value,
+		})
+	}
+	return w.ApplySettingBatch(ctx, storeBatch)
 }
 
 func (w postgresSettingsWriter) SetEnvOverride(

@@ -30,11 +30,12 @@ func collectionsServer(t *testing.T, svc api.CollectionService) *httptest.Server
 	st := openTestStore(t, t.TempDir()+"/coll.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:       st,
-		Auth:        testAuthorizer{},
-		Log:         slog.New(slog.DiscardHandler),
-		Collections: svc,
-		LiveConfig:  func(key string) string { return "http://media.local" },
+		Store:             st,
+		Auth:              testAuthorizer{},
+		Log:               slog.New(slog.DiscardHandler),
+		Collections:       svc,
+		LiveConfig:        func(key string) string { return "http://media.local" },
+		LibraryConfigured: func() bool { return true },
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

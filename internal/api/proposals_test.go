@@ -20,6 +20,7 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeSuggest records the LAST intent it was asked to run, so a test can assert the
@@ -45,18 +46,14 @@ func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Int
 	return jobID, nil // Refine re-runs the same job, so it returns the job id it was given
 }
 
-// fakeSearch returns a fixed candidate.
-type fakeSearch struct{}
-
-func (fakeSearch) Search(_ context.Context, q, scope string, limit int) ([]api.SearchCandidate, error) {
-	return []api.SearchCandidate{{MediaType: "movie", TMDBID: 603, Name: "The Matrix", InLibrary: true}}, nil
-}
-
 func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
+	search := &testkit.SearchService[api.SearchCandidate]{Results: []api.SearchCandidate{{
+		MediaType: "movie", TMDBID: 603, Name: "The Matrix", InLibrary: true,
+	}}}
 	log := slog.New(slog.DiscardHandler)
 	chBinder := binder.New(st, nil, nil, log)
 	h := api.Router(log, api.Options{
@@ -64,7 +61,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 		Auth:    testAuthorizer{},
 		Log:     log,
 		Suggest: fs,
-		Search:  fakeSearch{},
+		Search:  search,
 		Events:  events.NewBus(),
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the

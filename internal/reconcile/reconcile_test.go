@@ -11,6 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/mantonx/loomarr/internal/testkit/libraryfixture"
 )
 
 var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
@@ -143,6 +144,38 @@ func TestDeadlineGiveUp(t *testing.T) {
 	}
 	if req.CancelCount() != 1 {
 		t.Errorf("give-up should best-effort Cancel, got %d cancels", req.CancelCount())
+	}
+}
+
+func TestTickSnapshotsLibraryOnceAcrossClaimedBatch(t *testing.T) {
+	st := testkit.SQLiteStore(t)
+	primary := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{
+		"101": {ItemID: "item-101", Present: true},
+		"202": {ItemID: "item-202", Present: true},
+	})
+	rotated := libraryfixture.NewLookup(nil)
+	snapshots := 0
+	rc := NewDynamic(st, &testkit.Requester{}, func() LibraryLookup {
+		snapshots++
+		if snapshots == 1 {
+			return primary
+		}
+		return rotated
+	}, nil, Config{Batch: 50, Lease: 2 * time.Minute}, func() time.Time { return now }, slog.New(slog.DiscardHandler))
+	put(t, st, "movie:tmdb:101", provision.Requested, 101, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:202", provision.Requested, 202, now.Add(-time.Hour))
+
+	if count, err := rc.Tick(context.Background()); err != nil || count != 2 {
+		t.Fatalf("Tick = %d, %v; want 2, nil", count, err)
+	}
+	if snapshots != 1 {
+		t.Fatalf("library snapshots = %d, want one for the claimed batch", snapshots)
+	}
+	if calls := primary.Calls(); len(calls) != 2 {
+		t.Fatalf("primary lookup calls = %v, want both claimed titles", calls)
+	}
+	if calls := rotated.Calls(); len(calls) != 0 {
+		t.Fatalf("rotated library received in-flight batch calls: %v", calls)
 	}
 }
 

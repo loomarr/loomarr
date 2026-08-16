@@ -355,11 +355,11 @@ func fromStoreImage(rec store.Image) images.Image {
 // produced them. The two vocabularies meet here, like every other translation in this file.
 type artworkAdoptStore struct {
 	st        store.Store
-	fillerDir func() string
+	fillerDir string
 }
 
 func (a artworkAdoptStore) ListPendingArtwork(ctx context.Context, limit int) ([]images.PendingArtwork, error) {
-	dir := a.fillerDir()
+	dir := a.fillerDir
 	if dir == "" {
 		// No filler directory configured: there is no artwork cache to adopt from. Not an error —
 		// an install with no filler is a supported shape (§10).

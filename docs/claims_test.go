@@ -90,8 +90,11 @@ var backtickSpan = regexp.MustCompile("`([^`\n]+)`")
 var envVarsOutsideTheRegistry = map[string]string{
 	"PLAYOUT_RENDER_DEVICE": "compose-only — it drives the `devices:` mapping; the app never reads it",
 	"PLAYOUT_FONT_PATH":     "read directly via os.Getenv in internal/playout/font.go",
-	"FILLER_DROP_DIR":       "compose-only — selects the host path bound at /filler",
+	"FILLER_DROP_DIR":       "development-only — dev-env selects the host folder mounted into Tunarr",
 	"MEDIA_SERVER_IP":       "compose-only — dev Tunarr's extra_hosts entry",
+	"LOOMARR_VERSION":       "compose-only — selects the pinned GHCR image tag",
+	"LOOMARR_HTTP_BIND":     "compose-only — selects the address where Traefik publishes HTTP",
+	"LOOMARR_HTTP_PORT":     "compose-only — selects Traefik's published host port",
 }
 
 // scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many
@@ -282,6 +285,25 @@ func TestInstallComposeCommandsResolve(t *testing.T) {
 	if checked == 0 {
 		t.Error("no `docker compose -f …` command found under docs/install/ — the Docker " +
 			"walkthrough should show one, and this guard is inert without it")
+	}
+}
+
+// The production image and registry agree on /data/filler. A second default volume at /filler
+// used to look like the clip library while Loomarr ignored it and wrote to /data/filler instead;
+// it was also outside loomarr-init's ownership repair. Keep the zero-config path single-copy.
+func TestProductionComposeUsesCanonicalFillerStorage(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "docker", "compose.yaml")) //nolint:gosec // repo fixture
+	if err != nil {
+		t.Fatalf("read production compose: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "- loomarr-data:/data") {
+		t.Fatal("production compose does not mount the canonical /data volume")
+	}
+	for _, stale := range []string{"filler-drop", "FILLER_DROP_DIR", ":/filler"} {
+		if strings.Contains(text, stale) {
+			t.Errorf("production compose still declares the competing filler storage %q", stale)
+		}
 	}
 }
 

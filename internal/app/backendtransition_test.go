@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/backendtransition"
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/store"
@@ -55,8 +56,16 @@ func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
 }
 
 func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
-	liveTV := testkit.NewLiveTV()
-	connector := setup.NewLiveTVConnectorFixed(liveTV, setup.LiveTVURLs{})
+	primary := testkit.NewLiveTV()
+	rotated := testkit.NewLiveTV()
+	librarySnapshots := 0
+	connector := setup.NewLiveTVConnector(func() library.LiveTV {
+		librarySnapshots++
+		if librarySnapshots == 1 {
+			return primary
+		}
+		return rotated
+	}, setup.LiveTVURLs{})
 	resolves := 0
 	publisher := &backendPublisher{
 		connector: connector,
@@ -81,10 +90,16 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	if resolves != 1 {
 		t.Fatalf("target URL resolver calls = %d, want one snapshot", resolves)
 	}
-	for _, call := range liveTV.Calls() {
+	if librarySnapshots != 1 {
+		t.Fatalf("library snapshots = %d, want one across prepare/refresh/retire", librarySnapshots)
+	}
+	for _, call := range primary.Calls() {
 		if strings.Contains(call, "http://b/") {
-			t.Fatalf("later phase re-read changed settings: %v", liveTV.Calls())
+			t.Fatalf("later phase re-read changed settings: %v", primary.Calls())
 		}
+	}
+	if calls := rotated.Calls(); len(calls) != 0 {
+		t.Fatalf("rotated library received in-flight workflow calls: %v", calls)
 	}
 }
 

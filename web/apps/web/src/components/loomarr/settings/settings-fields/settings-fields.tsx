@@ -27,6 +27,7 @@ const SettingsFields = ({
   results,
   onEnvOverride,
   disabledReasons,
+  descriptionIds,
   className,
 }: SettingsFieldsProps) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -65,6 +66,7 @@ const SettingsFields = ({
             onChange={(v) => onChange(entry.key, v)}
             result={resultFor(entry.key)}
             disabledReason={disabledReasons?.[entry.key]}
+            descriptionId={descriptionIds?.[entry.key]}
             onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
             className={spansFullWidth(entry.kind, entry.secret) ? "sm:col-span-2" : undefined}
           />

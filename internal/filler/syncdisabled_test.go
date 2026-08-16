@@ -39,7 +39,7 @@ func (r *recordingStore) DeleteClipsNotIn(context.Context, []string) (int, error
 func TestSync_DisabledSourceDoesNoWork(t *testing.T) {
 	src := &countingSource{clips: []filler.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
 	st := &recordingStore{}
-	syncer := filler.NewSyncer(src, st, "/data/filler", nil, discardLogger()).
+	syncer := filler.NewSyncer(src, st, testLayout("/data/filler"), nil, discardLogger()).
 		WithEnabled(func() bool { return false })
 
 	res, err := syncer.Sync(context.Background())
@@ -66,7 +66,7 @@ func TestSync_DisabledSourceDoesNoWork(t *testing.T) {
 func TestSync_EnabledSourceScansNormally(t *testing.T) {
 	src := &countingSource{clips: []filler.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
 	on := false
-	syncer := filler.NewSyncer(src, &recordingStore{}, "/data/filler", nil, discardLogger()).
+	syncer := filler.NewSyncer(src, &recordingStore{}, testLayout("/data/filler"), nil, discardLogger()).
 		WithEnabled(func() bool { return on })
 
 	if _, err := syncer.Sync(context.Background()); !errors.Is(err, filler.ErrSourceDisabled) {
@@ -88,7 +88,7 @@ func TestSync_EnabledSourceScansNormally(t *testing.T) {
 // relies on this, so it is pinned rather than assumed.
 func TestSync_NoGateMeansEnabled(t *testing.T) {
 	src := &countingSource{}
-	syncer := filler.NewSyncer(src, &recordingStore{}, "/data/filler", nil, discardLogger())
+	syncer := filler.NewSyncer(src, &recordingStore{}, testLayout("/data/filler"), nil, discardLogger())
 
 	if _, err := syncer.Sync(context.Background()); err != nil {
 		t.Fatalf("ungated sync returned %v", err)

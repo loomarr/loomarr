@@ -31,11 +31,11 @@ import (
 //  2. Grace-period teardown — a channel-surfing TV must not pay for a fresh encoder start.
 //  3. The ABA problem inside that grace timer — see stopAfterGrace.
 
-// ErrAtCapacity is returned when a new channel would exceed `playout.max_channels`.
+// ErrAtCapacity is returned when a new transcode would exceed the effective measured budget.
 //
 // A distinct error because the API must render it as 503 with an actionable message, not as
-// a generic failure: the operator's fix (raise the cap, or lower the quality tier so more
-// channels fit) is only discoverable if we say which wall was hit.
+// a generic failure: the operator's fixes (wait for a slot, relax a lowering-only safety cap,
+// or choose a lower quality tier) are only discoverable if we say which wall was hit.
 var ErrAtCapacity = errors.New("playout: at channel capacity")
 
 // viewerBuffer is how many chunks a single slow viewer may fall behind before it is

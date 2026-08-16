@@ -45,11 +45,19 @@ type settingsAdapter struct {
 // storePersister adapts store.Store to settings.Persister (the PATCH write path).
 type storePersister struct{ st store.Store }
 
-func (p storePersister) Upsert(ctx context.Context, key, value, updatedBy string, at time.Time) error {
-	return p.st.UpsertSetting(ctx, store.SettingRow{Key: key, Value: value, UpdatedBy: updatedBy, UpdatedAt: at})
-}
-func (p storePersister) Delete(ctx context.Context, key string) error {
-	return p.st.DeleteSetting(ctx, key)
+func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBatch) error {
+	storeBatch := store.SettingBatch{
+		Upserts:   make([]store.SettingMutation, 0, len(batch.Upserts)),
+		Deletes:   append([]string(nil), batch.Deletes...),
+		UpdatedBy: batch.UpdatedBy,
+		UpdatedAt: batch.UpdatedAt,
+	}
+	for _, row := range batch.Upserts {
+		storeBatch.Upserts = append(storeBatch.Upserts, store.SettingMutation{
+			Key: row.Key, Value: row.Value,
+		})
+	}
+	return p.st.ApplySettingBatch(ctx, storeBatch)
 }
 
 // SetEnvOverride satisfies settings.EnvOverrideSetter (§3.1). Kept on the same adapter as
@@ -184,20 +192,27 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 }
 
 // connectionTests builds the named connection probes for POST /v1/setup/test
-// (config-design §8). Each reads the LIVE connection via the settings snapshot, so
-// a Test button reflects the value currently in the form's saved state. A probe is
-// a shallow reachability check (a cheap authenticated call), not a full sweep.
-func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, string) {
+// (config-design §8). The media-server probe reuses the application library client,
+// including its stable install device id, and snapshots its LIVE connection after
+// settings refresh. A probe is a shallow reachability check (a cheap authenticated
+// call), not a full sweep.
+func connectionTests(
+	set resolved, libraryClient *library.Client, tmdbClient *tmdb.Client,
+) map[string]func(ctx context.Context) (bool, string) {
 	return map[string]func(ctx context.Context) (bool, string){
 		"media_server": func(ctx context.Context) (bool, string) {
-			flavor, err := library.ParseFlavor(set.str("library.flavor"))
-			if err != nil {
+			lib := libraryClient.Snapshot()
+			_, err := lib.Connection().Validate()
+			switch {
+			case errors.Is(err, library.ErrConnectionFlavorRequired):
 				return false, "set a media server flavor (emby | jellyfin)"
-			}
-			if set.str("library.url") == "" {
+			case errors.Is(err, library.ErrConnectionURLRequired):
 				return false, "set the media server URL"
+			case errors.Is(err, library.ErrConnectionTokenRequired):
+				return false, "set the media server API token"
+			case err != nil:
+				return false, "set a complete media server connection"
 			}
-			lib := library.NewDynamic(flavor, set.libraryConn(), "loomarr-test")
 			if _, err := lib.ListUsers(ctx); err != nil {
 				return false, "could not reach the media server: " + err.Error()
 			}
@@ -284,11 +299,10 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 		// tmdb (§7.2): validate the key with a cheap lookup of a stable known id
 		// (The Matrix, tmdb 603). A rejected key surfaces as a non-2xx error.
 		"tmdb": func(ctx context.Context) (bool, string) {
-			key := set.str("tmdb.api_key")
-			if key == "" {
+			if set.str("tmdb.api_key") == "" || tmdbClient == nil {
 				return false, "set your TMDB API key"
 			}
-			if _, err := tmdb.New(key).Exists(ctx, provision.Movie, 603); err != nil {
+			if _, err := tmdbClient.Exists(ctx, provision.Movie, 603); err != nil {
 				return false, "TMDB rejected the key or was unreachable: " + err.Error()
 			}
 			return true, ""
@@ -301,11 +315,14 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			if err := probeWritableDirectory(root); err != nil {
+			layout, err := filler.NewLayout(root, set.str("filler.watch_dir"))
+			if err != nil {
+				return false, "filler storage layout is unsafe: " + err.Error()
+			}
+			if err := probeWritableDirectory(layout.ClipDir()); err != nil {
 				return false, "clip library is not usable: " + err.Error()
 			}
-			watch := filler.WatchDir(root, set.str("filler.watch_dir"))
-			if err := probeWritableDirectory(watch); err != nil {
+			if err := probeWritableDirectory(layout.WatchDir()); err != nil {
 				return false, "drop folder is not usable: " + err.Error()
 			}
 			return true, ""
@@ -367,11 +384,16 @@ func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
 // toAPIEntry converts a settings.Entry to the API view, stringifying the typed
 // value for transport and flattening the setting's declaration fields.
 func toAPIEntry(e settings.Entry) api.SettingEntry {
+	apply := "live"
+	if e.Setting.Apply == settings.ApplyRestart {
+		apply = "restart"
+	}
 	out := api.SettingEntry{
 		Key:          e.Setting.Key,
 		Label:        e.Setting.Label,
 		Group:        string(e.Setting.Group),
 		Kind:         string(e.Setting.Kind),
+		Apply:        apply,
 		Presentation: string(e.Setting.Presentation),
 		Provenance:   string(e.Provenance),
 		Caution:      e.Caution,

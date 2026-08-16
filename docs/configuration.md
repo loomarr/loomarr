@@ -50,7 +50,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `playout.hls_dir` (`PLAYOUT_HLS_DIR`) | string | — | Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching. _(advanced)_ |
 | `playout.prepared_dir` (`PLAYOUT_PREPARED_DIR`) | string | `/data/prepared` | Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart. _(advanced)_ |
 | `playout.prepared_budget_gb` (`PLAYOUT_PREPARED_BUDGET_GB`) | int | `512` | Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart. _(advanced)_ |
-| `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `4` | How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate. |
+| `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `0` | Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it. |
 | `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. |
 | `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. |
 
@@ -58,7 +58,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `backup.schedule` (`BACKUP_SCHEDULE`) | cron | `0 30 3 * * *` | When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential. |
+| `backup.schedule` (`BACKUP_SCHEDULE`) | cron | `0 30 3 * * *` | When to write the nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads. |
 | `backup.retain` (`BACKUP_RETAIN`) | int | `7` | How many backups to keep before pruning the oldest. |
 | `backup.dir` (`BACKUP_DIR`) | string | `/data/backups` | Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database. |
 
@@ -75,7 +75,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Needed for AI channel suggestions. _(required for suggestions)_ |
+| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
 
 ## AI
 
@@ -133,8 +133,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
-| `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. |
+| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
+| `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often Loomarr drains the drop folder and reconciles its own clip library. _(advanced)_ |
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Classify untagged commercials against the grounded era, audience, brand, and taxonomy vocabulary. |
