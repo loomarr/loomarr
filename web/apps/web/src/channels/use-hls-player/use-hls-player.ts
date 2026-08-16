@@ -180,8 +180,18 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // flaky link.
       if (Hls.isSupported()) {
         const previous = hlsRef.current.instance;
-        let transferred = previous?.url && previous.media === video ? previous.transferMedia() : null;
-        previous?.stopLoad();
+        let transferred: ReturnType<Hls["transferMedia"]> = null;
+        if (previous?.url && previous.media === video) {
+          previous.stopLoad();
+          // Freeze the decoder before removing its current SourceBuffer range. WebKit otherwise
+          // holds the still-playing outgoing bytes until their natural end, adding roughly the
+          // remaining segment duration to an otherwise cached adjacent tune. VideoPlayer keeps the
+          // last decoded frame as the handoff poster until the replacement produces its own frame.
+          video.pause();
+          transferred = previous.transferMedia();
+        } else {
+          previous?.stopLoad();
+        }
         // Each hls.js controller owns one source URL for its lifetime. A normal tune consumes the
         // already-constructed fresh standby; a superseding burst can arrive before replenishment,
         // in which case retire the older detached controller and create the required source owner.

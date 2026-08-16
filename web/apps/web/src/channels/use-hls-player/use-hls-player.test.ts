@@ -72,6 +72,7 @@ const videoEl = (canPlay = "") =>
     canPlayType: () => canPlay,
     dataset: {},
     poster: "",
+    pause: vi.fn(),
     play: vi.fn().mockResolvedValue(undefined),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -301,6 +302,10 @@ describe("useHlsPlayer", () => {
     });
 
     await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(vi.mocked(video.pause).mock.invocationCallOrder.at(-1)).toBeLessThan(
+      remove.mock.invocationCallOrder.at(-1) ?? 0,
+    );
     // WebKit can hold removal at the current decode position for almost two seconds. Keep the
     // outgoing element at its ended edge while SourceBuffer.remove runs, then rewind only after
     // updateend releases the transferred buffers.

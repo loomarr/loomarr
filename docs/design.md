@@ -1403,16 +1403,18 @@ its one media element and decoder: one active controller and one fresh standby t
 a source URL. A same-element replacement consumes that standby and uses hls.js's public
 cross-controller handoff to transfer the reusable MediaSource — `open`, or `ended` after a complete
 prepared publication — and compatible SourceBuffers from the active controller, then clears the old
-ranges. The standby disables automatic media loading and remains source-empty while that clear is
-in flight. The element stays at the outgoing edge until every removal reaches
+ranges. The adapter stops the outgoing loader and pauses the media element before transferring those
+buffers; the Watch surface's held poster preserves the last decoded picture while the decoder gives
+up its lease on the old range. The standby disables automatic media loading and remains source-empty
+while that clear is in flight. The element stays at the outgoing edge until every removal reaches
 `updateend`; seeking into the range being removed can hold WebKit's decoder on those bytes and turn
 a cached tune into a multi-second stall. After confirming that generation is still current, the
 adapter rewinds, attaches the cleared handoff, arms target-frame observation, loads the replacement
-source, and explicitly starts media loading; MSE reopens an ended source on that mutation. This
-attach-before-source order is hls.js's transfer contract: parsing on a detached replacement can
-fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit before the media
-request. Arming after attachment but before loading means the observer cannot attribute an outgoing
-frame and cannot miss a fast cached target.
+source, explicitly starts media loading, and rejoins playback; MSE reopens an ended source on that
+mutation. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
+before the media request. Arming after attachment but before loading means the observer cannot
+attribute an outgoing frame and cannot miss a fast cached target.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
 destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
 before that frame retires the detached controller before creating its one-source replacement, so no
