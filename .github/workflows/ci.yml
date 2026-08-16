@@ -120,14 +120,12 @@ jobs:
           # A PR that changed it in commit 1 keeps building the image for every later
           # push, which is correct — skipping would leave the PR's own change unproven.
           #
-          # ⚠ DELIBERATELY NARROWER THAN THE go/web FILTERS ABOVE — the only one that does
-          # NOT gate on `Makefile` or `.github/workflows/`. Those two are edited often and
-          # neither changes what `docker build` produces, while this job still builds two
-          # complete release images. Gating it on them would spend that work on every
-          # workflow tweak. The rule for the others ("they define how every job runs, so
-          # prove them against everything") does not apply to an image whose build inputs
-          # are the Dockerfile, Docker context, Cargo contract, and Rust source named below.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/'; then
+          # Match every source family the Dockerfile consumes. The Go stage copies the
+          # repository and embeds docs/help; the frontend stage copies web, OpenAPI, and
+          # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
+          # frontend, or embedded-help change to reach a tag before the production image
+          # containing it had ever been built.
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"

@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # require a successful main CI run for the tagged commit
   packages: write # push images to GHCR
   id-token: write # keyless cosign signing (OIDC)
 
@@ -34,6 +35,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Validate the release tag and source commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "release tag is not SemVer: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "release tag must point at the current main commit" >&2
+            exit 1
+          fi
+          conclusion="$(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=20" \
+            --jq '[.workflow_runs[] | select(.head_branch == "main")] | sort_by(.created_at) | last | .conclusion // ""')"
+          if [[ "$conclusion" != success ]]; then
+            echo "tagged main commit does not have a successful push CI run (found: ${conclusion:-none})" >&2
+            exit 1
+          fi
+
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
@@ -54,7 +78,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         id: build
