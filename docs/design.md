@@ -5255,6 +5255,21 @@ time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are 
 (`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
 caller, or free-form error text.
 
+`make image-bench` is the performance companion to certification. It drives the installed release
+worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
+the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen
+outside the timed region. After one warm-up per role, three runs record the recipe, host architecture
+and logical CPU count, process/Rendition counts, output bytes, complete-ladder throughput,
+p50/p95/max worker time, median ladder time, and maximum child peak RSS in a machine-readable report
+under the worktree artifact directory. The current baseline deliberately performs one worker request
+per missing AVIF Rendition, matching the background job shape that later batching will replace.
+
+The benchmark is opt-in locally and manually dispatched on native amd64 and arm64 CI runners. It is
+not part of `make check` and has no wall-clock pass/fail threshold: shared-runner timing is comparative
+evidence, not a product SLO or correctness gate. Comparisons are valid only for the same corpus,
+recipe, release profile, architecture, and CPU profile. `make image-cert` remains the authority for
+protocol, output, and resource-ceiling correctness.
+
 The consumer half of the gate is observable through public seams. Guide programme art, Watch
 timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
 render through the shared frontend `Image` primitive. An animated filler hover must offer an
