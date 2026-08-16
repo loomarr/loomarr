@@ -68,8 +68,15 @@ const playoutModeParam = "mode"
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
+	// AcquireAdmission applies the canonical lifecycle/backend gate and tracks raw transport work
+	// until Release. Lifecycle teardown cancels the lease context before retiring live delivery.
+	AcquireAdmission(ctx context.Context, channelID string) (playout.Admission, error)
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
-	OpenAsset(channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
+	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
+	// transitions that make the channel ineligible for internal playout.
+	StopChannel(channelID string)
 }
 
 // PlayoutObserver is operational observation of playout, separate from the playback interface.
@@ -100,8 +107,8 @@ type PlayoutObserver interface {
 // what a media server handles most gracefully — it retries rather than prompting for
 // credentials it does not have.
 func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
-	want := s.playoutToken()
-	if want == "" {
+	want, err := s.currentPlayoutToken(r.Context())
+	if err != nil || want == "" {
 		// No token configured means playout is not set up. Refusing is the safe default:
 		// serving streams unauthenticated because a secret failed to mint would be a silent
 		// downgrade of the only auth these routes have.
@@ -118,12 +125,23 @@ func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
 	// channel-less routes take the device token alone. Same 404-on-failure as the token path,
 	// so a bad or expired signature is indistinguishable from a wrong token.
 	if sig := r.URL.Query().Get(signQueryParam); sig != "" {
-		if id := r.PathValue("id"); id != "" && s.verifyPlayoutSignature(sig, id, time.Now()) {
+		if id := r.PathValue("id"); id != "" && verifyPlayoutSignatureWithKey(want, sig, id, time.Now()) {
 			return true
 		}
 	}
 	http.NotFound(w, r)
 	return false
+}
+
+// currentPlayoutToken is the request-boundary credential read. Postgres production
+// uses a durable resolver so every replica observes rotation before accepting either
+// the raw device token or an HMAC signed with it. The legacy local resolver keeps unit
+// tests and single-process SQLite free from a database read per HLS request.
+func (s *Server) currentPlayoutToken(ctx context.Context) (string, error) {
+	if s.playoutSecretCurrent != nil {
+		return s.playoutSecretCurrent(ctx)
+	}
+	return s.playoutToken(), nil
 }
 
 // playoutToken reads the generated device secret (§15 `playout_token`).
@@ -193,6 +211,17 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID := r.PathValue("id")
 	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	canTune, err := s.canTuneInternally(r.Context(), channelID)
+	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
 		http.NotFound(w, r)
 		return
 	}
@@ -267,7 +296,19 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 // `-stream_loop -1` cycles between them forever; each open of the program URL asks "what is
 // airing now?" and gets whatever is current.
 func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
-	programURL := s.playoutURL("program", r.PathValue("id"))
+	channelID := r.PathValue("id")
+	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
+	if !ok {
+		return
+	}
+	// The playlist performs no resolver or encoder work, so its lease is needed only for the
+	// fail-closed durable decision at this admission boundary.
+	admission.Release()
+	programURL := s.playoutURL("program", channelID)
 	if programURL == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
 			"Set Loomarr's public address in Settings → Server so streams can be reached.")
@@ -291,6 +332,33 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(playout.Playlist(programURL)))
 }
 
+// acquirePlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
+// contract. Ineligible channel ids stay indistinguishable from missing routes; a replica that
+// cannot prove durable state reports temporary unavailability and performs no downstream work.
+func (s *Server) acquirePlayoutAdmission(
+	w http.ResponseWriter, r *http.Request, channelID string,
+) (playout.Admission, bool) {
+	if s.playout == nil {
+		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout unavailable",
+			"Internal playout isn't available on this instance right now.")
+		return playout.Admission{}, false
+	}
+	admission, err := s.playout.AcquireAdmission(r.Context(), channelID)
+	if err == nil {
+		return admission, true
+	}
+	if errors.Is(err, playout.ErrIneligible) {
+		http.NotFound(w, r)
+		return playout.Admission{}, false
+	}
+	if s.log != nil {
+		s.log.Warn("playout: lifecycle admission unavailable", "channel", channelID, "err", err)
+	}
+	s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout temporarily unavailable",
+		"Loomarr couldn't verify this channel's current lifecycle state. Try again in a moment.")
+	return playout.Admission{}, false
+}
+
 // tunerHandler serves the M3U channel list the media server registers as a tuner.
 //
 // `#EXTINF` + the tvg-* attributes are how a media server correlates a stream with its guide
@@ -307,7 +375,7 @@ func (s *Server) tunerHandler(w http.ResponseWriter, r *http.Request) {
 	channels, err := s.playoutChannels(r.Context())
 	if err != nil {
 		s.log.Warn("playout: tuner list failed", "err", err)
-		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't build the channel list",
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't build the channel list",
 			"Something went wrong reading your channels.")
 		return
 	}
@@ -341,19 +409,24 @@ type playoutChannel struct {
 
 // playoutChannels lists the channels internal playout serves.
 //
-// ONLY channels actually on the internal backend. A channel Tunarr is playing must not appear
+// ONLY channels in the internal surfable catalog. A channel Tunarr is playing must not appear
 // in Loomarr's tuner, or the media server has two tuners offering the same channel and picks
-// between them unpredictably — which presents as a channel that plays fine sometimes and not
-// others. `playout.backend` is per-channel overridable via policy_json (§15), so this is a real
-// filter and not a global on/off.
+// between them unpredictably. Paused/detached/empty channels remain visible in Loomarr's Guide,
+// but are deliberately off-air and therefore absent from both this M3U and its XMLTV document.
+// `playout.backend` is per-channel overridable via policy_json (§15), so this is a real filter
+// and not a global on/off.
 func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	chans, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]playoutChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !s.playsInternally(ch) {
+		if !transportPlayableAt(ch, checkpoint) {
 			continue
 		}
 		out = append(out, playoutChannel{
@@ -366,22 +439,78 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 	return out, nil
 }
 
-// playsInternally reports whether a channel is served by internal playout.
-//
-// The precedence rule itself lives in schedule.PlaysInternally — ONE copy, because it decides
-// which subsystem answers for a channel and is consulted from several surfaces. See the note
-// there on why a drifted second copy fails silently rather than loudly.
-//
-// No liveConfig ⇒ false: with no way to read the global, the safe answer is "not ours", so the
-// tuner advertises nothing rather than advertising channels it may not be serving.
-func (s *Server) playsInternally(ch store.Channel) bool {
-	if s.liveConfig == nil {
-		if p := ch.Policy.Playout; p != nil && p.Backend != "" {
-			return p.Backend == schedule.PlayoutBackendInternal
-		}
-		return false
+// canTuneInternally applies the same effective-backend + lifecycle policy as the advertised
+// tuner list and the in-app surfable catalog. Returning 404 for an ineligible id keeps direct
+// token-bearing URLs from becoming a lifecycle/backend enumeration oracle.
+func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return false, err
 	}
-	return schedule.PlaysInternally(ch.Policy, s.liveConfig("playout.backend"))
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return transportPlayableAt(ch, checkpoint), nil
+}
+
+// canPlayInApp gates browser HLS and signed watch URLs on Applied, never merely prepared
+// transport. The media server needs to fetch an internal feed before cutover; a person should
+// not see that unpublished backend in ordinary UI routing.
+func (s *Server) canPlayInApp(ctx context.Context, channelID string) (bool, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return false, err
+	}
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return inAppPlayableAt(ch, checkpoint), nil
+}
+
+// BackendCheckpoint is the transport-layer projection of the durable transition state.
+type BackendCheckpoint struct {
+	Applied           string
+	Prepared          string
+	PublishedInternal bool
+}
+
+func (s *Server) checkpoint(ctx context.Context) (BackendCheckpoint, error) {
+	if s.backendCheckpoint != nil {
+		checkpoint, err := s.backendCheckpoint(ctx)
+		if err != nil {
+			return BackendCheckpoint{}, apiErrWithCause(http.StatusServiceUnavailable,
+				"Playout state unavailable",
+				"Loomarr couldn't read the current playout state. Try again in a moment.", err)
+		}
+		return checkpoint, nil
+	}
+	return s.legacyBackendCheckpoint(), nil
+}
+
+func (s *Server) legacyBackendCheckpoint() BackendCheckpoint {
+	applied := ""
+	if s.liveConfig != nil {
+		applied = s.liveConfig("playout.backend")
+	}
+	return BackendCheckpoint{
+		Applied: applied, PublishedInternal: applied == schedule.PlayoutBackendInternal,
+	}
+}
+
+func playsInternallyAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	return schedule.PlaysInternally(ch.Policy, checkpoint.Applied)
+}
+
+func transportPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
 }
 
 // hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
@@ -403,6 +532,17 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID := r.PathValue("id")
 	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	canTune, err := s.canPlayInApp(r.Context(), channelID)
+	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
 		http.NotFound(w, r)
 		return
 	}
@@ -545,7 +685,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, ok, err := s.playout.OpenAsset(channelID, clientPlan(r), rel)
+	asset, ok, err := s.playout.OpenAsset(r.Context(), channelID, clientPlan(r), rel)
 	if err != nil || !ok {
 		http.NotFound(w, r)
 		return

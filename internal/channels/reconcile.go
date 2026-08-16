@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
@@ -14,10 +15,10 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// Reconcile brings one channel's actual Tunarr state in line with its desired
-// lineup (§9). It is idempotent and minimal-diff: a second reconcile with no
-// input change makes no Tunarr calls beyond the reads needed to confirm no diff.
-// Safe to call from the API (POST /v1/channels/{id}/reconcile), the sweep, or a
+// Reconcile materializes one channel's durable desired lineup (§9). For a
+// Tunarr-backed channel it additionally brings Tunarr's actual state in line with
+// that desired result; an internal-playout channel makes no Programmer calls. It
+// is idempotent and minimal-diff. Safe to call from the API, the sweep, or a
 // backfill event. Serialized per channel by the mutex (§18).
 //
 // Steps:
@@ -25,16 +26,64 @@ import (
 //  2. Recompute desired from the approved lineup + current availability (pure).
 //  3. Revalidate program slots against the library — a vanished program demotes
 //     to a placeholder and flags the channel drifted (§9 slot revalidation).
-//  4. Ensure the Tunarr channel exists (create → capture server-assigned id, or
-//     update if metadata changed). Track whether this was channel-affecting.
-//  5. Diff desired lineup vs Tunarr's actual; push only if they differ.
+//  4. For a Tunarr-backed channel only, ensure the remote channel exists and diff
+//     + push its lineup. Internal playout consumes the local desired state directly.
 //  6. Persist the (possibly updated) channel: new TunarrID, desired snapshot,
 //     status, next reconcile deadline.
-//  7. Nudge the media server (best-effort, §9): a NEW channel triggers a tuner
-//     re-scan (discover it in the channel list); a lineup-only change triggers a
-//     guide (EPG) refresh. These are distinct operations — a guide refresh alone
-//     won't surface a new channel.
+//  7. Nudge the media server after committed local or Tunarr changes (best-effort,
+//     §9): first materialization/backend switches re-scan the tuner; a desired-only
+//     change refreshes guide data.
 func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
+	return e.reconcile(ctx, channelID, reconcileOptions{})
+}
+
+// PrepareInheritedBackend materializes every active channel that inherits the global
+// playout backend as though target were already applied. It is the channel-domain half
+// of an ordered global backend transition: callers can prepare the fleet first, then
+// publish the new applied setting and rewire the media server. Explicit per-channel
+// backend pins remain authoritative and are not reconciled by this fleet operation.
+//
+// Channel failures are independent. The method continues preparing the remaining fleet
+// and returns their errors joined together, so retrying the operation converges only the
+// unfinished work through Reconcile's existing idempotent, minimal-diff path.
+func (e *Engine) PrepareInheritedBackend(ctx context.Context, target string) error {
+	target = schedule.NormalizePlayoutBackend(target)
+	if target != schedule.PlayoutBackendInternal && target != schedule.PlayoutBackendTunarr {
+		return fmt.Errorf("prepare inherited channels: invalid playout backend %q", target)
+	}
+
+	all, err := e.store.ListChannels(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare inherited channels: list channels: %w", err)
+	}
+
+	var errs []error
+	for _, ch := range all {
+		if !ch.Status.Reconcilable() || schedule.HasExplicitPlayoutBackend(ch.Policy) {
+			continue
+		}
+		if err := e.reconcile(ctx, ch.ID, reconcileOptions{
+			globalBackend: target,
+			inheritedOnly: true,
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("prepare inherited channel %s: %w", ch.ID, err))
+			if ctx.Err() != nil {
+				break
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+type reconcileOptions struct {
+	// globalBackend is an explicit transition target when inheritedOnly is true.
+	// It stays fixed across CAS retries; ordinary Reconcile deliberately continues
+	// resolving the currently applied backend once per fresh row attempt.
+	globalBackend string
+	inheritedOnly bool
+}
+
+func (e *Engine) reconcile(ctx context.Context, channelID string, opts reconcileOptions) (err error) {
 	lock := e.lockFor(channelID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -53,7 +102,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	const maxAttempts = 4
 	state := reconcileRun{}
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		err = e.reconcileOnce(ctx, channelID, &state)
+		err = e.reconcileOnce(ctx, channelID, &state, opts)
 		if !errors.Is(err, store.ErrChannelStale) && !errors.Is(err, store.ErrChannelConflict) {
 			return err
 		}
@@ -73,15 +122,35 @@ type reconcileRun struct {
 	channelListChanged bool
 }
 
-func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *reconcileRun) error {
+func (e *Engine) reconcileOnce(
+	ctx context.Context,
+	channelID string,
+	run *reconcileRun,
+	opts reconcileOptions,
+) error {
 
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return fmt.Errorf("load channel %s: %w", channelID, err)
 	}
-	if ch.Status == schedule.StatusDetached || ch.Status == schedule.StatusPaused {
+	if !ch.Status.Reconcilable() {
 		return nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
 	}
+	if opts.inheritedOnly && schedule.HasExplicitPlayoutBackend(ch.Policy) {
+		return nil // a concurrent operator pin wins over a fleet-default transition
+	}
+	// Resolve ONCE for this attempt from the same channel snapshot all work below uses.
+	// A policy edit that changes the backend advances the row revision, so the final
+	// SaveChannel CAS restarts from that new truth. The global value is live and not
+	// row-versioned; resolving once prevents one attempt from straddling two backends.
+	globalBackend := opts.globalBackend
+	if !opts.inheritedOnly {
+		globalBackend, err = e.playoutBackendFor(ctx)
+		if err != nil {
+			return fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
+		}
+	}
+	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
 
 	// Heal each entry's metadata in place through the one lineup primitive (§9 LineupHeal):
 	// fill an empty OfficialRating (§389 — a fail-closed audience gate would otherwise drop a
@@ -92,18 +161,20 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 	ch.Lineup = schedule.ApplyLineup(ch.Lineup, nil, schedule.LineupHeal,
 		schedule.ApplyOpts{Enrich: e.healEntry(ctx)})
 
-	// 1b: build the channel's matched filler-clip pool up front (§10) so the break
-	// decision below can see whether there's anything to fill a break with. The pod
-	// assembler is seed-deterministic, so this SAME (ids, ok) is reused for the Tunarr
-	// filler-list attach in step 4b — one build, not two. ok=false ⇒ empty catalog /
-	// only-fallback ⇒ no real pool. Nil e.pods (flex-only Phase-10 default / filler not
-	// wired) is also "no pool".
+	// 1b: decide whether the selected backend has clips to fill a break (§10). Internal
+	// playout asks the backend-independent HasPool question: its clips are local files and
+	// deliberately need no Tunarr uuid. Tunarr asks BuildFillerList once and carries those
+	// same ids to the projection below. This is the distinction PodFiller's two-method
+	// interface exists to preserve; using BuildFillerList on internal-only installs made a
+	// real local catalog look empty.
 	var fillerIDs []string
 	hasFillerPool := false
 	if e.pods != nil {
-		if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch)); ok && len(ids) > 0 {
-			fillerIDs = ids
-			hasFillerPool = true
+		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
+		if playsInternally {
+			hasFillerPool = e.pods.HasPool(ctx, ch.ID, seed, selection)
+		} else if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, seed, selection); ok && len(ids) > 0 {
+			fillerIDs, hasFillerPool = ids, true
 		}
 	}
 
@@ -114,17 +185,23 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 	// the global commercial-break density (§10) so breaks are interleaved, and pass
 	// the wall-clock so seasonality (§6) evaluates against the container TZ.
 	//
-	// Breaks are only interleaved when a filler pool actually exists: inserting break
-	// gaps with no clips to fill them leaves empty flex that Tunarr renders as large
-	// channel-named blocks in the guide (dead-air-avoidance) — a promise of commercials
-	// we can't keep. No pool ⇒ BreaksPerHour 0 ⇒ programs play back-to-back. Self-heals:
-	// once clips land, the next reconcile sees a pool and re-inserts breaks.
+	// Breaks are only interleaved when the selected backend has a filler pool: inserting
+	// gaps with no clips is a promise of commercials we cannot keep. No pool means
+	// programs play back-to-back. Once clips land, the next reconcile re-inserts breaks.
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	// Building is the durable "this backend must (re)publish the channel list" marker:
+	// it covers first materialization and a backend switch that reuses a historical
+	// Tunarr id. An internal Empty channel also enters the surfable M3U catalog when its
+	// first program becomes available, even though no PATCH marked it Building. Other
+	// desired changes on an already-settled channel affect only guide data. These facts
+	// stay attempt-local so a stale SaveChannel publishes no freshness; the retry
+	// recomputes them from the winning row.
+	desiredChangedLocally := !slices.Equal(ch.Desired, desired.Slots)
 
 	// Record the relaxation-ladder steps this pass applied (§7) back onto the
 	// channel's policy so the UI surfaces them; recomputed from scratch each
@@ -132,11 +209,9 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 	// WithApplied is the reconcile-only writer — it touches Applied and nothing else (§2.1).
 	ch.Policy = ch.Policy.WithApplied(desired.Applied)
 
-	// NOTE (§10 redesign): filler is no longer inlined into the desired lineup. The
-	// interleaved SlotFiller break gaps (schedule.interleaveBreaks) flow through to
-	// SetLineup as FLEX; the channel's matched clips live in a Tunarr filler-list
-	// (attached below, after the channel exists) that Tunarr plays into that flex.
-	// So `desired` is NOT mutated here — see attachFillerList.
+	// Filler is not inlined into desired. An internal encoder resolves each SlotFiller
+	// at airtime; Tunarr receives it as FLEX and fills it from the attached list below.
+	// Both therefore persist the same gap shape rather than mutating `desired` here.
 
 	// 3: drift detection (§9 slot revalidation) is a comparison against what we
 	// *previously* scheduled: a slot that was a real program in the persisted
@@ -146,86 +221,100 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 	staleCount := staleProgramCount(ch.Desired, desired.EligibleKeys)
 	drifted := staleCount > 0
 	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
+	nextStatus := e.statusFor(desired, drifted)
+	// Empty internal channels are absent from the tuner M3U. Crossing that membership
+	// edge in either direction therefore needs the stronger tuner re-scan, not merely a
+	// guide refresh. The reverse edge matters when a policy change filters a live channel
+	// down to no playable programs: without it, the media server retains a dead channel
+	// until its own periodic tuner scan.
+	internalCatalogMembershipChanged := playsInternally &&
+		(ch.Status == schedule.StatusEmpty) != (nextStatus == schedule.StatusEmpty)
+	channelListChangedLocally := ch.Status == schedule.StatusBuilding || internalCatalogMembershipChanged
 
-	// 4: ensure the Tunarr channel exists / is up to date.
-	spec := programmer.ChannelSpec{
-		TunarrID: ch.TunarrID,
-		Number:   ch.Number,
-		Name:     ch.Name,
-		Group:    ch.Group,
-		Logo:     ch.Logo,
-	}
-	storedNumber := ch.Number
-	tunarrID, usedNumber, createdRemote, err := e.ensureChannel(ctx, ch.ID, spec)
-	if err != nil {
-		return err
-	}
-	// A create can land on a different number than requested when Tunarr already occupied it
-	// (§9 V54). Take it: leaving `ch.Number` at the wanted value would make Loomarr's guide, the
-	// XMLTV it publishes, and Tunarr disagree about where the channel is.
-	if usedNumber != ch.Number {
-		ch.Number = usedNumber
-		run.channelAffecting = true
-	}
-	if createdRemote || tunarrID != ch.TunarrID {
-		oldTunarrID := ch.TunarrID
-		ch.TunarrID = tunarrID
-		run.channelAffecting = true   // created (or recreated after out-of-band delete)
-		run.channelListChanged = true // the media server must re-scan the tuner to discover it
+	// 4–5 are the optional Tunarr PROJECTION. Internal playout consumes the local
+	// schedule directly through CyclePreview and must not touch Programmer, including a
+	// historical TunarrID retained from an earlier backend choice. Keeping that id and
+	// remote row intact makes a backend switch reversible; only explicit purge deletes it.
+	if !playsInternally {
+		spec := programmer.ChannelSpec{
+			TunarrID: ch.TunarrID,
+			Number:   ch.Number,
+			Name:     ch.Name,
+			Group:    ch.Group,
+			Logo:     ch.Logo,
+		}
+		storedNumber := ch.Number
+		tunarrID, usedNumber, createdRemote, err := e.ensureChannel(ctx, ch.ID, spec)
+		if err != nil {
+			return err
+		}
+		// A create can land on a different number than requested when Tunarr already occupied it
+		// (§9 V54). Take it: leaving `ch.Number` at the wanted value would make Loomarr's guide, the
+		// XMLTV it publishes, and Tunarr disagree about where the channel is.
+		if usedNumber != ch.Number {
+			ch.Number = usedNumber
+			run.channelAffecting = true
+		}
+		if createdRemote || tunarrID != ch.TunarrID {
+			oldTunarrID := ch.TunarrID
+			ch.TunarrID = tunarrID
+			run.channelAffecting = true   // created (or recreated after out-of-band delete)
+			run.channelListChanged = true // the media server must re-scan the tuner to discover it
 
-		// CHECKPOINT the new id NOW, before the lineup push (which can fail). This is a
-		// targeted compare-and-swap on the old Tunarr id rather than a full-row save:
-		// an operator edit that landed during the remote create must survive, while the
-		// newly-created remote identity must become durable so a restart never creates
-		// a second shell. Attach increments the row revision. The ordinary +1 result
-		// means our snapshot is still current; a larger result means another writer
-		// committed first, so the attachment is durable but every other planned field
-		// is stale and must be recomputed before pushing a lineup.
-		priorRevision := ch.Revision
-		revision, aerr := e.store.AttachTunarrChannel(
-			ctx, ch.ID, oldTunarrID, tunarrID, storedNumber, ch.Number,
-		)
-		if aerr != nil {
-			// Per-process channel locks do not serialize Postgres replicas. Two replicas may
-			// therefore create different remote channels before either checkpoint wins. If
-			// another replica attached its id first, this create is ours but is not durable
-			// anywhere; delete it before replanning so Tunarr does not accumulate an orphan.
-			if createdRemote && (errors.Is(aerr, store.ErrChannelStale) || errors.Is(aerr, store.ErrChannelConflict)) {
-				e.discardUnattachedCreate(ctx, channelID, tunarrID)
+			// CHECKPOINT the new id NOW, before the lineup push (which can fail). This is a
+			// targeted compare-and-swap on the old Tunarr id rather than a full-row save:
+			// an operator edit that landed during the remote create must survive, while the
+			// newly-created remote identity must become durable so a restart never creates
+			// a second shell. Attach increments the row revision. The ordinary +1 result
+			// means our snapshot is still current; a larger result means another writer
+			// committed first, so the attachment is durable but every other planned field
+			// is stale and must be recomputed before pushing a lineup.
+			priorRevision := ch.Revision
+			revision, aerr := e.store.AttachTunarrChannel(
+				ctx, ch.ID, oldTunarrID, tunarrID, storedNumber, ch.Number,
+			)
+			if aerr != nil {
+				// Per-process channel locks do not serialize Postgres replicas. Two replicas may
+				// therefore create different remote channels before either checkpoint wins. If
+				// another replica attached its id first, this create is ours but is not durable
+				// anywhere; delete it before replanning so Tunarr does not accumulate an orphan.
+				if createdRemote && (errors.Is(aerr, store.ErrChannelStale) || errors.Is(aerr, store.ErrChannelConflict)) {
+					e.discardUnattachedCreate(ctx, channelID, tunarrID)
+				}
+				return fmt.Errorf("checkpoint Tunarr id for channel %s: %w", channelID, aerr)
 			}
-			return fmt.Errorf("checkpoint Tunarr id for channel %s: %w", channelID, aerr)
+			ch.Revision = revision
+			if revision != priorRevision+1 {
+				return store.ErrChannelStale
+			}
 		}
-		ch.Revision = revision
-		if revision != priorRevision+1 {
-			return store.ErrChannelStale
-		}
-	}
 
-	// 4b: attach the channel's Tunarr filler-list from the clip pool computed in step 1b,
-	// now that the channel exists (TunarrID is set). Tunarr plays these clips into the flex
-	// gaps SetLineup leaves between programs. When there's no pool (hasFillerPool false),
-	// this detaches any stale list AND the lineup above already omitted the breaks, so the
-	// channel plays back-to-back with no empty flex. Best-effort: a filler failure never
-	// fails the reconcile (§9 resilience); the next sweep retries.
-	if e.pods != nil {
-		e.attachFillerList(ctx, ch, fillerIDs)
-	}
-
-	// 5: diff desired lineup vs actual; push only on a difference.
-	actual, err := e.prog.GetLineup(ctx, ch.TunarrID)
-	if err != nil {
-		return fmt.Errorf("read lineup %s: %w", ch.TunarrID, err)
-	}
-	if lineupDiffers(desired.Slots, actual) {
-		if err := e.prog.SetLineup(ctx, ch.TunarrID, desired.Slots); err != nil {
-			return fmt.Errorf("push lineup %s: %w", ch.TunarrID, err)
+		// 4b: attach the channel's Tunarr filler-list from the clip pool computed in step 1b,
+		// now that the channel exists (TunarrID is set). Tunarr plays these clips into the flex
+		// gaps SetLineup leaves between programs. When there's no pool (hasFillerPool false),
+		// this detaches any stale list AND the lineup above already omitted the breaks, so the
+		// channel plays back-to-back with no empty flex. Best-effort: a filler failure never
+		// fails the reconcile (§9 resilience); the next sweep retries.
+		if e.pods != nil {
+			e.attachFillerList(ctx, ch, fillerIDs)
 		}
-		run.channelAffecting = true
+
+		// 5: diff desired lineup vs actual; push only on a difference.
+		actual, err := e.prog.GetLineup(ctx, ch.TunarrID)
+		if err != nil {
+			return fmt.Errorf("read lineup %s: %w", ch.TunarrID, err)
+		}
+		if lineupDiffers(desired.Slots, actual) {
+			if err := e.prog.SetLineup(ctx, ch.TunarrID, desired.Slots); err != nil {
+				return fmt.Errorf("push lineup %s: %w", ch.TunarrID, err)
+			}
+			run.channelAffecting = true
+		}
 	}
 
 	// 6: persist. Status reflects drift; a channel with any real program is live.
 	ch.Desired = desired.Slots
-	ch.Status = e.statusFor(desired, drifted)
+	ch.Status = nextStatus
 	reconcileTTL := e.reconcileTTLFor()
 	if reconcileTTL <= 0 {
 		reconcileTTL = 10 * time.Minute
@@ -245,13 +334,19 @@ func (e *Engine) reconcileOnce(ctx context.Context, channelID string, run *recon
 		e.notify.ChannelChanged(ch.ID, string(ch.Status))
 	}
 
-	// 7: media-server freshness (best-effort; never fails the reconcile). A NEW
-	// channel needs a tuner re-scan so the media server discovers it in its channel
-	// list (a guide refresh alone won't surface it, §9); a lineup-only change needs
-	// just a guide (EPG) refresh.
-	if run.channelListChanged {
+	// 7: media-server freshness (best-effort; never fails reconcile). A committed local
+	// Building marker changes the tuner list for either backend. Retry-carried flags,
+	// however, describe Tunarr effects and count only when the winning attempt is still
+	// Tunarr-backed; a stale remote create must not leak into an internal retry.
+	channelListChanged := channelListChangedLocally
+	channelAffecting := desiredChangedLocally
+	if !playsInternally {
+		channelListChanged = channelListChanged || run.channelListChanged
+		channelAffecting = channelAffecting || run.channelAffecting
+	}
+	if channelListChanged {
 		e.rescanTuner(ctx, channelID)
-	} else if run.channelAffecting {
+	} else if channelAffecting {
 		e.pokeGuide(ctx, channelID)
 	}
 	return nil
@@ -278,7 +373,9 @@ func (e *Engine) discardUnattachedCreate(ctx context.Context, channelID, created
 // /v1/channels/{id} (§7), as opposed to the default detach (which keeps both). It
 // takes the per-channel lock so a concurrent reconcile can't race the deletion, and
 // the Tunarr delete is idempotent (a 404 is already-gone). A channel that was never
-// reconciled has no TunarrID, so only the store row is removed.
+// reconciled has no TunarrID, so only the store row is removed. A historical id with
+// no Programmer fails closed rather than orphaning the remote channel, and every
+// successful hard delete re-scans the media-server tuner list.
 func (e *Engine) Purge(ctx context.Context, channelID string) error {
 	lock := e.lockFor(channelID)
 	lock.Lock()
@@ -288,7 +385,13 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 	if err != nil {
 		return fmt.Errorf("load channel %s: %w", channelID, err)
 	}
-	if ch.TunarrID != "" && e.prog != nil {
+	if ch.TunarrID != "" && e.prog == nil {
+		// The row is the only durable record of the remote identity. Deleting it when
+		// no Programmer can remove the projection would manufacture an unmanaged orphan
+		// that no later reconcile can discover or clean up.
+		return fmt.Errorf("delete tunarr channel %s: programmer unavailable", ch.TunarrID)
+	}
+	if ch.TunarrID != "" {
 		if derr := e.prog.DeleteChannel(ctx, ch.TunarrID); derr != nil {
 			return fmt.Errorf("delete tunarr channel %s: %w", ch.TunarrID, derr)
 		}
@@ -296,6 +399,10 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 	if err := e.store.DeleteChannel(ctx, channelID, ch.Revision); err != nil {
 		return fmt.Errorf("delete channel %s: %w", channelID, err)
 	}
+	// The hard delete removes the channel from Loomarr's own M3U as well as any
+	// Tunarr projection above. Either way the media server must re-read the tuner
+	// list; a guide-only refresh cannot remove a channel.
+	e.rescanTuner(ctx, channelID)
 	return nil
 }
 

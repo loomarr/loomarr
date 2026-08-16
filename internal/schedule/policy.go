@@ -98,11 +98,9 @@ type OperatorPolicy struct {
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
 	//
-	// The nil-means-inherit shape is what makes the promise true rather than aspirational:
-	// "changing the default affects new channels only — the ones already on the other
-	// backend keep playing exactly as they are". A channel that never opted in has no
-	// stored value to change, and one that DID has a value the global cannot overwrite.
-	// A fleet-wide flip is therefore not expressible by accident.
+	// The nil-means-inherit shape makes the global setting a live fleet default: a channel
+	// with no stored override follows a later global change, while an explicitly selected
+	// backend remains pinned until its own policy changes.
 	Playout *PlayoutPolicy `json:"playout,omitempty"`
 }
 
@@ -123,8 +121,23 @@ type PlayoutPolicy struct {
 	AudioLanguage string `json:"audioLanguage,omitempty"`
 }
 
-// PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
-const PlayoutBackendInternal = "internal"
+// Playout backend values are shared by settings, channel policy, and transition
+// preparation so a typo cannot silently fall through to Tunarr projection.
+const (
+	PlayoutBackendInternal = "internal"
+	PlayoutBackendTunarr   = "tunarr"
+)
+
+// NormalizePlayoutBackend canonicalizes a backend value at an input boundary.
+func NormalizePlayoutBackend(backend string) string {
+	return strings.TrimSpace(backend)
+}
+
+// HasExplicitPlayoutBackend reports whether policy pins a channel instead of inheriting
+// the fleet default. Empty and nil playout policies both mean inheritance.
+func HasExplicitPlayoutBackend(policy ChannelPolicy) bool {
+	return policy.Playout != nil && policy.Playout.Backend != ""
+}
 
 // ResolveAudioLanguage picks the audio language for a channel: its own
 // `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
@@ -151,10 +164,25 @@ func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) stri
 // pass the resolved global rather than reading settings here, because this package must not
 // depend on the settings registry.
 func PlaysInternally(policy ChannelPolicy, globalBackend string) bool {
-	if p := policy.Playout; p != nil && p.Backend != "" {
-		return p.Backend == PlayoutBackendInternal
+	if HasExplicitPlayoutBackend(policy) {
+		return policy.Playout.Backend == PlayoutBackendInternal
 	}
-	return strings.TrimSpace(globalBackend) == PlayoutBackendInternal
+	return NormalizePlayoutBackend(globalBackend) == PlayoutBackendInternal
+}
+
+// InternalTransportPlayable is the canonical admission rule for Loomarr's device-facing
+// tuner. publishedInternal comes from the durable backend-publication checkpoint rather than
+// desired settings: inherited channels must be readable while internal is prepared, and must
+// disappear only when that published transport is retired. An explicit per-channel backend does
+// not inherit that checkpoint; it answers from its own pin.
+func InternalTransportPlayable(status ChannelStatus, policy ChannelPolicy, publishedInternal bool) bool {
+	if !status.Reconcilable() || status == StatusEmpty {
+		return false
+	}
+	if HasExplicitPlayoutBackend(policy) {
+		return PlaysInternally(policy, PlayoutBackendTunarr)
+	}
+	return publishedInternal
 }
 
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the

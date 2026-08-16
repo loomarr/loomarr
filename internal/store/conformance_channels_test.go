@@ -321,6 +321,10 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 	detached := sampleChannel("ch-detached", 3, now.Add(-time.Hour))
 	detached.Status = schedule.StatusDetached
 	mustSaveChannel(t, s, detached)
+	// Not eligible: paused is deliberately off air and must not be claimed either.
+	paused := sampleChannel("ch-paused", 5, now.Add(-time.Hour))
+	paused.Status = schedule.StatusPaused
+	mustSaveChannel(t, s, paused)
 	// ⚠ **DUE: a ZERO deadline means due NOW** (§9 V54), and this case was never covered.
 	//
 	// The claim carried `AND reconcile_deadline > 0`, and the deadline's only writer is the LAST

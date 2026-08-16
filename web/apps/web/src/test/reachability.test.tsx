@@ -22,7 +22,6 @@ import {
   getPreviewChannelCycleMockHandler,
   getPreviewChannelPodsMockHandler,
   getPreviewDraftChannelPodsMockHandler,
-  getSecretRevealMockHandler,
   getSettingsListMockHandler,
   getSystemBackupsListMockHandler,
   getSystemDatabaseStatusMockHandler,
@@ -98,10 +97,6 @@ const stubReachable = () => {
   server.use(
     getMeMockHandler(ADMIN),
     getSettingsListMockHandler({ features: FEATURES, settings: SETTINGS }),
-    // ⚠ `displayable` is required and says whether the secret CAN be shown at all — a reveal
-    // answering `{ value: "" }` reads as "displayable: undefined", i.e. falsy, which is a
-    // different screen from the one this suite means to reach.
-    getSecretRevealMockHandler({ displayable: false, value: "" }),
     getSystemVersionMockHandler({ version: "dev", ready: true }),
     getImportCandidatesMockHandler({ candidates: [] }),
     getListUserSessionsMockHandler({ sessions: [] }),
@@ -408,7 +403,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // phase, not been rendered by the page that owns it.
   it.each([
     ["/settings/ai", /probing your llm host|model|provider/i, "the §8.1 model picker"],
-    ["/settings/security", /api token|session secret/i, "the generated-secrets panel"],
+    ["/settings/security", /api token|playback token/i, "the generated-secrets panel"],
     // ⚠ The SSO block AND the note stating what SSO does not do (§11, V8). The note is the
     // part most likely to be lost in a tidy-up — it looks like prose rather than a control —
     // and losing it leaves §11's unusual model (most apps DO auto-create) reading as an

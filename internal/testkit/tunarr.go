@@ -26,8 +26,16 @@ type Tunarr struct {
 	Pushes       int // SetLineup calls that actually happened
 	Deletes      int
 	FillerWrites int // EnsureFillerList calls that changed the attached list
+	// Local filler-source observations let adapter tests prove optional Tunarr annotation
+	// stays dormant while unconfigured and hot-enables without a network service.
+	FillerSourceEnsures int
+	FillerClipReads     int
+	LocalFillerClips    []programmer.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
+	// fleet operation to continue exercising the remaining Programmer calls.
+	SetLineupErrByChannel map[string]error
 	// Optional synchronization hooks for deterministic concurrency tests. They run
 	// BEFORE the fake takes its mutex, so a hook may block while the test commits a
 	// competing store write without deadlocking Tunarr introspection. Production
@@ -44,6 +52,9 @@ type Tunarr struct {
 	// models EnsureFillerList's internal idempotency (a second identical call is a
 	// no-op → FillerWrites unchanged), mirroring the real adapter (§10).
 	fillerLists map[string][]string
+	// localFillerSource records whether EnsureLocalFillerSource has already created the
+	// shared source, preserving the real adapter's idempotent result shape.
+	localFillerSource bool
 	// Media-source state for tunarr-connect (§6): the Emby source Loomarr wires so
 	// Tunarr can index the library. sourceID is empty until EnsureEmbySource.
 	sourceID         string
@@ -80,6 +91,31 @@ func (m *Tunarr) nowMs() int64 {
 		return m.NowMs
 	}
 	return defaultNowMs
+}
+
+// EnsureLocalFillerSource models the idempotent local-source registration used by filler
+// annotation. It is part of the shared Tunarr service double so unit tests never need a
+// private HTTP server for this programmer slice.
+func (m *Tunarr) EnsureLocalFillerSource(
+	_ context.Context, _ string,
+) (programmer.EnsureLocalSourceResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.FillerSourceEnsures++
+	added := !m.localFillerSource
+	m.localFillerSource = true
+	return programmer.EnsureLocalSourceResult{
+		SourceID: "local-source", LibraryIDs: []string{"local-library"},
+		SourceAdded: added, Scanned: true,
+	}, nil
+}
+
+// ListLocalFillerClipsAll returns the configured in-memory local clips and records the read.
+func (m *Tunarr) ListLocalFillerClipsAll(context.Context) ([]programmer.LocalClip, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.FillerClipReads++
+	return append([]programmer.LocalClip(nil), m.LocalFillerClips...), nil
 }
 
 func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (string, error) {
@@ -183,6 +219,9 @@ func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.
 	defer m.mu.Unlock()
 	if m.SetLineupErr != nil {
 		return m.SetLineupErr
+	}
+	if err := m.SetLineupErrByChannel[tunarrID]; err != nil {
+		return err
 	}
 	ch, ok := m.channels[tunarrID]
 	if !ok {

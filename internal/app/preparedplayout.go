@@ -41,36 +41,47 @@ type preparedLookup interface {
 // this warmed index plus Preparer.Lookup, so it cannot turn a viewer request into network or ffmpeg
 // work.
 type preparedRuntimeResolver struct {
-	channels      preparedChannelReader
-	timeline      preparedTimeline
-	inputs        preparedInputResolver
-	lookup        preparedLookup
-	now           func() time.Time
-	pathMap       func() library.PathMap
-	policy        func() string
-	globalBackend func() string
-	rendition     func() prepared.RenditionContract
-	readiness     *prepared.Readiness
+	channels                preparedChannelReader
+	timeline                preparedTimeline
+	inputs                  preparedInputResolver
+	lookup                  preparedLookup
+	now                     func() time.Time
+	pathMap                 func() library.PathMap
+	policy                  func() string
+	globalBackend           func() string
+	transportBackend        func() string
+	globalBackendContext    func(context.Context) (string, error)
+	transportBackendContext func(context.Context) (string, error)
+	rendition               func() prepared.RenditionContract
+	readiness               *prepared.Readiness
 }
 
 type preparedRuntimeDependencies struct {
-	Channels      preparedChannelReader
-	Timeline      preparedTimeline
-	Inputs        preparedInputResolver
-	Lookup        preparedLookup
-	Now           func() time.Time
-	PathMap       func() library.PathMap
-	Policy        func() string
-	GlobalBackend func() string
-	Rendition     func() prepared.RenditionContract
-	Readiness     *prepared.Readiness
+	Channels             preparedChannelReader
+	Timeline             preparedTimeline
+	Inputs               preparedInputResolver
+	Lookup               preparedLookup
+	Now                  func() time.Time
+	PathMap              func() library.PathMap
+	Policy               func() string
+	GlobalBackend        func() string
+	GlobalBackendContext func(context.Context) (string, error)
+	// TransportBackend may temporarily differ from GlobalBackend while internal
+	// transport is published for a prepared cutover. It is used only at tune time;
+	// the background planner continues to follow the ordinarily applied backend.
+	TransportBackend        func() string
+	TransportBackendContext func(context.Context) (string, error)
+	Rendition               func() prepared.RenditionContract
+	Readiness               *prepared.Readiness
 }
 
 func newPreparedRuntimeResolver(deps preparedRuntimeDependencies) *preparedRuntimeResolver {
 	return &preparedRuntimeResolver{
 		channels: deps.Channels, timeline: deps.Timeline, inputs: deps.Inputs, lookup: deps.Lookup,
 		now: deps.Now, pathMap: deps.PathMap, policy: deps.Policy,
-		globalBackend: deps.GlobalBackend, rendition: deps.Rendition, readiness: deps.Readiness,
+		globalBackend: deps.GlobalBackend, transportBackend: deps.TransportBackend,
+		globalBackendContext: deps.GlobalBackendContext, transportBackendContext: deps.TransportBackendContext,
+		rendition: deps.Rendition, readiness: deps.Readiness,
 	}
 }
 
@@ -89,9 +100,9 @@ func (r *preparedRuntimeResolver) Plan(
 	if err != nil {
 		return plan, err
 	}
-	globalBackend := ""
-	if r.globalBackend != nil {
-		globalBackend = r.globalBackend()
+	globalBackend, err := r.resolveGlobalBackend(ctx, false)
+	if err != nil {
+		return plan, err
 	}
 	needed := make(map[prepared.BindingKey]time.Time)
 	channelPolicies := make(map[string]string)
@@ -242,9 +253,9 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 	if err != nil {
 		return playout.PreparedWindow{}, false, err
 	}
-	globalBackend := ""
-	if r.globalBackend != nil {
-		globalBackend = r.globalBackend()
+	globalBackend, err := r.resolveGlobalBackend(ctx, true)
+	if err != nil {
+		return playout.PreparedWindow{}, false, err
 	}
 	if !schedule.PlaysInternally(channel.Policy, globalBackend) {
 		return playout.PreparedWindow{}, false, nil
@@ -284,6 +295,22 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 		}
 	}
 	return window, true, nil
+}
+
+func (r *preparedRuntimeResolver) resolveGlobalBackend(ctx context.Context, transport bool) (string, error) {
+	if transport && r.transportBackendContext != nil {
+		return r.transportBackendContext(ctx)
+	}
+	if !transport && r.globalBackendContext != nil {
+		return r.globalBackendContext(ctx)
+	}
+	if transport && r.transportBackend != nil {
+		return r.transportBackend(), nil
+	}
+	if r.globalBackend != nil {
+		return r.globalBackend(), nil
+	}
+	return "", nil
 }
 
 func (r *preparedRuntimeResolver) preparedAiring(

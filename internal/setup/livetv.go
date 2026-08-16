@@ -1,8 +1,6 @@
 // Package setup owns the operator connection flows (§7, §13): the Live TV wiring
-// (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist. It composes the
-// media-server LiveTV capability (§6) and derives Tunarr's playlist/guide URLs;
-// it never talks to Tunarr directly (Tunarr publishes those URLs; the media
-// server consumes them).
+// and setup-status checklist. It composes the media-server LiveTV capability (§6);
+// either Loomarr or Tunarr can publish the playlist and guide that the media server consumes.
 package setup
 
 import (
@@ -14,18 +12,17 @@ import (
 	"github.com/mantonx/loomarr/internal/library"
 )
 
-// TunarrURLs are the M3U playlist + XMLTV guide URLs Tunarr publishes. Both flow
-// from TUNARR_URL (§15); Tunarr serves the playlist at /api/channels.m3u and the
-// guide at /api/xmltv.xml (Tunarr 1.3.8, pinned Phase 0).
-type TunarrURLs struct {
+// LiveTVURLs is a Live TV M3U playlist + XMLTV guide pair.
+// The pair can point at either Loomarr's internal publisher or Tunarr (§6).
+type LiveTVURLs struct {
 	M3U   string
 	XMLTV string
 }
 
 // TunarrURLsFrom derives the tuner + guide URLs from the Tunarr base URL.
-func TunarrURLsFrom(tunarrBaseURL string) TunarrURLs {
+func TunarrURLsFrom(tunarrBaseURL string) LiveTVURLs {
 	base := strings.TrimRight(tunarrBaseURL, "/")
-	return TunarrURLs{
+	return LiveTVURLs{
 		M3U:   base + "/api/channels.m3u",
 		XMLTV: base + "/api/xmltv.xml",
 	}
@@ -48,16 +45,16 @@ func TunarrURLsFrom(tunarrBaseURL string) TunarrURLs {
 // than registering a relative path: the media server resolves the URL from its own host, so a
 // blank or relative base silently points it at itself. That is the `server.public_url` failure
 // mode the playout handlers already guard.
-func InternalPlayoutURLs(publicURL, deviceToken string) TunarrURLs {
+func InternalPlayoutURLs(publicURL, deviceToken string) LiveTVURLs {
 	base := strings.TrimRight(strings.TrimSpace(publicURL), "/")
 	if base == "" {
-		return TunarrURLs{}
+		return LiveTVURLs{}
 	}
 	q := ""
 	if deviceToken != "" {
 		q = "?token=" + url.QueryEscape(deviceToken)
 	}
-	return TunarrURLs{
+	return LiveTVURLs{
 		M3U:   base + "/v1/playout/tuner.m3u" + q,
 		XMLTV: base + "/v1/playout/guide.xml" + q,
 	}
@@ -68,7 +65,7 @@ func InternalPlayoutURLs(publicURL, deviceToken string) TunarrURLs {
 // `internal` (the default) ⇒ Loomarr's own endpoints; `tunarr` ⇒ Tunarr's. Anything else falls
 // back to Tunarr, which is the pre-§9.1 behaviour and the safer default for an unrecognised
 // value: an install that has not opted into internal playout keeps working exactly as it did.
-func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) TunarrURLs {
+func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) LiveTVURLs {
 	// The literal rather than schedule.PlayoutBackendInternal: `setup` does not otherwise
 	// depend on `schedule`, and importing the scheduler for one enum string would be a worse
 	// trade than this comment. The value is pinned by TestLiveTVURLsFor_* below.
@@ -78,35 +75,18 @@ func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) Tunarr
 	return TunarrURLsFrom(tunarrBaseURL)
 }
 
-// LiveTVConnector performs the one-time, idempotent Live TV wiring (§6).
-//
-// ⚠ There is no manual endpoint behind this, and there deliberately is not one. The wiring is
-// fully derived from the Tunarr connection and idempotent, so it AUTO-RUNS when Connections are
-// saved (settings.go autoWireAfterSave); a separate operator action would be a redundant no-op.
-// The wiring status still surfaces through the `livetv` setup check. The related route,
-// POST /v1/setup/livetv-reconnect, is a different thing: a force re-wire that clears a stale
-// channel→stream binding.
+// LiveTVConnector performs idempotent publication and forced-repair effects against the
+// media-server Live TV capability (§6). Transition-coordinated production calls pass an explicit
+// URL pair; the fixed pair exists for the single-operation compatibility helpers and tests.
 type LiveTVConnector struct {
-	lib library.LiveTV
-	// urls is resolved PER CALL, not captured at construction: `playout.backend`,
-	// `tunarr.url` and `server.public_url` all hot-apply (config-design §3), and a connector
-	// holding a snapshot would keep wiring the media server to the backend that was configured
-	// at boot. A closure is what makes "switch to internal playout, save, re-connect" work
-	// without a restart.
-	urls func() TunarrURLs
-}
-
-// NewLiveTVConnector wires the connector to the media-server LiveTV capability
-// and the Tunarr URLs.
-func NewLiveTVConnector(lib library.LiveTV, urls func() TunarrURLs) *LiveTVConnector {
-	return &LiveTVConnector{lib: lib, urls: urls}
+	lib          library.LiveTV
+	fallbackURLs LiveTVURLs
 }
 
 // NewLiveTVConnectorFixed wires a connector to a fixed URL pair — for tests and any caller with
-// no live settings to read. Production uses NewLiveTVConnector so a settings change applies
-// without a restart.
-func NewLiveTVConnectorFixed(lib library.LiveTV, urls TunarrURLs) *LiveTVConnector {
-	return NewLiveTVConnector(lib, func() TunarrURLs { return urls })
+// no live settings to read. Production transition and status paths use the explicit Target methods.
+func NewLiveTVConnectorFixed(lib library.LiveTV, urls LiveTVURLs) *LiveTVConnector {
+	return &LiveTVConnector{lib: lib, fallbackURLs: urls}
 }
 
 // ConnectResult reports what the connect did — so the API/UI can distinguish
@@ -127,27 +107,97 @@ func (r ConnectResult) AlreadyWired() bool {
 	return !r.TunerAdded && !r.ListingAdded && r.TunerRemoved == 0 && r.ListingRemoved == 0
 }
 
-// Connect wires Tunarr as an M3U tuner + XMLTV guide in the media server,
-// idempotently and self-healing on a URL change (§6): it enumerates first and only
-// registers what's missing, so a second call with the SAME Tunarr URL is a no-op.
-// When the Tunarr URL has CHANGED, it also removes the Loomarr-owned tuner/listing
-// left pointing at the old URL (identity = FriendlyName "loomarr") before adding
-// the new — so a repoint moves the tuner instead of orphaning a dead one. A tuner
-// the household added by hand is never touched (§9 ownership).
+// Connect composes the connector's three transition-safe operations: prepare the
+// target pair, retire stale Loomarr-owned registrations, then refresh the media
+// server. Preparation is add-first, so an add failure cannot delete the working
+// pair. Backend cutovers use the operations separately because the target feed must
+// be published between Prepare and RefreshTarget, and durable activation belongs
+// between RefreshTarget and RetireStale (§6).
 func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
-	var res ConnectResult
+	urls := c.fallbackURLs
+	res, err := c.Prepare(ctx, urls)
+	if err != nil {
+		return res, err
+	}
+	retired, err := c.RetireStale(ctx, urls)
+	res.merge(retired)
+	if err != nil {
+		return res, err
+	}
+	if res.AlreadyWired() {
+		return res, nil
+	}
 
-	// Retire Loomarr-owned tuners pointing at a stale URL first, so we never leave a
-	// dead tuner beside the live one (the "classic Emby mess"). Done before the add
-	// so the desired tuner is the only Loomarr one when we finish.
-	// Resolve ONCE per call, so every check below reasons about the same target even if a
-	// setting changes mid-flight.
-	urls := c.urls()
-	if urls.M3U == "" || urls.XMLTV == "" {
-		// Nothing wireable — internal playout with no server.public_url set. Registering a
-		// relative path here would point the media server at ITSELF (it resolves the URL from
-		// its own host), which looks wired and never plays.
-		return ConnectResult{}, fmt.Errorf("live tv: no reachable playout URLs — set Loomarr's public address in Settings")
+	res.Poked = true
+	res.PokeErr = c.RefreshTarget(ctx, urls)
+	return res, nil
+}
+
+// Prepare adds and verifies the target tuner/listing pair without enumerating or
+// removing stale registrations. A half-prepared target is deliberately retained:
+// retrying fills the missing half, while the previous pair keeps serving viewers.
+// The explicit target makes a multi-step cutover immune to a live setting changing
+// between its durable phases.
+func (c *LiveTVConnector) Prepare(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	var res ConnectResult
+	if err := validateLiveTVURLs(urls); err != nil {
+		return res, err
+	}
+
+	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
+	if err != nil {
+		return res, fmt.Errorf("enumerate tuner hosts: %w", err)
+	}
+	if !tunerThere {
+		if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
+			return res, fmt.Errorf("register tuner: %w", err)
+		}
+		res.TunerAdded = true
+	}
+	if tunerThere, err = c.lib.TunerRegistered(ctx, urls.M3U); err != nil {
+		return res, fmt.Errorf("verify tuner host: %w", err)
+	} else if !tunerThere {
+		return res, fmt.Errorf("verify tuner host: target registration is missing")
+	}
+
+	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
+	if err != nil {
+		return res, fmt.Errorf("enumerate listing providers: %w", err)
+	}
+	if !listingThere {
+		if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
+			return res, fmt.Errorf("register listing provider: %w", err)
+		}
+		res.ListingAdded = true
+	}
+	if listingThere, err = c.lib.ListingRegistered(ctx, urls.XMLTV); err != nil {
+		return res, fmt.Errorf("verify listing provider: %w", err)
+	} else if !listingThere {
+		return res, fmt.Errorf("verify listing provider: target registration is missing")
+	}
+
+	return res, nil
+}
+
+// RetireStale removes Loomarr-owned registrations other than the target. It first
+// verifies BOTH target halves, so even an accidental early call cannot delete the
+// working pair before its replacement exists. A hand-added tuner is never returned
+// by the library ownership queries and therefore never touched.
+func (c *LiveTVConnector) RetireStale(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	var res ConnectResult
+	if err := validateLiveTVURLs(urls); err != nil {
+		return res, err
+	}
+	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
+	if err != nil {
+		return res, fmt.Errorf("verify target tuner before retirement: %w", err)
+	}
+	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
+	if err != nil {
+		return res, fmt.Errorf("verify target listing before retirement: %w", err)
+	}
+	if !tunerThere || !listingThere {
+		return res, fmt.Errorf("retire stale live tv registrations: target tuner and listing must both exist")
 	}
 
 	staleTuners, err := c.lib.StaleLoomarrTuners(ctx, urls.M3U)
@@ -161,17 +211,6 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 		res.TunerRemoved++
 	}
 
-	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
-	if err != nil {
-		return res, fmt.Errorf("enumerate tuner hosts: %w", err)
-	}
-	if !tunerThere {
-		if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
-			return res, fmt.Errorf("register tuner: %w", err)
-		}
-		res.TunerAdded = true
-	}
-
 	staleListings, err := c.lib.StaleLoomarrListings(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate stale listing providers: %w", err)
@@ -182,65 +221,75 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 		}
 		res.ListingRemoved++
 	}
-
-	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
-	if err != nil {
-		return res, fmt.Errorf("enumerate listing providers: %w", err)
-	}
-	if !listingThere {
-		if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
-			return res, fmt.Errorf("register listing provider: %w", err)
-		}
-		res.ListingAdded = true
-	}
-
-	// If anything changed (a fresh tuner was registered, or a stale one retired), poke
-	// the media server so the new tuner's channels are discovered and their EPG filled
-	// NOW rather than at the next nightly scan (§9). A newly-registered M3U tuner has
-	// no channels in the media server's view until it re-reads the playlist — the
-	// re-scan surfaces the channel LIST, the refresh fills the guide DATA. Both are
-	// best-effort: freshness degrades on failure, but the wiring itself already
-	// succeeded, so a poke error must not fail Connect (§6). A no-op connect skips
-	// them — nothing new to discover.
-	if !res.AlreadyWired() {
-		res.Poked = true
-		if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
-			res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
-		}
-		if err := c.lib.RefreshGuide(ctx); err != nil {
-			// Keep the first poke error if the rescan already failed; either way
-			// the connect succeeds and the caller can log degraded freshness.
-			if res.PokeErr == nil {
-				res.PokeErr = fmt.Errorf("refresh guide: %w", err)
-			}
-		}
-	}
-
 	return res, nil
 }
 
-// Reconnect FORCE-re-wires the tuner: it removes every Loomarr-owned tuner (even at
-// the current URL, which Connect leaves alone) and re-adds it, then pokes a re-scan +
-// guide refresh. This is the repair for a stale channel→stream binding — the media
-// server keeps streaming a channel id Loomarr has since DELETED (its guide is fresh,
-// but playback resolves to a dead/other stream: "guide right, plays wrong"). A normal
-// Connect can't fix it (the tuner URL is unchanged, so nothing is stale); only a
-// remove+re-add makes the media server re-read the M3U and rebind. Returns how many
-// tuners were reset. Best-effort pokes, like Connect.
-func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) {
-	var res ConnectResult
+// RefreshTarget makes the media server read a prepared target's channel list and
+// guide. It is separate from Prepare so an internal M3U can be durably published
+// before the fetch, and separate from RetireStale so activation can commit before
+// old registrations are removed. Both pokes are attempted; the first error wins.
+func (c *LiveTVConnector) RefreshTarget(ctx context.Context, urls LiveTVURLs) error {
+	if err := validateLiveTVURLs(urls); err != nil {
+		return err
+	}
+	var first error
+	if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
+		first = fmt.Errorf("rescan tuner: %w", err)
+	}
+	if err := c.lib.RefreshGuide(ctx); err != nil && first == nil {
+		first = fmt.Errorf("refresh guide: %w", err)
+	}
+	return first
+}
 
-	// Same live resolution as Connect — a reconnect after switching backends must re-wire to
-	// the NEW backend, which is the repair an operator reaches for when channels won't play.
-	urls := c.urls()
+func validateLiveTVURLs(urls LiveTVURLs) error {
 	if urls.M3U == "" || urls.XMLTV == "" {
-		return res, fmt.Errorf("live tv: no reachable playout URLs — set Loomarr's public address in Settings")
+		// Nothing wireable — internal playout with no server.public_url set. Registering a
+		// relative path here would point the media server at ITSELF (it resolves the URL from
+		// its own host), which looks wired and never plays.
+		return fmt.Errorf("live tv: no reachable playout URLs — set Loomarr's public address in Settings")
+	}
+	return nil
+}
+
+func (r *ConnectResult) merge(other ConnectResult) {
+	r.TunerAdded = r.TunerAdded || other.TunerAdded
+	r.ListingAdded = r.ListingAdded || other.ListingAdded
+	r.TunerRemoved += other.TunerRemoved
+	r.ListingRemoved += other.ListingRemoved
+}
+
+// Reconnect FORCE-re-wires both halves of the Live TV publication: it removes every
+// Loomarr-owned tuner and listing provider (even at the current URLs, which Connect
+// leaves alone) and re-adds the target pair, then pokes a re-scan + guide refresh.
+// This repairs stale channel→stream and guide bindings that an idempotent Connect
+// cannot detect. The wiring operations themselves are strict; only the final pokes
+// remain best-effort, like Connect.
+func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) {
+	return c.ReconnectTarget(ctx, c.fallbackURLs)
+}
+
+// ReconnectTarget force-rewires one explicit tuner/listing pair. Backend transitions use the
+// explicit form while holding their durable workflow lock, so a live resolver cannot select a
+// stale process-local backend or change targets between removal and re-addition.
+func (c *LiveTVConnector) ReconnectTarget(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	var res ConnectResult
+	if err := validateLiveTVURLs(urls); err != nil {
+		return res, err
 	}
 
 	tuners, err := c.lib.LoomarrTuners(ctx)
 	if err != nil {
 		return res, fmt.Errorf("enumerate loomarr tuners: %w", err)
 	}
+	// Passing an empty desired URL asks the existing ownership query for every
+	// Loomarr-shaped provider. Reconnect deliberately includes the provider already
+	// at the target URL; unlike RetireStale, it must force a fresh binding.
+	listings, err := c.lib.StaleLoomarrListings(ctx, "")
+	if err != nil {
+		return res, fmt.Errorf("enumerate loomarr listing providers: %w", err)
+	}
+
 	for _, id := range tuners {
 		if err := c.lib.RemoveTuner(ctx, id); err != nil {
 			return res, fmt.Errorf("remove tuner %s: %w", id, err)
@@ -252,20 +301,16 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 	}
 	res.TunerAdded = true
 
-	// Also re-wire the guide provider so both halves are freshly bound.
-	staleListings, err := c.lib.StaleLoomarrListings(ctx, urls.XMLTV)
-	if err == nil {
-		for _, id := range staleListings {
-			if rerr := c.lib.RemoveListingProvider(ctx, id); rerr == nil {
-				res.ListingRemoved++
-			}
+	for _, id := range listings {
+		if err := c.lib.RemoveListingProvider(ctx, id); err != nil {
+			return res, fmt.Errorf("remove listing provider %s: %w", id, err)
 		}
+		res.ListingRemoved++
 	}
-	if there, lerr := c.lib.ListingRegistered(ctx, urls.XMLTV); lerr == nil && !there {
-		if aerr := c.lib.AddListingProvider(ctx, urls.XMLTV); aerr == nil {
-			res.ListingAdded = true
-		}
+	if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
+		return res, fmt.Errorf("re-add listing provider: %w", err)
 	}
+	res.ListingAdded = true
 
 	// Poke so the re-added tuner's channels are re-read now (the whole point).
 	res.Poked = true
@@ -278,10 +323,15 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 	return res, nil
 }
 
-// Wired reports whether Tunarr is already registered as both a tuner and a guide
-// — the "media server has Tunarr wired" check for GET /v1/setup/status (§7/§6).
+// Wired reports whether the connector's fixed pair is registered as both tuner and guide.
 func (c *LiveTVConnector) Wired(ctx context.Context) (bool, error) {
-	urls := c.urls()
+	return c.WiredTarget(ctx, c.fallbackURLs)
+}
+
+// WiredTarget reports whether one explicit tuner/listing pair is registered. Request-path status
+// adapters use this form with a durable checkpoint read so Postgres replicas never report against
+// a stale process-local backend.
+func (c *LiveTVConnector) WiredTarget(ctx context.Context, urls LiveTVURLs) (bool, error) {
 	if urls.M3U == "" || urls.XMLTV == "" {
 		return false, nil // nothing wireable ⇒ not wired; the checklist reports it as such
 	}
@@ -306,7 +356,15 @@ func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
 // RescanTuner implements channels.GuidePoker (§9): make the media server re-read
 // the tuner channel list so a newly-created channel is discovered. Best-effort.
 func (c *LiveTVConnector) RescanTuner(ctx context.Context) error {
-	urls := c.urls()
+	return c.RescanTarget(ctx, c.fallbackURLs)
+}
+
+// RescanTarget makes the media server re-read one explicit tuner target. Backend
+// transitions use this operation instead of RescanTuner: the transport checkpoint
+// may have published Loomarr's prepared internal feed while the ordinary connector
+// still resolves the previously applied Tunarr feed. Keeping the URL explicit makes
+// a lifecycle removal refresh the same catalog that admitted the channel.
+func (c *LiveTVConnector) RescanTarget(ctx context.Context, urls LiveTVURLs) error {
 	if urls.M3U == "" {
 		return nil // nothing to rescan; the poke is best-effort by contract (§9)
 	}

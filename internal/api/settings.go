@@ -46,13 +46,13 @@ func (s *Server) registerSettings(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
-		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
+		Summary: "Reveal a generated token", Description: "Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretReveal)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
-		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
+		Summary: "Regenerate a generated token", Description: "Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretRegenerate)
 }
@@ -93,61 +93,117 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsPatchOutput{}
-	out.Body.Results = s.settings.Patch(ctx, in.Body.Edits, auditActor(ctx))
-	// Wiring Tunarr into the TV guide and pointing it at the library are pure
-	// consequences of the connection settings, not decisions an operator makes:
-	// they're idempotent and fully derived from the saved URL/token, so saving a
-	// connection IS the intent to wire it. Run them automatically here instead of
-	// making the operator find and click a button (config-design §5). Non-fatal —
-	// the save already succeeded; a wiring failure is not the save's failure, and
-	// it surfaces on the relevant connection's own status check.
-	s.autoWireAfterSave(ctx, in.Body.Edits)
+	var saved map[string]string
+	err := s.mutateLiveTVSettings(ctx, touchesAny(in.Body.Edits, liveTVWiringKeys), func(mutationCtx context.Context) bool {
+		out.Body.Results = s.settings.Patch(mutationCtx, in.Body.Edits, auditActor(mutationCtx))
+		saved = savedEdits(in.Body.Edits, out.Body.Results)
+		return touchesAny(saved, liveTVWiringKeys) || settingsPersistenceFailed(out.Body.Results)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.autoWireMediaSourceAfterSave(ctx, saved)
 	return out, nil
 }
 
-// connectionKeys are the saved settings whose values the two wiring actions derive
-// from — a PATCH touching any of them may newly enable (or re-enable) wiring.
-var connectionKeys = map[string]struct{}{
+// liveTVWiringKeys are settings that can change either the media-server connection or the
+// tuner/guide URLs it should consume. A PATCH touching one may require idempotent re-wiring.
+var liveTVWiringKeys = map[string]struct{}{
+	"tunarr.url":        {},
+	"library.url":       {},
+	"library.token":     {},
+	"library.flavor":    {},
+	"playout.backend":   {},
+	"server.public_url": {},
+}
+
+// mediaSourceWiringKeys are the original Tunarr media-source inputs. Playout URL changes do
+// not affect that integration and must not cause an unrelated Tunarr library scan.
+var mediaSourceWiringKeys = map[string]struct{}{
 	"tunarr.url":     {},
 	"library.url":    {},
 	"library.token":  {},
 	"library.flavor": {},
 }
 
-// autoWireAfterSave runs the idempotent Live TV + media-source wiring when a save
-// touched a connection key and the prerequisites are now configured. Every path is
-// best-effort and logged, never returned: the wiring is a follow-on effect of a
-// save that already succeeded, and both connectors no-op when already wired, so
-// re-running on each connection save is harmless (§6 idempotent).
-func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string) {
-	touched := false
-	for k := range edits {
-		if _, ok := connectionKeys[k]; ok {
-			touched = true
-			break
-		}
-	}
-	if !touched {
-		return
-	}
-
-	// Live TV: needs only the Tunarr URL (it derives Tunarr's guide/tuner URLs).
-	if s.livetv != nil && !s.unconfigured("tunarr.url") {
-		if tunerAdded, listingAdded, err := s.livetv.Connect(ctx); err != nil {
-			s.logw("auto-wire live TV failed after save", err)
-		} else if tunerAdded || listingAdded {
-			s.logi("auto-wired Tunarr into the TV guide after save")
-		}
-	}
-
+// autoWireMediaSourceAfterSave retains the independent Tunarr media-source consequence. Live TV
+// publication is intentionally absent: mutateLiveTVSettings owns that complete distributed
+// workflow, so there is no second transition algorithm in the HTTP layer.
+func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
-	if s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
+	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
 		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
 			s.logw("auto-wire Tunarr media source failed after save", err)
 		} else if enabled > 0 {
 			s.logi("auto-wired Tunarr's media source after save")
 		}
 	}
+}
+
+// mutateLiveTVSettings runs a transition-affecting setting mutation under the transition module's
+// cross-replica lock. If lock acquisition fails, mutation never ran and the request must fail. Once
+// mutation ran, its result is authoritative: later convergence/publication errors are logged and
+// retried by maintenance rather than misreported as a failed save.
+func (s *Server) mutateLiveTVSettings(
+	ctx context.Context,
+	affectsLiveTV bool,
+	mutation func(context.Context) bool,
+) error {
+	if !affectsLiveTV {
+		mutation(ctx)
+		return nil
+	}
+	if s.backendTransition == nil {
+		return errNotImplemented("Settings workflow unavailable",
+			"The Live TV settings workflow isn't running, so this can't be changed right now.")
+	}
+	mutationRan := false
+	err := s.backendTransition.ApplyMutation(ctx, func(lockCtx context.Context) bool {
+		mutationRan = true
+		return mutation(lockCtx)
+	})
+	if err == nil {
+		return nil
+	}
+	if !mutationRan {
+		return apiErrWithCause(http.StatusServiceUnavailable, "Couldn't save settings",
+			"The settings workflow couldn't be started. Try again in a moment.", err)
+	}
+	s.logw("playout backend transition remains pending after save", err)
+	return nil
+}
+
+// savedEdits filters PATCH's requested values to the keys the settings service actually
+// committed. Invalid and environment-pinned inputs must not trigger external effects.
+func savedEdits(edits map[string]string, results []SettingResult) map[string]string {
+	saved := make(map[string]string, len(results))
+	for _, result := range results {
+		if result.Status == "saved" {
+			saved[result.Key] = edits[result.Key]
+		}
+	}
+	return saved
+}
+
+// settingsPersistenceFailed identifies the adapter's synthetic batch failure. A PATCH can have
+// committed an earlier key before a later store write fails, so a transition-affecting batch must
+// conservatively repair from current durable desired even when no per-key saved result survived.
+func settingsPersistenceFailed(results []SettingResult) bool {
+	for _, result := range results {
+		if result.Key == "" && result.Status == "invalid" {
+			return true
+		}
+	}
+	return false
+}
+
+func touchesAny(edits map[string]string, keys map[string]struct{}) bool {
+	for key := range edits {
+		if _, ok := keys[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // logw / logi guard against a nil logger (unit tests wire deps directly).
@@ -174,12 +230,21 @@ func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*st
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	switch res := s.settings.Clear(ctx, in.Key); res.Status {
+	var res SettingResult
+	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
+		res = s.settings.Clear(mutationCtx, in.Key)
+		return res.Status == "saved"
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch res.Status {
 	case "invalid":
 		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "pinned":
 		return nil, errConflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
 	}
+	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
 }
 
@@ -200,7 +265,15 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	switch res := s.settings.SetEnvOverride(ctx, in.Key, in.Body.Enabled, auditActor(ctx)); res.Status {
+	var res SettingResult
+	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
+		res = s.settings.SetEnvOverride(mutationCtx, in.Key, in.Body.Enabled, auditActor(mutationCtx))
+		return res.Status == "applied"
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch res.Status {
 	case "unknown":
 		// Bootstrap keys land here too: they are read before the database opens, so a flag
 		// stored in that database could not affect them, and they are not in the registry.
@@ -209,6 +282,7 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 		return nil, errConflict("Not set by environment",
 			"No environment variable is setting this, so there's nothing to take over. You can edit it directly.")
 	}
+	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
 }
 
@@ -247,15 +321,12 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 }
 
 type secretRevealInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to reveal."`
+	Name string `path:"name" enum:"api_token,playout_token" doc:"Which generated token to reveal."`
 }
 
 type secretRevealOutput struct {
 	Body struct {
-		// Value is present only for a displayable secret (API_TOKEN). SESSION_SECRET
-		// has nothing to paste anywhere, so it is never returned (§4).
-		Value       string `json:"value,omitempty"`
-		Displayable bool   `json:"displayable" doc:"Whether the value is returned (config-design §4)."`
+		Value string `json:"value" doc:"The current generated token."`
 	}
 }
 
@@ -266,29 +337,22 @@ func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secr
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	value, displayable, err := s.settings.RevealSecret(ctx, in.Name)
+	value, err := s.settings.RevealSecret(ctx, in.Name)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal secret", "This secret can't be shown. It may not be a viewable secret.", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal token", "This token's current value couldn't be loaded.", err)
 	}
 	out := &secretRevealOutput{}
-	out.Body.Displayable = displayable
-	if displayable {
-		out.Body.Value = value
-	}
+	out.Body.Value = value
 	return out, nil
 }
 
 type secretRegenerateInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,playout_token" doc:"Which generated secret to rotate."`
+	Name string `path:"name" enum:"api_token,playout_token" doc:"Which generated token to rotate."`
 }
 
 type secretRegenerateOutput struct {
 	Body struct {
-		// Value is the new secret, returned ONLY for displayable secrets (API_TOKEN).
-		// For SESSION_SECRET it is withheld (§4) — Regenerate is the
-		// only affordance and there is nothing to paste.
-		Value       string `json:"value,omitempty"`
-		Displayable bool   `json:"displayable" doc:"Whether the new value is returned (config-design §4)."`
+		Value string `json:"value" doc:"The newly generated token."`
 	}
 }
 
@@ -296,14 +360,25 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	if s.settings == nil {
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
-	value, displayable, err := s.settings.RegenerateSecret(ctx, in.Name)
+	var value string
+	var mutationErr error
+	err := s.mutateLiveTVSettings(ctx, in.Name == "playout_token", func(mutationCtx context.Context) bool {
+		value, mutationErr = s.settings.RegenerateSecret(mutationCtx, in.Name)
+		return mutationErr == nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = mutationErr
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
 	}
 	out := &secretRegenerateOutput{}
-	out.Body.Displayable = displayable
-	if displayable {
-		out.Body.Value = value
-	}
+	out.Body.Value = value
 	return out, nil
+}
+
+func hasKey(keys map[string]struct{}, key string) bool {
+	_, ok := keys[key]
+	return ok
 }

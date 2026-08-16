@@ -7,9 +7,9 @@ import (
 
 // TestWiring_FreshInstall pins the composition-root contract for a store-only
 // "nothing configured yet" install — the FE's initial state. It asserts the two
-// distinct nil-dep behaviors from ONE real app build: store-alone routes work
-// (onboarding, settings, status, backup), feature/scheduler routes report
-// unconfigured (501), and a route whose dep is absent is 404 (not registered).
+// distinct dependency behaviors from ONE real app build: store-alone routes work
+// (onboarding, settings, status, backup), external-feature routes report unconfigured
+// (501), and missing resources or routes are 404.
 // This is the seam no other test covers: the whole api.Options wiring for an empty
 // store, exactly as a freshly-installed backend answers the frontend.
 func TestWiring_FreshInstall(t *testing.T) {
@@ -29,19 +29,24 @@ func TestWiring_FreshInstall(t *testing.T) {
 		}
 	}
 
-	// Feature/scheduler routes report UNCONFIGURED (501) — no library/tunarr/llm.
+	// External-feature routes report UNCONFIGURED (501) — no library/tunarr/llm.
 	// (After the live-enable fix these still 501 when unconfigured; saving the config
 	// makes them work live — see TestWiring_ConfigEnablesLive.)
 	unconfigured := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
 	}
 	for _, r := range unconfigured {
 		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
 			t.Errorf("fresh install: %s %s → %d, want 501 (unconfigured)", r.method, r.path, code)
 		}
+	}
+
+	// Channel scheduling is local control-plane behavior on the default internal backend. It is
+	// available without Tunarr; this id simply does not exist.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Errorf("fresh install: POST /v1/channels/x/reconcile → %d, want 404 (missing channel)", code)
 	}
 
 	// ⚠ Filler is NOT in that list, and the distinction is the point. `filler.dir` defaults
@@ -89,12 +94,16 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	preCheck := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 	}
 	for _, r := range preCheck {
 		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
 			t.Fatalf("pre-config %s %s → %d, want 501", r.method, r.path, code)
 		}
+	}
+	// Reconcile is already live for internal playout; a missing channel is a resource miss, not
+	// an unconfigured Tunarr feature.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Fatalf("pre-config reconcile missing channel → %d, want 404", code)
 	}
 
 	// SAVE the connections through the settings API — exactly what the wizard does.
@@ -122,9 +131,9 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {
 		t.Errorf("GET /v1/search → %d after saving library, want 200 (live-enabled)", code)
 	}
-	// The scheduler gate opened: reconcile of a missing channel is now 404, not 501.
-	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code == http.StatusNotImplemented {
-		t.Error("reconcile still 501 after saving tunarr.url — scheduler not live-enabled")
+	// Saving external connections does not change the already-live channel scheduler contract.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Errorf("post-config reconcile missing channel → %d, want 404", code)
 	}
 
 	// The model-picker probe ALSO goes live — it reads the saved llm.url with no

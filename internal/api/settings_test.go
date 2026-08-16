@@ -6,9 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeSettings is a scripted api.SettingsService for the route tests.
@@ -21,6 +25,166 @@ type fakeSettings struct {
 
 	envOverride   string // last key passed to SetEnvOverride (§3.1)
 	envOverrideOn bool   // whether that call claimed the key or handed it back
+
+	afterPatch       func(map[string]string)
+	afterClear       func(string)
+	afterEnvOverride func(string, bool)
+}
+
+func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T) {
+	cfg := map[string]string{"playout.backend": schedule.PlayoutBackendInternal}
+	settings := &fakeSettings{
+		afterPatch: func(edits map[string]string) {
+			if value, ok := edits["playout.backend"]; ok {
+				cfg["playout.backend"] = value
+			}
+		},
+		afterClear: func(string) { cfg["playout.backend"] = schedule.PlayoutBackendInternal },
+		afterEnvOverride: func(_ string, enabled bool) {
+			if !enabled {
+				cfg["playout.backend"] = schedule.PlayoutBackendTunarr
+			}
+		},
+	}
+	transition := &testkit.BackendTransition{
+		Err: context.DeadlineExceeded,
+		Desired: func() string {
+			return cfg["playout.backend"]
+		},
+	}
+	live := &fakeConnector{}
+	st := openTestStore(t, t.TempDir()+"/transition.db")
+	t.Cleanup(func() { _ = st.Close() })
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
+		LiveTV: live, BackendTransition: transition,
+		LiveConfig: func(key string) string { return cfg[key] },
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	requests := []struct {
+		method, path, body string
+		wantStatus         int
+	}{
+		{http.MethodPatch, "/v1/settings", `{"edits":{"playout.backend":"tunarr"}}`, http.StatusOK},
+		{http.MethodDelete, "/v1/settings/playout.backend", "", http.StatusNoContent},
+		{http.MethodPut, "/v1/settings/playout.backend/env-override", `{"enabled":false}`, http.StatusNoContent},
+	}
+	for _, request := range requests {
+		resp := do(t, srv, request.method, request.path, adminToken, request.body)
+		if resp.StatusCode != request.wantStatus {
+			t.Fatalf("%s %s = %d, want %d", request.method, request.path, resp.StatusCode, request.wantStatus)
+		}
+	}
+	// Rotating the device token repairs internal URLs because they embed it. Other
+	// generated tokens have no Live TV consequence.
+	for _, name := range []string{"playout_token", "api_token"} {
+		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("regenerate %s = %d", name, resp.StatusCode)
+		}
+	}
+	if got := transition.Targets(); len(got) != 4 || got[0] != schedule.PlayoutBackendTunarr ||
+		got[1] != schedule.PlayoutBackendInternal || got[2] != schedule.PlayoutBackendTunarr ||
+		got[3] != schedule.PlayoutBackendTunarr {
+		t.Fatalf("transition targets = %v", got)
+	}
+	if live.calls != 0 || live.wiredChecks != 0 {
+		t.Fatalf("legacy Live TV path ran with durable transition: calls=%d checks=%d", live.calls, live.wiredChecks)
+	}
+	if settings.patched["playout.backend"] != schedule.PlayoutBackendTunarr {
+		t.Fatalf("post-save transition failure lost durable PATCH result: %v", settings.patched)
+	}
+}
+
+func TestSettings_BackendTransitionLockFailureDoesNotRunMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, body string
+		mutated                  func(*fakeSettings) bool
+	}{
+		{
+			name: "patch", method: http.MethodPatch, path: "/v1/settings",
+			body:    `{"edits":{"playout.backend":"internal"}}`,
+			mutated: func(s *fakeSettings) bool { return s.patched != nil },
+		},
+		{
+			name: "clear", method: http.MethodDelete, path: "/v1/settings/playout.backend",
+			mutated: func(s *fakeSettings) bool { return s.cleared != "" },
+		},
+		{
+			name: "environment hand-back", method: http.MethodPut,
+			path: "/v1/settings/playout.backend/env-override", body: `{"enabled":false}`,
+			mutated: func(s *fakeSettings) bool { return s.envOverride != "" },
+		},
+		{
+			name: "playout token rotation", method: http.MethodPost,
+			path:    "/v1/settings/secrets/playout_token/regenerate",
+			mutated: func(s *fakeSettings) bool { return s.regen != "" },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := &fakeSettings{}
+			transition := &testkit.BackendTransition{BeforeMutationErr: context.DeadlineExceeded}
+			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings, BackendTransition: transition,
+			})
+			srv := httptest.NewServer(h)
+			t.Cleanup(srv.Close)
+
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("request with unavailable transition lock = %d, want 503", resp.StatusCode)
+			}
+			if tc.mutated(settings) {
+				t.Fatal("mutation ran without transition lock")
+			}
+		})
+	}
+}
+
+func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, body string
+		mutated                  func(*fakeSettings) bool
+	}{
+		{
+			name: "patch", method: http.MethodPatch, path: "/v1/settings",
+			body:    `{"edits":{"playout.backend":"internal"}}`,
+			mutated: func(s *fakeSettings) bool { return s.patched != nil },
+		},
+		{
+			name: "clear", method: http.MethodDelete, path: "/v1/settings/playout.backend",
+			mutated: func(s *fakeSettings) bool { return s.cleared != "" },
+		},
+		{
+			name: "environment hand-back", method: http.MethodPut,
+			path: "/v1/settings/playout.backend/env-override", body: `{"enabled":false}`,
+			mutated: func(s *fakeSettings) bool { return s.envOverride != "" },
+		},
+		{
+			name: "playout token rotation", method: http.MethodPost,
+			path:    "/v1/settings/secrets/playout_token/regenerate",
+			mutated: func(s *fakeSettings) bool { return s.regen != "" },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := &fakeSettings{}
+			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
+			})
+			srv := httptest.NewServer(h)
+			t.Cleanup(srv.Close)
+
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			if resp.StatusCode != http.StatusNotImplemented {
+				t.Fatalf("request without transition workflow = %d, want 501", resp.StatusCode)
+			}
+			if tc.mutated(settings) {
+				t.Fatal("mutation ran without transition workflow")
+			}
+		})
+	}
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
@@ -41,6 +205,9 @@ func (f *fakeSettings) Clear(_ context.Context, key string) api.SettingResult {
 	case "job.workers":
 		return api.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
 	}
+	if f.afterClear != nil {
+		f.afterClear(key)
+	}
 	return api.SettingResult{Key: key, Status: "saved"}
 }
 
@@ -57,6 +224,9 @@ func (f *fakeSettings) SetEnvOverride(_ context.Context, key string, on bool, _ 
 		// Provenance "db" in the fixture above — nothing in the environment to take back.
 		return api.SettingResult{Key: key, Status: "not_pinned"}
 	}
+	if f.afterEnvOverride != nil {
+		f.afterEnvOverride(key, on)
+	}
 	return api.SettingResult{Key: key, Status: "applied"}
 }
 
@@ -71,6 +241,9 @@ func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by stri
 		}
 		out = append(out, api.SettingResult{Key: k, Status: st})
 	}
+	if f.afterPatch != nil {
+		f.afterPatch(edits)
+	}
 	return out
 }
 
@@ -78,21 +251,14 @@ func (f *fakeSettings) Features(context.Context) map[string]bool {
 	return map[string]bool{"suggestions": false, "acquisition": true, "filler": false}
 }
 
-func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string, bool, error) {
+func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string, error) {
 	f.regen = name
-	if name == "session_secret" {
-		return "", false, nil // never displayable
-	}
-	return "brand-new-token-value", true, nil
+	return "brand-new-token-value", nil
 }
 
-// RevealSecret mirrors the display policy: session_secret is never displayable.
-func (f *fakeSettings) RevealSecret(_ context.Context, name string) (string, bool, error) {
+func (f *fakeSettings) RevealSecret(_ context.Context, name string) (string, error) {
 	f.revealed = name
-	if name == "session_secret" {
-		return "", false, nil
-	}
-	return "current-secret-value", true, nil
+	return "current-secret-value", nil
 }
 
 func (f *fakeSettings) Test(_ context.Context, check string) (bool, string) {
@@ -108,10 +274,11 @@ func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSettings{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Settings: fs,
+		Store:             st,
+		Auth:              testAuthorizer{},
+		Log:               slog.New(slog.DiscardHandler),
+		Settings:          fs,
+		BackendTransition: &testkit.BackendTransition{},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -193,34 +360,21 @@ func TestSettings_PatchResults(t *testing.T) {
 	}
 }
 
-// Regenerating SESSION_SECRET withholds the value (config-design §4); a
-// displayable secret returns it.
-func TestSettings_SecretRegenerationDisplayPolicy(t *testing.T) {
+func TestSettings_GeneratedTokenRegenerationReturnsValue(t *testing.T) {
 	srv, _ := newSettingsServer(t)
-
-	// session_secret → withheld.
-	resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/session_secret/regenerate", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("regen session → %d", resp.StatusCode)
-	}
-	var s struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&s)
-	if s.Displayable || s.Value != "" {
-		t.Errorf("session secret must be withheld: %+v", s)
-	}
-
-	// api_token → returned.
-	resp = do(t, srv, http.MethodPost, "/v1/settings/secrets/api_token/regenerate", adminToken, "")
-	var a struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&a)
-	if !a.Displayable || a.Value == "" {
-		t.Errorf("api_token should return the new value: %+v", a)
+	for _, name := range []string{"api_token", "playout_token"} {
+		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("regenerate %s → %d", name, resp.StatusCode)
+		}
+		var body struct {
+			Value       string `json:"value"`
+			Displayable *bool  `json:"displayable"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		if body.Value == "" || body.Displayable != nil {
+			t.Errorf("%s should return the new value: %+v", name, body)
+		}
 	}
 }
 
@@ -286,34 +440,23 @@ func TestSettings_EnvOverrideOutcomes(t *testing.T) {
 	}
 }
 
-// GET /v1/settings/secrets/{name} is §4's eye toggle: a displayable secret returns
-// its CURRENT value, SESSION_SECRET withholds — and crucially, reading never rotates.
+// GET /v1/settings/secrets/{name} is §4's eye toggle and never rotates.
 func TestSettings_SecretReveal(t *testing.T) {
 	srv, fs := newSettingsServer(t)
 
-	// Displayable → value returned (API_TOKEN is the operational, viewable secret).
-	resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/api_token", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("reveal api_token → %d", resp.StatusCode)
-	}
-	var w struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&w)
-	if !w.Displayable || w.Value == "" {
-		t.Errorf("api_token should be revealable: %+v", w)
-	}
-
-	// SESSION_SECRET has nothing to paste anywhere — withheld (§4).
-	resp = do(t, srv, http.MethodGet, "/v1/settings/secrets/session_secret", adminToken, "")
-	var s struct {
-		Value       string `json:"value"`
-		Displayable bool   `json:"displayable"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&s)
-	if s.Displayable || s.Value != "" {
-		t.Errorf("session_secret must stay withheld: %+v", s)
+	for _, name := range []string{"api_token", "playout_token"} {
+		resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/"+name, adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("reveal %s → %d", name, resp.StatusCode)
+		}
+		var body struct {
+			Value       string `json:"value"`
+			Displayable *bool  `json:"displayable"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		if body.Value == "" || body.Displayable != nil {
+			t.Errorf("%s should be revealable: %+v", name, body)
+		}
 	}
 
 	// The point of the route: revealing must NOT rotate.
@@ -322,15 +465,43 @@ func TestSettings_SecretReveal(t *testing.T) {
 	}
 }
 
+func TestSettings_RetiredSessionSecretRoutesAreRejected(t *testing.T) {
+	srv, fs := newSettingsServer(t)
+	const oldName = "session_secret" // retired-ok: rejected compatibility probe for the removed setting
+	for _, path := range []string{
+		"/v1/settings/secrets/" + oldName,
+		"/v1/settings/secrets/" + oldName + "/regenerate",
+	} {
+		method := http.MethodGet
+		if strings.HasSuffix(path, "/regenerate") {
+			method = http.MethodPost
+		}
+		resp := do(t, srv, method, path, adminToken, "")
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("%s %s = %d, want 422", method, path, resp.StatusCode)
+		}
+	}
+	if fs.regen != "" || fs.revealed != "" {
+		t.Fatalf("retired secret reached settings adapter: regen=%q reveal=%q", fs.regen, fs.revealed)
+	}
+}
+
 // fakeConnector records whether Connect fired and can be scripted to fail. It
 // stands in for both wiring connectors (LiveTV + media source) — enough surface
 // to prove the auto-wire fires (and stays non-fatal) after a connection save.
 type fakeConnector struct {
-	calls int
-	fail  bool
+	calls       int
+	fail        bool
+	beforeCall  func()
+	wired       bool
+	wiredErr    error
+	wiredChecks int
 }
 
 func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
+	if c.beforeCall != nil {
+		c.beforeCall()
+	}
 	c.calls++
 	if c.fail {
 		return false, false, context.DeadlineExceeded
@@ -338,7 +509,10 @@ func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
 	return true, true, nil // something changed (tuner + listing added)
 }
 
-func (c *fakeConnector) Wired(context.Context) (bool, error)    { return false, nil }
+func (c *fakeConnector) Wired(context.Context) (bool, error) {
+	c.wiredChecks++
+	return c.wired, c.wiredErr
+}
 func (c *fakeConnector) Reconnect(context.Context) (int, error) { return 0, nil }
 
 func (c *fakeConnector) ConnectSource(context.Context) (string, int, error) {
@@ -359,6 +533,12 @@ func (a mediaSourceAdapter) Connect(ctx context.Context) (string, int, error) {
 func (a mediaSourceAdapter) LibrariesReady(context.Context) (bool, error) { return false, nil }
 
 func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string]string) *httptest.Server {
+	srv, _ := newAutoWireServerWithChannels(t, live, source, cfg, &fakeSettings{}, nil)
+	return srv
+}
+
+func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cfg map[string]string,
+	settings *fakeSettings, channelSvc api.ChannelService) (*httptest.Server, store.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -366,19 +546,22 @@ func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string
 		Store:         st,
 		Auth:          api.NewTokenAuthorizer(adminToken),
 		Log:           slog.New(slog.DiscardHandler),
-		Settings:      &fakeSettings{},
+		Settings:      settings,
+		Channels:      channelSvc,
 		LiveTV:        live,
 		TunarrConnect: mediaSourceAdapter{inner: source},
-		LiveConfig:    func(k string) string { return cfg[k] },
+		BackendTransition: &testkit.BackendTransition{Desired: func() string {
+			return cfg["playout.backend"]
+		}},
+		LiveConfig: func(k string) string { return cfg[k] },
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, st
 }
 
-// Saving a connection auto-wires Tunarr into the guide + library — no manual button
-// (config-design §5). Both connectors are idempotent, so running them on every
-// connection save is safe; the operator just saves and it's wired.
+// Saving a connection enters the durable transition seam and independently wires the Tunarr
+// media source. Live TV itself must never be wired by a duplicate HTTP-layer algorithm.
 func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 	configured := map[string]string{"tunarr.url": "http://tunarr:8000", "library.url": "http://emby:8096"}
 
@@ -390,8 +573,8 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("patch → %d", resp.StatusCode)
 		}
-		if live.calls != 1 || source.calls != 1 {
-			t.Errorf("auto-wire didn't fire both: live=%d source=%d", live.calls, source.calls)
+		if live.calls != 0 || source.calls != 1 {
+			t.Errorf("wiring ownership drifted: legacy-live=%d source=%d", live.calls, source.calls)
 		}
 	})
 
@@ -419,11 +602,241 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 		// Only Tunarr configured — livetv needs just tunarr.url; media source needs both.
 		srv := newAutoWireServer(t, live, source, map[string]string{"tunarr.url": "http://tunarr:8000"})
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
-		if live.calls != 1 {
-			t.Errorf("live TV should wire with only tunarr.url set: %d", live.calls)
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
 		}
 		if source.calls != 0 {
 			t.Errorf("media source should wait for library.url: %d", source.calls)
+		}
+	})
+
+	t.Run("internal backend wires without Tunarr", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		cfg := map[string]string{
+			"playout.backend":   "internal",
+			"server.public_url": "http://loomarr:8080",
+		}
+		srv := newAutoWireServer(t, live, source, cfg)
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("patch → %d", resp.StatusCode)
+		}
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
+		}
+		if source.calls != 0 {
+			t.Errorf("playout.backend must not trigger Tunarr media-source wiring: %d", source.calls)
+		}
+	})
+
+	t.Run("public URL change rewires internal Live TV", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		cfg := map[string]string{
+			"playout.backend":   "internal",
+			"server.public_url": "http://loomarr-new:8080",
+		}
+		srv := newAutoWireServer(t, live, source, cfg)
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"server.public_url":"http://loomarr-new:8080"}}`)
+		if live.calls != 0 {
+			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
+		}
+		if source.calls != 0 {
+			t.Errorf("server.public_url must not trigger Tunarr media-source wiring: %d", source.calls)
+		}
+	})
+
+	t.Run("internal Live TV waits for a reachable public URL", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "internal"})
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("unwireable internal backend invoked connectors: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+
+	t.Run("Tunarr Live TV still requires its URL", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "tunarr"})
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"tunarr"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("unconfigured Tunarr backend invoked connectors: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+}
+
+func TestSettings_BackendTransitionDoesNotUseLegacyHTTPReconcileOrWiring(t *testing.T) {
+	cfg := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+		"tunarr.url":        "http://tunarr:8000",
+	}
+	settings := &fakeSettings{afterPatch: func(edits map[string]string) {
+		for key, value := range edits {
+			cfg[key] = value
+		}
+	}}
+	channelSvc := &fakeChannelSvc{}
+	live, source := &fakeConnector{}, &fakeConnector{}
+	reconciledBeforeWire := -1
+	live.beforeCall = func() { reconciledBeforeWire = len(channelSvc.reconciledIDs) }
+	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	seedChannel(t, st, "inherits", "Follows default", 1, "")
+	seedChannel(t, st, "pinned", "Pinned internal", 2, schedule.PlayoutBackendInternal)
+
+	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d", resp.StatusCode)
+	}
+	if reconciledBeforeWire != -1 {
+		t.Fatalf("legacy Live TV wiring ran: before=%d", reconciledBeforeWire)
+	}
+	if len(channelSvc.reconciledIDs) != 0 {
+		t.Fatalf("HTTP layer reconciled channels outside transition module: %v", channelSvc.reconciledIDs)
+	}
+	if live.calls != 0 {
+		t.Fatalf("HTTP layer wired Live TV outside transition module: %d", live.calls)
+	}
+}
+
+func TestSettings_BackendTransitionFailureRemainsPostSaveAndRetryable(t *testing.T) {
+	cfg := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+		"tunarr.url":        "http://tunarr:8000",
+	}
+	settings := &fakeSettings{afterPatch: func(edits map[string]string) {
+		for key, value := range edits {
+			cfg[key] = value
+		}
+	}}
+	channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
+	live, source := &fakeConnector{}, &fakeConnector{}
+	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
+	}
+	if len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+		t.Fatalf("HTTP layer performed legacy transition: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
+	}
+
+	// Retrying the same save remains successful and still crosses only the deep transition seam.
+	channelSvc.err = nil
+	channelSvc.reconciledIDs = nil
+	resp = do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+		`{"edits":{"playout.backend":"tunarr"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("retry patch → %d", resp.StatusCode)
+	}
+	if len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+		t.Fatalf("retry performed legacy transition: reconciled=%v live=%d", channelSvc.reconciledIDs, live.calls)
+	}
+}
+
+func TestSettings_LiveTVRegistrationChecksAreOwnedByTransitionModule(t *testing.T) {
+	configured := map[string]string{
+		"playout.backend":   schedule.PlayoutBackendInternal,
+		"server.public_url": "http://loomarr:8080",
+	}
+
+	t.Run("matching current URLs need neither convergence nor connect", func(t *testing.T) {
+		channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
+		live, source := &fakeConnector{wired: true}, &fakeConnector{}
+		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("patch → %d", resp.StatusCode)
+		}
+		if live.wiredChecks != 0 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("HTTP layer performed registration effects: checks=%d connects=%d reconciles=%d",
+				live.wiredChecks, live.calls, channelSvc.reconciles)
+		}
+	})
+
+	t.Run("lookup failure keeps existing registration untouched", func(t *testing.T) {
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{wiredErr: context.DeadlineExceeded}, &fakeConnector{}
+		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"playout.backend":"internal"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("the setting save remains successful: %d", resp.StatusCode)
+		}
+		if live.wiredChecks != 0 || live.calls != 0 || channelSvc.reconciles != 0 {
+			t.Fatalf("HTTP layer performed registration effects: checks=%d connects=%d reconciles=%d",
+				live.wiredChecks, live.calls, channelSvc.reconciles)
+		}
+	})
+}
+
+func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
+	t.Run("clear falls back to internal", func(t *testing.T) {
+		cfg := map[string]string{
+			"playout.backend":   "tunarr",
+			"server.public_url": "http://loomarr:8080",
+			"tunarr.url":        "http://tunarr:8000",
+		}
+		settings := &fakeSettings{afterClear: func(key string) {
+			if key == "playout.backend" {
+				cfg[key] = schedule.PlayoutBackendInternal
+			}
+		}}
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{}, &fakeConnector{}
+		seenBeforeWire := -1
+		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
+		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodDelete, "/v1/settings/playout.backend", adminToken, "")
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("clear → %d", resp.StatusCode)
+		}
+		if seenBeforeWire != -1 || len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+			t.Fatalf("clear used legacy transition: before=%d reconciled=%v live=%d",
+				seenBeforeWire, channelSvc.reconciledIDs, live.calls)
+		}
+	})
+
+	t.Run("handing back to environment selects Tunarr", func(t *testing.T) {
+		cfg := map[string]string{
+			"playout.backend":   schedule.PlayoutBackendInternal,
+			"server.public_url": "http://loomarr:8080",
+			"tunarr.url":        "http://tunarr:8000",
+		}
+		settings := &fakeSettings{afterEnvOverride: func(key string, enabled bool) {
+			if key == "playout.backend" && !enabled {
+				cfg[key] = "tunarr"
+			}
+		}}
+		channelSvc := &fakeChannelSvc{}
+		live, source := &fakeConnector{}, &fakeConnector{}
+		seenBeforeWire := -1
+		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
+		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		seedChannel(t, st, "inherits", "Follows default", 1, "")
+
+		resp := do(t, srv, http.MethodPut, "/v1/settings/playout.backend/env-override", adminToken,
+			`{"enabled":false}`)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("env hand-back → %d", resp.StatusCode)
+		}
+		if seenBeforeWire != -1 || len(channelSvc.reconciledIDs) != 0 || live.calls != 0 {
+			t.Fatalf("env hand-back used legacy transition: before=%d reconciled=%v live=%d",
+				seenBeforeWire, channelSvc.reconciledIDs, live.calls)
 		}
 	})
 }

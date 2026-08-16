@@ -83,13 +83,13 @@ func TestSecrets_Regenerate(t *testing.T) {
 	store := newMemSecretStore()
 	ctx := context.Background()
 	s, _ := NewSecrets(ctx, store, noEnv)
-	old := s.Value(SecretSession)
-	fresh, err := s.Regenerate(ctx, SecretSession)
+	old := s.Value(SecretPlayout)
+	fresh, err := s.Regenerate(ctx, SecretPlayout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fresh == old || s.Value(SecretSession) != fresh {
-		t.Errorf("regenerate did not rotate: old=%q fresh=%q live=%q", old, fresh, s.Value(SecretSession))
+	if fresh == old || s.Value(SecretPlayout) != fresh {
+		t.Errorf("regenerate did not rotate: old=%q fresh=%q live=%q", old, fresh, s.Value(SecretPlayout))
 	}
 
 	// Env-pinned → refuse.
@@ -103,16 +103,51 @@ func TestSecrets_Regenerate(t *testing.T) {
 	if _, err := sp.Regenerate(ctx, SecretAPI); err == nil {
 		t.Error("regenerating an env-pinned secret should error")
 	}
+	if _, err := s.Regenerate(ctx, GeneratedSecret("unknown")); err == nil {
+		t.Error("regenerating an unknown generated secret should error")
+	}
 }
 
-// Display policy (config-design §4): the session secret is never displayable; the
-// API token is.
-func TestSecrets_DisplayPolicy(t *testing.T) {
-	if SecretSession.Displayable() {
-		t.Error("SESSION_SECRET must never be displayable")
+func TestSecrets_CurrentObservesRotationFromAnotherReplica(t *testing.T) {
+	store := newMemSecretStore()
+	ctx := context.Background()
+	first, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !SecretAPI.Displayable() {
-		t.Error("API_TOKEN is an operational value → displayable")
+	second, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := second.Value(SecretPlayout)
+	fresh, err := first.Regenerate(ctx, SecretPlayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Value(SecretPlayout) != old {
+		t.Fatal("a process-local cache changed without a durable read")
+	}
+	got, err := second.Current(ctx, SecretPlayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != fresh || second.Value(SecretPlayout) != fresh {
+		t.Fatalf("Current = %q, cache = %q, want rotated %q", got, second.Value(SecretPlayout), fresh)
+	}
+}
+
+func TestSecrets_CurrentFailsClosedWhenDurableValueDisappears(t *testing.T) {
+	store := newMemSecretStore()
+	ctx := context.Background()
+	secrets, err := NewSecrets(ctx, store, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	delete(store.m, SecretPlayout.dbKey())
+	store.mu.Unlock()
+	if _, err := secrets.Current(ctx, SecretPlayout); err == nil {
+		t.Fatal("Current minted or returned a cached value after the durable secret disappeared")
 	}
 }
 
@@ -141,8 +176,7 @@ func TestRedactor_SecretNeverInLogs(t *testing.T) {
 	}
 }
 
-// The generated secrets feed the Redactor (config-design §4): a minted
-// SESSION_SECRET/API_TOKEN is scrubbed from logs via RedactionValues.
+// The generated tokens feed the Redactor (config-design §4).
 func TestSecrets_FeedRedactor(t *testing.T) {
 	s, err := NewSecrets(context.Background(), newMemSecretStore(), noEnv)
 	if err != nil {
@@ -197,11 +231,6 @@ func TestPlayoutTokenIsRedactable(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("playout_token is not in allGenerated() — it would never reach the Redactor (§4)")
-	}
-	// And it must be displayable: an operator has to paste it into a tuner URL by hand.
-	// A never-displayable playout token would make manual Live TV wiring impossible.
-	if !SecretPlayout.Displayable() {
-		t.Error("playout_token must be viewable — it is pasted into the media server's tuner URL")
 	}
 	// But it is NOT the API token: that one is break-glass admin with full authority.
 	if SecretPlayout == SecretAPI {

@@ -58,9 +58,19 @@ func entry(key, title string) schedule.LineupEntry {
 	return schedule.LineupEntry{Key: provision.Key(key), Title: title, DurationMs: 3600000}
 }
 
-func newEngine(st store.Store, tun *testkit.Tunarr, avail channels.Availability, guide channels.GuidePoker) *channels.Engine {
+func newEngine(st store.Store, tun programmer.Programmer, avail channels.Availability, guide channels.GuidePoker) *channels.Engine {
 	return channels.New(st, tun, avail, guide, channels.Config{ReconcileTTL: 10 * time.Minute},
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
+}
+
+func newEngineForBackend(
+	st store.Store, tun programmer.Programmer, avail channels.Availability, guide channels.GuidePoker,
+	backend func() string,
+) *channels.Engine {
+	return channels.New(st, tun, avail, guide, channels.Config{
+		ReconcileTTL:                 10 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return backend(), nil },
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
 }
 
 // --- §19 gate tests ---
@@ -102,6 +112,291 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 	if tun.Pushes != 1 {
 		t.Errorf("idempotent reconcile re-pushed lineup: %d pushes (want 1)", tun.Pushes)
+	}
+}
+
+// Internal playout still needs reconciliation: Desired, status and the next durable sweep
+// deadline are local control-plane state even though the encoder computes CyclePreview live.
+// A nil Programmer is intentional — any accidental Tunarr call panics and fails this test.
+func TestReconcile_InternalMaterializesWithoutProgrammer(t *testing.T) {
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	e := newEngineForBackend(st, nil, avail, nil,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal", 5, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "internal"); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := st.GetChannel(context.Background(), "internal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.TunarrID != "" {
+		t.Fatalf("internal reconcile fabricated a Tunarr id: %q", ch.TunarrID)
+	}
+	if ch.Status != schedule.StatusLive || programCount(ch) != 1 || ch.Desired[0].LibraryItemID != "lib-1" {
+		t.Fatalf("internal desired state was not materialized: status=%s desired=%+v", ch.Status, ch.Desired)
+	}
+	wantDeadline := time.Unix(1_800_000_000, 0).UTC().Add(10 * time.Minute)
+	if !ch.ReconcileDeadline.Equal(wantDeadline) {
+		t.Fatalf("deadline = %v, want %v", ch.ReconcileDeadline, wantDeadline)
+	}
+}
+
+func TestReconcile_InternalFirstMaterializationRescansTunerOnce(t *testing.T) {
+	st := newStore(t)
+	guide := &fakeGuide{}
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-guide", 6, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "internal-guide"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("first internal materialization freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+
+	if err := e.Reconcile(context.Background(), "internal-guide"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("unchanged internal reconcile touched freshness: %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+}
+
+func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
+	st := newStore(t)
+	guide := &fakeGuide{}
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	e := newEngineForBackend(st, nil, avail, guide,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-change", 7,
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
+		t.Fatal(err)
+	}
+	guide.pokes, guide.rescans = 0, 0
+
+	avail["movie:tmdb:2"] = "lib-2"
+	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 0 || guide.pokes != 1 {
+		t.Fatalf("internal desired change freshness = %d rescans/%d pokes, want 0/1",
+			guide.rescans, guide.pokes)
+	}
+}
+
+// An empty internal channel is absent from the surfable M3U catalog. When its first title
+// lands, the availability event must re-scan the tuner so the channel appears; a guide-only
+// refresh cannot add it. Repeated empty or settled-live reconciles remain quiet.
+func TestReconcile_InternalEmptyBecomesPlayableRescansTuner(t *testing.T) {
+	st := newStore(t)
+	guide := &fakeGuide{}
+	avail := mapAvail{}
+	e := newEngineForBackend(st, nil, avail, guide,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-empty", 8, entry("movie:tmdb:1", "A"))
+
+	ch, err := st.GetChannel(context.Background(), "internal-empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Status = schedule.StatusEmpty
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	// Materialize the pending local desired shape, then clear that first-write effect so the
+	// next pass is a genuinely unchanged Empty reconcile.
+	if err := e.Reconcile(context.Background(), "internal-empty"); err != nil {
+		t.Fatal(err)
+	}
+	guide.rescans, guide.pokes = 0, 0
+
+	// Still empty and unchanged: no catalog or guide freshness work is warranted.
+	if err := e.Reconcile(context.Background(), "internal-empty"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 0 || guide.pokes != 0 {
+		t.Fatalf("unchanged empty reconcile touched freshness: %d rescans/%d pokes",
+			guide.rescans, guide.pokes)
+	}
+
+	// The title lands without a channel PATCH, so the row is still Empty rather than Building.
+	avail["movie:tmdb:1"] = "lib-1"
+	e.OnAvailability(context.Background(), provision.DomainEvent{
+		Key: "movie:tmdb:1", State: provision.Available,
+	})
+
+	ch, err = st.GetChannel(context.Background(), "internal-empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusLive || programCount(ch) != 1 {
+		t.Fatalf("availability event did not make internal channel playable: status=%s desired=%+v",
+			ch.Status, ch.Desired)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("empty to playable freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+
+	if err := e.Reconcile(context.Background(), "internal-empty"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("unchanged live reconcile touched freshness: %d rescans/%d pokes",
+			guide.rescans, guide.pokes)
+	}
+}
+
+// Empty internal channels leave the tuner catalog. A policy edit can filter an otherwise
+// available live lineup to nothing without changing the channel identity, so the reconciler
+// itself must recognize live -> empty as M3U membership removal rather than an EPG-only edit.
+func TestReconcile_InternalLiveBecomesEmptyRescansTuner(t *testing.T) {
+	st := newStore(t)
+	guide := &fakeGuide{}
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-live", 9, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "internal-live"); err != nil {
+		t.Fatal(err)
+	}
+	guide.rescans, guide.pokes = 0, 0
+
+	ch, err := st.GetChannel(context.Background(), "internal-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"halloween"}, OffSeason: schedule.OffSeasonDark,
+	}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Reconcile(context.Background(), "internal-live"); err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err = st.GetChannel(context.Background(), "internal-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusEmpty || programCount(ch) != 0 {
+		t.Fatalf("filtered internal channel = status %s desired %+v, want empty", ch.Status, ch.Desired)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("live to empty freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+}
+
+func TestReconcile_PlayoutBackendPrecedence(t *testing.T) {
+	tests := []struct {
+		name          string
+		global        string
+		override      string
+		wantProjected bool
+	}{
+		{name: "channel internal overrides global Tunarr", global: "tunarr", override: schedule.PlayoutBackendInternal},
+		{name: "channel Tunarr overrides global internal", global: schedule.PlayoutBackendInternal, override: "tunarr", wantProjected: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := newStore(t)
+			tun := testkit.NewTunarr()
+			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+				func() string { return tt.global })
+			seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+			ch, err := st.GetChannel(context.Background(), "c1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: tt.override}
+			if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := e.Reconcile(context.Background(), "c1"); err != nil {
+				t.Fatal(err)
+			}
+			if got := tun.Creates > 0; got != tt.wantProjected {
+				t.Fatalf("Tunarr projected = %v, want %v (creates=%d)", got, tt.wantProjected, tun.Creates)
+			}
+		})
+	}
+}
+
+// Moving to internal playout is reversible, not an implicit purge: retain the historical
+// remote identity and leave Tunarr untouched. Moving back reuses that identity.
+func TestReconcile_BackendSwitchPreservesTunarrProjection(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	guide := &fakeGuide{}
+	backend := "tunarr"
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+		func() string { return backend })
+	seedChannel(t, st, "switch", 5, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "switch"); err != nil {
+		t.Fatal(err)
+	}
+	projected, err := st.GetChannel(context.Background(), "switch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.TunarrID == "" {
+		t.Fatal("initial Tunarr projection did not persist its identity")
+	}
+	creates, updates, pushes, deletes := tun.Creates, tun.Updates, tun.Pushes, tun.Deletes
+
+	backend = schedule.PlayoutBackendInternal
+	projected.Status = schedule.StatusBuilding
+	if _, err := st.SaveChannel(context.Background(), projected); err != nil {
+		t.Fatal(err)
+	}
+	guide.pokes, guide.rescans = 0, 0
+	if err := e.Reconcile(context.Background(), "switch"); err != nil {
+		t.Fatal(err)
+	}
+	internal, err := st.GetChannel(context.Background(), "switch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if internal.TunarrID != projected.TunarrID {
+		t.Fatalf("backend switch changed historical Tunarr id: %q → %q", projected.TunarrID, internal.TunarrID)
+	}
+	if tun.Creates != creates || tun.Updates != updates || tun.Pushes != pushes || tun.Deletes != deletes {
+		t.Fatalf("internal reconcile touched Tunarr: creates=%d→%d updates=%d→%d pushes=%d→%d deletes=%d→%d",
+			creates, tun.Creates, updates, tun.Updates, pushes, tun.Pushes, deletes, tun.Deletes)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("switch to internal freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+
+	backend = "tunarr"
+	internal.Status = schedule.StatusBuilding
+	if _, err := st.SaveChannel(context.Background(), internal); err != nil {
+		t.Fatal(err)
+	}
+	guide.pokes, guide.rescans = 0, 0
+	if err := e.Reconcile(context.Background(), "switch"); err != nil {
+		t.Fatal(err)
+	}
+	if tun.Creates != creates {
+		t.Fatalf("switching back recreated instead of reusing %q: creates=%d→%d", projected.TunarrID, creates, tun.Creates)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("switch back to Tunarr freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
 	}
 }
 
@@ -275,6 +570,77 @@ func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 	}
 	if len(actual) != 1 || actual[0].LibraryItemID != "lib-2" {
 		t.Fatalf("Tunarr retained the stale push instead of the retry's lineup: %+v", actual)
+	}
+}
+
+// reconcileRun carries remote effects across CAS retries so a Tunarr create is eventually
+// followed by the right media-server poke. Those flags must not leak when the winning edit
+// switches the channel to internal playout: the retry persists local truth and stops projecting.
+func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	guide := &fakeGuide{}
+	avail := mapAvail{
+		"movie:tmdb:1": "lib-1",
+		"movie:tmdb:2": "lib-2",
+	}
+	e := newEngineForBackend(st, tun, avail, guide, func() string { return "tunarr" })
+	seedChannel(t, st, "backend-race", 15, entry("movie:tmdb:1", "Initial"))
+	if err := e.Reconcile(context.Background(), "backend-race"); err != nil {
+		t.Fatal(err)
+	}
+	guide.pokes, guide.rescans = 0, 0
+
+	// Make the next Tunarr projection differ, then pause it after the stale lineup is planned.
+	ch, err := st.GetChannel(context.Background(), "backend-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "Stale projection")}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	setLineupStarted := make(chan struct{})
+	allowSetLineup := make(chan struct{})
+	var once sync.Once
+	tun.BeforeSetLineup = func(_ string, _ []schedule.Slot) {
+		once.Do(func() {
+			close(setLineupStarted)
+			<-allowSetLineup
+		})
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- e.Reconcile(context.Background(), "backend-race") }()
+	<-setLineupStarted
+
+	// This writer wins the local row while the old Tunarr attempt is in flight.
+	latest, err := st.GetChannel(context.Background(), "backend-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}
+	// Return to the last COMMITTED desired lineup. The winning internal retry therefore
+	// has no local guide change; any poke can only have leaked from the stale Tunarr push.
+	latest.Lineup = []schedule.LineupEntry{entry("movie:tmdb:1", "Initial")}
+	if _, err := st.SaveChannel(context.Background(), latest); err != nil {
+		t.Fatal(err)
+	}
+	close(allowSetLineup)
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetChannel(context.Background(), "backend-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !schedule.PlaysInternally(got.Policy, "tunarr") || len(got.Desired) != 1 || got.Desired[0].LibraryItemID != "lib-1" {
+		t.Fatalf("internal retry did not persist the winning desired state: %+v", got)
+	}
+	if guide.pokes != 0 || guide.rescans != 0 {
+		t.Fatalf("stale Tunarr effects leaked through internal retry: pokes=%d rescans=%d", guide.pokes, guide.rescans)
 	}
 }
 
@@ -464,6 +830,49 @@ func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
 	}
 }
 
+func TestPurge_InternalHistoricalTunarrIDFailsClosedWithoutProgrammer(t *testing.T) {
+	st := newStore(t)
+	seedChannel(t, st, "internal-purge", 18, entry("movie:tmdb:1", "A"))
+	ch, err := st.GetChannel(context.Background(), "internal-purge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.TunarrID = "historical-tunarr-id"
+	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	e := newEngineForBackend(st, nil, mapAvail{}, nil,
+		func() string { return schedule.PlayoutBackendInternal })
+
+	if err := e.Purge(context.Background(), "internal-purge"); err == nil {
+		t.Fatal("purge succeeded without a Programmer despite a historical Tunarr projection")
+	}
+	if _, err := st.GetChannel(context.Background(), "internal-purge"); err != nil {
+		t.Fatalf("fail-closed purge removed the only durable Tunarr identity: %v", err)
+	}
+}
+
+func TestPurge_RescansTunerAfterHardDelete(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	guide := &fakeGuide{}
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide)
+	seedChannel(t, st, "purge-rescan", 19, entry("movie:tmdb:1", "A"))
+	if err := e.Reconcile(context.Background(), "purge-rescan"); err != nil {
+		t.Fatal(err)
+	}
+	guide.pokes, guide.rescans = 0, 0
+
+	if err := e.Purge(context.Background(), "purge-rescan"); err != nil {
+		t.Fatal(err)
+	}
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Fatalf("successful purge freshness = %d rescans/%d pokes, want 1/0",
+			guide.rescans, guide.pokes)
+	}
+}
+
 // fakeRatings is a RatingResolver over a fixed key→rating map (present = ok).
 type fakeRatings map[provision.Key]string
 
@@ -647,6 +1056,29 @@ func TestSweep_RecoversFromLostEvent(t *testing.T) {
 	}
 }
 
+// The periodic sweep is the durable guarantee for internal channels too. It must be able to
+// claim and materialize one on an install with no Programmer at all.
+func TestSweep_MaterializesInternalChannelWithoutProgrammer(t *testing.T) {
+	st := newStore(t)
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+		func() string { return schedule.PlayoutBackendInternal })
+	seedChannel(t, st, "internal-sweep", 5, entry("movie:tmdb:1", "A"))
+
+	now := time.Unix(1_800_000_000, 0).UTC()
+	r := channels.NewRunner(e, st, time.Minute, 5*time.Minute, 50,
+		func() time.Time { return now }, testkit.Logger())
+	if n := r.Sweep(context.Background()); n != 1 {
+		t.Fatalf("sweep reconciled %d internal channels, want 1", n)
+	}
+	ch, err := st.GetChannel(context.Background(), "internal-sweep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusLive || programCount(ch) != 1 {
+		t.Fatalf("sweep did not materialize internal channel: status=%s desired=%+v", ch.Status, ch.Desired)
+	}
+}
+
 // Drift substitution (§9/§19): a scheduled program vanishes from the library; the
 // sweep flags the channel drifted and demotes the slot.
 func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
@@ -702,24 +1134,79 @@ func TestReconcile_RescansTunerOnCreate(t *testing.T) {
 	}
 }
 
-// A detached channel is never reconciled (§9 ownership).
-func TestReconcile_SkipsDetached(t *testing.T) {
-	st := newStore(t)
-	tun := testkit.NewTunarr()
-	e := newEngine(st, tun, mapAvail{}, nil)
-	ch := store.Channel{}
-	ch.ID = "c1"
-	ch.Name = "X"
-	ch.Number = 5
-	ch.Strategy = schedule.Sequential
-	ch.Status = schedule.StatusDetached
-	_, _ = st.SaveChannel(context.Background(), ch)
+// Paused and detached are the two explicit opt-outs from reconciliation. Direct callers
+// (not only the sweep claim) must leave the row untouched and return before consulting any
+// playout dependency.
+func TestReconcile_SkipsPausedAndDetachedWithoutMutation(t *testing.T) {
+	for _, status := range []schedule.ChannelStatus{schedule.StatusPaused, schedule.StatusDetached} {
+		t.Run(string(status), func(t *testing.T) {
+			st := newStore(t)
+			seedChannel(t, st, "inactive", 5, entry("movie:tmdb:1", "A"))
+			ch, err := st.GetChannel(context.Background(), "inactive")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch.Status = status
+			before, err := st.SaveChannel(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			guide := &fakeGuide{}
+			e := channels.New(st, nil, nil, guide, channels.Config{
+				ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+					t.Fatal("inactive reconcile resolved the playout backend")
+					return "", nil
+				},
+			}, nil, testkit.Logger())
 
-	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+			if err := e.Reconcile(context.Background(), "inactive"); err != nil {
+				t.Fatal(err)
+			}
+			after, err := st.GetChannel(context.Background(), "inactive")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Revision != before.Revision {
+				t.Fatalf("inactive reconcile mutated revision %d -> %d", before.Revision, after.Revision)
+			}
+			if guide.pokes != 0 || guide.rescans != 0 {
+				t.Fatalf("inactive reconcile touched freshness: %d rescans/%d pokes",
+					guide.rescans, guide.pokes)
+			}
+		})
+	}
+}
+
+func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
+	st := newStore(t)
+	seedChannel(t, st, "active", 5, entry("movie:tmdb:1", "A"))
+	before, err := st.GetChannel(context.Background(), "active")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if tun.Creates != 0 {
-		t.Errorf("detached channel was reconciled: %d creates", tun.Creates)
+	want := errors.New("checkpoint unavailable")
+	reads := 0
+	tun := testkit.NewTunarr()
+	e := channels.New(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			reads++
+			return "", want
+		},
+	}, nil, testkit.Logger())
+
+	if err := e.Reconcile(context.Background(), "active"); !errors.Is(err, want) {
+		t.Fatalf("Reconcile error = %v, want checkpoint failure", err)
+	}
+	if reads != 1 {
+		t.Fatalf("checkpoint reads = %d, want one per attempt", reads)
+	}
+	after, err := st.GetChannel(context.Background(), "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Revision != before.Revision || tun.Creates != 0 || tun.Pushes != 0 {
+		t.Fatalf("checkpoint failure caused effects: revision %d -> %d, creates=%d pushes=%d",
+			before.Revision, after.Revision, tun.Creates, tun.Pushes)
 	}
 }
 

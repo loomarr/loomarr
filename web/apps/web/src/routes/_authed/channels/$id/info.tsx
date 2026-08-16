@@ -29,7 +29,7 @@ const InfoScreen = () => {
         <p className="text-muted-foreground text-sm">{air.detail}</p>
 
         {/* The viewer's "what's on later" — the program airing now, then the next few,
-            with real Tunarr airtimes (the prototype's "Today's guide", P7). Shown to
+            with real airtimes from the selected backend (the prototype's "Today's guide", P7). Shown to
             everyone; refreshes on the `channel` SSE frame via the layout's invalidate. */}
         <div className="border-border border-t pt-3">
           <ChannelUpcoming channelId={id} live={air.dot === "live"} />

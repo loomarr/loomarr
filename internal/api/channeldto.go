@@ -42,7 +42,7 @@ type ChannelDTO struct {
 	// global-backend/channel-override precedence and lifecycle state, so Web/native clients never
 	// grow their own subtly different copy of those rules.
 	InAppPlayable bool   `json:"inAppPlayable" doc:"True when this channel can be tuned by Loomarr's in-app player"`
-	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
+	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout"`
 	IntentRef     string `json:"intentRef,omitempty"`
 	ProgramCount  int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
 	PendingCount  int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
@@ -150,27 +150,20 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 	return out
 }
 
-// channelDTO adds server-owned presentation facts to the pure persisted-channel projection.
-// `inAppPlayable` needs the live resolved global backend, which deliberately does not belong in
-// channelToDTO: that mapper is also used in domain-shape tests and must not read application config.
-func (s *Server) channelDTO(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
+func (s *Server) channelDTOAt(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, checkpoint BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
-	out.InAppPlayable = s.inAppPlayable(ch)
+	out.InAppPlayable = inAppPlayableAt(ch, checkpoint)
 	return out
 }
 
-// inAppPlayable is the one server-side definition of the V57 surfable catalog. Guide-only states
-// remain visible through the normal list but Channel Up/Down must never land on them.
-func (s *Server) inAppPlayable(ch store.Channel) bool {
-	if !s.playsInternally(ch) {
+func inAppPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	if !playsInternallyAt(ch, checkpoint) {
 		return false
 	}
-	switch ch.Status {
-	case schedule.StatusPaused, schedule.StatusDetached, schedule.StatusEmpty:
+	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 		return false
-	default:
-		return true
 	}
+	return true
 }
 
 // entryStateResolver returns a per-key acquisition-state lookup for a SINGLE channel's DTO

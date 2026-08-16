@@ -30,19 +30,52 @@ func (t recurateThresholds) MinScorePct(context.Context) int {
 }
 func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
 
-// liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface
-// (Connect returns a struct there, a tuple here). Thin, wiring-only.
-type liveTVAdapter struct{ c *setup.LiveTVConnector }
+// liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
+// resolver matters on Postgres: another replica can advance the checkpoint without changing this
+// process's controller Runtime, so request-path status must read DurableView instead.
+type liveTVAdapter struct {
+	c    *setup.LiveTVConnector
+	urls func(context.Context) (setup.LiveTVURLs, error)
+}
 
-func (a liveTVAdapter) Connect(ctx context.Context) (bool, bool, error) {
-	res, err := a.c.Connect(ctx)
-	return res.TunerAdded, res.ListingAdded, err
+func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
+	if a.c == nil || a.urls == nil {
+		return false, nil
+	}
+	urls, err := a.urls(ctx)
+	if err != nil {
+		return false, err
+	}
+	return a.c.WiredTarget(ctx, urls)
 }
-func (a liveTVAdapter) Reconnect(ctx context.Context) (int, error) {
-	res, err := a.c.Reconnect(ctx)
-	return res.TunerRemoved, err
+
+// transportTunerRescanner refreshes the tuner catalog selected by the durable
+// transport checkpoint. This differs intentionally from LiveTVConnector's ordinary
+// applied-configuration resolver during preparation: internal transport opens before
+// it becomes the applied UI backend, and pause/detach must disappear from that prepared
+// M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
+type transportTunerRescanner struct {
+	c    *setup.LiveTVConnector
+	urls func(context.Context) (setup.LiveTVURLs, error)
 }
-func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) { return a.c.Wired(ctx) }
+
+func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {
+	if r.c == nil || r.urls == nil {
+		return nil
+	}
+	urls, err := r.urls(ctx)
+	if err != nil {
+		return err
+	}
+	return r.c.RescanTarget(ctx, urls)
+}
+
+func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
+	if r.c == nil {
+		return nil
+	}
+	return r.c.PokeGuideRefresh(ctx)
+}
 
 // jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
 // api.JobView (so the api package doesn't import scheduler) and the unknown-job error to the

@@ -61,6 +61,128 @@ func TestConnect_IdempotentSecondCallNoOp(t *testing.T) {
 	}
 }
 
+func TestReconnectTargetUsesExplicitAppliedBackendURLs(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://tunarr:8000")
+	target := setup.InternalPlayoutURLs("http://loomarr:8080", "current-token")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	connector := setup.NewLiveTVConnectorFixed(lib, oldURLs)
+
+	result, err := connector.ReconnectTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TunerRemoved != 1 || !lib.HasTuner(target.M3U) || lib.HasTuner(oldURLs.M3U) {
+		t.Fatalf("reconnect result = %+v, target=%v old=%v", result,
+			lib.HasTuner(target.M3U), lib.HasTuner(oldURLs.M3U))
+	}
+	if result.ListingRemoved != 1 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want one freshly added target",
+			result, lib.ListingCount())
+	}
+	if lib.Rescans != 1 || lib.Refreshes != 1 {
+		t.Fatalf("repair pokes = rescans %d refreshes %d, want 1 each", lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestReconnectTargetForceRepairsCurrentListing(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	lib.SeedTuner(target.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, target.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	callStart := len(lib.Calls())
+	connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+	result, err := connector.ReconnectTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ListingRemoved != 1 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want current provider reset",
+			result, lib.ListingCount())
+	}
+	calls := lib.Calls()[callStart:]
+	remove := callPrefixIndex(calls, "remove-listing:")
+	add := callIndex(calls, "add-listing:"+target.XMLTV)
+	if remove < 0 || add < 0 || remove > add {
+		t.Fatalf("listing was not removed before re-add: %v", calls)
+	}
+}
+
+func TestReconnectTargetRepairsMissingListing(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	lib.SeedTuner(target.M3U, "loomarr")
+	connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+	result, err := connector.ReconnectTarget(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ListingRemoved != 0 || !result.ListingAdded || lib.ListingCount() != 1 {
+		t.Fatalf("reconnect listing result = %+v, listing count = %d; want missing provider added",
+			result, lib.ListingCount())
+	}
+}
+
+func TestReconnectTargetPropagatesListingRepairFailures(t *testing.T) {
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	wantErr := errors.New("listing repair failed")
+	tests := []struct {
+		name  string
+		setup func(*testkit.LiveTV)
+	}{
+		{
+			name: "enumerate",
+			setup: func(lib *testkit.LiveTV) {
+				lib.StaleListingsErr = wantErr
+			},
+		},
+		{
+			name: "remove",
+			setup: func(lib *testkit.LiveTV) {
+				if err := lib.AddListingProvider(context.Background(), target.XMLTV); err != nil {
+					t.Fatal(err)
+				}
+				lib.RemoveListingErr = wantErr
+			},
+		},
+		{
+			name: "add",
+			setup: func(lib *testkit.LiveTV) {
+				lib.AddListingErr = wantErr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lib := testkit.NewLiveTV()
+			lib.SeedTuner(target.M3U, "loomarr")
+			tt.setup(lib)
+			connector := setup.NewLiveTVConnectorFixed(lib, target)
+
+			if _, err := connector.ReconnectTarget(context.Background(), target); !errors.Is(err, wantErr) {
+				t.Fatalf("ReconnectTarget error = %v, want %v", err, wantErr)
+			}
+			if tt.name == "enumerate" {
+				calls := lib.Calls()
+				if callPrefixIndex(calls, "remove-tuner:") >= 0 ||
+					callPrefixIndex(calls, "add-tuner:") >= 0 {
+					t.Fatalf("enumeration failure mutated tuner registration: %v", calls)
+				}
+			}
+		})
+	}
+}
+
 // If the tuner exists but the guide is missing (a half-wired state), connect adds
 // only the missing half.
 func TestConnect_AddsOnlyMissingHalf(t *testing.T) {
@@ -81,6 +203,168 @@ func TestConnect_AddsOnlyMissingHalf(t *testing.T) {
 	if !res.ListingAdded {
 		t.Error("missing listing provider should be added")
 	}
+}
+
+func TestPrepare_TunerAddFailureLeavesOldPair(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	lib.AddTunerErr = errors.New("media server unavailable")
+
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+	if _, err := c.Prepare(ctx, target); err == nil {
+		t.Fatal("Prepare should surface the target tuner add failure")
+	}
+	if !lib.HasTuner(oldURLs.M3U) || lib.TunerCount() != 1 || lib.ListingCount() != 1 {
+		t.Fatalf("old pair changed after target tuner failure: tuners=%d listings=%d old=%v",
+			lib.TunerCount(), lib.ListingCount(), lib.HasTuner(oldURLs.M3U))
+	}
+}
+
+func TestPrepare_ListingAddFailureRetainsOldPairAndRetriesMissingHalf(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	lib.AddListingErr = errors.New("listing endpoint unavailable")
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	first, err := c.Prepare(ctx, target)
+	if err == nil {
+		t.Fatal("Prepare should surface the target listing add failure")
+	}
+	if !first.TunerAdded || first.ListingAdded {
+		t.Fatalf("first prepare = %+v, want only target tuner added", first)
+	}
+	if !lib.HasTuner(oldURLs.M3U) || !lib.HasTuner(target.M3U) || lib.ListingCount() != 1 {
+		t.Fatalf("partial prepare did not preserve old pair: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+
+	lib.AddListingErr = nil
+	second, err := c.Prepare(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TunerAdded || !second.ListingAdded {
+		t.Fatalf("retry = %+v, want only missing target listing added", second)
+	}
+	if lib.TunerCount() != 2 || lib.ListingCount() != 2 {
+		t.Fatalf("retry duplicated or retired early: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+	if lib.Rescans != 0 || lib.Refreshes != 0 {
+		t.Fatalf("Prepare must not fetch an unpublished feed: rescans=%d refreshes=%d", lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestRetireStale_FailureLeavesTargetAndRetryCompletes(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+	if _, err := c.Prepare(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+	lib.RemoveTunerErr = errors.New("delete rejected")
+
+	if _, err := c.RetireStale(ctx, target); err == nil {
+		t.Fatal("RetireStale should surface stale tuner removal failure")
+	}
+	if !lib.HasTuner(target.M3U) || !lib.HasTuner(oldURLs.M3U) || lib.ListingCount() != 2 {
+		t.Fatalf("removal failure lost a registration: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+
+	lib.RemoveTunerErr = nil
+	res, err := c.RetireStale(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TunerRemoved != 1 || res.ListingRemoved != 1 {
+		t.Fatalf("retry retirement = %+v, want one stale pair removed", res)
+	}
+	if lib.HasTuner(oldURLs.M3U) || !lib.HasTuner(target.M3U) || lib.TunerCount() != 1 || lib.ListingCount() != 1 {
+		t.Fatalf("retry did not converge on target pair: tuners=%d listings=%d", lib.TunerCount(), lib.ListingCount())
+	}
+}
+
+func TestRetireStale_RefusesBeforeBothTargetHalvesExist(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddTuner(ctx, target.M3U); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	if _, err := c.RetireStale(ctx, target); err == nil {
+		t.Fatal("RetireStale should refuse while the target listing is absent")
+	}
+	if !lib.HasTuner(oldURLs.M3U) || lib.ListingCount() != 1 {
+		t.Fatal("RetireStale removed the old pair before both target halves existed")
+	}
+}
+
+func TestConnect_PreparesBothTargetHalvesBeforeAnyRetirement(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	ctx := context.Background()
+	oldURLs := setup.TunarrURLsFrom("http://old:8000")
+	target := setup.TunarrURLsFrom("http://new:8000")
+	lib.SeedTuner(oldURLs.M3U, "loomarr")
+	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
+		t.Fatal(err)
+	}
+	c := setup.NewLiveTVConnectorFixed(lib, target)
+
+	if _, err := c.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	calls := lib.Calls()
+	addTuner := callIndex(calls, "add-tuner:"+target.M3U)
+	addListing := callIndex(calls, "add-listing:"+target.XMLTV)
+	removeTuner := callPrefixIndex(calls, "remove-tuner:")
+	removeListing := callPrefixIndex(calls, "remove-listing:")
+	if addTuner < 0 || addListing < 0 || removeTuner < 0 || removeListing < 0 {
+		t.Fatalf("missing expected transition calls: %v", calls)
+	}
+	if removeTuner < addTuner || removeTuner < addListing || removeListing < addTuner || removeListing < addListing {
+		t.Fatalf("stale retirement ran before target pair was prepared: %v", calls)
+	}
+}
+
+func callIndex(calls []string, want string) int {
+	for i, call := range calls {
+		if call == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func callPrefixIndex(calls []string, prefix string) int {
+	for i, call := range calls {
+		if len(call) >= len(prefix) && call[:len(prefix)] == prefix {
+			return i
+		}
+	}
+	return -1
 }
 
 // When the Tunarr URL changes, Connect must RETIRE the Loomarr-owned tuner left at
@@ -220,6 +504,22 @@ func TestConnect_URLChange_Pokes(t *testing.T) {
 	if !res.Poked || lib.Rescans != 1 || lib.Refreshes != 1 {
 		t.Errorf("URL change should poke rescan+refresh, got Poked=%v rescans=%d refreshes=%d",
 			res.Poked, lib.Rescans, lib.Refreshes)
+	}
+}
+
+func TestRescanTargetUsesExplicitPreparedURL(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	applied := setup.TunarrURLsFrom("http://tunarr:8000")
+	prepared := setup.InternalPlayoutURLs("http://loomarr:8080", "device-token")
+	c := setup.NewLiveTVConnectorFixed(lib, applied)
+
+	if err := c.RescanTarget(context.Background(), prepared); err != nil {
+		t.Fatal(err)
+	}
+	calls := lib.Calls()
+	want := "rescan-tuner:" + prepared.M3U
+	if len(calls) != 1 || calls[0] != want {
+		t.Fatalf("calls = %v, want [%s]", calls, want)
 	}
 }
 

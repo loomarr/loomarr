@@ -1,7 +1,7 @@
 // Package binder plans how an APPROVED proposal changes a channel (§7): create it
 // on first approval, patch it (preserving operator-owned fields) on re-approval or
 // refine. Local persistence belongs to the approval transaction; codec measurement
-// and Tunarr reconciliation run only after that transaction commits.
+// and backend reconciliation run only after that transaction commits.
 //
 // binder is deliberately neutral: it imports store/schedule/suggest/channels, but
 // nothing in those packages imports binder back, so nothing new is coupled to it.
@@ -42,7 +42,7 @@ type Store interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 
-// Reconciler pushes a channel's desired state to Tunarr (§9). Satisfied by
+// Reconciler converges a channel's effective playout backend (§9). Satisfied by
 // *channels.Engine. A nil Reconciler (channels not wired) is fine — the committed,
 // due-now channel remains available to the sweep.
 type Reconciler interface {
@@ -62,7 +62,7 @@ type CodecComputer interface {
 // ActivityRecorder gives a failed first reconcile a DURABLE home (§9 V54).
 //
 // ⚠ It exists because a `log.Warn` was the only record, and terminal scrollback is not a record.
-// A channel stranded pre-Tunarr is exactly the kind of thing an operator finds hours later, and
+// A channel stranded before its first successful convergence is exactly the kind of thing an operator finds hours later, and
 // "why" is unanswerable once the line has scrolled. Optional and nil-safe: an install with no
 // recorder wired behaves as before.
 type ActivityRecorder interface {
@@ -92,8 +92,8 @@ type Binder struct {
 	log     *slog.Logger
 }
 
-// New builds a Binder. rec may be nil (no Tunarr wired yet); approval still
-// creates/patches the due-now channel row, it just skips the immediate reconcile push.
+// New builds a Binder. rec may be nil (channel convergence not wired); approval still
+// creates/patches the due-now channel row, it just skips immediate reconciliation.
 // codec may be nil (no playout wiring); the bind then leaves the channel's stored
 // broadcast codec (h264 default) untouched — see CodecComputer.
 func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
@@ -247,17 +247,17 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 		if err := b.rec.Reconcile(ctx, channelID); err != nil {
 			ch, _ := b.store.GetChannel(ctx, channelID)
 			// ⚠ ERROR, not Warn, and it names the CONSEQUENCE. This leaves a channel that exists,
-			// has a lineup and shows a full schedule in the guide, but has never been pushed to
-			// Tunarr — an operator reading "warning" would reasonably scroll past the one line
+			// has a lineup but has never completed its selected backend convergence — an operator
+			// reading "warning" would reasonably scroll past the one line
 			// explaining why their new channel is stuck on "Creating".
 			if b.log != nil {
-				b.log.Error("initial reconcile of an approved channel FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+				b.log.Error("initial reconcile of an approved channel FAILED — its backend has not converged; the next channel sweep will retry",
 					"channel", channelID, "name", ch.Name, "number", ch.Number, "err", err)
 			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
 				b.acts.Error(ctx, "channel.reconcile", channelID,
-					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
+					fmt.Sprintf("%q couldn't converge its playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}
 	}

@@ -36,7 +36,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 			"policy":{"audience":{"ceiling":"TV-Y7"},"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
-	h := newHarness(t, withLLM(llm), withSeerr())
+	h := newHarness(t, withLLM(llm), withSeerr(), withTunarrPlayout())
 	h.ms.SetSearchItems(
 		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
 		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 5002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},

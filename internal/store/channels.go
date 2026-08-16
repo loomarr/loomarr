@@ -121,14 +121,30 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
 		epoch(ch.ReconcileDeadline), ch.UpdatedAt}
+	invalidation := ""
+	if s.dialect == DialectPostgres {
+		invalidation, err = channelInvalidation(ch)
+		if err != nil {
+			return Channel{}, err
+		}
+	}
 	if ch.Revision == 0 {
-		err = exec.QueryRowContext(ctx, s.ph(
+		query :=
 			`INSERT INTO channels
 			   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
 			    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
 			    reconcile_deadline, updated_at, revision)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-			 RETURNING revision`), append([]any{ch.ID}, args...)...).Scan(&ch.Revision)
+			 RETURNING revision`
+		queryArgs := append([]any{ch.ID}, args...)
+		if s.dialect == DialectPostgres {
+			query += `, pg_notify('` + postgresInvalidationChannel + `', ?)`
+			queryArgs = append(queryArgs, invalidation)
+			var notified any
+			err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision, &notified)
+		} else {
+			err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision)
+		}
 		if err != nil {
 			return Channel{}, fmt.Errorf("insert channel %s: %w", ch.ID, err)
 		}
@@ -138,14 +154,23 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		return Channel{}, fmt.Errorf("save channel %s: revision must not be negative", ch.ID)
 	}
 	expected := ch.Revision
-	err = exec.QueryRowContext(ctx, s.ph(
+	query :=
 		`UPDATE channels SET
 		   intent_ref=?, name=?, number=?, grp=?, logo=?, strategy=?, filler_ref=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
 		 WHERE id=? AND revision=?
-		 RETURNING revision`), append(args, ch.ID, expected)...).Scan(&ch.Revision)
+		 RETURNING revision`
+	queryArgs := append(args, ch.ID, expected)
+	if s.dialect == DialectPostgres {
+		query += `, pg_notify('` + postgresInvalidationChannel + `', ?)`
+		queryArgs = append(queryArgs, invalidation)
+		var notified any
+		err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision, &notified)
+	} else {
+		err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, channelRevisionMiss(ctx, exec, s.ph, ch.ID, expected)
 	}
@@ -253,16 +278,35 @@ func (s *sqlStore) CountChannelsByStatus(ctx context.Context) (map[schedule.Chan
 }
 
 func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevision int64) error {
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
-	if err != nil {
-		return err
-	}
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("delete channel %s: affected rows: %w", id, err)
-	}
-	if deleted == 0 {
-		return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+	if s.dialect == DialectPostgres {
+		payload, err := marshalInvalidation(Invalidation{Kind: InvalidationChannel, ChannelID: id,
+			Status: schedule.StatusDetached})
+		if err != nil {
+			return err
+		}
+		var notified any
+		err = s.db.QueryRowContext(ctx,
+			`DELETE FROM channels WHERE id = $1 AND revision = $2
+			 RETURNING pg_notify('`+postgresInvalidationChannel+`', $3)`,
+			id, expectedRevision, payload).Scan(&notified)
+		if errors.Is(err, sql.ErrNoRows) {
+			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
+		if err != nil {
+			return err
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("delete channel %s: affected rows: %w", id, err)
+		}
+		if deleted == 0 {
+			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+		}
 	}
 	// Best-effort: drop the channel's image refs so its icon becomes collectable.
 	//
