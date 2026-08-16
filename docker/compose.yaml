@@ -38,7 +38,6 @@ services:
       - --ping.entrypoint=health
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.allowemptyservices=true
       - --providers.docker.constraints=Label(`com.mantonx.loomarr.edge`,`true`)
     ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
     volumes:
@@ -52,7 +51,10 @@ services:
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      # Probe the unexposed health entrypoint directly. `traefik healthcheck`
+      # reloads static config in a new process and does not inherit this
+      # container's CLI arguments, so it otherwise probes the public listener.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/ping"]
       interval: 10s
       timeout: 3s
       retries: 6
