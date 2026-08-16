@@ -71,12 +71,11 @@ func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.L
 // The source switch and minimum duration therefore remain closures, but scan and intake share the
 // one captured root/watch pair so a settings write cannot move files between generations.
 //
-// ⚠ The library scanner is nil when no media server is configured, and that is a SUPPORTED
-// install rather than a degraded one: folder rows still drain and library rows simply do no
-// work. Wiring a non-nil scanner over an absent media server would turn an optional service back
-// into a precondition — the dependency §9.1 removed.
-func buildSyncer(rootCtx context.Context, st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
-	fillerProg *programmer.Tunarr) *filler.Syncer {
+// ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
+// install rather than a degraded one: its adapter maps the explicit unconfigured result to an
+// empty optional source, so folder rows still drain and a saved connection enables the next scan.
+func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
+	fillerProg *programmer.Tunarr, lib *library.Client) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
 		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
@@ -107,14 +106,13 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, layout f
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
 		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") })
 
-	var libScanner *filler.LibraryScanner
-	if set.str("library.url") != "" {
-		libScanner = filler.NewLibraryScanner(
-			fillerLibraryAdapter{library.NewDynamic(
-				flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))},
-			func(msg string, args ...any) { log.Warn(msg, args...) },
-		)
-	}
+	// Keep the library scanner wired while the connection is empty. The adapter treats the
+	// library module's explicit unconfigured result as an empty optional source, then starts
+	// using a newly saved connection on the next scan without rebuilding the syncer.
+	libScanner := filler.NewLibraryScanner(
+		fillerLibraryAdapter{lib},
+		func(msg string, args ...any) { log.Warn(msg, args...) },
+	)
 	return syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 }
 
@@ -579,3 +577,4 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	h.last, h.cur = v, p
 	return p, nil
 }
+

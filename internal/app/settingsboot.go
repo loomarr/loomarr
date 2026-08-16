@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -149,9 +150,26 @@ func (r resolved) freeze(keys ...string) (resolved, map[string]string) {
 	return r, applied
 }
 
-// libraryConn is the media-server connection provider (url, token) read per call.
-func (r resolved) libraryConn() func() (string, string) {
-	return func() (string, string) { return r.str("library.url"), r.str("library.token") }
+// libraryConnection resolves one coherent media-server connection. Flavor, URL,
+// and token are coupled security inputs: reading them independently could send a
+// credential to the wrong server or select the wrong authentication header while
+// an admin saves a replacement connection.
+func (r resolved) libraryConnection() library.Connection {
+	if r.svc == nil {
+		return library.Connection{}
+	}
+	return r.svc.LibraryConnection()
+}
+
+// libraryConn is the dynamic provider shared by every always-wired library
+// adapter. The library module invokes it once at the start of an operation.
+func (r resolved) libraryConn() library.ConnectionSource {
+	return r.libraryConnection
+}
+
+func (r resolved) libraryConfigured() bool {
+	_, err := r.libraryConnection().Validate()
+	return err == nil
 }
 
 // seerrConn is the Seerr connection provider.
@@ -305,3 +323,4 @@ func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, er
 func (a secretStoreAdapter) Set(ctx context.Context, k, v string) error {
 	return a.st.SetSetting(ctx, k, v)
 }
+

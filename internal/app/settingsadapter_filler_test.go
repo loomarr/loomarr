@@ -68,10 +68,11 @@ func TestConnectionTests_FillerRejectsWatchContainingClipLibrary(t *testing.T) {
 				"filler.dir":       filepath.Join(base, "clips"),
 				"filler.watch_dir": watch,
 			})
-			ok, detail := connectionTests(set, nil)["filler"](context.Background())
+			ok, detail := connectionTests(set, nil, nil)["filler"](context.Background())
 			if ok || !strings.Contains(detail, "unsafe") {
 				t.Fatalf("filler Test = %v, %q; want unsafe-layout failure", ok, detail)
 			}
 		})
 	}
 }
+

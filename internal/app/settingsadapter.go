@@ -45,11 +45,19 @@ type settingsAdapter struct {
 // storePersister adapts store.Store to settings.Persister (the PATCH write path).
 type storePersister struct{ st store.Store }
 
-func (p storePersister) Upsert(ctx context.Context, key, value, updatedBy string, at time.Time) error {
-	return p.st.UpsertSetting(ctx, store.SettingRow{Key: key, Value: value, UpdatedBy: updatedBy, UpdatedAt: at})
-}
-func (p storePersister) Delete(ctx context.Context, key string) error {
-	return p.st.DeleteSetting(ctx, key)
+func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBatch) error {
+	storeBatch := store.SettingBatch{
+		Upserts:   make([]store.SettingMutation, 0, len(batch.Upserts)),
+		Deletes:   append([]string(nil), batch.Deletes...),
+		UpdatedBy: batch.UpdatedBy,
+		UpdatedAt: batch.UpdatedAt,
+	}
+	for _, row := range batch.Upserts {
+		storeBatch.Upserts = append(storeBatch.Upserts, store.SettingMutation{
+			Key: row.Key, Value: row.Value,
+		})
+	}
+	return p.st.ApplySettingBatch(ctx, storeBatch)
 }
 
 // SetEnvOverride satisfies settings.EnvOverrideSetter (§3.1). Kept on the same adapter as
@@ -184,20 +192,27 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 }
 
 // connectionTests builds the named connection probes for POST /v1/setup/test
-// (config-design §8). Each reads the LIVE connection via the settings snapshot, so
-// a Test button reflects the value currently in the form's saved state. A probe is
-// a shallow reachability check (a cheap authenticated call), not a full sweep.
-func connectionTests(set resolved, tmdbClient *tmdb.Client) map[string]func(ctx context.Context) (bool, string) {
+// (config-design §8). The media-server probe reuses the application library client,
+// including its stable install device id, and snapshots its LIVE connection after
+// settings refresh. A probe is a shallow reachability check (a cheap authenticated
+// call), not a full sweep.
+func connectionTests(
+	set resolved, libraryClient *library.Client, tmdbClient *tmdb.Client,
+) map[string]func(ctx context.Context) (bool, string) {
 	return map[string]func(ctx context.Context) (bool, string){
 		"media_server": func(ctx context.Context) (bool, string) {
-			flavor, err := library.ParseFlavor(set.str("library.flavor"))
-			if err != nil {
+			lib := libraryClient.Snapshot()
+			_, err := lib.Connection().Validate()
+			switch {
+			case errors.Is(err, library.ErrConnectionFlavorRequired):
 				return false, "set a media server flavor (emby | jellyfin)"
-			}
-			if set.str("library.url") == "" {
+			case errors.Is(err, library.ErrConnectionURLRequired):
 				return false, "set the media server URL"
+			case errors.Is(err, library.ErrConnectionTokenRequired):
+				return false, "set the media server API token"
+			case err != nil:
+				return false, "set a complete media server connection"
 			}
-			lib := library.NewDynamic(flavor, set.libraryConn(), "loomarr-test")
 			if _, err := lib.ListUsers(ctx); err != nil {
 				return false, "could not reach the media server: " + err.Error()
 			}
@@ -404,3 +419,4 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 	}
 	return out
 }
+

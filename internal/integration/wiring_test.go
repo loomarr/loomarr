@@ -2,7 +2,12 @@ package integration_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // TestWiring_TMDBConfigHotApplies proves the composition root owns one real dynamic
@@ -88,6 +93,149 @@ func TestWiring_TMDBConfigHotApplies(t *testing.T) {
 	}
 }
 
+// TestWiring_LibraryConfigHotApplies proves one app generation keeps every optional
+// media-library adapter wired while its complete connection snapshot changes live. The
+// same handler starts empty, consumes a saved Jellyfin triple, observes a secret rotation,
+// and returns to a dormant/no-outbound state after clear.
+func TestWiring_LibraryConfigHotApplies(t *testing.T) {
+	h := newHarness(t, withoutConnections(), withFillerStorage())
+	admin := h.asAdmin()
+	if err := h.store.UpsertFillerSource(t.Context(),
+		store.NewFillerSource("library-commercials", "library", "Commercials", "Commercials", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+
+	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	if got := len(h.ms.Requests()); got != 0 {
+		t.Fatalf("empty connection made %d media-server requests, want none", got)
+	}
+
+	if code := h.patchSettings(admin, map[string]string{
+		"library.flavor": "jellyfin",
+		"library.url":    h.ms.URL,
+		"library.token":  "jellyfin-token-one",
+	}); code != http.StatusOK {
+		t.Fatalf("configure Jellyfin connection → %d, want 200", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
+	assertUserImportStatus(t, h, admin, http.StatusOK)
+	assertUserSyncStatus(t, h, admin, http.StatusOK)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	requests := h.ms.Requests()
+	assertJellyfinSearchAuth(t, requests, "jellyfin-token-one")
+	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
+	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
+
+	if code := h.patchSettings(admin, map[string]string{"library.token": "jellyfin-token-two"}); code != http.StatusOK {
+		t.Fatalf("rotate Jellyfin token → %d, want 200", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
+	assertUserImportStatus(t, h, admin, http.StatusOK)
+	requests = h.ms.Requests()
+	assertJellyfinSearchAuth(t, requests, "jellyfin-token-two")
+	assertJellyfinUserAuth(t, requests, "jellyfin-token-two")
+
+	beforeClear := len(requests)
+	if code := h.status(http.MethodDelete, "/v1/settings/library.token", "", admin); code != http.StatusNoContent {
+		t.Fatalf("clear library.token → %d, want 204", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	if got := len(h.ms.Requests()); got != beforeClear {
+		t.Fatalf("cleared connection made an outbound request: before=%d after=%d", beforeClear, got)
+	}
+}
+
+func assertUserImportStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodGet, "/v1/users/candidates", "", admin); got != want {
+		t.Fatalf("user import candidates = %d, want %d", got, want)
+	}
+}
+
+func assertUserSyncStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodPost, "/v1/users/sync", "", admin); got != want {
+		t.Fatalf("user sync = %d, want %d", got, want)
+	}
+}
+
+func assertFillerSyncStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodPost, "/v1/filler/sync", "", admin); got != want {
+		t.Fatalf("filler sync = %d, want %d", got, want)
+	}
+}
+
+func assertLibrarySearchStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodGet, "/v1/search?q=matrix&scope=library", "", admin); got != want {
+		t.Fatalf("library search = %d, want %d", got, want)
+	}
+}
+
+func assertFillerLibraryScanned(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	foundFolder, foundItems := false, false
+	for _, request := range requests {
+		isFolder := request.Path == "/Library/VirtualFolders"
+		isItems := request.Path == "/Items" && strings.Contains(request.RawQuery, "ParentId=")
+		if isFolder {
+			foundFolder = true
+		}
+		if isItems {
+			foundItems = true
+		}
+		if (isFolder || isItems) && !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
+			t.Fatalf("filler library request Authorization = %q, want token %q", request.Authorization, token)
+		}
+	}
+	if !foundFolder || !foundItems {
+		t.Fatalf("filler library scanner did not issue both lookup requests: %+v", requests)
+	}
+}
+
+func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	for i := len(requests) - 1; i >= 0; i-- {
+		request := requests[i]
+		if request.Path != "/Users" {
+			continue
+		}
+		if !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
+			t.Fatalf("Jellyfin user-list Authorization = %q, want token %q", request.Authorization, token)
+		}
+		if request.EmbyToken != "" {
+			t.Fatalf("Jellyfin user-list sent X-Emby-Token %q", request.EmbyToken)
+		}
+		return
+	}
+	t.Fatalf("no media-server user-list request found in %+v", requests)
+}
+
+func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	for i := len(requests) - 1; i >= 0; i-- {
+		request := requests[i]
+		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
+			continue
+		}
+		if !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
+			t.Fatalf("Jellyfin search Authorization = %q, want token %q", request.Authorization, token)
+		}
+		if request.EmbyToken != "" {
+			t.Fatalf("Jellyfin search sent X-Emby-Token %q", request.EmbyToken)
+		}
+		return
+	}
+	t.Fatalf("no media-server search request found in %+v", requests)
+}
+
 // TestWiring_FreshInstall pins the composition-root contract for a store-only
 // "nothing configured yet" install — the FE's initial state. It asserts the two
 // distinct dependency behaviors from ONE real app build: store-alone routes work
@@ -142,14 +290,10 @@ func TestWiring_FreshInstall(t *testing.T) {
 		t.Error("fresh install: POST /v1/filler/sync → 501; filler.dir has a default, so it is configured")
 	}
 
-	// A dep that's ABSENT (no library ⇒ no user-sync route registered) is NOT a 501:
-	// the route simply doesn't exist. With the embedded SPA mounted as the "/"
-	// catch-all (§12), an unhandled /v1 path is guarded to a uniform 404 (never
-	// index.html) rather than the ServeMux method-shadow 405 it returned before the
-	// FE landed. Either way the contract the FE relies on holds — route absent ≠ 501
-	// ("configured but broken"), so the FE must not treat this as a feature that's on.
-	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusNotFound {
-		t.Errorf("fresh install: POST /v1/users/sync → %d, want 404 (route absent, SPA-guarded)", code)
+	// Optional routes remain registered for the life of the process. With no complete
+	// library triple, user sync reports unconfigured and makes no outbound request.
+	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusNotImplemented {
+		t.Errorf("fresh install: POST /v1/users/sync → %d, want 501 (library unconfigured)", code)
 	}
 
 	// The embedded SPA (§12) is served at / and client routes fall back to it —

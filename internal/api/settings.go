@@ -131,7 +131,8 @@ var mediaSourceWiringKeys = map[string]struct{}{
 // workflow, so there is no second transition algorithm in the HTTP layer.
 func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
-	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
+	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil &&
+		!s.unconfigured("tunarr.url") && !s.libraryUnconfigured() {
 		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
 			s.logw("auto-wire Tunarr media source failed after save", err)
 		} else if enabled > 0 {
@@ -382,3 +383,4 @@ func hasKey(keys map[string]struct{}, key string) bool {
 	_, ok := keys[key]
 	return ok
 }
+

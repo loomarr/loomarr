@@ -35,15 +35,17 @@ func buildBackendTransition(
 	return controller, nil
 }
 
-// backendPublisher adapts the transition controller's backend names to explicit URL
-// snapshots. No phase re-reads live desired settings, so a concurrent save cannot make one
-// transition prepare one target and refresh or retire against another.
+// backendPublisher adapts the transition controller's backend names to one operation snapshot:
+// target URLs plus the bound media-library connection. No phase re-reads live settings, so a
+// concurrent save cannot make one transition prepare one target/server and refresh or retire
+// against another.
 type backendPublisher struct {
-	connector      *setup.LiveTVConnector
-	urls           func(context.Context, string) (setup.LiveTVURLs, error)
-	mu             sync.Mutex
-	preparedTarget string
-	preparedURLs   setup.LiveTVURLs
+	connector       *setup.LiveTVConnector
+	urls            func(context.Context, string) (setup.LiveTVURLs, error)
+	mu              sync.Mutex
+	preparedTarget  string
+	preparedURLs    setup.LiveTVURLs
+	preparedLibrary *setup.LiveTVConnector
 }
 
 // currentBackendTransition refreshes the settings snapshot, then keeps the mutation and desired
@@ -92,28 +94,32 @@ func (p *backendPublisher) Prepare(ctx context.Context, target string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	p.mu.Lock()
-	p.preparedTarget = target
-	p.preparedURLs = urls
-	p.mu.Unlock()
-	result, err := p.connector.Prepare(ctx, urls)
+	operation := p.connector.Snapshot()
+	result, err := operation.Prepare(ctx, urls)
+	if err == nil {
+		p.mu.Lock()
+		p.preparedTarget = target
+		p.preparedURLs = urls
+		p.preparedLibrary = operation
+		p.mu.Unlock()
+	}
 	return result.TunerAdded || result.ListingAdded, err
 }
 
 func (p *backendPublisher) Refresh(ctx context.Context, target string) error {
-	urls, err := p.prepared(target)
+	operation, urls, err := p.prepared(target)
 	if err != nil {
 		return err
 	}
-	return p.connector.RefreshTarget(ctx, urls)
+	return operation.RefreshTarget(ctx, urls)
 }
 
 func (p *backendPublisher) RetireStale(ctx context.Context, target string) error {
-	urls, err := p.prepared(target)
+	operation, urls, err := p.prepared(target)
 	if err != nil {
 		return err
 	}
-	_, err = p.connector.RetireStale(ctx, urls)
+	_, err = operation.RetireStale(ctx, urls)
 	return err
 }
 
@@ -129,16 +135,16 @@ func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, e
 	return result.TunerRemoved, err
 }
 
-func (p *backendPublisher) prepared(target string) (setup.LiveTVURLs, error) {
+func (p *backendPublisher) prepared(target string) (*setup.LiveTVConnector, setup.LiveTVURLs, error) {
 	if p == nil || p.connector == nil {
-		return setup.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
+		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.preparedTarget != target {
-		return setup.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
+	if p.preparedTarget != target || p.preparedLibrary == nil {
+		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
 	}
-	return p.preparedURLs, nil
+	return p.preparedLibrary, p.preparedURLs, nil
 }
 
 type channelStopper interface {

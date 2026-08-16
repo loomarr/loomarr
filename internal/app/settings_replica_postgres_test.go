@@ -1,0 +1,63 @@
+//go:build integration
+
+package app
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
+)
+
+func TestPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing.T) {
+	stores := testkit.PostgresStores(t, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	old := store.SettingBatch{Upserts: []store.SettingMutation{
+		{Key: "library.flavor", Value: "emby"},
+		{Key: "library.url", Value: "http://old:8096"},
+		{Key: "library.token", Value: "old-token"},
+	}}
+	if err := stores[0].ApplySettingBatch(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	baseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+	set, _, _, _, err := bootSettings(ctx, stores[1], baseLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !startReplicaSettingsRefresh(ctx, store.DialectOf(stores[1]), set.svc, 5*time.Millisecond, nil) {
+		t.Fatal("Postgres did not start its settings refresher")
+	}
+
+	batchAt := time.Unix(1_700_000_000, 0).UTC()
+	if err := stores[0].ApplySettingBatch(ctx, store.SettingBatch{
+		Upserts: []store.SettingMutation{
+			{Key: "library.flavor", Value: "jellyfin"},
+			{Key: "library.url", Value: "http://new:8096"},
+			{Key: "library.token", Value: "new-token"},
+		},
+		UpdatedAt: batchAt,
+		UpdatedBy: "replica-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		conn := set.libraryConnection()
+		if conn.Flavor == "jellyfin" && conn.BaseURL == "http://new:8096" && conn.Token == "new-token" {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("replica kept stale connection %+v: %v", conn, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
