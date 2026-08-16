@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type WarmedChannel, warmPreparedChannel } from "../channel-warmer";
-import { beginTune, markTunePhase } from "../tuner-timing";
+import { type WarmedChannel, warmChannel as warmAdjacentChannel } from "../channel-warmer";
+import { beginTune, markAdjacentWarm, markTunePhase } from "../tuner-timing";
 import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";
 
 // surfableCatalog consumes the SERVER'S effective-backend truth. Sorting has a stable id tie-break
@@ -24,9 +24,34 @@ const adjacentChannel = (
   return channels[(current + direction + channels.length) % channels.length];
 };
 
-const afterNextPaint = (fn: () => void) => {
+const acrossNextPaint = (beforePaint: () => void, afterPaint: () => void) => {
+  let beforeRan = false;
+  let afterRan = false;
+  const before = () => {
+    if (beforeRan) return;
+    beforeRan = true;
+    beforePaint();
+  };
+  const after = () => {
+    if (afterRan) return;
+    afterRan = true;
+    clearTimeout(fallback);
+    afterPaint();
+  };
+
+  // A hidden/throttled Firefox document can stop delivering animation frames altogether. The
+  // acknowledgement state has already been committed by the click, so give it one short paint
+  // opportunity, then guarantee the tune intent advances even when rAF never arrives. Both paths
+  // are idempotent because a late frame must not navigate a second time.
+  const fallback = setTimeout(() => {
+    before();
+    after();
+  }, 50);
   if (typeof requestAnimationFrame !== "function") return;
-  requestAnimationFrame(() => requestAnimationFrame(fn));
+  requestAnimationFrame(() => {
+    before();
+    requestAnimationFrame(after);
+  });
 };
 
 // useChannelTuner owns intent ordering, not media transport. The route mirrors its target, while
@@ -37,13 +62,20 @@ const useChannelTuner = ({
   channels,
   nowNext,
   onTune,
-  warmChannel = warmPreparedChannel,
+  warmChannel = warmAdjacentChannel,
 }: UseChannelTunerOptions): UseChannelTuner => {
   const catalog = useMemo(() => surfableCatalog(channels), [channels]);
-  const [request, setRequest] = useState<{ channel: ChannelDTO; attempt: ReturnType<typeof beginTune> }>();
+  const [request, setRequest] = useState<{
+    channel: ChannelDTO;
+    attempt: ReturnType<typeof beginTune>;
+    phase: "acknowledging" | "tuning";
+  }>();
+  const [activeId, setActiveId] = useState(currentId);
   const pendingId = useRef(currentId);
   const requestedId = useRef<string | undefined>(undefined);
+  const latestAttemptId = useRef<number | undefined>(undefined);
   const warmed = useRef(new Map<string, WarmedChannel>());
+  const [readyId, setReadyId] = useState<string>();
 
   useEffect(() => {
     // A navigation from outside this controller becomes the new base. Keep our request while the
@@ -51,13 +83,18 @@ const useChannelTuner = ({
     pendingId.current = currentId;
     if (requestedId.current === currentId) return;
     requestedId.current = undefined;
+    setReadyId(undefined);
+    setActiveId(currentId);
     setRequest(undefined);
   }, [currentId]);
 
-  const current = request?.channel ?? catalog.find((channel) => channel.id === currentId);
+  const current = catalog.find((channel) => channel.id === activeId);
 
   useEffect(() => {
-    if (!current) return;
+    // Speculation must never contend with the stream the viewer just selected. The player marks
+    // this Channel ready after its first decoded frame; only then may its two neighbors consume
+    // HTTP connections or establish bounded live fallbacks.
+    if (!current || readyId !== current.id) return;
     const controller = new AbortController();
     const neighbors = [adjacentChannel(catalog, current.id, -1), adjacentChannel(catalog, current.id, 1)]
       .filter((channel): channel is ChannelDTO => Boolean(channel && channel.id !== current.id))
@@ -71,14 +108,19 @@ const useChannelTuner = ({
       if (cached && cached.expiresAt > Date.now() + 60_000) continue;
       void warmChannel(neighbor.id, controller.signal)
         .then((result) => {
-          if (result && !controller.signal.aborted) warmed.current.set(neighbor.id, result);
+          if (result && !controller.signal.aborted) {
+            warmed.current.set(neighbor.id, result);
+            if (result.warmed) markAdjacentWarm(neighbor.id);
+          }
         })
         .catch(() => {
           // Warming is speculative. A real tune still mints and attaches normally.
         });
     }
     return () => controller.abort();
-  }, [catalog, current, warmChannel]);
+  }, [catalog, current, readyId, warmChannel]);
+
+  const ready = useCallback((channelId: string) => setReadyId(channelId), []);
 
   const step = useCallback(
     (direction: TuneDirection) => {
@@ -86,11 +128,25 @@ const useChannelTuner = ({
       if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
       const warm = warmed.current.get(target.id);
       const attempt = beginTune(true, warm?.warmed, warm?.url);
+      latestAttemptId.current = attempt.id;
       pendingId.current = target.id;
       requestedId.current = target.id;
-      setRequest({ channel: target, attempt });
-      afterNextPaint(() => markTunePhase(attempt, "osd"));
-      onTune(target);
+      setReadyId(undefined);
+      setRequest({ channel: target, attempt, phase: "acknowledging" });
+      acrossNextPaint(
+        () => {
+          if (latestAttemptId.current !== attempt.id) return;
+          markTunePhase(attempt, "osd");
+        },
+        () => {
+          if (latestAttemptId.current !== attempt.id) return;
+          setActiveId(target.id);
+          setRequest((candidate) =>
+            candidate?.attempt.id === attempt.id ? { ...candidate, phase: "tuning" } : candidate,
+          );
+          onTune(target);
+        },
+      );
     },
     [catalog, onTune],
   );
@@ -99,21 +155,37 @@ const useChannelTuner = ({
     if (!current) return;
     const warm = warmed.current.get(current.id);
     const attempt = beginTune(false, warm?.warmed, warm?.url);
+    latestAttemptId.current = attempt.id;
     pendingId.current = current.id;
     requestedId.current = current.id;
-    setRequest({ channel: current, attempt });
-    afterNextPaint(() => markTunePhase(attempt, "osd"));
+    setRequest({ channel: current, attempt, phase: "acknowledging" });
+    acrossNextPaint(
+      () => {
+        if (latestAttemptId.current !== attempt.id) return;
+        markTunePhase(attempt, "osd");
+      },
+      () => {
+        if (latestAttemptId.current !== attempt.id) return;
+        setRequest((candidate) =>
+          candidate?.attempt.id === attempt.id ? { ...candidate, phase: "tuning" } : candidate,
+        );
+      },
+    );
   }, [current]);
 
-  const currentTitle = current
-    ? nowNext.find((entry) => entry.channelId === current.id)?.now?.title
+  const titledChannel = request?.channel ?? current;
+  const currentTitle = titledChannel
+    ? nowNext.find((entry) => entry.channelId === titledChannel.id)?.now?.title
     : undefined;
 
   return {
     channel: current,
+    requestedChannel: request?.channel,
     currentTitle,
-    attempt: request?.attempt,
+    attempt: request?.phase === "tuning" ? request.attempt : undefined,
+    acknowledging: request?.phase === "acknowledging",
     canSurf: catalog.length > 1,
+    ready,
     step,
     retry,
   };

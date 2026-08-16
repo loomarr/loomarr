@@ -95,6 +95,33 @@ describe("VideoPlayer", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "Menu" }), { key: "ArrowUp" });
     expect(onChannelStep).not.toHaveBeenCalled();
   });
+
+  it("waits for replacement loadeddata before observing the frame that clears a held poster", () => {
+    const requestFrame = vi.fn(() => 1);
+    Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
+      configurable: true,
+      value: requestFrame,
+    });
+    const firstAttach = vi.fn(() => () => undefined);
+    const replacementAttach = vi.fn(() => () => undefined);
+    const { container, rerender } = render(<VideoPlayer attach={firstAttach} live />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    expect(requestFrame).not.toHaveBeenCalled();
+    video.poster = "data:image/png;base64,held";
+    fireEvent.loadedData(video);
+    expect(video).not.toHaveAttribute("poster");
+    expect(requestFrame).not.toHaveBeenCalled();
+
+    rerender(<VideoPlayer attach={replacementAttach} live />);
+    video.poster = "data:image/png;base64,held";
+    expect(video).toHaveAttribute("poster");
+    fireEvent.loadedData(video);
+    expect(video).not.toHaveAttribute("poster");
+    expect(requestFrame).not.toHaveBeenCalled();
+
+    delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+  });
 });
 
 // Auto-hide — the Emby/Jellyfin behaviour that native `<video controls>` gives free but custom

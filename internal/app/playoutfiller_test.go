@@ -68,12 +68,16 @@ func clipAt(name string) string {
 
 func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	t.Helper()
+	slots := []schedule.Slot{
+		{Kind: schedule.SlotFiller},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	accepted := &stubChannels{}
+	accepted.ch.Desired = slots
 	return &playoutResolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
-		engine: stubCycle{slots: []schedule.Slot{
-			{Kind: schedule.SlotFiller},
-			{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
-		}},
+		engine:         stubCycle{slots: slots},
+		channels:       accepted,
 		now:            func() time.Time { return playoutEpoch("ch1") },
 		tier:           func() string { return "balanced" },
 		encoder:        func() string { return "" },
@@ -81,6 +85,36 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		activeChannels: func() int { return 0 },
 		pods:           stubPods{pod: pod},
 		fillerDir:      dir,
+	}
+}
+
+// THE DEFECT THIS CLOSES: the finite ffmpeg child asks AiringNow again at every programme EOF.
+// AiringNow used to rebuild the authoring preview on each request, after recording the outgoing
+// programme in airing history. Recency then produced a different deck, so the same wall clock
+// landed in the middle of an unrelated episode. The reconciler had already persisted the accepted
+// deck; playout simply was not reading it.
+func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
+	preview := &countingCycle{slots: []schedule.Slot{{
+		Kind: schedule.SlotProgram, Title: "mutable preview", LibraryItemID: "preview", DurationMs: 60000,
+	}}}
+	accepted := &stubChannels{}
+	accepted.ch.Desired = []schedule.Slot{{
+		Kind: schedule.SlotFlex, Title: "accepted broadcast", DurationMs: 60000,
+	}}
+	r := &playoutResolver{
+		engine: preview, channels: accepted,
+		now: func() time.Time { return playoutEpoch("ch1") },
+	}
+
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Title != "accepted broadcast" {
+		t.Fatalf("airing = %q, want persisted accepted broadcast", airing.Title)
+	}
+	if got := preview.count(); got != 0 {
+		t.Fatalf("CyclePreview called %d times, want 0 on the broadcast path", got)
 	}
 }
 
@@ -159,6 +193,9 @@ func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 	if airing.Playable() || src != "" {
 		t.Errorf("want the offline card, got %+v / %q", airing, src)
 	}
+	if airing.Kind != schedule.SlotFiller || airing.Remaining != 30*time.Second {
+		t.Errorf("unfilled break lost its schedule identity/boundary: %+v", airing)
+	}
 }
 
 // ⚠ A crafted clip id must NOT stream a file from outside FILLER_DIR. The id reaches here from
@@ -231,10 +268,40 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 	r.encoder = func() string { return "" }
 	r.ffmpegPath = func() string { return "/nonexistent/ffmpeg" }
 
+	_ = r.detectedEncoder(context.Background())
 	p := r.Profile(context.Background())
 	if p.Encoder != playout.EncoderSoftware {
 		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
 	}
+}
+
+// A viewer must never pay the machine-capability benchmark. Boot warms it independently; until
+// that result is ready, software is the conservative immediately-available fallback.
+func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.encoder = func() string { return "" }
+	r.ffmpegPath = func() string {
+		close(started)
+		<-release
+		return "/nonexistent/ffmpeg"
+	}
+
+	before := time.Now()
+	p := r.Profile(context.Background())
+	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
+		t.Errorf("Profile waited %s for capability detection", elapsed)
+	}
+	if p.Encoder != playout.EncoderSoftware {
+		t.Errorf("encoder = %q, want immediate software while capability detection warms", p.Encoder)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Profile did not start capability detection in the background")
+	}
+	close(release)
 }
 
 // The probe runs ONCE. It is called per program boundary, and trial-encoding every candidate on
@@ -246,7 +313,7 @@ func TestProfile_ProbesOnlyOnce(t *testing.T) {
 	r.ffmpegPath = func() string { calls++; return "/nonexistent/ffmpeg" }
 
 	for i := 0; i < 5; i++ {
-		r.Profile(context.Background())
+		_ = r.detectedEncoder(context.Background())
 	}
 	if calls != 1 {
 		t.Errorf("probed %d times across 5 programs, want 1 — each probe is ~20s", calls)
