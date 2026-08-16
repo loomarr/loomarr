@@ -5090,9 +5090,14 @@ The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimen
 canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,
 and 64 MiB of output. The fixture corpus may lower them before release; raising them is a design
 change. Rust checks limits before large allocations and while streaming frames. Go owns the global
-worker semaphore and cancellation: it terminates on context cancellation and removes the private
-staging directory. Corrupt, unsupported, source-changed, limit, decode, encode, I/O, and internal
-worker refusals have stable machine codes. None invokes Go
+worker capacity and cancellation: it terminates on context cancellation and removes the private
+staging directory. Inspection plus lazy JPEG/WebP work is **interactive**; scheduled AVIF work is
+**background**. Background processes may occupy at most one fewer than the total capacity whenever
+the host has at least two slots, leaving one slot immediately available to interactive work. On a
+single-slot host the running process cannot be preempted, but an interactive waiter wins the next
+admission before another background Image starts. Queue-wait metrics carry that two-value class so
+operators can distinguish request pressure from an AVIF drain. Corrupt, unsupported, source-changed,
+limit, decode, encode, I/O, and internal worker refusals have stable machine codes. None invokes Go
 pixel processing.
 
 ⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at

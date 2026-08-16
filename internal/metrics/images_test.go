@@ -17,14 +17,14 @@ func TestImageWorkerMetricsObserveProcessAndQueueBoundaries(t *testing.T) {
 	inputBefore := histogramCount(t, imageWorkerInputBytes.WithLabelValues("render"))
 	outputBefore := histogramCount(t, imageWorkerOutputBytes.WithLabelValues("render"))
 	rssBefore := histogramCount(t, imageWorkerPeakRSSBytes.WithLabelValues("render"))
-	queueBefore := histogramCount(t, imageWorkerQueueWait)
+	queueBefore := histogramCount(t, imageWorkerQueueWait.WithLabelValues("background"))
 	inFlightBefore := testutil.ToFloat64(imageWorkerInFlight)
 
 	ImageWorkerObserved(rustgen.Observation{
 		Kind: "render", Result: "success", Duration: 250 * time.Millisecond,
 		InputBytes: 1024, OutputBytes: 512, PeakRSSBytes: 32 << 20,
 	})
-	ImageWorkerQueueWait(5 * time.Millisecond)
+	ImageWorkerQueueWait("background", 5*time.Millisecond)
 	ImageWorkerInFlight(1)
 
 	if got := testutil.ToFloat64(imageWorkerOperations.WithLabelValues("render", "success")); got != operationsBefore+1 {
@@ -35,7 +35,7 @@ func TestImageWorkerMetricsObserveProcessAndQueueBoundaries(t *testing.T) {
 		"input":    histogramCount(t, imageWorkerInputBytes.WithLabelValues("render")) - inputBefore,
 		"output":   histogramCount(t, imageWorkerOutputBytes.WithLabelValues("render")) - outputBefore,
 		"rss":      histogramCount(t, imageWorkerPeakRSSBytes.WithLabelValues("render")) - rssBefore,
-		"queue":    histogramCount(t, imageWorkerQueueWait) - queueBefore,
+		"queue":    histogramCount(t, imageWorkerQueueWait.WithLabelValues("background")) - queueBefore,
 	} {
 		if got != 1 {
 			t.Errorf("%s histogram added %d samples, want 1", name, got)

@@ -189,7 +189,7 @@ func TestImageRoutesAreWired(t *testing.T) {
 	for _, want := range []string{
 		`loomarr_image_worker_operations_total{kind="inspect",result="success"}`,
 		`loomarr_image_worker_operations_total{kind="render",result="success"}`,
-		`loomarr_image_worker_queue_wait_seconds_count`,
+		`loomarr_image_worker_queue_wait_seconds_count{class="interactive"}`,
 		`loomarr_image_worker_peak_rss_bytes_count{kind="inspect"}`,
 		`loomarr_image_worker_in_flight 0`,
 	} {
