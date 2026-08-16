@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // eagerAttacher models a warm live session whose initial burst arrives as the sink is attached.
@@ -108,12 +110,13 @@ func newTestHLSManager(t *testing.T, att HLSAttacher) *HLSManager {
 		if werr := os.WriteFile(filepath.Join(dir, hlsPlaylistName), []byte(stub), 0o644); werr != nil {
 			return nil, werr
 		}
-		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		cmd := exec.Command("sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if serr := cmd.Start(); serr != nil {
+		supervised, serr := proctree.Start(ctx, cmd)
+		if serr != nil {
 			return nil, serr
 		}
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return &hlsProcess{proc: supervised, stdin: stdin}, nil
 	}
 	t.Cleanup(m.Stop)
 	return m
@@ -136,12 +139,13 @@ func newTestHLSManagerWithPlaylist(t *testing.T, att HLSAttacher, stub string) *
 		if werr := os.WriteFile(filepath.Join(dir, hlsPlaylistName), []byte(stub), 0o644); werr != nil {
 			return nil, werr
 		}
-		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		cmd := exec.Command("sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if serr := cmd.Start(); serr != nil {
+		supervised, serr := proctree.Start(ctx, cmd)
+		if serr != nil {
 			return nil, serr
 		}
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return &hlsProcess{proc: supervised, stdin: stdin}, nil
 	}
 	t.Cleanup(m.Stop)
 	return m
@@ -214,10 +218,11 @@ func TestHLSManager_StopsWaitingWhenRemuxExits(t *testing.T) {
 	m.spawn = func(ctx context.Context, _ string, _ string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
 		cmd := exec.CommandContext(ctx, "sh", "-c", "exit 7")
 		stdin, _ := cmd.StdinPipe()
-		if err := cmd.Start(); err != nil {
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
 			return nil, err
 		}
-		return newHLSProcess(cmd, stdin, slog.New(slog.DiscardHandler)), nil
+		return newHLSProcess(supervised, stdin, slog.New(slog.DiscardHandler)), nil
 	}
 	t.Cleanup(m.Stop)
 
@@ -289,10 +294,11 @@ func TestHLSManager_DrainsSessionWhileRemuxSpawns(t *testing.T) {
 		}
 		cmd := exec.CommandContext(ctx, "sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if err := cmd.Start(); err != nil {
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
 			return nil, err
 		}
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return newHLSProcess(supervised, stdin, nil), nil
 	}
 	t.Cleanup(m.Stop)
 
@@ -334,10 +340,11 @@ func TestHLSManager_PreservesStartupBurstWhileRemuxSpawns(t *testing.T) {
 			return nil, err
 		}
 		cmd := exec.CommandContext(ctx, "sleep", "3600")
-		if err := cmd.Start(); err != nil {
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
 			return nil, err
 		}
-		return &hlsProcess{cmd: cmd, stdin: recorded}, nil
+		return newHLSProcess(supervised, recorded, nil), nil
 	}
 	t.Cleanup(m.Stop)
 
@@ -389,11 +396,12 @@ func TestHLSManager_JoinerWaitsForExistingRemuxToBecomeReady(t *testing.T) {
 	m.spawn = func(ctx context.Context, _ string, dir string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
 		cmd := exec.CommandContext(ctx, "sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if err := cmd.Start(); err != nil {
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
 			return nil, err
 		}
 		dirReady <- dir
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return newHLSProcess(supervised, stdin, nil), nil
 	}
 	t.Cleanup(m.Stop)
 

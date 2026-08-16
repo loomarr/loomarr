@@ -3,17 +3,15 @@ package playout
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
-	"time"
+
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // ffmpeg process supervision for playout (§9.1).
@@ -26,26 +24,23 @@ import (
 //
 // So three things are non-negotiable:
 //
-//  1. Progress on a DEDICATED fd, structured. Not stderr scraping.
-//  2. Kill the process GROUP, not the process. ffmpeg spawns children; viewra's watchdog
+//  1. Progress is structured and line-framed: a dedicated fd on Unix; deterministically
+//     demultiplexed from stderr on Windows, where Go does not support ExtraFiles.
+//  2. Kill the process TREE, not the process. ffmpeg spawns children; viewra's watchdog
 //     killed only the parent while start used Setpgid, so children orphaned.
 //  3. The context is the lifetime. When it is cancelled the process dies — no timer, no
 //     idle sweep, no last-accessed timestamp.
 
-// progressFD is the fd ffmpeg writes `-progress` key=value lines to.
-//
-// 3 rather than stdout because STDOUT CARRIES THE MPEG-TS — mixing progress text into the
-// transport stream would corrupt it. fd 3 is the first free descriptor after the standard
-// three, and it exists only because Cmd.ExtraFiles wires it: `-progress pipe:3` with nothing
-// on fd 3 fails at startup with "Error parsing global options: Bad file descriptor", a
-// message that never mentions progress. (Found by executing it; the arg-shape test asserted
-// "progress goes to a pipe" and passed happily on an fd that was not there.)
-const progressFD = 3
+// progressPipeArg and wireProgress are one platform seam. Unix keeps the structured stream on
+// inherited fd 3; Windows cannot inherit Cmd.ExtraFiles, so ffmpeg writes the same line-framed
+// protocol to stderr and the scanner demultiplexes only its exact keys from diagnostics.
 
-// progressPipeArg is the `-progress` value matching the fd Start wires. Args and supervisor
-// read the SAME constant on purpose: when they were independent literals they drifted, and
-// the failure was ffmpeg refusing to start with a message that never mentions progress.
-func progressPipeArg() string { return "pipe:" + strconv.Itoa(progressFD) }
+type progressWiring struct {
+	reader       io.ReadCloser
+	combined     bool
+	afterStart   func()
+	closeFailure func()
+}
 
 // Progress is one sample of ffmpeg's structured progress output.
 type Progress struct {
@@ -61,66 +56,65 @@ type Progress struct {
 // Process is a supervised ffmpeg. Its Stdout is the caller's to read — for playout that is
 // the MPEG-TS the session fans out to viewers.
 type Process struct {
-	cmd    *exec.Cmd
 	Stdout io.ReadCloser
+	proc   *proctree.Supervisor
 
 	log *slog.Logger
 
-	mu       sync.Mutex
-	lastErr  string
-	waitOnce sync.Once
-	waitErr  error
+	mu      sync.Mutex
+	lastErr string
 }
 
 // Start launches ffmpeg with the given args under ctx.
 //
-// The process is put in its own process GROUP so teardown can signal the whole tree. ffmpeg
-// spawns helpers, and signalling only the parent leaves them running — the exact bug
-// viewra has, where start uses Setpgid but the watchdog calls Process.Kill().
+// The process is put under a platform process-tree owner so teardown reaches every helper.
+// Signalling only the parent leaves children running — the exact bug viewra has, where start
+// uses Setpgid but the watchdog calls Process.Kill().
 func Start(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
 	cmd := exec.Command(bin, args...) //nolint:gosec // args are built by this package, never user text
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	// Progress on fd 3. Created here because ffmpeg cannot open it itself — see progressFD.
-	pr, pw, err := os.Pipe()
+	progress, err := wireProgress(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("progress pipe: %w", err)
+		return nil, err
 	}
-	cmd.ExtraFiles = []*os.File{pw} // becomes fd 3 in the child
 
 	// stderr is kept for the LAST error only. ffmpeg is chatty and a live process runs for
 	// days; retaining all of it is a slow memory leak, and the useful part when something
 	// breaks is the final line.
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stderr pipe: %w", err)
+	var stderr io.ReadCloser
+	if !progress.combined {
+		stderr, err = cmd.StderrPipe()
+		if err != nil {
+			progress.closeFailure()
+			return nil, fmt.Errorf("stderr pipe: %w", err)
+		}
 	}
 
-	p := &Process{cmd: cmd, Stdout: stdout, log: log}
-
-	if err := cmd.Start(); err != nil {
-		_ = pr.Close()
-		_ = pw.Close()
+	p := &Process{Stdout: stdout, log: log}
+	supervised, err := proctree.Start(ctx, cmd)
+	if err != nil {
+		progress.closeFailure()
+		if stderr != nil {
+			_ = stderr.Close()
+		}
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
-	// The child holds its own copy of the write end; ours must go or the reader below
-	// never sees EOF when ffmpeg exits.
-	_ = pw.Close()
+	p.proc = supervised
+	if progress.afterStart != nil {
+		progress.afterStart()
+	}
 
-	go p.readProgress(pr, onProgress)
-	go p.readStderr(stderr)
-
-	// THE lifetime binding. Cancellation kills the group rather than waiting for a sweep:
-	// a live encoder never exits on its own, so nothing else would ever stop it.
-	go func() {
-		<-ctx.Done()
-		p.Stop()
-	}()
+	if progress.combined {
+		go p.readCombined(progress.reader, onProgress)
+	} else {
+		go p.readProgress(progress.reader, onProgress)
+		go p.readStderr(stderr)
+	}
 
 	return p, nil
 }
@@ -154,30 +148,102 @@ func ReadProgress(r io.ReadCloser, onProgress func(Progress)) {
 	var cur Progress
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
-		k, v, ok := strings.Cut(sc.Text(), "=")
-		if !ok {
-			continue
-		}
-		v = strings.TrimSpace(v)
-		switch k {
-		case "frame":
-			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-				cur.Frame = n
-			}
-		case "out_time_ms":
-			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-				cur.OutTimeMS = n / 1000 // ffmpeg reports microseconds despite the name
-			}
-		case "speed":
-			if f, err := strconv.ParseFloat(strings.TrimSuffix(v, "x"), 64); err == nil {
-				cur.Speed = f
-			}
-		case "progress":
-			// ffmpeg terminates each block with progress=continue|end. Emit on the
-			// boundary so a consumer sees whole samples, never half-updated ones.
+		_, complete := consumeProgressLine(strings.TrimSpace(sc.Text()), &cur)
+		if complete {
 			onProgress(cur)
 		}
 	}
+}
+
+// consumeProgressLine parses one exact ffmpeg progress-protocol line. recognized is false for
+// diagnostics, which lets Windows demultiplex its shared stderr stream without guessing at
+// chunks or swallowing real errors. complete marks progress=continue|end block boundaries.
+func consumeProgressLine(line string, cur *Progress) (recognized, complete bool) {
+	k, v, ok := strings.Cut(line, "=")
+	if !ok {
+		return false, false
+	}
+	v = strings.TrimSpace(v)
+	switch k {
+	case "frame":
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return false, false
+		}
+		cur.Frame = n
+	case "out_time_ms":
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return false, false
+		}
+		cur.OutTimeMS = n / 1000 // ffmpeg reports microseconds despite the name
+	case "speed":
+		if v == "N/A" {
+			return true, false
+		}
+		f, err := strconv.ParseFloat(strings.TrimSuffix(v, "x"), 64)
+		if err != nil || !strings.HasSuffix(v, "x") {
+			return false, false
+		}
+		cur.Speed = f
+	case "fps", "total_size", "out_time_us", "dup_frames", "drop_frames":
+		if v == "N/A" {
+			return true, false
+		}
+		if _, err := strconv.ParseFloat(v, 64); err != nil {
+			return false, false
+		}
+	case "bitrate":
+		if v == "N/A" {
+			return true, false
+		}
+		rate, found := strings.CutSuffix(v, "kbits/s")
+		if !found {
+			return false, false
+		}
+		if _, err := strconv.ParseFloat(strings.TrimSpace(rate), 64); err != nil {
+			return false, false
+		}
+	case "out_time":
+		if v == "N/A" {
+			return true, false
+		}
+		if !validProgressClock(v) {
+			return false, false
+		}
+	case "progress":
+		// ffmpeg terminates each block with progress=continue|end. Emit on the
+		// boundary so a consumer sees whole samples, never half-updated ones.
+		return v == "continue" || v == "end", v == "continue" || v == "end"
+	default:
+		if strings.HasPrefix(k, "stream_") && strings.HasSuffix(k, "_q") {
+			if v == "N/A" {
+				return true, false
+			}
+			if _, err := strconv.ParseFloat(v, 64); err == nil {
+				return true, false
+			}
+		}
+		return false, false
+	}
+	return true, false
+}
+
+func validProgressClock(v string) bool {
+	if strings.HasPrefix(v, "-") || strings.HasPrefix(v, "+") {
+		v = v[1:]
+	}
+	parts := strings.Split(v, ":")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts[:2] {
+		if _, err := strconv.ParseUint(part, 10, 64); err != nil {
+			return false
+		}
+	}
+	_, err := strconv.ParseFloat(parts[2], 64)
+	return err == nil
 }
 
 // readStderr keeps only the most recent non-empty line.
@@ -185,19 +251,40 @@ func (p *Process) readStderr(r io.ReadCloser) {
 	defer func() { _ = r.Close() }()
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
+		p.recordStderr(sc.Text())
+	}
+}
+
+func (p *Process) readCombined(r io.ReadCloser, onProgress func(Progress)) {
+	defer func() { _ = r.Close() }()
+	var cur Progress
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		if line == "" {
+		recognized, complete := consumeProgressLine(line, &cur)
+		if recognized {
+			if complete && onProgress != nil {
+				onProgress(cur)
+			}
 			continue
 		}
-		p.mu.Lock()
-		p.lastErr = line
-		p.mu.Unlock()
-		if p.log != nil {
-			// Debug, not warn: ffmpeg writes routine notices to stderr, and logging them
-			// as problems trains an operator to ignore the log. viewra needed an explicit
-			// non-fatal allowlist for exactly this.
-			p.log.Debug("ffmpeg", "line", line)
-		}
+		p.recordStderr(line)
+	}
+}
+
+func (p *Process) recordStderr(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	p.mu.Lock()
+	p.lastErr = line
+	p.mu.Unlock()
+	if p.log != nil {
+		// Debug, not warn: ffmpeg writes routine notices to stderr, and logging them
+		// as problems trains an operator to ignore the log. viewra needed an explicit
+		// non-fatal allowlist for exactly this.
+		p.log.Debug("ffmpeg", "line", line)
 	}
 }
 
@@ -208,67 +295,26 @@ func (p *Process) LastError() string {
 	return p.lastErr
 }
 
-// stopGrace is how long ffmpeg gets to flush and exit after SIGTERM before SIGKILL. Short:
-// there is nothing to flush that matters for live playout, and a channel that will not die
-// blocks the slot its replacement needs.
-const stopGrace = 2 * time.Second
-
-// Stop terminates the process GROUP and waits for it.
+// Stop terminates the process tree and waits for it.
 //
-// Group, not process: ffmpeg spawns children and signalling only the parent orphans them —
-// on a 24/7 box that accumulates until something notices. The negative pid is the group.
+// Tree, not process: ffmpeg spawns children and signalling only the parent orphans them —
+// on a 24/7 box that accumulates until something notices.
 //
 // The wait is synchronous and guarded by sync.Once: the monitoring goroutine may already
 // have reaped the child ("no child processes" otherwise), and callers need Stop to mean
 // "it is gone" so a replacement can take the slot.
 func (p *Process) Stop() {
-	if p.cmd.Process == nil {
+	if p.proc == nil {
 		return
 	}
-	pgid := p.cmd.Process.Pid
-
-	// SIGTERM the group, then escalate. Errors are ignored throughout: every one of them
-	// means "already gone", which is the desired state.
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
-
-	done := make(chan struct{})
-	go func() {
-		p.wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(stopGrace):
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
-		<-done
-	}
+	p.proc.Stop()
 }
 
 // Wait blocks until the process exits, returning its error. Safe to call concurrently with
 // Stop and more than once.
 func (p *Process) Wait() error {
-	p.wait()
-	return p.waitErr
-}
-
-func (p *Process) wait() {
-	p.waitOnce.Do(func() {
-		err := p.cmd.Wait()
-		// A process we killed reports a signal, which is not a failure — it is the
-		// teardown we asked for.
-		if err != nil && isSignalExit(err) {
-			err = nil
-		}
-		p.waitErr = err
-	})
-}
-
-func isSignalExit(err error) bool {
-	var ee *exec.ExitError
-	if !errors.As(err, &ee) {
-		return false
+	if p.proc == nil {
+		return nil
 	}
-	st, ok := ee.Sys().(syscall.WaitStatus)
-	return ok && st.Signaled()
+	return p.proc.Wait()
 }

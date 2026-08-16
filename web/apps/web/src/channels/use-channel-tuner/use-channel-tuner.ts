@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type WarmedChannel, warmChannel as warmAdjacentChannel } from "../channel-warmer";
-import { beginTune, markTunePhase } from "../tuner-timing";
+import { beginTune, markAdjacentWarm, markTunePhase } from "../tuner-timing";
 import type { TuneDirection, UseChannelTuner, UseChannelTunerOptions } from "./use-channel-tuner.type";
 
 // surfableCatalog consumes the SERVER'S effective-backend truth. Sorting has a stable id tie-break
@@ -108,7 +108,10 @@ const useChannelTuner = ({
       if (cached && cached.expiresAt > Date.now() + 60_000) continue;
       void warmChannel(neighbor.id, controller.signal)
         .then((result) => {
-          if (result && !controller.signal.aborted) warmed.current.set(neighbor.id, result);
+          if (result && !controller.signal.aborted) {
+            warmed.current.set(neighbor.id, result);
+            if (result.warmed) markAdjacentWarm(neighbor.id);
+          }
         })
         .catch(() => {
           // Warming is speculative. A real tune still mints and attaches normally.

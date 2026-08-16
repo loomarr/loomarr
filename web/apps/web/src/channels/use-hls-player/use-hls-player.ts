@@ -299,13 +299,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
 
-        // Preserve the reusable MediaSource AND its compatible SourceBuffers, but never their
-        // outgoing Channel-relative bytes. transferMedia() is hls.js's public cross-controller
-        // handoff; a controller is source-scoped, while the expensive MSE/decoder allocation lives
-        // across tunes. Prepared publications leave MediaSource in `ended`, which remains reusable:
-        // SourceBuffer.remove/append transitions it back to `open`. Only a closed source (or failed
-        // clear) needs hls.js's full MSE reset below.
-        if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
+        // Preserve an OPEN MediaSource and its compatible SourceBuffers, but never their outgoing
+        // Channel-relative bytes. An ended compact publication is intentionally different: WebKit
+        // can hold SourceBuffer.remove on its terminal decoded frame for nearly two seconds even
+        // after pause/edge-seek. Consuming the already-constructed standby with a fresh MediaSource
+        // is faster and still preserves the one-element/one-decoder invariant. Only open sources
+        // take the in-place clear path; ended, closed, or failed clears take the bounded fresh path.
+        if (transferred?.mediaSource?.readyState === "open") {
           try {
             await releaseTransferredDecoder(video, transferred);
             await clearTransferredBuffers(transferred);

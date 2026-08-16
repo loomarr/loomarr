@@ -13,6 +13,22 @@ step() {
 	echo "agent-harness-test: $*"
 }
 
+wait_for_repo_pid() {
+	expected_pid="$1"
+	comm="$2"
+	root="$3"
+	got=
+	attempt=0
+	while [ "$attempt" -lt 40 ]; do
+		got="$(repo_pids_by_comm "$comm" "$root")"
+		[ "$got" = "$expected_pid" ] && return 0
+		attempt=$((attempt + 1))
+		sleep 0.05
+	done
+	echo "agent-harness-test: process ownership for $root = [$got], want [$expected_pid]" >&2
+	return 1
+}
+
 step 'environment isolation'
 git -C "$TMP" init -q
 git -C "$TMP" config user.email test@example.invalid
@@ -118,15 +134,19 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 
 # Process ownership is the worktree cwd, not the globally shared process name.
 step 'process ownership'
+mkdir "$TMP-gone"
+cp "$(command -v sleep)" "$TMP-gone/loomarr-dev"
+( cd "$TMP-gone" && exec ./loomarr-dev 30 ) & stale_pid=$!; pids="$pids $stale_pid"
+sleep 0.05
+rm -rf "$TMP-gone"
 cp "$(command -v sleep)" "$TMP/loomarr-dev"
 cp "$(command -v sleep)" "$TMP-wt/loomarr-dev"
 ( cd "$TMP" && exec ./loomarr-dev 30 ) & first_pid=$!; pids="$pids $first_pid"
 ( cd "$TMP-wt" && exec ./loomarr-dev 30 ) & second_pid=$!; pids="$pids $second_pid"
-sleep 0.1
 # shellcheck disable=SC1091 # SCRIPT_DIR is resolved at runtime.
 . "$SCRIPT_DIR/dev-processes.sh"
-[ "$(repo_pids_by_comm loomarr-dev "$TMP")" = "$first_pid" ]
-[ "$(repo_pids_by_comm loomarr-dev "$TMP-wt")" = "$second_pid" ]
+wait_for_repo_pid "$first_pid" loomarr-dev "$TMP"
+wait_for_repo_pid "$second_pid" loomarr-dev "$TMP-wt"
 
 # Worktree creation is product-neutral and does not copy credentials by default.
 step 'worktree creation'

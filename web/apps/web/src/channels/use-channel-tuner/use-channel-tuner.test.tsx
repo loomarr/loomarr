@@ -102,6 +102,7 @@ describe("channel tuner", () => {
   });
 
   it("reuses the exact signed URL and warmed state when tuning to a prepared neighbor", async () => {
+    const mark = vi.spyOn(performance, "mark");
     const warmChannel = vi.fn().mockResolvedValue({
       url: "/v1/playout/hls/ch-30/master.m3u8?sig=one",
       expiresAt: Date.now() + 60 * 60 * 1000,
@@ -114,8 +115,28 @@ describe("channel tuner", () => {
     act(() => result.current.ready("ch-10"));
     await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-30", expect.any(AbortSignal)));
     await act(async () => Promise.resolve());
+    expect(mark).toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
     act(() => result.current.step(1));
     expect(result.current.attempt?.warmed).toBe(true);
     expect(result.current.attempt?.playURL).toContain("sig=one");
+  });
+
+  it("does not certify an adjacent warm when the assets were unavailable", async () => {
+    const mark = vi.spyOn(performance, "mark");
+    mark.mockClear();
+    const warmChannel = vi.fn().mockResolvedValue({
+      url: "/v1/playout/hls/ch-30/master.m3u8?sig=miss",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      warmed: false,
+    });
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
+    );
+
+    act(() => result.current.ready("ch-10"));
+    await vi.waitFor(() => expect(warmChannel).toHaveBeenCalled());
+    await act(async () => Promise.resolve());
+
+    expect(mark).not.toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
   });
 });

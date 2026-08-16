@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { adjacentWarmMarkName } from "../../src/channels/tuner-timing";
 import { channelId, installTunerBackend } from "./tuner-backend";
 
 test.setTimeout(120_000);
@@ -232,6 +233,12 @@ const adjacentNumbers = (number: number): [number, number] => [
   number === 100 ? 1 : number + 1,
 ];
 
+const latestWarmAt = (page: Page, number: number) =>
+  page.evaluate(
+    (name) => performance.getEntriesByName(name, "mark").at(-1)?.startTime ?? -1,
+    adjacentWarmMarkName(channelId(number)),
+  );
+
 const channelUp = async (page: Page) => {
   // Keep the real focusable control as the input seam, but activate it the way a keyboard/remote
   // does. Pointer activation can race the player's auto-hidden control bar in slow WebKit; focus
@@ -242,28 +249,19 @@ const channelUp = async (page: Page) => {
 };
 
 const waitForAdjacentWarm = async (
-  backend: Awaited<ReturnType<typeof installTunerBackend>>,
+  page: Page,
   number: number,
-  after: ReadonlyMap<string, number> = new Map(),
+  after: ReadonlyMap<number, number> = new Map(),
 ) => {
   for (const neighbor of adjacentNumbers(number)) {
-    const asset = `${channelId(neighbor)}/segment.m4s`;
-    await expect
-      .poll(() => backend.state.assetCompletions.filter((candidate) => candidate === asset).length)
-      .toBeGreaterThan(after.get(asset) ?? 0);
+    await expect.poll(() => latestWarmAt(page, neighbor)).toBeGreaterThan(after.get(neighbor) ?? -1);
   }
 };
 
-const adjacentWarmCounts = (
-  backend: Awaited<ReturnType<typeof installTunerBackend>>,
-  number: number,
-): ReadonlyMap<string, number> =>
-  new Map(
-    adjacentNumbers(number).map((neighbor) => {
-      const asset = `${channelId(neighbor)}/segment.m4s`;
-      return [asset, backend.state.assetCompletions.filter((candidate) => candidate === asset).length];
-    }),
-  );
+const adjacentWarmCounts = (page: Page, number: number): Promise<ReadonlyMap<number, number>> =>
+  Promise.all(
+    adjacentNumbers(number).map(async (neighbor) => [neighbor, await latestWarmAt(page, neighbor)] as const),
+  ).then((entries) => new Map(entries));
 
 const playbackSnapshot = async (page: Page, channel: string, since: number) =>
   page.locator("video").evaluate(
@@ -323,7 +321,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await waitForDecodedFrame(page);
   await expect(page.locator("video")).toHaveCount(1);
   await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
-  await waitForAdjacentWarm(backend, 1);
+  await waitForAdjacentWarm(page, 1);
 
   // Arbitrary prepared tune: navigate the already-running app to a non-adjacent Channel. Measure
   // route request to a genuinely decoded frame, including SPA/API/HLS work but excluding the cold
@@ -337,7 +335,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     await expect(page.locator("video")).toHaveCount(1);
     // Keep arbitrary samples independent. Rapid sequential intent has its own adjacent and burst
     // gates below; this percentile starts after the previous Channel's bounded hot set has settled.
-    await waitForAdjacentWarm(backend, number);
+    await waitForAdjacentWarm(page, number);
   }
   expect(
     p95(arbitrary),
@@ -372,10 +370,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await expect(video).not.toHaveAttribute("poster", /^data:image\/png;base64,/);
 
   // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
-  const resetWarmCounts = adjacentWarmCounts(backend, 50);
+  const resetWarmCounts = await adjacentWarmCounts(page, 50);
   await page.goto(`/channels/${channelId(50)}/watch`);
   await waitForDecodedFrame(page);
-  await waitForAdjacentWarm(backend, 50, resetWarmCounts);
+  await waitForAdjacentWarm(page, 50, resetWarmCounts);
 
   await page.evaluate(() => {
     performance.clearMeasures("loomarr:tune:request-to-osd");
@@ -390,10 +388,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     const id = channelId(target);
     const targetMints = backend.state.playURLMints.filter((candidate) => candidate === id).length;
     const next = target === 100 ? 1 : target + 1;
-    const nextAsset = `${channelId(next)}/segment.m4s`;
-    const nextAssetCompletions = backend.state.assetCompletions.filter(
-      (candidate) => candidate === nextAsset,
-    ).length;
+    const nextWarmAt = await latestWarmAt(page, next);
 
     const previousFrames = await page.evaluate(
       () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
@@ -462,12 +457,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     );
     expect(backend.state.playURLMints.filter((candidate) => candidate === id)).toHaveLength(targetMints);
     await expect(page.locator("video")).toHaveCount(1);
-    // The frame makes this Channel active; its post-frame warmer must finish the next Channel
-    // before the following measured click. Count from this iteration so an identical request made
-    // during the arbitrary phase cannot masquerade as the current controller's warm.
-    await expect
-      .poll(() => backend.state.assetCompletions.filter((candidate) => candidate === nextAsset).length)
-      .toBeGreaterThan(nextAssetCompletions);
+    // The frame makes this Channel active; its post-frame warmer must consume the next Channel's
+    // response bodies before the following measured click. Observe the controller's completion
+    // seam rather than requiring another network request: a valid browser-cache hit is ready too.
+    await expect.poll(() => latestWarmAt(page, next)).toBeGreaterThan(nextWarmAt);
     current = target;
   }
 

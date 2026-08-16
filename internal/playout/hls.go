@@ -13,8 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // Direct-play HLS for internal playout (§9.1 Watch, V46).
@@ -651,9 +652,9 @@ func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
 // segments to disk, so unlike playout.Process it exposes stdin rather than stdout. Kept here
 // rather than generalizing Process, whose whole contract is "Stdout is the caller's to read".
 type hlsProcess struct {
-	cmd   *exec.Cmd
 	stdin io.WriteCloser
 	log   *slog.Logger
+	proc  *proctree.Supervisor
 	done  chan struct{}
 
 	mu       sync.Mutex
@@ -664,12 +665,12 @@ type hlsProcess struct {
 
 func (p *hlsProcess) closeStdin() error { return p.stdin.Close() }
 func (p *hlsProcess) wait() error {
-	p.waitOnce.Do(func() { p.waitErr = p.cmd.Wait() })
+	p.waitOnce.Do(func() { p.waitErr = p.proc.Wait() })
 	return p.waitErr
 }
 
-func newHLSProcess(cmd *exec.Cmd, stdin io.WriteCloser, log *slog.Logger) *hlsProcess {
-	p := &hlsProcess{cmd: cmd, stdin: stdin, log: log, done: make(chan struct{})}
+func newHLSProcess(proc *proctree.Supervisor, stdin io.WriteCloser, log *slog.Logger) *hlsProcess {
+	p := &hlsProcess{proc: proc, stdin: stdin, log: log, done: make(chan struct{})}
 	go func() {
 		_ = p.wait()
 		close(p.done)
@@ -708,12 +709,11 @@ func (p *hlsProcess) readStderr(r io.Reader) {
 }
 
 // startHLSFFmpeg launches the DIRECT-PLAY repackager: one ffmpeg reading the shared MPEG-TS on
-// stdin and stream-COPYING it into a live HLS playlist (hlsArgs). In its own process group so
-// teardown signals the whole tree, exactly like Process.
+// stdin and stream-COPYING it into a live HLS playlist (hlsArgs). Under the same platform
+// process-tree owner as Process, so cancellation cannot orphan a helper.
 func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
 	args := hlsArgs(dir, plan)
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // args built here, never user text
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd := exec.Command(bin, args...) //nolint:gosec // args built here, never user text
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -724,11 +724,12 @@ func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *
 		return nil, fmt.Errorf("hls: stderr pipe: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
+	supervised, err := proctree.Start(ctx, cmd)
+	if err != nil {
 		_ = stdin.Close()
 		return nil, fmt.Errorf("hls: start ffmpeg: %w", err)
 	}
-	p := newHLSProcess(cmd, stdin, log)
+	p := newHLSProcess(supervised, stdin, log)
 	go p.readStderr(stderr)
 	return p, nil
 }

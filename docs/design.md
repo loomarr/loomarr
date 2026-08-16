@@ -194,6 +194,8 @@ flowchart TD
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
+- **`proctree`** · 2 importers
+  Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`settings`** · 1 importer
@@ -216,12 +218,12 @@ flowchart TD
 
 - **`images`** · 4 importers · → `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`playout`** · 4 importers · → `prepared`, `provision`, `schedule`
+- **`playout`** · 4 importers · → `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 
 **Layer 3**
 
-- **`mediatools`** · 2 importers · → `playout`
+- **`mediatools`** · 2 importers · → `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
   Loomarr's Prometheus surface (design §7 /metrics, §17).
@@ -792,7 +794,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/system/llm/discover` | The **downloadable** local models that are **compatible with this machine**, ranked best-first (admin, §8.1). Takes the most-popular GGUF repos from a live source (Hugging Face, §14), sizes each against detected VRAM (the repo's Q4_K_M-class build — what Ollama's `latest` resolves to and what actually downloads), drops repos too big for the machine, and returns each with a bare `pullRef` (`hf.co/<repo>`, implicit `:latest`) to hand to `/pull`. Tool-capability is confirmed only **after** pull + probe. No keyword — it's the compatible set. Best-effort — a source outage returns an empty list (browse on huggingface.co instead), never a 5xx. |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB. Any authenticated user. Clips are not a scope — see §7.2; use `/v1/filler?q=`. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
-| POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down playout sessions by process group, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, works identically on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
+| POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down every playout process tree, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, with the same lifecycle guarantee on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
 | GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any boot-time setting is pending (`restartRequired`). |
 | GET | `/v1/system/services` | The Dashboard's **Services** panel (admin, §12, V31): one row per configured integration with its probe result and the **target** it was probed against, plus a `loomarr` row carrying version/backend/schema. Runs the **same `runConnectionChecks`** the wizard checklist and `/v1/system/reload` use — one probe implementation, asserted by a test, so three surfaces cannot disagree about whether Emby is reachable. |
 | GET | `/v1/activity?limit=` | The Dashboard's **Recent activity** feed (admin, §12, V32), newest first. Reads the persisted `activity` table (§5) rather than the SSE bus, so the feed survives a restart and is not subject to the bus's deliberate lossiness. |
@@ -1411,20 +1413,25 @@ contend with the active Channel's cold open and seek.
 
 The Web adapter keeps a bounded pair of hls.js controllers while the mounted Watch surface retains
 its one media element and decoder: one active controller and one fresh standby that has never owned
-a source URL. A same-element replacement consumes that standby and uses hls.js's public
-cross-controller handoff to transfer the reusable MediaSource — `open`, or `ended` after a complete
-prepared publication — and compatible SourceBuffers from the active controller, then clears the old
-ranges. The adapter stops the outgoing loader and pauses the media element before transferring those
-buffers; the Watch surface's held poster preserves the last decoded picture while the decoder gives
-up its lease on the old range. It parks the paused element at the half-open buffered range's end and
-allows one render turn before removal, preventing WebKit from holding `SourceBuffer.remove` until a
-compact outgoing publication's natural end. The standby disables automatic media loading and
-remains source-empty while that clear is in flight. The element stays at that outgoing edge until
-every removal reaches `updateend`; rewinding into the range being removed can hold WebKit's decoder
-on those bytes and turn a cached tune into a multi-second stall. After confirming that generation is
-still current, the adapter rewinds, attaches the cleared handoff, arms target-frame observation,
-loads the replacement source, queues its playback join, and then explicitly starts media loading; MSE reopens an ended
-source on that mutation. This attach-before-source order is hls.js's transfer contract: parsing on a detached
+a source URL. A same-element replacement consumes that standby. While the outgoing MediaSource is
+still `open`, the adapter uses hls.js's public cross-controller handoff to transfer it and its
+compatible SourceBuffers, then clears the old Channel-relative ranges. It stops the outgoing loader
+and pauses the media element before transferring those buffers; the Watch surface's held poster
+preserves the last decoded picture while the decoder gives up its lease on the old range. It parks
+the paused element at the half-open buffered range's end and allows one render turn before removal.
+The element stays at that edge until every removal reaches `updateend`; rewinding into the range
+being removed can hold WebKit's decoder on those bytes and turn a cached tune into a multi-second
+stall.
+
+An `ended` compact publication takes the other bounded branch: the source-scoped standby attaches a
+fresh MediaSource to the same element instead of waiting on `SourceBuffer.remove`. WebKit can retain
+the terminal decoded frame of an ended source for roughly two seconds even after pause, edge-seek,
+and a render turn; reusing that ended SourceBuffer therefore misses the tuner latency contract. This
+branch creates no second player or decoder, and the held poster still covers the single-element
+handoff. Closed sources and failed open-source clears use the same fresh branch. After confirming
+that the generation is still current, the adapter rewinds, attaches the cleared open handoff or the
+fresh element, arms target-frame observation, loads the replacement source, queues its playback
+join, and then explicitly starts media loading. This attach-before-source order is hls.js's transfer contract: parsing on a detached
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. Arming after attachment but before loading means the observer cannot
 attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
@@ -1797,13 +1804,20 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
    restart UI must say so rather than inherit the old reassurance.
 
    ⚠ **The honest copy is PER-BACKEND, not a flat reversal** (recorded during V16, when the
-   telemetry made the mechanism concrete). ffmpeg is spawned as a child of Loomarr with
-   `Setpgid` and torn down by process group, so a restart kills every stream Loomarr is
-   encoding — while Tunarr-backed channels genuinely do keep playing, exactly as the old copy
-   said. Since `policy.playout.backend` is per channel, an install can have both at once. The
+   telemetry made the mechanism concrete). ffmpeg is spawned under one platform process-tree
+   owner — a Unix process group or a Windows Job Object — so a restart kills every helper and
+   stream Loomarr is encoding, while Tunarr-backed channels genuinely do keep playing, exactly as
+   the old copy said. Since `policy.playout.backend` is per channel, an install can have both at once. The
    restart dialog (V13) therefore needs the live session count, which `GET /v1/playout/sessions`
    now provides: *"3 channels Loomarr is streaming will drop for a few seconds; Tunarr-backed
    channels keep playing."*
+
+   **Tree ownership is one process primitive, not a playout-only convention.** The channel
+   encoder, its HLS remux, and filler's bounded ffmpeg transcodes all enter the same supervisor;
+   cancellation, a natural parent crash, and in-process restart therefore sweep descendants with
+   the same Unix-group / Windows-Job-Object guarantee. A direct `exec.CommandContext` around a
+   lifecycle-owned encoder or ingest transcode is a violation because it kills only the immediate
+   child.
 
 ### 9.2 Restarting in place (V13)
 
@@ -3338,7 +3352,7 @@ would show a queue that is silently missing steps. Every `filler_clip` frame is 
 is the truth on reconnect.
 
 ⚠ **Only one stage reports a real percentage.** The transcode stage reads ffmpeg's
-`-progress pipe:3` and the clip's duration is already known, so `outTime / duration` is exact and
+`-progress pipe:1` and the clip's duration is already known, so `outTime / duration` is exact and
 free. Whisper and an LLM turn are single opaque calls: interpolating a bar over them would be the
 fabricated-progress failure the database-migration frame already warns about. Other stages report
 **step boundaries** where genuine sub-steps exist and 0-then-100 where they do not. **A running
@@ -4471,6 +4485,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
+| Windows process trees | **`golang.org/x/sys/windows`** (already in the resolved graph, promoted to direct) | The standard library can create a Windows process group but cannot own or terminate its descendant tree. Job Objects provide the Unix-process-group invariant required by §9.1 without a shell helper or supervisor. |
 | OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
@@ -4557,7 +4572,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **41 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **42 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -4606,6 +4621,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `media` | Host-wide admission for hardware media work, shared by foreground playout and background preparation (§9.1 V56) |
+| `proctree` | Owns complete child-process trees across Unix process groups and Windows Job Objects (§9.1) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
