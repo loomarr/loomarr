@@ -82,14 +82,6 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 	return catalog.Presence{LibraryItemID: d.ID, OfficialRating: d.OfficialRating, Genres: d.Genres}, true, nil
 }
 
-// mapIntent converts the corpus Intent to a suggest.Intent.
-func mapIntent(i Intent) suggest.Intent {
-	return suggest.Intent{
-		Description: i.Description, Era: i.Era, Tone: i.Tone, RuntimeTgt: i.RuntimeTgt,
-		MustInclude: i.MustInclude, MustExclude: i.MustExclude, MaxAcquire: i.MaxAcquire,
-	}
-}
-
 // Result is the scored outcome of one case.
 type Result struct {
 	Case         string
@@ -127,6 +119,14 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if groundErr != nil {
 		return []string{fmt.Sprintf("grounding failed: %v", groundErr)}
 	}
+	// Every successful semantic case carries the same no-fabrication invariant as the
+	// adversarial case. Template certification is not meaningful if a non-empty lineup
+	// can pass without real external identity.
+	for _, it := range allItems(prop) {
+		if _, err := it.Key(); err != nil {
+			f = append(f, fmt.Sprintf("FABRICATION: grounded item %q has no resolvable id: %v", it.Name, err))
+		}
+	}
 
 	if len(prop.Lineup) < c.MinLineup {
 		f = append(f, fmt.Sprintf("lineup %d < required %d", len(prop.Lineup), c.MinLineup))
@@ -134,8 +134,14 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if len(prop.Acquisitions) < c.MinAcquisitions {
 		f = append(f, fmt.Sprintf("acquisitions %d < required %d", len(prop.Acquisitions), c.MinAcquisitions))
 	}
-	if c.ExpectCeiling != "" && string(prop.Policy.Audience.Ceiling) != c.ExpectCeiling {
-		f = append(f, fmt.Sprintf("expected ceiling %q, extracted %q", c.ExpectCeiling, prop.Policy.Audience.Ceiling))
+	if c.ExpectCeiling != "" {
+		got := prop.Policy.Audience.Ceiling
+		want := schedule.NormalizeRating(c.ExpectCeiling)
+		// TV-14 and PG-13 are different labels at the same ladder rung. Certification
+		// cares that the promised ceiling is enforced, not which rating system names it.
+		if got == "" || !ratingAtOrBelow(got, want) || !ratingAtOrBelow(want, got) {
+			f = append(f, fmt.Sprintf("expected ceiling equivalent to %q, extracted %q", c.ExpectCeiling, got))
+		}
 	}
 	if c.ExpectSeasonalMode != "" && string(prop.Policy.Seasonal.Mode) != c.ExpectSeasonalMode {
 		f = append(f, fmt.Sprintf("expected seasonal mode %q, extracted %q", c.ExpectSeasonalMode, prop.Policy.Seasonal.Mode))

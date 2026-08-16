@@ -37,7 +37,7 @@ func TestEvalCorpus(t *testing.T) {
 	for _, c := range Corpus {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
-			prop, gerr := sug.Suggest(ctx, mapIntent(c.Intent))
+			prop, gerr := sug.Suggest(ctx, c.Intent)
 			res := Result{
 				Case: c.Name, Lineup: len(prop.Lineup), Acquisitions: len(prop.Acquisitions),
 				Ceiling: string(prop.Policy.Audience.Ceiling), ThemeFit: prop.Scores.ThemeFit,
