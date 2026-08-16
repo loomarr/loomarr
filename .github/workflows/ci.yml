@@ -145,6 +145,25 @@ jobs:
       - name: Worktree isolation, claims, leases, and process ownership
         run: make agent-harness-test
 
+  windows-playout:
+    name: Windows playout process tree
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # Linux's permanent cross-compile gate catches accidental Unix-only fields in generic
+      # files. This native runner proves the Windows-only Job Object adapter actually assigns,
+      # resumes, cancels, and reaps a descendant process rather than merely compiling.
+      - name: Job Object owns the complete ffmpeg-shaped process tree
+        run: go test ./internal/playout -run '^(TestCombinedProgressPreservesDiagnostics|TestProcessProgressTransport|TestProcessTree.*)$' -count=1
+      - name: Complete Windows binary builds
+        run: go build -o "${{ runner.temp }}\loomarr.exe" ./cmd/loomarr
+
   go:
     name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes

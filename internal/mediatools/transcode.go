@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // Mezzanine transcoding (§10 V51b) — every clip is re-encoded once, to one profile, so that
@@ -106,10 +107,11 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	// Detector facts share this encode. `-v info` is required because the three filters report on
 	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
 	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
-	// ⚠ fd 3 carries the progress stream. `-progress pipe:3` keeps it OFF stderr, which is where
+	// ⚠ stdout carries the progress stream. `-progress pipe:1` keeps it OFF stderr, which is where
 	// ffmpeg also writes real errors — scraping the two out of one stream is what viewra did, and
-	// a chunked read there can split a token across the buffer boundary.
-	args = append(args, "-progress", "pipe:3")
+	// a chunked read there can split a token across the buffer boundary. This also works on Windows,
+	// where Go deliberately does not support Cmd.ExtraFiles.
+	args = append(args, "-progress", "pipe:1")
 	args = append(args, "-i", req.In)
 
 	p := req.Profile
@@ -150,14 +152,18 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	// reading to the end of the file.
 	args = append(args, "-movflags", "+faststart", "-y", tmp)
 
-	cmd := exec.CommandContext(ctx, FFmpegOr(req.FFmpegPath), args...)
+	cmd := exec.Command(FFmpegOr(req.FFmpegPath), args...) //nolint:gosec // args are built by this package
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	pr, pw, err := os.Pipe()
+	progress, err := cmd.StdoutPipe()
 	if err != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: progress pipe: %w", filepath.Base(req.In), err)
 	}
-	cmd.ExtraFiles = []*os.File{pw} // becomes fd 3 in the child
+	supervised, err := proctree.Start(ctx, cmd)
+	if err != nil {
+		_ = progress.Close()
+		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), err, stderr.String())
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -165,7 +171,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		// ⚠ The SHARED parser (`playout.ReadProgress`), not a second copy. `out_time_ms` reports
 		// microseconds despite its name, and that is exactly the kind of fact that gets fixed in
 		// one copy and not the other.
-		playout.ReadProgress(pr, func(sample playout.Progress) {
+		playout.ReadProgress(progress, func(sample playout.Progress) {
 			if onProgress == nil || req.DurationMs <= 0 {
 				return
 			}
@@ -182,9 +188,11 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		})
 	}()
 
-	runErr := cmd.Run()
-	_ = pw.Close() // unblocks the reader; the child no longer holds fd 3
+	runErr := supervised.Wait()
 	<-done
+	if supervised.Stopped() && ctx.Err() != nil {
+		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), ctx.Err(), stderr.String())
+	}
 	if runErr != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), runErr, stderr.String())
 	}
