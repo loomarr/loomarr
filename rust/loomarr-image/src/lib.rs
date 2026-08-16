@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::fs::{self, OpenOptions};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
