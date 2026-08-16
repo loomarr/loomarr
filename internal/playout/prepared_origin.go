@@ -2,6 +2,7 @@ package playout
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -112,8 +113,8 @@ func (o *PreparedOrigin) OpenAsset(_ string, _ EncodePlan, rel string) (Asset, b
 	if o == nil || o.library == nil {
 		return Asset{}, false, nil
 	}
-	key, name, ok := strings.Cut(rel, "/")
-	if !ok || key == "" || name == "" {
+	key, name, ok := parsePreparedAssetToken(rel)
+	if !ok {
 		return Asset{}, false, nil
 	}
 	asset, ok, err := o.library.Open(key, name)
@@ -302,5 +303,35 @@ func preparedAssetURI(raw, key string, declared map[string]struct{}) (string, er
 	if _, ok := declared[clean]; !ok {
 		return "", fmt.Errorf("playout: prepared manifest references undeclared asset %q", clean)
 	}
-	return key + "/" + clean, nil
+	return preparedAssetToken(key, clean), nil
+}
+
+// Prepared HLS assets must fit the API's single `{asset}` path segment. Encoding the immutable
+// publication key and its validated relative file together avoids a wildcard route (which OpenAPI
+// cannot describe portably) while preserving the publication binding across airing changes.
+const preparedAssetTokenPrefix = "p-"
+
+func preparedAssetToken(key, name string) string {
+	payload := key + "\x00" + name // NUL cannot occur in a filesystem path.
+	// Retain only the extension outside the opaque payload so the transport adapter can emit the
+	// correct HLS content type without learning how publication tokens are encoded.
+	return preparedAssetTokenPrefix + base64.RawURLEncoding.EncodeToString([]byte(payload)) + path.Ext(name)
+}
+
+func parsePreparedAssetToken(token string) (key, name string, ok bool) {
+	if !strings.HasPrefix(token, preparedAssetTokenPrefix) {
+		return "", "", false
+	}
+	encoded := strings.TrimPrefix(token, preparedAssetTokenPrefix)
+	extension := ""
+	if dot := strings.LastIndexByte(encoded, '.'); dot >= 0 {
+		extension = encoded[dot:]
+		encoded = encoded[:dot]
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", "", false
+	}
+	key, name, ok = strings.Cut(string(payload), "\x00")
+	return key, name, ok && key != "" && name != "" && path.Ext(name) == extension
 }

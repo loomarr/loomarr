@@ -222,9 +222,20 @@ func (l *Library) Lookup(spec Specification) (Publication, bool, error) {
 }
 
 // Peek checks completeness without advancing playback LRU. The readiness scheduler uses it while
-// building a plan; only manifests/assets actually served to a viewer count as use.
+// building a plan; only manifests/assets actually served to a viewer count as use. Unlike Lookup,
+// Peek is non-blocking: an in-progress publication is still invisible, so a tune-time probe must
+// report a miss and use live fallback rather than wait for a background encode to finish.
 func (l *Library) Peek(spec Specification) (Publication, bool, error) {
-	return l.lookup(spec, false)
+	key, err := keyFor(spec)
+	if err != nil {
+		return Publication{}, false, err
+	}
+	unlock, ok := l.tryLock(key)
+	if !ok {
+		return Publication{}, false, nil
+	}
+	defer unlock()
+	return l.lookupKey(key, spec, false)
 }
 
 func (l *Library) lookup(spec Specification, touch bool) (Publication, bool, error) {
@@ -478,4 +489,33 @@ func (l *Library) lock(key string) func() {
 		}
 		l.mu.Unlock()
 	}
+}
+
+// tryLock takes a publication-key lock only when it is immediately available. The key-lock map's
+// own mutex stays held across TryLock so a zero-ref lock cannot be deleted between discovery and
+// acquisition. This is the tune-safe counterpart to lock: callers that may build, prune, or open
+// committed bytes wait; a readiness probe treats work still being staged as absent.
+func (l *Library) tryLock(key string) (func(), bool) {
+	l.mu.Lock()
+	kl := l.locks[key]
+	if kl == nil {
+		kl = &keyLock{}
+		l.locks[key] = kl
+	}
+	if !kl.mu.TryLock() {
+		l.mu.Unlock()
+		return nil, false
+	}
+	kl.refs++
+	l.mu.Unlock()
+
+	return func() {
+		kl.mu.Unlock()
+		l.mu.Lock()
+		kl.refs--
+		if kl.refs == 0 {
+			delete(l.locks, key)
+		}
+		l.mu.Unlock()
+	}, true
 }

@@ -51,8 +51,8 @@ func (c *rotatingCycle) asks() int {
 
 // THE DEFECT THIS CLOSES: the guide resolved ONE cycle at `from` and looped it across the whole
 // requested span, so everything past the first rolling-window boundary forecast a rotation that
-// will never happen. The encoder never had this problem — AiringNow resolves at NOW, so every
-// programme it spawns asks again — which is precisely how the two came to disagree.
+// will never happen. Reconciliation commits each new window for AiringNow; the guide must forecast
+// the same later arrangements before they are committed.
 //
 // Measured on a live 27-title channel at the same instant 24h out: the guide advertised RoboCop /
 // The Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon /
@@ -109,5 +109,31 @@ func TestSegmentedBroadcasts_IsBoundedBySegmentCap(t *testing.T) {
 	}
 	if got := eng.asks(); got > maxGuideSegments {
 		t.Fatalf("CyclePreview asked %d times, want <= %d (the cap is not holding)", got, maxGuideSegments)
+	}
+}
+
+// The guide's CURRENT block is observed broadcast state, not a forecast. Refreshing its forecast
+// cache must therefore never replace the block a viewer is actually watching. Future rolling
+// windows may still be previewed; the window containing now comes from the same persisted cycle as
+// AiringNow.
+func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testing.T) {
+	now := time.Date(2026, time.August, 15, 13, 30, 0, 0, time.UTC)
+	eng := &rotatingCycle{window: 24 * time.Hour}
+	accepted := &stubChannels{}
+	accepted.ch.Desired = []schedule.Slot{{
+		Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:accepted"),
+		Title: "accepted broadcast", LibraryItemID: "accepted", DurationMs: (24 * time.Hour).Milliseconds(),
+	}}
+	r := &playoutResolver{engine: eng, channels: accepted, now: func() time.Time { return now }}
+
+	from := now.Add(-time.Hour)
+	bs, err := r.segmentedBroadcasts(
+		context.Background(), "ch1", from, now.Add(time.Hour), playout.BroadcastsBetween,
+	)
+	if err != nil {
+		t.Fatalf("segmentedBroadcasts: %v", err)
+	}
+	if len(bs) == 0 || bs[0].Title != "accepted broadcast" {
+		t.Fatalf("current guide = %+v, want the persisted accepted broadcast", bs)
 	}
 }

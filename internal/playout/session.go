@@ -107,7 +107,7 @@ type Session struct {
 	encoder Encoder
 
 	mu      sync.Mutex
-	viewers map[int]chan []byte
+	viewers map[int]sessionViewer
 	nextID  int
 	// last is the most recent progress sample from the CURRENT program's encoder (see
 	// `encoder` above for why it is not the session's own process). The parser has always run
@@ -257,6 +257,40 @@ const DefaultGrace = 30 * time.Second
 // decrements the refcount, and a leaked viewer keeps a channel encoding forever.
 func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan) (<-chan []byte, func(), error) {
 	key := sessionKey{channel: channelID, plan: plan}
+	for {
+		s, err := m.acquire(ctx, key)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ch, detach, ok := s.addViewer(); ok {
+			return ch, detach, nil
+		}
+		m.discardClosed(key, s)
+	}
+}
+
+// AttachSink registers an in-process consumer directly in the session fan-out. It exists for the
+// HLS remux, whose input must absorb ffmpeg's finite readrate startup burst without crossing the
+// eight-chunk mailbox intended for network viewers. The sink's offer is synchronous and must stay
+// non-blocking; returning false drops only that sink, preserving the channel for every other viewer.
+func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (func(), error) {
+	key := sessionKey{channel: channelID, plan: plan}
+	for {
+		s, err := m.acquire(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if detach, ok := s.addSink(sink); ok {
+			return detach, nil
+		}
+		m.discardClosed(key, s)
+	}
+}
+
+// acquire finds or starts the one session for a channel/plan. Viewer registration is deliberately
+// outside this method so byte-channel viewers and the in-process HLS sink share all admission,
+// spawn-race, grace, and failure handling rather than growing two subtly different managers.
+func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error) {
 
 	// ⚠ **The find-or-create is atomic, but the SPAWN is not held under m.mu.** The lock protects
 	// only the map decision (reuse an existing session, or reserve a placeholder for a new one);
@@ -271,7 +305,12 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 	m.mu.Lock()
 	if s := m.sessions[key]; s != nil {
 		m.mu.Unlock()
-		return m.joinExisting(ctx, key, s)
+		<-s.ready
+		if s.initErr != nil {
+			m.discardFailed(key, s)
+			return m.acquire(ctx, key)
+		}
+		return s, nil
 	}
 	// Admission, not eviction (§9.1 V49 — COST-AWARE). The bound counts concurrent VIDEO TRANSCODES,
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
@@ -280,13 +319,13 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 	// ESTIMATED from the plan here (baseline→1, hevc→0) and corrected to the real cost on the first
 	// program report. Checked under the lock against the live committedCost so parallel starts cannot
 	// overshoot the budget.
-	newCost := plan.EstimatedCost()
+	newCost := key.plan.EstimatedCost()
 	if !Admit(m.budget(), m.committedCost, newCost) {
 		m.mu.Unlock()
-		return nil, nil, ErrAtCapacity
+		return nil, ErrAtCapacity
 	}
 	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
-	s := m.newPlaceholder(channelID, plan)
+	s := m.newPlaceholder(key.channel, key.plan)
 	s.cost = newCost
 	m.committedCost += newCost
 	m.sessions[key] = s
@@ -304,34 +343,30 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 			s.cost = 0
 		}
 		m.mu.Unlock()
-		return nil, nil, s.initErr
+		return nil, s.initErr
 	}
 	m.notifyChange()
-	ch, detach, _ := s.addViewer() // fresh, spawned session: cannot be closed yet
-	return ch, detach, nil
+	return s, nil
 }
 
-// joinExisting attaches to a session another caller created. If it is mid-spawn (a same-key viewer
-// that arrived a moment after the winner), we wait on its readiness rather than starting a second
-// encoder; if it turns out to have failed or is tearing down, we retry the whole find-or-create so
-// the caller still gets a working session.
-func (m *Manager) joinExisting(ctx context.Context, key sessionKey, s *Session) (<-chan []byte, func(), error) {
-	<-s.ready
-	if s.initErr != nil {
-		// The winner's spawn failed; it will remove itself. Retry from the top.
-		return m.Attach(ctx, key.channel, key.plan)
-	}
-	ch, detach, ok := s.addViewer()
-	if ok {
-		return ch, detach, nil
-	}
-	// Mid-teardown: drop it and start fresh rather than joining something dying.
+func (m *Manager) discardFailed(key sessionKey, s *Session) {
 	m.mu.Lock()
 	if m.sessions[key] == s {
 		delete(m.sessions, key)
+		m.committedCost -= s.cost
+		s.cost = 0
 	}
 	m.mu.Unlock()
-	return m.Attach(ctx, key.channel, key.plan)
+}
+
+func (m *Manager) discardClosed(key sessionKey, s *Session) {
+	m.mu.Lock()
+	if m.sessions[key] == s {
+		delete(m.sessions, key)
+		m.committedCost -= s.cost
+		s.cost = 0
+	}
+	m.mu.Unlock()
 }
 
 // newPlaceholder builds a Session whose encoder is not spawned yet. `ready` gates every viewer until
@@ -348,7 +383,7 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		// by s.closed), so forget runs exactly once — no double-subtract. forget does the notify.
 		onClosed:  func() { m.forget(key) },
 		startedAt: time.Now(),
-		viewers:   map[int]chan []byte{},
+		viewers:   map[int]sessionViewer{},
 		ready:     make(chan struct{}),
 	}
 }
@@ -460,18 +495,41 @@ func (s *Session) pump() {
 func (s *Session) broadcast(chunk []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, ch := range s.viewers {
-		select {
-		case ch <- chunk:
-		default:
+	for id, viewer := range s.viewers {
+		if !viewer.offer(chunk) {
 			if s.log != nil {
 				s.log.Debug("playout: dropping viewer that fell behind",
 					"channel", s.ChannelID, "viewer", id)
 			}
 			delete(s.viewers, id)
-			close(ch)
+			viewer.close()
 		}
 	}
+}
+
+// sessionViewer is the fan-out's private delivery contract. A network viewer uses a deliberately
+// tiny mailbox and returns false when stalled; the HLS relay implements the same interface with a
+// bounded lossless startup queue. broadcast therefore knows only the policy outcome, not buffering.
+type sessionViewer interface {
+	offer([]byte) bool
+	close()
+}
+
+type channelViewer struct{ chunks chan []byte }
+
+func (v *channelViewer) offer(chunk []byte) bool {
+	select {
+	case v.chunks <- chunk:
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *channelViewer) close() { close(v.chunks) }
+
+type sessionSink interface {
+	sessionViewer
 }
 
 // addViewer registers a viewer. Reports false if the session is already tearing down.
@@ -484,20 +542,35 @@ func (s *Session) addViewer() (<-chan []byte, func(), bool) {
 	id := s.nextID
 	s.nextID++
 	ch := make(chan []byte, viewerBuffer)
-	s.viewers[id] = ch
+	s.viewers[id] = &channelViewer{chunks: ch}
 
 	var once sync.Once
 	detach := func() { once.Do(func() { s.removeViewer(id) }) }
 	return ch, detach, true
 }
 
+func (s *Session) addSink(sink sessionSink) (func(), bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, false
+	}
+	id := s.nextID
+	s.nextID++
+	s.viewers[id] = sink
+
+	var once sync.Once
+	detach := func() { once.Do(func() { s.removeViewer(id) }) }
+	return detach, true
+}
+
 // removeViewer drops a viewer and arms the grace timer if it was the last one.
 func (s *Session) removeViewer(id int) {
 	s.mu.Lock()
-	ch, ok := s.viewers[id]
+	viewer, ok := s.viewers[id]
 	if ok {
 		delete(s.viewers, id)
-		close(ch)
+		viewer.close()
 	}
 	last := len(s.viewers) == 0 && !s.closed
 	s.mu.Unlock()
@@ -570,9 +643,9 @@ func (s *Session) close() {
 		return
 	}
 	s.closed = true
-	for id, ch := range s.viewers {
+	for id, viewer := range s.viewers {
 		delete(s.viewers, id)
-		close(ch)
+		viewer.close()
 	}
 	cancel := s.cancel
 	s.mu.Unlock()

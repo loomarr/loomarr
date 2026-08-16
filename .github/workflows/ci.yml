@@ -618,6 +618,36 @@ jobs:
           # are screenshots of a failing run, worthless once it is fixed.
           retention-days: 7
 
+  # Performance certification needs a clean, representative runner. This used to follow a full
+  # visual shard on Linux, where constrained Playwright WebKit can spend >1s replacing MediaSource
+  # on one persistent video even while fresh-element calibration looks fast. Keep the zero-retry
+  # matrix and absolute budgets, but run it natively on isolated macOS; shipping Safari still owns
+  # the maintainer soak, while this exercises the matching engine family and replacement lifecycle.
+  tuner:
+    name: Tuner — Chromium + Firefox + WebKit
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - run: make fe-install
+      - name: Install pinned browser engines
+        run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
+      - name: 100-Channel controller matrix
+        run: make tuner-e2e-host
+      - name: Keep tuner failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tuner-failures
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The single required check. ALWAYS runs, so branch protection has one status that is
   # reliably present whether the jobs above ran or skipped.
   #
@@ -728,7 +758,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, agent-harness-macos, go, store-postgres, frontend, playwright, image, docs]
+    needs: [changes, agent-harness-macos, go, store-postgres, frontend, playwright, tuner, image, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed
