@@ -60,6 +60,19 @@ Correctness remains owned by `make image-cert`; the benchmark never substitutes 
 - Adopt weighted permits only if the measured throughput and p95 interactive queue wait improve
   without breaching peak-RSS ceilings. Single-thread AVIF remains the default otherwise.
 
+**Checkpoint 4 decision:** retain one-thread AVIF and do not add weighted permits. The opt-in
+`make image-parallelism-bench` matrix invokes the release worker through the production manifest
+seam while varying only an explicit benchmark CLI argument. At equal CPU budgets the multi-process,
+one-thread shape delivered the highest aggregate throughput in every local 2/4/8-CPU profile. Three
+measured poster runs produced 15.57 versus 13.15 Images/min at 2 CPUs (2x1-thread versus 1x2-thread),
+27.71 versus 24.20 at 4 CPUs (4x1 versus 2x2), and 60.58 versus 47.02 at 8 CPUs (8x1 versus 4x2).
+Larger per-worker thread counts fell further. Per-Image output bytes also changed with the thread
+count (49,151 at one thread; 50,043 at two; 51,355 at four; 52,732 at eight), so adoption would
+require a recipe advance and cache-identity migration.
+Interactive queue wait is already held at zero while capacity is at least two by checkpoint 3's
+reserved slot, so a weighted policy cannot improve that admission result; it would add policy for a
+throughput loser. The production CLI and recipe remain unchanged.
+
 ### 5. Harden Rust dependency operations
 
 - Add Cargo update grouping and review policy, advisory/license checks, an explicit unsafe-code

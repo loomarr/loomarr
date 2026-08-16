@@ -194,7 +194,7 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build image-cert image-bench
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -223,7 +223,15 @@ image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE
 	  report="$${IMAGE_BENCH_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-benchmark.json}"; \
 	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-bench \
 	    --worker "$(BIN_DIR)/loomarr-image" --report "$$report" \
-	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}"
+	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}" \
+	    --workers "$${IMAGE_BENCH_WORKERS:-1}" \
+	    --avif-threads "$${IMAGE_BENCH_AVIF_THREADS:-1}"
+
+image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report_dir="$${IMAGE_BENCH_REPORT_DIR:-$$LOOMARR_ARTIFACT_DIR/image-parallelism}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" GO="$(GO)" \
+	    ./scripts/image-parallelism-bench.sh "$(BIN_DIR)/loomarr-image" "$$report_dir"
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
