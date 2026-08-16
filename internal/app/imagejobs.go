@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/activity"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/scheduler"
 )
@@ -32,7 +33,7 @@ const (
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
 // an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
-func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
+func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, layout filler.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return set.boolv("images.remote_fetch_enabled") },
 		func() int { return imageRemoteConcurrency },
@@ -51,7 +52,7 @@ func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images
 	// CLIPS table, which the image adapter deliberately knows nothing about.
 	reg.Add(images.AdoptJobSpec(images.NewAdoptJob(svc, artworkAdoptStore{
 		st:        st.st,
-		fillerDir: func() string { return set.str("filler.dir") },
+		fillerDir: layout.ClipDir(),
 	}, nil, log)))
 
 	// ⚠ `rec` may be nil (no store-backed activity feed), and NewGC takes the interface, so this

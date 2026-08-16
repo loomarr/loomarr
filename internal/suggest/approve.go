@@ -58,6 +58,8 @@ type ApproveStore interface {
 	CommitProposalApproval(ctx context.Context, commit store.ProposalApproval) (int, error)
 }
 
+type approvalCommit func(context.Context, store.ProposalApproval) (int, error)
+
 // ChannelBinder plans the local channel mutation that approval commits, then runs the
 // best-effort work that is only legal after that commit. *binder.Binder implements this
 // structurally; suggest declares the seam so it never imports binder back.
@@ -112,6 +114,24 @@ func (a *Approver) Approve(
 	p store.Proposal,
 	edit *ApprovalEdit,
 	approvedBy string,
+) (ApprovalResult, error) {
+	result, err := a.approveDurably(ctx, p, edit, approvedBy, a.store.CommitProposalApproval)
+	if err != nil {
+		return ApprovalResult{}, err
+	}
+	a.afterApprovalCommitted(ctx, result.ChannelID)
+	return result, nil
+}
+
+// approveDurably owns planning plus the one local commit but deliberately stops
+// before remote/post-commit work. Auto-approval injects the transaction-guarded
+// commit; both paths return only after requester ordering has been released.
+func (a *Approver) approveDurably(
+	ctx context.Context,
+	p store.Proposal,
+	edit *ApprovalEdit,
+	approvedBy string,
+	commit approvalCommit,
 ) (ApprovalResult, error) {
 	if p.Status != "submitted" {
 		return ApprovalResult{}, ErrNotSubmitted
@@ -219,7 +239,7 @@ func (a *Approver) Approve(
 		if err != nil {
 			return ApprovalResult{}, fmt.Errorf("approve: plan channel: %w", err)
 		}
-		enqueued, err = a.store.CommitProposalApproval(ctx, store.ProposalApproval{
+		enqueued, err = commit(ctx, store.ProposalApproval{
 			Proposal: p,
 			Titles:   titles,
 			Channel:  ch,
@@ -235,11 +255,14 @@ func (a *Approver) Approve(
 		}
 	}
 
+	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
+}
+
+func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string) {
 	// Codec probing and the immediate Tunarr push are explicitly post-commit. The planned channel
 	// is already due for the durable sweep, so this best-effort continuation can never turn a
 	// successful local approval into an error or strand an approved proposal without a channel.
-	a.channels.AfterApprovalCommitted(ctx, ch.ID)
-	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
+	a.channels.AfterApprovalCommitted(ctx, channelID)
 }
 
 // applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
@@ -332,9 +355,10 @@ func NewAcquisitions(ctx context.Context, st TitleReader, p store.Proposal) (int
 	return count, nil
 }
 
-// The real store must satisfy both slices. Asserted here so a signature change fails the
+// The real store must satisfy these slices. Asserted here so a signature change fails the
 // BUILD rather than at the one call site that happens to wire it.
 var (
-	_ ApproveStore = (store.Store)(nil)
-	_ QuotaStore   = (store.Store)(nil)
+	_ ApproveStore         = (store.Store)(nil)
+	_ QuotaStore           = (store.Store)(nil)
+	_ guardedApprovalStore = (store.Store)(nil)
 )

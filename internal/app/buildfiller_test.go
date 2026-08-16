@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/testkit"
@@ -33,6 +37,40 @@ func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
 	}
 	if client.FillerClipReads != 1 {
 		t.Fatalf("enabled adapter made %d calls, want 1", client.FillerClipReads)
+	}
+}
+
+func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	t.Setenv("LOOMARR_YTDLP_ARGS", argsFile)
+	ytdlp := testkit.Executable(t, "yt-dlp", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$LOOMARR_YTDLP_ARGS\"\n")
+	ffmpeg := testkit.Executable(t, "ffmpeg", "#!/bin/sh\nexit 0\n")
+	clipDir := filepath.Join(t.TempDir(), "clips")
+	watchDir := filepath.Join(t.TempDir(), "incoming")
+	layout, err := filler.NewLayout(clipDir, watchDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := visionSet(t, map[string]string{
+		"ingest.ytdlp_path":  ytdlp,
+		"ingest.ffmpeg_path": ffmpeg,
+	})
+	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if fetcher == nil {
+		t.Fatal("buildFetcher returned nil with both tools configured")
+	}
+	fetcher.Run(context.Background(), []clipfetch.Source{{Kind: clipfetch.YouTube, URL: "https://example.invalid/video"}})
+
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := string(raw)
+	if !strings.Contains(args, watchDir+"/%(title)s [%(id)s].%(ext)s") {
+		t.Errorf("yt-dlp args = %q, want output under applied watch %q", args, watchDir)
+	}
+	if strings.Contains(args, clipDir+"/%(title)s") {
+		t.Errorf("yt-dlp args = %q, unexpectedly write raw arrivals into clip library %q", args, clipDir)
 	}
 }
 
@@ -125,7 +163,7 @@ func TestFillerTagger_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	provider, _ := buildTagger(nil, set, nil)
+	provider, _ := buildTagger(nil, set, filler.Layout{}, nil)
 	if provider == nil {
 		t.Fatal("tagger provider is nil for configured OpenRouter")
 	}

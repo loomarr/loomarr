@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -19,11 +20,12 @@ import (
 var envLookup = os.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root
-// reads settings the way it used to read cfg.X — but every read now resolves
-// env > db > default through the live snapshot (config-design §3). Connection
-// getters are returned as closures so adapters read them PER CALL (hot-apply).
+// reads settings the way it used to read cfg.X. Reads resolve env > db > default
+// through the live snapshot unless freeze pins a generation-scoped key. Connection
+// getters are returned as closures so adapters read them per operation.
 type resolved struct {
-	svc *settings.Service
+	svc    *settings.Service
+	frozen map[string]settings.Resolved
 }
 
 type generatedSecretValues interface {
@@ -69,26 +71,35 @@ func currentGeneratedSecret(
 // not — the first unguarded read panicked during BuildHandler, so a misconfigured
 // container crash-looped instead of answering the probe that would have explained it.
 // An unset key already resolves to a zero value; an absent service is the same answer.
-func (r resolved) str(key string) string {
+func (r resolved) value(key string) any {
+	if value, ok := r.frozen[key]; ok {
+		return value.Value
+	}
 	if r.svc == nil {
+		return nil
+	}
+	return r.svc.Resolve(key).Value
+}
+
+func (r resolved) str(key string) string {
+	value := r.value(key)
+	if value == nil {
 		return ""
 	}
-	return r.svc.String(key)
+	str, ok := value.(string)
+	if !ok {
+		panic(fmt.Sprintf("app.resolved.str: %s is %T, not string", key, value))
+	}
+	return str
 }
 func (r resolved) dur(key string) time.Duration {
-	if r.svc == nil {
-		return 0
-	}
-	if d, ok := r.svc.Resolve(key).Value.(time.Duration); ok {
+	if d, ok := r.value(key).(time.Duration); ok {
 		return d
 	}
 	return 0
 }
 func (r resolved) intv(key string) int {
-	if r.svc == nil {
-		return 0
-	}
-	if n, ok := r.svc.Resolve(key).Value.(int); ok {
+	if n, ok := r.value(key).(int); ok {
 		return n
 	}
 	return 0
@@ -105,25 +116,60 @@ func (r resolved) boolOn(key string) bool {
 	if r.svc == nil {
 		return true
 	}
-	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
+	if b, ok := r.value(key).(bool); ok {
 		return b
 	}
 	return true
 }
 
 func (r resolved) boolv(key string) bool {
-	if r.svc == nil {
-		return false
-	}
-	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
+	if b, ok := r.value(key).(bool); ok {
 		return b
 	}
 	return false
 }
 
-// libraryConn is the media-server connection provider (url, token) read per call.
-func (r resolved) libraryConn() func() (string, string) {
-	return func() (string, string) { return r.str("library.url"), r.str("library.token") }
+// freeze captures a coherent generation-scoped snapshot. Persistence remains
+// live in the service, but every typed read through the returned facade keeps
+// the applied values until the next application generation is constructed.
+func (r resolved) freeze(keys ...string) (resolved, map[string]string) {
+	if r.svc == nil || len(keys) == 0 {
+		return r, nil
+	}
+	values := r.svc.ResolveMany(keys...)
+	frozen := make(map[string]settings.Resolved, len(r.frozen)+len(values))
+	for key, value := range r.frozen {
+		frozen[key] = value
+	}
+	applied := make(map[string]string, len(values))
+	for key, value := range values {
+		frozen[key] = value
+		applied[key] = settings.ValueString(value.Value)
+	}
+	r.frozen = frozen
+	return r, applied
+}
+
+// libraryConnection resolves one coherent media-server connection. Flavor, URL,
+// and token are coupled security inputs: reading them independently could send a
+// credential to the wrong server or select the wrong authentication header while
+// an admin saves a replacement connection.
+func (r resolved) libraryConnection() library.Connection {
+	if r.svc == nil {
+		return library.Connection{}
+	}
+	return r.svc.LibraryConnection()
+}
+
+// libraryConn is the dynamic provider shared by every always-wired library
+// adapter. The library module invokes it once at the start of an operation.
+func (r resolved) libraryConn() library.ConnectionSource {
+	return r.libraryConnection
+}
+
+func (r resolved) libraryConfigured() bool {
+	_, err := r.libraryConnection().Validate()
+	return err == nil
 }
 
 // seerrConn is the Seerr connection provider.
