@@ -129,6 +129,14 @@ title list. Connectivity and tool-capability probes are prerequisites, not subst
 green while template certification fails. The run must be explicit because a hosted provider can
 cost money; setup/status polling and ordinary health checks never invoke it.
 
+`make eval-templates` writes a versioned, non-secret JSON scorecard to
+`$LOOMARR_EVAL_OUT`, or `$LOOMARR_ARTIFACT_DIR/template-certification.json` when the explicit output
+is unset. Its run evidence contains the declared provider, selected model, UTC timestamp, and a
+catalog identity plus SHA-256 fingerprint derived from the sanitized Library endpoint/flavor and
+the fixed TMDB catalog identity. It never contains API keys, Library tokens, URL user-info, or query
+values. The scorecard is external certification evidence, not application state: merely having a
+file cannot make the runtime `semanticallyCertified` flag true.
+
 ## Fixtures
 
 Fixtures in `internal/testkit/fixtures/` are captures with source-version comments. Write

@@ -84,14 +84,14 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case         string
-	Failures     []string // deterministic gate failures (empty = passed the hard gates)
-	ThemeFit     float64
-	Lineup       int
-	Acquisitions int
-	Ceiling      string  // the extracted policy ceiling
-	JudgeScore   float64 // -1 when the judge didn't run
-	JudgeNote    string
+	Case         string   `json:"case"`
+	Failures     []string `json:"failures"` // deterministic gate failures (empty = passed the hard gates)
+	ThemeFit     float64  `json:"themeFit"`
+	Lineup       int      `json:"lineup"`
+	Acquisitions int      `json:"acquisitions"`
+	Ceiling      string   `json:"ceiling"`    // the extracted policy ceiling
+	JudgeScore   float64  `json:"judgeScore"` // -1 when the judge didn't run
+	JudgeNote    string   `json:"judgeNote"`
 }
 
 func (r Result) Passed() bool { return len(r.Failures) == 0 }

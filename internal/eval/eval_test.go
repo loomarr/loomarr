@@ -4,7 +4,6 @@ package eval
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -26,6 +25,7 @@ func TestEvalCorpus(t *testing.T) {
 	if err != nil {
 		t.Skipf("eval not configured: %v", err)
 	}
+	evidence := certificationEvidenceFromEnv(time.Now())
 	// The judge uses the same configured provider by default. LOOMARR_EVAL_JUDGE can
 	// point at a stronger model later; for now reuse the suggester's provider.
 	judgeProvider := buildProvider()
@@ -65,12 +65,12 @@ func TestEvalCorpus(t *testing.T) {
 	}
 
 	// Emit a scorecard artifact (stdout + optional file) so a run is inspectable.
-	writeScorecard(t, results)
+	writeScorecard(t, evidence, results)
 }
 
 // writeScorecard prints a summary table and, when LOOMARR_EVAL_OUT is set, writes
 // the JSON scorecard there for CI archiving / trend tracking.
-func writeScorecard(t *testing.T, results []Result) {
+func writeScorecard(t *testing.T, evidence CertificationEvidence, results []Result) {
 	pass := 0
 	var b strings.Builder
 	b.WriteString("\n=== Eval scorecard ===\n")
@@ -91,9 +91,10 @@ func writeScorecard(t *testing.T, results []Result) {
 	t.Log(b.String())
 
 	if out := os.Getenv("LOOMARR_EVAL_OUT"); out != "" {
-		blob, _ := json.MarshalIndent(results, "", "  ")
-		if err := os.WriteFile(out, blob, 0o644); err != nil {
-			t.Logf("could not write scorecard to %s: %v", out, err)
+		if err := writeScorecardArtifact(out, buildScorecard(evidence, results)); err != nil {
+			t.Errorf("write scorecard to %s: %v", out, err)
+		} else {
+			t.Logf("scorecard artifact: %s", out)
 		}
 	}
 }

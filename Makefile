@@ -203,7 +203,9 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
 eval-templates: ## semantic eval: certify the 4 shipped channel templates only (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
-	$(GO) test -tags=eval -v -timeout 20m -run '^TestEvalCorpus$$/(template_saturday_cartoons|template_cozy_mystery|template_late_night_scifi|template_action_marathon)$$' ./internal/eval/
+	@artifact_dir="$${LOOMARR_ARTIFACT_DIR:-.artifacts}"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$artifact_dir/template-certification.json}"; \
+	  LOOMARR_EVAL_OUT="$$report" $(GO) test -tags=eval -v -timeout 20m -run '^TestEvalCorpus$$/(template_saturday_cartoons|template_cozy_mystery|template_late_night_scifi|template_action_marathon)$$' ./internal/eval/
 
 ## ---- build / run ---------------------------------------------------------
 
