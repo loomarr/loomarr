@@ -1,13 +1,11 @@
 import { useCallback, useState } from "react";
 
-// useDeleteConfirm owns the arm→confirm→cancel state for an irreversible delete — the two-step
-// gate ("Delete channel" arms it, "Delete permanently" executes) shared by the channels-list
-// row menu AND the detail-page danger zone, so the confirm flow lives in ONE place instead of
-// being reimplemented (and drifting) in each. It is HEADLESS: it holds no channel identity and
-// renders nothing — each caller draws its own context-appropriate JSX (the row menu swallows
-// clicks inside its <Link> and styles items as menu rows; the danger zone adds a purge
-// checkbox). A plain confirm, not a typed-name gate (a household app shouldn't make you type a
-// channel's exact name to delete it).
+// useDeleteConfirm owns the arm→confirm→cancel state for a consequential channel removal. The
+// channels-list uses it for permanent deletion; the detail danger zone uses it for two explicit
+// choices, stop-managing and delete-from-Loomarr-and-Tunarr. Keeping the headless state here means
+// those callers can draw context-appropriate copy and styling without reimplementing the flow.
+// It holds no channel identity and renders nothing. A plain confirm, not a typed-name gate (a
+// household app shouldn't make you type a channel's exact name to proceed).
 interface DeleteConfirm {
   // confirming: whether the second step (the execute button) is showing.
   confirming: boolean;
