@@ -95,7 +95,7 @@ const Empty: Story = { args: { lineup: [] } };
 const AddingATitle: Story = {
   args: { lineup: [{ key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" }] },
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /add a title/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /add a title/i }));
     await userEvent.type(canvas.getByLabelText("Search"), "breaking");
     await userEvent.click(await canvas.findByText("Breaking Bad"));
     await canvas.findByText("Pending");

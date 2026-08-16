@@ -158,7 +158,7 @@ const SuggestionsLoaded: Story = {
   args: { isAdmin: true },
   decorators: [withSuggestions()],
   play: async ({ canvas, userEvent, expect, waitFor }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /change icon/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /change icon/i }));
     await canvas.findByRole("button", { name: /use the next generation's poster/i });
     // The poster button existing ≠ its <img> having painted (the imgs are `loading="lazy"`).
     // Wait until every poster image has actually decoded before the snapshot fires, so the
@@ -180,7 +180,7 @@ const TmdbNotConfigured: Story = {
   args: { isAdmin: true },
   decorators: [withSuggestions([], 501)],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /change icon/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /change icon/i }));
     await canvas.findByText(/set up a tmdb connection/i);
   },
 };
