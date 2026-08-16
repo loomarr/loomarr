@@ -119,7 +119,7 @@ func TestBootstrap_Invalid(t *testing.T) {
 // Import is admin-only: a non-admin (no token) → 403 (§11, §19).
 func TestImport_RequiresAdmin(t *testing.T) {
 	srv, _ := provServer(t)
-	resp := do(t, srv, http.MethodPost, "/v1/users/import", "", `{"ids":["c9c1815f5b7e46308169209bf320e196"]}`)
+	resp := do(t, srv, http.MethodPost, "/v1/users/import", "", `{"ids":["00000000000000000000000000000007"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member import → %d, want 401", resp.StatusCode)
 	}
@@ -129,13 +129,13 @@ func TestImport_RequiresAdmin(t *testing.T) {
 // works and an un-imported one is rejected (§11 end-to-end via the API).
 func TestImport_AdminCreatesAllowlist(t *testing.T) {
 	const (
-		mattID  = "c9c1815f5b7e46308169209bf320e196" // admin in the fixture
-		chrisID = "b1df9e921c8f4ddb85f5b032f93ebdf4" // member
+		adminID  = "00000000000000000000000000000007" // admin in the fixture
+		memberID = "00000000000000000000000000000002" // member
 	)
 	srv, st := provServer(t)
 
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
-		`{"ids":["`+chrisID+`"],"makeAdmin":true}`)
+		`{"ids":["`+memberID+`"],"makeAdmin":true}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin import → %d, want 200", resp.StatusCode)
 	}
@@ -144,11 +144,11 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 	if body.Imported != 1 {
 		t.Errorf("imported = %d, want 1", body.Imported)
 	}
-	// Chris is now allowlisted; Matt (not imported) is not.
-	if _, err := st.GetUser(context.Background(), chrisID); err != nil {
+	// Fixture Member is now allowlisted; Fixture Admin (not imported) is not.
+	if _, err := st.GetUser(context.Background(), memberID); err != nil {
 		t.Errorf("imported user should have a row: %v", err)
 	}
-	if _, err := st.GetUser(context.Background(), mattID); err != store.ErrNotFound {
+	if _, err := st.GetUser(context.Background(), adminID); err != store.ErrNotFound {
 		t.Errorf("un-imported user must have NO row: %v", err)
 	}
 }
@@ -157,7 +157,7 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 // media server's accounts so an admin picks real names instead of raw ids, and marks
 // the ones already allowlisted so the picker can show them as done.
 func TestImportCandidates(t *testing.T) {
-	const mattID = "c9c1815f5b7e46308169209bf320e196" // admin in the fixture
+	const adminID = "00000000000000000000000000000007" // admin in the fixture
 	srv, _ := provServer(t)
 
 	// Admin-only (§19).
@@ -182,26 +182,26 @@ func TestImportCandidates(t *testing.T) {
 	if len(before) == 0 {
 		t.Fatal("expected the media server's accounts to be listed")
 	}
-	var matt api.ImportCandidate
+	var admin api.ImportCandidate
 	for _, c := range before {
-		if c.ID == mattID {
-			matt = c
+		if c.ID == adminID {
+			admin = c
 		}
 	}
-	if matt.Name == "" {
+	if admin.Name == "" {
 		t.Fatalf("fixture admin missing from candidates: %+v", before)
 	}
-	if !matt.IsAdmin {
+	if !admin.IsAdmin {
 		t.Error("fixture admin should be flagged IsAdmin so import can map the role")
 	}
-	if matt.Imported {
+	if admin.Imported {
 		t.Error("nothing imported yet — Imported must be false")
 	}
 
 	// Importing flips the flag: the picker shows the account as done, not gone.
-	do(t, srv, http.MethodPost, "/v1/users/import", adminToken, `{"ids":["`+mattID+`"]}`)
+	do(t, srv, http.MethodPost, "/v1/users/import", adminToken, `{"ids":["`+adminID+`"]}`)
 	for _, c := range decode() {
-		if c.ID == mattID && !c.Imported {
+		if c.ID == adminID && !c.Imported {
 			t.Error("after import, the candidate must be flagged Imported")
 		}
 	}

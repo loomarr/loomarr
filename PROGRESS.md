@@ -17,8 +17,8 @@ here. See `AGENTS.md` for the prime directives; one phase per session/PR.
 
 ## Live manual-smoke findings — 2026-07-13/14 (maintainer's real stack)
 
-First end-to-end run against the live homelab (Emby 4.10 + Sonarr/Radarr/Seerr over Tailscale
-`100.75.125.45`, local Tunarr 1.3.8 with **RTX 3080 Ti `cuda`/NVENC transcode wired + verified**,
+First end-to-end run against the live homelab (Emby 4.10 + Sonarr/Radarr/Seerr over Tailscale;
+private endpoint redacted, local Tunarr 1.3.8 with **RTX 3080 Ti `cuda`/NVENC transcode wired + verified**,
 Ollama `llama3.1:8b` on GPU). The run drove intent → grounded suggester → approval gate → channel.
 It surfaced a **chain of unwired seams** (two independently-correct subsystems, no wire between
 them; unit tests pass because each side is tested in isolation). **Composition-root lesson:**

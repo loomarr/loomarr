@@ -136,11 +136,11 @@ func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 }
 
 // Import assigns admin to media-server admins only when makeAdmin is set (§11).
-// Uses the pinned users_list fixture ids: Matt (admin) + Chris (member).
+// Uses the pinned users_list fixture ids: Fixture Admin (admin) + Fixture Member (member).
 func TestImport_RoleAssignment(t *testing.T) {
 	const (
-		mattID  = "c9c1815f5b7e46308169209bf320e196" // IsAdministrator: true
-		chrisID = "b1df9e921c8f4ddb85f5b032f93ebdf4" // member
+		adminID  = "00000000000000000000000000000007" // IsAdministrator: true
+		memberID = "00000000000000000000000000000002" // member
 	)
 	st := newStore(t)
 	ctx := context.Background()
@@ -149,14 +149,14 @@ func TestImport_RoleAssignment(t *testing.T) {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 	prov := NewProvisioner(st, lib, seqID(), func() time.Time { return now })
 
-	n, err := prov.Import(ctx, []string{mattID, chrisID}, true)
+	n, err := prov.Import(ctx, []string{adminID, memberID}, true)
 	if err != nil || n != 2 {
 		t.Fatalf("import → %d,%v want 2,nil", n, err)
 	}
-	if u, _ := st.GetUser(ctx, mattID); u.Role != store.RoleAdmin {
+	if u, _ := st.GetUser(ctx, adminID); u.Role != store.RoleAdmin {
 		t.Errorf("media-server admin imported with makeAdmin → %v, want admin", u.Role)
 	}
-	if u, _ := st.GetUser(ctx, chrisID); u.Role != store.RoleMember {
+	if u, _ := st.GetUser(ctx, memberID); u.Role != store.RoleMember {
 		t.Errorf("non-admin imported → %v, want member", u.Role)
 	}
 	// An id the server doesn't list is skipped, never invented.

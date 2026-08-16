@@ -381,7 +381,7 @@ The verified chain, in order:
    the handler answers an anonymous request with **404, never 403** (`api/images.go:122-125`,
    deliberate: a 403 would confirm which hashes exist).
 3. **`URLFor` hands the SPA an ABSOLUTE URL on `server.public_url`**, so in dev the browser asks
-   `http://100.123.114.40:8080` from an app served at `localhost:5173`. That is cross-origin, the
+   `http://203.0.113.40:8080` from an app served at `localhost:5173`. That is cross-origin, the
    session cookie is scoped to localhost, **so the request is anonymous** → 404 → `text/plain` +
    `nosniff` → Chrome **ORB**-blocks it → `<picture>` has already committed → the ThumbHash is all
    that renders. **Those are the blue hashes.**
@@ -391,7 +391,7 @@ Proof, both fetched from the same page in one evaluation:
 | Request | Result |
 | --- | --- |
 | `/v1/images/<hash>/w780.jpg` (relative, via Vite proxy) | **200 `image/jpeg`** |
-| `http://100.123.114.40:8080/v1/images/<hash>/w780.jpg` | **Failed to fetch** |
+| `http://203.0.113.40:8080/v1/images/<hash>/w780.jpg` | **Failed to fetch** |
 
 **The fix: SPA-facing image URLs must be same-origin/relative.** Keep `URLFor`'s absolute base for
 the images a *machine* fetches — channel logos, which Tunarr pulls unauthenticated and which are

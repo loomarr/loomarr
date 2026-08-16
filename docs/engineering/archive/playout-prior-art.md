@@ -274,7 +274,7 @@ Fact **T1** in the original program plan: *"Loomarr does not know where media li
 Tunarr resolved paths itself. Internal playout needs an actual ffmpeg input, so T1 stops
 being trivia and becomes the blocker.
 
-**Two candidate answers, tested against the dev Emby (`100.75.125.45:8096`) 2026-07-25:**
+**Two candidate answers, tested against the live dev Emby (private endpoint redacted) 2026-07-25:**
 
 **(a) The filesystem path.** Emby returns it with `Fields=Path`:
 
@@ -467,7 +467,7 @@ Keep `?token=` in the URLs. If this is flagged again, the answer is here.
 
 ## 5f. V6 end to end with real content — what the live smoke proved
 
-The final V6 verification, against the dev Emby (`100.75.125.45:8096`) 2026-07-25. A channel of
+The final V6 verification, against the live dev Emby (private endpoint redacted) 2026-07-25. A channel of
 three real movies, built through **`suggest.Approve`** — the approval gate, never a raw
 `available` write (CLAUDE.md).
 

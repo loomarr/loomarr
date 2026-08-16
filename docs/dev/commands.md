@@ -44,12 +44,13 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
+| `make check` | ✅ | Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
 | `make rust-check` |  | format, lint, and test the required Rust image worker |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
+| `make privacy-verify` |  | captured private fixture literals must not re-enter the tracked tree |
 | `make vet` |  | go vet |
 | `make vet-tags` |  | go vet over custom-tagged sources; platform constraints use their cross-compile gate |
 | `make windows-compile` |  | cross-compile every Go package and test for Windows (does not execute them) |

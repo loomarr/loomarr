@@ -1,6 +1,6 @@
 # LIVE manual-smoke override (git-ignored territory — dev only, NOT shipped).
 # Layers host networking onto the real compose.yaml so the loomarr container can
-# reach BOTH the Tailscale homelab (100.75.125.45 — a host route) AND the
+# reach BOTH the private Tailscale homelab endpoint AND the
 # host-local Tunarr/Ollama on 127.0.0.1, without replicating routes into a bridge.
 #
 #   docker compose -f docker/compose.yaml -f docker/compose.smoke.yaml --env-file docker/.env up -d loomarr

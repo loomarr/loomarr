@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const chrisID = "b1df9e921c8f4ddb85f5b032f93ebdf4" // a non-admin fixture user
+const fixtureMemberID = "00000000000000000000000000000002" // a non-admin fixture user
 
 // TestJourney_Member drives the non-admin experience through the REAL composition:
 // an admin imports a media-server user (the untested import→member-login chain),
@@ -17,7 +17,7 @@ const chrisID = "b1df9e921c8f4ddb85f5b032f93ebdf4" // a non-admin fixture user
 func TestJourney_Member(t *testing.T) {
 	h := newHarness(t)
 	admin := h.asAdmin()
-	member := h.asMember(admin, "Chris", chrisID)
+	member := h.asMember(admin, "Fixture Member", fixtureMemberID)
 
 	// B1: the import→media-server-login chain produced a MEMBER session.
 	var me struct {
@@ -49,7 +49,7 @@ func TestJourney_Member(t *testing.T) {
 		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":1}`},
 		{http.MethodDelete, "/v1/titles/movie:tmdb:1", ""},
 		{http.MethodGet, "/v1/users", ""},
-		{http.MethodPatch, "/v1/users/" + chrisID, `{"disabled":true}`},
+		{http.MethodPatch, "/v1/users/" + fixtureMemberID, `{"disabled":true}`},
 		{http.MethodPost, "/v1/users/import", `{"ids":["x"]}`},
 		{http.MethodPost, "/v1/users/sync", ""},
 		{http.MethodGet, "/v1/settings", ""},
@@ -81,7 +81,7 @@ func TestJourney_Member(t *testing.T) {
 	}
 
 	// B4: an admin disabling the member kills their live session (§19).
-	if code := h.status(http.MethodPatch, "/v1/users/"+chrisID, `{"disabled":true}`, admin); code != http.StatusOK {
+	if code := h.status(http.MethodPatch, "/v1/users/"+fixtureMemberID, `{"disabled":true}`, admin); code != http.StatusOK {
 		t.Fatalf("admin disable member → %d, want 200", code)
 	}
 	if code := h.status(http.MethodGet, "/v1/auth/me", "", member); code != http.StatusUnauthorized {

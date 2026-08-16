@@ -210,7 +210,7 @@ type ItemMetadata struct {
 // NewMediaServer starts a mock media server serving the pinned fixtures.
 func NewMediaServer(t testing.TB) *MediaServer {
 	t.Helper()
-	ms := &MediaServer{AdminToken: "test-admin-token", GoodUser: "Matt", GoodPass: "correct-horse"}
+	ms := &MediaServer{AdminToken: "test-admin-token", GoodUser: "Fixture Admin", GoodPass: "correct-horse"}
 	mux := http.NewServeMux()
 
 	// /Library/VirtualFolders — library enumeration, for resolving a filler library's NAME to the
@@ -369,7 +369,7 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			resp := map[string]any{
 				"AccessToken": "ms-session-token",
 				"User": map[string]any{
-					"Id": "b07b7a15f38343c39f0da4283e896acc", "Name": ms.GoodUser,
+					"Id": "00000000000000000000000000000007", "Name": ms.GoodUser,
 					"Policy": map[string]any{"IsAdministrator": true, "IsDisabled": false},
 				},
 			}

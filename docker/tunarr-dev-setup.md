@@ -36,23 +36,25 @@ Tunarr authenticates as an **Emby user** (username + password → its own stream
 `POST /api/emby/login` — this is a *different* auth relationship than loomarr's admin API key
 (`X-Emby-Token`). Use a dedicated Emby account (e.g. a `tunarr` service user) where possible.
 
-Credentials come from `.phase0.env` (git-ignored): `EMBY_USER`, `EMBY_PW`.
+Credentials and the reachable media-server URL come from `.phase0.env` (git-ignored):
+`EMBY_USER`, `EMBY_PW`, and `EMBY_URL` (for example, `http://emby-host:8096`).
 
 **Two steps** — `login` only validates + returns a token; you then *create* the source with it:
 
 ```bash
 set -a; . ./.phase0.env; set +a
+: "${EMBY_URL:?set EMBY_URL to the media-server URL reachable from Tunarr}"
 
 # 1. validate creds -> {accessToken, userId}
 LOGIN=$(curl -s -X POST http://localhost:8000/api/emby/login \
   -H 'Content-Type: application/json' \
-  -d "{\"url\":\"http://100.75.125.45:8096\",\"username\":\"$EMBY_USER\",\"password\":\"$EMBY_PW\"}")
+  -d "{\"url\":\"$EMBY_URL\",\"username\":\"$EMBY_USER\",\"password\":\"$EMBY_PW\"}")
 TOKEN=$(echo "$LOGIN" | node -pe 'JSON.parse(require("fs").readFileSync(0)).accessToken')
 USERID=$(echo "$LOGIN" | node -pe 'JSON.parse(require("fs").readFileSync(0)).userId')
 
 # 2. create the media source (type "emby", pathReplacements required even if empty)
 curl -s -X POST http://localhost:8000/api/media-sources -H 'Content-Type: application/json' \
-  -d "{\"type\":\"emby\",\"name\":\"Fictional Emby\",\"uri\":\"http://100.75.125.45:8096\",\
+  -d "{\"type\":\"emby\",\"name\":\"Fictional Emby\",\"uri\":\"$EMBY_URL\",\
 \"accessToken\":\"$TOKEN\",\"userId\":\"$USERID\",\"username\":\"$EMBY_USER\",\"pathReplacements\":[]}"
 
 # verify: should be {"healthy":true}
@@ -66,9 +68,9 @@ curl -s "http://localhost:8000/api/media-sources/$MSID/status"
 returns `{accessToken,userId}`. Creating the source is a separate `POST /api/media-sources`
 carrying that token. The Programmer adapter must do both.
 
-The `extra_hosts` entry in the compose file (`emby-media:${MEDIA_SERVER_IP:-100.75.125.45}`)
-maps a stable name → the media-server IP so the config is portable; override the IP per host
-by setting `MEDIA_SERVER_IP` in your `.env`.
+`EMBY_URL` is explicit because the address must be reachable from the Tunarr container and is
+installation-specific. Docker DNS names work for media servers on the same Compose network;
+otherwise use a hostname or address routed from Docker on the host.
 
 ## Relation to the app compose (Phase 1)
 
