@@ -4698,7 +4698,11 @@ image worker's release/profile self-test. The web UI is embedded and served at `
 `ghcr.io/mantonx/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
 `0.1.0-beta.1` never move `latest`, which is reserved for the newest stable release. Compose requires
 `LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. The
-image contains the Go server and its required release-matched `loomarr-image` Rust worker, and
+release rejects an exact version already present in GHCR and publishes no mutable major/minor alias.
+The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
+ran; a manual full release-candidate rerun is available when a docs-only final commit would
+otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
+its required release-matched `loomarr-image` Rust worker, and
 vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
 model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
 **~1.3GB measured before the Rust worker** (amd64 uncompressed rootfs; **~821MB before whisper-cli**).

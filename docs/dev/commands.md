@@ -36,12 +36,13 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
+| `make release-verify` |  | verify release tag and OCI naming policy |
 
 ## The default gate
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | Rust + Go formatting, lint, cross-platform compile, harness, Compose contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `test` |
+| `make check` | ✅ | Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
 | `make rust-check` |  | format, lint, and test the required Rust image worker |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |

@@ -118,10 +118,14 @@ agent-harness-test: ## regression-test worktree isolation and shared-output clai
 compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
+.PHONY: release-verify
+release-verify: ## verify release tag and OCI naming policy
+	@./scripts/check-release-tag.sh --self-test
+
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify test ## Rust + Go formatting, lint, cross-platform compile, harness, Compose contracts, and unit tests (the default gate)
+check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate)
 
 .PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
