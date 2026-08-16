@@ -1,10 +1,11 @@
-# Loomarr deployment compose (design §16). Profiles: sqlite · postgres · ai.
+# Loomarr deployment compose (design §16). Traefik is the only published host
+# port; Loomarr stays on the private edge network. Profiles: sqlite · postgres · ai.
 # Filler ingest needs no profile and no tag: the vendored yt-dlp + ffmpeg ship in the one
 # published image, so downloading clips in-app works out of the box. (This used to name a
 # loomarr:filler tag; that variant no longer exists — see §16.)
 #
 #   docker compose -f docker/compose.yaml --profile sqlite up -d
-#   docker compose -f docker/compose.yaml --profile postgres up -d
+#   docker compose -f docker/compose.yaml -f docker/compose.postgres.yaml --profile postgres up -d
 #
 # The `ai` profile is orthogonal — ADD it to run a local Ollama (the default
 # LLM_PROVIDER points at http://ollama:11434). Skip it for a hosted/external LLM:
@@ -22,8 +23,41 @@
 # For local dev dependencies (a persistent Tunarr wired to Emby) see compose.dev.yaml.
 
 services:
+  # ---- edge: the compiled app is always reached through Traefik ----
+  # This is a deliberately dedicated HTTP edge for the beta. It health-checks
+  # Loomarr and owns the host port, but one Loomarr replica remains the supported
+  # topology until shared jobs, schedulers, playout, and file state pass the scale
+  # investigation in docs/engineering/plans/first-beta-readiness.md.
+  traefik:
+    image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+    command:
+      - --api.dashboard=false
+      - --entrypoints.web.address=:8080
+      - --entrypoints.health.address=:8082
+      - --ping=true
+      - --ping.entrypoint=health
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.constraints=Label(`com.mantonx.loomarr.edge`,`true`)
+    ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
+    volumes:
+      # The Docker provider discovers only explicitly-labelled services. The
+      # socket is still host control-plane access even when mounted read-only;
+      # run this stack only on a trusted Docker host.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [edge]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
   # ---- sqlite profile: chown the fresh /data volume for the nonroot image (uid 65532) ----
-  # A new named volume is root-owned; the distroless nonroot binary can't create
+  # A new named volume is root-owned; the Debian nonroot binary can't create
   # /data/loomarr.db without this one-shot chown. sqlite-only (postgres has no /data).
   loomarr-init:
     image: busybox:1.36
@@ -32,10 +66,9 @@ services:
     volumes: ["loomarr-data:/data"]
 
   loomarr:
-    image: loomarr:latest
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    # Releases live in GHCR. Pin LOOMARR_VERSION for beta installs and rollbacks;
+    # `latest` is reserved for stable releases and never moves on a prerelease tag.
+    image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?Pin a released Loomarr version}
     depends_on:
       loomarr-init:
         condition: service_completed_successfully # sqlite profile; skipped when absent
@@ -77,7 +110,7 @@ services:
       # ffmpeg — a separate process fetching the playlist itself — has no notion of
       # "the origin this came from", so there is no relative fallback. A wrong value
       # means channels appear in the guide and never play.
-      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:-}
+      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:?Set SERVER_PUBLIC_URL to the Traefik URL your media server can reach}
       # Internal playout (§9.1). Defaults are deliberate: `internal` is the default
       # backend, and an empty encoder means "use the best one the transcode check
       # found". Set PLAYOUT_ENCODER only to override that choice.
@@ -86,7 +119,7 @@ services:
       PLAYOUT_MAX_CHANNELS: ${PLAYOUT_MAX_CHANNELS:-}
       PLAYOUT_QUALITY_TIER: ${PLAYOUT_QUALITY_TIER:-}
       AUTO_MIGRATE: "true"
-    ports: ["8080:8080"]
+    expose: ["8080"]
     volumes:
       # ⚠ THE DATABASE LIVES HERE. DATABASE_URL defaults to sqlite:///data/loomarr.db,
       # so without this mount SQLite writes into the container's own writable layer and
@@ -116,6 +149,20 @@ services:
     devices:
       - ${PLAYOUT_RENDER_DEVICE:-/dev/null}:${PLAYOUT_RENDER_DEVICE:-/dev/null}
     restart: unless-stopped
+    networks: [default, edge]
+    labels:
+      com.mantonx.loomarr.edge: "true"
+      traefik.enable: "true"
+      traefik.docker.network: ${LOOMARR_EDGE_NETWORK:-loomarr-edge}
+      traefik.http.routers.loomarr.entrypoints: web
+      # This is a dedicated edge, so it intentionally accepts any Host value.
+      # SERVER_PUBLIC_URL remains the canonical URL embedded into stream links.
+      traefik.http.routers.loomarr.rule: PathPrefix(`/`)
+      traefik.http.routers.loomarr.service: loomarr
+      traefik.http.services.loomarr.loadbalancer.server.port: "8080"
+      traefik.http.services.loomarr.loadbalancer.healthcheck.path: /v1/readyz
+      traefik.http.services.loomarr.loadbalancer.healthcheck.interval: 10s
+      traefik.http.services.loomarr.loadbalancer.healthcheck.timeout: 3s
     # Readiness via loomarr's own `healthcheck` subcommand, which GETs /v1/readyz on
     # LISTEN_ADDR and exits 0/1. A subcommand rather than curl because the image ships
     # no HTTP client (curl is purged from the debian-slim base to keep the layer lean),
@@ -142,6 +189,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-loomarr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loomarr}
     volumes: ["pg-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   # ---- ai profile: local Ollama (skip for a hosted/external LLM) ----
@@ -194,3 +246,7 @@ volumes:
   pg-data: # postgres profile
   filler-drop: # filler drop-folder (override with FILLER_DROP_DIR bind mount)
   ollama: # ai profile
+
+networks:
+  edge:
+    name: ${LOOMARR_EDGE_NETWORK:-loomarr-edge}
