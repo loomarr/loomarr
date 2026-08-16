@@ -13,13 +13,6 @@ type SettingRow struct {
 	EnvOverride bool
 }
 
-// RowLister is the store capability the loader needs: list every persisted
-// override with audit metadata. store.Store satisfies this structurally via a
-// tiny adapter (the store returns store.SettingRow; StoreLoader maps it).
-type RowLister interface {
-	ListSettings(ctx context.Context) ([]SettingRow, error)
-}
-
 // StoreLoader adapts a store into a settings.Loader. It's constructed in the
 // composition root with a mapping closure, so settings never imports store.
 type StoreLoader struct {

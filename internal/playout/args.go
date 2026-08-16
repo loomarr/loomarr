@@ -167,18 +167,6 @@ func familyOf(e Encoder) encoderFamily {
 	}
 }
 
-// IsHEVC reports whether an encoder produces HEVC output — used to decide the fMP4 tag and to know
-// whether a program's transcode already matches an hevc-plan's uniform-codec requirement.
-func (e Encoder) IsHEVC() bool {
-	switch e {
-	case EncoderSoftwareHEVC, EncoderNVENCHEVC, EncoderQSVHEVC, EncoderVAAPIHEVC,
-		EncoderAMFHEVC, EncoderVTHEVC, EncoderRKMPPHEVC, EncoderV4L2M2MHEVC, EncoderVulkanHEVC:
-		return true
-	default:
-		return false
-	}
-}
-
 // Profile is the normalized output every program is encoded to.
 //
 // Normalization is not cosmetic — it is what makes the concat mechanism legal. The

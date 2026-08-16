@@ -61,10 +61,3 @@ func (b *Bus) Publish(ev Event) {
 		}
 	}
 }
-
-// SubscriberCount is for tests/metrics.
-func (b *Bus) SubscriberCount() int {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return len(b.subs)
-}

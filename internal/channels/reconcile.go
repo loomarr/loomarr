@@ -831,9 +831,5 @@ func pushShape(s schedule.Slot) (string, string) {
 	return "flex", ""
 }
 
-// ErrChannelGone is returned by backfill helpers when the channel was deleted
-// between the event and the reconcile (a benign race; the caller drops the event).
-var ErrChannelGone = errors.New("channels: channel gone")
-
 // isNotFound reports whether err is the store's not-found sentinel.
 func isNotFound(err error) bool { return errors.Is(err, store.ErrNotFound) }
