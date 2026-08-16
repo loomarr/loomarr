@@ -1444,6 +1444,13 @@ its source. A real tune reuses the exact signed URL and the already-ready remux.
 also defers source-backed track probing until the first decoded frame so optional work cannot
 contend with the active Channel's cold open and seek.
 
+Safari-family WebKit prefers the platform's native HLS capability before importing hls.js, even
+when Media Source Extensions are also present. A MIME-type answer alone is insufficient because
+Chromium can answer `maybe` without an HLS demuxer; the WebKit-family check prevents that false
+native route. This keeps shipping Safari on its AVFoundation-backed source swap, while Chromium and
+Firefox use hls.js. A WebKit build that does not expose native HLS (including the Linux Playwright
+port) uses the bounded hls.js fallback below for compatibility rather than standing in for Safari.
+
 The Web adapter resolves and retains the hls.js controller class once per document, then keeps a
 bounded pair of source-scoped controllers while the mounted Watch surface retains
 its one media element and decoder: one active controller and one fresh standby that has never owned
@@ -1457,7 +1464,7 @@ waiting for live playback to reach it naturally. The element stays at the accept
 removal reaches `updateend`; rewinding into the range being removed can hold WebKit's decoder on
 those bytes and turn a cached tune into a multi-second stall.
 
-An open-source seek that misses that bound, an `ended` compact publication, or any WebKit handoff
+An open-source seek that misses that bound, an `ended` compact publication, or any non-native WebKit handoff
 takes the other bounded branch: the source-scoped standby attaches a fresh MediaSource to the same
 element instead of serializing replacement behind the outgoing fragment remainder. WebKit can retain the terminal
 decoded frame of an ended source for roughly two seconds even after pause and a render turn, and an
@@ -1546,19 +1553,21 @@ prepared-only adjacent probes, and a genuinely decoded H.264 frame. Latency budg
 per engine rather than pooled; a fast Chromium sample cannot hide a slow Firefox or WebKit sample.
 Each engine must complete one bounded cold decode before the surf samples begin; those samples measure
 an already-running tuner, while the real-runtime gate and shipping-browser soak own cold boot timing.
-The matrix also runs a raw fresh-MediaSource control with the same representative bytes: two
-unmeasured decoder-startup replacements followed by five steady-state replacements whose p95 must be
-below 500 ms. This is a runner-validity signal only; it never normalizes, subtracts from, or changes
-the product budgets above. Playback join is judged from media-event timestamps captured inside the
+The matrix also runs a raw MediaSource control with the same representative bytes and the same one
+persistent video element: two unmeasured decoder-startup replacements followed by five steady-state
+replacements whose p95 must be below 500 ms. A fresh element per sample is not equivalent; it hides
+the replacement lifecycle this gate exists to measure. This is a runner-validity signal only; it
+never normalizes, subtracts from, or changes the product budgets above. Playback join is judged from
+media-event timestamps captured inside the
 browser. Playwright may wait longer to collect those timestamps, because driver polling latency is
 not playback latency, but the recorded frame-to-`playing` interval must still satisfy its 250 ms
 bound. Likewise, arbitrary navigation starts its clock inside the browser's trusted input handler;
 automation-driver delivery time is not work performed by the product.
-The controller matrix runs as a dedicated serial CI job rather than after visual and wizard suites
-on a reused runner. Its zero-retry product thresholds remain absolute; isolation removes unrelated
-browser lifecycle and CPU pressure from the measurement rather than compensating for them in math.
-These projects certify browser engines in the pinned Linux image. WebKit is useful compatibility
-evidence, but only a run on shipping Safari may be called Safari certification.
+The controller matrix runs natively as a dedicated serial macOS CI job rather than after visual and
+wizard suites on a reused Linux runner. Its zero-retry product thresholds remain absolute; isolation
+removes unrelated browser lifecycle and CPU pressure, while macOS exercises the WebKit engine family
+that actually ships the Safari target. Playwright WebKit remains compatibility evidence rather than
+Safari itself; only a run on shipping Safari may be called Safari certification.
 
 The **real-runtime gate** starts the real composition root over an isolated SQLite store, the real
 prepared library and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server

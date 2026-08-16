@@ -224,8 +224,14 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // WebKit can defer even an already-resolved dynamic import behind media work for hundreds of
       // milliseconds. Resolve the transport class once per document; every later tune takes the
       // synchronous cached value while the bounded controller pool still owns runtime resources.
-      const Hls = cachedHlsController ?? (await import("hls.js")).default;
-      cachedHlsController = Hls;
+      // Safari-family browsers have a native HLS pipeline that avoids the repeated MediaSource
+      // replacement hls.js needs. Prefer it before importing the half-megabyte controller. The UA
+      // guard is load-bearing: some Chromium builds answer "maybe" for the MIME type without being
+      // able to play HLS, and must continue through hls.js below.
+      const nativeHLS =
+        webKitRequiresFreshMSEHandoff() && Boolean(video.canPlayType("application/vnd.apple.mpegurl"));
+      const HlsController = nativeHLS ? undefined : (cachedHlsController ?? (await import("hls.js")).default);
+      if (HlsController) cachedHlsController = HlsController;
       if (!current()) return () => undefined;
 
       // Name the generation on the element before any decoded-frame observer is armed. The tuner
@@ -295,7 +301,8 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // `.m3u8` natively and genuinely). capLevelToPlayerSize stops hls.js fetching a rendition
       // larger than the frame; low-latency off — this is live TV, and the steadier buffer survives a
       // flaky link.
-      if (Hls.isSupported()) {
+      if (HlsController?.isSupported()) {
+        const Hls = HlsController;
         const discardTransferForWebKit = webKitRequiresFreshMSEHandoff();
         const previous = hlsRef.current.instance;
         let transferred: ReturnType<Hls["transferMedia"]> = null;
@@ -494,7 +501,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // NATIVE HLS (Safari/iOS): hls.js is unsupported here BECAUSE the platform plays `.m3u8`
       // itself, doing its own ABR. Only reached when MSE is absent, so this is a genuine native-HLS
       // browser, not a Chromium false-positive.
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      if (nativeHLS || video.canPlayType("application/vnd.apple.mpegurl")) {
         const onManifest = () => markTunePhase(playbackAttempt, "manifest");
         // Native HLS has no transport controller to detach the previous URL for us.
         video.removeAttribute("src");

@@ -602,30 +602,27 @@ jobs:
           # are screenshots of a failing run, worthless once it is fixed.
           retention-days: 7
 
-  # Performance certification needs a clean runner. This used to follow a full visual shard and
-  # wizard e2e, so browser/renderer cleanup and CPU pressure from unrelated tests leaked into a
-  # sub-second percentile gate. Keep the same zero-retry matrix and absolute budgets, but give it
-  # one serial job whose only measured browser work is the tuner scenario.
+  # Performance certification needs a clean, representative runner. This used to follow a full
+  # visual shard on Linux, where constrained Playwright WebKit can spend >1s replacing MediaSource
+  # on one persistent video even while fresh-element calibration looks fast. Keep the zero-retry
+  # matrix and absolute budgets, but run it natively on isolated macOS; shipping Safari still owns
+  # the maintainer soak, while this exercises the matching engine family and replacement lifecycle.
   tuner:
     name: Tuner — Chromium + Firefox + WebKit
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@v6
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
       - run: make fe-install
+      - name: Install pinned browser engines
+        run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
       - name: 100-Channel controller matrix
-        run: make tuner-e2e
+        run: make tuner-e2e-host
       - name: Keep tuner failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

@@ -31,13 +31,13 @@ const measureFreshMediaSourceBaseline = async (page: Page): Promise<number[]> =>
       buffer.appendBuffer(bytes);
       await updated;
     };
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.style.width = "160px";
+    video.style.height = "90px";
+    document.body.append(video);
     const sample = async () => {
-      const video = document.createElement("video");
-      video.muted = true;
-      video.playsInline = true;
-      video.style.width = "160px";
-      video.style.height = "90px";
-      document.body.append(video);
       const source = new MediaSource();
       const objectURL = URL.createObjectURL(source);
       const started = performance.now();
@@ -63,18 +63,22 @@ const measureFreshMediaSourceBaseline = async (page: Page): Promise<number[]> =>
         video.removeAttribute("src");
         video.load();
         URL.revokeObjectURL(objectURL);
-        video.remove();
       }
     };
 
-    // The controller gate below deliberately measures an already-running decoder: its first Watch
-    // Channel owns cold boot, then every surf sample replaces that source. Give this raw control
-    // the same contract before measuring fresh MediaSource replacement cost.
-    await sample();
-    await sample();
-    const samples: number[] = [];
-    for (let index = 0; index < 5; index++) samples.push(await sample());
-    return samples;
+    try {
+      // The controller gate below deliberately measures an already-running decoder: its first Watch
+      // Channel owns cold boot, then every surf sample replaces that source on ONE persistent video.
+      // Give this raw control the same contract; a fresh element per sample hides WebKit's replacement
+      // cost and can certify a runner that is incapable of the operation the product actually uses.
+      await sample();
+      await sample();
+      const samples: number[] = [];
+      for (let index = 0; index < 5; index++) samples.push(await sample());
+      return samples;
+    } finally {
+      video.remove();
+    }
   });
 };
 

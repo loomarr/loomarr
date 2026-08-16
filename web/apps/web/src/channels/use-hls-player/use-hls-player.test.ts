@@ -138,6 +138,24 @@ describe("useHlsPlayer", () => {
     expect(video.src).toContain("sig=warmed");
   });
 
+  it("prefers native HLS on Apple WebKit even when hls.js MSE is available", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15",
+    );
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const video = videoEl("probably");
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => {
+      result.current.attach(video);
+    });
+
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    expect(video.src).toBe("/v1/playout/hls/ch-1/master.m3u8");
+    expect(hls.instances).toHaveLength(0);
+  });
+
   it("keeps the completed tune attachment stable when route state drops its attempt", () => {
     const attempt = {
       id: 2,
