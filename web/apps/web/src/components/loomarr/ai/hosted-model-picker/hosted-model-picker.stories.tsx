@@ -10,6 +10,7 @@ const FALLBACK_MODEL: HostedModelView = {
   label: "GPT-4o mini",
   why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
   recommended: true,
+  toolCapability: "verified",
   tools: true,
 };
 
@@ -27,10 +28,16 @@ const OPENROUTER = (over: Partial<HostedProviderView> = {}): HostedProviderView 
       label: "GPT-4o mini",
       why: "GPT-4o family — strong grounded tool-caller, ~$0.15/1M tokens",
       recommended: true,
+      toolCapability: "verified",
       tools: true,
     },
-    { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku", tools: true },
-    { id: "meta-llama/llama-3.3-70b", label: "Llama 3.3 70B", tools: true },
+    { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku", toolCapability: "verified", tools: true },
+    {
+      id: "meta-llama/llama-3.3-70b",
+      label: "Llama 3.3 70B",
+      toolCapability: "verified",
+      tools: true,
+    },
   ],
   ...over,
 });
@@ -56,6 +63,7 @@ const meta = {
     providers: [OPENROUTER(), CUSTOM],
     activeModel: "openai/gpt-4o-mini",
     onSelect: noop,
+    onVerify: noop,
   },
   decorators: [widthFrame(560)],
 } satisfies Meta<typeof HostedModelPicker>;

@@ -11,6 +11,7 @@ const model = (over: Partial<LLMModelView> & Pick<LLMModelView, "tag" | "label">
   pulled: true,
   recommended: false,
   runtimeOk: true,
+  toolCapability: "verified",
   tools: true,
   why: "Good tool-calling at this size.",
   ...over,
@@ -60,6 +61,7 @@ const meta = {
     vramGiB: 16,
     onSelect: noop,
     onPull: noop,
+    onVerify: noop,
   },
   decorators: [widthFrame(560)],
 } satisfies Meta<typeof ModelPicker>;

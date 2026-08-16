@@ -26,7 +26,9 @@ const ModelPicker = ({
   vramGiB,
   onSelect,
   onPull,
+  onVerify,
   pulling,
+  verifying,
   busy = false,
   className,
 }: ModelPickerProps) => (
@@ -43,10 +45,17 @@ const ModelPicker = ({
         const fit = FIT_LABEL[model.fit] ?? { text: model.fit, variant: "caution" as const };
         const isActive = model.tag === active;
         const isPulling = pulling?.tag === model.tag;
+        const isVerifying = verifying === model.tag;
         const progress = isPulling ? pulling?.percent : undefined;
+        const toolCapability =
+          model.toolCapability === "verified" || model.toolCapability === "unsupported"
+            ? model.toolCapability
+            : "unverified";
+        const toolsUnverified = toolCapability === "unverified";
+        const toolsUnsupported = toolCapability === "unsupported";
         // Runtime support is a hard blocker in a way VRAM is not: a too-big model is slow,
         // a model the installed Ollama cannot run simply fails.
-        const unusable = !model.runtimeOk || model.fit === "wont_fit";
+        const unusable = !model.runtimeOk || model.fit === "wont_fit" || toolsUnsupported;
 
         return (
           <li
@@ -68,8 +77,29 @@ const ModelPicker = ({
                 <span className="font-mono text-static-400 text-xs">{model.tag}</span>
                 {model.recommended && <Badge variant="signal">recommended</Badge>}
                 {isActive && <Badge variant="lock">active</Badge>}
+                <Badge
+                  variant={
+                    toolCapability === "verified"
+                      ? "lock"
+                      : toolCapability === "unsupported"
+                        ? "onair"
+                        : "caution"
+                  }
+                >
+                  {toolCapability === "verified"
+                    ? "Tools verified"
+                    : toolCapability === "unsupported"
+                      ? "Tools unsupported"
+                      : "Tools unverified"}
+                </Badge>
               </p>
               <p className="mt-0.5 text-muted-foreground text-sm">{model.why}</p>
+              {toolsUnverified && (
+                <p className="mt-1 text-muted-foreground text-xs">
+                  Verification makes one small inference call. It proves tool calling only and does not
+                  certify curation quality.
+                </p>
+              )}
               <p className="mt-1 flex items-center gap-2 text-xs">
                 <Badge variant={fit.variant}>{fit.text}</Badge>
                 <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>
@@ -82,7 +112,18 @@ const ModelPicker = ({
               </p>
             </div>
 
-            {model.pulled ? (
+            {model.pulled && toolsUnverified ? (
+              <Button
+                variant="suggest"
+                size="sm"
+                aria-busy={isVerifying}
+                disabled={busy || isVerifying || !model.runtimeOk || model.fit === "wont_fit"}
+                onClick={() => onVerify(model.tag)}
+              >
+                {isVerifying && <Loader2 className="size-4 animate-spin" aria-hidden />}
+                {isVerifying ? "Verifying…" : "Verify tool calling"}
+              </Button>
+            ) : model.pulled ? (
               <Button
                 variant={isActive ? "outline" : "default"}
                 size="sm"
@@ -90,7 +131,7 @@ const ModelPicker = ({
                 onClick={() => onSelect(model.tag)}
               >
                 {isActive ? <Check className="size-4" aria-hidden /> : null}
-                {isActive ? "In use" : "Use this"}
+                {isActive ? "In use" : toolsUnsupported ? "Can't use" : "Use this"}
               </Button>
             ) : (
               // A model must exist locally before it can be selected (§8.1: select 409s
@@ -106,7 +147,7 @@ const ModelPicker = ({
                 ) : (
                   <Download className="size-4" aria-hidden />
                 )}
-                {isPulling ? "Downloading…" : "Download"}
+                {toolsUnsupported ? "Can't use" : isPulling ? "Downloading…" : "Download"}
               </Button>
             )}
           </li>

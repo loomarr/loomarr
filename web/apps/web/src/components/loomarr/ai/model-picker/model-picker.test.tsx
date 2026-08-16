@@ -10,12 +10,50 @@ const model = (over: Partial<LLMModelView> & Pick<LLMModelView, "tag" | "label">
   pulled: true,
   recommended: false,
   runtimeOk: true,
+  toolCapability: "verified",
   tools: true,
   why: "why text",
   ...over,
 });
 
 describe("ModelPicker", () => {
+  it("requires an explicit tool-call verification before an unverified model can be selected", async () => {
+    const onSelect = vi.fn();
+    const onVerify = vi.fn();
+    render(
+      <ModelPicker
+        catalog={[model({ tag: "thin:8b", label: "Thin metadata model", toolCapability: "unverified" })]}
+        onSelect={onSelect}
+        onPull={vi.fn()}
+        onVerify={onVerify}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /use this/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/one small inference call/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not certify curation quality/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /verify tool calling/i }));
+    expect(onVerify).toHaveBeenCalledWith("thin:8b");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps a known tool-unsupported model visible but impossible to select", () => {
+    render(
+      <ModelPicker
+        catalog={[
+          model({ tag: "text-only:8b", label: "Text only", tools: true, toolCapability: "unsupported" }),
+        ]}
+        onSelect={vi.fn()}
+        onPull={vi.fn()}
+        onVerify={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Tools unsupported")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /can't use/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /verify tool calling/i })).not.toBeInTheDocument();
+  });
+
   it("offers download for a model that isn't local yet, not selection", async () => {
     const onPull = vi.fn();
     const onSelect = vi.fn();
@@ -24,6 +62,7 @@ describe("ModelPicker", () => {
         catalog={[model({ tag: "llama3.1:8b", label: "Llama", pulled: false })]}
         onSelect={onSelect}
         onPull={onPull}
+        onVerify={vi.fn()}
       />,
     );
     // Selecting an unpulled tag 409s on the BE (§8.1), so the UI never offers it.
@@ -39,6 +78,7 @@ describe("ModelPicker", () => {
         catalog={[model({ tag: "big:70b", label: "Big", pulled: false, fit: "wont_fit", runtimeOk: false })]}
         onSelect={vi.fn()}
         onPull={vi.fn()}
+        onVerify={vi.fn()}
       />,
     );
     expect(screen.getByRole("button", { name: /download/i })).toBeDisabled();
@@ -53,6 +93,7 @@ describe("ModelPicker", () => {
         active="qwen3:8b"
         onSelect={vi.fn()}
         onPull={vi.fn()}
+        onVerify={vi.fn()}
       />,
     );
     expect(screen.getByRole("button", { name: /in use/i })).toBeDisabled();
@@ -65,6 +106,7 @@ describe("ModelPicker", () => {
         pulling={{ tag: "llama3.1:8b", percent: 25 }}
         onSelect={vi.fn()}
         onPull={vi.fn()}
+        onVerify={vi.fn()}
       />,
     );
     expect(screen.getByText(/downloading 25%/i)).toBeInTheDocument();

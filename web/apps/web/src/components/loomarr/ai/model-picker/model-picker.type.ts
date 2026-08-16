@@ -11,10 +11,14 @@ interface ModelPickerProps {
   vramGiB?: number;
   onSelect: (tag: string) => void;
   onPull: (tag: string) => void;
+  // Behavioral verification is an explicit operator action. It performs one small
+  // inference call; simply rendering or polling this picker never invokes it.
+  onVerify: (tag: string) => void;
   // The tag currently downloading. `percent` is computed by the BE and arrives on the
   // llm_pull frames from the first one — deriving it from byte counts here would show
   // nothing until bytes start flowing.
   pulling?: { tag: string; percent?: number };
+  verifying?: string;
   busy?: boolean;
   className?: string;
 }

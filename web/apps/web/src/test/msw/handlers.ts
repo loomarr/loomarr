@@ -116,8 +116,11 @@ const appHandlers = (): RequestHandler[] => [
   getSystemLlmStatusMockHandler({
     local: true,
     reachable: false,
+    configured: false,
     provider: "ollama",
     model: "",
+    toolCapability: "unverified",
+    semanticallyCertified: false,
     catalog: [],
     hosted: [],
   }),

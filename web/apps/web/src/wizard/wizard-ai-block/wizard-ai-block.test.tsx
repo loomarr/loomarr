@@ -50,7 +50,16 @@ const stubAi = (probe: Pick<SystemLLMStatus, "reachable" | "model">) =>
   server.use(
     // ⚠ `local` and `model` are REQUIRED on SystemLLMStatus and the old stub supplied neither —
     // another incomplete fixture an untyped stub let through.
-    getSystemLlmStatusMockHandler({ provider: "ollama", local: true, catalog: [], hosted: [], ...probe }),
+    getSystemLlmStatusMockHandler({
+      provider: "ollama",
+      local: true,
+      configured: probe.model !== "",
+      toolCapability: probe.model === "" ? "unverified" : "verified",
+      semanticallyCertified: false,
+      catalog: [],
+      hosted: [],
+      ...probe,
+    }),
     getSettingsListMockHandler({ settings: AI_ENTRIES, features: {} }),
     // ⚠ The block also calls /v1/system/llm/discover — the OLD stub answered it with `{}` from its
     // catch-all, so this code path ran against an empty object and no one knew. The guard named it.

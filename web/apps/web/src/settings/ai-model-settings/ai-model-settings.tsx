@@ -6,14 +6,73 @@ import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
 import { useLoomarrEventListener } from "@/events/events-provider";
+
+const Readiness = ({
+  configured,
+  reachable,
+  toolCapability,
+  semanticallyCertified,
+}: {
+  configured: boolean;
+  reachable: boolean;
+  toolCapability: string;
+  semanticallyCertified: boolean;
+}) => {
+  const tools =
+    toolCapability === "verified"
+      ? { label: "Verified", variant: "lock" as const }
+      : toolCapability === "unsupported"
+        ? { label: "Unsupported", variant: "onair" as const }
+        : { label: "Unverified", variant: "caution" as const };
+
+  return (
+    <section aria-label="AI readiness" className="rounded-md border border-border bg-card p-3">
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Configuration</dt>
+          <dd>
+            <Badge variant={configured ? "lock" : "caution"}>
+              {configured ? "Configured" : "Not configured"}
+            </Badge>
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Provider</dt>
+          <dd>
+            <Badge variant={reachable ? "lock" : "onair"}>{reachable ? "Reachable" : "Unreachable"}</Badge>
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Tool calling</dt>
+          <dd>
+            <Badge variant={tools.variant}>{tools.label}</Badge>
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-muted-foreground">Semantic curation</dt>
+          <dd>
+            <Badge variant={semanticallyCertified ? "lock" : "neutral"}>
+              {semanticallyCertified ? "Certified" : "Not certified"}
+            </Badge>
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-muted-foreground text-xs">
+        Tool verification does not certify curation quality. Semantic certification separately tests Loomarr's
+        shipped channel templates.
+      </p>
+    </section>
+  );
+};
 
 // The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
 // which is why this sits beside the AI settings form rather than inside it: the form
 // writes llm.* through PATCH, while select/pull are actions with their own lifecycles.
 //
-// Local Ollama gets two surfaces: the INSTALLED list (fit-ranked, tool-capable, select or
-// grey-out) and a compatible-to-DOWNLOAD list (popular HF GGUF models sized against this
+// Local Ollama gets two surfaces: the INSTALLED list (fit-ranked, capability-annotated,
+// select/verify/grey-out) and a compatible-to-DOWNLOAD list (popular HF GGUF models sized against this
 // machine's VRAM, best-first) — because Ollama ships no "what can I download" API, the
 // catalog is what you've pulled plus a machine-ranked browse, never a hardcoded list. A
 // hosted (OpenAI-compatible) provider instead gets a live model picker over its /models.
@@ -69,6 +128,7 @@ const AiModelSettings = ({
   };
 
   const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: modelChanged } });
+  const verify = systemApi.useSystemLlmVerify({ mutation: { onSuccess: invalidate } });
   const pull = systemApi.useSystemLlmPull();
 
   // The compatible-to-download list: the BE ranks popular HF models against this
@@ -107,18 +167,34 @@ const AiModelSettings = ({
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
   if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
+  const readiness = (
+    <Readiness
+      configured={status.configured}
+      reachable={status.reachable}
+      toolCapability={status.toolCapability}
+      semanticallyCertified={status.semanticallyCertified}
+    />
+  );
+
   // Hosted (OpenAI-compatible): render the live model picker over the provider's /models.
   // Reacts to the LIVE provider, so it appears the instant the dropdown flips, before Save.
   if (isHosted) {
     const hosted = status.hosted ?? [];
     return (
       <div className="flex flex-col gap-3">
-        {select.error != null && <ErrorState error={select.error} />}
+        {readiness}
+        {(select.error ?? verify.error) != null && <ErrorState error={select.error ?? verify.error} />}
         <HostedModelPicker
           providers={hosted}
           activeModel={status.model}
-          busy={select.isPending}
+          busy={select.isPending || verify.isPending}
+          verifying={
+            verify.isPending && verify.variables
+              ? { provider: verify.variables.data.provider ?? "ollama", model: verify.variables.data.model }
+              : undefined
+          }
           onSelect={(sel) => select.mutate({ data: sel })}
+          onVerify={(selection) => verify.mutate({ data: selection })}
         />
       </div>
     );
@@ -126,9 +202,12 @@ const AiModelSettings = ({
 
   if (!status.reachable) {
     return (
-      <p className="text-onair-300 text-sm">
-        Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
-      </p>
+      <div className="flex flex-col gap-3">
+        {readiness}
+        <p className="text-onair-300 text-sm">
+          Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
+        </p>
+      </div>
     );
   }
 
@@ -142,7 +221,10 @@ const AiModelSettings = ({
 
   return (
     <div className="flex flex-col gap-5">
-      {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
+      {readiness}
+      {(select.error ?? verify.error ?? pull.error) != null && (
+        <ErrorState error={select.error ?? verify.error ?? pull.error} />
+      )}
       {pullError && <ErrorState error={new Error(pullError)} />}
 
       {catalog.length > 0 ? (
@@ -151,10 +233,12 @@ const AiModelSettings = ({
           active={status.model}
           gpuName={status.gpuName}
           vramGiB={status.vramGiB}
-          busy={select.isPending}
+          busy={select.isPending || verify.isPending}
           pulling={pulling}
+          verifying={verify.isPending ? verify.variables?.data.model : undefined}
           onSelect={(model) => select.mutate({ data: { model } })}
           onPull={startPull}
+          onVerify={(model) => verify.mutate({ data: { provider: "ollama", model } })}
         />
       ) : (
         <p className="text-muted-foreground text-sm">

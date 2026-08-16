@@ -275,8 +275,11 @@ describe("AI model pull", () => {
       getSystemLlmStatusMockHandler({
         local: true,
         reachable: true,
+        configured: false,
         provider: "ollama",
         model: "",
+        toolCapability: "unverified",
+        semanticallyCertified: false,
         catalog: [
           {
             tag: "qwen3:8b",
@@ -286,6 +289,7 @@ describe("AI model pull", () => {
             pulled: false,
             recommended: true,
             runtimeOk: true,
+            toolCapability: "verified",
             // ⚠ Required, and it is a CAPABILITY flag (whether the model supports tool calls),
             // not a cosmetic one — the picker uses it to decide what a model can be used for.
             tools: true,
@@ -394,7 +398,10 @@ describe("Settings honesty", () => {
         provider: "openai",
         local: false,
         reachable: false,
+        configured: false,
         model: "",
+        toolCapability: "unverified",
+        semanticallyCertified: false,
         catalog: [],
         hosted: [
           {

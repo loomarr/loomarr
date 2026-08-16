@@ -8,6 +8,9 @@ interface HostedModelPickerProps {
   activeModel?: string;
   // Selecting a hosted model: provider key + model id (+ base URL for a custom provider).
   onSelect: (sel: { provider: string; model: string; baseUrl?: string }) => void;
+  // Explicit behavioral tool-call verification; reads and polling never call this seam.
+  onVerify: (sel: { provider: string; model: string; baseUrl?: string }) => void;
+  verifying?: { provider: string; model: string };
   busy?: boolean;
   className?: string;
 }
