@@ -101,7 +101,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	h := newHarness(t, withoutConnections(), withFillerStorage())
 	admin := h.asAdmin()
 	if err := h.store.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("library-commercials", "library", "Commercials", "Commercials", time.Now())); err != nil {
+		store.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 
