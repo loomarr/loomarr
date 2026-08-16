@@ -54,12 +54,12 @@ RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.fil
 const postgresJobClaimSQL = `
 WITH due AS (
     SELECT id FROM jobs
-    WHERE status = 'queued' AND deadline <= $2 AND deadline > 0
+    WHERE status IN ('queued', 'running') AND deadline <= $2 AND deadline > 0
     ORDER BY deadline
     LIMIT $3
     FOR UPDATE SKIP LOCKED
 )
-UPDATE jobs j SET deadline = $1
+UPDATE jobs j SET deadline = $1, status = 'running', attempts = j.attempts + 1, updated_at = $2
 FROM due WHERE j.id = due.id
 RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
           j.deadline, j.attempts, j.created_at, j.updated_at`

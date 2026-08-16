@@ -51,10 +51,10 @@ RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_
 
 // SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteJobClaimSQL = `
-UPDATE jobs SET deadline = ?1
+UPDATE jobs SET deadline = ?1, status = 'running', attempts = attempts + 1, updated_at = ?2
 WHERE id IN (
     SELECT id FROM jobs
-    WHERE status = 'queued' AND deadline <= ?2 AND deadline > 0
+    WHERE status IN ('queued', 'running') AND deadline <= ?2 AND deadline > 0
     ORDER BY deadline LIMIT ?3
 )
 RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error,

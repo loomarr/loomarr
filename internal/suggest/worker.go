@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -24,11 +25,12 @@ import (
 type ProposalStore interface {
 	CreateJob(ctx context.Context, j store.Job) error
 	GetJob(ctx context.Context, id string) (store.Job, error)
-	UpdateJob(ctx context.Context, j store.Job) error
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
-	CreateProposal(ctx context.Context, p store.Proposal) error
-	GetProposal(ctx context.Context, id string) (store.Proposal, error)
+	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause string, updatedAt time.Time) error
+	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
+	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends
@@ -138,18 +140,11 @@ func NewService(st ProposalStore, sug *Suggester, cfg Config, newID func() strin
 	}
 }
 
-// Submit enqueues a suggestion job for an intent (§8). If an identical intent was
-// generated within the cache TTL, it returns that job's id instead of enqueuing
-// a duplicate (§8 cache by hash(normalized intent)). Returns the job id.
+// Submit creates a caller-owned suggestion job for an intent (§8). A successful
+// cache hit copies only proposal content into a fresh job/proposal lifecycle; it
+// never reuses another request's id, owner, or approval state. Returns the job id.
 func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (string, error) {
 	hash := IntentHash(intent)
-	// Cache hit ONLY on a recent SUCCESSFUL job. A failed job — e.g. one that found
-	// no grounded titles (ErrNoGroundedTitles) or hit a timeout — must NOT wedge
-	// re-submits of the same intent for the cache TTL; the operator retrying is
-	// exactly how they recover, so a re-submit re-runs generation.
-	if cached, err := s.store.FindJobByIntentHash(ctx, hash, s.now().Add(-s.cacheTTL)); err == nil && cached.Status == "done" {
-		return cached.ID, nil // cache hit — reuse the recent successful job
-	}
 	blob, err := json.Marshal(intent)
 	if err != nil {
 		return "", fmt.Errorf("marshal intent: %w", err)
@@ -158,7 +153,23 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 	job := store.Job{
 		ID: s.newID(), Kind: jobKindSuggest, Status: "queued",
 		IntentJSON: string(blob), IntentHash: hash, CreatedBy: createdBy,
-		Deadline: now, CreatedAt: now, UpdatedAt: now, // due immediately
+		Deadline: now, CreatedAt: now, UpdatedAt: now,
+	}
+	// Cache hit ONLY on a recent SUCCESSFUL job. A failed job — e.g. one that found
+	// no grounded titles (ErrNoGroundedTitles) or hit a timeout — must NOT wedge
+	// re-submits. Even a successful hit gets a fresh lifecycle: the cache saves
+	// inference, not ownership/audit identity.
+	if cached, err := s.store.FindJobByIntentHash(ctx, hash, s.now().Add(-s.cacheTTL)); err == nil && cached.Status == "done" {
+		job.Status = "done"
+		p, cloneErr := s.store.CloneSuggestionSuccess(ctx, cached.ID, job, s.newID())
+		if cloneErr == nil {
+			s.considerAutomaticApproval(ctx, job, p)
+			return job.ID, nil
+		}
+		if !errors.Is(cloneErr, store.ErrNotFound) {
+			return "", cloneErr
+		}
+		job.Status = "queued"
 	}
 	if err := s.store.CreateJob(ctx, job); err != nil {
 		return "", err
@@ -195,16 +206,10 @@ func (s *Service) requeue(ctx context.Context, jobID string, intent Intent, kind
 		return "", fmt.Errorf("%s: marshal intent: %w", operation, err)
 	}
 	now := s.now()
-	// Re-queue in place: swap in the refine intent and make it due immediately. The worker
-	// picks it up, generates a fresh proposal on this job, and the newest-approved wins.
-	job.IntentJSON = string(blob)
-	job.IntentHash = IntentHash(intent)
-	job.Kind = kind
-	job.Status = "queued"
-	job.LastError = ""
-	job.Deadline = now
-	job.UpdatedAt = now
-	if err := s.store.UpdateJob(ctx, job); err != nil {
+	// Re-queue in place only if the terminal execution we loaded is still current.
+	// A concurrent refine or active worker wins cleanly rather than having a stale
+	// whole-row write restore an old attempt token.
+	if err := s.store.RequeueSuggestionJob(ctx, job.ID, job.Attempts, kind, string(blob), IntentHash(intent), now, now); err != nil {
 		return "", fmt.Errorf("%s: requeue job: %w", operation, err)
 	}
 	return job.ID, nil
@@ -231,8 +236,12 @@ func (s *Service) Run(ctx context.Context) {
 
 // drainOnce claims up to `workers` due jobs and runs each in a bounded goroutine.
 func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
+	available := cap(sem) - len(sem)
+	if available <= 0 {
+		return
+	}
 	// Lease horizon must exceed JOB_TIMEOUT so a running job isn't re-claimed.
-	jobs, err := s.store.ClaimDueJobs(ctx, s.now(), s.timeout+time.Minute, s.workers)
+	jobs, err := s.store.ClaimDueJobs(ctx, s.now(), s.timeout+time.Minute, available)
 	if err != nil {
 		s.log.Error("claim due jobs", "err", err)
 		return
@@ -266,10 +275,6 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		return
 	}
 
-	job.Status = "running"
-	job.UpdatedAt = s.now()
-	_ = s.store.UpdateJob(ctx, job)
-
 	prop, err := s.suggester.Suggest(jobCtx, intent)
 	if err != nil {
 		s.failJob(ctx, job, err)
@@ -287,10 +292,23 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		ID: s.newID(), JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
 		ProposalJSON: string(propBlob), CreatedAt: now, UpdatedAt: now,
 	}
-	if err := s.store.CreateProposal(ctx, p); err != nil {
+	if err := s.store.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, p, now); err != nil {
+		if errors.Is(err, store.ErrJobNotRunning) {
+			s.log.Info("discarding stale suggestion result", "job", job.ID, "attempt", job.Attempts, "err", err)
+			return
+		}
 		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err))
 		return
 	}
+	s.considerAutomaticApproval(ctx, job, p)
+	s.emitPhase(job.ID, PhaseDone, 0)
+}
+
+// considerAutomaticApproval applies the two optional grants only after the
+// proposal is durably visible. Generation completion and proposal decision are
+// distinct lifecycles: done means inference produced a persisted proposal;
+// approval may move that proposal from submitted to approved immediately after.
+func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
@@ -323,19 +341,20 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 			s.log.Debug("not auto-curated", "proposal", p.ID, "reason", d.Reason)
 		}
 	}
-	job.Status = "done"
-	job.UpdatedAt = now
-	_ = s.store.UpdateJob(ctx, job)
-	s.emitPhase(job.ID, PhaseDone, 0)
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
-	s.log.Error("suggestion job failed", "job", job.ID, "err", cause)
-	job.Status = "failed"
-	job.LastError = cause.Error()
-	job.Attempts++
-	job.UpdatedAt = s.now()
-	_ = s.store.UpdateJob(ctx, job)
+	if err := s.store.CommitSuggestionFailure(ctx, job.ID, job.Attempts, cause.Error(), s.now()); err != nil {
+		if errors.Is(err, store.ErrJobNotRunning) {
+			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
+				"cause", cause, "err", err)
+		} else {
+			s.log.Error("persist suggestion job failure", "job", job.ID, "attempt", job.Attempts,
+				"cause", cause, "err", err)
+		}
+		return
+	}
+	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
 	s.emitPhase(job.ID, PhaseFailed, 0)
 }
 
