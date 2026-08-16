@@ -69,6 +69,9 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ProposalApprovalSameIntentConflict", func(t *testing.T) { testProposalApprovalSameIntentConflict(t, newStore) })
 		t.Run("ProposalDecisionConcurrent", func(t *testing.T) { testProposalDecisionConcurrent(t, newStore) })
 		t.Run("ProposalApprovalOverlappingTitles", func(t *testing.T) { testProposalApprovalOverlappingTitles(t, newStore) })
+		t.Run("ProposalAutoApprovalQuotaConcurrent", func(t *testing.T) { testProposalAutoApprovalQuotaConcurrent(t, newStore) })
+		t.Run("ProposalApprovalManualOrdering", func(t *testing.T) { testProposalApprovalManualParticipatesInRequesterOrdering(t, newStore) })
+		t.Run("ProposalApprovalCanceledWaiter", func(t *testing.T) { testProposalApprovalCanceledWaiterReleasesOrdering(t, newStore) })
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
