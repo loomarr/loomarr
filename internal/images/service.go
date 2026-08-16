@@ -35,7 +35,7 @@ type Store interface {
 	GetFetchedBySourceURL(ctx context.Context, src string) (Image, error)
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 	PutRef(ctx context.Context, ref Ref) error
-	PutDerivative(ctx context.Context, d Derivative) error
+	PutDerivatives(ctx context.Context, derivatives []Derivative) error
 	ListDerivatives(ctx context.Context, hash string) ([]Derivative, error)
 }
 
@@ -107,7 +107,7 @@ type Renderer interface {
 	Generate(context.Context, rustgen.Request) (rustgen.Manifest, error)
 }
 
-const renditionRecipe = "loomarr-rendition-v1"
+const renditionRecipe = "loomarr-rendition-v2"
 
 // New builds a Service. `now` is injectable because several behaviours here are time-dependent
 // (fetch stamps, last-used) and a test that cannot control the clock asserts on wall time.
@@ -433,7 +433,7 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// produce one encode, not fifty racing writes to one path.
 	key := dst
 	v, err, _ := s.group.Do(key, func() (any, error) {
-		return s.encodeRendition(ctx, rec, f, w, dst)
+		return s.encodeRendition(ctx, rec, f, w)
 	})
 	if err != nil {
 		return Rendition{}, err
@@ -442,63 +442,95 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 }
 
 // encodeRendition does the actual work behind singleflight.
-func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w int, dst string) (Rendition, error) {
-	origPath, err := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w int) (Rendition, error) {
+	rends, err := s.encodeRenditions(ctx, rec, f, []int{w})
 	if err != nil {
 		return Rendition{}, err
+	}
+	return rends[0], nil
+}
+
+// encodeRenditions renders one same-format ladder in one worker process. The worker returns only a
+// complete, validated manifest; Go retains ownership of canonical paths and durable publication.
+func (s *Service) encodeRenditions(ctx context.Context, rec Image, f Format, widths []int) ([]Rendition, error) {
+	origPath, err := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+	if err != nil {
+		return nil, err
 	}
 	if _, ok := s.blob.Stat(origPath); !ok {
 		// The row exists but the bytes do not — a remote image not yet fetched, or an upload lost
 		// with the image directory. Both are ErrNotFound to a caller; the GC job is what tells an
 		// operator about the second, since it is the unrecoverable one.
-		return Rendition{}, ErrNotFound
+		return nil, ErrNotFound
 	}
 
 	if s.renderer == nil {
-		return Rendition{}, fmt.Errorf("images: required Rust renderer unavailable")
+		return nil, fmt.Errorf("images: required Rust renderer unavailable")
 	}
 	stagingRoot := filepath.Join(s.cfg.Dir, "staging")
 	if err := os.MkdirAll(stagingRoot, 0o750); err != nil {
-		return Rendition{}, fmt.Errorf("images: create staging root: %w", err)
+		return nil, fmt.Errorf("images: create staging root: %w", err)
 	}
 	staging, err := os.MkdirTemp(stagingRoot, "request-*")
 	if err != nil {
-		return Rendition{}, fmt.Errorf("images: create staging: %w", err)
+		return nil, fmt.Errorf("images: create staging: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
 	motion := "first_frame"
 	if rec.Animated && f == FormatWebP {
 		motion = "preserve"
 	}
-	targetID := fmt.Sprintf("%s-w%d", f, w)
+	targets := make([]rustgen.Target, 0, len(widths))
+	for _, width := range widths {
+		targets = append(targets, rustgen.Target{
+			ID: fmt.Sprintf("%s-w%d", f, width), Format: string(f), Width: width, Motion: motion,
+		})
+	}
 	timeout := 30 * time.Second
 	if f == FormatAVIF || rec.Animated {
 		timeout = 2 * time.Minute
 	}
 	workerCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	manifest, err := s.generate(workerCtx, s.workerRequest(rec.Hash, origPath, staging, []rustgen.Target{{
-		ID: targetID, Format: string(f), Width: w, Motion: motion,
-	}}))
+	manifest, err := s.generate(workerCtx, s.workerRequest(rec.Hash, origPath, staging, targets))
 	if err != nil {
-		return Rendition{}, err
-	}
-	output := manifest.Outputs[0]
-	if err := s.blob.Promote(filepath.Join(staging, output.RelativePath), dst); err != nil {
-		return Rendition{}, err
+		return nil, err
 	}
 
+	rends := make([]Rendition, 0, len(manifest.Outputs))
+	derivatives := make([]Derivative, 0, len(manifest.Outputs))
+	published := make([]string, 0, len(manifest.Outputs))
 	now := s.now()
-	if err := s.store.PutDerivative(ctx, Derivative{
-		ImageHash: rec.Hash, Recipe: output.RecipeID, Format: f, Width: w,
-		Bytes: output.Bytes, OutputHash: output.SHA256, Path: dst,
-		Animated: output.Animated, CreatedAt: now,
-	}); err != nil {
-		return Rendition{}, err
+	rollback := func() {
+		for _, path := range published {
+			_ = s.blob.Remove(path)
+		}
+	}
+	for _, output := range manifest.Outputs {
+		dst, pathErr := s.blob.DerivativePath(rec.Hash, output.RequestedWidth, f)
+		if pathErr != nil {
+			rollback()
+			return nil, pathErr
+		}
+		if err := s.blob.Promote(filepath.Join(staging, output.RelativePath), dst); err != nil {
+			rollback()
+			return nil, err
+		}
+		published = append(published, dst)
+
+		derivatives = append(derivatives, Derivative{
+			ImageHash: rec.Hash, Recipe: output.RecipeID, Format: f, Width: output.RequestedWidth,
+			Bytes: output.Bytes, OutputHash: output.SHA256, Path: dst,
+			Animated: output.Animated, CreatedAt: now,
+		})
+		rends = append(rends, Rendition{Path: dst, ContentType: f.MIME(), Bytes: output.Bytes, Hash: rec.Hash})
+	}
+	if err := s.store.PutDerivatives(ctx, derivatives); err != nil {
+		rollback()
+		return nil, err
 	}
 	_ = s.store.TouchImage(ctx, rec.Hash, now)
-
-	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: output.Bytes, Hash: rec.Hash}, nil
+	return rends, nil
 }
 
 // PathFor builds the same-origin path of one rendition for an in-app browser.

@@ -47,7 +47,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		release = "dev"
 	}
 	renderer, err := rustgen.Open(absoluteWorker, rustgen.Contract{
-		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v1",
+		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 	})
 	if err != nil {

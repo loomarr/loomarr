@@ -40,6 +40,8 @@ Correctness remains owned by `make image-cert`; the benchmark never substitutes 
 - Send all missing widths for one Image in one worker request and accept only a complete manifest.
 - Resize the largest rung from the decoded source, then step downward from the preceding rung.
 - Preserve Go's validation, atomic publication, Store writes, cancellation, and all-or-nothing cleanup.
+- Advance the immutable recipe from `v1` to `v2`: stepped resampling intentionally changes pixels,
+  so it must never overwrite a year-cached `v1` URL.
 - Compare complete-ladder throughput, process count, output sizes, peak RSS, and certification output
   semantics against slice 1 on both release architectures.
 
@@ -83,4 +85,6 @@ docker build --target image-worker .
 
 Slices that change Store behavior also run `make test-pg`. A benchmark comparison records hardware,
 architecture, process count, throughput, p50/p95/max duration, output bytes, and peak RSS. A result is
-actionable only against the same corpus, recipe, release profile, and CPU profile.
+actionable only against the same corpus, release profile, and CPU profile. A comparison across recipe
+identifiers must identify the intentional pixel-policy change and use certification for semantic
+equivalence; it is not a byte-for-byte regression comparison.

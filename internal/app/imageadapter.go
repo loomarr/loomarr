@@ -63,7 +63,7 @@ func newImageService(st store.Store, set resolved, explicitWorker, release strin
 		return nil, err
 	}
 	renderer, err := rustgen.Open(worker, rustgen.Contract{
-		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v1",
+		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 	})
 	if err != nil {
@@ -165,6 +165,18 @@ func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) erro
 		Animated:   d.Animated,
 		CreatedAt:  d.CreatedAt,
 	})
+}
+
+func (a imageStore) PutDerivatives(ctx context.Context, derivatives []images.Derivative) error {
+	rows := make([]store.ImageDerivative, 0, len(derivatives))
+	for _, d := range derivatives {
+		rows = append(rows, store.ImageDerivative{
+			ImageHash: d.ImageHash, Recipe: d.Recipe, Format: string(d.Format), Width: d.Width,
+			Bytes: d.Bytes, OutputHash: d.OutputHash, Path: d.Path, Animated: d.Animated,
+			CreatedAt: d.CreatedAt,
+		})
+	}
+	return a.st.PutImageDerivatives(ctx, rows)
 }
 
 func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.Derivative, error) {
