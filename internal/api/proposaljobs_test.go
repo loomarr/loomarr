@@ -90,7 +90,7 @@ type proposalJobsResponse struct {
 
 func decodeProposalJob(t *testing.T, resp *http.Response) proposalJobResponse {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var got proposalJobResponse
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestGetProposalJobRestoresOwnedQueuedIntent(t *testing.T) {
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-queued", aliceToken, "")
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		t.Fatalf("owned queued proposal job -> %d, want 200", resp.StatusCode)
 	}
 	got := decodeProposalJob(t, resp)
@@ -175,7 +175,7 @@ func TestGetProposalJobEnforcesCallerOwnership(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			resp := do(t, srv, http.MethodGet, tc.path, tc.token, "")
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != tc.want {
 				t.Errorf("GET %s as %q -> %d, want %d", tc.path, tc.token, resp.StatusCode, tc.want)
 			}
@@ -247,7 +247,7 @@ func TestGetProposalJobReturnsNewestProposalInAnyDecisionState(t *testing.T) {
 	}
 	approvedResp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-approved", aliceToken, "")
 	if approvedResp.StatusCode != http.StatusOK {
-		defer approvedResp.Body.Close()
+		defer func() { _ = approvedResp.Body.Close() }()
 		t.Fatalf("approved job -> %d, want 200", approvedResp.StatusCode)
 	}
 	approved := decodeProposalJob(t, approvedResp)

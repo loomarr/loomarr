@@ -209,11 +209,14 @@ func installedWhy(m InstalledModel, capability ToolCapability) string {
 			return "Local model; tool calling is unverified."
 		}
 	}
-	suffix := "tool-calling unverified"
-	if capability == ToolCapabilityVerified {
+	var suffix string
+	switch capability {
+	case ToolCapabilityVerified:
 		suffix = "tool-calling"
-	} else if capability == ToolCapabilityUnsupported {
+	case ToolCapabilityUnsupported:
 		suffix = "no tool-calling"
+	default:
+		suffix = "tool-calling unverified"
 	}
 	return strings.Join(parts, " · ") + " · " + suffix
 }
