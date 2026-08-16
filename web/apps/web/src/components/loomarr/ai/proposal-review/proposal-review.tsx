@@ -1,6 +1,7 @@
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { formatPercent } from "@loomarr/core/format";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, Loader2, Pencil, ShieldAlert, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,7 +65,14 @@ const ItemRow = ({
           <span className="font-mono text-static-400 text-xs">{`${formatPercent(item.confidence)} fit`}</span>
         )}
       </div>
-      {item.rationale && <p className="mt-1 text-muted-foreground text-sm">{item.rationale}</p>}
+      {item.rationale && (
+        <details className="mt-1">
+          <summary className="cursor-pointer list-none text-muted-foreground text-xs hover:text-foreground">
+            {`Why ${item.name} fits`}
+          </summary>
+          <p className="mt-1 text-muted-foreground text-sm">{item.rationale}</p>
+        </details>
+      )}
     </div>
     {onEdit && (
       <Tooltip>
@@ -95,10 +103,104 @@ const Section = ({ title, count, children }: { title: string; count: number; chi
     </section>
   );
 
+const rangeLabel = (range?: { from?: number; to?: number }): string | null => {
+  if (!range?.from && !range?.to) return null;
+  if (range.from && range.to) return range.from === range.to ? `${range.from}` : `${range.from}–${range.to}`;
+  return range.from ? `From ${range.from}` : `Through ${range.to}`;
+};
+
+const sentenceCase = (value: string): string =>
+  value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const durationLabel = (value: string): string => {
+  const match = value.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  if (!match) return value;
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  const seconds = Number(match[3] ?? 0);
+  if (minutes === 0 && seconds === 0 && hours > 0) {
+    if (hours % 24 === 0) {
+      const days = hours / 24;
+      return `${days} ${days === 1 ? "day" : "days"}`;
+    }
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return value;
+};
+
+// policyFacts renders only policy the Suggester actually extracted. Omitting a field means
+// "use the built-in default"; inventing a default label here would turn absence into a claim.
+const policyFacts = (policy?: ChannelPolicy): string[] => {
+  if (!policy) return [];
+  const facts: string[] = [];
+  const audience: string[] = [];
+  if (policy.audience?.ceiling) audience.push(policy.audience.ceiling);
+  if (policy.audience?.unrated) {
+    audience.push(
+      policy.audience.unrated === "exclude"
+        ? "Unrated excluded"
+        : policy.audience.unrated === "allow"
+          ? "Unrated allowed"
+          : `Unrated ${policy.audience.unrated}`,
+    );
+  }
+  if (audience.length > 0) facts.push(`Audience · ${audience.join(" · ")}`);
+
+  const scope: string[] = [];
+  const era = rangeLabel(policy.scope?.era);
+  if (era) scope.push(era);
+  const seasons = rangeLabel(policy.scope?.seasons);
+  if (seasons) scope.push(`Seasons ${seasons}`);
+  if (policy.scope?.runtimeMax) scope.push(`Up to ${Math.round(policy.scope.runtimeMax / 60)} min`);
+  if ((policy.scope?.genres?.include?.length ?? 0) > 0) {
+    scope.push(`Genres ${policy.scope?.genres?.include?.join(", ")}`);
+  }
+  if ((policy.scope?.genres?.exclude?.length ?? 0) > 0) {
+    scope.push(`Excludes ${policy.scope?.genres?.exclude?.join(", ")}`);
+  }
+  if ((policy.scope?.series?.length ?? 0) > 0) scope.push(`${policy.scope?.series?.length} series`);
+  if ((policy.scope?.collections?.length ?? 0) > 0) {
+    scope.push(`${policy.scope?.collections?.length} collections`);
+  }
+  if (scope.length > 0) facts.push(`Scope · ${scope.join(" · ")}`);
+
+  if (policy.ordering) facts.push(`Ordering · ${sentenceCase(policy.ordering)}`);
+  const separation: string[] = [];
+  if (policy.separation?.movieNoRepeat) {
+    separation.push(`Movies ${durationLabel(policy.separation.movieNoRepeat)}`);
+  }
+  if (policy.separation?.episodeNoRepeat) {
+    separation.push(`Episodes ${durationLabel(policy.separation.episodeNoRepeat)}`);
+  }
+  if (policy.separation?.seriesMinGap) {
+    separation.push(`Series ${durationLabel(policy.separation.seriesMinGap)}`);
+  }
+  if (policy.separation?.blockMax) separation.push(`Block limit ${policy.separation.blockMax}`);
+  if (separation.length > 0) facts.push(`Separation · ${separation.join(" · ")}`);
+  if (policy.seasonal?.mode) facts.push(`Seasonal · ${sentenceCase(policy.seasonal.mode)}`);
+  if ((policy.rules?.length ?? 0) > 0) facts.push(`Scheduling rules · ${policy.rules?.length}`);
+  return facts;
+};
+
+const refusalReason = (item: ProposalItem, reason: string, policy?: ChannelPolicy): string => {
+  if (reason === "over_ceiling") {
+    const rating = item.officialRating ? `Rated ${item.officialRating}` : "Rating unknown";
+    const limit = policy?.audience?.ceiling
+      ? `the ${policy.audience.ceiling} audience limit`
+      : "this channel's audience limit";
+    return `${rating}, above ${limit}.`;
+  }
+  if (reason === "unrated") return "No usable rating under this channel's audience limit.";
+  if (reason === "out_of_scope") return "Outside this channel's scope.";
+  if (reason === "out_of_season") return "Outside the active seasonal window.";
+  return `Excluded by this channel's ${reason.replaceAll("_", " ")} policy.`;
+};
+
 const ProposalReview = ({
   proposal,
   status = "draft",
   busy = false,
+  approving = false,
   onApprove,
   onDeny,
   onEditItem,
@@ -106,6 +208,8 @@ const ProposalReview = ({
 }: ProposalReviewProps) => {
   const s = STATUS[status];
   const actionable = status === "draft" || status === "submitted" || status === "partially-edited";
+  const canDecide = actionable && (onApprove != null || onDeny != null);
+  const decisionBusy = busy || approving;
   // Deny is a two-step: click arms a reason field, a second click sends it. Approve stays
   // one click — the asymmetry is deliberate, since approving needs no explanation and
   // denying is the case where a member is left guessing.
@@ -120,6 +224,8 @@ const ProposalReview = ({
   const lineup = proposal.lineup ?? [];
   const acquisitions = proposal.acquisitions ?? [];
   const alternates = proposal.alternates ?? [];
+  const facts = policyFacts(proposal.policy);
+  const refused = proposal.refused ?? [];
   return (
     <Card className={cn("flex flex-col gap-5 p-5", className)}>
       <header className="flex items-start justify-between gap-4">
@@ -171,6 +277,43 @@ const ProposalReview = ({
         )}
       </header>
 
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="lock">{`${lineup.length} ready now`}</Badge>
+        <Badge variant="tune">{`${acquisitions.length} to acquire`}</Badge>
+      </div>
+
+      {facts.length > 0 && (
+        <section className="flex flex-col gap-1.5">
+          <h3 className="font-mono text-static-400 text-xs uppercase tracking-wide">Extracted policy</h3>
+          <ul className="flex flex-col gap-1 text-sm">
+            {facts.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {refused.length > 0 && (
+        <section className="flex flex-col gap-1.5 rounded-md border border-signal/40 bg-signal/5 px-3 py-2">
+          <h3 className="flex items-center gap-1.5 text-sm">
+            <ShieldAlert className="size-4 shrink-0 text-signal" aria-hidden />
+            <span className="font-medium">
+              {`${refused.length} ${refused.length === 1 ? "title" : "titles"} won't be included`}
+            </span>
+          </h3>
+          <ul className="flex flex-col gap-0.5">
+            {refused.map(({ item, reason }) => (
+              <li key={`${item.mediaType}-${item.tmdbId ?? item.tvdbId ?? item.name}`} className="text-sm">
+                <span>{item.name}</span>{" "}
+                <span className="text-muted-foreground">
+                  — {refusalReason(item, reason, proposal.policy)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <Section title="Lineup" count={lineup.length}>
         {lineup.map((item) => (
           <ItemRow key={item.name} item={item} kind="lineup" onEdit={onEditItem} />
@@ -192,7 +335,7 @@ const ProposalReview = ({
         </section>
       )}
 
-      {actionable && (
+      {canDecide && (
         <footer className="flex flex-col gap-2 border-border border-t pt-4">
           {denying ? (
             /* Deny arms this instead of firing immediately: the requester sees whatever is
@@ -208,16 +351,16 @@ const ProposalReview = ({
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. we're over the acquisition cap this week, ask again Monday"
-                disabled={busy}
+                disabled={decisionBusy}
               />
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={cancelDeny} disabled={busy}>
+                <Button variant="ghost" onClick={cancelDeny} disabled={decisionBusy}>
                   Cancel
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => onDeny?.(reason.trim() || undefined)}
-                  disabled={busy}
+                  disabled={decisionBusy}
                 >
                   <X aria-hidden />
                   Deny
@@ -226,14 +369,18 @@ const ProposalReview = ({
             </div>
           ) : (
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDenying(true)} disabled={busy}>
-                <X aria-hidden />
-                Deny
-              </Button>
-              <Button onClick={onApprove} disabled={busy}>
-                <Check aria-hidden />
-                Approve & acquire
-              </Button>
+              {onDeny && (
+                <Button variant="outline" onClick={() => setDenying(true)} disabled={decisionBusy}>
+                  <X aria-hidden />
+                  Deny
+                </Button>
+              )}
+              {onApprove && (
+                <Button onClick={onApprove} disabled={decisionBusy} aria-busy={approving || undefined}>
+                  {approving ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+                  {approving ? "Creating channel…" : "Approve & acquire"}
+                </Button>
+              )}
             </div>
           )}
         </footer>

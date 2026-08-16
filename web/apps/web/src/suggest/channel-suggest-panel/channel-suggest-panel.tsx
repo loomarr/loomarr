@@ -93,9 +93,15 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
             proposal={proposal.proposal}
             status={proposal.status}
             busy={approve.isPending || deny.isPending}
+            approving={approve.isPending}
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
+          {!isAdmin && proposal.status === "submitted" && (
+            <p className="text-muted-foreground text-sm" role="status">
+              Waiting for admin approval.
+            </p>
+          )}
           {fillerPool && (
             <p className="text-muted-foreground text-sm" role="status">
               {fillerPool.eligible > 0
@@ -108,7 +114,13 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
             </p>
           )}
-          <Button variant="outline" size="sm" className="w-fit" onClick={run.reset}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={run.reset}
+            disabled={approve.isPending || deny.isPending}
+          >
             Start over
           </Button>
         </div>

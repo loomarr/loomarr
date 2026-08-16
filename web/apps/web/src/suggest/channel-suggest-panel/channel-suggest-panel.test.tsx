@@ -58,7 +58,7 @@ const stubSuggest = (
   opts: {
     proposals?: ProposalDTO[];
     me?: MeBody;
-    approveBody?: ApproveOutputBody;
+    approveBody?: ApproveOutputBody | Promise<ApproveOutputBody>;
     fillerEligible?: number;
   } = {},
 ) => {
@@ -76,9 +76,11 @@ const stubSuggest = (
       untagged: 0,
     }),
     // Approve — returns the created channel's id (what the panel navigates to).
-    getApproveProposalMockHandler(({ params }) => {
+    getApproveProposalMockHandler(async ({ params }) => {
       approvals.push(String(params.id));
-      return opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" };
+      return await Promise.resolve(
+        opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" },
+      );
     }),
     getSubmitProposalMockHandler(async ({ request }) => {
       submissions.push(await request.json());
@@ -214,22 +216,47 @@ describe("ChannelSuggestPanel", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ch_new123"));
   });
 
-  it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
+  it("shows one locked creation action while approval is in flight", async () => {
     const user = userEvent.setup();
-    // ProposalReview renders the Approve button off the proposal STATUS (same as /suggest);
-    // the gate is that a member's onApprove is undefined, so clicking it does nothing — and
-    // the server would 403 anyway. Assert the panel never fires the approve POST for a member.
+    let finishApproval!: (body: ApproveOutputBody) => void;
+    const approval = new Promise<ApproveOutputBody>((resolve) => {
+      finishApproval = resolve;
+    });
+    const { approvals } = stubSuggest({ proposals: [PROPOSAL], approveBody: approval });
+    const onCreated = vi.fn();
+    renderPanel(onCreated);
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("button", { name: /approve & acquire/i }));
+
+    try {
+      await waitFor(() => expect(approvals).toEqual(["p-1"]));
+      const creating = screen.getByRole("button", { name: "Creating channel…" });
+      expect(creating).toBeDisabled();
+      expect(creating).toHaveAttribute("aria-busy", "true");
+      expect(screen.getByRole("button", { name: "Start over" })).toBeDisabled();
+      await user.click(creating);
+      expect(approvals).toEqual(["p-1"]);
+    } finally {
+      finishApproval({ channelId: "ch_new123", enqueued: 0, status: "approved" });
+    }
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ch_new123"));
+  });
+
+  it("tells a member approval is waiting without rendering decision controls", async () => {
+    const user = userEvent.setup();
     const { approvals } = stubSuggest({ proposals: [PROPOSAL], me: MEMBER });
     const onCreated = vi.fn();
     renderPanel(onCreated);
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: /approve/i }));
 
-    // No approve POST, no navigation — the control is wired to nothing for a member.
-    // ⚠ `approvals` is fed only by `POST /v1/proposals/:id/approve` — the per-proposal route the
-    // panel would call. The old `includes("/approve")` would also have matched the BULK route.
+    expect(await screen.findByText("Waiting for admin approval.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /deny/i })).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
   });

@@ -10,6 +10,9 @@ interface ProposalReviewProps {
   proposal: Proposal;
   status?: ProposalStatus;
   busy?: boolean;
+  // Distinguishes the approval/materialization request from a pending denial so the
+  // primary action can tell the operator what is actually happening.
+  approving?: boolean;
   onApprove?: () => void;
   // Deny carries the admin's optional reason. The API has persisted `denyReason` and
   // ApprovalQueueItem has rendered it since day one — but every call site sent `{}`,
