@@ -30,6 +30,19 @@ func TestRegistry_BuildsCleanly(t *testing.T) {
 	}
 }
 
+func TestRegistry_TMDBHelpNamesEveryEnabledSurface(t *testing.T) {
+	setting, ok := NewRegistry().Get("tmdb.api_key")
+	if !ok {
+		t.Fatal("tmdb.api_key is not declared")
+	}
+	help := strings.ToLower(setting.Doc)
+	for _, surface := range []string{"search", "icon", "suggestion"} {
+		if !strings.Contains(help, surface) {
+			t.Errorf("tmdb.api_key help %q does not mention %s", setting.Doc, surface)
+		}
+	}
+}
+
 // Every declared default must RESOLVE to the Go type its Kind promises, so a typed
 // accessor gets a real value on a fresh install with nothing stored and nothing in env.
 //

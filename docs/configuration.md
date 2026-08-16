@@ -75,7 +75,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Needed for AI channel suggestions. _(required for suggestions)_ |
+| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
 
 ## AI
 

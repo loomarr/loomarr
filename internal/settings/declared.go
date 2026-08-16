@@ -369,7 +369,7 @@ func declared() []Setting {
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
 			Kind: KindSecret, Default: "", Required: FeatureSuggestions,
-			Doc: "A free TMDB API key. Needed for AI channel suggestions.",
+			Doc: "A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---

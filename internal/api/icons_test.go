@@ -11,22 +11,22 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
-// fakeIconSvc records the channel it was asked about, so a test can prove the handler
-// passes the id through rather than suggesting icons for some other channel.
-type fakeIconSvc struct {
-	asked       []string
-	suggestions []api.IconSuggestion
-	err         error
+func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
+	return newIconsServerWithConfig(t, nil)
 }
 
-func (f *fakeIconSvc) IconSuggestions(_ context.Context, channelID string) ([]api.IconSuggestion, error) {
-	f.asked = append(f.asked, channelID)
-	return f.suggestions, f.err
+func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
+	t.Helper()
+	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv, st, fi
 }
 
-func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *fakeIconSvc) {
+func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, store.Store, *testkit.IconService[api.IconSuggestion]) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -35,22 +35,34 @@ func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *fakeIconSvc) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fi := &fakeIconSvc{}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Icons: fi,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st, fi
+	fi := &testkit.IconService[api.IconSuggestion]{}
+	var liveConfig func(string) string
+	if cfg != nil {
+		liveConfig = func(key string) string { return cfg[key] }
+	}
+	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:      st,
+		Auth:       testAuthorizer{},
+		Log:        slog.New(slog.DiscardHandler),
+		Icons:      fi,
+		LiveConfig: liveConfig,
+	})
+	return handler, st, fi
+}
+
+func iconsRequest(handler http.Handler, path string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	return resp
 }
 
 // The endpoint renders the candidate posters the service resolved from the channel's
 // own lineup — e.g. a Star Trek channel offering its five series' posters (§icon P2).
 func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 	srv, _, fi := newIconsServer(t)
-	fi.suggestions = []api.IconSuggestion{
+	fi.Results = []api.IconSuggestion{
 		{Title: "Star Trek: The Next Generation", URL: "https://image.tmdb.org/t/p/w500/tng.jpg"},
 		{Title: "Star Trek: Deep Space Nine", URL: "https://image.tmdb.org/t/p/w500/ds9.jpg"},
 	}
@@ -71,8 +83,8 @@ func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 	if body.Suggestions[0].Title != "Star Trek: The Next Generation" || body.Suggestions[0].URL != "https://image.tmdb.org/t/p/w500/tng.jpg" {
 		t.Errorf("suggestion[0] = %+v", body.Suggestions[0])
 	}
-	if len(fi.asked) != 1 || fi.asked[0] != "ch-1" {
-		t.Errorf("asked = %v, want exactly [ch-1]", fi.asked)
+	if asked := fi.ChannelIDs(); len(asked) != 1 || asked[0] != "ch-1" {
+		t.Errorf("asked = %v, want exactly [ch-1]", asked)
 	}
 }
 
@@ -80,7 +92,7 @@ func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 // empty state instead of guarding a case that never means failure.
 func TestChannelIconSuggestions_EmptyIsEmptyArray(t *testing.T) {
 	srv, _, fi := newIconsServer(t)
-	fi.suggestions = nil
+	fi.Results = nil
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -132,5 +144,27 @@ func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("icon-suggestions with no service → %d, want 501", resp.StatusCode)
+	}
+}
+
+func TestChannelIconSuggestionsFollowLiveTMDBKey(t *testing.T) {
+	cfg := map[string]string{}
+	handler, _, icons := newIconsHandlerWithConfig(t, cfg)
+
+	resp := iconsRequest(handler, "/v1/channels/ch-1/icon-suggestions")
+	if resp.Code != http.StatusNotImplemented {
+		t.Fatalf("icon suggestions without TMDB key = %d, want 501", resp.Code)
+	}
+	if asked := icons.ChannelIDs(); len(asked) != 0 {
+		t.Fatalf("unconfigured icon request reached adapter: %v", asked)
+	}
+
+	cfg["tmdb.api_key"] = "key"
+	resp = iconsRequest(handler, "/v1/channels/ch-1/icon-suggestions")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("icon suggestions after setting TMDB key = %d, want 200", resp.Code)
+	}
+	if asked := icons.ChannelIDs(); len(asked) != 1 || asked[0] != "ch-1" {
+		t.Fatalf("adapter calls after hot-apply = %v, want [ch-1]", asked)
 	}
 }

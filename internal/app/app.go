@@ -51,10 +51,10 @@ import (
 type Overrides struct {
 	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
-	// TMDB overrides the grounding/validation client. tmdb.New uses a fixed base
-	// (api.themoviedb.org), so unlike library/seerr it isn't settings-routable to a
-	// test double; tests pass tmdb.NewWithBase(double.URL, key) here to stay offline.
-	TMDB *tmdb.Client // nil ⇒ tmdb.New(tmdb.api_key)
+	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
+	// service double. The credential still comes from live settings; accepting a
+	// prebuilt client here used to freeze its key at boot and bypass composition.
+	TMDBBaseURL string // empty ⇒ https://api.themoviedb.org/3
 	// DevLogin mounts POST /v1/auth/dev-login (§11). run() sets it from
 	// LOOMARR_DEV_LOGIN; it rides Overrides so the §19 negative tests can build a
 	// handler BOTH ways through the real composition root, rather than asserting
@@ -189,6 +189,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		set, secrets, secretRedactor, log = r, sec, red, slog2
 		slog.SetDefault(log)
+	}
+	// One always-constructed dynamic TMDB adapter serves every TMDB-backed capability
+	// and the setup probe. Its credential resolves once per operation, so configure,
+	// rotate, and clear all take effect without rebuilding the handler. Tests may move
+	// only the external origin; they exercise this same production adapter and setting.
+	var tmdbClient *tmdb.Client
+	if st != nil {
+		key := func() string { return set.str("tmdb.api_key") }
+		if ov.TMDBBaseURL != "" {
+			tmdbClient = tmdb.NewDynamicWithBase(ov.TMDBBaseURL, key)
+		} else {
+			tmdbClient = tmdb.NewDynamic(key)
+		}
 	}
 	refreshSecretRedactor := func() {
 		if secretRedactor != nil && set.svc != nil && secrets != nil {
@@ -916,9 +929,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
-	// the LLM provider, the grounded suggester, and the worker pool. Wired when a
-	// store, the library, and the LLM are configured. The catalog + search share
-	// one impl (§7.2).
+	// the LLM provider, the grounded suggester, and the worker pool. A store owns
+	// these long-lived services; their dynamic adapters and feature gates decide
+	// which configured capabilities each operation may use. The catalog + search
+	// share one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
 	var collectionsSvc api.CollectionService
@@ -932,8 +946,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// SSRF allowlist and the concurrency cap are enforced identically whoever asks.
 	var imageFetcher *images.Fetcher
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
-	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
-	// timeline handles by rendering the strip with no images.
+	// It remains wired while the key is empty so a later settings save hot-applies; the resolver
+	// degrades an unconfigured lookup to the timeline's supported image-less rendering.
 	var timelineThumbs api.TimelineThumbResolver
 	if st != nil {
 		// The image service (§22, V52). First in this block deliberately: it depends on nothing
@@ -946,52 +960,33 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		var tmdbClient *tmdb.Client
-		if k := set.str("tmdb.api_key"); k != "" {
-			tmdbClient = tmdb.New(k)
-		}
-		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
-			tmdbClient = ov.TMDB
-		}
 		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
 		// from the provisioning key. The shared fetcher warms cold interactive artwork before the
-		// response returns; without TMDB the surfaces use their supported image-less rendering.
-		if tmdbClient != nil {
-			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
-		}
+		// response returns; while the credential is empty the resolver's supported soft-failure
+		// leaves the surfaces on their image-less rendering.
+		timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
-		// Only when TMDB is configured; the engine was created in the earlier st-block, so
-		// reach it through channelSvc (the same type-assert the pods wiring uses).
-		if tmdbClient != nil {
-			if engine, ok := channelSvc.(*channels.Engine); ok {
-				engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
-			}
+		// The resolver stays wired while unconfigured and reports the enrichment unresolved,
+		// allowing a later reconcile to heal it after the key is saved. The engine was created
+		// in the earlier st-block, so reach it through channelSvc.
+		if engine, ok := channelSvc.(*channels.Engine); ok {
+			engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 		}
-		// catalog.New accepts nil corpora; a nil *tmdb.Client would be a non-nil
-		// interface, so pass the concrete nil only when configured.
-		var tmdbSearcher catalog.TMDBSearcher
-		var validator suggest.Validator
-		if tmdbClient != nil {
-			tmdbSearcher = tmdbClient
-			validator = tmdbClient
-		} else {
-			validator = noopValidator{} // no TMDB: acquisitions can't be re-validated, so treat as exists
-		}
+		// The catalog and validator share the same dynamic adapter. An empty credential
+		// is an honest unconfigured error, never permission to skip validation.
 		// clip corpus wired in Phase 12. WithPresence lets discovery mark titles the
 		// library already owns as in-library (a lineup pick, not an acquisition).
-		cat := catalog.New(lib, tmdbSearcher).WithPresence(libraryPresence{lib})
+		cat := catalog.New(lib, tmdbClient).WithPresence(libraryPresence{lib})
 		searchSvc = searchAdapter{cat}
 		// The scope.collections picker (§2.2). Gated on the library alone — unlike search it
 		// needs no TMDB, because a collection is the operator's own shelf and never a TMDB
 		// lookup. Shares this block's library client.
 		collectionsSvc = libraryCollections{lib: lib}
 
-		// Channel icon suggestions (§icon P2): gated on TMDB, same as search/suggest above —
-		// posters are TMDB-only, so no TMDB key means no suggestions, and the route 501s.
-		if tmdbClient != nil {
-			iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
-		}
+		// Channel icon suggestions (§icon P2): the service remains wired for hot apply;
+		// the API's live setting gate returns 501 while the TMDB key is empty.
+		iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the
 		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
@@ -1005,14 +1000,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.LLM != nil {
 			provider = ov.LLM
 		}
-		sug := suggest.New(provider, cat, validator, set.intv("suggest.max_acquisitions"))
+		sug := suggest.New(provider, cat, tmdbClient, set.intv("suggest.max_acquisitions"))
 		// Enrich a not-yet-owned acquisition's rating from TMDB (§389), so an audience
-		// ceiling doesn't drop it before it can even show as a pending slot. Only when
-		// TMDB is configured; sparse coverage is fine (the reconciler heals from the
-		// library once it lands).
-		if tmdbClient != nil {
-			sug.WithRatings(tmdbClient)
-		}
+		// ceiling doesn't drop it before it can even show as a pending slot. Suggestions
+		// are live-gated on TMDB configuration; sparse rating coverage is fine (the
+		// reconciler heals from the library once the title lands).
+		sug.WithRatings(tmdbClient)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
@@ -1045,7 +1038,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
-		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb", tmdbClient != nil)
+		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb_configured", set.str("tmdb.api_key") != "")
 	}
 
 	// Filler & commercials (§10, Phase 12). Loomarr scans and probes the drop-folder
@@ -1360,7 +1353,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
 			svc: set.svc, secrets: secrets, store: st, log: log,
-			tests: connectionTests(set), refreshRedactor: refreshSecretRedactor,
+			tests: connectionTests(set, tmdbClient), refreshRedactor: refreshSecretRedactor,
 			readSecret: readGeneratedSecret,
 		}
 	}

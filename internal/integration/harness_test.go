@@ -15,7 +15,6 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // harness drives the REAL composition root (app.BuildHandler) end to end, faking
@@ -112,9 +111,9 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	t.Cleanup(cancel)
 
 	handler, err := app.BuildHandler(ctx, st, testkit.Logger(), app.Overrides{
-		Programmer: h.tun,
-		LLM:        h.llm,
-		TMDB:       tmdb.NewWithBase(h.tmdb.URL, "test-key"),
+		Programmer:  h.tun,
+		LLM:         h.llm,
+		TMDBBaseURL: h.tmdb.URL,
 	})
 	if err != nil {
 		t.Fatal(err)

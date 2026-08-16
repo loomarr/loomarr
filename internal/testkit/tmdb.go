@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -17,6 +18,8 @@ import (
 // fabricated one (the id-not-in-catalog case is the LLM-hallucination path §8).
 type TMDB struct {
 	*httptest.Server
+	mu       sync.Mutex
+	requests []TMDBRequest
 	// movies/series are the "real" ids the mock knows. /search/multi returns
 	// matches by name substring; Exists (GET /movie|tv/{id}) 200s iff the id is
 	// here, else 404 — that 404 is what the suggester's validation drops.
@@ -27,6 +30,29 @@ type TMDB struct {
 	// seed the test didn't wire, which is the real API's behaviour for an obscure
 	// title — an unproductive seed, not an error.
 	recommends map[int][]int
+}
+
+// TMDBRequest is one request observed by the shared TMDB adapter. It records
+// only the fields adapter contract tests need and deliberately keeps secrets
+// out of URLs by exposing the query separately from Authorization.
+type TMDBRequest struct {
+	Path          string
+	RawQuery      string
+	Authorization string
+}
+
+// Requests returns a stable copy of all requests received so far.
+func (m *TMDB) Requests() []TMDBRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]TMDBRequest(nil), m.requests...)
+}
+
+// RequestCount returns the number of requests received so far.
+func (m *TMDB) RequestCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.requests)
 }
 
 // WithRecommendations wires the adjacency graph a test wants /recommendations to serve.
@@ -149,7 +175,18 @@ func NewTMDB(t testing.TB) *TMDB {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
-	m.Server = httptest.NewServer(mux)
+	m.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		request := TMDBRequest{
+			Path:          r.URL.Path,
+			RawQuery:      r.URL.RawQuery,
+			Authorization: r.Header.Get("Authorization"),
+		}
+		m.mu.Lock()
+		m.requests = append(m.requests, request)
+		m.mu.Unlock()
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(m.Close)
 	return m
 }
 
