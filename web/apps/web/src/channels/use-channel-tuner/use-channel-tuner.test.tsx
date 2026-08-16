@@ -139,4 +139,41 @@ describe("channel tuner", () => {
 
     expect(mark).not.toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
   });
+
+  it("warms the newly adjacent channel after a surfed target becomes ready", async () => {
+    const catalog = [1, 2, 3, 4].map((number) =>
+      channel({ id: `ch-${number}`, number, name: `Channel ${number}`, inAppPlayable: true }),
+    );
+    const warmChannel = vi.fn((id: string) =>
+      Promise.resolve({
+        url: `/v1/playout/hls/${id}/master.m3u8?sig=warm`,
+        expiresAt: Date.now() + 60 * 60 * 1000,
+        warmed: true,
+      }),
+    );
+    const { result, rerender } = renderHook(
+      ({ currentId }) =>
+        useChannelTuner({
+          currentId,
+          channels: catalog,
+          nowNext: [],
+          onTune: vi.fn(),
+          warmChannel,
+        }),
+      { initialProps: { currentId: "ch-2" } },
+    );
+
+    act(() => result.current.ready("ch-2"));
+    await vi.waitFor(() =>
+      expect(warmChannel.mock.calls.map(([id]) => id)).toEqual(expect.arrayContaining(["ch-1", "ch-3"])),
+    );
+    warmChannel.mockClear();
+
+    act(() => result.current.step(1));
+    expect(result.current.channel?.id).toBe("ch-3");
+    rerender({ currentId: "ch-3" });
+    act(() => result.current.ready("ch-3"));
+
+    await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-4", expect.any(AbortSignal)));
+  });
 });

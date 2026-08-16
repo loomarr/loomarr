@@ -5,6 +5,89 @@ import (
 	"testing"
 )
 
+// TestWiring_TMDBConfigHotApplies proves the composition root owns one real dynamic
+// TMDB adapter rather than swapping in a boot-frozen test client. The sequence drives
+// the public settings and connection-test APIs exactly as an operator does: an empty
+// key sends no outbound request, configure and rotate affect the very next operation,
+// and clear returns to the no-request state without rebuilding the handler.
+func TestWiring_TMDBConfigHotApplies(t *testing.T) {
+	h := newHarness(t, withoutConnections())
+	admin := h.asAdmin()
+
+	probe := func() (bool, string) {
+		t.Helper()
+		var out struct {
+			OK   bool   `json:"ok"`
+			Hint string `json:"hint"`
+		}
+		resp := h.do(http.MethodPost, "/v1/setup/test", `{"check":"tmdb"}`, admin)
+		decodeBody(t, resp, &out)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST /v1/setup/test tmdb → %d, want 200", resp.StatusCode)
+		}
+		return out.OK, out.Hint
+	}
+	assertLastCredential := func(want string) {
+		t.Helper()
+		requests := h.tmdb.Requests()
+		if len(requests) == 0 {
+			t.Fatal("TMDB double received no request")
+		}
+		if got := requests[len(requests)-1].Authorization; got != "Bearer "+want {
+			t.Fatalf("TMDB Authorization = %q, want bearer for newly saved credential", got)
+		}
+	}
+
+	before := h.tmdb.RequestCount()
+	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
+		t.Fatalf("empty TMDB probe = (%v, %q), want unconfigured", ok, hint)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("empty TMDB credential sent %d outbound requests, want none", got-before)
+	}
+
+	if code := h.patchSettings(admin, map[string]string{"tmdb.api_key": "first-key"}); code != http.StatusOK {
+		t.Fatalf("configure TMDB key → %d, want 200", code)
+	}
+	if ok, hint := probe(); !ok {
+		t.Fatalf("configured TMDB probe failed: %q", hint)
+	}
+	assertLastCredential("first-key")
+	before = h.tmdb.RequestCount()
+	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusOK {
+		t.Fatalf("TMDB-only search after configure → %d, want 200 without a library connection", code)
+	}
+	if got := h.tmdb.RequestCount(); got != before+1 {
+		t.Fatalf("TMDB-only search sent %d outbound requests, want one through the shared client", got-before)
+	}
+	assertLastCredential("first-key")
+
+	if code := h.patchSettings(admin, map[string]string{"tmdb.api_key": "rotated-key"}); code != http.StatusOK {
+		t.Fatalf("rotate TMDB key → %d, want 200", code)
+	}
+	if ok, hint := probe(); !ok {
+		t.Fatalf("rotated TMDB probe failed: %q", hint)
+	}
+	assertLastCredential("rotated-key")
+
+	before = h.tmdb.RequestCount()
+	if code := h.status(http.MethodDelete, "/v1/settings/tmdb.api_key", "", admin); code != http.StatusNoContent {
+		t.Fatalf("clear TMDB key → %d, want 204", code)
+	}
+	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
+		t.Fatalf("cleared TMDB probe = (%v, %q), want unconfigured", ok, hint)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("cleared TMDB credential sent %d outbound requests, want none", got-before)
+	}
+	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusNotImplemented {
+		t.Fatalf("TMDB-only search after clear → %d, want 501 unconfigured", code)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("TMDB-only search after clear sent %d outbound requests, want none", got-before)
+	}
+}
+
 // TestWiring_FreshInstall pins the composition-root contract for a store-only
 // "nothing configured yet" install — the FE's initial state. It asserts the two
 // distinct dependency behaviors from ONE real app build: store-alone routes work

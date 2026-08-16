@@ -1,5 +1,8 @@
 # Hardware acceleration
 
+Hardware passthrough is a Linux-host capability. Docker Desktop on macOS does not expose the Mac
+GPU to this Linux container; use software playout there and size channel capacity accordingly.
+
 This only applies when Loomarr does the streaming (the default). On the Tunarr backend, Tunarr's
 own transcode settings apply.
 

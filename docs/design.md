@@ -867,6 +867,15 @@ Two consequences worth stating, because both look like details and are not:
 
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
 
+**Scopes follow live configuration, not boot-time construction.** `library` requires a current
+`library.url`; `tmdb` requires a current `tmdb.api_key`. `all` (and an omitted scope) searches
+whichever of those corpora are configured now: both when both are available, or the one usable
+corpus when only one is. It returns 501 only when neither corpus is configured, rather than making
+TMDB a hidden prerequisite for searching a perfectly usable media library (or vice versa). The
+adapters stay constructed across configuration changes, so saving or clearing either setting
+changes the next request without a restart. Channel icon suggestions have no library-only fallback
+and therefore remain gated on the live TMDB key even though their adapter also stays constructed.
+
 Channel/proposal/Board filtering and Help search stay **client-side** — household-scale lists and already-embedded markdown need no backend.
 
 ---
@@ -1436,10 +1445,11 @@ still `open`, the adapter uses hls.js's public cross-controller handoff to trans
 compatible SourceBuffers, then clears the old Channel-relative ranges. It stops the outgoing loader
 and pauses the media element before transferring those buffers; the Watch surface's held poster
 preserves the last decoded picture while the decoder gives up its lease on the old range. It parks
-the paused element at the half-open buffered range's end and allows one render turn before removal.
-The element stays at that edge until every removal reaches `updateend`; rewinding into the range
-being removed can hold WebKit's decoder on those bytes and turn a cached tune into a multi-second
-stall.
+the paused element at the half-open buffered range's end and waits for the element's `seeked`
+acknowledgement before removal. A render callback is not sufficient evidence that WebKit's decoder
+released the old position. The element stays at that edge until every removal reaches `updateend`;
+rewinding into the range being removed can hold WebKit's decoder on those bytes and turn a cached
+tune into a multi-second stall.
 
 An `ended` compact publication takes the other bounded branch: the source-scoped standby attaches a
 fresh MediaSource to the same element instead of waiting on `SourceBuffer.remove`. WebKit can retain
@@ -4550,6 +4560,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
+- Docker edge: **Traefik v3.7.1**, pinned by multi-architecture manifest digest in the supported Compose path. It is the smallest cross-platform way to put one health-aware HTTP edge in front of the compiled application on Docker Engine and Docker Desktop, and it leaves an explicit load-balancer seam for the scale investigation. The Docker provider uses `exposedByDefault=false` plus a Loomarr-specific constraint label; its read-only socket mount is still control-plane access, so the stack belongs only on a trusted Docker host. Ping stays on an unexposed admin entrypoint. **One Loomarr replica remains the beta support boundary** until shared Postgres, jobs, recurring schedulers, auth, playout/ffmpeg ownership, file-backed state, and graceful shutdown pass a multi-replica test. A proxy distributing requests is not by itself proof that the application scales.
 
 ### Documentation tooling
 
@@ -4725,13 +4736,13 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 
 | Env | Meaning / default |
 | --- | --- |
-| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly instance backup. A backup is the whole instance (settings, channels, people, generated secrets), so treat the file as a credential. |
+| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads; protect `/data` separately when those files matter. |
 | `BACKUP_RETAIN` | `7` — how many to keep before pruning the oldest. |
 | `BACKUP_DIR` | `/data/backups` — inside the documented volume by default; point elsewhere to keep backups off the database's disk. |
 | `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:8b` (or `qwen3:14b` at **Q6_K** — stock Q4 degrades tool-calling/JSON). **Initial defaults only:** an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model` + per-provider secret `llm.api_key.<provider>`) **overrides** them and hot-swaps the running suggester, so a UI choice survives a reboot without editing env. |
 | `LLM_API_KEY` | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own per-provider key in the settings store, overriding this — §8.1; **never echoed** by any API.)* |
 | `LLM_KEEP_ALIVE` | `30m` — how long a **local** Ollama model stays resident between calls (§8.2). Loading an 8B model costs ~9s vs ~0.5s warm, and Ollama unloads after 5m idle, so the stock behavior makes a describe→read→refine cycle re-pay the load every time. `0` disables (stock unload) for a memory-tight host. Ignored by hosted providers, which have no residency to manage. |
-| `TMDB_API_KEY` | *(secret; grounds suggestions — required if the suggester is enabled)* |
+| `TMDB_API_KEY` | *(secret; enables TMDB search, channel icon suggestions, and AI grounding — required if the suggester is enabled)* |
 | `IMAGES_DIR` | `/data/images` — where the image service (§22) stores originals and derivatives, inside the documented volume. ⚠ **Not covered by the application backup**, which is a database backup: `/data` is one volume and the volume is what to back up. Everything here is regenerable or re-fetchable **except** operator uploads. |
 | `IMAGES_MAX_UPLOAD_BYTES` | `8388608` (8 MiB) — the ceiling on an uploaded image, enforced on the read as well as the declared size. |
 | `IMAGES_REMOTE_FETCH_ENABLED` | `true` — whether to ingest remote artwork (TMDB, media-server) at all. `false` keeps the service to locally-produced images only; no outbound image requests are made. |
@@ -4787,11 +4798,24 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 Multi-stage build with a cgo-free static Go server and a separate Rust image-worker executable.
 Toolchain pins: **Go 1.26+**, the exact Rust channel in `rust-toolchain.toml`, and **Node 22.5+** in
 the frontend build stage. The runtime remains non-root Debian/glibc because its media executables
-already require that base. `HEALTHCHECK` → `/healthz`; readiness additionally requires the bundled
+already require that base. The container `HEALTHCHECK` uses the binary's `/v1/readyz` probe;
+readiness additionally requires the bundled
 image worker's release/profile self-test. The web UI is embedded and served at `/`.
 
-**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published
-tag. It contains the Go server and its required release-matched `loomarr-image` Rust worker, and
+**One image (revised — supersedes "two tags, one binary").** Releases publish one image at
+`ghcr.io/mantonx/loomarr`. Immutable SemVer tags are the operator contract; prereleases such as
+`0.1.0-beta.1` never move `latest`, which is reserved for the newest stable release. Compose requires
+`LOOMARR_VERSION` so installs, upgrades, and rollbacks always pin the artifact deliberately. A
+one-shot Compose preflight applies the same strict SemVer and OCI tag policy as the publisher, so
+mutable aliases such as `latest` fail before Loomarr starts. The release rejects an exact version
+already present in GHCR, publishes no mutable major/minor alias, and serializes publishers by exact
+Git tag. Registry lookup fails closed: only buildx's exact ref-qualified rendering of GHCR's
+`MANIFEST_UNKNOWN` response permits a push; generic 404, authentication, transport, rate-limit, and
+service errors stop publication. Fixture-style release-policy tests cover each of those classes.
+The tagged main commit must have a successful CI run whose native amd64 and arm64 image jobs both
+ran; a manual full release-candidate rerun is available when a docs-only final commit would
+otherwise skip those jobs. Those gates precede publication. The image contains the Go server and
+its required release-matched `loomarr-image` Rust worker, and
 vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** + **`whisper-cli`** (with its
 model file, §14 — added by V34) on a non-distroless base (those binaries are glibc-linked), at
 **~1.3GB measured before the Rust worker** (amd64 uncompressed rootfs; **~821MB before whisper-cli**).
@@ -4816,13 +4840,27 @@ tools. The Go server stays cgo-free, and pixel buffers never cross the process b
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
 
-### Compose (profiles: sqlite · postgres · ai)
+### Compose (Traefik edge; profiles: sqlite · postgres · ai)
+- **edge:** digest-pinned `traefik:v3.7.1` owns the published host port and routes only the explicitly
+  labelled Loomarr service on a private network. Loomarr exposes `8080` to that network but has no
+  host port. `SERVER_PUBLIC_URL` is required at Compose interpolation time and names the canonical
+  Traefik URL embedded in stream links. Traefik probes `/v1/readyz` and its dashboard is disabled.
+  When the only labelled backend container stops, Docker discovery removes the router and the edge
+  returns 404 until Loomarr restarts; recovery must not require a Traefik restart. The beta topology
+  is deliberately one Loomarr replica.
+- **artifact preflight:** an unprofiled one-shot service validates `LOOMARR_VERSION` with the release
+  workflow's strict SemVer/OCI policy before Loomarr starts. Empty, malformed, overlong, and mutable
+  aliases such as `latest` fail the deployment rather than silently selecting a moving artifact.
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
-- **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
+- **postgres:** `docker/compose.postgres.yaml` replaces Loomarr's SQLite default with an explicit
+  Postgres DSN and waits for `postgres:16` to become healthy. A profile can add a service but cannot
+  conditionally replace another service's environment; `--profile postgres` without the override is
+  therefore not a supported selection mechanism. External Postgres uses the same override with an
+  operator-supplied `DATABASE_URL`.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama). The service ships **ready-to-use but model-less** — model choice is the wizard's job (§8.1: it depends on the user's GPU), so no model is baked in. Three deploy affordances, all optional and design-aligned: (1) a **healthcheck + `depends_on` gate** so `loomarr` waits for Ollama before its first probe (no transient "AI host unreachable" on first load) — the `depends_on` is `required:false`, so a hosted/external-LLM deploy that omits the `ai` profile skips it; (2) **opt-in GPU passthrough** via a separate overlay (`docker/compose.gpu.yaml`, NVIDIA + nvidia-container-toolkit; mirrors the dev Tunarr overlay) — without it Ollama runs on CPU (works, but slow); (3) **opt-in model preload** — set `LLM_MODEL` and a one-shot `ollama-pull` fetches it on first boot for a zero-wizard-step install; left empty (the default), the wizard picks the model, preserving the §8.1 "the user picks" default.
 **Filler ingest needs no profile, no tag, and no service.** The vendored yt-dlp + ffmpeg + deno ship in the single image (§16), so in-app clip downloads work out of the box — mount a drop-folder and go. *Revised: this supersedes both the `filler` compose profile and the opt-in `loomarr:filler` tag that replaced it; see §10's history note for why the question moved three times (retired-ok).*
 
-The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
+The image is **non-root** (Debian `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
 `/data/loomarr.db` (`SQLITE_CANTOPEN`) on first run. Fix it **in compose**, not by running
 the app as root: a one-shot `loomarr-init` sidecar chowns the volume to uid 65532 before
@@ -4831,6 +4869,20 @@ postgres backend has no `/data` volume — so the init runs under the `sqlite` p
 
 ```yaml
 services:
+  loomarr-version-check:
+    image: busybox:1.36
+    command: ["sh", "/check-release-tag.sh", "--image-tag", "${LOOMARR_VERSION:?pin an exact released SemVer version}"]
+    volumes: ["../scripts/check-release-tag.sh:/check-release-tag.sh:ro"]
+
+  traefik:
+    image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+    command:
+      - --entrypoints.web.address=:8080
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+    ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
+    volumes: [/var/run/docker.sock:/var/run/docker.sock:ro]
+
   # sqlite-only: chown the fresh /data volume to the nonroot uid before loomarr starts.
   loomarr-init:
     image: busybox:1.36
@@ -4839,13 +4891,16 @@ services:
     volumes: ["loomarr-data:/data"]
 
   loomarr:
-    image: loomarr:latest
+    image: ghcr.io/mantonx/loomarr:${LOOMARR_VERSION:?pin a released version}
     depends_on:
+      loomarr-version-check:
+        condition: service_completed_successfully
       loomarr-init:
         condition: service_completed_successfully   # sqlite profile only
         required: false                             # postgres profile skips it
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:?set the Traefik URL}
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
       LIBRARY_URL: ${LIBRARY_URL}
       LIBRARY_TOKEN: ${LIBRARY_TOKEN}
@@ -4859,7 +4914,11 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       TMDB_API_KEY: ${TMDB_API_KEY}
       AUTO_MIGRATE: "true"
-    ports: ["8080:8080"]
+    expose: ["8080"]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.loomarr.rule: PathPrefix(`/`)
+      traefik.http.services.loomarr.loadbalancer.server.port: "8080"
     volumes: ["loomarr-data:/data"]   # sqlite backend only
     restart: unless-stopped
     # depends_on: [postgres]       # postgres profile

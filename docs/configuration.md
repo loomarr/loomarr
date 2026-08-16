@@ -58,7 +58,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `backup.schedule` (`BACKUP_SCHEDULE`) | cron | `0 30 3 * * *` | When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential. |
+| `backup.schedule` (`BACKUP_SCHEDULE`) | cron | `0 30 3 * * *` | When to write the nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads. |
 | `backup.retain` (`BACKUP_RETAIN`) | int | `7` | How many backups to keep before pruning the oldest. |
 | `backup.dir` (`BACKUP_DIR`) | string | `/data/backups` | Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database. |
 
@@ -75,7 +75,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Needed for AI channel suggestions. _(required for suggestions)_ |
+| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
 
 ## AI
 

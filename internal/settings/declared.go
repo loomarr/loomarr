@@ -324,7 +324,7 @@ func declared() []Setting {
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
 			Kind: KindCron, Default: "0 30 3 * * *",
-			Doc: "When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential.",
+			Doc: "When to write the nightly database backup. It contains settings, channels, people, and generated secrets, so treat the file as a credential. It does not contain filler, prepared media, cached artwork, or operator image uploads.",
 		},
 		{
 			Key: "backup.retain", Label: "Backups to keep", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
@@ -369,7 +369,7 @@ func declared() []Setting {
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
 			Kind: KindSecret, Default: "", Required: FeatureSuggestions,
-			Doc: "A free TMDB API key. Needed for AI channel suggestions.",
+			Doc: "A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---

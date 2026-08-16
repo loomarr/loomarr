@@ -76,15 +76,14 @@ const releaseTransferredDecoder = async (
   if (edge === undefined) return;
 
   // SourceBuffer.remove can wait for WebKit's decoder to release the frame at currentTime. Park at
-  // the half-open range's end, then give the paused element one render turn to commit that seek;
-  // the held poster keeps the outgoing picture visible while no decoded byte is leased.
-  if (video.currentTime < edge) video.currentTime = edge;
+  // the half-open range's end and wait for the MEDIA seek itself to complete. A render callback is
+  // not that acknowledgement: hosted WebKit can deliver rAF while the decoder still owns the old
+  // position, then block remove() for the rest of the four-second fragment. The held poster keeps
+  // the outgoing picture visible while no decoded byte is leased.
+  if (video.currentTime >= edge) return;
   await new Promise<void>((resolve) => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => resolve());
-      return;
-    }
-    queueMicrotask(resolve);
+    video.addEventListener("seeked", () => resolve(), { once: true });
+    video.currentTime = edge;
   });
 };
 

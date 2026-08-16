@@ -241,22 +241,18 @@ describe("useHlsPlayer", () => {
 
   it("reuses compatible open SourceBuffers across channel tunes", async () => {
     hls.supported = true;
-    let releaseDecoder!: FrameRequestCallback;
-    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
-      releaseDecoder = callback;
-      return 1;
-    });
-    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
     channelPlayUrl.mockImplementation((id: string) =>
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
     let replacementLoadedMetadata!: () => void;
     let replacementLoadedData!: () => void;
+    let finishOutgoingSeek!: () => void;
     const video = {
       ...videoEl(),
       addEventListener: vi.fn((event: string, callback: () => void) => {
         if (event === "loadedmetadata") replacementLoadedMetadata = callback;
         if (event === "loadeddata") replacementLoadedData = callback;
+        if (event === "seeked") finishOutgoingSeek = callback;
       }),
       requestVideoFrameCallback: vi.fn(() => 1),
       cancelVideoFrameCallback: vi.fn(),
@@ -314,17 +310,17 @@ describe("useHlsPlayer", () => {
       result.current.attach(video);
     });
 
-    await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledOnce());
+    await waitFor(() => expect(finishOutgoingSeek).toBeTypeOf("function"));
     expect(video.pause).toHaveBeenCalledOnce();
     expect(vi.mocked(video.pause).mock.invocationCallOrder.at(-1)).toBeLessThan(
       resetCurrentTime.mock.invocationCallOrder.at(-1) ?? 0,
     );
     expect(resetCurrentTime).toHaveBeenLastCalledWith(1);
     expect(remove).not.toHaveBeenCalled();
-    // Give WebKit one render turn to commit the outgoing seek and release its decoder lease before
-    // removing the range. Removing immediately at currentTime can block until the compact VOD's
-    // natural end even though every replacement byte is already cached.
-    act(() => releaseDecoder(0));
+    // A render turn does not prove the media seek completed. Wait for WebKit's seeked event before
+    // removing the outgoing range, or remove can block until the old fragment's natural end even
+    // though every replacement byte is already cached.
+    act(() => finishOutgoingSeek());
     await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
     expect(hls.instances).toHaveLength(2);
     expect(controller.destroy).not.toHaveBeenCalled();
@@ -482,7 +478,13 @@ describe("useHlsPlayer", () => {
     channelPlayUrl.mockImplementation((id: string) =>
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
-    const video = videoEl();
+    let finishOutgoingSeek!: () => void;
+    const video = {
+      ...videoEl(),
+      addEventListener: vi.fn((event: string, callback: () => void) => {
+        if (event === "seeked") finishOutgoingSeek = callback;
+      }),
+    } as unknown as HTMLVideoElement;
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
       initialProps: { id: "ch-1" },
     });
@@ -521,6 +523,8 @@ describe("useHlsPlayer", () => {
     act(() => {
       supersededRelease = result.current.attach(video);
     });
+    await waitFor(() => expect(finishOutgoingSeek).toBeTypeOf("function"));
+    act(() => finishOutgoingSeek());
     await waitFor(() => expect(finishRemoval).toBeTypeOf("function"));
     expect(hls.instances).toHaveLength(2);
 

@@ -187,7 +187,7 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 // (config-design §8). Each reads the LIVE connection via the settings snapshot, so
 // a Test button reflects the value currently in the form's saved state. A probe is
 // a shallow reachability check (a cheap authenticated call), not a full sweep.
-func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, string) {
+func connectionTests(set resolved, tmdbClient *tmdb.Client) map[string]func(ctx context.Context) (bool, string) {
 	return map[string]func(ctx context.Context) (bool, string){
 		"media_server": func(ctx context.Context) (bool, string) {
 			flavor, err := library.ParseFlavor(set.str("library.flavor"))
@@ -284,11 +284,10 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 		// tmdb (§7.2): validate the key with a cheap lookup of a stable known id
 		// (The Matrix, tmdb 603). A rejected key surfaces as a non-2xx error.
 		"tmdb": func(ctx context.Context) (bool, string) {
-			key := set.str("tmdb.api_key")
-			if key == "" {
+			if set.str("tmdb.api_key") == "" || tmdbClient == nil {
 				return false, "set your TMDB API key"
 			}
-			if _, err := tmdb.New(key).Exists(ctx, provision.Movie, 603); err != nil {
+			if _, err := tmdbClient.Exists(ctx, provision.Movie, 603); err != nil {
 				return false, "TMDB rejected the key or was unreachable: " + err.Error()
 			}
 			return true, ""

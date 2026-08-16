@@ -468,7 +468,26 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     // The frame makes this Channel active; its post-frame warmer must consume the next Channel's
     // response bodies before the following measured click. Observe the controller's completion
     // seam rather than requiring another network request: a valid browser-cache hit is ready too.
-    await expect.poll(() => latestWarmAt(page, next)).toBeGreaterThan(nextWarmAt);
+    try {
+      await expect.poll(() => latestWarmAt(page, next)).toBeGreaterThan(nextWarmAt);
+    } catch (error) {
+      const marks = await page.evaluate(() =>
+        performance
+          .getEntriesByType("mark")
+          .filter((entry) => entry.name.startsWith("loomarr:tuner:warm:"))
+          .map((entry) => entry.name),
+      );
+      throw new Error(
+        `channel ${target} did not prepare new neighbor ${next}: ${JSON.stringify({
+          marks,
+          playURLMints: backend.state.playURLMints.slice(-8),
+          preparedProbes: backend.state.preparedProbes.slice(-8),
+          assetRequests: backend.state.assetRequests.slice(-12),
+          assetCompletions: backend.state.assetCompletions.slice(-12),
+        })}`,
+        { cause: error },
+      );
+    }
     current = target;
   }
 
