@@ -10,7 +10,6 @@ import {
   getSettingsListMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
-import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
@@ -303,40 +302,62 @@ describe("Guide", () => {
     expect(intent).toHaveValue("saturday-morning cartoons");
   });
 
-  it("submits the complete Saturday preset handed off by stable id", async () => {
+  it.each([
+    {
+      id: "saturday-cartoons",
+      intent: {
+        description: "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+        era: "1990s",
+        tone: "playful",
+      },
+    },
+    {
+      id: "cozy-mystery",
+      intent: {
+        description: "Gentle small-town mysteries for a rainy evening — nothing gruesome",
+        tone: "cozy",
+      },
+    },
+    {
+      id: "late-night-scifi",
+      intent: {
+        description: "Weird, atmospheric science fiction for after midnight",
+        tone: "moody",
+      },
+    },
+    {
+      id: "action-marathon",
+      intent: {
+        description: "Back-to-back action movies, high energy, keep it PG-13",
+        tone: "high energy",
+      },
+    },
+  ])("submits the complete $id preset at the HTTP seam", async ({ id, intent }) => {
     const user = userEvent.setup();
     const submissions: unknown[] = [];
-    const saturday = CHANNEL_TEMPLATES.find((template) => template.id === "saturday-cartoons");
+    const jobId = `job-${id}`;
     stubGuide();
     server.use(
       getSubmitProposalMockHandler(async ({ request }) => {
         submissions.push(await request.json());
-        return { jobId: "job-saturday" };
+        return { jobId };
       }),
       getGetProposalJobMockHandler({
-        jobId: "job-saturday",
+        jobId,
         status: "running",
-        intent: saturday?.intent ?? { description: "Saturday cartoons" },
+        intent,
         attempts: 1,
         createdAt: "2026-08-15T12:00:00Z",
         updatedAt: "2026-08-15T12:00:00Z",
       }),
     );
-    const view = renderAt("/guide?preset=saturday-cartoons");
+    const view = renderAt(`/guide?preset=${id}`);
 
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue(saturday?.intent.description);
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue(intent.description);
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
-    await expect
-      .poll(() => submissions)
-      .toEqual([
-        {
-          description: saturday?.intent.description,
-          era: "1990s",
-          tone: "playful",
-        },
-      ]);
-    await expect.poll(() => view.router.state.location.search).toMatchObject({ jobId: "job-saturday" });
+    await expect.poll(() => submissions).toEqual([intent]);
+    await expect.poll(() => view.router.state.location.search).toMatchObject({ jobId });
   });
 
   it("restores a failed request from the active Proposal Job in route search", async () => {

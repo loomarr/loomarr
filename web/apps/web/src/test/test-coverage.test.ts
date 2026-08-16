@@ -80,7 +80,6 @@ const KNOWN_GAPS = new Set([
   "people/import-panel/import-panel.tsx",
   "people/users-page/users-page.tsx",
   "queue/approval-history/approval-history.tsx",
-  "settings/ai-model-settings/ai-model-settings.tsx",
   "settings/secrets-settings/secrets-settings.tsx",
   "settings/settings-page/settings-page.tsx",
   "settings/use-settings-entries/use-settings-entries.ts",
