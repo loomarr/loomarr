@@ -78,7 +78,7 @@ const AddingARule: Story = {
     },
   },
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /add rule/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /add rule/i }));
   },
 };
 

@@ -131,7 +131,7 @@ const Idle: Story = { decorators: [withStubbedRefine()] };
 const Landed: Story = {
   decorators: [withStubbedRefine()],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /refine with ai/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /refine with ai/i }));
     await userEvent.type(canvas.getByLabelText("What to change"), "add more Schwarzenegger");
     await userEvent.click(canvas.getByRole("button", { name: /^refine$/i }));
     await canvas.findByRole("button", { name: /apply changes/i });
@@ -144,7 +144,7 @@ const Landed: Story = {
 const GenerationFailed: Story = {
   decorators: [withFailingRefine(), widthFrame(560)],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /refine with ai/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /refine with ai/i }));
     await userEvent.type(canvas.getByLabelText("What to change"), "add more Schwarzenegger");
     await userEvent.click(canvas.getByRole("button", { name: /^refine$/i }));
     StoryEventSource.last?.emit("suggestion", { jobId: "job-1", phase: "failed" });
