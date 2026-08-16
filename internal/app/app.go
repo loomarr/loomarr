@@ -174,12 +174,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Settings subsystem (config-design §3): once the store is open, build the
 	// registry + resolution service (env pins validated → boot error), the
 	// generated secrets, and the redactor. Every subsystem below reads config
-	// through `set` (env > db > default, hot-applying) instead of raw cfg fields,
-	// and connection adapters take snapshot-backed closures so a saved URL/token
-	// takes effect on the next call with no restart. Without a store we can't
+	// through `set` (env > db > default) instead of raw cfg fields. Most values
+	// remain live; generation-scoped storage is frozen below, while connection
+	// adapters take per-operation snapshots so a saved URL/token takes effect on
+	// the next call. Without a store we can't
 	// resolve DB overrides, so fall back to env-only defaults via a store-less
 	// service is out of scope here — the app already isn't ready without a store.
 	var set resolved
+	var desiredSet resolved
+	var appliedRestartSettings map[string]string
+	var fillerLayout filler.Layout
 	var secrets *settings.Secrets
 	var secretRedactor *settings.Redactor
 	if st != nil {
@@ -188,6 +192,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			return nil, serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
 		}
 		set, secrets, secretRedactor, log = r, sec, red, slog2
+		desiredSet = set
+		set, appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
+		fillerLayout, serr = filler.NewLayout(set.str("filler.dir"), set.str("filler.watch_dir"))
+		if serr != nil {
+			return nil, fmt.Errorf("resolve filler storage layout: %w", serr)
+		}
+		canonicalFillerRestartBaseline(appliedRestartSettings, fillerLayout)
 		slog.SetDefault(log)
 	}
 	// One always-constructed dynamic TMDB adapter serves every TMDB-backed capability
@@ -606,10 +617,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
 			capacity: playoutBudget,
-			// fillerDir is read live like every other setting; `pods` is assigned after the
-			// pod adapter is built further down (it needs the filler catalog, which is wired
-			// later) — see "playoutRes.pods" below.
-			fillerDir: func() string { return set.str("filler.dir") },
+			// fillerDir belongs to the immutable generation layout. Changing storage roots
+			// is applied only after the generation drains and rebuilds (§10); `pods` is
+			// assigned after the pod adapter is built further down.
+			fillerDir: fillerLayout.ClipDir(),
 			// The capability probe runs lazily on the first program that needs it, when
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
@@ -627,7 +638,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
 			probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
 			// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
-			// applies without a restart — the same hot-apply posture as fillerDir/audioLanguage.
+			// applies without a restart — the same hot-apply posture as audioLanguage.
 			pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
 			log:     log,
 			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
@@ -939,7 +950,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if imageErr != nil {
 			return nil, imageErr
 		}
-		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
+		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, fillerLayout, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
@@ -1049,9 +1060,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// empty catalog. Without this, shipping a default would swap an honest "not
 		// configured" for a scan error on every fresh install: configured, and broken.
 		//
-		// Best-effort: a read-only or unwritable /data is the operator's to fix, and it
-		// must not stop the rest of the app booting. The scan then reports the real problem.
-		if dir := set.str("filler.dir"); dir != "" {
+		// Best-effort after Layout has proved the paths do not alias: a target that cannot be
+		// created is the operator's to fix, and scan reports it without pruning the catalog.
+		// Layout construction itself fails closed when filesystem identity cannot be inspected,
+		// because starting destructive intake on an unverifiable topology is unsafe.
+		if dir := fillerLayout.ClipDir(); dir != "" {
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
 					"dir", dir, "err", err)
@@ -1059,7 +1072,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
 			// default at boot so a fresh install is green before its first arrival; an explicitly
 			// configured, unusable watch path still fails visibly rather than being ignored.
-			watch := filler.WatchDir(dir, set.str("filler.watch_dir"))
+			watch := fillerLayout.WatchDir()
 			if err := os.MkdirAll(watch, 0o750); err != nil {
 				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
 					"dir", watch, "err", err)
@@ -1068,16 +1081,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
 		// captured — see buildSyncer for why, and for why a nil library scanner is a supported
 		// install rather than a degraded one.
-		syncer := buildSyncer(rootCtx, st, set, log, fillerProg)
+		syncer := buildSyncer(rootCtx, st, set, fillerLayout, log, fillerProg)
 
 		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
 		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
-		taggerProvider, tagger := buildTagger(st, set, log)
+		taggerProvider, tagger := buildTagger(st, set, fillerLayout, log)
 		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
 		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
 		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
-		fetcher := buildFetcher(set, log)
-		splitter := buildSplitter(st, set, log)
+		fetcher := buildFetcher(set, fillerLayout, log)
+		splitter := buildSplitter(st, set, fillerLayout, log)
 		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
 		// below. The pipeline needs the vision provider and the splitter, which are wired further
 		// down, while this adapter is needed further up — so one of the two has to be completed
@@ -1111,9 +1124,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
 		// shared heartbeat. Interval key: filler.sync_every.
 		jobReg.Add(fillerSyncJob(syncer))
-		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+		log.Info("filler catalog sync registered", "dir", fillerLayout.ClipDir(), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 
-		fillerPipeline := buildPipeline(st, set, log, emitter, splitter, taggerProvider)
+		fillerPipeline := buildPipeline(st, set, fillerLayout, log, emitter, splitter, taggerProvider)
 		jobReg.Add(fillerPipelineJob(fillerPipeline))
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
@@ -1124,7 +1137,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// `store.Store`. The clip dir is the same containment boundary
 		// the splitter uses; the window is read live so a change applies on the next run.
 		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
+			fillerSweepStoreAdapter{st}, fillerLayout.ClipDir(),
 			func() time.Duration { return set.dur("filler.split.review_window") },
 			time.Now, log)))
 
@@ -1138,7 +1151,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// made for backups on Postgres.
 		autoFetch := filler.NewFetcher(
 			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerAdapter, set.str("filler.dir"),
+			archiveDiscoverAdapter{}, fillerAdapter, fillerLayout.ClipDir(),
 			filler.FetchLimits{
 				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
@@ -1335,7 +1348,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
 			svc: set.svc, secrets: secrets, store: st, log: log,
-			tests: connectionTests(set, tmdbClient), refreshRedactor: refreshSecretRedactor,
+			tests: connectionTests(desiredSet, tmdbClient), refreshRedactor: refreshSecretRedactor,
 			readSecret: readGeneratedSecret,
 		}
 	}
@@ -1482,19 +1495,20 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		SSO:            ssoSvc,
 		Restart:        restartSvc,
 		Activity:       activityRec,
-		// The baseline for "has a boot-time setting changed?" is what THIS generation
-		// booted with, captured here rather than per call (config-design §3).
-		BootstrapDrift: bootstrapDrift(bootCfg),
-		Jobs:           jobsSvc,
-		Settings:       settingsSvc,
+		// The baseline for "has a restart-scoped setting changed?" is what THIS
+		// generation booted with, captured here rather than per call (config-design §3).
+		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		Jobs:         jobsSvc,
+		Settings:     settingsSvc,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},
-		Guide:      guideSvc,
-		Provision:  provisionSvc,
-		Approver:   proposalApprover,
-		Binder:     chBinder,
-		LiveConfig: liveConfig,
+		Guide:        guideSvc,
+		Provision:    provisionSvc,
+		Approver:     proposalApprover,
+		Binder:       chBinder,
+		FillerLayout: fillerLayout,
+		LiveConfig:   liveConfig,
 		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
 			snapshot, err := checkpointSnapshot(ctx)
 			return api.BackendCheckpoint{

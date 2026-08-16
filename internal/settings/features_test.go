@@ -75,9 +75,11 @@ func TestFeatures_AcquisitionOrGate(t *testing.T) {
 	}
 }
 
-// Filler needs the drop-folder (config-design §7).
-// ⚠ Filler is ON by default and off only when an operator EMPTIES the dir — the inverse of
-// what this test asserted before `filler.dir` gained its /data/filler default.
+// Filler needs the clip folder (config-design §7).
+// ⚠ Filler is ON by default, and the clip root may no longer be emptied: it is a
+// generation-scoped storage topology value, not an enable switch. The source's
+// explicit enabled setting controls scanning without making every stored catalog
+// path lose its root.
 //
 // The old shape ("off without a dir") was true and load-bearing in the wrong direction: a
 // zero-env install opened the Filler page on a single "no folder configured" empty state,
@@ -91,9 +93,9 @@ func TestFeatures_Filler(t *testing.T) {
 	if !featureService(t, map[string]string{"filler.dir": "/srv/clips"}).Features().Filler {
 		t.Error("filler off with an explicit dir")
 	}
-	// Emptying it is how an operator turns filler OFF, so the gate must still honour "".
-	if featureService(t, map[string]string{"filler.dir": ""}).Features().Filler {
-		t.Error("an explicitly empty dir did not turn filler off")
+	// A legacy/corrupt empty database value self-heals through the declared default.
+	if !featureService(t, map[string]string{"filler.dir": ""}).Features().Filler {
+		t.Error("an invalid empty dir did not self-heal to the default clip root")
 	}
 }
 

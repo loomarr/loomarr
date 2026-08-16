@@ -63,14 +63,21 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
 			t.Fatal(err)
 		}
 	}
+	layout, err := filler.NewLayout(fillerDir, "")
+	if err != nil {
+		t.Fatalf("filler.NewLayout: %v", err)
+	}
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
+		Store:        st,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		FillerLayout: layout,
+		// A saved desired value may differ until restart. Serving the clip successfully proves the
+		// byte route uses the applied layout above, not this live settings seam.
 		LiveConfig: func(key string) string {
 			if key == "filler.dir" {
-				return fillerDir
+				return filepath.Join(root, "desired-after-restart")
 			}
 			return ""
 		},

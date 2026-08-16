@@ -38,6 +38,11 @@ func newRegistry(list []Setting) *Registry {
 		if s.Kind == KindEnum && len(s.Enum) == 0 {
 			panic("settings: enum setting " + s.Key + " has no Enum values")
 		}
+		switch s.Apply {
+		case ApplyLive, ApplyRestart:
+		default:
+			panic("settings: invalid apply timing for " + s.Key + ": " + string(s.Apply))
+		}
 		r.byKey[s.Key] = s
 		r.byEnv[s.EnvVar] = s
 		r.ordered = append(r.ordered, s)
@@ -50,6 +55,19 @@ func (r *Registry) Get(key string) (Setting, bool) { s, ok := r.byKey[key]; retu
 
 // All returns the declared settings in declaration order (stable for docs/UI).
 func (r *Registry) All() []Setting { return r.ordered }
+
+// RestartKeys returns the app-managed settings that take effect at the next
+// application generation. Declaration order is stable and therefore suitable
+// for freezing the generation and reporting pending drift.
+func (r *Registry) RestartKeys() []string {
+	var keys []string
+	for _, s := range r.ordered {
+		if s.Apply == ApplyRestart {
+			keys = append(keys, s.Key)
+		}
+	}
+	return keys
+}
 
 // ByGroup returns the settings in one group, in declaration order.
 func (r *Registry) ByGroup(g Group) []Setting {

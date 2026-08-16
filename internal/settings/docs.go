@@ -66,6 +66,9 @@ func row(s Setting) string {
 	if s.Required != FeatureNone {
 		tags = append(tags, "required for "+string(s.Required))
 	}
+	if s.Apply == ApplyRestart {
+		tags = append(tags, "applies after restart")
+	}
 	if s.Kind == KindEnum {
 		tags = append(tags, "one of: "+strings.Join(s.EnumValues(), " | "))
 	}

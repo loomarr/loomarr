@@ -262,8 +262,8 @@ func (r *recordingAsker) AskAboutAudio(_ context.Context, req filler.AudioAsk) (
 // already fixed. The error was accurate and the config looked right, which is what made it
 // expensive to find.
 //
-// Everything else in this feature reads live (`filler.dir`, `filler.language`). The one setting
-// that decides whether the backend can work at all has to as well.
+// Language policy reads live even though the storage layout is generation-scoped. The one setting
+// that decides whether this backend can work has to remain live too.
 func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 	rec := &recordingAsker{answer: "en"}
 	model := "stale-model-with-no-audio"

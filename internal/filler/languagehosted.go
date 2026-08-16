@@ -67,9 +67,9 @@ type HostedLanguage struct {
 	// input, and every clip failed with "No endpoints found that support input audio" — a real
 	// 404 about a request the operator thought they had already fixed.
 	//
-	// Everything else in this feature reads live (`filler.dir`, `filler.language`); this has to
-	// as well, or the one setting that decides whether the backend can work at all is the one
-	// that needs a restart.
+	// The language policy reads live while the storage layout is generation-scoped; this client
+	// selection has to remain live too, or the one setting that decides whether the backend can
+	// work at all would need an unrelated restart.
 	//
 	// Returning nil ⇒ LangUndetermined, so an install that selected `hosted` without configuring
 	// a service URL is inert rather than broken. A key is optional for Custom endpoints.

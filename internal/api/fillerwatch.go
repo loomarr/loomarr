@@ -142,13 +142,12 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 		return nil, huma.Error500InternalServerError("count held clips", err)
 	}
 
-	// ⚠ The configured drop-folder is a SOURCE even though its row's state comes from settings
+	// ⚠ The applied drop-folder is a SOURCE even though its desired value comes from settings
 	// (see fillersources.go). Counting only table rows would report "unconfigured" on the most
 	// common install of all — a zero-env `docker run` whose `filler.dir` default is doing the work.
-	dir := ""
-	if s.liveConfig != nil {
-		dir = s.liveConfig("filler.dir")
-	}
+	// Read the generation snapshot, never the live desired value: status must describe where the
+	// running scanner and intake pipeline are operating until restart applies a new layout.
+	dir := s.fillerLayout.ClipDir()
 
 	var total, on int
 	var newest time.Time
