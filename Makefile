@@ -198,9 +198,12 @@ go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI 
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval
+.PHONY: eval eval-templates
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
+
+eval-templates: ## semantic eval: certify the 4 shipped channel templates only (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
+	$(GO) test -tags=eval -v -timeout 20m -run '^TestEvalCorpus$$/(template_saturday_cartoons|template_cozy_mystery|template_late_night_scifi|template_action_marathon)$$' ./internal/eval/
 
 ## ---- build / run ---------------------------------------------------------
 

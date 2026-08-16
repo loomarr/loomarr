@@ -54,6 +54,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make go-shard-verify` | ✅ | the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift) |
 | `make test-ffmpeg` |  | playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`) |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
+| `make eval-templates` |  | semantic eval: certify the 4 shipped channel templates only (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 
 ## Build / run
 
