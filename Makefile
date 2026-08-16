@@ -46,21 +46,27 @@ GO_SHARD ?=
 # `go vet` typechecks test files, which is why vet is the load-bearing half. `make fmt` was
 # never blind here — it globs with `find`, not the build system.
 #
-# ⚠ These tags are NOT run as tests by the gate. They guard work needing real ffmpeg
+# ⚠ The CUSTOM tags are NOT run as tests by the gate. They guard work needing real ffmpeg
 # (`ffmpeg`), a real LLM (`eval`) or Docker (`integration`); `make check` stays hermetic
 # (§19). The gate is only that they still COMPILE — which is free: measured 0.4s warm, and
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.
 #
+# Platform constraints are guarded by the same inventory but compiled through their real
+# GOOS adapter — passing `-tags windows` on Linux does NOT select `_windows.go` files and would
+# falsely exclude `!windows` files. `windows-compile` is therefore the platform half of this gate.
+#
 # ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
 # here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
-TAGS      := ffmpeg eval integration
+CUSTOM_TAGS   := ffmpeg eval integration
+PLATFORM_TAGS := windows
+TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS)
 SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh))
 comma     := ,
 space     := $(subst ,, )
-TAGS_CSV  := $(subst $(space),$(comma),$(TAGS))
+TAGS_CSV  := $(subst $(space),$(comma),$(CUSTOM_TAGS))
 
 .DEFAULT_GOAL := help
 
@@ -111,7 +117,7 @@ agent-harness-test: ## regression-test worktree isolation and shared-output clai
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: rust-check fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## Rust + Go formatting, lint, harness, and unit tests (the default gate)
+check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test test ## Rust + Go formatting, lint, cross-platform compile, harness, and unit tests (the default gate)
 
 .PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
@@ -143,8 +149,12 @@ vet: ## go vet
 	$(GO) vet $(PKG)
 
 .PHONY: vet-tags
-vet-tags: ## go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS)
-	$(GO) vet -tags '$(TAGS)' $(PKG)
+vet-tags: ## go vet over custom-tagged sources; platform constraints use their cross-compile gate
+	$(GO) vet -tags '$(CUSTOM_TAGS)' $(PKG)
+
+.PHONY: windows-compile
+windows-compile: ## cross-compile every Go package and test for Windows (does not execute them)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) test -exec=true ./...
 
 .PHONY: tags-verify
 # Runs BEFORE vet-tags in `check`: it is ~0.1s and it validates the very list vet-tags consumes,

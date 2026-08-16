@@ -14,7 +14,9 @@ process_cwd() {
 		raw_cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
 	fi
 	if [ -n "$raw_cwd" ]; then
-		canonical_dir "$raw_cwd"
+		# A process can outlive a worktree that was removed beneath its cwd. Treat that as
+		# unowned rather than letting `set -e` abort every ownership scan before later pids.
+		canonical_dir "$raw_cwd" || true
 	fi
 }
 
@@ -33,7 +35,9 @@ repo_pids_by_comm() {
 	while IFS= read -r pid; do
 		[ -n "$pid" ] || continue
 		cwd="$(process_cwd "$pid")"
-		[ "$cwd" = "$wanted_root" ] && printf '%s\n' "$pid"
+		if [ "$cwd" = "$wanted_root" ]; then
+			printf '%s\n' "$pid"
+		fi
 	done
 }
 

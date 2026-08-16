@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -53,7 +52,7 @@ func newFakeSpawnerByKey(t *testing.T) (Spawner, func(string, EncodePlan) *fakeE
 			fe.once.Do(func() { _ = pw.Close(); close(fe.stopped) })
 		}()
 
-		return &Process{Stdout: pr, cmd: &exec.Cmd{}}, nil
+		return &Process{Stdout: pr}, nil
 	}
 	get := func(channelID string, target EncodePlan) *fakeEncoder {
 		mu.Lock()
