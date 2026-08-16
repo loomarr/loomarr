@@ -1,14 +1,10 @@
-// Package metrics is Loomarr's Prometheus surface (design §7 /metrics, §18).
+// Package metrics is Loomarr's Prometheus surface (design §7 /metrics, §17).
 //
-// Scope note (honest, per AGENTS.md "no silent caps"): this package currently
-// exports the RED basics — HTTP request rate, errors, and duration — plus the
-// Go runtime + process collectors client_golang registers by default
-// (goroutines, GC, heap, open fds, CPU). That is the RED + USE foundation a
-// dashboard needs first. The §18 *domain* series (records by state, reconcile
-// latency, Tunarr API latency/errors, LLM latency/tokens, filler pod-ladder
-// depth, logins, active sessions, job-queue depth, janitor purges) are NOT yet
-// wired; several need store count-by-state methods (and thus a change to the
-// one-suite-two-backends conformance gate), so they land as follow-up
+// Scope note (honest, per AGENTS.md "no silent caps"): this package exports the
+// RED basics — HTTP request rate, errors, and duration — the Go runtime/process
+// collectors, and the first §17 domain tranche: title/job state, active sessions,
+// logins, images, and selected reconciliation/filler signals. The remaining
+// external-call latency and deeper programming outcomes land as follow-up
 // instrumentation. docs/help/runbook records exactly what is and isn't exported.
 //
 // The metric vars are package-level singletons registered once at init via
