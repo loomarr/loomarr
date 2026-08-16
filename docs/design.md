@@ -152,7 +152,7 @@ flowchart TD
   p_catalog["catalog<br/><small>5 importers</small>"]
   p_filler["filler<br/><small>6 importers</small>"]
   p_httpx["httpx<br/><small>5 importers</small>"]
-  p_library["library<br/><small>6 importers</small>"]
+  p_library["library<br/><small>7 importers</small>"]
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
@@ -198,8 +198,6 @@ flowchart TD
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`settings`** · 1 importer
-  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`web`** · 1 importer
@@ -251,7 +249,7 @@ flowchart TD
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 6 importers · → `filler`, `httpx`
+- **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
@@ -270,6 +268,8 @@ flowchart TD
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`settings`** · 1 importer · → `library`
+  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`

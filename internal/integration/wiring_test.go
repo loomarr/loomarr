@@ -207,7 +207,8 @@ func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest,
 		if request.Path != "/Users" {
 			continue
 		}
-		if !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
+		if !strings.HasPrefix(request.Authorization, "MediaBrowser ") ||
+			!strings.Contains(request.Authorization, `Token="`+token+`"`) {
 			t.Fatalf("Jellyfin user-list Authorization = %q, want token %q", request.Authorization, token)
 		}
 		if request.EmbyToken != "" {
@@ -225,7 +226,8 @@ func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerReques
 		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
 			continue
 		}
-		if !strings.Contains(request.Authorization, `MediaBrowser Token="`+token+`"`) {
+		if !strings.HasPrefix(request.Authorization, "MediaBrowser ") ||
+			!strings.Contains(request.Authorization, `Token="`+token+`"`) {
 			t.Fatalf("Jellyfin search Authorization = %q, want token %q", request.Authorization, token)
 		}
 		if request.EmbyToken != "" {
