@@ -6,12 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/testkit/httpfixture"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
-
-type rtFunc func(*http.Request) (*http.Response, error)
-
-func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // The instrumented transport records the response status on success and a
 // distinct code="error" when the round trip itself fails (§17 Tunarr-API errors,
@@ -19,7 +16,7 @@ func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r)
 func TestInstrumentTransportRecordsResult(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "http://svc/", nil)
 
-	ok := InstrumentTransport("tunarr", rtFunc(func(*http.Request) (*http.Response, error) {
+	ok := InstrumentTransport("tunarr", httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	}))
 	before := testutil.ToFloat64(outboundRequests.WithLabelValues("tunarr", "200"))
@@ -30,7 +27,7 @@ func TestInstrumentTransportRecordsResult(t *testing.T) {
 		t.Errorf("outbound{200} = %v, want %v", got, before+1)
 	}
 
-	failing := InstrumentTransport("tunarr", rtFunc(func(*http.Request) (*http.Response, error) {
+	failing := InstrumentTransport("tunarr", httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	}))
 	eb := testutil.ToFloat64(outboundRequests.WithLabelValues("tunarr", "error"))
@@ -39,6 +36,33 @@ func TestInstrumentTransportRecordsResult(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(outboundRequests.WithLabelValues("tunarr", "error")); got != eb+1 {
 		t.Errorf("outbound{error} = %v, want %v", got, eb+1)
+	}
+}
+
+func TestOutboundRetriedRecordsBoundedReasons(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason OutboundRetryReason
+		label  string
+	}{
+		{name: "transport", reason: OutboundRetryTransport, label: "transport"},
+		{name: "request timeout", reason: OutboundRetryStatus408, label: "408"},
+		{name: "rate limited", reason: OutboundRetryStatus429, label: "429"},
+		{name: "internal error", reason: OutboundRetryStatus500, label: "500"},
+		{name: "bad gateway", reason: OutboundRetryStatus502, label: "502"},
+		{name: "unavailable", reason: OutboundRetryStatus503, label: "503"},
+		{name: "gateway timeout", reason: OutboundRetryStatus504, label: "504"},
+		{name: "unknown stays bounded", reason: OutboundRetryReason(255), label: "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := testutil.ToFloat64(outboundRetries.WithLabelValues("tmdb", tt.label))
+			OutboundRetried("tmdb", tt.reason)
+			if got := testutil.ToFloat64(outboundRetries.WithLabelValues("tmdb", tt.label)); got != before+1 {
+				t.Errorf("outbound retries{%s} = %v, want %v", tt.label, got, before+1)
+			}
+		})
 	}
 }
 

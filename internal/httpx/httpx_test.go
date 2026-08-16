@@ -1,96 +1,126 @@
 package httpx
 
 import (
-	"fmt"
+	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/testkit/httpfixture"
 )
 
-// slowStream writes a body in chunks with a delay between each, so the whole
-// response takes ~600ms — longer than a short whole-request timeout, but each
-// chunk arrives promptly (headers are immediate). Mirrors an Ollama model pull:
-// a long-lived body that is never idle, only large.
-func slowStream(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.WriteHeader(http.StatusOK)
-	fl, _ := w.(http.Flusher)
-	for i := 0; i < 5; i++ {
-		if _, err := fmt.Fprintf(w, "{\"chunk\":%d}\n", i); err != nil {
-			return
-		}
-		if fl != nil {
-			fl.Flush()
-		}
-		time.Sleep(120 * time.Millisecond)
+type contextBody struct{ ctx context.Context }
+
+func (b *contextBody) Read([]byte) (int, error) {
+	<-b.ctx.Done()
+	return 0, b.ctx.Err()
+}
+
+func (*contextBody) Close() error { return nil }
+
+func TestNew_WholeRequestTimeoutAbortsSlowBody(t *testing.T) {
+	transport := httpfixture.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: &contextBody{ctx: req.Context()}}, nil
+	})
+	c := newClient(20*time.Millisecond, transport, nil)
+	resp, err := c.Get("http://service/stream")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.ReadAll(resp.Body); err == nil {
+		t.Fatal("expected whole-request timeout to abort the response body")
 	}
 }
 
-// A fixed whole-request Timeout (what New gives) aborts a healthy-but-slow stream
-// mid-body — the exact bug that killed the model pull at 120s. Proven here at
-// 200ms so the test is fast.
-func TestNew_WholeRequestTimeoutAbortsSlowStream(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(slowStream))
-	defer srv.Close()
-
-	resp, err := New(200 * time.Millisecond).Get(srv.URL)
-	if err == nil {
-		defer func() { _ = resp.Body.Close() }()
-		if _, rerr := io.ReadAll(resp.Body); rerr == nil {
-			t.Fatal("expected the whole-request timeout to abort the slow stream, but it completed")
-		}
-	}
-}
-
-// NewStreaming carries no whole-request budget, so the same slow stream reads to
-// completion — cancellation is by context, not a fixed ceiling.
-func TestNewStreaming_ReadsSlowStreamToCompletion(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(slowStream))
-	defer srv.Close()
-
-	c := NewStreaming()
+func TestNewStreaming_HasNoWholeRequestTimeout(t *testing.T) {
+	transport := httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("one\ntwo\nthree\n")),
+		}, nil
+	})
+	c := newStreamingClient(transport)
 	if c.Timeout != 0 {
-		t.Fatalf("NewStreaming must have no whole-request timeout, got %v", c.Timeout)
+		t.Fatalf("NewStreaming timeout = %v, want zero", c.Timeout)
 	}
-	resp, err := c.Get(srv.URL)
+	resp, err := c.Get("http://service/stream")
 	if err != nil {
 		t.Fatalf("streaming GET: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("read full stream: %v", err)
+		t.Fatalf("read stream: %v", err)
 	}
-	if got := string(b); got == "" || len(b) < 25 {
-		t.Fatalf("expected all 5 chunks, got %q", got)
+	if string(body) != "one\ntwo\nthree\n" {
+		t.Fatalf("body = %q", body)
 	}
 }
 
-// NewNamed adds outbound metrics transparently: the instrumented transport must
-// not change the client's behaviour — a normal request still round-trips and
-// still honours the whole-request timeout.
 func TestNewNamedIsTransparent(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, "ok")
-	}))
-	defer srv.Close()
-
-	c := NewNamed("test-target", 5*time.Second)
+	transport := httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	})
+	c := newNamedClient("test-target", 5*time.Second, transport)
 	if c.Timeout != 5*time.Second {
 		t.Fatalf("NewNamed timeout = %v, want 5s", c.Timeout)
 	}
-	resp, err := c.Get(srv.URL)
+	resp, err := c.Get("http://service/")
 	if err != nil {
 		t.Fatalf("instrumented GET: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
 	}
-	b, _ := io.ReadAll(resp.Body)
-	if string(b) != "ok" {
-		t.Fatalf("body = %q, want ok", string(b))
+	if string(body) != "ok" {
+		t.Fatalf("body = %q, want ok", body)
+	}
+}
+
+func TestRedirectPolicy(t *testing.T) {
+	newRedirectClient := func() (*http.Client, *int) {
+		calls := 0
+		transport := httpfixture.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			if calls == 1 {
+				return &http.Response{
+					StatusCode: http.StatusFound,
+					Header:     http.Header{"Location": []string{"http://service/final"}},
+					Body:       http.NoBody,
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: req}, nil
+		})
+		return newClient(time.Second, transport, nil), &calls
+	}
+
+	get, getCalls := newRedirectClient()
+	resp, err := get.Get("http://service/start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || *getCalls != 2 {
+		t.Fatalf("GET redirect status=%d calls=%d, want 200 and 2", resp.StatusCode, *getCalls)
+	}
+
+	post, postCalls := newRedirectClient()
+	req, _ := http.NewRequest(http.MethodPost, "http://service/start", nil)
+	resp, err = post.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusFound || *postCalls != 1 {
+		t.Fatalf("POST redirect status=%d calls=%d, want 302 and 1", resp.StatusCode, *postCalls)
 	}
 }
