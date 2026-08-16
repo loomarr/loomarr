@@ -160,6 +160,43 @@ func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
 	}
 }
 
+// An authenticated member is distinct from the anonymous caller above: the
+// member's credential is valid, but the approval gate still refuses the role.
+// The refusal must happen before any part of the decision is materialized.
+func TestApprove_AuthenticatedMember403LeavesStateUntouched(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-member-auth")
+
+	before, err := st.GetProposal(context.Background(), "p-member-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-member-auth/approve", memberToken, "")
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("authenticated member approve → %d, want 403", resp.StatusCode)
+	}
+
+	after, err := st.GetProposal(context.Background(), "p-member-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != before.Status || after.ApprovedBy != before.ApprovedBy ||
+		!after.ApprovedAt.Equal(before.ApprovedAt) || after.DenyReason != before.DenyReason {
+		t.Errorf("member approval changed proposal decision: before=%+v after=%+v", before, after)
+	}
+	if _, err := st.GetTitle(context.Background(), provision.Key("movie:tmdb:100")); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("member approval changed provisioning: GetTitle err=%v, want not found", err)
+	}
+	channels, err := st.ListChannels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 0 {
+		t.Fatalf("member approval materialized %d channels, want 0", len(channels))
+	}
+}
+
 // Admin approve enqueues the acquisitions as wanted titles (the ONLY path from a
 // proposal to /v1/titles) and flips the proposal to approved.
 func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
