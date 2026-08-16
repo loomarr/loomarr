@@ -724,7 +724,7 @@ jobs:
 
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
       - name: Prose
-        uses: errata-ai/vale-action@v2
+        uses: errata-ai/vale-action@v3
         with:
           files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
           fail_on_error: true
