@@ -3188,6 +3188,23 @@ components:
       required:
         - titles
       type: object
+    ListProposalJobsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListProposalJobsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        proposalJobs:
+          items:
+            $ref: "#/components/schemas/ProposalJobDTO"
+          type: array
+      required:
+        - proposalJobs
+      type: object
     ListProposalsOutputBody:
       additionalProperties: false
       properties:
@@ -4019,6 +4036,22 @@ components:
         - status
         - proposal
       type: object
+    ProposalFailure:
+      additionalProperties: false
+      properties:
+        code:
+          enum:
+            - no_grounded_titles
+            - timed_out
+            - provider_unavailable
+            - generation_failed
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+      type: object
     ProposalItem:
       additionalProperties: false
       properties:
@@ -4072,6 +4105,48 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    ProposalJobDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ProposalJobDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        attempts:
+          format: int64
+          type: integer
+        createdAt:
+          description: RFC3339
+          type: string
+        failure:
+          $ref: "#/components/schemas/ProposalFailure"
+        intent:
+          $ref: "#/components/schemas/Intent"
+        jobId:
+          type: string
+        proposal:
+          $ref: "#/components/schemas/ProposalDTO"
+        status:
+          enum:
+            - queued
+            - running
+            - done
+            - failed
+          type: string
+        updatedAt:
+          description: RFC3339
+          type: string
+      required:
+        - jobId
+        - status
+        - intent
+        - attempts
+        - createdAt
+        - updatedAt
       type: object
     ProposeFillerPullInputBody:
       additionalProperties: false
@@ -8544,6 +8619,83 @@ paths:
       summary: The closed rule authoring vocabulary
       tags:
         - channels
+  /v1/proposal-jobs:
+    get:
+      description: Returns bounded authoritative execution history. Members are always scoped to their own jobs; mine=true scopes session admins and returns empty for API_TOKEN (§7/§8).
+      operationId: list-proposal-jobs
+      parameters:
+        - description: Scope to the authenticated person's own jobs. API_TOKEN has no person and returns an empty list.
+          explode: false
+          in: query
+          name: mine
+          schema:
+            description: Scope to the authenticated person's own jobs. API_TOKEN has no person and returns an empty list.
+            type: boolean
+        - description: Optional execution lifecycle filter
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Optional execution lifecycle filter
+            enum:
+              - queued
+              - running
+              - done
+              - failed
+            type: string
+        - description: Maximum jobs to return (default 50, max 100)
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: Maximum jobs to return (default 50, max 100)
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProposalJobsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List proposal-job history
+      tags:
+        - proposal-jobs
+  /v1/proposal-jobs/{jobId}:
+    get:
+      description: Returns the complete Intent, execution state, safe failure, and newest Proposal. Members may read only their own jobs; admins may read any (§7/§8).
+      operationId: get-proposal-job
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalJobDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get authoritative proposal-job state
+      tags:
+        - proposal-jobs
   /v1/proposals:
     get:
       description: status=submitted is the approval queue.
