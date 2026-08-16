@@ -26,6 +26,7 @@ sqlite="$(
 printf '%s\n' "$sqlite" | grep -q "image: ghcr.io/mantonx/loomarr:$VERSION"
 printf '%s\n' "$sqlite" | grep -q 'DATABASE_URL: sqlite:///data/loomarr.db'
 printf '%s\n' "$sqlite" | grep -q 'image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42'
+printf '%s\n' "$sqlite" | grep -q -- '--providers.docker.allowemptyservices=true'
 # shellcheck disable=SC2016 # the backticks are literal Traefik rule syntax
 printf '%s\n' "$sqlite" | grep -q 'providers.docker.constraints=Label(`com.mantonx.loomarr.edge`,`true`)'
 printf '%s\n' "$sqlite" | grep -q -- '--ping.entrypoint=health'

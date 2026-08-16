@@ -36,10 +36,9 @@ body:
   - type: dropdown
     id: image
     attributes:
-      label: Image variant
+      label: Image source
       options:
-        - "loomarr:latest (core)"
-        - "loomarr:filler"
+        - "ghcr.io/mantonx/loomarr (published)"
         - "built from source"
     validations:
       required: true

@@ -38,6 +38,7 @@ services:
       - --ping.entrypoint=health
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.docker.allowemptyservices=true
       - --providers.docker.constraints=Label(`com.mantonx.loomarr.edge`,`true`)
     ports: ["${LOOMARR_HTTP_BIND:-0.0.0.0}:${LOOMARR_HTTP_PORT:-8080}:8080"]
     volumes:

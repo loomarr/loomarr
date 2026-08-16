@@ -4728,7 +4728,9 @@ tools. The Go server stays cgo-free, and pixel buffers never cross the process b
   labelled Loomarr service on a private network. Loomarr exposes `8080` to that network but has no
   host port. `SERVER_PUBLIC_URL` is required at Compose interpolation time and names the canonical
   Traefik URL embedded in stream links. Traefik waits for the container healthcheck and also probes
-  `/v1/readyz`; its dashboard is disabled. The beta topology is deliberately one Loomarr replica.
+  `/v1/readyz`; empty services remain configured so an unavailable backend returns 503 instead of
+  erasing the route, and its dashboard is disabled. The beta topology is deliberately one Loomarr
+  replica.
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `docker/compose.postgres.yaml` replaces Loomarr's SQLite default with an explicit
   Postgres DSN and waits for `postgres:16` to become healthy. A profile can add a service but cannot
