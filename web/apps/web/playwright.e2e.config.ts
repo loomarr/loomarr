@@ -13,12 +13,15 @@ const PORT = 6008;
 export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/e2e",
+  // The tuner scenario owns a real same-origin HLS fixture and its own three-engine config.
+  // Keeping it out of this wizard-only suite prevents it from being discovered against the
+  // wizard route-mock server before the dedicated tuner gate runs.
+  testIgnore: "tuner-surf.spec.ts",
   fullyParallel: true,
-  // ⚠ LOCAL ONLY — `E2E_WORKERS` is undefined under CI, which leaves Playwright's own default
-  // in place. This suite had no worker cap at all, so a local run took `cpus()/2` and booted a
-  // browser per worker against the real SPA, the heavier of the two suites. Capping locally is
-  // safe; RAISING it in CI is not, because tuner-surf measures latency against a threshold and
-  // extra parallel browsers change the thing under test. See playwright.shared.
+  // ⚠ LOCAL ONLY — `E2E_WORKERS` is undefined under CI, leaving Playwright's own default in
+  // place, because this suite's CI concurrency is not ours to retune. Locally it had no cap at
+  // all, so a run took `cpus()/2` and booted a browser per worker against the real SPA — the
+  // heavier of the two suites on the machine that has to host it. See playwright.shared.
   workers: E2E_WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
