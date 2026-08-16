@@ -4,8 +4,8 @@ import { ChannelDangerZone } from "./channel-danger-zone";
 
 const noop = () => {};
 
-// The destructive-actions section (frontend-design §6): pause/resume plus a
-// two-step confirm delete, isolated with onair styling.
+// The destructive-actions section (frontend-design §6): pause/resume plus explicit
+// stop-managing and permanent-delete choices, isolated with onair styling.
 const meta = {
   title: "Channels/ChannelDangerZone",
   component: ChannelDangerZone,

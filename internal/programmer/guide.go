@@ -69,6 +69,7 @@ type guideChannel struct {
 // Guide returns each channel's programs overlapping [from, to), keyed by Tunarr channel
 // id. An unprogrammed or unknown channel simply has no entry.
 func (t *Tunarr) Guide(ctx context.Context, from, to time.Time) (map[string][]GuideEntry, error) {
+	ctx, _ = t.operation(ctx)
 	q := url.Values{}
 	q.Set("dateFrom", from.UTC().Format(time.RFC3339))
 	q.Set("dateTo", to.UTC().Format(time.RFC3339))

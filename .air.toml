@@ -1,6 +1,6 @@
 # Air (github.com/air-verse/air) — dev-only live reload for the Loomarr backend.
-# Watches Go sources under cmd/ + internal/, rebuilds cmd/loomarr on change, and
-# restarts the running binary. Not a build/runtime dependency (§14): a dev tool, the
+# Watches Go and Rust sources, rebuilds both required binaries, and restarts the server.
+# Air is not a build/runtime dependency (§14): it is a dev tool, the
 # Go analogue of Vite's HMR — never imported, never shipped. Run from the repo root:
 #
 #   make dev-be     (installs Air on first use, then watches)
@@ -20,14 +20,15 @@ tmp_dir = "tmp"
 [build]
   # Build the dev binary into tmp/ (git-ignored). CGO off — the store uses modernc
   # (pure-Go sqlite), so no C toolchain is needed for the dev build.
-  cmd = "go build -o ./tmp/loomarr-dev ./cmd/loomarr"
-  bin = "./tmp/loomarr-dev"
-  # Same environment the manual launch uses. `set -a` exports everything .env defines;
-  # a missing .env is not fatal (the binary falls back to §15 defaults and boot-WARNs).
-  full_bin = "sh -c 'set -a; [ -f .env ] && . ./.env; set +a; exec ./tmp/loomarr-dev'"
-  # Rebuild only on backend Go source changes.
-  include_ext = ["go"]
-  exclude_dir = ["web", "tmp", "docs", "design", "node_modules", ".git", "internal/testkit/fixtures"]
+  cmd = "LOOMARR_RELEASE=dev cargo build --locked -p loomarr-image && go build -o ./tmp/loomarr-dev ./cmd/loomarr"
+  entrypoint = ["./tmp/loomarr-dev"]
+  # Source shared credentials first, then re-apply the worktree isolation resolved by
+  # scripts/dev-env.sh. This prevents a copied .env from putting two agents back on :8080 or
+  # the same SQLite file. A missing .env remains supported.
+  full_bin = "sh -c 'set -a; [ -f .env ] && . ./.env; LOOMARR_IMAGE_WORKER=\"$PWD/target/debug/loomarr-image\"; [ -n \"${LOOMARR_DEV_PORT:-}\" ] && LISTEN_ADDR=\":${LOOMARR_DEV_PORT}\"; [ -n \"${LOOMARR_AGENT_DATABASE_URL:-}\" ] && DATABASE_URL=\"${LOOMARR_AGENT_DATABASE_URL}\"; [ -n \"${LOOMARR_AGENT_FILLER_DIR:-}\" ] && FILLER_DIR=\"${LOOMARR_AGENT_FILLER_DIR}\"; [ -n \"${LOOMARR_AGENT_PREPARED_DIR:-}\" ] && PLAYOUT_PREPARED_DIR=\"${LOOMARR_AGENT_PREPARED_DIR}\"; [ -n \"${LOOMARR_AGENT_DEV_LOGIN:-}\" ] && LOOMARR_DEV_LOGIN=\"${LOOMARR_AGENT_DEV_LOGIN}\"; set +a; exec ./tmp/loomarr-dev'"
+  # Rebuild the release unit when either side of the boundary changes.
+  include_ext = ["go", "rs", "toml"]
+  exclude_dir = ["web", "tmp", "target", "docs", "design", "node_modules", ".git", "internal/testkit/fixtures"]
   exclude_regex = ["_test\\.go"]
   # Don't restart on an in-progress rebuild; give the compile a moment to settle.
   delay = 400

@@ -12,14 +12,9 @@ type FeatureSet struct {
 	Acquisition bool // a requester is configured (Seerr OR direct Sonarr+Radarr)
 	Suggestions bool // an LLM + TMDB grounding are configured
 	Filler      bool // a filler drop-folder is configured
-	// UserSync reports whether users can be imported/synced from a media server.
-	// Unlike the others this gates a route that is CONDITIONALLY REGISTERED
-	// (internal/api/usersroutes.go): with no media server, POST /v1/users/sync does not
-	// exist at runtime even though it is present in the committed spec, because the spec
-	// is generated in schema-only mode where everything registers. Without this flag the
-	// generated client happily calls an endpoint that 404s. It must therefore mirror
-	// app.go's wiring condition EXACTLY — `library.flavor` set — not merely something
-	// close to it, or the flag and the route drift apart again.
+	// UserSync reports whether users can be imported/synced from a media server. The route
+	// and adapter are always wired; this live feature gate is true only for one complete
+	// {flavor,url,token} snapshot, matching the operation gate without a boot-time 404.
 	UserSync bool
 	// Ingest reports whether clips can be downloaded in-app. It is the ONE gate not
 	// derived from settings completeness (config-design §7): it depends on whether
@@ -84,11 +79,16 @@ func (s *Service) Features() FeatureSet {
 		Acquisition:   s.requesterConfigured(),
 		Suggestions:   s.allRequiredSet(FeatureSuggestions),
 		Filler:        s.allRequiredSet(FeatureFiller),
-		UserSync:      !s.isEmpty("library.flavor"),
+		UserSync:      s.libraryConfigured(),
 		Ingest:        s.ingestArchiveAvailable() || s.ingestYouTubeAvailable(),
 		IngestArchive: s.ingestArchiveAvailable(),
 		IngestYouTube: s.ingestYouTubeAvailable(),
 	}
+}
+
+func (s *Service) libraryConfigured() bool {
+	_, err := s.LibraryConnection().Validate()
+	return err == nil
 }
 
 // allRequiredSet reports whether every registry key with RequiredFor == feature

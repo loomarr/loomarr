@@ -12,7 +12,7 @@
 # fix "the watcher stopped watching"; only an out-of-band check can.
 #
 # So this watchdog runs BESIDE Air (started by `make dev-be`) and asks one question on a timer:
-# is the running binary OLDER than the newest watched Go source? A healthy Air makes that briefly
+# is the running binary OLDER than the newest watched Go/Rust source? A healthy Air makes that briefly
 # true after every save (it is mid-build) and then false again within ~1s. A WEDGED Air makes it
 # true forever. Hysteresis (STALE_STRIKES consecutive stale checks) distinguishes the two: we only
 # act after the binary has stayed stale far longer than Air's worst-case poll_interval + delay +
@@ -21,7 +21,7 @@
 # ⚠ RECOVERY NUDGES AIR — it never spawns a competing binary. Spawning `go build && exec` here
 # would recreate the exact two-binaries-fighting-:8080 zombie that scripts/dev-be-guard.sh exists
 # to prevent. Instead we escalate gently:
-#   1. `touch` the newest watched .go file — pokes Air's mtime poll into re-firing. Cheapest;
+#   1. `touch` a watched source file — pokes Air's mtime poll into re-firing. Cheapest;
 #      no restart, no lost connections. Fixes the common "poll loop stalled" case.
 #   2. if still stale a cycle later, SIGTERM the stale loomarr-dev by comm — Air's own restart
 #      logic (send_interrupt + rebuild) then rebuilds from current source. Same mechanism a
@@ -34,44 +34,60 @@
 
 set -u
 
-REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+REPO_ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)}"
+REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd -P)"
+# shellcheck source=scripts/dev-processes.sh
+. "$REPO_ROOT/scripts/dev-processes.sh"
 BIN="$REPO_ROOT/tmp/loomarr-dev"
 POLL_SECONDS="${DEV_BE_WATCHDOG_POLL:-10}"
 # 3 strikes × 10s = 30s of continuous staleness before we act. Air's poll_interval (0.5s) + delay
-# (0.4s) + a cold Go build of cmd/loomarr is comfortably under that, so a healthy rebuild never
+# (0.4s) + a cold incremental Go/Rust build is comfortably under that, so a healthy rebuild never
 # reaches strike 1's successor. Raise DEV_BE_WATCHDOG_STRIKES on a slow box if it ever false-fires.
 STALE_STRIKES="${DEV_BE_WATCHDOG_STRIKES:-3}"
 
 # air_alive: is an Air supervising this repo still running? (comm match, per dev-be-guard.sh.)
 air_alive() {
-  ps -e -o comm= 2>/dev/null | grep -qx air
+  [ -n "$(repo_pids_by_comm air "$REPO_ROOT")" ]
 }
 
 # loomarr_pids: PIDs of the running dev binary, by comm (NOT `pgrep -f`, which misses the exec'd child).
 loomarr_pids() {
-  ps -e -o pid=,comm= 2>/dev/null | awk '$2=="loomarr-dev"{print $1}'
+  repo_pids_by_comm loomarr-dev "$REPO_ROOT"
 }
 
-# newest_src_after_bin: prints a nonempty string iff at least one WATCHED .go source is newer than
-# the binary — i.e. the binary is stale. Mirrors .air.toml's watch set: cmd/ + internal/, excluding
-# the same dirs and *_test.go. `-newer $BIN` is the staleness test; we only need existence, so -quit
+# newest_src_after_bin: prints a nonempty string iff at least one watched Go/Rust input is newer
+# than the binary. `-newer $BIN` is the staleness test; we only need existence, so -quit
 # on the first hit keeps it O(1)-ish on a big tree.
 newest_src_after_bin() {
   [ -f "$BIN" ] || { echo "nobin"; return; }
-  find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" \
+  find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" "$REPO_ROOT/rust" \
+    "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/rust-toolchain.toml" \
     -type d \( -name testdata -o -name fixtures \) -prune -o \
-    -type f -name '*.go' ! -name '*_test.go' -newer "$BIN" -print -quit 2>/dev/null
+    -type f \( -name '*.go' -o -name '*.rs' -o -name '*.toml' -o -name 'Cargo.lock' \) \
+    ! -name '*_test.go' -newer "$BIN" -print -quit 2>/dev/null
 }
 
-# newest_go_file: a single watched .go path to `touch` as the gentle nudge. Any watched file works —
+# newest_source_file: a single watched path to `touch` as the gentle nudge. Any watched file works —
 # touching it updates its mtime, which Air's poll compares against the binary and treats as a change.
-newest_go_file() {
-  find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" \
+newest_source_file() {
+  find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" "$REPO_ROOT/rust" \
     -type d \( -name testdata -o -name fixtures \) -prune -o \
-    -type f -name '*.go' ! -name '*_test.go' -print 2>/dev/null | head -1
+    -type f \( -name '*.go' -o -name '*.rs' \) ! -name '*_test.go' -print 2>/dev/null | head -1
 }
 
 echo "dev-be-watchdog: watching for a wedged Air (binary $BIN; ${POLL_SECONDS}s poll, ${STALE_STRIKES} strikes)." >&2
+
+# The watchdog starts immediately before the pinned `go run air@...`. A cold tool build can take a few
+# seconds, so wait for this worktree's Air instead of interpreting startup as an already-dead watcher.
+startup_wait=0
+until air_alive; do
+  startup_wait=$((startup_wait + 1))
+  if [ "$startup_wait" -ge 30 ]; then
+    echo "dev-be-watchdog: Air did not start within 30s — exiting." >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 strikes=0
 nudged=0
@@ -92,7 +108,7 @@ while air_alive; do
 
   # Sustained staleness: Air should have rebuilt by now and hasn't.
   if [ "$nudged" -eq 0 ]; then
-    poke="$(newest_go_file)"
+    poke="$(newest_source_file)"
     if [ -n "$poke" ]; then
       echo "dev-be-watchdog: binary stale for $((strikes * POLL_SECONDS))s — nudging Air (touch $poke)." >&2
       touch "$poke" 2>/dev/null || true

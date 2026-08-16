@@ -1,7 +1,7 @@
 //go:build ffmpeg
 
 // Tests that EXECUTE ffmpeg. Behind a build tag because unit tests must not depend on an
-// external binary being present — the same reasoning CLAUDE.md applies to the network. Run
+// external binary being present — the same reasoning AGENTS.md applies to the network. Run
 // with `make test-ffmpeg`.
 //
 // These exist because arg-shape tests assert my own stated invariants and cannot catch an

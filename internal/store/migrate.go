@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -17,12 +18,11 @@ import (
 // NEWER than any migration this binary embeds, refuse to proceed (§16) — a
 // rolled-back container must not limp into a schema it doesn't understand.
 //
-// dialect is goose's ("sqlite" | "postgres"); dir is the embedded subdir.
-func migrate(db *sql.DB, dialect, dir string) error {
-	goose.SetBaseFS(migrationFS)
-	goose.SetLogger(goose.NopLogger())
-	if err := goose.SetDialect(dialect); err != nil {
-		return fmt.Errorf("goose dialect %q: %w", dialect, err)
+// dialect is Loomarr's ("sqlite" | "postgres"); dir is the embedded subdir.
+func migrate(ctx context.Context, db *sql.DB, dialect, dir string) error {
+	provider, err := newMigrationProvider(db, Dialect(dialect), dir)
+	if err != nil {
+		return err
 	}
 
 	maxEmbedded, err := highestMigration(dir)
@@ -31,7 +31,7 @@ func migrate(db *sql.DB, dialect, dir string) error {
 	}
 
 	// Downgrade guard (§16): compare applied version to what we embed.
-	current, err := goose.GetDBVersion(db)
+	current, err := provider.GetDBVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("read db version: %w", err)
 	}
@@ -42,10 +42,44 @@ func migrate(db *sql.DB, dialect, dir string) error {
 			current, maxEmbedded, current)
 	}
 
-	if err := goose.Up(db, dir); err != nil {
+	if _, err := provider.Up(ctx); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	return nil
+}
+
+// newMigrationProvider owns the complete goose configuration for one database.
+// In particular, it avoids goose's legacy process-global dialect and filesystem
+// state, because the live migration stepper can use SQLite and Postgres in the
+// same process at the same time.
+func newMigrationProvider(db *sql.DB, dialect Dialect, dir string) (*goose.Provider, error) {
+	var gooseDialect goose.Dialect
+	switch dialect {
+	case DialectSQLite:
+		// Loomarr calls this dialect "sqlite"; Provider uses goose's canonical
+		// "sqlite3" spelling rather than the alias accepted by SetDialect.
+		gooseDialect = goose.DialectSQLite3
+	case DialectPostgres:
+		gooseDialect = goose.DialectPostgres
+	default:
+		return nil, fmt.Errorf("goose dialect %q: unsupported dialect", dialect)
+	}
+
+	migrations, err := fs.Sub(migrationFS, dir)
+	if err != nil {
+		return nil, fmt.Errorf("migration filesystem %q: %w", dir, err)
+	}
+	provider, err := goose.NewProvider(
+		gooseDialect,
+		db,
+		migrations,
+		goose.WithLogger(goose.NopLogger()),
+		goose.WithDisableGlobalRegistry(true),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create migration provider for %q: %w", dialect, err)
+	}
+	return provider, nil
 }
 
 // highestMigration returns the largest numeric prefix among the .sql files in
@@ -89,13 +123,15 @@ func SchemaVersion(st Store) int64 {
 	if !ok || s.db == nil {
 		return 0
 	}
-	// goose keeps global dialect state, set during migrate(). Re-assert it: this may run
-	// long after boot, and on a mixed process (the V11 stepper touches both) the last
-	// dialect set is not necessarily this store's.
-	if err := goose.SetDialect(string(s.dialect)); err != nil {
+	provider, err := newMigrationProvider(
+		s.db,
+		s.dialect,
+		"migrations/"+string(s.dialect),
+	)
+	if err != nil {
 		return 0
 	}
-	v, err := goose.GetDBVersion(s.db)
+	v, err := provider.GetDBVersion(context.Background())
 	if err != nil {
 		return 0
 	}

@@ -1,10 +1,22 @@
-import { type ChannelPolicy, type CycleSlotDTO, channelsApi, unwrap } from "@loomarr/api";
-import { Clapperboard, Clock, Tv } from "lucide-react";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { CycleSlotDTO } from "@loomarr/api/models/cycleSlotDTO";
+import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
+import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason";
+import { unwrap } from "@loomarr/api/unwrap";
+import { Clapperboard, Clock, ShieldAlert, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
+
+// One import provides both the type and const: orval derives the union from the frozen object,
+// so the switchable values and the type that constrains them cannot drift.
 
 // A quick-pick preset: label + a function from "now" to the RFC3339 `at` it produces.
 // Kept as pure date math (no server round trip) — the preview endpoint is what actually
@@ -132,6 +144,97 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       </span>
       {slot.part && slot.part > 0 ? <Badge variant="neutral">Part {slot.part}</Badge> : null}
     </li>
+  );
+};
+
+// REASON_LABEL — why the scheduler refused an item, in the operator's words.
+//
+// ⚠ Keyed off the generated `ExcludedItemDTOReason` symbol, not hand-typed strings: `reason` is
+// a closed BE enum, so a value added server-side must fail the typecheck here rather than
+// silently render as a blank label.
+const REASON_LABEL: Record<ExcludedItemDTOReason, string> = {
+  [ExcludedItemDTOReason.over_ceiling]: "Rated above this channel's audience ceiling",
+  [ExcludedItemDTOReason.unrated]: "No usable rating, and this channel excludes unrated content",
+  [ExcludedItemDTOReason.out_of_scope]: "Outside the channel's era, genres, or runtime limits",
+  [ExcludedItemDTOReason.out_of_season]: "Benched — outside its seasonal window right now",
+};
+
+// A refusal by the AUDIENCE ceiling is styled apart from one by a taste filter. They are not the
+// same event: an out-of-scope drop is a curation choice the operator made, while an over-ceiling
+// or unrated drop is a safety gate firing, and the operator's likely next action differs
+// (loosen the era vs. go fix the rating on the item, or accept it).
+const isSafetyReason = (reason: ExcludedItemDTOReason): boolean =>
+  reason === ExcludedItemDTOReason.over_ceiling || reason === ExcludedItemDTOReason.unrated;
+
+// ExcludedPanel — "why isn't X on my channel", finally answerable (#263).
+//
+// ⚠ This report was computed by every single reconcile and thrown away by every caller. The
+// scheduler always knew which titles it refused and why; nothing ever showed anyone. Diagnosing
+// one over-ceiling episode previously meant querying the media server by hand.
+//
+// Collapsed by default: on a healthy channel it is a footnote, and a channel with a tight era
+// filter can legitimately refuse dozens of titles — an expanded list would bury the schedule
+// this panel exists to show. The COUNTS stay visible in the trigger row so nothing is hidden,
+// only folded.
+const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
+  const items = excluded.items ?? [];
+  // Nothing refused ⇒ render nothing at all. An "Excluded (0)" row is noise on the overwhelming
+  // majority of channels, and its absence is not ambiguous: the schedule above IS the answer.
+  if (items.length === 0) return null;
+
+  const safety = excluded.overCeiling + excluded.unrated;
+  return (
+    <Disclosure className="rounded-md border border-border">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <ShieldAlert
+          className={cn("size-4 shrink-0", safety > 0 ? "text-signal" : "text-muted-foreground")}
+          aria-hidden
+        />
+        <p className="text-sm">
+          <span className="font-medium">
+            {items.length} {items.length === 1 ? "title" : "titles"} not airing
+          </span>{" "}
+          <span className="text-muted-foreground">
+            {safety > 0
+              ? `— ${safety} held back by the audience ceiling`
+              : "— filtered out by this channel's rules"}
+          </span>
+        </p>
+        <Disclosure.Trigger className="ml-auto" label="Show which titles are not airing and why" />
+      </div>
+      <Disclosure.Panel className="border-border border-t">
+        {/* Same scroll treatment as the slot list above: a tight era filter can refuse dozens,
+            and the panel must not run off the page. tabIndex + aria-label keep the region
+            keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
+        <ul
+          className="scroll-thin flex max-h-64 flex-col divide-y divide-border overflow-y-auto"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — see the slot list's note
+          tabIndex={0}
+          aria-label="Titles not airing"
+        >
+          {items.map((item, i) => (
+            <li
+              // ⚠ The key is NOT `item.key` alone: a per-episode ceiling refusal carries its
+              // SERIES key, so several rows legitimately share one. Title disambiguates them
+              // (it holds the SxxEyy), and the index closes the remaining gap.
+              // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
+              key={`${item.key}-${item.title}-${i}`}
+              className="flex flex-col gap-0.5 px-3 py-2"
+            >
+              <span className="truncate text-sm">{item.title || item.key}</span>
+              <span
+                className={cn(
+                  "text-xs",
+                  isSafetyReason(item.reason) ? "text-signal" : "text-muted-foreground",
+                )}
+              >
+                {REASON_LABEL[item.reason]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Disclosure.Panel>
+    </Disclosure>
   );
 };
 
@@ -286,6 +389,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
               ))}
             </ul>
           )}
+
+          {/* ⚠ BELOW the schedule, deliberately. The question it answers ("why isn't X on?")
+              is one you ask after looking at what IS on and finding something missing — put
+              first, it would read as an error banner on a channel that is working correctly. */}
+          <ExcludedPanel excluded={body.excluded} />
         </div>
       )}
     </section>

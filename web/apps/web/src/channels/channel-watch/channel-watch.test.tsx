@@ -5,7 +5,7 @@ import {
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -25,7 +25,7 @@ const makeWrapper = () => {
   );
 };
 
-// stubTracks makes GET /v1/channels/:id/tracks return the given audio/subtitle tracks, and
+// stubTracks makes GET /v1/channels/:id/tracks return the given media tracks, and
 // reports whether it was asked at all — the last test's whole claim is that it was NOT.
 //
 // ⚠ The stub this replaced ended in a catch-all `jsonResponse(200, {})`, so any other request the
@@ -59,7 +59,7 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
 const live = channel({ id: "ch-1", name: "Late Night Noir", number: 42, status: "live" });
 
 describe("ChannelWatch pickers", () => {
-  // The audio/subtitle controls live IN the player's bar (V47), so the player must be running
+  // The audio control lives IN the player's bar (V47), so the player must be running
   // before they render.
   //
   // ⚠ **No click any more: Watch tunes in on mount (§9.1 V54).** This used to press the
@@ -95,20 +95,6 @@ describe("ChannelWatch pickers", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers Burn in only when the airing media has subtitle tracks", async () => {
-    stubTracks({ subtitles: [] });
-    const { unmount } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
-      wrapper: makeWrapper(),
-    });
-    await startWatching();
-
-    // No subtitle tracks → the Subtitles menu offers only Off (no Burn in for media with none).
-    await userEvent.click(await screen.findByRole("button", { name: "Subtitles" }));
-    await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Off" })).toBeInTheDocument());
-    expect(screen.queryByRole("menuitemcheckbox", { name: /Burn in/ })).not.toBeInTheDocument();
-    unmount();
-  });
-
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
     const { wasProbed } = stubTracks();
 
@@ -122,5 +108,24 @@ describe("ChannelWatch pickers", () => {
     // did fetch something unmodelled, the unhandled-request guard now fails this test by name
     // rather than a catch-all answering it.
     expect(wasProbed()).toBe(false);
+  });
+
+  it("renders accessible Channel Up/Down controls that share the tuner step action", async () => {
+    stubTracks();
+    const step = vi.fn();
+    render(
+      <ChannelWatch
+        channel={live}
+        isAdmin
+        onSavePolicy={vi.fn()}
+        tuner={{ canSurf: true, step, retry: vi.fn() }}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    await startWatching();
+
+    await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
+    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
+    expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
   });
 });

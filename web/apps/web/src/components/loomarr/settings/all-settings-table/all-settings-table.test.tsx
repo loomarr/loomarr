@@ -2,7 +2,8 @@ import type { SettingEntry } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { RouterHarness } from "@/test/story-utils";
 import { AllSettingsTable } from "./all-settings-table";
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry =>
@@ -151,5 +152,46 @@ describe("AllSettingsTable", () => {
       <Harness entries={[entry({ key: "job.workers", value: "2", provenance: "env" })]} />,
     );
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
+  });
+
+  it("links a group to the workflow that owns it", () => {
+    render(<Harness entries={[entry()]} />);
+    expect(screen.getByRole("link", { name: "connections.media_server" })).toHaveAttribute(
+      "href",
+      "/settings/connections",
+    );
+  });
+
+  it("routes the action-owned lineup model to its picker instead of offering free text", async () => {
+    const model = entry({ key: "llm.model", group: "ai", value: "openai/gpt-4o-mini" });
+    const { container } = render(
+      <RouterHarness
+        initialPath="/settings"
+        content={
+          <AllSettingsTable entries={[model]} query="" onQueryChange={vi.fn()} values={{}} onEdit={vi.fn()} />
+        }
+      />,
+    );
+    await screen.findByText("llm.model");
+    expect(container.querySelector("#setting-llm\\.model")).not.toBeInTheDocument();
+    expect(screen.getByText("openai/gpt-4o-mini")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Choose model" })).toHaveAttribute("href", "/settings/ai");
+  });
+
+  it("can clear a database value back to its default", async () => {
+    const onClear = vi.fn();
+    const dbEntry = entry();
+    render(
+      <AllSettingsTable
+        entries={[dbEntry]}
+        query=""
+        onQueryChange={vi.fn()}
+        values={{}}
+        onEdit={vi.fn()}
+        onClear={onClear}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Use default" }));
+    expect(onClear).toHaveBeenCalledWith(dbEntry);
   });
 });

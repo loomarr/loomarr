@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// MediaServer is the shared Emby/Jellyfin test double (CLAUDE.md: one shared
+// MediaServer is the shared Emby/Jellyfin test double (AGENTS.md: one shared
 // mock per service, both flavors). It serves the pinned Phase-0 fixtures so the
 // library adapter is tested against ground truth, never the network. It also
 // records the auth headers it received, so flavor-specific header construction
@@ -27,6 +27,7 @@ type MediaServer struct {
 	LastAuthHeader string
 	LastEmbyToken  string
 	LastEmbyAuthz  string
+	requests       []MediaServerRequest
 	// metadataRequests counts BULK metadata lookups (§9.1). Read via MetadataRequests();
 	// it exists so a test can assert that N programmes cost ONE request rather than N — the
 	// property that makes the XMLTV guide affordable on a route a media server polls.
@@ -59,6 +60,25 @@ type MediaServer struct {
 	// The same stubs answer the AnyProviderIdEquals presence check (by tmdb id), so
 	// in-library backfill is consistent. Pinned fixtures still serve when unset.
 	SearchItems []SearchStub
+}
+
+// MediaServerRequest is one captured call to the shared media-server double. Tests that
+// exercise live configuration use the per-request record instead of racing on the legacy
+// last-header fields or mistaking a background scan for the operation under assertion.
+type MediaServerRequest struct {
+	Method        string
+	Path          string
+	RawQuery      string
+	Authorization string
+	EmbyToken     string
+	EmbyAuthz     string
+}
+
+// Requests returns a copy of every captured media-server request in arrival order.
+func (ms *MediaServer) Requests() []MediaServerRequest {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return append([]MediaServerRequest(nil), ms.requests...)
 }
 
 // SearchStub is one in-library item the scriptable search returns. Terms are the
@@ -376,6 +396,10 @@ func (ms *MediaServer) capture(r *http.Request) {
 	ms.LastAuthHeader = r.Header.Get("Authorization")
 	ms.LastEmbyToken = r.Header.Get("X-Emby-Token")
 	ms.LastEmbyAuthz = r.Header.Get("X-Emby-Authorization")
+	ms.requests = append(ms.requests, MediaServerRequest{
+		Method: r.Method, Path: r.URL.Path, RawQuery: r.URL.RawQuery,
+		Authorization: ms.LastAuthHeader, EmbyToken: ms.LastEmbyToken, EmbyAuthz: ms.LastEmbyAuthz,
+	})
 }
 
 // SetSearchItems sets the scriptable in-library items under the lock — use this (not a direct

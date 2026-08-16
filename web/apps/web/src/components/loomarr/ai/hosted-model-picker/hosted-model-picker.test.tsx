@@ -46,12 +46,56 @@ describe("HostedModelPicker", () => {
 
   it("points at where to get a key when none is configured", () => {
     render(
-      <HostedModelPicker providers={[provider({ keyConfigured: false, models: [] })]} onSelect={vi.fn()} />,
+      <HostedModelPicker
+        providers={[provider({ keyConfigured: false, modelsLive: false, models: [] })]}
+        onSelect={vi.fn()}
+      />,
     );
-    expect(screen.getByText(/press Test to list its models/i)).toBeInTheDocument();
+    expect(screen.getByText(/save to use the suggested model/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /get a key/i })).toHaveAttribute(
       "href",
       "https://openrouter.ai/keys",
     );
+  });
+
+  it("shows the guided fallback before a key is configured", () => {
+    render(
+      <HostedModelPicker
+        providers={[
+          provider({
+            keyConfigured: false,
+            modelsLive: false,
+            models: [
+              {
+                id: "openai/gpt-4o-mini",
+                label: "GPT-4o mini",
+                recommended: true,
+                tools: true,
+                why: "Cheap, tool-capable, and a good default for Loomarr's grounded suggestions.",
+              },
+            ],
+          }),
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("GPT-4o mini")).toBeInTheDocument();
+    expect(screen.getByText("recommended")).toBeInTheDocument();
+    expect(screen.getByText("Tools")).toBeInTheDocument();
+    expect(screen.getByText(/good default for Loomarr/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add key first/i })).toBeDisabled();
+  });
+
+  it("marks a model without advertised tool calling as unusable", () => {
+    render(
+      <HostedModelPicker
+        providers={[provider({ models: [{ id: "vendor/text-only", label: "Text only", tools: false }] })]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Tools required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /can't use/i })).toBeDisabled();
   });
 });

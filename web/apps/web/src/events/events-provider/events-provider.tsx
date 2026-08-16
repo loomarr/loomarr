@@ -1,4 +1,4 @@
-import { type EventHandlers, useLoomarrEvents } from "@loomarr/core";
+import { type EventHandlers, useLoomarrEvents } from "@loomarr/core/events";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import type { LoomarrEventsProviderProps, Subscribe } from "./events-provider.type";
 

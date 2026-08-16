@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,6 +27,9 @@ const (
 // reconcile engine maps between this and the pure schedule.* types.
 type Channel struct {
 	schedule.Channel
+	// Revision is the optimistic concurrency token for every channel-row mutation.
+	// Zero is the create sentinel accepted by SaveChannel; persisted rows start at 1.
+	Revision int64
 	// Lineup is the approved []LineupEntry (the intent-level "what should play").
 	Lineup []schedule.LineupEntry
 	// Desired is the last-computed []Slot (desired lineup) — persisted so the
@@ -75,20 +79,36 @@ func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) 
 	return scanChannel(row)
 }
 
-func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
+func (s *sqlStore) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
+	saved, err := s.saveChannel(ctx, s.db, ch)
+	if isConstraintViolation(err) {
+		return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+	}
+	return saved, err
+}
+
+type channelDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// saveChannel is shared by ordinary channel writes and the proposal-approval
+// transaction. Keeping the serialization and SQL in one place prevents the
+// atomic path from becoming a subtly different channel adapter.
+func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) (Channel, error) {
 	lineupBlob, err := json.Marshal(orEmptyEntries(ch.Lineup))
 	if err != nil {
-		return fmt.Errorf("marshal lineup: %w", err)
+		return Channel{}, fmt.Errorf("marshal lineup: %w", err)
 	}
 	desiredBlob, err := json.Marshal(orEmptySlots(ch.Desired))
 	if err != nil {
-		return fmt.Errorf("marshal desired: %w", err)
+		return Channel{}, fmt.Errorf("marshal desired: %w", err)
 	}
 	// Policy is a single object (not a slice), so it serializes to "{}" when zero —
 	// the DDL default — never "null"; json.Marshal of a struct already yields "{}".
 	policyBlob, err := json.Marshal(ch.Policy)
 	if err != nil {
-		return fmt.Errorf("marshal policy: %w", err)
+		return Channel{}, fmt.Errorf("marshal policy: %w", err)
 	}
 	// An empty BroadcastCodec (a Channel built without setting it) persists as the
 	// DDL default h264, so the round-trip never writes "" — matching what an
@@ -97,47 +117,137 @@ func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO channels
-		   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-		    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-		    reconcile_deadline, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   intent_ref=excluded.intent_ref, name=excluded.name, number=excluded.number,
-		   grp=excluded.grp, logo=excluded.logo, strategy=excluded.strategy,
-		   filler_ref=excluded.filler_ref, tunarr_id=excluded.tunarr_id, status=excluded.status,
-		   shuffle_seed=excluded.shuffle_seed, lineup_json=excluded.lineup_json,
-		   desired_json=excluded.desired_json, policy_json=excluded.policy_json,
-		   broadcast_codec=excluded.broadcast_codec,
-		   reconcile_deadline=excluded.reconcile_deadline, updated_at=excluded.updated_at`),
-		ch.ID, ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
+	args := []any{ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
 		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
-		epoch(ch.ReconcileDeadline), ch.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("upsert channel %s: %w", ch.ID, err)
+		epoch(ch.ReconcileDeadline), ch.UpdatedAt}
+	invalidation := ""
+	if s.dialect == DialectPostgres {
+		invalidation, err = channelInvalidation(ch)
+		if err != nil {
+			return Channel{}, err
+		}
 	}
-	return nil
+	if ch.Revision == 0 {
+		query :=
+			`INSERT INTO channels
+			   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
+			    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+			    reconcile_deadline, updated_at, revision)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+			 RETURNING revision`
+		queryArgs := append([]any{ch.ID}, args...)
+		if s.dialect == DialectPostgres {
+			query += `, pg_notify('` + postgresInvalidationChannel + `', ?)`
+			queryArgs = append(queryArgs, invalidation)
+			var notified any
+			err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision, &notified)
+		} else {
+			err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision)
+		}
+		if err != nil {
+			return Channel{}, fmt.Errorf("insert channel %s: %w", ch.ID, err)
+		}
+		return ch, nil
+	}
+	if ch.Revision < 0 {
+		return Channel{}, fmt.Errorf("save channel %s: revision must not be negative", ch.ID)
+	}
+	expected := ch.Revision
+	query :=
+		`UPDATE channels SET
+		   intent_ref=?, name=?, number=?, grp=?, logo=?, strategy=?, filler_ref=?,
+		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
+		   policy_json=?, broadcast_codec=?, reconcile_deadline=?, updated_at=?,
+		   revision=revision+1
+		 WHERE id=? AND revision=?
+		 RETURNING revision`
+	queryArgs := append(args, ch.ID, expected)
+	if s.dialect == DialectPostgres {
+		query += `, pg_notify('` + postgresInvalidationChannel + `', ?)`
+		queryArgs = append(queryArgs, invalidation)
+		var notified any
+		err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision, &notified)
+	} else {
+		err = exec.QueryRowContext(ctx, s.ph(query), queryArgs...).Scan(&ch.Revision)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return Channel{}, channelRevisionMiss(ctx, exec, s.ph, ch.ID, expected)
+	}
+	if err != nil {
+		return Channel{}, fmt.Errorf("save channel %s: %w", ch.ID, err)
+	}
+	return ch, nil
+}
+
+func channelRevisionMiss(ctx context.Context, q channelDB, ph placeholder, id string, expected int64) error {
+	var current int64
+	err := q.QueryRowContext(ctx, ph(`SELECT revision FROM channels WHERE id = ?`), id).Scan(&current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read channel %s revision: %w", id, err)
+	}
+	return fmt.Errorf("%w: channel %s expected %d, current %d", ErrChannelStale, id, expected, current)
+}
+
+func channelMutationMiss(ctx context.Context, q channelDB, ph placeholder, id, reason string) error {
+	var revision int64
+	err := q.QueryRowContext(ctx, ph(`SELECT revision FROM channels WHERE id = ?`), id).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read channel %s revision: %w", id, err)
+	}
+	return fmt.Errorf("%w: channel %s %s at revision %d", ErrChannelStale, id, reason, revision)
+}
+
+func (s *sqlStore) AttachTunarrChannel(
+	ctx context.Context,
+	id, expectedTunarrID, newTunarrID string,
+	expectedNumber, newNumber int,
+) (int64, error) {
+	var revision int64
+	err := s.db.QueryRowContext(ctx, s.ph(
+		`UPDATE channels SET tunarr_id = ?, number = ?, revision = revision + 1
+		 WHERE id = ? AND tunarr_id = ? AND number = ? RETURNING revision`),
+		newTunarrID, newNumber, id, expectedTunarrID, expectedNumber).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, channelMutationMiss(ctx, s.db, s.ph, id, "tunarr id or number changed")
+	}
+	if isConstraintViolation(err) {
+		return 0, fmt.Errorf("%w: attach Tunarr channel %s: %v", ErrChannelConflict, id, err)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("attach Tunarr channel %s: %w", id, err)
+	}
+	return revision, nil
 }
 
 // SetChannelBroadcastCodec updates ONLY the channel's broadcast_codec column (§9.1 V50) — the
 // uniform codec the timeline normalizes to, computed from the library titles' codecs at curation.
 //
-// A targeted single-column UPDATE rather than a read-modify-write UpsertChannel: the codec is
+// A targeted single-column UPDATE rather than a read-modify-write SaveChannel: the codec is
 // derived state written after the lineup is bound, and the binder is the ONE lineup writer
-// (loomarr-one-lineup-writer). Reusing UpsertChannel here would mean re-reading the whole row and
+// (loomarr-one-lineup-writer). Reusing SaveChannel here would mean re-reading the whole row and
 // racing the reconciler's own writes for no benefit — this only ever touches the one derived column.
-func (s *sqlStore) SetChannelBroadcastCodec(ctx context.Context, id, codec string) error {
+func (s *sqlStore) SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error) {
 	if codec == "" {
 		codec = BroadcastCodecH264
 	}
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE channels SET broadcast_codec = ? WHERE id = ?`), codec, id)
-	if err != nil {
-		return fmt.Errorf("set broadcast_codec %s: %w", id, err)
+	var revision int64
+	err := s.db.QueryRowContext(ctx, s.ph(
+		`UPDATE channels SET broadcast_codec = ?, revision = revision + 1
+		 WHERE id = ? AND revision = ? RETURNING revision`), codec, id, expectedRevision).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
 	}
-	return nil
+	if err != nil {
+		return 0, fmt.Errorf("set broadcast_codec %s: %w", id, err)
+	}
+	return revision, nil
 }
 
 func (s *sqlStore) ListChannels(ctx context.Context) ([]Channel, error) {
@@ -149,10 +259,36 @@ func (s *sqlStore) ListChannels(ctx context.Context) ([]Channel, error) {
 	return scanChannels(rows)
 }
 
-func (s *sqlStore) DeleteChannel(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ?`), id)
-	if err != nil {
-		return err
+func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevision int64) error {
+	if s.dialect == DialectPostgres {
+		payload, err := marshalInvalidation(Invalidation{Kind: InvalidationChannel, ChannelID: id,
+			Status: schedule.StatusDetached})
+		if err != nil {
+			return err
+		}
+		var notified any
+		err = s.db.QueryRowContext(ctx,
+			`DELETE FROM channels WHERE id = $1 AND revision = $2
+			 RETURNING pg_notify('`+postgresInvalidationChannel+`', $3)`,
+			id, expectedRevision, payload).Scan(&notified)
+		if errors.Is(err, sql.ErrNoRows) {
+			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ? AND revision = ?`), id, expectedRevision)
+		if err != nil {
+			return err
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("delete channel %s: affected rows: %w", id, err)
+		}
+		if deleted == 0 {
+			return channelRevisionMiss(ctx, s.db, s.ph, id, expectedRevision)
+		}
 	}
 	// Best-effort: drop the channel's image refs so its icon becomes collectable.
 	//
@@ -198,8 +334,8 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // channelSelect is the shared column list; claim SQL RETURNs the same columns in
 // this order so scanChannel serves both paths (mirrors scanTitle).
 const channelSelect = `SELECT id, intent_ref, name, number, grp, logo, strategy, filler_ref,
-	tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-	reconcile_deadline, updated_at
+		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+		reconcile_deadline, updated_at, revision
 	FROM channels`
 
 func scanChannel(sc scannable) (Channel, error) {
@@ -211,7 +347,7 @@ func scanChannel(sc scannable) (Channel, error) {
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
-		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &deadline, &updatedAt)
+		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &deadline, &updatedAt, &ch.Revision)
 	if err == sql.ErrNoRows {
 		return Channel{}, ErrNotFound
 	}

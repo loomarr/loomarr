@@ -25,7 +25,7 @@ type splitFakeTools struct {
 func (f splitFakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
 	return f.chapters, nil
 }
-func (f splitFakeTools) BlackSilence(context.Context, string) ([]filler.Interval, []filler.Interval, error) {
+func (f splitFakeTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
 func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
@@ -34,6 +34,10 @@ func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]fil
 func (f splitFakeTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
 	return nil, fmt.Errorf("no frames in tests")
 }
+func (f splitFakeTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, nil
+}
+
 func (f splitFakeTools) Keyframes(context.Context, string, int) ([][]byte, error) {
 	return nil, fmt.Errorf("no keyframes in tests")
 }
@@ -79,15 +83,81 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 		splitClips: fillerSplitStoreAdapter{st},
 	}
 	if withSplitter {
+		drop := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(drop, filepath.Dir(compPath)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		tools := splitFakeTools{chapters: []filler.Chapter{
 			{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
 			{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
 		}}
 		n := 0
-		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, t.TempDir(),
+		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, nil, drop,
+			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
 	return a, st
+}
+
+// Confirm is the operator's terminal decision for the remaining proposal. The composite row stays
+// for lineage, but its pipeline row must leave Incoming's running/review conveyor; otherwise the UI
+// claims the already-confirmed reel is still being prepared forever.
+func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
+	ctx := context.Background()
+	a, st := newSplitAdapter(t, events.NewBus(), true)
+	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	proposal, err := a.splitter.Propose(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.ConfirmSplit(ctx, proposal.ID, proposal.Segments); err != nil {
+		t.Fatal(err)
+	}
+	parent, found, err := st.GetClipPipeline(ctx, compHash)
+	if err != nil || !found {
+		t.Fatalf("parent pipeline = (_, %v, %v), want row", found, err)
+	}
+	if parent.Disposition != filler.DispositionFiled {
+		t.Fatalf("parent disposition = %q, want filed after the proposal was confirmed", parent.Disposition)
+	}
+	parentClip, err := st.GetClip(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parentClip.Held {
+		t.Fatal("confirmed composite is still held, so its catalog group is invisible")
+	}
+	topLevel, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, TopLevelOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
+		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
+	}
+	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range conveyor {
+		if row.ClipHash == compHash {
+			t.Fatal("confirmed composite still appears on the Incoming conveyor")
+		}
+	}
 }
 
 // No drop-folder ⇒ the typed unavailable error the API renders as a 409 naming
@@ -220,7 +290,8 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	sp := filler.NewSplitter(fillerSplitStoreAdapter{st}, splitFakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
-	}}, nil, drop, func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
+	}}, nil, drop, func() time.Duration { return 10 * time.Second },
+		func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 
 	prop, err := sp.Propose(ctx, compHash)
 	if err != nil {
@@ -288,5 +359,140 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	}
 	if !parent.IsComposite {
 		t.Error("the parent survived but is not marked composite — it would still be airable")
+	}
+}
+
+// --- V54a: a re-detect returns the reel to the belt ---------------------------
+
+// parkReel puts the compilation in the state that was unreachable before V54a and returns a
+// predicate reporting whether the pipeline can actually SEE it.
+//
+// ⚠ Claimability is asserted through `ListPipelineWork`, never by reading `Disposition` back. The
+// defect was never "the column says review" — it was "nothing claims this row, ever", and a test
+// that reads the field it just wrote passes against an un-park that leaves `next_run` in the
+// future, which is the same dead end wearing a different value.
+func parkReel(t *testing.T, st store.Store) func() bool {
+	t.Helper()
+	ctx := context.Background()
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionReview, Attempts: 3,
+		NextRun:    time.Now().UTC().Add(24 * time.Hour), // parked rows are not due
+		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return func() bool {
+		work, err := st.ListPipelineWork(ctx, time.Now().UTC(), 0)
+		if err != nil {
+			t.Fatalf("list pipeline work: %v", err)
+		}
+		for _, r := range work {
+			if r.ClipHash == compHash {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// awaitSplitTerminal drains the bus until this job's terminal frame lands, returning its status.
+func awaitSplitTerminal(t *testing.T, ch <-chan events.Event, jobID string) string {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Type != "filler_split" {
+				continue
+			}
+			p, ok := ev.Payload.(api.FillerSplitEvent)
+			if !ok || p.JobID != jobID {
+				continue
+			}
+			if p.Status == "success" || p.Status == "error" {
+				return p.Status
+			}
+		case <-deadline:
+			t.Fatal("no terminal filler_split frame within 5s")
+		}
+	}
+}
+
+// The fix: `POST /v1/filler/split` on a parked reel puts it back where the pipeline can see it.
+// Without this the re-detect writes a freshly scored proposal that no rung will ever read.
+func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
+	bus := events.NewBus()
+	ch, unsub := bus.Subscribe()
+	t.Cleanup(unsub)
+	a, st := newSplitAdapter(t, bus, true)
+	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	onBelt := parkReel(t, st)
+
+	if onBelt() {
+		t.Fatal("precondition: a parked reel must not be claimable before the re-detect")
+	}
+	jobID, err := a.Split(context.Background(), compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitSplitTerminal(t, ch, jobID); got != "success" {
+		t.Fatalf("detection status = %q, want success", got)
+	}
+	if !onBelt() {
+		t.Fatal("the reel is still invisible to ListPipelineWork — the re-detect did not un-park it")
+	}
+	row, _, err := st.GetClipPipeline(context.Background(), compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Stage != filler.StageSplit {
+		t.Errorf("stage = %q, want the reel left at the split rung", row.Stage)
+	}
+	if row.Attempts != 0 {
+		t.Errorf("attempts = %d, want 0 — retries spent losing to the old gate are given back", row.Attempts)
+	}
+}
+
+// ⚠ The ORDERING guarantee, observable through its consequence. The un-park must run only after a
+// SUCCESSFUL detection: un-parking first makes the row claimable while detection is still running,
+// and the rung would then ground the outgoing segment list or re-Propose the same reel
+// concurrently. A failed detection must therefore leave the reel exactly as it found it.
+func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
+	bus := events.NewBus()
+	ch, unsub := bus.Subscribe()
+	t.Cleanup(unsub)
+	a, st := newSplitAdapter(t, bus, true)
+	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	onBelt := parkReel(t, st)
+
+	// Detection refuses a clip with no probed duration — a failure raised INSIDE Propose, after
+	// Split's synchronous existence check has already passed and the job is running.
+	clip, err := st.GetClip(context.Background(), compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip.DurationMs = 0
+	clip.UpdatedAt = time.Now().UTC()
+	if err := st.UpsertClip(context.Background(), clip); err != nil {
+		t.Fatal(err)
+	}
+
+	jobID, err := a.Split(context.Background(), compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitSplitTerminal(t, ch, jobID); got != "error" {
+		t.Fatalf("detection status = %q, want error", got)
+	}
+	if onBelt() {
+		t.Fatal("a FAILED detection un-parked the reel — the un-park is running before Propose, or regardless of it")
+	}
+	row, _, err := st.GetClipPipeline(context.Background(), compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Attempts != 3 {
+		t.Errorf("attempts = %d, want 3 — a failed detection must not reset the retry budget", row.Attempts)
 	}
 }

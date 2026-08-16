@@ -1,12 +1,10 @@
-import { channelNumber, pluralize } from "@loomarr/core";
+import { channelNumber, pluralize } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ChannelBreaks,
-  ChannelIconField,
-  ChannelUpcoming,
-  CollapsibleSection,
-  OnAirIndicator,
-} from "@/components/loomarr";
+import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
+import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
+import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
+import { OnAirIndicator } from "@/components/loomarr/channels/on-air-indicator";
+import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ChannelAdvanced } from "./-channel-advanced";
 import { useChannelDetail } from "./-channel-detail-context";
 
@@ -31,7 +29,7 @@ const InfoScreen = () => {
         <p className="text-muted-foreground text-sm">{air.detail}</p>
 
         {/* The viewer's "what's on later" — the program airing now, then the next few,
-            with real Tunarr airtimes (the prototype's "Today's guide", P7). Shown to
+            with real airtimes from the selected backend (the prototype's "Today's guide", P7). Shown to
             everyone; refreshes on the `channel` SSE frame via the layout's invalidate. */}
         <div className="border-border border-t pt-3">
           <ChannelUpcoming channelId={id} live={air.dot === "live"} />

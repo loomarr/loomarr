@@ -1,4 +1,4 @@
-import type { DeviceProfileBody } from "@loomarr/api";
+import type { DeviceProfileBody } from "@loomarr/api/models/deviceProfileBody";
 
 // deviceProfile() — what THIS browser can direct-play, as a DeviceProfile the play-url endpoint uses
 // (§9.1 V48/V50). Its role is a yes/no GATE, not a plan picker: under the V50 content-driven model the

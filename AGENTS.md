@@ -1,99 +1,152 @@
-# AGENTS.md
+# Loomarr agent contract
 
-**Read `CLAUDE.md` first** — it is the full build guide (prime directives, phase→doc map,
-worktree rules, stop points). **`docs/design.md` is the single source of truth**: if code
-must deviate, amend the doc in the same PR *before* implementing. **`PROGRESS.md`** is the
-phase record — read it at session start to find what's active and what's already shipped.
-This file is only the quick-ramp distillation; the two above win on any conflict.
+This file is the canonical contract for every coding agent and human-operated harness. Agent-specific
+files may add interface conveniences, but they do not override this file.
+
+## Authority
+
+- `docs/design.md` is the source of truth for behaviour. Amend it in the same PR before code that
+  deviates from it.
+- Companion design documents in `docs/` own their named domains; `CONTEXT.md` owns vocabulary.
+- `PROGRESS.md` records active and shipped work. Read its **Active work** table first; do not load the
+  historical tables unless the task needs them.
+- Generated artifacts are changed through their generators, never by hand.
+- Frontend packages are deep modules — read [`web/packages/README.md`](web/packages/README.md) before
+  adding one or importing from one.
+
+## Session lifecycle
+
+From the worktree that will own the change:
+
+```sh
+make agent-status
+make agent-start TASK=<short-name> CLAIMS=<comma-separated-shared-outputs>
+make agent-baseline
+```
+
+`agent-status` is the cross-harness roster. A product's own agent-list command is supplementary; it
+cannot see agents running in other products. Before starting, resolve any overlapping task or claim.
+
+Use claims for scarce outputs whose conflicts are expensive:
+
+- `openapi-client` — `api/openapi.yaml` and the generated orval client
+- `visual-baselines` and `e2e-baselines`
+- `tokens`
+- `migrations`
+- `agent-contract` and `dev-runtime`
+
+Add a domain-specific claim when two changes would edit the same interface or DTO. A worktree isolates
+files; the claim identifies the real seam where concurrent work would collide.
+
+During implementation, use `make agent-verify BASE=<base>` for a focused, explicitly non-final check.
+Before pushing, run the complete required gates for the touched areas; `make check` is always the Go
+gate. Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
+`make agent-prune`. When finished, run `make agent-stop`.
+
+## Delivery
+
+Completed, validated implementation work is published as a pull request and set to auto-merge by
+default. Leave it as a draft only while required gates or requested work remain. Do not publish or
+enable auto-merge when the task explicitly asks for local-only changes, a review checkpoint, or a
+different delivery path.
+
+## Prime directives
+
+1. Gates are hard. Never stub, skip, delete, or weaken a test to make a gate green.
+2. Never weaken grounding, the approval gate, authorization, or forward-only migrations, including in
+   tests and seed data.
+3. New dependencies require a design §14 amendment with a one-line rationale in the same PR.
+4. Application code is Go except for the frontend build, the vendored `yt-dlp` executable, and the
+   required `loomarr-image` Rust worker documented in design §14 and §22. Do not introduce another
+   application runtime.
+5. Unit tests never touch the network. Extend `internal/testkit`; do not create private service mocks.
+6. Store conformance remains one suite over SQLite and Postgres.
+7. Never run `make smoke*` from an agent session. It drives the maintainer's live stack.
 
 ## Commands
 
-**`make check` is THE gate.** One test: `go test -race -run TestName ./internal/<pkg>/`.
+`make check` is the default gate. One focused test:
 
-⚠ **The target list is not copied here.** It is generated into
-[`docs/dev/commands.md`](docs/dev/commands.md) from the Makefile and the CI workflows, and
-gated by `make dev-docs-verify`. This block used to hold a hand-written copy that omitted
-`vet-tags` from `make check` — precisely the step the rest of the repo spends the most words
-explaining. Fix the Makefile's `##` doc comment and regenerate; never re-add a copy.
+```sh
+go test -race -run TestName ./internal/<pkg>/
+```
 
-Prereqs: Go 1.26+, Node 22.5+, pnpm, Docker (test-pg, fe-visual, e2e). Lint tools run via
-`go run <tool>@<pin>` — nothing needs a global install. Setup detail:
-[`docs/dev/setup.md`](docs/dev/setup.md).
+The complete, generated target reference is `docs/dev/commands.md`. Fix a Makefile `##` description
+and run `make dev-docs`; never copy target lists into prose.
 
-**Never run `make smoke*` from an agent session** — it drives the maintainer's live stack.
+Useful local interfaces:
 
-## Generated files — never hand-edit
+```sh
+make doctor                 # toolchain, worktrees, ports, caches, artifacts
+make bootstrap              # pnpm install + codegen + local directories
+make agent-env              # this worktree's runtime addresses
+make dev-be                 # isolated backend with Air
+make dev-fe                 # isolated Vite frontend pointed at that backend
+```
 
-- `api/openapi.yaml` → `make openapi` (`make openapi-verify` fails CI on drift)
+Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x (22.5 minimum), pnpm 11.13.1,
+and Docker are required. ffmpeg/ffprobe are required for playout tests. Lint tools and Air run at
+pinned versions from the harness.
+
+## Generated files
+
+- `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
 - `docs/configuration.md` → `make config-docs`
-- `web/packages/api/generated/` (orval client) — **gitignored**. A fresh clone or worktree
-  typechecks red until you run `cd web && pnpm install --frozen-lockfile && pnpm codegen`.
+- `docs/dev/commands.md` → `make dev-docs`
+- `docs/design.md` §2 map → `make arch-docs`
 - `web/packages/tokens/generated/` → `make fe-tokens`
-- goose-applied migrations in `internal/store/migrations/` — forward-only; add, never edit.
+- `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
+  gitignored and absent from a fresh worktree
+- applied migrations in `internal/store/migrations/` are immutable; add the next migration
 
-## Layout (what owns what)
+## Repository map
 
-- `cmd/loomarr` — entrypoint; `internal/app` — composition root; `internal/api` — Huma routes.
-- Domain packages under `internal/` map to design-doc ports: `suggest` (LLM grounding),
-  `binder`, `channels`, `schedule` (curation engine), `reconcile`, `library`, `requester`,
-  `filler`/`clipfetch`, `scheduler`, `settings`, `store`, `recurate`.
-- `internal/testkit` — the ONE shared set of mocks + pinned fixtures. Never invent private
-  mocks; extend testkit. Unit tests never touch the network (§19).
-- Store conformance is ONE suite over two backends (SQLite + Postgres) — never fork
-  assertions per dialect.
-- `web/` — pnpm monorepo: `apps/web` (Vite/React SPA embedded into the binary),
-  `packages/{api,core,tokens,fixtures}`. FE request types come from orval — never hand-write.
+- `cmd/loomarr` is the entrypoint; `internal/app` is the composition root; `internal/api` owns Huma
+  routes.
+- Domain packages under `internal/` map to the ports documented in design §2.
+- `internal/testkit` is the shared mock and pinned-fixture module.
+- `web/` is a pnpm workspace: `apps/web` plus `packages/{api,core,tokens,fixtures}`. Frontend request
+  types come from orval and are never handwritten.
 
-## Dev loop gotchas
+## Local runtime and worktrees
 
-- Develop against **:5173** (`pnpm --filter @loomarr/web dev` from `web/`, proxies `/v1` to
-  :8080). :8080 serves the SPA baked into the binary — stale-looking by design.
-- Backend live-reload is `make dev-be` (Air). A bare `go run ./cmd/loomarr` supervises rather
-  than execs — killing the terminal can orphan a stale binary serving pre-change code for
-  hours. If an API change "isn't showing up", check
-  `curl -s localhost:8080/v1/system/version` for the build commit.
+Create a sibling worktree through the harness:
 
-## Hard rules (violating these is a design conversation, not a workaround)
+```sh
+make agent-worktree TOPIC=<branch>
+```
 
-- Never weaken the grounding rules, approval gate, or authorization model — including in
-  tests and `make seed` (seed must acquire via the admin path, not write `available` rows).
-- No new dependencies without amending design §14 in the same PR. All application code is Go.
-- Auth tests must include the §19 negatives (member 403s, sessions die on disable).
-- Retiring a capability → add its identifier to `scripts/check-retired.sh` in the same PR.
-- Adding a setting → design §15 first; adding a config knob not in §15 is a doc change first.
+It installs frontend dependencies and runs codegen. Credentials are not copied by default; use
+`COPY_ENV=1` only when the task genuinely needs the maintainer's configured integrations. Secondary
+worktrees receive deterministic, distinct backend/frontend/Storybook/Tunarr ports, a Compose project,
+an SQLite database, a prepared-publication library, a filler drop folder, and
+`.artifacts/<instance>/`.
 
-## CI
+Do not park a secondary worktree on `main`. Never remove a worktree containing uncommitted or untracked
+work. Use `git worktree list` and `make agent-status` before cleanup.
 
-- `ci-ok` is the single required check; jobs are filtered per-input by a `changes` job
-  (Go on `**/*.go`/`go.mod|sum`/migrations/`docs/help/`/Makefile/workflow; FE on `web/`/
-  Makefile/workflow; **Image on `Dockerfile`/`.dockerignore` only**). No usable merge base →
-  everything runs. Adding a new build input means adding it to the filter in the same PR.
-  Never use a workflow-level `paths:` filter. On a PR the filter diffs against the MERGE
-  BASE, not the last push.
-- The **Image** job builds both release platforms (`linux/amd64,linux/arm64`) under QEMU. It
-  is the deliberate exception to the Makefile/workflow rule — emulation is expensive and
-  neither file changes what `docker build` produces — and the only job with a timeout.
-- ⚠ **`make ci-lint` is weaker locally than in CI**: actionlint shells out to shellcheck and
-  SILENTLY SKIPS that half when shellcheck is not on PATH, so it exits 0 locally and fails
-  in CI. Install shellcheck before doubting CI.
-- ⚠ **`actions/cache` never overwrites an existing key.** Any cache whose contents track
-  something the key does not (`~/.cache/go-build` tracks `.go` source; a `go.sum` key does
-  not) is written once and frozen. Use `${{ github.run_id }}` in the key + `restore-keys`
-  prefixes. Closed-PR caches evict live ones LRU across the 10GB cap — `cache-cleanup.yml`
-  drops them on PR close.
+Develop against the URL printed by `make dev-fe`; the backend URL serves the last embedded SPA build and
+can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child; use `make dev-be`.
 
-## Git worktrees (parallel sessions)
+## Hard rules
 
-- Sibling placement: `git worktree add ../loomarr-<phase> -b <phase>` — NOT inside the repo
-  (Playwright bind-mounts the repo root into containers).
-- After adding: `cd ../loomarr-<phase>/web && pnpm install --frozen-lockfile && pnpm codegen`
-  (the gitignored orval client, or every `@loomarr/api` import fails to resolve).
-- Only split genuinely disjoint work: two sessions editing the same generated output
-  (`api/openapi.yaml`, orval client, visual baselines) will conflict miserably.
+- Auth changes include the design §19 negatives: member 403s and sessions dying on disable.
+- Retiring a capability adds its identifier to `scripts/check-retired.sh` in the same PR.
+- Adding a setting changes design §15 first.
+- Adding a build tag changes the guarded `TAGS` list in the Makefile.
+- Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
+  workflow-level `paths:` filter.
+- Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
 
-## Agent skills
+## Stop points
 
-`docs/agents/*.md` is the config the installed mattpocock skills read (issue tracker =
-GitHub via `gh`, the five triage labels, `CONTEXT.md` as glossary). Edit those files
-directly; `.agents/skills/` + `.claude/skills/` symlinks are the skill bodies (skills.sh
-install — update with `npx skills update`).
+Stop and ask the maintainer for a Phase-0 contract deviation, an authorization/safety change, a gate
+that appears to require weakening, or a new authority beyond the requested task. Preserve unrelated
+dirty files and worktrees.
+
+## Agent adapters and skills
+
+Durable workflows live in `.agents/workflows/`; installed skill bodies live in `.agents/skills/`.
+Agent-specific directories such as `.claude/` contain adapters or symlinks only. A required workflow
+must be usable without a proprietary slash command, home-directory plan, or product-specific worktree
+feature.

@@ -93,7 +93,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
 
   // The gate: an admin edits, then approves the EDITED version — one request, through the one
   // approval chokepoint. There is no separate "save edit" call, because the edit is a parameter
-  // to `suggest.Approve` rather than a mutation of the proposal (§7 / D-K).
+  // to `suggest.Approver` rather than a mutation of the proposal (§7 / D-K).
   it("approving after an edit sends the drop and the note on the same call", async () => {
     const approvals = stubApi();
     render(<ApprovalQueue />);

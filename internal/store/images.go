@@ -34,6 +34,9 @@ type Image struct {
 	Bytes  int64
 
 	Animated    bool
+	FrameCount  int
+	DurationMS  int64
+	LoopCount   *int
 	Placeholder string
 	DominantHex string
 	// Meta is a JSON document. Carried as a string rather than []byte because the Postgres column
@@ -57,12 +60,15 @@ type ImageRef struct {
 
 // ImageDerivative is one rendition on disk. Regenerable — deleting a row costs a re-encode.
 type ImageDerivative struct {
-	ImageHash string
-	Format    string
-	Width     int
-	Bytes     int64
-	Path      string
-	CreatedAt time.Time
+	ImageHash  string
+	Recipe     string
+	Format     string
+	Width      int
+	Bytes      int64
+	OutputHash string
+	Path       string
+	Animated   bool
+	CreatedAt  time.Time
 }
 
 // ImageStore is the image half of the Store contract.
@@ -111,11 +117,12 @@ type ImageStore interface {
 	RepointImageRefs(ctx context.Context, from, to string) error
 
 	PutImageDerivative(ctx context.Context, d ImageDerivative) error
+	PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error)
 	DeleteImageDerivatives(ctx context.Context, hash string) error
 	// DeleteImageDerivative removes one rendition's row. The GC's eviction unit: a derivative is
 	// regenerable, so dropping one costs a re-encode and never data.
-	DeleteImageDerivative(ctx context.Context, hash, format string, width int) error
+	DeleteImageDerivative(ctx context.Context, hash, recipe, format string, width int) error
 	// TotalImageDerivativeBytes is the disk the cache budget is measured against.
 	//
 	// ⚠ Sums the RECORDED sizes rather than walking the directory. The two can disagree — a file
@@ -134,16 +141,17 @@ type ImageStore interface {
 	ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error)
 	// ListImagesMissingFormat returns images that have at least one derivative but none in the
 	// given format — the AVIF job's work list, expressed without the job knowing SQL.
-	ListImagesMissingFormat(ctx context.Context, format string, limit int) ([]Image, error)
+	ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error)
 }
 
 const imageColumns = `hash, origin, source_url, visibility, role, mime, width, height, bytes,
-	animated, placeholder, dominant_hex, meta, origin_fetched_at, created_at, updated_at, last_used_at`
+	animated, frame_count, duration_ms, loop_count, placeholder, dominant_hex, meta,
+	origin_fetched_at, created_at, updated_at, last_used_at`
 
 func (s *sqlStore) PutImage(ctx context.Context, img Image) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO images (`+imageColumns+`)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (hash) DO UPDATE SET
 		     origin = excluded.origin,
 		     source_url = excluded.source_url,
@@ -154,13 +162,17 @@ func (s *sqlStore) PutImage(ctx context.Context, img Image) error {
 		     height = excluded.height,
 		     bytes = excluded.bytes,
 		     animated = excluded.animated,
+		     frame_count = excluded.frame_count,
+		     duration_ms = excluded.duration_ms,
+		     loop_count = excluded.loop_count,
 		     placeholder = excluded.placeholder,
 		     dominant_hex = excluded.dominant_hex,
 		     meta = excluded.meta,
 		     origin_fetched_at = excluded.origin_fetched_at,
 		     updated_at = excluded.updated_at`),
 		img.Hash, img.Origin, img.SourceURL, img.Visibility, img.Role, img.MIME,
-		img.Width, img.Height, img.Bytes, img.Animated, img.Placeholder, img.DominantHex,
+		img.Width, img.Height, img.Bytes, img.Animated, stillFrameCount(img.FrameCount), img.DurationMS,
+		img.LoopCount, img.Placeholder, img.DominantHex,
 		metaOrEmpty(img.Meta), epoch(img.OriginFetchedAt), epoch(img.CreatedAt),
 		epoch(img.UpdatedAt), epoch(img.LastUsedAt))
 	if err != nil {
@@ -263,7 +275,7 @@ func (s *sqlStore) ListUnrecoverableImages(ctx context.Context, limit int) ([]Im
 		 ORDER BY created_at LIMIT ?`, limit)
 }
 
-func (s *sqlStore) ListImagesMissingFormat(ctx context.Context, format string, limit int) ([]Image, error) {
+func (s *sqlStore) ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error) {
 	// "Has some derivative but not this one." The first EXISTS is what keeps the AVIF job from
 	// picking up images whose bytes have not been processed at all yet — those belong to the fetch
 	// job, and encoding AVIF for an image with no WebP would invert the priority the split exists
@@ -272,8 +284,8 @@ func (s *sqlStore) ListImagesMissingFormat(ctx context.Context, format string, l
 		`SELECT `+imageColumns+` FROM images i
 		 WHERE EXISTS (SELECT 1 FROM image_derivatives d WHERE d.image_hash = i.hash)
 		   AND NOT EXISTS (SELECT 1 FROM image_derivatives d2
-		                   WHERE d2.image_hash = i.hash AND d2.format = ?)
-		 ORDER BY i.created_at LIMIT ?`, format, limit)
+			                   WHERE d2.image_hash = i.hash AND d2.recipe = ? AND d2.format = ?)
+		 ORDER BY i.created_at LIMIT ?`, recipe, format, limit)
 }
 
 func (s *sqlStore) PutImageRef(ctx context.Context, ref ImageRef) error {
@@ -307,21 +319,53 @@ func (s *sqlStore) ImagesForOwner(ctx context.Context, ownerKind, ownerID string
 
 func (s *sqlStore) PutImageDerivative(ctx context.Context, d ImageDerivative) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO image_derivatives (image_hash, format, width, bytes, path, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (image_hash, format, width) DO UPDATE SET
-		     bytes = excluded.bytes, path = excluded.path, created_at = excluded.created_at`),
-		d.ImageHash, d.Format, d.Width, d.Bytes, d.Path, epoch(d.CreatedAt))
+		`INSERT INTO image_derivatives (image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (image_hash, recipe, format, width) DO UPDATE SET
+		     bytes = excluded.bytes, output_hash = excluded.output_hash, path = excluded.path,
+		     animated = excluded.animated, created_at = excluded.created_at`),
+		d.ImageHash, derivativeRecipe(d.Recipe), d.Format, d.Width, d.Bytes, d.OutputHash, d.Path,
+		d.Animated, epoch(d.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("put derivative %s %s w%d: %w", d.ImageHash, d.Format, d.Width, err)
 	}
 	return nil
 }
 
+// PutImageDerivatives publishes one complete Rendition ladder transactionally. The worker manifest
+// is all-or-nothing, so persistence must not turn a valid manifest into a partially visible ladder.
+func (s *sqlStore) PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error {
+	if len(derivatives) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin derivative batch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	query := s.ph(
+		`INSERT INTO image_derivatives (image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (image_hash, recipe, format, width) DO UPDATE SET
+		     bytes = excluded.bytes, output_hash = excluded.output_hash, path = excluded.path,
+		     animated = excluded.animated, created_at = excluded.created_at`)
+	for _, d := range derivatives {
+		if _, err := tx.ExecContext(ctx, query,
+			d.ImageHash, derivativeRecipe(d.Recipe), d.Format, d.Width, d.Bytes, d.OutputHash, d.Path,
+			d.Animated, epoch(d.CreatedAt)); err != nil {
+			return fmt.Errorf("put derivative batch %s %s w%d: %w", d.ImageHash, d.Format, d.Width, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit derivative batch: %w", err)
+	}
+	return nil
+}
+
 func (s *sqlStore) ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT image_hash, format, width, bytes, path, created_at
-		 FROM image_derivatives WHERE image_hash = ? ORDER BY format, width`), hash)
+		`SELECT image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at
+		 FROM image_derivatives WHERE image_hash = ? ORDER BY recipe, format, width`), hash)
 	if err != nil {
 		return nil, fmt.Errorf("list derivatives %s: %w", hash, err)
 	}
@@ -331,7 +375,8 @@ func (s *sqlStore) ListImageDerivatives(ctx context.Context, hash string) ([]Ima
 	for rows.Next() {
 		var d ImageDerivative
 		var created int64
-		if err := rows.Scan(&d.ImageHash, &d.Format, &d.Width, &d.Bytes, &d.Path, &created); err != nil {
+		if err := rows.Scan(&d.ImageHash, &d.Recipe, &d.Format, &d.Width, &d.Bytes, &d.OutputHash,
+			&d.Path, &d.Animated, &created); err != nil {
 			return nil, fmt.Errorf("scan derivative: %w", err)
 		}
 		d.CreatedAt = time.Unix(created, 0)
@@ -349,10 +394,10 @@ func (s *sqlStore) DeleteImageDerivatives(ctx context.Context, hash string) erro
 	return nil
 }
 
-func (s *sqlStore) DeleteImageDerivative(ctx context.Context, hash, format string, width int) error {
+func (s *sqlStore) DeleteImageDerivative(ctx context.Context, hash, recipe, format string, width int) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM image_derivatives WHERE image_hash = ? AND format = ? AND width = ?`),
-		hash, format, width)
+		`DELETE FROM image_derivatives WHERE image_hash = ? AND recipe = ? AND format = ? AND width = ?`),
+		hash, recipe, format, width)
 	if err != nil {
 		return fmt.Errorf("delete derivative %s %s w%d: %w", hash, format, width, err)
 	}
@@ -376,7 +421,7 @@ func (s *sqlStore) ListColdestDerivatives(ctx context.Context, limit int) ([]Ima
 	// last_used_at, which every serve already updates, rather than from a column on the
 	// derivative that would need a write per rendition served.
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT d.image_hash, d.format, d.width, d.bytes, d.path, d.created_at
+		`SELECT d.image_hash, d.recipe, d.format, d.width, d.bytes, d.output_hash, d.path, d.animated, d.created_at
 		 FROM image_derivatives d
 		 JOIN images i ON i.hash = d.image_hash
 		 ORDER BY i.last_used_at, d.image_hash, d.format, d.width
@@ -390,7 +435,8 @@ func (s *sqlStore) ListColdestDerivatives(ctx context.Context, limit int) ([]Ima
 	for rows.Next() {
 		var d ImageDerivative
 		var created int64
-		if err := rows.Scan(&d.ImageHash, &d.Format, &d.Width, &d.Bytes, &d.Path, &created); err != nil {
+		if err := rows.Scan(&d.ImageHash, &d.Recipe, &d.Format, &d.Width, &d.Bytes, &d.OutputHash,
+			&d.Path, &d.Animated, &created); err != nil {
 			return nil, fmt.Errorf("scan derivative: %w", err)
 		}
 		d.CreatedAt = time.Unix(created, 0)
@@ -450,9 +496,11 @@ func scanImage(sc scannable) (Image, error) {
 	var (
 		img                             Image
 		fetched, created, updated, used int64
+		loop                            sql.NullInt64
 	)
 	err := sc.Scan(&img.Hash, &img.Origin, &img.SourceURL, &img.Visibility, &img.Role,
-		&img.MIME, &img.Width, &img.Height, &img.Bytes, &img.Animated, &img.Placeholder,
+		&img.MIME, &img.Width, &img.Height, &img.Bytes, &img.Animated, &img.FrameCount,
+		&img.DurationMS, &loop, &img.Placeholder,
 		&img.DominantHex, &img.Meta, &fetched, &created, &updated, &used)
 	if err != nil {
 		return Image{}, err
@@ -461,7 +509,25 @@ func scanImage(sc scannable) (Image, error) {
 	img.CreatedAt = time.Unix(created, 0)
 	img.UpdatedAt = time.Unix(updated, 0)
 	img.LastUsedAt = time.Unix(used, 0)
+	if loop.Valid {
+		value := int(loop.Int64)
+		img.LoopCount = &value
+	}
 	return img, nil
+}
+
+func stillFrameCount(count int) int {
+	if count == 0 {
+		return 1
+	}
+	return count
+}
+
+func derivativeRecipe(recipe string) string {
+	if recipe == "" {
+		return "legacy-go-v1"
+	}
+	return recipe
 }
 
 // metaOrEmpty keeps the JSON column valid. An empty string is not a JSON document, and Postgres

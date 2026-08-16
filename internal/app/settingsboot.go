@@ -2,26 +2,67 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// envLookup is the process env accessor the secrets lifecycle uses to honor an
-// env-pinned SESSION_SECRET/API_TOKEN (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
+// envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
+// tokens (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
 // never existed as a generated secret, and the arm webhook it named was deleted.
 var envLookup = os.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root
-// reads settings the way it used to read cfg.X — but every read now resolves
-// env > db > default through the live snapshot (config-design §3). Connection
-// getters are returned as closures so adapters read them PER CALL (hot-apply).
+// reads settings the way it used to read cfg.X. Reads resolve env > db > default
+// through the live snapshot unless freeze pins a generation-scoped key. Connection
+// getters are returned as closures so adapters read them per operation.
 type resolved struct {
-	svc *settings.Service
+	svc    *settings.Service
+	frozen map[string]settings.Resolved
+}
+
+type generatedSecretValues interface {
+	Value(settings.GeneratedSecret) string
+	Current(context.Context, settings.GeneratedSecret) (string, error)
+}
+
+// currentGeneratedSecret keeps SQLite's single-process request path cache-only,
+// while Postgres re-reads the shared durable value at security/publication
+// boundaries so a rotation handled by another replica is visible immediately.
+// onChange refreshes systemic redaction only when the durable read actually
+// advances this process's cache.
+func currentGeneratedSecret(
+	ctx context.Context,
+	dialect store.Dialect,
+	secrets generatedSecretValues,
+	secret settings.GeneratedSecret,
+	onChange func(),
+) (string, error) {
+	if secrets == nil {
+		return "", fmt.Errorf("read %s: generated secrets are unavailable", secret)
+	}
+	before := secrets.Value(secret)
+	if dialect != store.DialectPostgres {
+		if before == "" {
+			return "", fmt.Errorf("read %s: generated secret is empty", secret)
+		}
+		return before, nil
+	}
+	current, err := secrets.Current(ctx, secret)
+	if err != nil {
+		return "", err
+	}
+	if current != before && onChange != nil {
+		onChange()
+	}
+	return current, nil
 }
 
 // Every getter tolerates a nil service, because "no store ⇒ no settings service" is a
@@ -30,26 +71,35 @@ type resolved struct {
 // not — the first unguarded read panicked during BuildHandler, so a misconfigured
 // container crash-looped instead of answering the probe that would have explained it.
 // An unset key already resolves to a zero value; an absent service is the same answer.
-func (r resolved) str(key string) string {
+func (r resolved) value(key string) any {
+	if value, ok := r.frozen[key]; ok {
+		return value.Value
+	}
 	if r.svc == nil {
+		return nil
+	}
+	return r.svc.Resolve(key).Value
+}
+
+func (r resolved) str(key string) string {
+	value := r.value(key)
+	if value == nil {
 		return ""
 	}
-	return r.svc.String(key)
+	str, ok := value.(string)
+	if !ok {
+		panic(fmt.Sprintf("app.resolved.str: %s is %T, not string", key, value))
+	}
+	return str
 }
 func (r resolved) dur(key string) time.Duration {
-	if r.svc == nil {
-		return 0
-	}
-	if d, ok := r.svc.Resolve(key).Value.(time.Duration); ok {
+	if d, ok := r.value(key).(time.Duration); ok {
 		return d
 	}
 	return 0
 }
 func (r resolved) intv(key string) int {
-	if r.svc == nil {
-		return 0
-	}
-	if n, ok := r.svc.Resolve(key).Value.(int); ok {
+	if n, ok := r.value(key).(int); ok {
 		return n
 	}
 	return 0
@@ -66,41 +116,63 @@ func (r resolved) boolOn(key string) bool {
 	if r.svc == nil {
 		return true
 	}
-	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
+	if b, ok := r.value(key).(bool); ok {
 		return b
 	}
 	return true
 }
 
-// strlist reads a KindStringList setting. Nil for an absent service or a non-list value, which
-// every caller must treat as "unset" and fall back to its own declared default — an empty list
-// means the operator configured nothing, never that they configured nothing-at-all.
-func (r resolved) strlist(key string) []string {
-	if r.svc == nil {
-		return nil
-	}
-	if v, ok := r.svc.Resolve(key).Value.([]string); ok {
-		return v
-	}
-	return nil
-}
-
 func (r resolved) boolv(key string) bool {
-	if r.svc == nil {
-		return false
-	}
-	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
+	if b, ok := r.value(key).(bool); ok {
 		return b
 	}
 	return false
 }
 
-// libraryConn is the media-server connection provider (url, token) read per call.
-func (r resolved) libraryConn() func() (string, string) {
-	return func() (string, string) { return r.str("library.url"), r.str("library.token") }
+// freeze captures a coherent generation-scoped snapshot. Persistence remains
+// live in the service, but every typed read through the returned facade keeps
+// the applied values until the next application generation is constructed.
+func (r resolved) freeze(keys ...string) (resolved, map[string]string) {
+	if r.svc == nil || len(keys) == 0 {
+		return r, nil
+	}
+	values := r.svc.ResolveMany(keys...)
+	frozen := make(map[string]settings.Resolved, len(r.frozen)+len(values))
+	for key, value := range r.frozen {
+		frozen[key] = value
+	}
+	applied := make(map[string]string, len(values))
+	for key, value := range values {
+		frozen[key] = value
+		applied[key] = settings.ValueString(value.Value)
+	}
+	r.frozen = frozen
+	return r, applied
 }
 
-// seerrConn / tunarrConn are the requester + Tunarr connection providers.
+// libraryConnection resolves one coherent media-server connection. Flavor, URL,
+// and token are coupled security inputs: reading them independently could send a
+// credential to the wrong server or select the wrong authentication header while
+// an admin saves a replacement connection.
+func (r resolved) libraryConnection() library.Connection {
+	if r.svc == nil {
+		return library.Connection{}
+	}
+	return r.svc.LibraryConnection()
+}
+
+// libraryConn is the dynamic provider shared by every always-wired library
+// adapter. The library module invokes it once at the start of an operation.
+func (r resolved) libraryConn() library.ConnectionSource {
+	return r.libraryConnection
+}
+
+func (r resolved) libraryConfigured() bool {
+	_, err := r.libraryConnection().Validate()
+	return err == nil
+}
+
+// seerrConn is the Seerr connection provider.
 func (r resolved) seerrConn() func() (string, string) {
 	return func() (string, string) { return r.str("seerr.url"), r.str("seerr.api_key") }
 }
@@ -148,8 +220,36 @@ func (r resolved) seerrRequester() *requester.Seerr {
 	}
 	return requester.NewSeerrDynamic(r.seerrConn())
 }
-func (r resolved) tunarrConn() func() string {
-	return func() string { return r.str("tunarr.url") }
+
+// tunarrConfig snapshots every live Tunarr setting together at the start of one
+// programmer operation. This keeps a multi-request push internally coherent while
+// preserving hot-apply for the next operation (config-design §3).
+func (r resolved) tunarrConfig() func() programmer.Config {
+	return func() programmer.Config {
+		if r.svc == nil {
+			return programmer.Config{}
+		}
+		values := r.svc.ResolveMany(
+			"tunarr.url",
+			"tunarr.transcode_config_id",
+			"filler.weight",
+			"filler.cooldown_seconds",
+		)
+		stringValue := func(key string) string {
+			value, _ := values[key].Value.(string)
+			return value
+		}
+		intValue := func(key string) int {
+			value, _ := values[key].Value.(int)
+			return value
+		}
+		return programmer.Config{
+			BaseURL:               stringValue("tunarr.url"),
+			TranscodeConfigID:     stringValue("tunarr.transcode_config_id"),
+			FillerWeight:          intValue("filler.weight"),
+			FillerCooldownSeconds: intValue("filler.cooldown_seconds"),
+		}
+	}
 }
 
 // bootSettings builds the settings runtime at startup (config-design §11 Phase 1):

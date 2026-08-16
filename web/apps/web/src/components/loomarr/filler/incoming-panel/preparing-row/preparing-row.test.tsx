@@ -1,6 +1,7 @@
 import type { IncomingClipDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { PreparingRow, sentenceFor } from "./preparing-row";
 
 const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
@@ -110,5 +111,25 @@ describe("PreparingRow", () => {
     const { container } = render(<PreparingRow clip={clipAt({ pipeline: undefined })} ladder={LADDER} />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("offers an immediate retry only for a failed stage, from the expanded recovery details", async () => {
+    const onRetryStage = vi.fn();
+    const failed = clipAt({
+      pipeline: {
+        stage: "vision",
+        status: "failed",
+        attempts: 2,
+        progress: -1,
+        stages: [],
+        updatedAt: "2026-08-08T10:01:00Z",
+      },
+    });
+    render(<PreparingRow clip={failed} ladder={LADDER} onRetryStage={onRetryStage} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /show what is happening/i }));
+    await userEvent.click(screen.getByRole("button", { name: /retry look at the picture now/i }));
+
+    expect(onRetryStage).toHaveBeenCalledWith(failed, "vision");
   });
 });

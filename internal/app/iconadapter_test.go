@@ -28,21 +28,21 @@ func tmdbPoster(path string) string { return "https://image.tmdb.org/t/p/origina
 
 // iconPosterURL is the image-service URL a warm suggestion carries.
 func iconPosterURL(hash string) string {
-	return iconTestBase + "/v1/images/" + hash + "/w" + strconv.Itoa(iconLogoWidth) + ".jpg"
+	return iconTestBase + "/v1/images/" + hash + "/w" + strconv.Itoa(iconLogoWidth) + ".jpg?r=loomarr-rendition-v2"
 }
 
 // newIconAdapter wires an iconAdapter over a real image service, pre-seeding `warm` source URLs as
 // already-fetched rows and returning the hash each was given.
 //
 // ⚠ **The fetcher's host allowlist is EMPTY on purpose.** FetchNow is a real download path, and a
-// unit test must never touch the network (CLAUDE.md). An empty allowlist makes `checkURL` refuse
+// unit test must never touch the network (AGENTS.md). An empty allowlist makes `checkURL` refuse
 // before any dial, so the cold branch is exercised honestly — a fetch is attempted and fails —
 // without opening a socket. Anything that should appear as a suggestion is seeded as already
 // fetched instead, which is also the steady state on a real instance after the first minute.
 func newIconAdapter(t *testing.T, st store.Store, client *tmdb.Client, warm ...string) (iconAdapter, map[string]string) {
 	t.Helper()
 	ims := newMemImageStore()
-	svc := newTestImageService(t.TempDir(), iconTestBase, ims)
+	svc := newTestImageService(t, t.TempDir(), iconTestBase, ims)
 
 	const hexDigits = "abcdef0123456789"
 	hashes := make(map[string]string, len(warm))
@@ -101,7 +101,7 @@ func tmdbPosterStub(t *testing.T, posters map[string]string, fail map[string]boo
 
 func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []schedule.LineupEntry) {
 	t.Helper()
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: id, Name: "Test", Number: 1, Status: "live"},
 		Lineup:  entries,
 	}); err != nil {

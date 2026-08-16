@@ -140,6 +140,22 @@ func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 	}
 }
 
+// Internal playout owns local file paths and never needs a Tunarr program uuid. This is the
+// exact media-server-only shape that decides whether reconcile may materialize break gaps.
+func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
+	adapter := filler.NewPodAdapter(stubCatalog{clips: []filler.Clip{{
+		Hash: "local", Path: "commercials/local.mp4", Name: "Local ad",
+		Kind: filler.Commercial, DurationMs: 30_000,
+	}}}, nil, discardLogger())
+
+	if !adapter.HasPool(context.Background(), "internal", 42, filler.Selection{}) {
+		t.Fatal("local playable clip was treated as no filler pool without a Tunarr uuid")
+	}
+	if ids, ok := adapter.BuildFillerList(context.Background(), "internal", 42, filler.Selection{}); ok || len(ids) != 0 {
+		t.Fatalf("Tunarr filler list = %v, %v; local-only clip must not fabricate a remote uuid", ids, ok)
+	}
+}
+
 // A catalog READ failure must surface to preview (the operator needs the reason) while
 // reconcile degrades to flex — the channel keeps playing (§9 resilience). Same call,
 // deliberately different handling at the two call sites.

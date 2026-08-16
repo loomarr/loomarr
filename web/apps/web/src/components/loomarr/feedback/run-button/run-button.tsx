@@ -1,5 +1,5 @@
 import { Loader2, Play } from "lucide-react";
-import { Button } from "@/components/ui";
+import { Button } from "@/components/ui/button";
 import type { RunButtonProps } from "./run-button.type";
 
 // RunButton — "do this now" with visible, honest feedback that it is happening.

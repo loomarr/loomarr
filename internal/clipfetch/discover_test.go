@@ -14,7 +14,7 @@ import (
 )
 
 // Discovery is tested against the PINNED fixture, served by a local stub — never the live API
-// (CLAUDE.md: unit tests never touch the network). The fixture is a real capture, and it keeps
+// (AGENTS.md: unit tests never touch the network). The fixture is a real capture, and it keeps
 // all four doc shapes the live API returns; see fixtures/archive/FINDINGS.md.
 func discoverServer(t *testing.T, onQuery func(url.Values)) *httptest.Server {
 	t.Helper()
@@ -458,6 +458,29 @@ func TestSearch_ScopesToVideo(t *testing.T) {
 	}
 	if !strings.Contains(got, "mediatype:movies") {
 		t.Errorf("query = %q, want it scoped to mediatype:movies", got)
+	}
+}
+
+// A search opened from one registered collection must stay inside that collection. Without the
+// collection clause, a search for "cereal" returns podcasts, full broadcasts, and unrelated
+// uploads from all of Archive.org even though the UI says it is searching one source.
+func TestSearchCollection_ScopesWordsToTheNamedCollection(t *testing.T) {
+	var got string
+	srv := searchServer(t, func(q url.Values) { got = q.Get("q") })
+
+	if _, err := discoverer(t, srv.URL).SearchCollection(
+		context.Background(), "classic_tv_commercials", "cereal advert", 0,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `collection:"classic_tv_commercials"`) {
+		t.Errorf("query = %q, want the registered collection clause", got)
+	}
+	if !strings.Contains(got, "(cereal advert)") {
+		t.Errorf("query = %q, want the operator's words", got)
+	}
+	if !strings.Contains(got, "mediatype:movies") {
+		t.Errorf("query = %q, want it scoped to video", got)
 	}
 }
 

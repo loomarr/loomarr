@@ -20,6 +20,9 @@ web/apps/web/storybook-static
 **/*.tsbuildinfo
 bin/
 dist/
+target/
+# The fuzz harness is non-shipping and can contain a large nested target cache.
+rust/loomarr-image/fuzz
 
 # Test + tooling artifacts
 **/coverage

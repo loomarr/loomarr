@@ -3,14 +3,19 @@
 Filler is what plays between programs — commercials, bumpers, station IDs. It's optional:
 without it, channels just leave the gaps empty and play fine.
 
-## The drop-folder
+## How clips arrive
 
-Everything starts with a folder of clips.
+Loomarr keeps arrivals separate from the filed clip library:
 
-- `FILLER_DIR` — the folder Loomarr watches (usually `/filler`).
-- Add clips any way you like: copy them in, use a tool like MeTube, or use Loomarr's
-  built-in ingest (below).
-- After adding files, run a sync on the **Filler** page.
+- **Clip library** (`filler.dir`, normally `/data/filler`) holds content-addressed filed clips.
+- **Drop folder** (`filler.watch_dir`) is where new files arrive. Leave it blank to use
+  `<clip library>/_watch`.
+- **Filler → Sources** registers folders, media libraries, YouTube playlists, and Archive.org
+  collections. Enabled remote sources can fetch on their own schedule.
+
+Anything dropped or downloaded is measured, checked, classified, and filed through the same
+pipeline. **Filler → Incoming** shows where each clip is on that conveyor; there is no sync or
+whole-library tag button to remember.
 
 Loomarr reads the folder itself, so clips are available whether or not you run Tunarr. Your
 media server is not involved either: filler never lives in an Emby or Jellyfin library, which
@@ -19,26 +24,63 @@ is why a commercial can never turn up in a channel's programming.
 If you do use Tunarr, Loomarr also registers the folder with it so Tunarr can play the same
 clips into its breaks. That happens on its own and needs no setup from you.
 
-## Downloading clips in-app (optional)
+## Automatic downloads and limits
 
-Loomarr can pull clips straight into the folder from a YouTube playlist or video URL, as a
-background job.
+The bundled `yt-dlp` and `ffmpeg` tools let Sources fetch clips without a sidecar image. Four
+settings keep unattended acquisition bounded: how often to check, downloads per source check,
+maximum catalog clips, and maximum filler storage.
 
-The tooling this needs (`yt-dlp` + `ffmpeg`) ships in the Loomarr image, so downloading
-works out of the box — there is no tag to switch or profile to enable.
+When the catalog or storage ceiling is reached, the Filler page names the ceiling and its current
+measurement. This pauses only automatic fetching; manually queued clips and approved pulls still
+work. Curate the library or raise the named limit to resume.
 
-If the download button is disabled, this install cannot run that tooling: usually a custom
-or hand-built image without the vendored binaries, or a `INGEST_YTDLP_PATH` /
-`INGEST_FFMPEG_PATH` pointing somewhere wrong. Clips you drop into the folder by hand
-always work, whatever the image.
+Settings → Connections also probes the effective clip and drop folders. It verifies that they
+exist and are readable and writable; a saved path alone does not count as healthy.
 
 ## Tagging
 
-Matching a clip to a channel needs to know what it is (kids, era, vibe). Tag clips
-manually, or set `FILLER_AI_TAGGING=true` to have Loomarr tag them at sync.
+Matching a clip to a channel needs several separate facts:
 
-Untagged commercials still play but only match broadly — so a themed channel may fall back
-to just bumpers. If a channel plays no commercials, check its **pod preview**.
+- **Kind** — commercial, bumper, station ID, PSA, trailer, or interstitial.
+- **Era** and **audience** — scheduling facts with their own validation.
+- **Brand** — shown only when grounded in the clip's text or picture.
+- **Taxonomy tags** — what the clip contains, across products/topics, format, seasonal cues,
+  and audience cues.
+
+Kind controls how Loomarr may place a clip. A format tag is descriptive vocabulary for browsing and
+curation; changing one does not silently change the clip's playout role.
+
+**Filler → Taxonomy** shows that vocabulary as a hierarchy, its direct and descendant clip counts,
+overall coverage, and coverage on each independent axis. Axis coverage matters because a seasonal
+cue alone does not explain what a clip advertises; select **Browse without** to inspect clips without
+one dimension. Absence is not automatically a problem—seasonal and audience cues are intentionally
+sparse. Selecting a broad parent such as
+Food matches clips assigned more-specific descendants such as Cereal. The clip editor stores only
+the tags actually selected; inherited parents remain derived, so changing the hierarchy later does
+not turn old rollups into false operator decisions.
+
+Enable **Tag clips with AI** to classify arrivals automatically. The classifier may resolve only
+known slugs, synonyms, and retired aliases; it cannot invent new taxonomy nodes. An admin owns
+vocabulary changes from the Taxonomy page. Brand is a separate grounded fact; correct or clear it
+beside kind, era, audience, and tags in a clip's editor rather than creating a brand taxon.
+Both text and vision classification use the current taxonomy shown on that page. Confirmed segments
+from compilation recordings keep their grounded taxonomy tags when they become individual clips.
+
+Untagged commercials are a last-resort rung only for general and late-night channels. They are
+excluded from kids and family channels because an unknown audience must never be treated as safe
+for children. If a themed channel falls back to bumpers, check its **pod preview** and tag the clips.
+
+## If a clip gets stuck
+
+Pipeline stages retry with backoff. Expand a failed row in **Filler → Incoming** to retry that stage
+immediately after fixing its cause. A clip handed over for a decision also has an advanced
+**Re-run AI** action. Both preserve completed upstream work and restart only the selected stage and
+its dependants. The retry request is durable across a Loomarr restart, and AI classification merges
+new grounded facts without erasing operator-authored tags. Deleting and re-importing the clip is not
+the recovery path.
+
+Re-running transcode can replace playable bytes and is therefore not exposed as a routine UI
+action. The admin API requires an explicit force flag for it.
 
 ## Tuning
 
@@ -51,3 +93,17 @@ to just bumpers. If a channel plays no commercials, check its **pod preview**.
 
 Each channel has a **pod preview** showing exactly what plays in its breaks — the same
 computation the scheduler uses. It's the fastest way to check your tags are matching.
+
+## Recordings of several adverts
+
+A file holding twenty adverts back to back is a **recording**, not a clip — it can't play in a
+30-second break. Loomarr finds the cuts inside it and files the ones it is confident about, so most
+of a recording turns into clips with no work from you.
+
+Cuts it is **not** confident about wait under **Filler → Incoming** with boundary evidence and the
+whole recording available for context. Confirmed segments become individual clips; duplicates and
+segments too short to be useful are discarded automatically. The non-airable original is preserved
+for lineage and recovery, while only its filed segments may play.
+
+Removing a clip from the catalog is a tombstone: it stops being scheduled, but Loomarr does not
+delete the source file.

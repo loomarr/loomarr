@@ -1,8 +1,12 @@
-import { ApiError, type LibraryCollection, libraryApi, unwrap } from "@loomarr/api";
+import * as libraryApi from "@loomarr/api/endpoints/library";
+import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
+import { ApiError } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.type";

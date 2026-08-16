@@ -22,8 +22,8 @@ import (
 // Job returns the reconcile tick as a scheduler job — the deadline/retry backstop (§4).
 func (r *Reconciler) Job() scheduler.Job {
 	return scheduler.Job{
-		Name: "reconcile", Title: "Reconcile downloads",
-		Description: "Checks titles you approved that are still downloading, and retries or gives up on ones that have stalled past their deadline.",
+		Name: "reconcile", Group: scheduler.GroupAcquisitions, Title: "Reconcile acquisitions",
+		Description: "Advances approved requests through download, retry, and completion states.",
 		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
 		Run: func(ctx context.Context) error { _, err := r.Tick(ctx); return err },
 	}
@@ -38,31 +38,17 @@ func (r *Reconciler) Job() scheduler.Job {
 func (s *LibraryScan) Jobs() []scheduler.Job {
 	return []scheduler.Job{
 		{
-			Name: "library-scan", Title: "Scan library for new titles",
-			Description: "Looks at what your media server added recently and marks any approved title that has landed as available to schedule.",
+			Name: "library-scan", Group: scheduler.GroupAcquisitions, Title: "Scan recent library additions",
+			Description: "Marks approved titles as available when they appear among recent media-server additions.",
 			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Incremental(ctx); return err },
 		},
 		{
-			Name: "library-full-scan", Title: "Full library sweep",
-			Description: "Checks your whole library rather than just recent additions, as a safety net for anything the frequent scan missed.",
+			Name: "library-full-scan", Group: scheduler.GroupAcquisitions, Title: "Scan the full library",
+			Description: "Checks the entire media-server library as a daily safety net for missed additions.",
 			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Full(ctx); return err },
 		},
-	}
-}
-
-// Job returns the series episode refresh (§5, §18.1).
-//
-// Deliberately NOT folded into library-scan: that job only correlates in-flight
-// acquisitions and returns early when there are none, so it would never revisit an
-// already-available show — the exact set this refreshes.
-func (e *EpisodeRefresh) Job() scheduler.Job {
-	return scheduler.Job{
-		Name: "series-episode-refresh", Title: "Refresh series episode lists",
-		Description: "Re-reads the episode list for shows your channels play, so newly added episodes start airing without waiting for a rebuild.",
-		DefaultCron: "0 0 * * * *", ScheduleKey: "job.series_episode_refresh.schedule",
-		Run: func(ctx context.Context) error { _, err := e.Run(ctx); return err },
 	}
 }
 
@@ -77,7 +63,7 @@ func (e *EpisodeRefresh) Job() scheduler.Job {
 // The two are mutually exclusive (a provider is arr XOR seerr), so the names never collide.
 func (q *QueuePoll) Job(name, title, description string) scheduler.Job {
 	return scheduler.Job{
-		Name: name, Title: title, Description: description,
+		Name: name, Group: scheduler.GroupAcquisitions, Title: title, Description: description,
 		DefaultCron: "0 * * * * *", ScheduleKey: "job." + jobKey(name) + ".schedule",
 		Run: func(ctx context.Context) error { _, err := q.Poll(ctx); return err },
 	}

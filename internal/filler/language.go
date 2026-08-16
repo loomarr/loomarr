@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,11 @@ const (
 // the answer completely differently — one runs a local model and reads a field, the other asks a
 // multimodal model a question — but the job, the reject rule and every test see only the code.
 type LanguageDetector interface {
+	// UnavailableReason reports a missing prerequisite without attempting inference. Empty means
+	// the detector is configured well enough to try. This keeps configuration absence distinct
+	// from a backend that ran and failed: the former skips immediately, while the latter earns the
+	// bounded retry ladder.
+	UnavailableReason() string
 	// DetectLanguage inspects [startMs,endMs) of file. It returns LangUndetermined with a nil
 	// error when it genuinely could not tell, so a caller can distinguish "unavailable" from
 	// "failed" only when it cares — most do not, because both mean "do not reject".
@@ -210,6 +216,22 @@ type whisperLangJSON struct {
 	} `json:"transcription"`
 }
 
+// UnavailableReason distinguishes a detector that cannot possibly run from one that can run and
+// might fail. Retrying an empty model path cannot repair the configuration; it only delays every
+// clip before the non-fatal rung eventually skips.
+func (w *WhisperLanguage) UnavailableReason() string {
+	switch {
+	case w.WhisperPath == "":
+		return "the local language engine is not configured (set ingest.whisper_path)"
+	case w.Model == "":
+		return "the local language model is not configured (set filler.language_model)"
+	case w.FFmpegPath == "":
+		return "audio extraction is not configured (set playout.ffmpeg_path)"
+	default:
+		return ""
+	}
+}
+
 func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {
 	if w.WhisperPath == "" || w.Model == "" {
 		// Not configured. LangUndetermined + nil: the gate keeps the clip, and the job can retry
@@ -225,8 +247,8 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 
 	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
 	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
-	wav := spanWAVPath(dir)
-	if err := extractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := mediatools.SpanWAVPath(dir)
+	if err := mediatools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 
@@ -291,7 +313,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	out, err := exec.CommandContext(ctx, ffmpegOr(ffmpegPath),
+	out, err := exec.CommandContext(ctx, mediatools.FFmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err
@@ -313,12 +335,4 @@ func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("no integrated loudness value in ffmpeg output")
-}
-
-// msToFFmpegTime renders milliseconds as ffmpeg's seconds-with-decimals.
-func msToFFmpegTime(ms int64) string {
-	if ms < 0 {
-		ms = 0
-	}
-	return fmt.Sprintf("%d.%03d", ms/1000, ms%1000)
 }

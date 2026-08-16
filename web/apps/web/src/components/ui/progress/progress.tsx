@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ProgressProps, ProgressTone } from "./progress.type";
 
 // Progress — the determinate/indeterminate bar (§5.1c, Layer 1).

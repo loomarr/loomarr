@@ -10,7 +10,7 @@ import (
 
 // Arg-shape tests are cheap and run everywhere. The ones that actually EXECUTE ffmpeg
 // live in ffmpeg_live_test.go behind a build tag, because unit tests must not depend on
-// a binary being present (CLAUDE.md: unit tests never touch the network, and the same
+// a binary being present (AGENTS.md: unit tests never touch the network, and the same
 // spirit applies to external executables).
 
 func argsAfter(args []string, flag string) (string, bool) {
@@ -44,12 +44,12 @@ func TestTestCardArgs_CarriesTheThreeLoadBearingFlags(t *testing.T) {
 	}
 }
 
-// Progress must be machine-readable on its own fd, not scraped from stderr: a chunked
-// read can split a token across the buffer boundary (viewra §4).
+// Progress must use the platform's structured line protocol, never stdout where it would
+// corrupt the MPEG-TS.
 func TestTestCardArgs_ProgressIsStructured(t *testing.T) {
 	args := TestCardArgs(DefaultProfile(), "", "", "")
 	if v, ok := argsAfter(args, "-progress"); !ok || !strings.HasPrefix(v, "pipe:") {
-		t.Errorf("-progress = %q, want a pipe fd (never stderr scraping)", v)
+		t.Errorf("-progress = %q, want the platform's structured pipe", v)
 	}
 	if !strings.Contains(joined(args), "-nostats") {
 		t.Error("want -nostats so the only progress output is the structured stream")

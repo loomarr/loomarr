@@ -1,10 +1,10 @@
-import { settingsApi, setupApi } from "@loomarr/api";
-import { useQueryClient } from "@tanstack/react-query";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ErrorState, SettingsSaveBar } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
-import { SettingsEditsProvider, useSettingsEdits } from "@/settings";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
 // Settings (config-design §5) — Sonarr's shape: grouped pages, an explicit save bar per page.
 // It is also the troubleshooting console for the life of the install (§13), which is why the
@@ -24,46 +24,6 @@ const PAGES = [
   { to: "/settings/security", label: "Security" },
   { to: "/settings/all", label: "All settings" },
 ] as const;
-
-// The save bar, hoisted to the layout alongside the buffer it commits (V10).
-//
-// ⚠ V9 lifted the EDITS to the layout but left the BAR inside `SettingsPage`. That held only
-// while every tab was a SettingsPage — and V10 adds one that is not (All settings is a table).
-// Left there, an edit staged on the new tab had nowhere to be saved from: the buffer took it and
-// no Save button existed on screen. If the buffer is layout-owned, so is the bar.
-const SettingsSaveBarHost = () => {
-  const queryClient = useQueryClient();
-  const { edits, resetEdits } = useSettingsEdits();
-
-  const patch = settingsApi.useSettingsPatch({
-    mutation: {
-      onSuccess: async () => {
-        // A saved connection key can flip its check — refresh both, like the wizard.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
-        resetEdits(); // saved values are the new baseline
-      },
-    },
-  });
-
-  return (
-    <>
-      {patch.error != null && (
-        <div className="px-6 pb-2">
-          <ErrorState error={patch.error} />
-        </div>
-      )}
-      <SettingsSaveBar
-        dirtyCount={Object.keys(edits).length}
-        saving={patch.isPending}
-        onDiscard={resetEdits}
-        onSave={() => patch.mutate({ data: { edits } })}
-      />
-    </>
-  );
-};
 
 const SettingsLayout = () => {
   useDocumentTitle("Settings");

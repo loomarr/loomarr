@@ -16,6 +16,22 @@ RETIRED=(
   'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  # V55 made graph mutation one atomic store operation: the node, closure, rollups, and category
+  # shadow commit together. A disabled repair job left correctness behind an operator toggle and
+  # exposed two public half-operations that callers could run in separate transactions.
+  'filler-reindex|V55: taxonomy graph edits synchronously rebuild closure and rollups in one transaction'
+  'filler.reindex.enabled|V55: taxonomy consistency is unconditional, not an operator setting'
+  'FILLER_REINDEX_ENABLED|V55: taxonomy consistency is unconditional, not an operator setting'
+  'job.filler_reindex.schedule|V55: taxonomy consistency is part of the graph edit, not a scheduled job'
+  'JOB_FILLER_REINDEX_SCHEDULE|V55: taxonomy consistency is part of the graph edit, not a scheduled job'
+  'ReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
+  'NewReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
+  'ReindexStore|V55: the store exposes one semantic ApplyTaxonomyEdit operation'
+  'ReindexResult|V55: there is no asynchronous taxonomy repair result'
+  'RebuildClosure|V55: closure rebuilding is private to boot and ApplyTaxonomyEdit'
+  'RebuildRollups|V55: rollup rebuilding is private to ApplyTaxonomyEdit'
+  'ListClipHashesLeaves|V55: the scheduled taxonomy repair work list was retired with its job'
+  'UpdateClipTags|V55: taxonomy writes and scalar classification updates now have separate owners'
   # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
   # an answer, because every long recording reaches the split rung as it is ingested. An operator
   # told to raise this to split more often would be tuning nothing; the real bound is
@@ -34,9 +50,18 @@ RETIRED=(
   # honest answer (`clips`, with `needsDecision` per row) is one word away from it.
   'IncomingAskDTO|V51e: one belt, one type — IncomingClipDTO, with needsDecision saying which end a clip is at'
   'NonTerminalOnly|V51e: PipelineFilter.ConveyorOnly returns running AND review — the two halves of one belt'
-  'body.Asks|V51e: the response carries `clips`; a clip appears exactly once, whichever end it is at'
+  'body.Asks|V51e: the response carries clips; a clip appears exactly once, whichever end it is at'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
-  'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
+  'WEBHOOK_SECRET|never existed as a generated secret; generated credentials are API_TOKEN and PLAYOUT_TOKEN'
+  # Sessions are opaque random database credentials, hashed at rest and resolved per request.
+  # There is no cookie-signing configuration; preserving either spelling would recreate a control
+  # that cannot revoke or validate any session. Historical migration rows may remain inert.
+  'SESSION_SECRET|retired: opaque database-backed sessions do not use a signing secret'
+  'session_secret|retired: opaque database-backed sessions do not use a signing secret'
+  # Tunarr 1.3.8 has no authentication contract. Keeping either spelling in examples or the
+  # prototype advertises an inert credential and implies Loomarr sends a header that it does not.
+  'TUNARR_API_KEY|retired: Tunarr has no API-key configuration; configure only its URL'
+  'tunarr.api_key|retired: Tunarr has no API-key setting; configure only tunarr.url'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'
   # The packaging question §10 says "keeps being re-decided": sidecar → opt-in tag → single
   # image. Both intermediate answers left instructions behind that read as current — a
@@ -125,6 +150,82 @@ RETIRED=(
   'EraStrict|deleted in V51f — it was unreachable (tests only). A narrow policy.filler.era range is how a channel gets era strictness'
   'FILLER_MIN_CLIP_SECONDS|the setting is FILLER_MIN_CLIP_DURATION (a duration like 15s), matching the neighbouring FILLER_MIN_DURATION'
   'FILLER_MAX_CLIP_SECONDS|the setting is FILLER_MAX_CLIP_DURATION (a duration like 90s), matching the neighbouring FILLER_MIN_DURATION'
+  # V55 settings audit: these keys were registry declarations without production consumers, or
+  # implementation policy presented as operator choice. Persisting and echoing a value is not a
+  # feature; keep the old identifiers out of docs, examples, and code until a real consumer ships.
+  'season.precision|V55: no production season-selection consumer'
+  'SEASON_PRECISION|V55: no production season-selection consumer'
+  'playout.transport|V55: internal playout has one implemented transport'
+  'PLAYOUT_TRANSPORT|V55: internal playout has one implemented transport'
+  'suggest.auto_approve|V55: the approval gate is mandatory, never a setting'
+  'SUGGEST_AUTO_APPROVE|V55: the approval gate is mandatory, never a setting'
+  'sched.backfill|V55: no production backfill consumer'
+  'SCHED_BACKFILL|V55: no production backfill consumer'
+  'ingest.max_concurrent|V55: ingest concurrency is pipeline-owned implementation policy'
+  'INGEST_MAX_CONCURRENT|V55: ingest concurrency is pipeline-owned implementation policy'
+  'filler.starter_collection|V55: starter media is not an operator setting'
+  'FILLER_STARTER_COLLECTION|V55: starter media is not an operator setting'
+  '"reconcile.every"|V55: superseded by the active channel and library schedules'
+  $'\x60reconcile.every\x60|V55: superseded by the active channel and library schedules'
+  'RECONCILE_EVERY=5m|V55: superseded by the active channel and library schedules'
+  'event.webhook_url|V55: there is no webhook delivery consumer'
+  'EVENT_WEBHOOK_URL|V55: there is no webhook delivery consumer'
+  'images.formats|V55: output compatibility policy is owned by the image module'
+  'IMAGES_FORMATS|V55: output compatibility policy is owned by the image module'
+  'images.remote_max_concurrency|V55: provider concurrency is owned by the image module'
+  'IMAGES_REMOTE_MAX_CONCURRENCY|V55: provider concurrency is owned by the image module'
+  'images.remote_ttl|V55: the remote-artwork compliance ceiling is owned by the image module'
+  'IMAGES_REMOTE_TTL|V55: the remote-artwork compliance ceiling is owned by the image module'
+  'sched.default_strategy|V55: channel strategy is explicit and no runtime path consumed this default'
+  'SCHED_DEFAULT_STRATEGY|V55: channel strategy is explicit and no runtime path consumed this default'
+  'sched.episode_norepeat|V55: per-channel policy falls back to scheduler built-ins directly'
+  'SCHED_EPISODE_NOREPEAT|V55: per-channel policy falls back to scheduler built-ins directly'
+  'sched.movie_norepeat|V55: per-channel policy falls back to scheduler built-ins directly'
+  'SCHED_MOVIE_NOREPEAT|V55: per-channel policy falls back to scheduler built-ins directly'
+  'sched.series_min_gap|V55: per-channel policy falls back to scheduler built-ins directly'
+  'SCHED_SERIES_MIN_GAP|V55: per-channel policy falls back to scheduler built-ins directly'
+  'sched.block_max|V55: per-channel policy falls back to scheduler built-ins directly'
+  'SCHED_BLOCK_MAX|V55: per-channel policy falls back to scheduler built-ins directly'
+  'sched.ordering|V55: per-channel policy falls back to channel strategy and scheduler built-ins'
+  'SCHED_ORDERING|V55: per-channel policy falls back to channel strategy and scheduler built-ins'
+  'SEASONAL_MODE|V55: seasonal behaviour is per-channel policy, not a consumed global default'
+  'PLAYOUT_SUBTITLES|V55: subtitle burn-in is not implemented by the encoder'
+  'user.sync_every|V55: user import is explicit until a scheduled consumer exists'
+	'USER_SYNC_EVERY|V55: user import is explicit until a scheduled consumer exists'
+	# Scheduler task deepening: these implementation-stage rows and schedule knobs were folded
+	# into operator outcomes. Persisted scheduled_jobs rows/settings are harmless legacy data;
+	# reintroducing the identifiers would recreate duplicate controls.
+	'activity-purge|scheduler task deepening: folded into housekeeping'
+	'retention-purge|scheduler task deepening: folded into housekeeping'
+	'session-sweep|scheduler task deepening: folded into housekeeping'
+	'series-episode-refresh|scheduler task deepening: folded into channel-maintenance'
+	'channel-sweep|scheduler task deepening: replaced by channel-maintenance'
+	'images-rehydrate|scheduler task deepening: folded into images-maintenance'
+	'images-gc|scheduler task deepening: folded into images-maintenance'
+	'job.activity_purge.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_ACTIVITY_PURGE_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.retention_purge.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_RETENTION_PURGE_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.session_sweep.schedule|scheduler task deepening: one housekeeping schedule'
+	'JOB_SESSION_SWEEP_SCHEDULE|scheduler task deepening: one housekeeping schedule'
+	'job.series_episode_refresh.schedule|scheduler task deepening: one channel-maintenance schedule'
+	'JOB_SERIES_EPISODE_REFRESH_SCHEDULE|scheduler task deepening: one channel-maintenance schedule'
+	'job.channel_sweep.schedule|scheduler task deepening: replaced by channel-maintenance schedule'
+	'JOB_CHANNEL_SWEEP_SCHEDULE|scheduler task deepening: replaced by channel-maintenance schedule'
+	'job.images_rehydrate.schedule|scheduler task deepening: one image-maintenance schedule'
+	'JOB_IMAGES_REHYDRATE_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
+	'job.images_gc.schedule|scheduler task deepening: one image-maintenance schedule'
+	'JOB_IMAGES_GC_SCHEDULE|scheduler task deepening: one image-maintenance schedule'
+	# Rust is the single image execution engine. These Go dependencies and entry points were the
+	# former in-process renderer; restoring any of them would silently recreate the fallback the
+	# worker handshake is designed to exclude.
+	'github.com/gen2brain/webp|image encoding is owned by the required loomarr-image Rust worker'
+	'go.n16f.net/thumbhash|placeholder generation is owned by the required loomarr-image Rust worker'
+	'EncodeWebP|image encoding is owned by the required loomarr-image Rust worker'
+	'ResizeLadder|image resizing is owned by the required loomarr-image Rust worker'
+	'FFmpegAVIF|AVIF encoding is owned by the required loomarr-image Rust worker'
+	'HasAVIFEncoder|worker startup self-test is the image capability gate'
+	'AVIFEncoder|AVIF encoding is owned by the required loomarr-image Rust worker'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

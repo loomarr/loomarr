@@ -43,13 +43,13 @@ func (f *fakeStore) ListUnrecoverable(_ context.Context, limit int) ([]Image, er
 	return f.pick(limit, func(img Image) bool { return !img.Origin.Recoverable() }), nil
 }
 
-func (f *fakeStore) ListMissingFormat(_ context.Context, format Format, limit int) ([]Image, error) {
+func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool {
 		ds := f.derivatives[img.Hash]
 		if len(ds) == 0 {
 			return false // no rendition at all: the fetch job's business, not the encoder's
 		}
-		return !slices.ContainsFunc(ds, func(d Derivative) bool { return d.Format == format })
+		return !slices.ContainsFunc(ds, func(d Derivative) bool { return d.Recipe == recipe && d.Format == format })
 	}), nil
 }
 
@@ -85,9 +85,9 @@ func (f *fakeStore) TotalDerivativeBytes(context.Context) (int64, error) {
 	return total, nil
 }
 
-func (f *fakeStore) DeleteDerivative(_ context.Context, hash string, format Format, width int) error {
+func (f *fakeStore) DeleteDerivative(_ context.Context, hash, recipe string, format Format, width int) error {
 	f.derivatives[hash] = slices.DeleteFunc(f.derivatives[hash], func(d Derivative) bool {
-		return d.Format == format && d.Width == width
+		return d.Recipe == recipe && d.Format == format && d.Width == width
 	})
 	return nil
 }

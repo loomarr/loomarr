@@ -49,6 +49,22 @@ describe("SegmentFilmstrip", () => {
     expect(short + long).toBeCloseTo(100, 1);
   });
 
+  it("renders unassigned time as a labelled gap instead of compressing it away", () => {
+    render(
+      <SegmentFilmstrip
+        segments={[
+          seg("first", 0, 10_000, { name: "First" }),
+          seg("second", 15_000, 25_000, { name: "Second" }),
+        ]}
+      />,
+    );
+
+    const gap = screen.getByLabelText("00:10–00:15 unassigned");
+    expect(gap).toHaveAttribute("title", "00:10–00:15 unassigned");
+    expect(flexOf(screen.getByRole("button", { name: /First/ }))).toBeCloseTo(40, 1);
+    expect(Number.parseFloat(gap.style.flex)).toBeCloseTo(20, 1);
+  });
+
   // ⚠ Without a floor, a 0.5s sting inside a 20-minute reel computes to well under a pixel:
   // present in the DOM, impossible to click, invisible. The distortion is deliberate.
   it("keeps a very short segment clickable", () => {
@@ -109,5 +125,43 @@ describe("SegmentFilmstrip", () => {
 
     const zero = render(<SegmentFilmstrip segments={[seg("a", 1000, 1000)]} />);
     expect(zero.container).toBeEmptyDOMElement();
+  });
+
+  // The caption is a PROMISE about what clicking does, and it was false for as long as the strip
+  // has existed: it read "click to preview" while clicking has only ever scrolled that segment's
+  // row into view (V54 A7).
+  //
+  // ⚠ **Written as a conditional so it relaxes on its own.** Phase C delivers the real preview,
+  // and on that day this component renders a media element and the word "preview" becomes true —
+  // at which point the guard stops applying rather than blocking the feature it exists to protect.
+  // It is not vacuous today: the component renders no media element, so the caption assertion is
+  // live. Sabotage-checked by putting "preview" back.
+  it("does not promise a preview it cannot deliver", () => {
+    const { container } = render(<SegmentFilmstrip segments={[seg("a", 0, 30_000, { name: "One" })]} />);
+
+    const previews = container.querySelectorAll("video, canvas, img");
+    if (previews.length > 0) return; // Phase C landed — the promise is now keepable
+
+    expect(container.textContent ?? "").not.toMatch(/preview/i);
+  });
+
+  // The behaviour the caption now describes. Pinned separately, because a caption that matches a
+  // behaviour nothing tests is only half a fix.
+  it("jumps to a segment's row by reporting the click, and marks it current", async () => {
+    const onFocus = vi.fn();
+    render(
+      <SegmentFilmstrip
+        segments={[seg("a", 0, 30_000, { name: "One" }), seg("b", 30_000, 61_000, { name: "Two" })]}
+        activeKey="b"
+        onFocus={onFocus}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /One/ }));
+
+    expect(onFocus).toHaveBeenCalledWith("a");
+    // The strip does not own the scroll — it reports, and the editor scrolls the row. What the
+    // strip itself must show is WHICH block the editor considers current.
+    expect(screen.getByRole("button", { name: /Two/ })).toHaveAttribute("aria-current", "true");
   });
 });

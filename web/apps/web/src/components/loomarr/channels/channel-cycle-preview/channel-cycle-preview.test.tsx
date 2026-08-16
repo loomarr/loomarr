@@ -1,3 +1,4 @@
+import { ExcludedItemDTOReason } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,15 +11,12 @@ import { ChannelCyclePreview } from "./channel-cycle-preview";
 // unit test cares about.
 const mockUsePreviewChannelCycle = vi.fn();
 const mockUsePreviewChannelProgramming = vi.fn();
-vi.mock("@loomarr/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@loomarr/api")>();
+vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@loomarr/api/endpoints/channels")>();
   return {
     ...actual,
-    channelsApi: {
-      ...actual.channelsApi,
-      usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
-      usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
-    },
+    usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
+    usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
   };
 });
 
@@ -36,8 +34,17 @@ const loaded = (body: {
   activeRule: { id: string; label: string; priority: number; matched: boolean };
   windowMs: number;
   slots: { kind: "program" | "pending" | "break"; title?: string; key?: string; part?: number }[];
+  excluded?: {
+    overCeiling: number;
+    unrated: number;
+    items: { key: string; title: string; reason: ExcludedItemDTOReason }[];
+  };
 }) => ({
-  data: { status: 200, data: body },
+  // ⚠ `excluded` is DEFAULTED, not optional on the wire — the BE marks it required, so a body
+  // reaching the component without it is a contract break, not a state to render around. The
+  // default exists so the tests that predate it (and care about rules/slots) stay unedited;
+  // it must NOT become a reason for the component to guard against a missing field.
+  data: { status: 200, data: { excluded: { overCeiling: 0, unrated: 0, items: [] }, ...body } },
   isLoading: false,
   error: null,
   refetch: vi.fn(),
@@ -215,6 +222,9 @@ describe("ChannelCyclePreview — unsaved draft", () => {
           activeRule: { id: "draft", label: "Weekend marathon", priority: 5, matched: true },
           windowMs: 0,
           slots: [],
+          // Hand-built rather than via `loaded()` (this is the MUTATION shape, not the query's),
+          // so it needs the required field spelled out — the BE sends it on both endpoints.
+          excluded: { overCeiling: 0, unrated: 0, items: [] },
         },
       },
     });
@@ -239,6 +249,95 @@ describe("ChannelCyclePreview — unsaved draft", () => {
     expect(mockUsePreviewChannelCycle).toHaveBeenLastCalledWith("ch-1", undefined, {
       query: { enabled: false },
     });
+  });
+
+  // --- "why isn't X on my channel" (#263) ---------------------------------------------------
+  //
+  // The §4 exclusion report is computed on EVERY reconcile and was discarded by every caller
+  // until this panel. These pin that it reaches the screen, because the failure mode it replaces
+  // was silence — a refused title simply not appearing, with nothing anywhere saying why.
+
+  it("names each refused title and why, once expanded", async () => {
+    mockUsePreviewChannelCycle.mockReturnValue(
+      loaded({
+        at: "2026-07-24T14:00:00Z",
+        activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+        windowMs: 0,
+        slots: [{ kind: "program", title: "Rugrats", key: "series:tmdb:3022" }],
+        excluded: {
+          overCeiling: 2,
+          unrated: 0,
+          items: [
+            {
+              key: "series:tmdb:2190",
+              title: "South Park",
+              reason: ExcludedItemDTOReason.over_ceiling,
+            },
+            // Two rows sharing ONE key — a per-episode ceiling refusal carries its series key.
+            // If the list keyed on `key` alone, React would drop one of these silently.
+            {
+              key: "series:tmdb:2122",
+              title: "King of the Hill S04E06",
+              reason: ExcludedItemDTOReason.over_ceiling,
+            },
+          ],
+        },
+      }),
+    );
+
+    render(<ChannelCyclePreview channelId="ch-1" />);
+
+    // The count is visible WITHOUT expanding — folded, not hidden.
+    expect(screen.getByText(/2 titles not airing/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 held back by the audience ceiling/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /show which titles are not airing/i }));
+
+    expect(screen.getByText("South Park")).toBeInTheDocument();
+    expect(screen.getByText("King of the Hill S04E06")).toBeInTheDocument();
+    // The REASON is the whole point — a list of names alone answers "what", not "why".
+    expect(screen.getAllByText(/rated above this channel's audience ceiling/i)).toHaveLength(2);
+  });
+
+  it("says nothing at all when the filters refused nothing", () => {
+    mockUsePreviewChannelCycle.mockReturnValue(
+      loaded({
+        at: "2026-07-24T14:00:00Z",
+        activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+        windowMs: 0,
+        slots: [{ kind: "program", title: "Rugrats", key: "series:tmdb:3022" }],
+        excluded: { overCeiling: 0, unrated: 0, items: [] },
+      }),
+    );
+
+    render(<ChannelCyclePreview channelId="ch-1" />);
+
+    // ⚠ Absent, not "0 titles not airing". A healthy channel is the overwhelming majority case,
+    // and a permanent zero-row trains the eye to skip the panel exactly when it matters.
+    expect(screen.queryByText(/not airing/i)).not.toBeInTheDocument();
+  });
+
+  it("distinguishes a taste filter from the safety gate in its summary", () => {
+    mockUsePreviewChannelCycle.mockReturnValue(
+      loaded({
+        at: "2026-07-24T14:00:00Z",
+        activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+        windowMs: 0,
+        slots: [],
+        excluded: {
+          overCeiling: 0,
+          unrated: 0,
+          items: [{ key: "movie:tmdb:1", title: "Too Old", reason: ExcludedItemDTOReason.out_of_scope }],
+        },
+      }),
+    );
+
+    render(<ChannelCyclePreview channelId="ch-1" />);
+
+    // An era/genre drop is a curation choice the operator made, not a guardrail firing — so the
+    // summary must NOT claim the ceiling held anything back.
+    expect(screen.getByText(/filtered out by this channel's rules/i)).toBeInTheDocument();
+    expect(screen.queryByText(/held back by the audience ceiling/i)).not.toBeInTheDocument();
   });
 
   it("without a draft, behaves exactly as before", () => {

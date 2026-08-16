@@ -4,7 +4,7 @@
 // same committed-artifact discipline as api/openapi.yaml and docs/configuration.md.
 //
 // WHY THIS EXISTS. The command contract was restated by hand in four files — README.md,
-// CONTRIBUTING.md, CLAUDE.md and AGENTS.md — and they disagreed with each other and with
+// contributor and agent entrypoints — and they disagreed with each other and with
 // the tree: the Go version (1.22 vs 1.26), the Node version (20 vs 22.5), what `make fe`
 // runs ("Storybook browser tests" that do not exist), and the visual-suite size, stated
 // three ways with none correct. Twenty-one targets appeared in none of them, including

@@ -53,7 +53,10 @@ const playURLTTL = 8 * time.Hour
 // the device-token path uses, so a caller renders "playout isn't set up" rather than minting a
 // capability that can never verify.
 func (s *Server) signPlayout(channelID string, exp time.Time) string {
-	key := s.playoutToken()
+	return signPlayoutWithKey(s.playoutToken(), channelID, exp)
+}
+
+func signPlayoutWithKey(key, channelID string, exp time.Time) string {
 	if key == "" {
 		return ""
 	}
@@ -71,7 +74,10 @@ func (s *Server) signPlayout(channelID string, exp time.Time) string {
 // WHICH check failed (does this channel exist? is this the right shape?) is exactly the
 // enumeration the device path's 404 already refuses to give.
 func (s *Server) verifyPlayoutSignature(raw, channelID string, now time.Time) bool {
-	key := s.playoutToken()
+	return verifyPlayoutSignatureWithKey(s.playoutToken(), raw, channelID, now)
+}
+
+func verifyPlayoutSignatureWithKey(key, raw, channelID string, now time.Time) bool {
 	if key == "" {
 		return false
 	}
@@ -124,8 +130,12 @@ func playoutSignature(key, channelID string, exp int64) string {
 // form (playoutHLSPathURL) instead, because it is already on Loomarr's origin. Returns "" when the
 // base or the signature is unavailable.
 func (s *Server) playoutHLSURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
+	return s.playoutHLSURLWithKey(s.playoutToken(), channelID, quality, plan, exp)
+}
+
+func (s *Server) playoutHLSURLWithKey(key, channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
 	base := s.playoutBaseURL()
-	path := s.playoutHLSPathURL(channelID, quality, plan, exp)
+	path := s.playoutHLSPathURLWithKey(key, channelID, quality, plan, exp)
 	if base == "" || path == "" {
 		return ""
 	}
@@ -141,7 +151,11 @@ func (s *Server) playoutHLSURL(channelID string, quality string, plan playout.En
 // cannot use this — they have no origin to be relative to — which is exactly why the absolute form
 // above still exists. Returns "" only when the signature can't be minted (no token).
 func (s *Server) playoutHLSPathURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
-	sig := s.signPlayout(channelID, exp)
+	return s.playoutHLSPathURLWithKey(s.playoutToken(), channelID, quality, plan, exp)
+}
+
+func (s *Server) playoutHLSPathURLWithKey(key, channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
+	sig := signPlayoutWithKey(key, channelID, exp)
 	if sig == "" {
 		return ""
 	}

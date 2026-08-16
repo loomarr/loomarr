@@ -13,6 +13,8 @@ import (
 type JobService interface {
 	// List returns the current status of every registered job, in a stable order.
 	List(ctx context.Context) ([]JobView, error)
+	// History returns the bounded recent executions for one registered job.
+	History(ctx context.Context, name string) (JobHistoryView, error)
 	// Trigger forces a job to run off-cycle ("Run now"). Returns ErrJobNotFound for an
 	// unknown name.
 	Trigger(ctx context.Context, name string) error
@@ -35,6 +37,7 @@ var ErrJobDisabled = huma.Error409Conflict("job disabled") // sentinel; handler 
 // expression; scheduleKey is the settings key the "Modify Job" modal PATCHes to change it.
 type JobView struct {
 	Name        string    `json:"name" doc:"Stable job id (also the run/trigger key)"`
+	Group       string    `json:"group" enum:"acquisitions,channels,filler,artwork,playout,system,backup" doc:"Operator outcome used to group tasks"`
 	Title       string    `json:"title" doc:"Human label for the Tasks page"`
 	Description string    `json:"description" doc:"One plain sentence saying what running this job does"`
 	Schedule    string    `json:"schedule" doc:"Effective cron expression (settings override or default)"`
@@ -48,6 +51,27 @@ type JobView struct {
 	// DisabledReason is non-empty when this backend cannot run the job at all — it is
 	// listed so its absence is never inferred, but it never runs and Run-now 409s.
 	DisabledReason string `json:"disabledReason,omitempty" doc:"Why this job cannot run here; empty when it can"`
+	Overdue        bool   `json:"overdue,omitempty" doc:"True when the job is past due and waiting on a worker rather than on its schedule"`
+}
+
+// JobHistoryView summarizes one task's retained executions. The window is explicit because
+// runCount and failureCount are recent operational signals, not lifetime counters.
+type JobHistoryView struct {
+	WindowStart       time.Time          `json:"windowStart" doc:"Start of the summarized execution window"`
+	RunCount          int                `json:"runCount" doc:"Completed executions in the window"`
+	FailureCount      int                `json:"failureCount" doc:"Failed executions in the window"`
+	AverageDurationMs int64              `json:"averageDurationMs" doc:"Mean completed execution duration in milliseconds"`
+	Truncated         bool               `json:"truncated,omitempty" doc:"True when the count reached the safety scan limit"`
+	Recent            []JobExecutionView `json:"recent" doc:"Five latest trustworthy executions, newest first"`
+}
+
+type JobExecutionView struct {
+	StartedAt  time.Time `json:"startedAt" doc:"When this execution started"`
+	FinishedAt time.Time `json:"finishedAt" doc:"When this execution finished"`
+	DurationMs int64     `json:"durationMs" doc:"Execution duration in milliseconds"`
+	Result     string    `json:"result" enum:"ok,error" doc:"Loomarr task outcome"`
+	Error      string    `json:"error,omitempty" doc:"Failure detail when result is error"`
+	Trigger    string    `json:"trigger" enum:"scheduled,manual" doc:"Whether the schedule or an operator started the execution"`
 }
 
 func (s *Server) registerJobs(api huma.API) {
@@ -65,6 +89,13 @@ func (s *Server) registerJobs(api huma.API) {
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
 	}, RoleAdmin), s.jobsRun)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "jobs-history", Method: http.MethodGet, Path: "/v1/jobs/{name}/history",
+		Summary:     "Get recent job executions",
+		Description: "Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).",
+		Tags:        []string{"jobs"},
+	}, RoleAdmin), s.jobsHistory)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "jobs-pause", Method: http.MethodPost, Path: "/v1/jobs/{name}/pause",
@@ -104,6 +135,29 @@ type jobsListOutput struct {
 	Body struct {
 		Jobs []JobView `json:"jobs"`
 	}
+}
+
+type jobsHistoryInput struct {
+	Name string `path:"name" doc:"The job's stable id (from GET /v1/jobs)"`
+}
+
+type jobsHistoryOutput struct {
+	Body JobHistoryView
+}
+
+func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHistoryOutput, error) {
+	if s.jobs == nil {
+		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+	}
+	history, err := s.jobs.History(ctx, in.Name)
+	if err != nil {
+		if err == ErrJobNotFound {
+			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+		}
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load job history",
+			"Loomarr couldn't read that task's recent executions. Try again in a moment.", err)
+	}
+	return &jobsHistoryOutput{Body: history}, nil
 }
 
 func (s *Server) jobsList(ctx context.Context, _ *struct{}) (*jobsListOutput, error) {

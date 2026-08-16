@@ -41,7 +41,9 @@ usage() {
 # --verify: every package appears in exactly one shard, and the union is the full list.
 if [ "${1:-}" = "--verify" ]; then
   total="${2:-}"
-  [[ "$total" =~ ^[0-9]+$ ]] && [ "$total" -ge 1 ] || usage
+  if ! [[ "$total" =~ ^[0-9]+$ ]] || [ "$total" -lt 1 ]; then
+    usage
+  fi
 
   all="$(packages | sort)"
   union="$(for ((i = 1; i <= total; i++)); do slice "$i" "$total"; done | sort)"

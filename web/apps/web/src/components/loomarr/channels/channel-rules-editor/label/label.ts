@@ -1,4 +1,4 @@
-import type { Vocabulary } from "@loomarr/api";
+import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { howShortLabels, whatStaticOptions, whenShortLabels } from "../presets";
 
 // computeLabel — the FE mirror of SchedulingRule.Describe() (internal/schedule/rule.go).

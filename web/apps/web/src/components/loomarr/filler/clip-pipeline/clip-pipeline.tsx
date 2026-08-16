@@ -1,7 +1,7 @@
-import type { IncomingPipelineDTO } from "@loomarr/api";
+import type { IncomingPipelineDTO } from "@loomarr/api/models/incomingPipelineDTO";
 import { Check, Loader2, Minus, X } from "lucide-react";
-import { Progress } from "@/components/ui";
-import { cn } from "@/lib";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 import type { ClipPipelineProps } from "./clip-pipeline.type";
 
 // ClipPipeline — where one clip is in the eight-rung ingest pipeline (§10 V51b/V51e).

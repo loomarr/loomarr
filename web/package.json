@@ -5,7 +5,7 @@
   "description": "Loomarr frontend workspace (Test Card design system). Web now; Expo bolt-on later shares packages/{tokens,api,core}.",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.5 <23"
   },
   "packageManager": "pnpm@11.13.1",
   "scripts": {
@@ -17,11 +17,14 @@
     "test": "pnpm -r --parallel test",
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
     "dev": "pnpm --filter @loomarr/web dev",
-    "lint": "biome check",
+    "lint": "biome check && pnpm imports:check && pnpm lint:boundaries",
+    "lint:boundaries": "depcruise apps/web/src packages/*/*.ts packages/*/src packages/*/tests",
+    "imports:check": "node --test scripts/check-imports.test.mjs && node scripts/check-imports.mjs",
     "lint:fix": "biome check --write",
     "format": "biome format --write"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.4"
+    "@biomejs/biome": "^2.5.4",
+    "dependency-cruiser": "17.4.3"
   }
 }

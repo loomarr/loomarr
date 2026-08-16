@@ -2,9 +2,15 @@ package api
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/prepared"
 )
+
+type fixedPreparedObserver struct{ status prepared.PlannerStatus }
+
+func (f fixedPreparedObserver) Status() prepared.PlannerStatus { return f.status }
 
 // The verdict is the doctor's whole point — mapping a raw speed to ok|degraded|stalled with a
 // reason an operator can act on. These cases pin the thresholds and the copy-is-always-ok rule.
@@ -70,6 +76,36 @@ func TestChannelHealthFrom_ModeFromEncoder(t *testing.T) {
 	txRow := channelHealthFrom(playout.SessionStat{ChannelID: "c", Encoder: "h264_vulkan", Hardware: true, Speed: 2.0})
 	if txRow.Mode != "transcode" || txRow.Health != HealthOK {
 		t.Errorf("hardware encoder at 2× → transcode + ok, got mode=%q health=%q", txRow.Mode, txRow.Health)
+	}
+}
+
+func TestPlayoutStatusProjectsPreparedPlannerSnapshot(t *testing.T) {
+	completed := time.Unix(50_000, 0)
+	s := &Server{preparedObserver: fixedPreparedObserver{status: prepared.PlannerStatus{
+		Available: true, Running: true, LastRunAt: completed, LastError: "one source failed",
+		Readiness: prepared.ReadinessSummary{
+			Channels: 100, ReadyChannels: 84,
+			ScheduledBindings: 300, ReadyBindings: 260, MissingBindings: 40,
+			QueuedPublications: 16,
+		},
+		Retention: prepared.RetentionStatus{
+			RemainingBytes: 700, BudgetBytes: 1_000, ProtectedBytes: 600,
+		},
+	}}}
+
+	got := s.playoutStatus(t.Context(), completed)
+	if !got.Prepared.Available || !got.Prepared.Running || got.Prepared.LastRunAt == nil ||
+		!got.Prepared.LastRunAt.Equal(completed) || got.Prepared.LastError != "one source failed" {
+		t.Fatalf("prepared lifecycle = %+v", got.Prepared)
+	}
+	if got.Prepared.Channels != 100 || got.Prepared.ReadyChannels != 84 ||
+		got.Prepared.ScheduledBindings != 300 || got.Prepared.ReadyBindings != 260 ||
+		got.Prepared.MissingBindings != 40 || got.Prepared.QueuedPublications != 16 {
+		t.Fatalf("prepared readiness = %+v", got.Prepared)
+	}
+	if got.Prepared.RemainingBytes != 700 || got.Prepared.BudgetBytes != 1_000 ||
+		got.Prepared.ProtectedBytes != 600 {
+		t.Fatalf("prepared retention = %+v", got.Prepared)
 	}
 }
 

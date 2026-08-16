@@ -7,7 +7,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
-// Requester is the shared Requester test double (CLAUDE.md). It records calls and
+// Requester is the shared Requester test double (AGENTS.md). It records calls and
 // lets a test control whether Request/Cancel succeed.
 type Requester struct {
 	mu sync.Mutex

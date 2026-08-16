@@ -1,8 +1,12 @@
-import { unwrap, usersApi } from "@loomarr/api";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import { unwrap } from "@loomarr/api/unwrap";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { EmptyState, ErrorState } from "@/components/loomarr";
-import { Button, Checkbox, Label } from "@/components/ui";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 // Wizard step 6 — import media-server users (§11, §13). A media-server account grants
 // NO access until an admin explicitly imports it: signing in is not self-provisioning.

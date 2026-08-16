@@ -11,7 +11,9 @@ import { defineConfig, type Plugin } from "vite";
 // Build output lands in internal/web/dist, which internal/web/embed.go embeds.
 // In dev, Vite proxies the API surface to the Go server on :8080 so the app runs
 // against the real backend with cookie auth intact.
-const API_TARGET = process.env.LOOMARR_API ?? "http://localhost:8080";
+const BACKEND_PORT = process.env.LOOMARR_DEV_PORT ?? "8080";
+const DEV_PORT = Number(process.env.LOOMARR_FE_PORT ?? "5173");
+const API_TARGET = process.env.LOOMARR_API ?? `http://localhost:${BACKEND_PORT}`;
 const proxied = [
   // /v1 covers the whole versioned surface INCLUDING /v1/playout (§9.1 V47: the playout streaming
   // routes moved under /v1, so the in-app HLS player's same-origin /v1/playout/hls/... URLs are
@@ -58,7 +60,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: DEV_PORT,
+    // Multiple worktrees receive distinct deterministic ports. If one is unexpectedly occupied,
+    // fail with the advertised URL instead of Vite silently incrementing to an unknown port.
+    strictPort: true,
     proxy: Object.fromEntries(
       proxied.map((path) => [path, { target: API_TARGET, changeOrigin: true, ws: path === "/v1" }]),
     ),

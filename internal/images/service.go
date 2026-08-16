@@ -1,7 +1,6 @@
 package images
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,9 +8,12 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/images/rustgen"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -33,7 +35,7 @@ type Store interface {
 	GetFetchedBySourceURL(ctx context.Context, src string) (Image, error)
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 	PutRef(ctx context.Context, ref Ref) error
-	PutDerivative(ctx context.Context, d Derivative) error
+	PutDerivatives(ctx context.Context, derivatives []Derivative) error
 	ListDerivatives(ctx context.Context, hash string) ([]Derivative, error)
 }
 
@@ -58,7 +60,7 @@ type IngestRequest struct {
 // after a reboot. A struct of plain values would have quietly frozen all four at boot while this
 // comment claimed otherwise, which is the failure worth designing out.
 //
-// All three funcs tolerate being nil; New fills in the declared defaults.
+// Both funcs tolerate being nil; New fills in the declared defaults.
 type Config struct {
 	Dir string
 	// MaxUploadBytes caps an ingested original. Enforced on the READ, never on a declared size.
@@ -70,23 +72,28 @@ type Config struct {
 	// icon URL persistently. Empty falls back to a relative URL, which is safe and works whenever
 	// the fetcher resolves Loomarr at the same origin.
 	PublicBaseURL func() string
-	// Formats is the rendition set, in <picture> preference order — `images.formats`.
-	//
-	// ⚠ This was declared and never read: the field existed, New defaulted it, and nothing
-	// consulted it, so dropping `avif` or `jpeg` from the setting would have changed nothing while
-	// the docs said it saved CPU or storage. `Produces` is the reader; the AVIF job and the record
-	// handler both go through it.
-	Formats func() []Format
+	// Observer reports the bounded worker and queue vocabulary defined by V59a. It is optional;
+	// nil callbacks make instrumentation a no-op without changing image behavior.
+	Observer Observer
 }
 
-// DefaultFormats is the rendition set when `images.formats` says nothing — §22's full ladder.
+// Observer is the composition-root seam for image worker telemetry.
+type Observer struct {
+	QueueWait func(class string, wait time.Duration)
+	InFlight  func(delta int)
+	Worker    func(rustgen.Observation)
+}
+
+// DefaultFormats is §22's fixed compatibility ladder.
 func DefaultFormats() []Format { return []Format{FormatAVIF, FormatWebP, FormatJPEG} }
 
 // Service is the concrete implementation.
 type Service struct {
-	cfg   Config
-	store Store
-	blob  *blobStore
+	cfg      Config
+	store    Store
+	blob     *blobStore
+	renderer Renderer
+	capacity *workerCapacity
 	// group collapses concurrent identical rendition requests into one encode. Without it, a cold
 	// poster grid asking fifty browsers for the same width would run fifty identical encodes and
 	// race each other writing the same file.
@@ -94,9 +101,17 @@ type Service struct {
 	now   func() time.Time
 }
 
+// Renderer is the required Rust worker seam. It is deliberately the complete operation rather
+// than codec-shaped methods: product policy sends a plan; the worker owns all pixel work.
+type Renderer interface {
+	Generate(context.Context, rustgen.Request) (rustgen.Manifest, error)
+}
+
+const renditionRecipe = "loomarr-rendition-v2"
+
 // New builds a Service. `now` is injectable because several behaviours here are time-dependent
 // (fetch stamps, last-used) and a test that cannot control the clock asserts on wall time.
-func New(cfg Config, store Store, now func() time.Time) *Service {
+func New(cfg Config, store Store, renderer Renderer, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
@@ -106,10 +121,9 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 	if cfg.PublicBaseURL == nil {
 		cfg.PublicBaseURL = func() string { return "" }
 	}
-	if cfg.Formats == nil {
-		cfg.Formats = DefaultFormats
-	}
-	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), now: now}
+	workers := min(4, max(1, runtime.GOMAXPROCS(0)))
+	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), renderer: renderer,
+		capacity: newWorkerCapacity(workers), now: now}
 }
 
 // defaultMaxUploadBytes mirrors `images.max_upload_bytes` (§15). Declared here too so a Service
@@ -117,12 +131,9 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 // read rather than treating a nil func as "no limit".
 const defaultMaxUploadBytes = 8 << 20
 
-// Produces reports whether this install emits a format, per `images.formats`.
-//
-// The one reader of cfg.Formats, so the setting has exactly one meaning. AVIF asks before
-// encoding; the record handler asks before advertising a <source> that will never exist.
+// Produces reports whether the image module's fixed compatibility ladder emits a format.
 func (s *Service) Produces(f Format) bool {
-	for _, want := range s.cfg.Formats() {
+	for _, want := range DefaultFormats() {
 		if want == f {
 			return true
 		}
@@ -134,7 +145,7 @@ func (s *Service) Produces(f Format) bool {
 //
 // ⚠ **This is the difference between "we would emit AVIF" and "AVIF is there right now", and
 // conflating them shipped a bug that broke every image in the app.** `Produces` answers the first
-// from `images.formats`; only this answers the second. AVIF is job-produced (§22 makes its coverage
+// from the fixed compatibility ladder; only this answers the second. AVIF is job-produced (§22 makes its coverage
 // eventually consistent on purpose), so a freshly-ingested image has none for up to an hour.
 //
 // The consequence is not a missing optimisation, it is a BROKEN IMAGE: `<picture>` selects a source
@@ -152,7 +163,7 @@ func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, e
 		return false, err
 	}
 	for _, d := range ds {
-		if d.Format == f {
+		if d.Recipe == renditionRecipe && d.Format == f {
 			return true, nil
 		}
 	}
@@ -170,16 +181,14 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		return Image{}, err
 	}
 
-	// ⚠ Decode BEFORE storing. It is both the format allowlist (a sniff the client cannot lie past)
-	// and the only proof the bytes are a real image rather than something merely labelled as one —
-	// and storing first would mean a rejected upload had already touched the disk.
-	img, mime, err := Decode(data)
+	hash := HashBytes(data)
+	manifest, cleanup, err := s.inspect(ctx, data, hash)
 	if err != nil {
 		return Image{}, err
 	}
+	defer cleanup()
 
-	hash := HashBytes(data)
-	dst, err := s.blob.OriginalPath(hash, extForMIME(mime))
+	dst, err := s.blob.OriginalPath(hash, extForMIME(manifest.Source.MIME))
 	if err != nil {
 		return Image{}, err
 	}
@@ -190,18 +199,21 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 	}
 
 	now := s.now()
-	b := img.Bounds()
 	rec := Image{
 		Hash:        hash,
 		Origin:      orDefault(req.Origin, OriginUpload),
 		Visibility:  orDefault(req.Visibility, VisibilityMember),
 		Role:        orDefault(req.Role, RoleIcon),
-		MIME:        mime,
-		Width:       b.Dx(),
-		Height:      b.Dy(),
+		MIME:        manifest.Source.MIME,
+		Width:       manifest.Source.Width,
+		Height:      manifest.Source.Height,
 		Bytes:       int64(len(data)),
-		Placeholder: Placeholder(img),
-		DominantHex: DominantHex(img),
+		Animated:    manifest.Source.Animated,
+		FrameCount:  manifest.Source.FrameCount,
+		DurationMS:  manifest.Source.DurationMS,
+		LoopCount:   manifest.Source.LoopCount,
+		Placeholder: manifest.Source.Placeholder,
+		DominantHex: manifest.Source.DominantHex,
 		Meta:        req.Meta,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -221,6 +233,74 @@ func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (I
 		}
 	}
 	return rec, nil
+}
+
+func (s *Service) inspect(ctx context.Context, data []byte, hash string) (rustgen.Manifest, func(), error) {
+	if s.renderer == nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: required Rust renderer unavailable")
+	}
+	stagingRoot := filepath.Join(s.cfg.Dir, "staging")
+	if err := os.MkdirAll(stagingRoot, 0o750); err != nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: create staging root: %w", err)
+	}
+	staging, err := os.MkdirTemp(stagingRoot, "request-*")
+	if err != nil {
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: create staging: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(staging) }
+	source := filepath.Join(staging, "source")
+	if err := os.WriteFile(source, data, 0o600); err != nil {
+		cleanup()
+		return rustgen.Manifest{}, func() {}, fmt.Errorf("images: stage source: %w", err)
+	}
+	workerCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	manifest, err := s.generate(workerCtx, workerInteractive, s.workerRequest(hash, source, staging, nil))
+	if err != nil {
+		cleanup()
+		return rustgen.Manifest{}, func() {}, err
+	}
+	return manifest, cleanup, nil
+}
+
+func (s *Service) generate(ctx context.Context, class workerClass, request rustgen.Request) (rustgen.Manifest, error) {
+	waitStarted := time.Now()
+	release, err := s.capacity.acquire(ctx, class)
+	if s.cfg.Observer.QueueWait != nil {
+		s.cfg.Observer.QueueWait(string(class), time.Since(waitStarted))
+	}
+	if err != nil {
+		return rustgen.Manifest{}, err
+	}
+	if s.cfg.Observer.InFlight != nil {
+		s.cfg.Observer.InFlight(1)
+	}
+	defer func() {
+		release()
+		if s.cfg.Observer.InFlight != nil {
+			s.cfg.Observer.InFlight(-1)
+		}
+	}()
+	ctx = rustgen.WithObserver(ctx, s.cfg.Observer.Worker)
+	return s.renderer.Generate(ctx, request)
+}
+
+func (s *Service) workerRequest(hash, source, staging string, targets []rustgen.Target) rustgen.Request {
+	if targets == nil {
+		targets = []rustgen.Target{}
+	}
+	return rustgen.Request{
+		RequestID:  filepath.Base(staging),
+		Source:     rustgen.Source{Path: source, ExpectedSHA256: hash},
+		StagingDir: staging,
+		Targets:    targets,
+		Budget: rustgen.Budget{
+			MaxInputBytes: s.cfg.MaxUploadBytes(), MaxWidth: 16_384, MaxHeight: 16_384,
+			MaxCanvasPixels: 40_000_000, MaxFrames: 600,
+			MaxTotalFramePixels: 600_000_000, MaxDurationMS: 60_000,
+			MaxOutputBytes: 64 << 20,
+		},
+	}
 }
 
 // Adopt records a remote image WITHOUT fetching it, and returns immediately.
@@ -319,20 +399,26 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// unauthenticated caller request ten thousand distinct sizes and make the box encode ten
 	// thousand renditions — CPU and disk amplification with no login.
 	w := rec.Role.NearestWidth(width)
-	if rec.Animated {
-		// An animation has one rendition and skips the ladder entirely; resizing it per breakpoint
-		// costs far more than it saves.
-		w = rec.Width
-	}
-
 	dst, err := s.blob.DerivativePath(hash, w, f)
 	if err != nil {
 		return Rendition{}, ErrNotFound
 	}
-	if size, ok := s.blob.Stat(dst); ok {
-		_ = s.store.TouchImage(ctx, hash, s.now())
-		return Rendition{Path: dst, ContentType: f.MIME(), Bytes: size, Hash: hash}, nil
+	derivatives, err := s.store.ListDerivatives(ctx, hash)
+	if err != nil {
+		return Rendition{}, err
 	}
+	for _, derivative := range derivatives {
+		if derivative.Recipe != renditionRecipe || derivative.Format != f || derivative.Width != w {
+			continue
+		}
+		if size, ok := s.blob.Stat(derivative.Path); ok {
+			_ = s.store.TouchImage(ctx, hash, s.now())
+			return Rendition{Path: derivative.Path, ContentType: f.MIME(), Bytes: size, Hash: hash}, nil
+		}
+	}
+	// A file without its provenance row is an interrupted publication. It is not accepted as a
+	// cache hit: regenerate so output hash, recipe and animation state become durable together.
+	_ = s.blob.Remove(dst)
 
 	if f == FormatAVIF {
 		// Job-only. Absent is a normal, expected state rather than an error worth logging.
@@ -343,7 +429,7 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// produce one encode, not fifty racing writes to one path.
 	key := dst
 	v, err, _ := s.group.Do(key, func() (any, error) {
-		return s.encodeRendition(ctx, rec, f, w, dst)
+		return s.encodeRendition(ctx, rec, f, w)
 	})
 	if err != nil {
 		return Rendition{}, err
@@ -352,57 +438,119 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 }
 
 // encodeRendition does the actual work behind singleflight.
-func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w int, dst string) (Rendition, error) {
-	origPath, err := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w int) (Rendition, error) {
+	rends, err := s.encodeRenditions(ctx, rec, f, []int{w})
 	if err != nil {
 		return Rendition{}, err
+	}
+	return rends[0], nil
+}
+
+// encodeRenditions renders one same-format ladder in one worker process. The worker returns only a
+// complete, validated manifest; Go retains ownership of canonical paths and durable publication.
+func (s *Service) encodeRenditions(ctx context.Context, rec Image, f Format, widths []int) ([]Rendition, error) {
+	origPath, err := s.blob.OriginalPath(rec.Hash, extForMIME(rec.MIME))
+	if err != nil {
+		return nil, err
 	}
 	if _, ok := s.blob.Stat(origPath); !ok {
 		// The row exists but the bytes do not — a remote image not yet fetched, or an upload lost
 		// with the image directory. Both are ErrNotFound to a caller; the GC job is what tells an
 		// operator about the second, since it is the unrecoverable one.
-		return Rendition{}, ErrNotFound
+		return nil, ErrNotFound
 	}
 
-	data, err := os.ReadFile(origPath) //nolint:gosec // path built from a validated hash
+	if s.renderer == nil {
+		return nil, fmt.Errorf("images: required Rust renderer unavailable")
+	}
+	stagingRoot := filepath.Join(s.cfg.Dir, "staging")
+	if err := os.MkdirAll(stagingRoot, 0o750); err != nil {
+		return nil, fmt.Errorf("images: create staging root: %w", err)
+	}
+	staging, err := os.MkdirTemp(stagingRoot, "request-*")
 	if err != nil {
-		return Rendition{}, fmt.Errorf("images: read original %s: %w", rec.Hash, err)
+		return nil, fmt.Errorf("images: create staging: %w", err)
 	}
-	img, _, err := Decode(data)
+	defer func() { _ = os.RemoveAll(staging) }()
+	motion := "first_frame"
+	if rec.Animated && f == FormatWebP {
+		motion = "preserve"
+	}
+	targets := make([]rustgen.Target, 0, len(widths))
+	for _, width := range widths {
+		targets = append(targets, rustgen.Target{
+			ID: fmt.Sprintf("%s-w%d", f, width), Format: string(f), Width: width, Motion: motion,
+		})
+	}
+	timeout := 30 * time.Second
+	if f == FormatAVIF || rec.Animated {
+		timeout = 2 * time.Minute
+	}
+	workerCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	class := workerInteractive
+	if f == FormatAVIF {
+		class = workerBackground
+	}
+	manifest, err := s.generate(workerCtx, class, s.workerRequest(rec.Hash, origPath, staging, targets))
 	if err != nil {
-		return Rendition{}, err
+		return nil, err
 	}
 
-	var buf bytes.Buffer
-	if err := Encode(&buf, Resize(img, w), f); err != nil {
-		return Rendition{}, err
-	}
-	out := buf.Bytes()
-	if err := s.blob.Write(dst, out); err != nil {
-		return Rendition{}, err
-	}
-
+	rends := make([]Rendition, 0, len(manifest.Outputs))
+	derivatives := make([]Derivative, 0, len(manifest.Outputs))
+	published := make([]string, 0, len(manifest.Outputs))
 	now := s.now()
-	if err := s.store.PutDerivative(ctx, Derivative{
-		ImageHash: rec.Hash, Format: f, Width: w,
-		Bytes: int64(len(out)), Path: dst, CreatedAt: now,
-	}); err != nil {
-		return Rendition{}, err
+	rollback := func() {
+		for _, path := range published {
+			_ = s.blob.Remove(path)
+		}
+	}
+	for _, output := range manifest.Outputs {
+		dst, pathErr := s.blob.DerivativePath(rec.Hash, output.RequestedWidth, f)
+		if pathErr != nil {
+			rollback()
+			return nil, pathErr
+		}
+		if err := s.blob.Promote(filepath.Join(staging, output.RelativePath), dst); err != nil {
+			rollback()
+			return nil, err
+		}
+		published = append(published, dst)
+
+		derivatives = append(derivatives, Derivative{
+			ImageHash: rec.Hash, Recipe: output.RecipeID, Format: f, Width: output.RequestedWidth,
+			Bytes: output.Bytes, OutputHash: output.SHA256, Path: dst,
+			Animated: output.Animated, CreatedAt: now,
+		})
+		rends = append(rends, Rendition{Path: dst, ContentType: f.MIME(), Bytes: output.Bytes, Hash: rec.Hash})
+	}
+	if err := s.store.PutDerivatives(ctx, derivatives); err != nil {
+		rollback()
+		return nil, err
 	}
 	_ = s.store.TouchImage(ctx, rec.Hash, now)
-
-	return Rendition{Path: dst, ContentType: f.MIME(), Bytes: int64(len(out)), Hash: rec.Hash}, nil
+	return rends, nil
 }
 
-// URLFor builds the public URL of one rendition.
+// PathFor builds the same-origin path of one rendition for an in-app browser.
+//
+// A browser already has the right origin. Binding its image requests to server.public_url would
+// make every real rendition fail when that machine-client address is container-only or otherwise
+// unreachable from the viewer, while the inline ThumbHash misleadingly keeps painting.
+func (s *Service) PathFor(hash string, width int, f Format) string {
+	return fmt.Sprintf("/v1/images/%s/w%d.%s?r=%s", hash, width, f.Ext(), renditionRecipe)
+}
+
+// URLFor builds the public URL of one rendition for a machine/off-origin client.
 //
 // ⚠ Built from the operator-configured public base, never from a request header — see Config.
 func (s *Service) URLFor(hash string, width int, f Format) string {
 	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL()), "/")
-	return fmt.Sprintf("%s/v1/images/%s/w%d.%s", base, hash, width, f.Ext())
+	return base + s.PathFor(hash, width, f)
 }
 
-// SrcSet builds a `srcset` value for a role's whole ladder in one format.
+// SrcSet builds a same-origin `srcset` value for a role's whole ladder in one format.
 //
 // Width descriptors (`w`), not density (`2x`): the browser multiplies our `sizes` by the device's
 // DPR when choosing, so `w` already covers retina and a density list would be a second, redundant
@@ -411,7 +559,7 @@ func (s *Service) SrcSet(hash string, role Role, f Format) string {
 	widths := role.Widths()
 	parts := make([]string, 0, len(widths))
 	for _, w := range widths {
-		parts = append(parts, fmt.Sprintf("%s %dw", s.URLFor(hash, w, f), w))
+		parts = append(parts, fmt.Sprintf("%s %dw", s.PathFor(hash, w, f), w))
 	}
 	return strings.Join(parts, ", ")
 }

@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,9 @@ type fakePlayoutSessions struct {
 	stats    []playout.SessionStat
 	capacity int
 	reported []reportedProgram
+	tunes    int
+	stopped  []string
+	admitErr error
 }
 
 // attachRecord is one Attach call — its channel and codec target.
@@ -86,6 +90,30 @@ func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target
 	}, nil
 }
 
+func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
+	f.mu.Lock()
+	f.tunes++
+	f.mu.Unlock()
+	chunks, release, err := f.Attach(ctx, request.ChannelID, request.Plan)
+	return playout.Presentation{Stream: chunks, Release: release}, err
+}
+
+func (f *fakePlayoutSessions) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+	return playout.Asset{}, false, nil
+}
+
+func (f *fakePlayoutSessions) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return playout.Admission{Context: ctx}, f.admitErr
+}
+
+func (f *fakePlayoutSessions) StopChannel(channelID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, channelID)
+}
+
 // reports returns the ReportProgram calls seen so far.
 func (f *fakePlayoutSessions) reports() []reportedProgram {
 	f.mu.Lock()
@@ -99,9 +127,14 @@ func (f *fakePlayoutSessions) detachCount() int {
 	return f.detached
 }
 
+func (f *fakePlayoutSessions) tuneCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tunes
+}
+
 type playoutOpts struct {
-	sessions   api.PlayoutSessions
-	hls        api.PlayoutHLS
+	sessions   *fakePlayoutSessions
 	token      string
 	publicURL  string
 	backend    string
@@ -125,11 +158,13 @@ func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Stor
 	}
 
 	opts := api.Options{
-		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
-		Log:             slog.New(slog.DiscardHandler),
-		PlayoutSessions: o.sessions,
-		PlayoutHLS:      o.hls,
+		Store: st,
+		Auth:  api.NewTokenAuthorizer(adminToken),
+		Log:   slog.New(slog.DiscardHandler),
+	}
+	if o.sessions != nil {
+		opts.Playout = o.sessions
+		opts.PlayoutObserver = o.sessions
 	}
 	if !o.noSecret {
 		opts.PlayoutSecret = func() string { return o.token }
@@ -159,16 +194,28 @@ func getPlayout(t *testing.T, srv *httptest.Server, path string) *http.Response 
 
 func seedChannel(t *testing.T, st store.Store, id, name string, number int, backend string) {
 	t.Helper()
-	ch := store.Channel{Channel: schedule.Channel{ID: id, Name: name, Number: number}}
+	ch := store.Channel{Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive}}
 	if backend != "" {
 		ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: backend}
 	}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// --- Device auth (§11). These are the negative cases CLAUDE.md §19 requires. ---
+func setChannelStatus(t *testing.T, st store.Store, id string, status schedule.ChannelStatus) {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Status = status
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --- Device auth (§11). These are the negative cases AGENTS.md §19 requires. ---
 
 // EVERY playout route must reject a missing or wrong token. A television is the client, so
 // there is no session to fall back on — the token is the only auth these routes have.
@@ -390,9 +437,9 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 	}
 }
 
-// At capacity must be a 503 with Retry-After, not a generic error. The operator's fix (raise
-// the cap, lower the tier) is only discoverable if we say which wall was hit, and Retry-After
-// is what makes a media server back off instead of hammering.
+// At capacity must be a 503 with Retry-After, not a generic error. The measured capacity is a
+// safety boundary, so the response may suggest waiting or lowering quality but must never claim
+// that raising a configured cap creates hardware headroom.
 func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{
 		sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
@@ -407,9 +454,12 @@ func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 		t.Error("no Retry-After — a media server would retry immediately and hammer")
 	}
 	body, _ := io.ReadAll(resp.Body)
-	// The message must name the fix, not just the failure.
-	if !strings.Contains(string(body), "channel limit") {
-		t.Errorf("the 503 body does not tell the operator how to fix it: %s", body)
+	detail := string(body)
+	if !strings.Contains(detail, "wait") || !strings.Contains(detail, "lower quality") {
+		t.Errorf("the 503 body does not give safe recovery choices: %s", body)
+	}
+	if strings.Contains(detail, "Raise") {
+		t.Errorf("the 503 body promises capacity can be raised past measurement: %s", body)
 	}
 }
 
@@ -452,6 +502,28 @@ func TestPlayoutPlaylist_IsTheTwoLineFfconcat(t *testing.T) {
 	}
 	if !strings.Contains(got, "token="+playoutToken) {
 		t.Errorf("entries carry no token; ffmpeg cannot authenticate any other way: %q", got)
+	}
+}
+
+func TestPlayoutPlaylistUsesCanonicalLifecycleAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "channel outside transport catalog", err: playout.ErrIneligible, status: http.StatusNotFound},
+		{name: "durable lifecycle unavailable", err: playout.ErrUnavailable, status: http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := &fakePlayoutSessions{admitErr: tc.err}
+			srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
+			seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+			resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
+			if resp.StatusCode != tc.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+		})
 	}
 }
 
@@ -549,6 +621,57 @@ func TestPlayoutTuner_ExcludesTunarrBackedChannels(t *testing.T) {
 	if strings.Contains(got, "Tunarr Channel") {
 		t.Errorf("a Tunarr-backed channel appeared in Loomarr's tuner — two tuners would "+
 			"offer the same channel: %q", got)
+	}
+}
+
+func TestPlayoutTuner_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
+	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	seedChannel(t, st, "live", "Live Channel", 1, "internal")
+	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
+	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
+	seedChannel(t, st, "empty", "Empty Channel", 4, "internal")
+	setChannelStatus(t, st, "paused", schedule.StatusPaused)
+	setChannelStatus(t, st, "detached", schedule.StatusDetached)
+	setChannelStatus(t, st, "empty", schedule.StatusEmpty)
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+	if !strings.Contains(got, "Live Channel") {
+		t.Fatalf("live internal channel is missing: %q", got)
+	}
+	for _, name := range []string{"Paused Channel", "Detached Channel", "Empty Channel"} {
+		if strings.Contains(got, name) {
+			t.Errorf("%s was advertised by the internal tuner: %q", name, got)
+		}
+	}
+}
+
+func TestPlayoutTune_RejectsChannelsOutsideTheSurfableCatalog(t *testing.T) {
+	sessions := &fakePlayoutSessions{err: errors.New("Tune must not be called")}
+	srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
+	for i, tc := range []struct {
+		id     string
+		status schedule.ChannelStatus
+	}{
+		{id: "paused", status: schedule.StatusPaused},
+		{id: "detached", status: schedule.StatusDetached},
+		{id: "empty", status: schedule.StatusEmpty},
+	} {
+		seedChannel(t, st, tc.id, tc.id, i+1, "internal")
+		setChannelStatus(t, st, tc.id, tc.status)
+		for _, path := range []string{
+			"/v1/playout/stream/" + tc.id,
+			"/v1/playout/hls/" + tc.id + "/master.m3u8",
+		} {
+			resp := getPlayout(t, srv, path+"?token="+playoutToken)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s status = %d, want 404", path, resp.StatusCode)
+			}
+		}
+	}
+	if got := sessions.tuneCount(); got != 0 {
+		t.Fatalf("Tune called %d times for channels that cannot be played", got)
 	}
 }
 

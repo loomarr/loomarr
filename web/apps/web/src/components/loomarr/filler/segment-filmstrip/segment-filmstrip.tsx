@@ -1,6 +1,6 @@
-import { formatMmSs } from "@loomarr/core";
-import { cn } from "@/lib";
-import type { SegmentFilmstripProps } from "./segment-filmstrip.type";
+import { formatMmSs } from "@loomarr/core/format";
+import { cn } from "@/lib/utils";
+import type { FilmstripSegment, SegmentFilmstripProps } from "./segment-filmstrip.type";
 
 // SegmentFilmstrip — the reel's detected clips as one time-scaled bar (the v2 mock's `rl.strip`).
 //
@@ -21,16 +21,51 @@ import type { SegmentFilmstripProps } from "./segment-filmstrip.type";
 // for the shortest blocks to read slightly wide than for them to be unreachable.
 const minBlockPercent = 0.6;
 
+type TimelineItem =
+  | {
+      kind: "segment";
+      key: string;
+      startMs: number;
+      endMs: number;
+      durationMs: number;
+      name?: string;
+      unsplittable?: boolean;
+    }
+  | { kind: "gap"; key: string; startMs: number; endMs: number; durationMs: number };
+
+const timelineItems = (spans: Array<FilmstripSegment & { durationMs: number }>): TimelineItem[] => {
+  const ordered = [...spans].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const items: TimelineItem[] = [];
+  let cursor = 0;
+
+  for (const span of ordered) {
+    if (span.startMs > cursor) {
+      items.push({
+        kind: "gap",
+        key: `gap-${cursor}-${span.startMs}`,
+        startMs: cursor,
+        endMs: span.startMs,
+        durationMs: span.startMs - cursor,
+      });
+    }
+    items.push({ kind: "segment", ...span });
+    cursor = Math.max(cursor, span.endMs);
+  }
+
+  return items;
+};
+
 const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFilmstripProps) => {
   const spans = segments.map((s) => ({ ...s, durationMs: Math.max(0, s.endMs - s.startMs) }));
-  const total = spans.reduce((sum, s) => sum + s.durationMs, 0);
+  const positiveSpans = spans.filter((s) => s.durationMs > 0);
+  const reelEnd = Math.max(0, ...positiveSpans.map((s) => s.endMs));
 
   // ⚠ An empty or zero-length reel renders NOTHING rather than a bar of NaN-width blocks. A
   // proposal whose segments all collapsed is a real state (every one dropped in the editor), and
   // dividing by its total is how a timeline becomes a row of invisible artefacts.
-  if (spans.length === 0 || total <= 0) return null;
+  if (positiveSpans.length === 0 || reelEnd <= 0) return null;
 
-  const reelEnd = Math.max(...spans.map((s) => s.endMs));
+  const items = timelineItems(positiveSpans);
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
@@ -38,8 +73,20 @@ const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFi
           screen reader announcing "list, 12 items" tells the operator how many clips the
           detector found before they touch anything. */}
       <ul className="flex h-6 list-none gap-0.5" aria-label="Detected clips, in order">
-        {spans.map((s) => {
-          const pct = Math.max(minBlockPercent, (s.durationMs / total) * 100);
+        {items.map((s) => {
+          const pct = Math.max(s.kind === "segment" ? minBlockPercent : 0, (s.durationMs / reelEnd) * 100);
+          if (s.kind === "gap") {
+            const label = `${formatMmSs(s.startMs)}–${formatMmSs(s.endMs)} unassigned`;
+            return (
+              <li
+                key={s.key}
+                style={{ flex: `${pct} 1 0%` }}
+                className="min-w-[2px] rounded-sm border border-onair-300/70 border-dashed bg-onair-tint-15"
+                aria-label={label}
+                title={label}
+              />
+            );
+          }
           const label = `${formatMmSs(s.startMs)} · ${s.name || "unnamed"}`;
           return (
             <li key={s.key} style={{ flex: `${pct} 1 0%` }} className="min-w-[3px]">
@@ -78,7 +125,24 @@ const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFi
       </ul>
       <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
         <span>{formatMmSs(0)}</span>
-        <span>every block is one detected clip — click to preview</span>
+        {/* ⚠ **"jump to its row", NOT "preview" (V54 A7).** This read "click to preview" for as
+            long as the strip has existed, and clicking has never previewed anything: `onFocus`
+            sets the editor's `focusedKey`, which scrolls that segment's row into view and rings
+            it. Confirmed live — the page contains zero `<video>`, `<canvas>` and `<img>`
+            elements. A caption is a promise about behaviour, and an operator who clicks expecting
+            to see the clip concludes the feature is broken rather than absent.
+
+            ⚠ **The preview has since landed, and this caption still stands** (§10 V54). It lives
+            on the ROW — a ▶ tile per segment that expands into a player — not on the strip, and
+            clicking a BLOCK still only jumps. So the wording is right for what it describes, and
+            restoring "preview" would make it newly false in the other direction: it would
+            advertise the strip as the preview control, which it is not.
+
+            The "does not promise a preview it cannot deliver" test below therefore stays ARMED
+            rather than relaxing. Its escape hatch exists for the day the strip itself grows media
+            (per-block thumbnails, say); rendering a `<video>` here purely to unlock the word
+            would be gaming the guard, not satisfying it. */}
+        <span>every block is one detected clip — click to jump to its row</span>
         <span>{formatMmSs(reelEnd)}</span>
       </div>
     </div>

@@ -1,8 +1,8 @@
-import { pluralize } from "@loomarr/core";
+import { pluralize } from "@loomarr/core/format";
 import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
 
 // ServiceControl — the restart control (§9.2, V13; v2 mock Dashboard § service control).

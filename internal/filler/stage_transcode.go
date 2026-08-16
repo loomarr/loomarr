@@ -2,10 +2,13 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/mediatools"
 )
 
 // The TRANSCODE stage (§10 V51b): every clip is re-encoded once, to one mezzanine profile.
@@ -15,10 +18,10 @@ import (
 
 // TranscodeClipStore is the slice of the store the transcode stage writes through.
 type TranscodeClipStore interface {
-	// UpsertClip records the new location and the re-measured facts. ⚠ `path` IS in UpsertClip's
-	// DO UPDATE list, and this is the case that blesses it: the extension changes when a clip
-	// arrives as something other than mp4.
-	UpsertClip(ctx context.Context, c StoreClip) error
+	// ReplaceClipIdentity atomically re-keys the clip and everything that refers to it. A
+	// transcode changes bytes, so keeping the intake hash would make the next scan discover a
+	// second, metadata-empty clip under the transformed bytes' real identity.
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c StoreClip) error
 }
 
 // TranscodeStage re-encodes a clip to the mezzanine profile.
@@ -33,6 +36,11 @@ type TranscodeStage struct {
 	// audio alone, which is what `filler.autofile.normalize_loudness` off means.
 	targetLUFS func() float64
 	now        func() time.Time
+	// transcode is a seam around the ffmpeg driver. Production always uses mediatools.Transcode;
+	// tests replace it with a byte writer so the lifecycle can be exercised without a host binary.
+	transcode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
+	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
+	inspect func(context.Context, string, string, int64, bool) (MediaQuality, error)
 }
 
 // NewTranscodeStage builds the stage.
@@ -44,11 +52,13 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 		now = time.Now
 	}
 	if profile.VideoCodec == "" {
-		profile = DefaultMezzanine()
+		profile = mediatools.DefaultMezzanine()
 	}
 	return &TranscodeStage{
 		store: store, probe: probe, clipDir: clipDir, profile: profile,
 		ffmpegPath: ffmpegPath, targetLUFS: targetLUFS, now: now,
+		transcode: mediatools.Transcode,
+		inspect:   mediatools.InspectQuality,
 	}
 }
 
@@ -70,18 +80,68 @@ func (s *TranscodeStage) Applies(_ context.Context, c StoreClip) (bool, string) 
 		return false, "the clip has no file"
 	}
 	full := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
-	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.profile.ID() {
-		return false, "already encoded to the ingest profile"
+	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.profile.ID() && tags.MediaQuality != nil {
+		// A clean report is finished work. An anomalous report must remain applicable so a
+		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
+		if verdict, _, _ := mediaQualityVerdict(*tags.MediaQuality); verdict == VerdictContinue {
+			return false, "already encoded to the ingest profile"
+		}
 	}
 	return true, ""
 }
 
-// Run re-encodes the clip, moves its sidecar if the extension changed, and updates its row.
+const transcodeStagingDir = ".transcode"
+
+// Run re-encodes the clip, hashes the transformed bytes, files them at that identity's canonical
+// path, and atomically re-keys the catalog metadata. The original remains intact until the new
+// file, sidecar and database references are all durable.
 func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+	if s.store == nil {
+		return StageResult{}, fmt.Errorf("transcode %s: no clip store is configured", c.Path)
+	}
 	oldRel := c.Path
-	newRel := MezzanineOutputPath(oldRel)
 	oldFull := filepath.Join(s.clipDir, filepath.FromSlash(oldRel))
-	newFull := filepath.Join(s.clipDir, filepath.FromSlash(newRel))
+
+	// The inspection report is also the retry record for the airability gate. Re-emit its
+	// decision without decoding or encoding again if the previous pass could not hold the clip.
+	if tags, ok := ReadSidecarTags(oldFull); ok && tags.Mezzanine == s.profile.ID() && tags.MediaQuality != nil {
+		return mediaQualityResult(c, *tags.MediaQuality), nil
+	}
+
+	// Older mezzanines already carry the profile marker but predate content inspection. Re-encoding
+	// would add a needless generation of loss, so spend this rung's bounded transcode budget on one
+	// detector-only decode, persist the evidence beside the bytes, and decide from that.
+	if tags, ok := ReadSidecarTags(oldFull); ok && tags.Mezzanine == s.profile.ID() && tags.MediaQuality == nil {
+		in, err := s.probe(ctx, oldFull)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("re-probe %s before quality backfill: %w", oldRel, err)
+		}
+		ffmpeg := ""
+		if s.ffmpegPath != nil {
+			ffmpeg = s.ffmpegPath()
+		}
+		quality, err := s.inspect(ctx, ffmpeg, oldFull, in.DurationMs, !in.Silent)
+		if err != nil {
+			return StageResult{}, err
+		}
+		tags.MediaQuality = &quality
+		if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+			return StageResult{}, fmt.Errorf("persist quality inspection %s: %w", oldRel, err)
+		}
+		return mediaQualityResult(c, quality), nil
+	}
+
+	stageDir := filepath.Join(s.clipDir, transcodeStagingDir)
+	if err := os.MkdirAll(stageDir, 0o755); err != nil {
+		return StageResult{}, fmt.Errorf("create transcode staging folder: %w", err)
+	}
+	stageFull := filepath.Join(stageDir, c.Hash+".mp4")
+	_ = os.Remove(stageFull)
+	_ = os.Remove(sidecarPathFor(stageFull))
+	defer func() {
+		_ = os.Remove(stageFull)
+		_ = os.Remove(sidecarPathFor(stageFull))
+	}()
 
 	// Measure the input so the output can be checked against it. The probe rung has already run,
 	// but `HadAudio` is not on the clip row and re-probing one file is cheap next to an encode.
@@ -99,75 +159,145 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		ffmpeg = s.ffmpegPath()
 	}
 
-	// ⚠ Same extension is a temp-then-rename over the SAME path, which `Transcode` already does —
-	// it writes `<out>.mezz.tmp<ext>` and renames. ffmpeg is never pointed at its own input.
-	req := TranscodeRequest{
-		In: oldFull, Out: newFull,
+	req := mediatools.TranscodeRequest{
+		In: oldFull, Out: stageFull,
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
 		TargetLUFS: lufs, Profile: s.profile,
 		FFmpegPath: ffmpeg, Probe: s.probe,
 	}
-	if err := Transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) }); err != nil {
+	quality, err := s.transcode(ctx, req, func(pct int) { reportProgress(ctx, StageTranscode, pct) })
+	if err != nil {
 		return StageResult{}, err
 	}
 
-	// ⚠ Move the sidecar BEFORE deleting the old media file and before the row moves. It carries
-	// `originalName`, the only surviving copy of the clip's arrival filename and therefore the
-	// only thing keeping filename-grounded eras alive.
-	if err := moveSidecar(oldFull, newFull); err != nil {
-		return StageResult{}, fmt.Errorf("transcode %s: the sidecar could not be moved: %w", oldRel, err)
+	// Re-measure the staged file: the encode may legitimately shift the duration by a frame,
+	// and the row must describe what is on disk.
+	out, err := s.probe(ctx, stageFull)
+	if err != nil {
+		return StageResult{}, fmt.Errorf("re-probe %s after transcode: %w", oldRel, err)
+	}
+	newHash, err := ClipID(stageFull)
+	if err != nil {
+		return StageResult{}, fmt.Errorf("hash transformed clip %s: %w", oldRel, err)
+	}
+	newRel := filepath.ToSlash(ClipRelPath(newHash, ".mp4"))
+	newFull := filepath.Join(s.clipDir, filepath.FromSlash(newRel))
+	alreadyPublished := false
+	if newFull != oldFull {
+		if _, err := os.Stat(newFull); err == nil {
+			// A previous attempt may have published the verified pair and then lost the database
+			// commit. The marker distinguishes that recoverable saga state from an unrelated sparse-
+			// hash collision; retry the durable re-key without overwriting either file.
+			tags, ok := ReadSidecarTags(newFull)
+			if !ok || tags.Mezzanine != s.profile.ID() {
+				return StageResult{}, fmt.Errorf("transcode %s: transformed identity %s already exists", oldRel, newHash)
+			}
+			alreadyPublished = true
+		} else if !os.IsNotExist(err) {
+			return StageResult{}, fmt.Errorf("transcode %s: inspect transformed identity: %w", oldRel, err)
+		}
 	}
 
-	// Re-measure the installed file: the encode may legitimately shift the duration by a frame,
-	// and the row must describe what is on disk.
-	out, err := s.probe(ctx, newFull)
-	if err != nil {
-		return StageResult{}, fmt.Errorf("re-probe %s after transcode: %w", newRel, err)
+	// Build the replacement sidecar while the media is still hidden from the catalog scan. Split
+	// children historically had no sidecar; seeding OriginalName from the durable display name is
+	// what prevents their next scan from presenting the old hash as the title.
+	if err := copySidecarForTransform(oldFull, stageFull); err != nil {
+		return StageResult{}, fmt.Errorf("transcode %s: copy sidecar: %w", oldRel, err)
+	}
+	tags, _ := ReadSidecarTags(stageFull)
+	if tags.OriginalName == "" {
+		tags.OriginalName = c.Name
+	}
+	tags.Kind = string(c.Kind)
+	tags.Era = c.Era
+	tags.Audience = string(c.Audience)
+	tags.Category = c.Category
+	tags.Brand = c.Brand
+	tags.Transcript = c.Transcript
+	tags.Confidence = c.Confidence
+	tags.SuggestedEra = c.SuggestedEra
+	tags.Mezzanine = s.profile.ID()
+	quality.DurationMs = out.DurationMs
+	tags.MediaQuality = &quality
+	if lufs != 0 {
+		tags.NormalizedLUFS = lufs
+	}
+	if err := WriteSidecarTags(stageFull, tags, false); err != nil {
+		return StageResult{}, fmt.Errorf("transcode %s: write replacement sidecar: %w", oldRel, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(newFull), 0o755); err != nil {
+		return StageResult{}, fmt.Errorf("transcode %s: create content shard: %w", oldRel, err)
+	}
+	// Sidecar first: the scan ignores it without media. Hard links publish without replacement,
+	// so a race or sparse-hash collision can never overwrite an existing content-addressed clip.
+	if !alreadyPublished {
+		if err := publishTranscodePair(stageFull, newFull); err != nil {
+			return StageResult{}, fmt.Errorf("transcode %s: publish transformed media: %w", oldRel, err)
+		}
 	}
 
 	updated := c
+	updated.Hash = newHash
 	updated.Path = newRel
+	updated.TunarrProgramID = "" // the registered program named the old path; the next scan refreshes it
 	updated.DurationMs = out.DurationMs
 	if q := QualityFromHeight(out.Height); q != "" {
 		updated.Quality = q
 	}
 	updated.UpdatedAt = s.now().UTC()
-	if s.store != nil {
-		if err := s.store.UpsertClip(ctx, updated); err != nil {
-			return StageResult{}, err
-		}
+	if err := s.store.ReplaceClipIdentity(ctx, c.Hash, updated); err != nil {
+		return StageResult{}, err
 	}
 
-	// The old file goes only AFTER the row points at the new one. The other order leaves a window
-	// where the catalog names a file that no longer exists — and if the process dies in it, the
-	// clip is permanently broken rather than merely duplicated.
+	// The old file goes only AFTER every database reference points at the new identity. If cleanup
+	// fails, the correct clip remains playable and the stale bytes merely waste disk.
 	if newFull != oldFull {
 		if err := os.Remove(oldFull); err != nil && !os.IsNotExist(err) {
-			// Not fatal: the clip is installed, correct and catalogued. A stray original wastes
-			// disk, which the next sync reports, and failing the rung here would re-encode a file
-			// that is already done.
 			return StageResult{Clip: updated, Verdict: VerdictContinue,
 				Note: "re-encoded, but the original file could not be deleted"}, nil
 		}
+		_ = os.Remove(sidecarPathFor(oldFull))
 	}
 
-	// ⚠ The marker is written AFTER the rename, never before. Written first, a failed encode would
-	// leave a file marked as encoded that never was — and nothing would ever revisit it. This is
-	// the ordering V42 chose for `normalizedLufs`, for the same reason.
-	tags, _ := ReadSidecarTags(newFull)
-	tags.Mezzanine = s.profile.ID()
-	if lufs != 0 {
-		// The loudness filter ran in this pass, so the loudness marker is true as well — recording
-		// it here is what stops a later pass re-normalising a file that is already at target and
-		// walking its loudness down run after run.
-		tags.NormalizedLUFS = lufs
-	}
-	if err := WriteSidecarTags(newFull, tags, false); err != nil {
-		// The file IS encoded; only the marker failed. Report it rather than claiming a success we
-		// cannot prove — the runner retries, `Applies` sees no marker, and the clip is re-encoded
-		// once more. That is a real cost, which is why it is an error and not a silent shrug.
-		return StageResult{Clip: updated}, fmt.Errorf("transcode %s: encoded, but the marker could not be written: %w", newRel, err)
-	}
+	return mediaQualityResult(updated, quality), nil
+}
 
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
+	verdict, reason, detail := mediaQualityVerdict(quality)
+	result := StageResult{Clip: c, Verdict: verdict}
+	switch verdict {
+	case VerdictReject:
+		result.Reason, result.Detail = reason, detail
+	case VerdictReview:
+		result.Note = detail
+	}
+	return result
+}
+
+func copySidecarForTransform(oldMedia, stagedMedia string) error {
+	from := sidecarPathFor(oldMedia)
+	if _, err := os.Stat(from); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return copyFile(from, sidecarPathFor(stagedMedia))
+}
+
+func publishTranscodePair(stagedMedia, finalMedia string) error {
+	if stagedMedia == finalMedia {
+		return nil
+	}
+	stagedSidecar, finalSidecar := sidecarPathFor(stagedMedia), sidecarPathFor(finalMedia)
+	if err := os.Link(stagedSidecar, finalSidecar); err != nil {
+		return err
+	}
+	if err := os.Link(stagedMedia, finalMedia); err != nil {
+		_ = os.Remove(finalSidecar)
+		return err
+	}
+	_ = os.Remove(stagedSidecar)
+	_ = os.Remove(stagedMedia)
+	return nil
 }

@@ -3252,13 +3252,8 @@ input::placeholder,textarea::placeholder{color:#5A6170;}
                       <span style="font-size:11px;color:#8B93A3;">{{ sc.role }}</span>
                     </div>
                     <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sc.display }}</span>
-                    <sc-if value="{{ sc.canReveal }}" hint-placeholder-val="{{ true }}">
-                      <button onClick="{{ sc.toggle }}" data-lm-item="1" title="{{ sc.revealTitle }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ sc.revealMark }}</button>
-                      <button onClick="{{ sc.copy }}" data-lm-item="1" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:'Geist',sans-serif;">Copy</button>
-                    </sc-if>
-                    <sc-if value="{{ sc.neverShown }}" hint-placeholder-val="{{ false }}">
-                      <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">never displayable</span>
-                    </sc-if>
+                    <button onClick="{{ sc.toggle }}" data-lm-item="1" title="{{ sc.revealTitle }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ sc.revealMark }}</button>
+                    <button onClick="{{ sc.copy }}" data-lm-item="1" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:'Geist',sans-serif;">Copy</button>
                     <button onClick="{{ sc.regen }}" data-lm-item="danger" style="background:transparent;color:#E85A5F;border:1px solid rgba(229,72,77,.35);border-radius:5px;padding:4px 11px;font-size:11.5px;cursor:pointer;font-family:'Geist',sans-serif;">Regenerate…</button>
                   </div>
                 </sc-for>
@@ -4075,8 +4070,8 @@ class Component extends DCLogic {
   ALLKEYS = [
     ['library.flavor', 'jellyfin', 'Connections', 'env'], ['library.url', 'http://jellyfin:8096', 'Connections', 'env'],
     ['library.token', '••••••••', 'Connections', 'database'], ['tunarr.url', 'http://tunarr:8000', 'Connections', 'database'],
-    ['tunarr.api_key', '(unset)', 'Connections', 'default'], ['requester.provider', 'seerr', 'Connections', 'database'],
-    ['requester.url', 'http://seerr:5055', 'Connections', 'database'], ['requester.api_key', '••••••••', 'Connections', 'database'],
+    ['requester.provider', 'seerr', 'Connections', 'database'], ['requester.url', 'http://seerr:5055', 'Connections', 'database'],
+    ['requester.api_key', '••••••••', 'Connections', 'database'],
     ['requester.auto_approve', 'true', 'Connections', 'database', true], ['tmdb.api_key', '••••••••', 'Connections', 'database'],
     ['llm.provider', 'ollama', 'AI', 'database'], ['llm.url', 'http://ollama:11434', 'AI', 'database'],
     ['llm.model', 'qwen2.5:14b', 'AI', 'database'], ['llm.timeout', '90s', 'AI', 'default', true],
@@ -4087,7 +4082,7 @@ class Component extends DCLogic {
     ['filler.dir', '/data/filler', 'Defaults', 'env'], ['filler.library', 'Commercials', 'Defaults', 'database'],
     ['session.ttl', '720h', 'Security', 'database'], ['session.cookie_mode', 'lax', 'Security', 'database'],
     ['users.sync_interval', '15m', 'Security', 'database'], ['api_token', '••••••••', 'Security', 'generated'],
-    ['session_secret', '••••••••', 'Security', 'generated'], ['database.url', 'sqlite:///data/loomarr.db', 'Security', 'env'],
+    ['database.url', 'sqlite:///data/loomarr.db', 'Security', 'env'],
     ['tasks.concurrency', '2', 'Tasks', 'default', true], ['ingest.enabled', 'false', 'Tasks', 'default'],
   ];
   MODELS = [
@@ -4765,7 +4760,7 @@ class Component extends DCLogic {
       loginUser: s.loginUser, loginPw: s.loginPw,
       setLoginUser: e => this.setState({ loginUser: e.target.value }),
       setLoginPw: e => this.setState({ loginPw: e.target.value }),
-      doLogin: () => { this.setState({ screen: 'app', route: 'channels' }); this.toast('Signed in as ' + (s.loginUser || 'alex') + ' — session cookie set.', '#FFB020'); },
+      doLogin: () => { this.setState({ screen: 'app', route: 'channels' }); this.toast('Signed in as ' + (s.loginUser || 'alex') + '.', '#FFB020'); },
       ownerName: s.loginUser || 'alex', ownerInitials: (s.loginUser || 'alex').slice(0, 2).toUpperCase(),
       wizSteps, wizBlocks, wizTitle: TITLES[curId][0], wizDesc: TITLES[curId][1],
       wizIsAdmin: curId === 'admin', wizHasRail: curId !== 'database', wizIsDatabaseRail: false, wizIsConnections: curId === 'connections',
@@ -6275,11 +6270,10 @@ class Component extends DCLogic {
               set: e => this.setState({ sec: { ...s.sec, [key]: e.target.value }, setDirty: true }),
             })),
           secrets: [
-            { key: 'api_token', role: 'break-glass API access', value: 'loom_9f2k7x4m1qbe8t', reveal: true },
-            { key: 'session_secret', role: 'signs every session cookie', value: '', reveal: false },
+            { key: 'api_token', role: 'break-glass API access', value: 'loom_9f2k7x4m1qbe8t' },
           ].map(sc => ({
-            key: sc.key, role: sc.role, canReveal: sc.reveal, neverShown: !sc.reveal,
-            display: sc.reveal ? (s.reveal[sc.key] ? sc.value : '••••••••••••••••') : '•••••••••••••••• (write-only)',
+            key: sc.key, role: sc.role,
+            display: s.reveal[sc.key] ? sc.value : '••••••••••••••••',
             revealMark: s.reveal[sc.key] ? 'hide' : 'show',
             revealTitle: s.reveal[sc.key] ? 'Hide the token' : 'Reveal the token',
             toggle: () => this.setState({ reveal: { ...s.reveal, [sc.key]: !s.reveal[sc.key] } }),
@@ -6287,20 +6281,17 @@ class Component extends DCLogic {
             regen: () => this.setState({ regenKey: sc.key, regenTyped: '' }),
           })),
           regenOpen: !!s.regenKey, regenKey: s.regenKey || '',
-          regenWarning: s.regenKey === 'session_secret'
-            ? 'Every session is revoked immediately, including yours — you will be signed out and have to sign in again. The API token is unaffected, so automation keeps working as break-glass access.'
-            : 'Any script or integration using this token stops working until you paste the new one. Sessions are unaffected.',
+          regenWarning: 'Any script or integration using this token stops working until you paste the new one. Sessions are unaffected.',
           regenTyped: s.regenTyped, setRegenTyped: e => this.setState({ regenTyped: e.target.value }),
           regenBtnBg: s.regenTyped === s.regenKey ? '#E5484D' : '#1B1E24',
           regenBtnColor: s.regenTyped === s.regenKey ? '#fff' : '#5A6170',
           confirmRegen: () => {
             if (s.regenTyped !== s.regenKey) { this.toast('Type the key name exactly to confirm.', '#F5D90A'); return; }
-            const k = s.regenKey;
             this.setState({ regenKey: null, regenTyped: '', reveal: {} });
-            this.toast(k === 'session_secret' ? 'Session secret regenerated — all sessions revoked, including yours.' : 'API token regenerated — the old token is refused from now on.', '#E5484D');
+            this.toast('API token regenerated — the old token is refused from now on.', '#E5484D');
           },
           cancelRegen: () => this.setState({ regenKey: null, regenTyped: '' }),
-          allTotal: '69', allQ: s.allQ, setAllQ: e => this.setState({ allQ: e.target.value }),
+          allTotal: '68', allQ: s.allQ, setAllQ: e => this.setState({ allQ: e.target.value }),
           ...(() => {
             const q = s.allQ.trim().toLowerCase();
             const rows = this.ALLKEYS.filter(r => !q || (r[0] + ' ' + r[1] + ' ' + r[2]).toLowerCase().includes(q));
@@ -6310,7 +6301,7 @@ class Component extends DCLogic {
                 key, value, group, advanced: !!adv,
                 prov: P[prov][0], provColor: P[prov][1], provBg: P[prov][2],
               })),
-              allCount: rows.length + ' of 69 shown', allEmpty: rows.length === 0,
+              allCount: rows.length + ' of 68 shown', allEmpty: rows.length === 0,
             };
           })(),
           setDirty: s.setDirty,

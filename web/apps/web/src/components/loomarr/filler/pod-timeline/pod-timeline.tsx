@@ -1,7 +1,9 @@
-import type { PodEntryDTO, PodPoolDTOMatchLevel } from "@loomarr/api";
-import { formatClipDuration } from "@loomarr/core";
-import { Badge, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
+import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
+import { formatClipDuration } from "@loomarr/core/format";
+import { Badge } from "@/components/ui/badge";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
 // PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper, each
@@ -89,6 +91,7 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
               SEGMENT_FILL[entry.kind],
             )}
           >
+            <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
             <Caption tone="strong" shout className="truncate">
               {SEGMENT_ABBR[entry.kind]}
             </Caption>

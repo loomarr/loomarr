@@ -26,7 +26,6 @@ const Harness = (over: Partial<DatabaseMigrationProps> = {}) => (
     onPreflight={vi.fn()}
     onBackup={vi.fn()}
     onMigrate={vi.fn()}
-    onSwitchover={vi.fn()}
     {...over}
   />
 );
@@ -37,7 +36,7 @@ describe("DatabaseMigration", () => {
   // looks clickable and then 409s is a worse experience than one that explains itself.
   it("disables Migrate until a backup exists", () => {
     const { rerender } = render(<Harness step="backup" />);
-    expect(screen.getByRole("button", { name: "Migrate data" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Migrate and restart" })).toBeDisabled();
 
     rerender(
       <Harness
@@ -45,7 +44,7 @@ describe("DatabaseMigration", () => {
         status={status({ backup: { path: "/data/backups/x.db", bytes: 4096, writtenAt: 1 } })}
       />,
     );
-    expect(screen.getByRole("button", { name: "Migrate data" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Migrate and restart" })).toBeEnabled();
   });
 
   // The copy is load-bearing: an operator who reads "recommended" skips it, and the whole
@@ -70,51 +69,12 @@ describe("DatabaseMigration", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
   });
 
-  it("offers switchover only once parity matches", () => {
-    const tables = [{ table: "titles", source: 1204, copied: 1204 }];
-    const { rerender } = render(
-      <Harness step="verify" status={status({ phase: "migrating", tables, parity: "unknown" })} />,
-    );
-    expect(screen.queryByRole("button", { name: "Switch over" })).not.toBeInTheDocument();
-
-    rerender(<Harness step="verify" status={status({ phase: "verified", tables, parity: "match" })} />);
-    expect(screen.getByRole("button", { name: "Switch over" })).toBeEnabled();
-  });
-
-  // A mismatch must state what was NOT lost. The operator's first question after a failed
-  // migration is whether their data survived.
-  it("says the source is untouched when parity fails", () => {
-    render(
-      <Harness
-        step="verify"
-        status={status({
-          phase: "failed",
-          parity: "mismatch",
-          tables: [{ table: "titles", source: 1204, copied: 506 }],
-        })}
-      />,
-    );
-    expect(screen.getByText(/only read from/i)).toBeInTheDocument();
-    expect(screen.getByText(/still running on it/i)).toBeInTheDocument();
-  });
-
-  it("reports per-table progress as accessible progressbars", () => {
-    render(
-      <Harness
-        step="migrate"
-        status={status({
-          phase: "migrating",
-          tables: [
-            { table: "titles", source: 1000, copied: 500 },
-            { table: "users", source: 4, copied: 4 },
-          ],
-        })}
-      />,
-    );
-    const bars = screen.getAllByRole("progressbar");
-    expect(bars).toHaveLength(2);
-    expect(bars[0]).toHaveAttribute("aria-valuenow", "50");
-    expect(bars[1]).toHaveAttribute("aria-valuenow", "100");
+  it("treats copy, verify, switchover, and restart as one reconnect wait", () => {
+    render(<Harness step="reconnect" status={status({ phase: "migrating" })} />);
+    expect(screen.getByText(/waiting for Loomarr/i)).toBeInTheDocument();
+    expect(screen.getByText(/reconnect automatically/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /switch over/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
   // An install already on Postgres gets an answer, not an absence. A missing stepper reads
@@ -130,7 +90,19 @@ describe("DatabaseMigration", () => {
   it("explains an env-pinned DATABASE_URL rather than offering the stepper", () => {
     render(<Harness envPinned />);
     expect(screen.getByText(/pinned by the environment/i)).toBeInTheDocument();
+    expect(screen.getByText(/in-app migration is unavailable/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Move to PostgreSQL" })).not.toBeInTheDocument();
+  });
+
+  it("explains that migrate drains, verifies, switches, and restarts", () => {
+    render(
+      <Harness
+        step="backup"
+        status={status({ backup: { path: "/data/backups/x.db", bytes: 4096, writtenAt: 1 } })}
+      />,
+    );
+    expect(screen.getByText(/drain connections/i)).toBeInTheDocument();
+    expect(screen.getByText(/switch its boot configuration/i)).toBeInTheDocument();
   });
 
   it("runs preflight with the entered connection string", async () => {

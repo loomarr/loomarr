@@ -1,20 +1,18 @@
-import type {
-  ChannelFitDTO,
-  ClipDTO,
-  DiscoveredClip,
-  FillerSourceDTO,
-  GuideChannelTimeline,
-  IncomingClipDTO,
-  IncomingReelDTO,
-  IncomingRejectDTO,
-  PodEntryDTO,
-  PodPoolDTO,
-  PoolDTO,
-  Proposal,
-  PullDTO,
-  SplitProposal,
-} from "@loomarr/api";
-import type { SearchResult } from "@loomarr/core";
+import type { ChannelFitDTO } from "@loomarr/api/models/channelFitDTO";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import type { IncomingReelDTO } from "@loomarr/api/models/incomingReelDTO";
+import type { IncomingRejectDTO } from "@loomarr/api/models/incomingRejectDTO";
+import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
+import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
+import type { PoolDTO } from "@loomarr/api/models/poolDTO";
+import type { Proposal } from "@loomarr/api/models/proposal";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
+import type { SplitProposal } from "@loomarr/api/models/splitProposal";
+import type { SearchResult } from "@loomarr/core/contracts";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
 // both web and the future mobile app (§4.2, §5.2). Typed against the orval-generated
@@ -791,6 +789,141 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
   },
 ];
 
+// The PROVIDER ROLL-UP shape (§10 V51c) — what `GET /v1/filler/sources` has actually returned
+// since PR #201, and what nothing rendered until V54 phase B.
+//
+// ⚠ **No fixture anywhere carried `group`/`parentId` before this one**, so every unit and visual
+// test in the tree was green over the flat V37 list while the server had been sending a nested one
+// for weeks. That is the same shape as the untyped story stubs (#281): a suite that agrees with
+// itself about a shape the server stopped sending.
+//
+// Faithful to `fillersources.go` in the three ways that matter to the renderer:
+//
+//   1. **Pre-ordered, flat.** Each group node is immediately followed by its own children. There is
+//      no `children: []` array — a twirl-down renders from exactly this by hiding rows whose parent
+//      is collapsed, and the BE chose flat deliberately (orval handles recursive types badly).
+//   2. **A group is not a control.** `switchable`, `removable`, `fetchable` and `searchable` are
+//      all false: there is no URI to fetch, no registration to forget, and a cascade switch would
+//      destroy each child's own choice. Its `enabled` is a REPORT — true when any child is working.
+//   3. **`configured` means "anything behind it"**, which is how an empty provider is told apart
+//      from a broken one. The YouTube group here has children; `fillerSourcesEmptyProvider` below
+//      is the zero-child case.
+//
+// ⚠ A separate fixture from `fillerSourcesWithRemotes` rather than a replacement, per this file's
+// standing convention — folding the shape into the existing one would churn every FillerSources
+// baseline for what the server intends as an ADDITIVE change.
+const fillerSourcesGrouped: FillerSourceDTO[] = [
+  ...fillerSources,
+  // ── Archive.org: two collections, one of them switched off ──────────────────────────────────
+  {
+    id: "provider:archive",
+    group: true,
+    enabled: true, // a report: `classic_tv_commercials` is on
+    switchable: false,
+    removable: false,
+    kind: "archive",
+    target: "Archive.org",
+    detail: "collections you've added — searchable here, downloaded when you queue or approve",
+    // ⚠ The group's own count and time are ROLL-UPS the server computes: the count sums its
+    // children and `lastFetchedAt` is the MAX over them, which is why it equals the newer of the
+    // two below rather than either one in particular.
+    count: 137 + 42,
+    configured: true,
+    fetchable: false,
+    searchable: false,
+    lastFetchedAt: "2026-07-30T09:14:00Z",
+  },
+  {
+    id: "archive:classic_tv_commercials",
+    parentId: "provider:archive",
+    enabled: true,
+    switchable: true,
+    removable: true,
+    kind: "archive",
+    target: "Classic TV Commercials",
+    detail: "an archive.org collection — searchable here, downloaded when you queue or approve",
+    count: 137,
+    configured: true,
+    fetchable: true,
+    searchable: true,
+    lastFetchedAt: "2026-07-30T09:14:00Z",
+  },
+  // ⚠ One child OFF while its group reads on. The group must say "1 of 2 on" rather than
+  // inheriting either child's state — a provider that is half-running is the case a single
+  // boolean cannot express, and the reason the group carries no switch.
+  {
+    id: "archive:vintage_psas",
+    parentId: "provider:archive",
+    enabled: false,
+    switchable: true,
+    removable: true,
+    kind: "archive",
+    target: "Vintage PSAs",
+    detail: "an archive.org collection — searchable here, downloaded when you queue or approve",
+    count: 42,
+    configured: true,
+    fetchable: true,
+    searchable: true,
+    lastFetchedAt: "2026-07-28T11:02:00Z",
+  },
+  // ── YouTube: a single playlist, switched off, so the whole provider is DORMANT ──────────────
+  // ⚠ This is the case that exposed the off-state bug: every "off" rendering was gated on
+  // `switchable && !enabled`, and a group is `switchable: false`, so a provider whose every child
+  // is off still drew as if it were running.
+  {
+    id: "provider:youtube",
+    group: true,
+    enabled: false,
+    switchable: false,
+    removable: false,
+    kind: "youtube",
+    target: "YouTube",
+    detail: "playlists you've added — titles and descriptions are kept for tagging",
+    count: 0,
+    configured: true,
+    fetchable: false,
+    searchable: false,
+  },
+  {
+    id: "youtube:PLvintage",
+    parentId: "provider:youtube",
+    enabled: false,
+    switchable: true,
+    removable: true,
+    kind: "youtube",
+    target: "Vintage Ad Reels",
+    detail: "a playlist you added — titles and descriptions are kept for tagging",
+    count: 0,
+    configured: true,
+    fetchable: true,
+    searchable: false,
+  },
+];
+
+// A provider with NO children — the fresh-install state, and an INVITATION rather than a fault.
+//
+// ⚠ `configured: false` on a group means "nothing behind it yet", which §10 and
+// `store/fillersources.go` both describe as an invitation to add one. The tab rendered it with the
+// same red `not configured` caution Badge a broken drop-folder gets, which tells an operator
+// something is wrong when nothing is.
+const fillerSourcesEmptyProvider: FillerSourceDTO[] = [
+  ...fillerSources,
+  {
+    id: "provider:archive",
+    group: true,
+    enabled: false,
+    switchable: false,
+    removable: false,
+    kind: "archive",
+    target: "Archive.org",
+    detail: "collections you've added — searchable here, downloaded when you queue or approve",
+    count: 0,
+    configured: false,
+    fetchable: false,
+    searchable: false,
+  },
+];
+
 // Per-clip channel fit (V35 item 1.7) — one row per channel, number-sorted as the server sends.
 //
 // ⚠ Deliberately covers all FIVE renderings the picker has to distinguish, because four of them
@@ -886,6 +1019,8 @@ export {
   emptyPool,
   fallbackCardEntry,
   fillerSources,
+  fillerSourcesEmptyProvider,
+  fillerSourcesGrouped,
   fillerSourcesWithRemotes,
   guessedEraAsk,
   guideChannels,

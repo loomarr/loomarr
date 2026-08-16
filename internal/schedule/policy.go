@@ -77,6 +77,10 @@ type OperatorPolicy struct {
 	// flex that Tunarr renders as large channel-named blocks, which is a promise of commercials
 	// Loomarr cannot keep. This knob lowers density, never forces breaks into existence.
 	BreaksPerHour *int `json:"breaksPerHour,omitempty"`
+	// BreakDuration overrides the global target length for each commercial break. Nil inherits
+	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
+	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
+	BreakDuration *Duration `json:"breakDuration,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole
@@ -94,11 +98,9 @@ type OperatorPolicy struct {
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
 	//
-	// The nil-means-inherit shape is what makes the promise true rather than aspirational:
-	// "changing the default affects new channels only — the ones already on the other
-	// backend keep playing exactly as they are". A channel that never opted in has no
-	// stored value to change, and one that DID has a value the global cannot overwrite.
-	// A fleet-wide flip is therefore not expressible by accident.
+	// The nil-means-inherit shape makes the global setting a live fleet default: a channel
+	// with no stored override follows a later global change, while an explicitly selected
+	// backend remains pinned until its own policy changes.
 	Playout *PlayoutPolicy `json:"playout,omitempty"`
 }
 
@@ -117,21 +119,25 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
-	// Subtitles is the channel's subtitle mode (§9.1, V46): "" / "off" = none (default);
-	// "burn" = burn the preferred-language subtitle track into the shared encode. Burn-in
-	// rather than a soft toggle for the same reason as audio: a viewer-toggled soft track
-	// would need per-viewer output, which the one-encoder-per-channel model forbids.
-	Subtitles string `json:"subtitles,omitempty"`
 }
 
-// PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
-const PlayoutBackendInternal = "internal"
-
-// Subtitle modes for PlayoutPolicy.Subtitles / the `playout.subtitles` global (§9.1, V46).
+// Playout backend values are shared by settings, channel policy, and transition
+// preparation so a typo cannot silently fall through to Tunarr projection.
 const (
-	SubtitlesOff  = "off"  // no subtitles (the default; "" resolves to this)
-	SubtitlesBurn = "burn" // burn the preferred-language track into the shared encode
+	PlayoutBackendInternal = "internal"
+	PlayoutBackendTunarr   = "tunarr"
 )
+
+// NormalizePlayoutBackend canonicalizes a backend value at an input boundary.
+func NormalizePlayoutBackend(backend string) string {
+	return strings.TrimSpace(backend)
+}
+
+// HasExplicitPlayoutBackend reports whether policy pins a channel instead of inheriting
+// the fleet default. Empty and nil playout policies both mean inheritance.
+func HasExplicitPlayoutBackend(policy ChannelPolicy) bool {
+	return policy.Playout != nil && policy.Playout.Backend != ""
+}
 
 // ResolveAudioLanguage picks the audio language for a channel: its own
 // `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
@@ -147,23 +153,6 @@ func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) stri
 	return strings.TrimSpace(globalAudioLanguage)
 }
 
-// ResolveSubtitles picks the subtitle mode for a channel: its own
-// `policy.playout.subtitles` when set, else the global `playout.subtitles`. Normalizes to
-// SubtitlesOff when neither names a mode, so callers never branch on "".
-func ResolveSubtitles(policy ChannelPolicy, globalSubtitles string) string {
-	pick := ""
-	if p := policy.Playout; p != nil {
-		pick = strings.TrimSpace(p.Subtitles)
-	}
-	if pick == "" {
-		pick = strings.TrimSpace(globalSubtitles)
-	}
-	if pick == "" {
-		return SubtitlesOff
-	}
-	return pick
-}
-
 // PlaysInternally resolves the nil-means-inherit precedence §15 defines: a channel's own
 // `policy.playout.backend` wins when set, otherwise the global `playout.backend`.
 //
@@ -175,10 +164,25 @@ func ResolveSubtitles(policy ChannelPolicy, globalSubtitles string) string {
 // pass the resolved global rather than reading settings here, because this package must not
 // depend on the settings registry.
 func PlaysInternally(policy ChannelPolicy, globalBackend string) bool {
-	if p := policy.Playout; p != nil && p.Backend != "" {
-		return p.Backend == PlayoutBackendInternal
+	if HasExplicitPlayoutBackend(policy) {
+		return policy.Playout.Backend == PlayoutBackendInternal
 	}
-	return strings.TrimSpace(globalBackend) == PlayoutBackendInternal
+	return NormalizePlayoutBackend(globalBackend) == PlayoutBackendInternal
+}
+
+// InternalTransportPlayable is the canonical admission rule for Loomarr's device-facing
+// tuner. publishedInternal comes from the durable backend-publication checkpoint rather than
+// desired settings: inherited channels must be readable while internal is prepared, and must
+// disappear only when that published transport is retired. An explicit per-channel backend does
+// not inherit that checkpoint; it answers from its own pin.
+func InternalTransportPlayable(status ChannelStatus, policy ChannelPolicy, publishedInternal bool) bool {
+	if !status.Reconcilable() || status == StatusEmpty {
+		return false
+	}
+	if HasExplicitPlayoutBackend(policy) {
+		return PlaysInternally(policy, PlayoutBackendTunarr)
+	}
+	return publishedInternal
 }
 
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the
@@ -651,6 +655,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if err := p.Filler.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)
+	}
+	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
+		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
 	}
 	if p.AutoCurate != nil {
 		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {

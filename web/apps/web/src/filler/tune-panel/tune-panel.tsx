@@ -1,9 +1,11 @@
-import { settingsApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import type { TunePanelProps } from "./tune-panel.type";
 
 // TunePanel — the auto-file policy, inline on Incoming (the v2 mock's `toggleAuto` block).
@@ -23,34 +25,46 @@ import type { TunePanelProps } from "./tune-panel.type";
 //     `filler.target_lufs` (−23), because two targets in one system means a clip normalised on
 //     file is corrected again at playout toward a different number.
 //
-// ⚠ Writes land IMMEDIATELY, not into a save buffer. This is the same inline-commit verb the
-// wizard's playout step uses: the chips change what happens to the clips visible directly below
-// them, so a staged edit the operator never confirms would leave the panel describing a policy
-// that is not in force.
+// This is the ONE curated home for the auto-file policy. The values are staged together and use
+// an explicit local Save: confidence plus destructive loudness rewriting form one decision, and
+// silently committing each click would introduce a third settings model outside Settings.
 const CONFIDENCE_CHIPS = [75, 85, 95] as const;
 
+const ENABLED_KEY = "filler.autofile.enabled";
 const CONFIDENCE_KEY = "filler.autofile.min_confidence";
 const LOUDNESS_KEY = "filler.autofile.normalize_loudness";
 
 const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
   const entries = unwrap(settings.data, (b) => b.settings) ?? [];
   const entry = (key: string) => entries.find((e) => e.key === key);
-  const boolOf = (key: string) => entry(key)?.value === "true";
-  const confidence = Number(entry(CONFIDENCE_KEY)?.value ?? 85);
+  const currentValue = (key: string) => draft[key] ?? entry(key)?.value ?? "";
+  const boolOf = (key: string) => currentValue(key) === "true";
+  const enabled = boolOf(ENABLED_KEY);
+  const confidence = Number(currentValue(CONFIDENCE_KEY) || 85);
+  const isDirty = Object.keys(draft).length > 0;
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        setDraft({});
       },
       onError: () => toast.error("Couldn't save that setting"),
     },
   });
-  const write = (key: string, value: string) => patch.mutate({ data: { edits: { [key]: value } } });
+  const write = (key: string, value: string) =>
+    setDraft((current) => {
+      if (entry(key)?.value === value) {
+        const { [key]: _unchanged, ...rest } = current;
+        return rest;
+      }
+      return { ...current, [key]: value };
+    });
 
   // ⚠ An env-pinned key is READ-ONLY here, exactly as it is in Settings (§3.1). Letting a chip
   // look clickable and then silently lose to the environment is worse than showing it disabled.
@@ -68,8 +82,8 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
     (t) => entry(t.key) !== undefined,
   );
 
-  const summary = `Right now that files ${filed} ${filed === 1 ? "clip" : "clips"} without asking. ${
-    needsYou > 0 ? `${needsYou} come to you.` : "Nothing needs you."
+  const summary = `Recent results: ${filed} ${filed === 1 ? "clip was" : "clips were"} filed automatically; ${
+    needsYou > 0 ? `${needsYou} need review.` : "nothing needs review."
   }`;
 
   return (
@@ -78,8 +92,15 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
         {/* The mock's pulsing dot. `motion-safe` so a reduced-motion viewer gets a steady dot
             rather than the animation — and the visual suite kills animations outright, so this
             never destabilises a snapshot. */}
-        <span className="size-2 shrink-0 rounded-full bg-signal motion-safe:animate-pulse" aria-hidden />
+        <span
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            enabled ? "bg-signal motion-safe:animate-pulse" : "bg-muted-foreground",
+          )}
+          aria-hidden
+        />
         <span className="font-semibold text-[13.5px]">Auto-filing</span>
+        <span className="text-[12px] text-muted-foreground">{enabled ? "On" : "Off"}</span>
         <Button
           variant="outline"
           size="sm"
@@ -91,13 +112,27 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
         </Button>
       </div>
       <p className="text-[12.5px] text-muted-foreground leading-normal">
-        Loomarr files what it recognises, drops junk, and skips anything already in the catalog.
+        {enabled
+          ? "Loomarr files high-confidence clips and sends uncertain ones to this queue."
+          : "Every incoming clip waits here for you to review."}
       </p>
 
       {open && (
         <div className="flex flex-col gap-3 border-border border-t pt-[13px]">
-          <div className="flex flex-wrap items-center gap-6">
-            {/* ⚠ A real `<fieldset>`/`<legend>`, not a div with `role="group"` + aria-labelledby.
+          <label htmlFor="filler-autofile-enabled" className="flex cursor-pointer items-center gap-3 text-sm">
+            <Switch
+              id="filler-autofile-enabled"
+              checked={enabled}
+              disabled={pinned(ENABLED_KEY)}
+              onChange={(event) => write(ENABLED_KEY, String(event.target.checked))}
+              aria-label="File confident clips automatically"
+            />
+            <span>File confident clips automatically</span>
+          </label>
+
+          {enabled && (
+            <div className="flex flex-wrap items-center gap-6">
+              {/* ⚠ A real `<fieldset>`/`<legend>`, not a div with `role="group"` + aria-labelledby.
                 The chips are ONE control with several options; unlabelled they read to a screen
                 reader as three loose percentages with no hint of what they set. The first draft
                 hand-wired the ARIA and biome's `useSemanticElements` rejected it — correctly:
@@ -105,60 +140,80 @@ const TunePanel = ({ filed, needsYou }: TunePanelProps) => {
                 the same lesson as the axe-passes-but-keyboard-broken case (adding ARIA can
                 introduce the violation it was meant to prevent). `contents` keeps the mock's
                 inline row, since fieldset carries default layout. */}
-            <fieldset className="contents">
-              <legend className="text-[12.5px] text-muted-foreground">File automatically above</legend>
-              <div className="flex gap-[5px]">
-                {CONFIDENCE_CHIPS.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    disabled={pinned(CONFIDENCE_KEY)}
-                    aria-pressed={confidence === v}
-                    onClick={() => write(CONFIDENCE_KEY, String(v))}
-                    className={cn(
-                      "rounded-full border px-[11px] py-[3px] font-mono text-[11.5px] transition-colors",
-                      "disabled:cursor-not-allowed disabled:opacity-60",
-                      confidence === v
-                        ? "border-signal/45 bg-signal/15 text-signal"
-                        : "border-border text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {v}%
-                  </button>
-                ))}
-              </div>
-              <span className="text-[12.5px] text-muted-foreground">confidence</span>
-            </fieldset>
-          </div>
+              <fieldset className="contents">
+                <legend className="text-[12.5px] text-muted-foreground">File automatically above</legend>
+                <div className="flex gap-[5px]">
+                  {CONFIDENCE_CHIPS.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      disabled={pinned(CONFIDENCE_KEY) || patch.isPending}
+                      aria-pressed={confidence === v}
+                      onClick={() => write(CONFIDENCE_KEY, String(v))}
+                      className={cn(
+                        "rounded-full border px-[11px] py-[3px] font-mono text-[11.5px] transition-colors",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        confidence === v
+                          ? "border-signal/45 bg-signal/15 text-signal"
+                          : "border-border text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {v}%
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[12.5px] text-muted-foreground">confidence</span>
+              </fieldset>
+            </div>
+          )}
 
-          <div className="flex flex-wrap gap-[22px]">
-            {toggles.map((t) => {
-              const on = boolOf(t.key);
-              return (
-                <label key={t.key} className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={pinned(t.key)}
-                    onChange={() => write(t.key, on ? "false" : "true")}
-                    className="size-[15px] cursor-pointer rounded-[4px] accent-signal disabled:cursor-not-allowed"
-                  />
-                  <span className="text-[12.5px]">{t.label}</span>
-                </label>
-              );
-            })}
-          </div>
+          {enabled && (
+            <div className="flex flex-wrap gap-[22px]">
+              {toggles.map((t) => {
+                const on = boolOf(t.key);
+                return (
+                  <label key={t.key} className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={pinned(t.key) || patch.isPending}
+                      onChange={() => write(t.key, on ? "false" : "true")}
+                      className="size-[15px] cursor-pointer rounded-[4px] accent-signal disabled:cursor-not-allowed"
+                    />
+                    <span className="text-[12.5px]">{t.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
 
           {/* ⚠ The destructive one gets a warning, and the mock has no equivalent because its
               toggle was a decoration. This rewrites the operator's files and cannot be undone;
               a checkbox that quiet would be the wrong affordance for that. */}
-          {boolOf(LOUDNESS_KEY) && (
+          {enabled && boolOf(LOUDNESS_KEY) && (
             <p className="text-[11.5px] text-onair-300">
               Clips are rewritten as they're filed. The original file is replaced and can't be recovered.
             </p>
           )}
 
           <p className="font-mono text-[11px] text-muted-foreground">{summary}</p>
+
+          {isDirty && (
+            <div className="flex items-center gap-2 border-border border-t pt-3">
+              <Button
+                variant="suggest"
+                size="sm"
+                disabled={patch.isPending}
+                onClick={() => patch.mutate({ data: { edits: draft } })}
+              >
+                {patch.isPending ? "Saving…" : "Save auto-filing"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={patch.isPending} onClick={() => setDraft({})}>
+                Cancel
+              </Button>
+              <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
+            </div>
+          )}
         </div>
       )}
     </div>

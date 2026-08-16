@@ -1,8 +1,8 @@
-import { parseDocHref } from "@loomarr/core";
+import { parseDocHref } from "@loomarr/core/anchor";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Circle, CircleCheck, CircleX, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ChecklistItemProps, CheckStatus } from "./checklist-item.type";
 
 // ChecklistItem — the wizard / Settings-troubleshooting check row (§3, §6). A pass

@@ -30,6 +30,7 @@ type ImageService interface {
 	Get(ctx context.Context, hash string) (images.Image, error)
 	Rendition(ctx context.Context, hash string, f images.Format, width int) (images.Rendition, error)
 	Ingest(ctx context.Context, r io.Reader, req images.IngestRequest) (images.Image, error)
+	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format) string
 	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
@@ -214,9 +215,9 @@ type ImageDTO struct {
 	Animated    bool   `json:"animated" doc:"True when the original carries motion; such images have one rendition"`
 	// SrcSetAVIF may be empty while the AVIF job catches up — that is a normal state, not an
 	// error, and the frontend omits the <source> rather than waiting.
-	SrcSetAVIF string `json:"srcSetAvif" doc:"srcset for AVIF; empty until the AVIF job has run"`
-	SrcSetWebP string `json:"srcSetWebp" doc:"srcset for WebP"`
-	Src        string `json:"src" doc:"A single JPEG URL for the <img> fallback"`
+	SrcSetAVIF string `json:"srcSetAvif" doc:"Same-origin srcset for AVIF; empty until the AVIF job has run"`
+	SrcSetWebP string `json:"srcSetWebp" doc:"Same-origin srcset for WebP"`
+	Src        string `json:"src" doc:"A same-origin JPEG path for the <img> fallback"`
 }
 
 type getImageInput struct {
@@ -249,8 +250,17 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
 	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
 	// treated as "no AVIF" for the same reason: the safe direction is to under-advertise.
 	avif := ""
-	if ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF); err == nil && ok {
-		avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF)
+	if !rec.Animated {
+		if ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF); err == nil && ok {
+			avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF)
+		}
+	}
+	webp := s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP)
+	if rec.Animated {
+		// One URL and its honest intrinsic width. The animated original is already card-sized and
+		// the service deliberately does not resize it; advertising the still-image ladder would
+		// cache the same loop under several width URLs and give the browser false descriptors.
+		webp = s.images.PathFor(rec.Hash, rec.Width, images.FormatWebP) + " " + strconv.Itoa(rec.Width) + "w"
 	}
 	return ImageDTO{
 		Hash:        rec.Hash,
@@ -261,8 +271,8 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
 		DominantHex: rec.DominantHex,
 		Animated:    rec.Animated,
 		SrcSetAVIF:  avif,
-		SrcSetWebP:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP),
-		Src:         s.images.URLFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
+		SrcSetWebP:  webp,
+		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
 	}
 }
 

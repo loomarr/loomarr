@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";
@@ -35,6 +35,8 @@ const VideoPlayer = ({
   src,
   title,
   autoPlay,
+  startAt,
+  endAt,
   leading,
   live,
   scrubber,
@@ -43,6 +45,7 @@ const VideoPlayer = ({
   barControls,
   overlay,
   attach,
+  onChannelStep,
   className,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -62,7 +65,9 @@ const VideoPlayer = ({
     toggle,
     seekTo,
     mediaHandlers,
-  } = usePlaybackState(videoRef);
+    // ⚠ The window is dropped in LIVE mode: a live duration is Infinity, so there is nothing to
+    // clamp and a stray `endAt` would pause the stream at a number that means nothing.
+  } = usePlaybackState(videoRef, live ? {} : { startAt, endAt });
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
@@ -83,6 +88,11 @@ const VideoPlayer = ({
     const target = e.target as HTMLElement;
     const isSlider = target.getAttribute("role") === "slider";
     const isButton = target.tagName === "BUTTON";
+    const ownsNavigationKey = Boolean(
+      target.closest(
+        "button, input, select, textarea, [role=slider], [role=menuitem], [role=menuitemcheckbox]",
+      ),
+    );
     switch (e.key) {
       case " ":
       case "k":
@@ -104,6 +114,20 @@ const VideoPlayer = ({
       case "m":
         e.preventDefault();
         setMuted((m) => !m);
+        break;
+      case "ArrowUp":
+      case "PageUp":
+      case "ChannelUp":
+        if (!live || !onChannelStep || ownsNavigationKey) return;
+        e.preventDefault();
+        onChannelStep(1);
+        break;
+      case "ArrowDown":
+      case "PageDown":
+      case "ChannelDown":
+        if (!live || !onChannelStep || ownsNavigationKey) return;
+        e.preventDefault();
+        onChannelStep(-1);
         break;
       default:
         break;

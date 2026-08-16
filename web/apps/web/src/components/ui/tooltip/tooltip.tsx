@@ -1,5 +1,5 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { TooltipContentProps } from "./tooltip.type";
 
 // Icon-only-button labels (design §14). The native `title=` attribute is unstyled,

@@ -1,9 +1,13 @@
-import type { ClipDTO } from "@loomarr/api";
-import { formatClipDuration, formatRelative } from "@loomarr/core";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { formatClipDuration, formatRelative } from "@loomarr/core/format";
 import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card, Image } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
 // ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category
@@ -233,8 +237,7 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="absolute top-1.5 left-1.5 size-4 accent-signal"
@@ -327,8 +330,7 @@ const ClipCard = ({
           overlays would have nowhere to sit and the clip would become unselectable. On a
           Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
       {!clip.thumbImage && onToggleSelect && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="mt-0.5 size-4 shrink-0 accent-signal"
@@ -342,6 +344,11 @@ const ClipCard = ({
         </span>
       )}
     </div>
+    {clip.brand ? (
+      <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
+        Brand: <span className="text-foreground">{clip.brand}</span>
+      </p>
+    ) : null}
 
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge>
@@ -390,10 +397,9 @@ const ClipCard = ({
           alcohol, drinks — matched on, not shown). The dialog shows them all. */}
       {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
       {(() => {
-        // Extra LEAF-ish tags beyond the headline: the full set minus the rollups of `category` is not
-        // known on the wire, so approximate "more than the headline" by count. A clip with only its
-        // category's own lineage shows no "+N"; one tagged on another axis (christmas, psa) shows it.
-        const extra = (clip.tags ?? []).filter((t) => t !== clip.category).length;
+        // Count only direct assertions. `tags` also contains inherited parents (cereal → food),
+        // which made one choice look like three and hid the distinction the taxonomy depends on.
+        const extra = (clip.assertedTags ?? []).filter((t) => t !== clip.category).length;
         return extra > 0 ? (
           <Badge variant="neutral" title="This clip has more tags — open it to see them all">
             +{extra}

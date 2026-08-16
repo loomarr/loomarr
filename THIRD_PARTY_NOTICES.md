@@ -5,8 +5,9 @@ bundles or depends on third-party software, listed here with its own license.
 Nothing below changes Loomarr's own MIT terms; these are the terms of the
 components Loomarr uses or ships alongside.
 
-A complete, machine-readable dependency inventory (SBOM) is attached to each
-release; this file is the human-readable summary of the notable pieces.
+The release image carries a BuildKit-generated SBOM and provenance as OCI attestations. An SBOM
+inventories what tooling can identify; it is not a substitute for the human-readable inventory of
+downloaded binaries, shared libraries, and model data below.
 
 ## Go dependencies (compiled into the binary)
 
@@ -25,9 +26,25 @@ ISC), compatible with MIT redistribution. The authoritative, versioned list is
 | `golang.org/x/crypto`, `golang.org/x/time` | BSD-3-Clause |
 | `modernc.org/sqlite` | BSD-3-Clause |
 
-The Apache-2.0 components (`prometheus/client_golang` and its transitive
-`prometheus/*`) carry a NOTICE requirement; their upstream NOTICE files are
-reproduced in the release SBOM.
+The Apache-2.0 components (`prometheus/client_golang` and its transitive `prometheus/*`) are
+represented in the dependency inventory. A release review must inspect their upstream NOTICE
+requirements separately; an SBOM does not reproduce NOTICE text.
+
+## Compose deployment companion (not in the Loomarr image)
+
+The supported Docker Compose topology starts the official `traefik:v3.7.1` image as its HTTP edge,
+pinned by multi-architecture manifest digest in `docker/compose.yaml`. Traefik is MIT-licensed. It
+is pulled separately and is not part of Loomarr's OCI image or Loomarr's BuildKit SBOM.
+
+## Rust image worker (compiled into the required worker binary)
+
+The exact resolved inventory is [`Cargo.lock`](Cargo.lock) and the release SBOM. Direct crates are
+permissively licensed: `serde`, `serde_json`, `sha2`, `base64`, `image`, `fast_image_resize`,
+`webp`, and `webp-animation` are MIT and/or Apache-2.0; `thumbhash` is MIT. The AVIF stack
+(`ravif`, `rav1e`, `avif-serialize`) is BSD-2-Clause/BSD-3-Clause. The two WebP wrappers compile
+upstream libwebp into the worker; those bindings and libwebp are MIT/BSD-3-Clause. These terms are
+compatible with Loomarr's MIT redistribution. Resolved package metadata is represented in the
+machine-readable SBOM; license texts remain an explicit release-review concern.
 
 ## Vendored binaries — the published image
 
@@ -43,8 +60,8 @@ glibc builds.
 operator opted into a variant; they now ship in **everything we publish**, so the
 aggregate licensing below applies to the default image rather than an opt-in one.
 
-The image ships four external binaries: three for the in-app clip-ingest job (design
-§10) and `ffmpeg`/`ffprobe` additionally for playout (§9.1). Loomarr invokes each as a
+The image ships five external executables, the Whisper shared-library set, and two model files.
+The ingest job uses all of them; `ffmpeg`/`ffprobe` additionally serve playout (§9.1). Loomarr invokes each executable as a
 **separate process via `exec`** — it does not link against them. Under the GPL this is
 *mere aggregation*: it does **not** make Loomarr a derivative work, and Loomarr's own
 code remains MIT. However, because the image redistributes these binaries, the image as
@@ -56,6 +73,8 @@ a whole must honor each component's license, disclosed here.
 | `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (the BtbN `-gpl-` build) | See the source-offer below. Serves BOTH yt-dlp stream merging (§10) and the playout encoder (§9.1). |
 | `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (same build) | Added with internal playout (§9.1) — Loomarr owns duration once it owns the encoder. Same source offer as `ffmpeg`. |
 | `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
+| `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.1` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
+| `ggml-small.en.bin`, `ggml-tiny.bin` | https://huggingface.co/ggerganov/whisper.cpp | MIT | Revision- and SHA256-pinned Whisper model data; `small.en` transcribes and `tiny` identifies language. |
 
 ### GPL source offer (ffmpeg)
 

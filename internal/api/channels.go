@@ -28,7 +28,7 @@ func (s *Server) registerChannels(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
-		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel.",
+		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.",
 		Tags: []string{"channels"},
 	}, RoleMember), s.channelsNowNext)
 
@@ -40,7 +40,7 @@ func (s *Server) registerChannels(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-upcoming", Method: http.MethodGet, Path: "/v1/channels/{id}/upcoming",
 		Summary:     "What's on this channel now and next",
-		Description: "The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
+		Description: "The program airing now (first) then the next few, in airtime order, from the backend that streams this channel (gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.channelUpcoming)
 
@@ -133,7 +133,7 @@ func (s *Server) registerChannels(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
-		Summary: "Force desired→Tunarr reconciliation", Description: "Admin only. Idempotent (§9).",
+		Summary: "Force channel convergence", Description: "Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).",
 		Tags: []string{"channels"},
 	}, RoleAdmin), s.reconcileChannel)
 
@@ -160,6 +160,10 @@ type listChannelsOutput struct {
 }
 
 func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	all, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
@@ -176,12 +180,16 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	logoImage := s.logoImageResolver(ctx, logos)
 	for _, ch := range all {
 		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil, logoImage))
+		out.Body.Channels = append(out.Body.Channels, s.channelDTOAt(ch, nil, logoImage, checkpoint))
 	}
 	return out, nil
 }
 
 func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -189,7 +197,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -202,7 +210,7 @@ type iconSuggestionsOutput struct {
 // (§icon P2): a Star Trek channel's five series posters, rather than a generic
 // placeholder. Read-only — any authenticated user may call it, matching get-channel.
 func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
-	if s.icons == nil {
+	if s.icons == nil || s.unconfigured("tmdb.api_key") {
 		return nil, errNotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
@@ -264,9 +272,13 @@ type createChannelInput struct {
 }
 
 func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch := store.Channel{}
 	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
-	// id, or omit it and let the server mint one — same `ch_…` scheme binder.BindApprovedChannel
+	// id, or omit it and let the server mint one — same `ch_…` scheme approval planning
 	// uses, so a hand-made channel is indistinguishable from an approved one. This is what
 	// lets the "New channel" UI action create without a client-side id scheme.
 	ch.ID = in.Body.ID
@@ -280,6 +292,16 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	ch.Strategy = schedule.Strategy(in.Body.Strategy)
 	ch.IntentRef = in.Body.IntentRef
 	ch.Status = schedule.StatusBuilding
+	// A non-empty intent has exactly one local channel. Approval now enforces this at the
+	// database boundary, so the legacy explicit create path must surface the same invariant as
+	// a clean conflict instead of leaking a unique-index error as a 500.
+	if ch.IntentRef != "" {
+		if _, err := s.store.GetChannelByIntentRef(ctx, ch.IntentRef); err == nil {
+			return nil, errConflict("Channel already exists", "That approved suggestion is already bound to a channel.")
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+	}
 	// Bind the approved proposal's lineup (§7/§9: "create a channel from an
 	// approved proposal"). Empty intentRef ⇒ hand-made channel, no lineup yet.
 	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
@@ -313,7 +335,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	}
 	ch.Lineup = lineup
 	// Due NOW, so the sweep owns this channel from the moment it exists (§9 V54) — the same
-	// stamp `binder.BindApprovedChannel` applies, for the same reason: the immediate reconcile
+	// stamp approval planning applies, for the same reason: the immediate reconcile
 	// below is best-effort, and without a deadline the retry that is supposed to cover it never
 	// comes. A hand-made channel and an approved one must not differ in their recovery story.
 	ch.ReconcileDeadline = time.Now().UTC()
@@ -331,21 +353,26 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err := s.numberConflict(ctx, ch.Number); err != nil {
 		return nil, err
 	}
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
+		if errors.Is(err, store.ErrChannelConflict) {
+			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
+		}
 		return nil, err
 	}
+	ch = saved
 	// Kick an initial reconcile so the channel goes live immediately (§9 "live
 	// immediately — never dead air"). Best-effort: a reconcile failure leaves the
 	// channel in `building` for the sweep to pick up, it doesn't fail creation.
-	if s.channels != nil && !s.unconfigured("tunarr.url") {
+	if s.channels != nil {
 		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists and
-			// shows a schedule in the guide but has never reached Tunarr.
-			s.log.Error("initial channel reconcile FAILED — it is not on Tunarr yet; the next channel sweep will retry",
+			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists but
+			// has not converged on the backend selected for it.
+			s.log.Error("initial channel reconcile FAILED — it is not live yet; the next channel sweep will retry",
 				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
 			if s.activity != nil {
 				s.activity.Error(ctx, "channel.reconcile", ch.ID,
-					fmt.Sprintf("%q couldn't be pushed to Tunarr yet: %v. Loomarr will keep retrying.", ch.Name, err))
+					fmt.Sprintf("%q couldn't be brought live on its selected playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}
 	}
@@ -353,7 +380,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -364,6 +391,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 type updateChannelInput struct {
 	ID   string `path:"id" example:"ch_abc123"`
 	Body struct {
+		Revision int64                   `json:"revision" minimum:"1" doc:"Revision returned by the channel read this edit was based on. A stale revision is rejected with 409."`
 		Name     *string                 `json:"name,omitempty"`
 		Number   *int                    `json:"number,omitempty" minimum:"1"`
 		Group    *string                 `json:"group,omitempty"`
@@ -373,7 +401,7 @@ type updateChannelInput struct {
 		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
 		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
 		// reconciler's/delete's to set, never a client's.
-		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause (off air, keep the channel) or resume."`
+		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause Loomarr-managed playout and guide surfaces, or resume. In v1, a retained Tunarr projection keeps its last lineup."`
 		// Lineup is a WHOLE-LIST replace (§7): the full ordered set of entries. Add = a new
 		// entry, remove = an omitted one, reorder = the same entries reordered. Each key is
 		// validated (provision.ParseKey); a key not `available` in the library is inert (a
@@ -389,12 +417,22 @@ type updateChannelInput struct {
 // pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
 func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
+	if in.Body.Revision != ch.Revision {
+		return nil, staleChannelConflict()
+	}
+	before := ch
+	wasInternal := playsInternallyAt(ch, checkpoint)
+	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
 
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
@@ -462,20 +500,49 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		ch.Lineup = next
 	}
 
+	// `building` is the durable tuner-list freshness signal consumed by reconcile. Do not
+	// stamp it onto every edit: a lineup/policy-only change on an already-settled channel
+	// changes guide data, not the tuner channel list. Identity and effective-backend changes,
+	// a resume, and an empty internal channel attempting to materialize do change membership
+	// or M3U identity and therefore retain the stronger signal.
+	active := ch.Status.Reconcilable()
+	identityChanged := before.Name != ch.Name || before.Number != ch.Number ||
+		before.Group != ch.Group || before.Logo != ch.Logo
+	backendChanged := wasInternal != playsInternallyAt(ch, checkpoint)
+	materializingInternal := before.Status == schedule.StatusEmpty && playsInternallyAt(ch, checkpoint)
+	if active && (identityChanged || backendChanged || materializingInternal) {
+		ch.Status = schedule.StatusBuilding
+	}
+	if active {
+		// The immediate reconcile below is best-effort. Zero is the store's explicit due-now
+		// value, so an error cannot leave this edit waiting behind an old future deadline.
+		ch.ReconcileDeadline = time.Time{}
+	}
+	isTransportPlayable := transportPlayableAt(ch, checkpoint)
+
 	if err := ch.Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
-	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	ch.UpdatedAt = time.Now().Unix() // SaveChannel does not stamp this
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
+		if errors.Is(err, store.ErrChannelStale) {
+			return nil, staleChannelConflict()
+		}
+		if errors.Is(err, store.ErrChannelConflict) {
+			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
+		}
 		return nil, err
 	}
+	ch = saved
+	s.applyInternalPlayoutLifecycle(ctx, ch.ID, wasTransportPlayable, isTransportPlayable)
 
-	// Auto-reconcile so the edit reaches Tunarr with no user action (§9 "self-
-	// maintaining"; there is no manual rebuild). Best-effort + skipped while paused or
-	// Tunarr-unconfigured: the edit is durable regardless, and the sweep is the
+	// Auto-reconcile so the edit reaches the selected playout backend with no user action
+	// (§9 "self-maintaining"; there is no manual rebuild). Best-effort + skipped while paused:
+	// the edit is durable regardless, and the sweep is the
 	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
-	if ch.Status != schedule.StatusPaused && s.channels != nil && !s.unconfigured("tunarr.url") {
+	if ch.Status.Reconcilable() && s.channels != nil {
 		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
 			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
 		}
@@ -484,7 +551,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
 }
 
 type refineChannelInput struct {
@@ -556,8 +623,12 @@ func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
-	if s.channels == nil || s.unconfigured("tunarr.url") {
-		return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before reconciling a channel.")
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.channels == nil {
+		return nil, errNotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -565,23 +636,27 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 		return nil, err
 	}
 	if err := s.channels.Reconcile(ctx, in.ID); err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
-			"Loomarr couldn't push this channel to Tunarr. Check its connection in Settings and try again.", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reconcile the channel",
+			"Loomarr couldn't rebuild this channel on its selected playout backend. Check that backend's settings and try again.", err)
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
+	return &reconcileOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
 }
 
 type deleteChannelInput struct {
 	ID    string `path:"id"`
-	Purge bool   `query:"purge" doc:"Also delete the Tunarr channel (default: detach only, §7)"`
+	Purge bool   `query:"purge" doc:"Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"`
 }
 type deleteChannelOutput struct{}
 
 func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*deleteChannelOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -589,15 +664,23 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	// Purge (?purge=true): delete the Tunarr channel AND hard-delete the store row,
-	// through the engine (which holds the programmer). Idempotent on the Tunarr side.
+	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
+	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
+	// Tunarr projection through the channel service. This includes a historical projection
+	// preserved after switching the channel to internal playout.
 	if in.Purge {
 		if s.channels == nil {
-			return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before purging its channel.")
+			return nil, errNotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 		}
 		if err := s.channels.Purge(ctx, in.ID); err != nil {
-			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
-				"Loomarr couldn't delete this channel in Tunarr. Check its connection in Settings and try again.", err)
+			if errors.Is(err, store.ErrChannelStale) || errors.Is(err, store.ErrChannelConflict) {
+				return nil, staleChannelConflict()
+			}
+			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't purge the channel",
+				"Loomarr couldn't hard-delete its local state and any retained managed Tunarr projection. Check the configured integrations and try again.", err)
+		}
+		if wasTransportPlayable && s.playout != nil {
+			s.playout.StopChannel(ch.ID)
 		}
 		return &deleteChannelOutput{}, nil
 	}
@@ -605,8 +688,47 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	// Detached channels are never reconciled again (§9 ownership).
 	ch.Status = schedule.StatusDetached
 	ch.UpdatedAt = time.Now().Unix()
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+	saved, err := s.store.SaveChannel(ctx, ch)
+	if err != nil {
+		if errors.Is(err, store.ErrChannelStale) {
+			return nil, staleChannelConflict()
+		}
 		return nil, err
 	}
+	s.applyInternalPlayoutLifecycle(ctx, saved.ID, wasTransportPlayable, false)
 	return &deleteChannelOutput{}, nil
+}
+
+// applyInternalPlayoutLifecycle handles membership changes in Loomarr's internal tuner catalog.
+// The persisted row is already committed when this runs, so a removal first fails new tune
+// requests through the canonical eligibility check, then disconnects existing sessions. Both
+// additions and removals re-scan the tuner: a guide refresh cannot change its channel list.
+//
+// Tunarr projections are intentionally untouched. §9 ownership preserves them across backend
+// transitions, and the v1 pause contract retains their last lineup; durable remote pause needs a
+// separate projection state rather than a one-shot best-effort clear.
+func (s *Server) applyInternalPlayoutLifecycle(
+	ctx context.Context, channelID string, wasTransportPlayable, isTransportPlayable bool,
+) {
+	if wasTransportPlayable == isTransportPlayable {
+		return
+	}
+	if wasTransportPlayable && s.playout != nil {
+		s.playout.StopChannel(channelID)
+	}
+	if s.tunerRescanner != nil {
+		if err := s.tunerRescanner.RescanTuner(ctx); err != nil {
+			if s.log != nil {
+				s.log.Warn("channel lifecycle: tuner rescan failed",
+					"channel", channelID, "err", err)
+			}
+		}
+	}
+}
+
+// staleChannelConflict is deliberately distinct from number/intent collisions: this edit was
+// valid when authored, but the channel changed before it could commit. The only honest recovery
+// is to refresh and let the operator decide again, especially for whole-list lineup replacement.
+func staleChannelConflict() error {
+	return errConflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
 }

@@ -1,21 +1,20 @@
 # The dev loop
 
-Two processes, each with live reload. Run them in separate terminals.
+Two processes, each with live reload. Run them in separate terminals; the harness assigns stable,
+worktree-specific ports and prints both URLs.
 
 ```bash
-cp .env.example .env    # Air sources it
-
-make dev-be                                # backend :8080, rebuilds on any Go change
-cd web && pnpm --filter @loomarr/web dev   # frontend :5173, Vite HMR
+make dev-be    # backend, rebuilds the Go server and required Rust image worker
+make dev-fe    # Vite HMR, proxying this worktree's backend
 ```
 
-## Develop against :5173
+## Develop against the frontend URL
 
 ```mermaid
 graph LR
-  B["<b>Your browser</b><br/>localhost:5173"]
-  V["<b>Vite dev server</b> :5173<br/><i>your working copy</i>"]
-  A["<b>Air</b> :8080<br/><i>rebuilds on .go change</i>"]
+  B["<b>Your browser</b><br/>frontend URL"]
+  V["<b>Vite dev server</b><br/><i>your working copy</i>"]
+  A["<b>Air</b><br/><i>rebuilds Go + Rust together</i>"]
   E["embedded SPA<br/><i>from last</i> <code>make fe</code>"]
 
   B --> V
@@ -30,11 +29,11 @@ graph LR
   class B,A norm
 ```
 
-**:8080 serves the SPA compiled into the binary at your last `make fe`, not your working copy.**
-Frontend changes won't appear there.
+The backend URL serves the SPA compiled into the binary at your last `make fe`, not your working copy.
+Frontend changes appear only at the frontend URL.
 
-Vite proxies `/v1`, `/hooks`, `/docs`, `/openapi.*`, `/healthz`, `/readyz` and `/metrics` to
-:8080. Point it elsewhere with `LOOMARR_API=http://otherbox:8080`.
+Vite proxies `/v1`, `/hooks`, `/docs`, `/openapi.*`, `/healthz`, `/readyz` and `/metrics` to this
+worktree's backend. Point it elsewhere with `LOOMARR_API=http://otherbox:8080`.
 
 ## Don't use `go run ./cmd/loomarr`
 
@@ -44,14 +43,18 @@ leave an orphan serving old code with no sign anything is stale.
 If an API change isn't showing up:
 
 ```bash
-curl -s localhost:8080/v1/system/version
+eval "$(./scripts/dev-env.sh export)"
+curl -s "localhost:$LOOMARR_DEV_PORT/v1/system/version"
 ```
 
 That reports the commit the running binary was built from.
 
 `make dev-be` prevents this. It refuses to start a second instance, and a watchdog detects "Air
-alive but not rebuilding" by comparing the binary's mtime against the newest `.go` file.
+alive but not rebuilding" by comparing the binary's mtime against the newest watched Go/Rust input.
 `DEV_BE_REPLACE=1` replaces a running instance; `DEV_BE_NO_WATCHDOG=1` skips the watchdog.
+
+Process ownership includes the worktree cwd. Replacement never kills another worktree's Air or
+backend, even though their process names are identical.
 
 ## Two Air settings that must stay
 

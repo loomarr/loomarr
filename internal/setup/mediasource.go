@@ -22,34 +22,45 @@ type UserLister interface {
 	ListUsers(ctx context.Context) ([]library.User, error)
 }
 
+// MediaSourceLibrary is one bound library connection used by a media-source
+// operation. Connection and ListUsers must describe the same immutable snapshot.
+type MediaSourceLibrary interface {
+	UserLister
+	Connection() library.Connection
+}
+
+// MediaSourceLibrarySource starts one media-source operation. Production returns
+// library.Client.Snapshot; fixed tests and adapters return the same value each time.
+type MediaSourceLibrarySource func() MediaSourceLibrary
+
 // MediaSourceConnector wires the media server as *Tunarr's* media source using
 // Loomarr's existing admin token — no separate Emby user login (§6). It backs
 // POST /v1/setup/tunarr-connect and the tunarr_library setup check. Idempotent.
 type MediaSourceConnector struct {
-	users UserLister
-	prog  MediaSourceProgrammer
-	conn  func() (flavor, embyURL, token string) // live library connection (hot-applies)
+	library MediaSourceLibrarySource
+	prog    MediaSourceProgrammer
 }
 
-// NewMediaSourceConnector builds the connector. conn resolves the CURRENT library
-// flavor/url/token so a connection saved through the wizard takes effect live (§8.1).
-func NewMediaSourceConnector(users UserLister, prog MediaSourceProgrammer, conn func() (string, string, string)) *MediaSourceConnector {
-	return &MediaSourceConnector{users: users, prog: prog, conn: conn}
+// NewMediaSourceConnector builds a live connector. library starts one immutable
+// library operation, coupling flavor, URL, token, and user listing across rotation.
+func NewMediaSourceConnector(library MediaSourceLibrarySource, prog MediaSourceProgrammer) *MediaSourceConnector {
+	return &MediaSourceConnector{library: library, prog: prog}
 }
 
 // Connect ensures Tunarr's media source exists (admin token as its access token),
 // then enables + scans the movie/show libraries. Returns the source id + the number
 // of movie/show libraries enabled. Idempotent — safe to re-run.
 func (c *MediaSourceConnector) Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error) {
-	flavor, embyURL, token := c.conn()
-	if embyURL == "" || token == "" {
+	operation := c.library()
+	connection := operation.Connection()
+	if connection.BaseURL == "" || connection.Token == "" {
 		return "", 0, fmt.Errorf("media server not configured — set its URL + token first")
 	}
-	adminID, err := c.adminID(ctx)
+	adminID, err := adminID(ctx, operation)
 	if err != nil {
 		return "", 0, err
 	}
-	sourceID, err = c.prog.EnsureEmbySource(ctx, flavor, embyURL, token, adminID)
+	sourceID, err = c.prog.EnsureEmbySource(ctx, string(connection.Flavor), connection.BaseURL, connection.Token, adminID)
 	if err != nil {
 		return "", 0, fmt.Errorf("wire Tunarr media source: %w", err)
 	}
@@ -68,12 +79,12 @@ func (c *MediaSourceConnector) LibrariesReady(ctx context.Context) (bool, error)
 
 // adminID returns the id of an enabled admin user on the media server — the user
 // whose token authorizes Tunarr's source (§6).
-func (c *MediaSourceConnector) adminID(ctx context.Context) (string, error) {
-	users, err := c.users.ListUsers(ctx)
+func adminID(ctx context.Context, users UserLister) (string, error) {
+	found, err := users.ListUsers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list media-server users: %w", err)
 	}
-	for _, u := range users {
+	for _, u := range found {
 		if u.IsAdmin && !u.Disabled {
 			return u.ID, nil
 		}

@@ -3,6 +3,7 @@ package filler_test
 import (
 	"context"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -16,16 +17,19 @@ import (
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
 // ensures counts EnsureLocalSource calls so the idempotent-setup path is covered.
 type fakeSource struct {
-	clips   []filler.RawClip
-	ensures int
+	clips     []filler.RawClip
+	ensures   int
+	ensureDir string
+	listErr   error
 }
 
-func (f *fakeSource) EnsureLocalSource(_ context.Context, _ string) error {
+func (f *fakeSource) EnsureLocalSource(_ context.Context, dir string) error {
 	f.ensures++
+	f.ensureDir = dir
 	return nil
 }
 func (f *fakeSource) ListLocalClips(_ context.Context) ([]filler.RawClip, error) {
-	return f.clips, nil
+	return f.clips, f.listErr
 }
 
 // memStore is an in-memory filler.Store for sync tests.
@@ -63,6 +67,35 @@ func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, erro
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+func testLayout(root string, watch ...string) filler.Layout {
+	configuredWatch := ""
+	if len(watch) > 0 {
+		configuredWatch = watch[0]
+	}
+	layout, err := filler.NewLayout(root, configuredWatch)
+	if err != nil {
+		panic(err)
+	}
+	return layout
+}
+
+func TestSync_RegistersTheConfiguredSharedVolumePath(t *testing.T) {
+	realRoot := t.TempDir()
+	aliasRoot := filepath.Join(t.TempDir(), "shared-clips")
+	if err := os.Symlink(realRoot, aliasRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	source := &fakeSource{}
+	syncer := filler.NewSyncer(source, newMemStore(), testLayout(aliasRoot), time.Now, discardLog())
+
+	if _, err := syncer.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if source.ensureDir != aliasRoot {
+		t.Errorf("registered source = %q, want configured shared-volume path %q", source.ensureDir, aliasRoot)
+	}
+}
+
 // raw builds a scanned clip. ⚠ ID and Path are set SEPARATELY — id is the content hash, path is
 // where the file sits. The fixtures below pass the same string for both where the distinction
 // does not matter; the tests that turn on it (see the two-folder case) pass different ones.
@@ -71,7 +104,7 @@ func raw(id, name string, kind filler.Kind, dur int64, era int) filler.RawClip {
 }
 
 func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
-	return filler.NewSyncer(source, st, "/drop",
+	return filler.NewSyncer(source, st, testLayout("/drop"),
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 }
 
@@ -222,6 +255,28 @@ func TestSync_PrunesRemovedClips(t *testing.T) {
 	}
 }
 
+func TestSync_FailedListingPreservesLastKnownCatalog(t *testing.T) {
+	source := &fakeSource{clips: []filler.RawClip{
+		raw("c1", "known clip", filler.Commercial, 30000, 1992),
+	}}
+	st := newMemStore()
+	syncer := newSyncer(source, st)
+	if _, err := syncer.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// A broken or unavailable replacement layout must not look like a successful empty scan.
+	// The error is surfaced and pruning is never reached, so the last known catalog survives.
+	source.clips = nil
+	source.listErr = fs.ErrNotExist
+	if _, err := syncer.Sync(context.Background()); err == nil {
+		t.Fatal("failed listing reported success")
+	}
+	if _, ok := st.clips["c1"]; !ok {
+		t.Fatal("failed listing pruned the last known catalog")
+	}
+}
+
 // --- V38: the lifecycle fork ---
 
 // ⚠ THE mechanism the whole review queue depends on. Ingest downloads into the same folder the
@@ -246,7 +301,7 @@ func TestSync_HoldsDownloadedClipsAndFilesHandCopiedOnes(t *testing.T) {
 		raw("copied.mp4", "Copied ad", filler.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
-	sync := filler.NewSyncer(source, st, dir,
+	sync := filler.NewSyncer(source, st, testLayout(dir),
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 
 	if _, err := sync.Sync(context.Background()); err != nil {
@@ -277,7 +332,7 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
-	sync := filler.NewSyncer(source, st, dir,
+	sync := filler.NewSyncer(source, st, testLayout(dir),
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 
 	if _, err := sync.Sync(context.Background()); err != nil {
@@ -385,7 +440,7 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	}
 
 	st := newMemStore()
-	sync := filler.NewSyncer(realScanSource{clipDir}, st, clipDir,
+	sync := filler.NewSyncer(realScanSource{clipDir}, st, testLayout(clipDir),
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 
 	res, err := sync.Sync(context.Background())
@@ -424,6 +479,113 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	}
 }
 
+func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
+	dir := t.TempDir()
+	body := make([]byte, 4096)
+	for i := range body {
+		body[i] = byte((i * 7) % 251)
+	}
+	probeFile := filepath.Join(dir, "probe.mp4")
+	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := filler.ClipID(probeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(probeFile); err != nil {
+		t.Fatal(err)
+	}
+	// The title reported in the live catalog was the former 40-character digest shape, not the
+	// current 64-character content id. Both are machine names and both must migrate.
+	stale := strings.Repeat("a", 40)
+	oldRel := filepath.ToSlash(filler.ClipRelPath(stale, ".mp4"))
+	oldFull := filepath.Join(dir, filepath.FromSlash(oldRel))
+	if err := os.MkdirAll(filepath.Dir(oldFull), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldFull, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	source := &fakeSource{clips: []filler.RawClip{{
+		ID: actual, Path: oldRel, Name: stale, Kind: filler.Commercial, DurationMs: 30_000,
+	}}}
+	st := newMemStore()
+	st.clips[actual] = filler.StoreClip{Clip: filler.Clip{
+		Hash: actual, Path: oldRel, Name: stale, Kind: filler.Commercial,
+		Brand: "Coca-Cola", Era: 1992, Audience: filler.Family,
+	}}
+	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
+	res, err := sync.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 || res.Updated != 1 {
+		t.Fatalf("sync = %+v, want one repaired catalog path", res)
+	}
+	wantRel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	got := st.clips[actual]
+	if got.Path != wantRel || got.Name != "Coca-Cola — 1992" {
+		t.Errorf("repaired row = path %q name %q, want %q and preserved title", got.Path, got.Name, wantRel)
+	}
+	if _, err := os.Stat(oldFull); !os.IsNotExist(err) {
+		t.Errorf("stale media still exists: %v", err)
+	}
+	newFull := filepath.Join(dir, filepath.FromSlash(wantRel))
+	if id, err := filler.ClipID(newFull); err != nil || id != actual {
+		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
+	}
+	tags, ok := filler.ReadSidecarTags(newFull)
+	if !ok || tags.OriginalName != "Coca-Cola — 1992" {
+		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
+	}
+}
+
+func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("a canonical clip whose source name was lost")
+	probeFile := filepath.Join(dir, "probe.mp4")
+	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := filler.ClipID(probeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(probeFile); err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyTitle := "299bceca4e5635c05ea454255105152f0b999119"
+	source := &fakeSource{clips: []filler.RawClip{{
+		ID: actual, Path: rel, Name: legacyTitle, Kind: filler.Commercial, DurationMs: 30_000,
+	}}}
+	st := newMemStore()
+	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
+	res, err := sync.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 || res.Added != 1 {
+		t.Fatalf("sync = %+v, want one repaired new clip", res)
+	}
+	if got := st.clips[actual].Name; got != "Untitled commercial" {
+		t.Errorf("name = %q, want neutral display name", got)
+	}
+	tags, ok := filler.ReadSidecarTags(full)
+	if !ok || tags.OriginalName != "Untitled commercial" {
+		t.Errorf("sidecar = %+v ok=%v, want durable neutral display name", tags, ok)
+	}
+}
+
 // A hand-dropped clip is FILED, not held (§10 V38c). Intake writes no `fetchedBy` for it, so the
 // sync's held/filed fork must let it straight into the catalog — holding a file the operator
 // placed themselves would mean it sits invisible until approved.
@@ -442,7 +604,7 @@ func TestSync_AWatchFolderDropIsFiledNotHeld(t *testing.T) {
 	}
 
 	st := newMemStore()
-	sync := filler.NewSyncer(realScanSource{clipDir}, st, clipDir,
+	sync := filler.NewSyncer(realScanSource{clipDir}, st, testLayout(clipDir),
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 	if _, err := sync.Sync(context.Background()); err != nil {
 		t.Fatal(err)

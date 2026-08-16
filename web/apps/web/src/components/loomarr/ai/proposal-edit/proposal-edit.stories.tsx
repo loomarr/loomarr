@@ -1,4 +1,4 @@
-import type { ProposalItem } from "@loomarr/api";
+import type { ProposalItem, SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui";
@@ -7,7 +7,12 @@ import { ProposalEdit } from "./proposal-edit";
 
 const noop = () => {};
 
-const jsonResponse = (body: unknown) =>
+// ⚠ Generic, with the meaningful call site passing its type argument explicitly (GH #281). The
+// parameter stays open because this helper only serialises — it is the call sites that must be
+// checked against a DTO. An unchecked body is invisible to `tsc`, so a response type gaining a
+// required field leaves the stub stale and the failure surfaces as a Playwright baseline diff
+// that reads like a rendering regression.
+const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 // Owns a live generated-API hook (searchApi.useSearch for the add picker), so `fetch` is stubbed
@@ -17,7 +22,7 @@ const withStubbedSearch = (): Decorator => (Story) => {
   window.fetch = ((url: string) => {
     if (typeof url === "string" && url.includes("/v1/search")) {
       return Promise.resolve(
-        jsonResponse({
+        jsonResponse<SearchOutputBody>({
           candidates: [{ mediaType: "movie", tmdbId: 1701, name: "Con Air", year: 1997, inLibrary: false }],
         }),
       );

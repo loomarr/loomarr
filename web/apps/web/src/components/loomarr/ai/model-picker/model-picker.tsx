@@ -1,8 +1,9 @@
-import type { LLMModelView } from "@loomarr/api";
-import { formatGiB, formatPercentPoints } from "@loomarr/core";
+import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
+import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
 import { Check, Download, Loader2 } from "lucide-react";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ModelPickerProps } from "./model-picker.type";
 
 // The §8.1 model picker. Picking a local model is a real onboarding hurdle — a household

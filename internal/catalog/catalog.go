@@ -143,8 +143,12 @@ type Presence struct {
 type Catalog struct {
 	lib      LibrarySearcher
 	tmdb     TMDBSearcher
-	presence LibraryPresence // optional; backfills in-library on discovery results
+	presence LibraryPresenceSource // optional; binds one backfill operation
 }
+
+// LibraryPresenceSource binds one immutable media-library operation for an
+// entire discovery/adjacency presence backfill.
+type LibraryPresenceSource func() LibraryPresence
 
 // New builds a Catalog. Any corpus may be nil; its scope is then skipped.
 func New(lib LibrarySearcher, tmdb TMDBSearcher) *Catalog {
@@ -155,7 +159,14 @@ func New(lib LibrarySearcher, tmdb TMDBSearcher) *Catalog {
 // results (§8) — so a discovered title you already own is a lineup pick, not an
 // acquisition. Returns the Catalog for chaining. Nil = discovery skips the backfill.
 func (c *Catalog) WithPresence(p LibraryPresence) *Catalog {
-	c.presence = p
+	c.presence = func() LibraryPresence { return p }
+	return c
+}
+
+// WithPresenceSource wires a live presence adapter. The source is invoked once
+// before a backfill batch so all candidate lookups share one connection snapshot.
+func (c *Catalog) WithPresenceSource(source LibraryPresenceSource) *Catalog {
+	c.presence = source
 	return c
 }
 
@@ -391,11 +402,15 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 	if c.presence == nil {
 		return
 	}
+	presence := c.presence()
+	if presence == nil {
+		return
+	}
 	for i := range cands {
 		if cands[i].InLibrary || cands[i].TMDBID == 0 {
 			continue // already known in-library, or no id to look up
 		}
-		p, present, err := c.presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
+		p, present, err := presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
 		if err != nil || !present {
 			continue
 		}

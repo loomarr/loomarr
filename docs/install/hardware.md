@@ -1,5 +1,8 @@
 # Hardware acceleration
 
+Hardware passthrough is a Linux-host capability. Docker Desktop on macOS does not expose the Mac
+GPU to this Linux container; use software playout there and size channel capacity accordingly.
+
 This only applies when Loomarr does the streaming (the default). On the Tunarr backend, Tunarr's
 own transcode settings apply.
 
@@ -43,12 +46,12 @@ container sees the card but every NVENC trial fails.
 
 ## Concurrent channels
 
-`PLAYOUT_MAX_CHANNELS` (default 4) caps how many stream at once. Loomarr also computes a
-per-encoder capacity from the boot trials, and a channel needing a full transcode counts for
-more than one that can be copied through.
+`PLAYOUT_MAX_CHANNELS` defaults to `0` (automatic), so Loomarr uses the per-encoder capacity its
+trial measured inside the container. A channel needing a full transcode counts against that budget;
+one that can be copied through does not.
 
-Raise the cap only as far as your hardware measured. Setting it higher causes stuttering, not
-capacity.
+Set a positive value only to lower the measured budget when real, complex content needs more
+headroom. A configured value can never raise capacity above what the trial proved.
 
 ## Checking what happened
 

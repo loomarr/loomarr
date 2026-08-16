@@ -11,7 +11,9 @@ import (
 
 	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -41,6 +43,10 @@ type Server struct {
 	// Phase 10 is configured.
 	channels ChannelService
 	livetv   LiveTVService
+	// tunerRescanner refreshes the media server's channel list after a lifecycle write removes an
+	// internal channel without running reconcile (pause/detach). It is separate from setup wiring:
+	// one is a per-operation freshness poke, the other owns tuner registration.
+	tunerRescanner TunerRescanner
 	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
 	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
 	tunarrConnect TunarrConnector
@@ -57,10 +63,14 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images ImageService
-	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
-	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	images   ImageService
+	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	// fillerLayout is the immutable filesystem topology applied to this server generation.
+	// Operational routes keep interpreting catalog paths against this root until restart.
+	fillerLayout filler.Layout
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -92,20 +102,27 @@ type Server struct {
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
 	restart RestartService
-	// bootstrapDrift names the boot-time settings whose saved value differs from the one
-	// this process is running (config-design §3). nil ⇒ no drift is reported, which is
+	// restartDrift names restart-scoped settings whose saved value differs from the one
+	// this application generation is running (config-design §3). nil ⇒ no drift is reported, which is
 	// correct for a handler with no config seam rather than a false "restart needed".
-	bootstrapDrift func() []string
+	restartDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
+	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
+	// workflow for playout backend and URL changes. It serializes that entire workflow
+	// across replicas; failures after mutation remain non-fatal follow-on failures.
+	backendTransition BackendTransitioner
+	backendCheckpoint func(context.Context) (BackendCheckpoint, error)
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
-	// binder materializes an approved proposal onto a channel (§7) — the ONE
-	// implementation shared with the suggest worker's auto-approve path (§8/§11).
-	// Implemented by *binder.Binder; declared here as ChannelBinder so the api
-	// package doesn't import internal/binder's concrete type.
+	// approver is the one proposal -> titles + channel gate shared with every
+	// automatic approval path (§7/§8). The API owns authorization and presentation;
+	// the coordinator owns the indivisible domain transition.
+	approver ProposalApprover
+	// binder serves the explicit channel creation helpers. Proposal approval does
+	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
 	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
@@ -113,7 +130,10 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
-
+	// libraryConfigured resolves the complete live media-server connection from one settings
+	// snapshot. A domain-specific seam keeps handlers from independently reading flavor, URL,
+	// and token and accidentally observing a mixed generation during a concurrent save.
+	libraryConfigured func() bool
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready ReadyFunc
@@ -130,26 +150,29 @@ type Server struct {
 	// the declared default. The keys read here answer "why is my catalog empty", so an
 	// unanswerable read must not render the drop-folder as switched off.
 	liveConfigBoolOn func(key string) bool
-	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
+	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
-	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
-	// "not running" rather than 404, so a half-configured install gets an explanation.
-	playoutSessions PlayoutSessions
+	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
+	playoutObserver PlayoutObserver
+	// preparedObserver supplies the readiness planner's immutable operational snapshot.
+	preparedObserver PreparedObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
 	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
 	playoutSecret func() string
+	// playoutSecretCurrent is the durable Postgres-replica read. Production prefers it at
+	// request security boundaries so a rotation handled by another process invalidates the
+	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
+	playoutSecretCurrent func(context.Context) (string, error)
 	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
 	// sequencing layer the concat demuxer re-opens per program. nil ⇒ the route 501s.
 	playoutResolver PlayoutResolver
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
-	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
-	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
-	// without internal playout wired explains itself rather than 404ing.
-	playoutHLS PlayoutHLS
+	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
@@ -172,10 +195,9 @@ type Server struct {
 	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
 	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
 	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
-	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
-	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
-	hwEncodeGate *hwEncodeGate
+	// encodePool is the one host-wide hardware-encode admission boundary shared with preparation.
+	// Nil preserves the pre-gate behavior for tests and installs without a capability probe.
+	encodePool *media.EncodePool
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -206,6 +228,13 @@ func (s *Server) unconfigured(keys ...string) bool {
 	return false
 }
 
+// libraryUnconfigured gates every optional media-library operation on the same complete,
+// atomic {flavor,url,token} predicate. Nil preserves the unit-test convention that an
+// explicitly wired adapter is usable without a settings runtime.
+func (s *Server) libraryUnconfigured() bool {
+	return s.libraryConfigured != nil && !s.libraryConfigured()
+}
+
 // SettingsService is the settings surface the API depends on (config-design §8).
 // Implemented by a settings.Service adapter in the composition root; abstracted
 // so the API package needn't import internal/settings. Secrets are masked here —
@@ -228,15 +257,24 @@ type SettingsService interface {
 	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
-	// RegenerateSecret rotates a generated secret and returns the new value if it
-	// is displayable (config-design §4); displayable=false ⇒ value withheld.
-	RegenerateSecret(ctx context.Context, name string) (value string, displayable bool, err error)
-	// RevealSecret returns a generated secret's CURRENT value if it is displayable
-	// (config-design §4's eye-toggle). Reading must never rotate — the §13 webhook
-	// panel shows the URL an operator already pasted into Sonarr/Radarr.
-	RevealSecret(ctx context.Context, name string) (value string, displayable bool, err error)
+	// RegenerateSecret rotates a generated API or playout token and returns the new
+	// value (config-design §4).
+	RegenerateSecret(ctx context.Context, name string) (value string, err error)
+	// RevealSecret returns a generated API or playout token's CURRENT value
+	// (config-design §4's eye-toggle). Reading must never rotate.
+	RevealSecret(ctx context.Context, name string) (value string, err error)
 	// Test runs one named connection check (config-design §8, powers Test buttons).
 	Test(ctx context.Context, check string) (ok bool, hint string)
+}
+
+// BackendTransitioner is the one deep settings consequence for playout publication. The
+// implementation holds its cross-replica lock while invoking mutation and all publication phases.
+// mutation returns whether it durably changed a transition input; false skips transition repair.
+type BackendTransitioner interface {
+	ApplyMutation(ctx context.Context, mutation func(context.Context) bool) error
+	// Reconnect force-repairs the durably applied tuner/listing target under the same
+	// cross-replica serialization boundary as ordinary backend publication.
+	Reconnect(ctx context.Context) (tunersReset int, err error)
 }
 
 // SettingEntry is the API view of one setting (config-design §8). For a secret,
@@ -249,26 +287,29 @@ type SettingEnumOption struct {
 }
 
 type SettingEntry struct {
-	Key         string              `json:"key"`
-	Group       string              `json:"group"`
-	Kind        string              `json:"kind"`
-	Value       string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
-	Set         bool                `json:"set" doc:"For secrets: whether a value is stored."`
-	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
-	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
-	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
-	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
-	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
-	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
-	Advanced    bool                `json:"advanced"`
-	Secret      bool                `json:"secret"`
-	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
-	EnumOptions []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
-	ShowWhen    map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
-	RequiredFor string              `json:"requiredFor,omitempty"`
-	Doc         string              `json:"doc"`
-	UpdatedBy   string              `json:"updatedBy,omitempty"`
-	UpdatedAt   string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+	Key          string              `json:"key"`
+	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
+	Group        string              `json:"group"`
+	Kind         string              `json:"kind"`
+	Apply        string              `json:"apply" enum:"live,restart" doc:"When a saved value becomes active: live on the next owning operation, or restart in the next app generation."`
+	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance   string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution      bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable  bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride  bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar       string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
+	Advanced     bool                `json:"advanced"`
+	Secret       bool                `json:"secret"`
+	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
+	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
+	RequiredFor  string              `json:"requiredFor,omitempty"`
+	Doc          string              `json:"doc"`
+	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
 // SettingResult is one key's PATCH outcome (config-design §8).
@@ -316,7 +357,9 @@ type FillerService interface {
 	//
 	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
 	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
-	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
+	// When query is non-empty, results are filtered within the named collection. An empty query
+	// lists the collection, preserving the starter-pack browse path.
+	DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]DiscoveredClip, int, error)
 	// EnrichDiscovered fills in duration + quality for specific results, ON DEMAND.
 	//
 	// ⚠ Separate from Discover because it is a DIFFERENT cost, measured: a listing is one
@@ -338,6 +381,13 @@ type FillerService interface {
 	// copy cuts seek rather than decode, so this is seconds, not the detection's
 	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
 	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
+}
+
+// FillerRewinder is the optional recovery seam behind the Incoming UI. Separate from
+// FillerService so a runtime without a pipeline reports 501 and lightweight callers need not fake
+// a recovery operation they cannot perform.
+type FillerRewinder interface {
+	Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error
 }
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).
@@ -469,18 +519,18 @@ type PodPreviewer interface {
 	Pool(ctx context.Context) (filler.PoolReport, error)
 }
 
-// GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
-// owns playout). Abstracted so the API needn't import the programmer client, and so a
-// unit test can drive the page without a Tunarr. nil ⇒ now/next reads empty.
+// GuideReader answers "what is airing now" from whichever backend streams each channel.
+// Keys and arguments are always Loomarr channel ids; an adapter that reads a remote backend
+// owns the translation to that backend's id. nil ⇒ now/next reads empty.
 type GuideReader interface {
-	// NowNext returns, per TUNARR channel id, the program airing at `now` and the one
+	// NowNext returns, per Loomarr channel id, the program airing at `now` and the one
 	// following it. A channel with no generated guide is simply absent.
 	NowNext(ctx context.Context, now time.Time) (map[string]ChannelNowNext, error)
-	// Upcoming returns, for one TUNARR channel, the program airing now (if any) followed by
+	// Upcoming returns, for one Loomarr channel, the program airing now (if any) followed by
 	// the next programs in airtime order, up to `limit` entries; commercial/flex gaps are
 	// skipped (§9 guide freshness). Powers the Overview "what's on later" strip. An unknown
 	// id / empty guide yields an empty slice, not an error.
-	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]NowNextEntry, error)
+	Upcoming(ctx context.Context, channelID string, now time.Time, limit int) ([]NowNextEntry, error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -580,37 +630,37 @@ type IconSuggestion struct {
 // Implemented by channels.Engine + the store; abstracted so the API doesn't
 // couple to the reconcile internals.
 type ChannelService interface {
-	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
+	// Reconcile converges one channel on its selected playout backend (§9,
 	// POST /v1/channels/{id}/reconcile).
 	Reconcile(ctx context.Context, channelID string) error
-	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
-	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
+	// Purge hard-deletes Loomarr's channel state plus any retained managed Tunarr projection —
+	// the DELETE /v1/channels/{id}?purge=true path (§7).
 	Purge(ctx context.Context, channelID string) error
-	// CyclePreview computes "what would air at `at`" for one channel WITHOUT touching
-	// Tunarr or the store beyond the read — the §8.1 time-travel preview (GET
-	// /v1/channels/{id}/cycle?at=). Returns the resolved cycle's slots, which curation
-	// rule is active at that moment, and the resolved rolling-window horizon. A zero
-	// `at` means "now". Read-only; safe for any authenticated caller.
-	CyclePreview(ctx context.Context, channelID string, at time.Time) (
-		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
-	// CyclePreviewDraft is CyclePreview over an UNSAVED draft (P6 programming/preview): a
-	// draftLineup / draftPolicy (nil = use the saved value) stand in for the channel's own,
-	// so the editor previews what an edit WOULD air before applying it. Same purity as
-	// CyclePreview — read-only, nothing persists.
+	// CyclePreviewDraft computes "what would air at `at`" for one channel WITHOUT touching
+	// Tunarr or the store beyond the read — the §8.1 time-travel preview. A draftLineup /
+	// draftPolicy (nil = use the saved value) stand in for the channel's own, so the editor
+	// previews what an edit WOULD air before applying it. A zero `at` means "now". Read-only;
+	// nothing persists.
+	//
+	// ⚠ Both preview endpoints go through this ONE method — GET …/cycle passes nil drafts.
+	// `Engine.CyclePreview` still exists for the playout adapter (which wants only the slots
+	// and a cache around them), but the API does not declare it: it was the saved-preview path
+	// until #263, and routing that through here is what lets the SAVED preview report what the
+	// §4 filters refused, not just the mid-edit one.
 	CyclePreviewDraft(ctx context.Context, channelID string, at time.Time,
-		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
-		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
+		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
 }
 
-// LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and
-// the "wired?" status check. Implemented by setup.LiveTVConnector.
+// LiveTVService backs the Live TV setup status check (§6/§7). Mutating repair belongs to
+// BackendTransitioner so it cannot bypass durable publication ordering.
 type LiveTVService interface {
-	Connect(ctx context.Context) (tunerAdded, listingAdded bool, err error)
-	// Reconnect force-re-wires the tuner (remove + re-add + re-scan) to clear a stale
-	// channel→stream binding — the media server streaming a since-deleted channel id
-	// ("guide right, plays wrong"). Returns how many tuners were reset.
-	Reconnect(ctx context.Context) (tunersReset int, err error)
 	Wired(ctx context.Context) (bool, error)
+}
+
+// TunerRescanner is the operation-specific media-server freshness seam from §9. A guide refresh
+// cannot remove a channel from an already-registered M3U tuner; the tuner itself must be re-read.
+type TunerRescanner interface {
+	RescanTuner(ctx context.Context) error
 }
 
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
@@ -621,17 +671,17 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
-// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
-// first approval, patch it (preserving operator-owned fields) on re-approval or
-// refine. Implemented by *binder.Binder — declared here (not imported concretely)
-// so the api package doesn't couple to the binder package's internals; it only
-// needs these methods.
-//
-// LineupFromIntent/PolicyFromIntent are also used directly by createChannel (§7 POST
-// /v1/channels with an intentRef), sharing the same approved-proposal resolution
-// BindApprovedChannel uses internally — one gate, not two.
+// ProposalApprover is the complete approval gate. Its implementation plans the
+// channel and commits proposal, titles, and channel atomically before post-commit
+// runtime work; a handler cannot reproduce or reorder that choreography.
+type ProposalApprover interface {
+	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
+}
+
+// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
+// shares channel-number occupancy with manually typed channel numbers. Approval
+// uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
@@ -707,35 +757,41 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store         store.Store
-	Auth          Authorizer
-	Log           *slog.Logger
-	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ready         ReadyFunc
-	Login         LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords     PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions      SessionManager    // /v1/auth/logout (Phase 9)
-	UserSync      UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	CookieSecure  string            // COOKIE_SECURE: auto|true|false (§11)
-	DevLogin      bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof         bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	Channels      ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV        LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunarrConnect TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest       SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
-	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
-	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	Store          store.Store
+	Auth           Authorizer
+	Log            *slog.Logger
+	BackupSQLite   BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	Ready          ReadyFunc
+	Login          LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords      PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions       SessionManager    // /v1/auth/logout (Phase 9)
+	UserSync       UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure   string            // COOKIE_SECURE: auto|true|false (§11)
+	DevLogin       bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof          bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	Channels       ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV         LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect  TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest        SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	Search         SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
+	Collections    CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
+	Icons          IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
-	Images    ImageService
-	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Images   ImageService
+	Events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown <-chan struct{} // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler   FillerService   // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods     PodPreviewer    // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
+	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
+	FillerLayout filler.Layout
+	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
-	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
+	// (§18, V11). Production wires it on both backends so a reconnect can observe the
+	// successful cutover; nil is reserved for embeddings without migration status.
 	Database DatabaseService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
@@ -747,26 +803,33 @@ type Options struct {
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService
-	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
-	BootstrapDrift func() []string
-	Jobs           JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings       SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
-	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
-	// playout.Manager. Nil ⇒ the routes mount but report "not running".
-	PlayoutSessions PlayoutSessions
+	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
+	// (config-design §3).
+	RestartDrift      func() []string
+	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
+	BackendCheckpoint func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
+	Guide             GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision         Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver          ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
+	Binder            ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
+	// PlayoutObserver supplies operational snapshots and program progress.
+	PlayoutObserver PlayoutObserver
+	// PreparedObserver supplies prepared readiness and retention status without rescanning.
+	PreparedObserver PreparedObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
+	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
+	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
+	PlayoutSecretCurrent func(context.Context) (string, error)
 	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
-	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
-	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
-	PlayoutHLS PlayoutHLS
+	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
+	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
@@ -791,14 +854,17 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
-	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
-	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
-	HWEncodeSlots func(ctx context.Context) int
+	// EncodePool is the one host-wide hardware-encode admission boundary. Live playout uses
+	// foreground leases; the readiness planner uses its preemptible background lease.
+	EncodePool *media.EncodePool
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
 	LiveConfig func(key string) string
+	// LibraryConfigured atomically reports whether the complete live media-server
+	// {flavor,url,token} connection is usable. The composition root supplies it; unit tests
+	// that wire a concrete adapter may omit it.
+	LibraryConfigured func() bool
 	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
 	// string, because settings.String PANICS on a non-string key — an int setting read
 	// through the string seam took down GET /v1/users in the quota work, and only a run
@@ -837,7 +903,7 @@ func humaConfig() huma.Config {
 	// per-instance place to put it.
 	huma.DefaultArrayNullable = false
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
-	cfg.Info.Description = "Turn a sentence into a self-maintaining Tunarr channel. " +
+	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs
@@ -849,5 +915,10 @@ func humaConfig() huma.Config {
 	// (api.go) so a stale bookmark 404s instead of being handed index.html with a 200.
 	cfg.OpenAPIPath = "/v1/openapi"
 	cfg.SchemasPath = "/v1/schemas"
+	// Wire descriptions for domain types that must not import the HTTP framework
+	// (durationwire.go). ⚠ Registered HERE rather than at the two `humago.New` call sites
+	// (api.go, export.go) so the runtime API and the spec export cannot disagree about a type's
+	// wire format — the same reason DocsPath and the paths above live in this one function.
+	registerWireAliases(cfg.Components.Schemas)
 	return cfg
 }

@@ -1,6 +1,6 @@
-import { formatRelative } from "@loomarr/core";
-import { PanelRow } from "@/components/ui";
-import { cn } from "@/lib";
+import { formatRelative } from "@loomarr/core/format";
+import { PanelRow } from "@/components/ui/panel-row";
+import { cn } from "@/lib/utils";
 import type { ActivityFeedProps } from "./activity-feed.type";
 
 // ActivityFeed — "what has Loomarr been doing?" (§12, V32; v2 mock Dashboard § Recent activity).

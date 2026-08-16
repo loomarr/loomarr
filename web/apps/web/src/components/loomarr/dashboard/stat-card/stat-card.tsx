@@ -1,5 +1,6 @@
-import { Caption, Card } from "@/components/ui";
-import { cn } from "@/lib";
+import { Caption } from "@/components/ui/caption";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { StatCardProps } from "./stat-card.type";
 
 // StatCard — one number on the dashboard (§12, V16), over a label and a one-line explanation.

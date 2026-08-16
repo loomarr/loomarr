@@ -3,6 +3,7 @@ package filler_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,11 +25,11 @@ import (
 // fakeVisionStore records what the rung wrote and stamped, without a database.
 type fakeVisionStore struct {
 	tags     map[string]visionWrite // path → recorded vision tags
-	setPaths []string               // order + count of SetClipVisionTags calls
+	setPaths []string               // order + count of ApplyClipVision calls
 	setErr   error
 }
 
-// visionWrite is one recorded SetClipVisionTags call. vision_tagged is always true on this path
+// visionWrite is one recorded ApplyClipVision call. vision_tagged is always true on this path
 // (the store method stamps it), so we record the grounded values a re-run's candidacy turns on,
 // plus the suggestedEra the frame-heuristic tier feeds through.
 type visionWrite struct {
@@ -40,12 +41,16 @@ func newFakeVisionStore() *fakeVisionStore {
 	return &fakeVisionStore{tags: map[string]visionWrite{}}
 }
 
-func (f *fakeVisionStore) SetClipVisionTags(_ context.Context, path, brand, visibleText string, era, suggestedEra int, category string, _ time.Time) error {
+func (f *fakeVisionStore) ApplyClipVision(_ context.Context, _, path, brand, visibleText string, era, suggestedEra int, leaves []string, _ time.Time) error {
 	if f.setErr != nil {
 		return f.setErr
 	}
 	f.setPaths = append(f.setPaths, path)
-	f.tags[path] = visionWrite{brand: brand, visibleText: visibleText, category: category, era: era, suggestedEra: suggestedEra}
+	f.tags[path] = visionWrite{
+		brand: brand, visibleText: visibleText,
+		category: taxonomy.New(taxonomy.SeedForest()).PrimaryProductLeaf(leaves),
+		era:      era, suggestedEra: suggestedEra,
+	}
 	return nil
 }
 
@@ -65,13 +70,17 @@ type scriptedVision struct {
 	calls  int
 }
 
+func (s *scriptedVision) KeyframesIn(ctx context.Context, f string, _, _ int64, n int) ([][]byte, error) {
+	return s.Keyframes(ctx, f, n)
+}
+
 func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte, error) {
 	s.calls++
 	return s.frames, s.err
 }
 
 func (s *scriptedVision) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedVision) BlackSilence(context.Context, string) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
 func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
@@ -88,14 +97,31 @@ type scriptedProvider struct {
 	answer string
 	err    error
 	calls  int
+	prompt string
 }
 
-func (p *scriptedProvider) AskAboutImages(context.Context, string, [][]byte) (llm.Response, error) {
+func (p *scriptedProvider) AskAboutImages(_ context.Context, prompt string, _ [][]byte) (llm.Response, error) {
 	p.calls++
+	p.prompt = prompt
 	if p.err != nil {
 		return llm.Response{}, p.err
 	}
 	return llm.Response{Content: p.answer}, nil
+}
+
+func TestVisionStage_ServesTheLiveTaxonomyAndPersistsMultipleTags(t *testing.T) {
+	st := newFakeVisionStore()
+	prov := &scriptedProvider{answer: `{"visibleText":"CEREAL FOR THE HOLIDAYS","brand":"","era":0,"tags":["cereal","holiday"]}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("holiday.mp4"))) {
+		t.Fatal("the wordless clip did not apply")
+	}
+	if !strings.Contains(prov.prompt, "product: ") || !strings.Contains(prov.prompt, "seasonal: ") ||
+		!strings.Contains(prov.prompt, "cereal") || !strings.Contains(prov.prompt, "holiday") {
+		t.Fatalf("vision prompt did not serve the live multi-axis taxonomy:\n%s", prov.prompt)
+	}
+	if got := st.tags["holiday.mp4"].category; got != "cereal" {
+		t.Errorf("derived product category = %q, want cereal", got)
+	}
 }
 
 // oneFrame is a non-empty keyframe stand-in — the rung forwards bytes, it never decodes them.
@@ -196,10 +222,16 @@ func TestVisionStage_DropsBrandNotInVisibleText(t *testing.T) {
 // Found running the real vision job against the dev catalog; goes RED if the unwrap is removed.
 func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	st := newFakeVisionStore()
-	// The model fenced its answer exactly as llava does in dev. "Ford" IS in the visibleText so it
-	// grounds; "cars" is NOT (a car ad rarely prints the word "cars"), so category is correctly
-	// dropped by the same grounding rule — this test is about the FENCE unwrap, and the grounding
-	// staying intact through it is the point.
+	// The model fenced its answer exactly as llava does in dev. All THREE fields must survive the
+	// unwrap: "Ford" grounds because it is in the visibleText, and "cars" grounds because it
+	// resolves in the taxonomy.
+	//
+	// ⚠ This asserted category was DROPPED until V54b, on the grounds that "a car ad rarely prints
+	// the word 'cars'". That observation was correct and was the whole problem: it made the field
+	// nearly unfillable, and `segmentVerdict` refuses an untagged segment before it ever consults
+	// boundary confidence. Category is now taxonomy-grounded rather than frame-text-grounded
+	// (§10 V54b); brand and era are unchanged and still require the frame — see
+	// TestVisionStage_DropsBrandNotInVisibleText, which must stay green.
 	prov := &scriptedProvider{answer: "```json\n{\"visibleText\":\"FORD MUSTANG\",\"brand\":\"Ford\",\"era\":0,\"category\":\"cars\"}\n```"}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
@@ -211,8 +243,42 @@ func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	if got.visibleText != "FORD MUSTANG" {
 		t.Errorf("visibleText = %q, want it recorded from inside the fence", got.visibleText)
 	}
+	if got.category != "cars" {
+		t.Errorf("category = %q, want 'cars' grounded through the fence — it resolves in the taxonomy", got.category)
+	}
+}
+
+// ⚠ THE replacement guarantee for category (§10 V54b). Dropping the visibleText condition did not
+// make the field open: the model still cannot invent one, because an unresolvable claim is
+// discarded. The TAXONOMY is the constraint now, and this test is what says so.
+func TestVisionStage_DropsCategoryNotInTheTaxonomy(t *testing.T) {
+	st := newFakeVisionStore()
+	// A confident, plausible-sounding category that is not a taxon. Also the shape of the measured
+	// llava:7b failure, which answered with the prompt's own option list as a single string.
+	prov := &scriptedProvider{answer: `{"visibleText":"BUY NOW","brand":"","era":0,"category":"infomercial-ish"}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
+		t.Fatal("the clip did not apply")
+	}
+	if got := st.tags["silent.mp4"].category; got != "" {
+		t.Errorf("category = %q, want it DROPPED — it is not in the taxonomy", got)
+	}
+}
+
+// One malformed optional field must not erase the independently readable evidence beside it.
+// llava:7b produced this exact shape live (`category: 0`), and the default struct decoder retried
+// the whole vision rung even though the object and its visible text were otherwise usable.
+func TestVisionStage_DropsWrongTypedFieldWithoutDiscardingAnswer(t *testing.T) {
+	st := newFakeVisionStore()
+	prov := &scriptedProvider{answer: `{"visibleText":"FORD 1994","brand":"Ford","era":"1994","category":0}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("ford.mp4"))) {
+		t.Fatal("the clip did not apply")
+	}
+	got := st.tags["ford.mp4"]
+	if got.brand != "Ford" || got.era != 1994 {
+		t.Errorf("grounded = %+v, want valid brand and string-encoded era preserved", got)
+	}
 	if got.category != "" {
-		t.Errorf("category = %q, want it DROPPED — 'cars' is not in the visible text, so it stays ungrounded even through the fence", got.category)
+		t.Errorf("category = %q, want the wrong-typed field dropped", got.category)
 	}
 }
 

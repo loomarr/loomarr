@@ -160,7 +160,7 @@ components:
           readOnly: true
           type: string
         channelId:
-          description: The channel this approval created or patched (§7). Empty only if channel creation failed — the approval itself still stands.
+          description: The channel atomically created or patched by this approval (§7)
           type: string
         enqueued:
           description: Acquisitions enqueued as wanted titles
@@ -171,6 +171,7 @@ components:
       required:
         - status
         - enqueued
+        - channelId
       type: object
     AudiencePolicy:
       additionalProperties: false
@@ -477,6 +478,9 @@ components:
           examples:
             - ch_abc123
           type: string
+        inAppPlayable:
+          description: True when this channel can be tuned by Loomarr's in-app player
+          type: boolean
         intentRef:
           type: string
         lineup:
@@ -511,6 +515,11 @@ components:
           description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
+        revision:
+          description: Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition.
+          format: int64
+          minimum: 1
+          type: integer
         slotCount:
           description: Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics.
           format: int64
@@ -532,14 +541,16 @@ components:
             - time_slot
           type: string
         tunarrId:
-          description: Server-assigned Tunarr channel id; empty until first reconcile
+          description: Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout
           type: string
       required:
         - id
+        - revision
         - name
         - number
         - strategy
         - status
+        - inAppPlayable
         - programCount
         - pendingCount
         - breakCount
@@ -685,6 +696,12 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         breaksPerHour:
           format: int64
           type: integer
@@ -749,6 +766,11 @@ components:
           type: string
         aiTagged:
           type: boolean
+        assertedTags:
+          description: Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip
+          items:
+            type: string
+          type: array
         audience:
           enum:
             - kids
@@ -1073,6 +1095,43 @@ components:
       required:
         - username
         - password
+      type: object
+    CreateTaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/CreateTaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          type: string
+        parent:
+          type: string
+        retiredAliases:
+          items:
+            type: string
+          type: array
+        slug:
+          description: Stable machine id — immutable after creation
+          type: string
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - slug
+        - label
+        - axis
       type: object
     CycleSlotDTO:
       additionalProperties: false
@@ -1579,6 +1638,49 @@ components:
           format: uri
           type: string
       type: object
+    ExcludedDTO:
+      additionalProperties: false
+      properties:
+        items:
+          description: The refused items themselves, each with its reason
+          items:
+            $ref: "#/components/schemas/ExcludedItemDTO"
+          type: array
+        overCeiling:
+          description: Titles refused for being rated above the channel's audience ceiling
+          format: int64
+          type: integer
+        unrated:
+          description: Titles refused for carrying no usable rating under a kids ceiling (§4 fails closed)
+          format: int64
+          type: integer
+      required:
+        - overCeiling
+        - unrated
+        - items
+      type: object
+    ExcludedItemDTO:
+      additionalProperties: false
+      properties:
+        key:
+          description: Provisioning key of the refused title (a series key for a refused episode)
+          type: string
+        reason:
+          description: Which hard filter refused it
+          enum:
+            - over_ceiling
+            - unrated
+            - out_of_scope
+            - out_of_season
+          type: string
+        title:
+          description: Display label — for a refused episode this carries its season/episode
+          type: string
+      required:
+        - key
+        - title
+        - reason
+      type: object
     FetchFillerSourceOutputBody:
       additionalProperties: false
       properties:
@@ -1677,6 +1779,32 @@ components:
         - progress
         - disposition
       type: object
+    FillerFetchStatusDTO:
+      additionalProperties: false
+      properties:
+        catalogClips:
+          format: int64
+          type: integer
+        diskBytes:
+          format: int64
+          type: integer
+        enabled:
+          type: boolean
+        maxCatalog:
+          format: int64
+          type: integer
+        maxDiskBytes:
+          format: int64
+          type: integer
+        stoppedBy:
+          enum:
+            - catalog
+            - disk
+          type: string
+      required:
+        - enabled
+        - catalogClips
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -1691,18 +1819,38 @@ components:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        clipsTotal:
+          description: All clips on the conveyor; clips is capped to one page
+          format: int64
+          type: integer
+        decisionsTotal:
+          description: All conveyor clips waiting on a person, including rows beyond this page
+          format: int64
+          type: integer
         recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingClipDTO"
           type: array
+        recentlyFiledTotal:
+          description: All automatically filed audit rows; recentlyFiled is capped to one page
+          format: int64
+          type: integer
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
           type: array
+        reelsTotal:
+          description: All reviewable reels; reels is capped to one page
+          format: int64
+          type: integer
         rejected:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
           type: array
+        rejectedTotal:
+          description: All rejected audit rows; rejected is capped to one page
+          format: int64
+          type: integer
         stageOrder:
           description: Every pipeline stage id, in run order
           items:
@@ -1714,10 +1862,15 @@ components:
           type: integer
       required:
         - clips
+        - clipsTotal
+        - decisionsTotal
         - reels
+        - reelsTotal
         - rejected
+        - rejectedTotal
         - stageOrder
         - recentlyFiled
+        - recentlyFiledTotal
         - total
       type: object
     FillerIngestEvent:
@@ -1818,6 +1971,8 @@ components:
           type: boolean
         target:
           type: string
+        uri:
+          type: string
       required:
         - id
         - enabled
@@ -1888,6 +2043,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoFetch:
+          $ref: "#/components/schemas/FillerFetchStatusDTO"
         clips:
           format: int64
           type: integer
@@ -2002,9 +2159,9 @@ components:
           type: integer
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: The preview image's record, for srcset and placeholder rendering
+          description: The preview image's record, for srcset, animation and placeholder rendering
         thumbUrl:
-          description: Image-service preview URL (episode still or poster); empty for breaks or when unavailable
+          description: Same-origin image-service preview path; empty when unavailable
           type: string
         title:
           description: The episode's name for a series, or the film's name
@@ -2266,13 +2423,13 @@ components:
           description: poster | backdrop | icon | thumb — decides the width ladder
           type: string
         src:
-          description: A single JPEG URL for the <img> fallback
+          description: A same-origin JPEG path for the <img> fallback
           type: string
         srcSetAvif:
-          description: srcset for AVIF; empty until the AVIF job has run
+          description: Same-origin srcset for AVIF; empty until the AVIF job has run
           type: string
         srcSetWebp:
-          description: srcset for WebP
+          description: Same-origin srcset for WebP
           type: string
         width:
           description: The original's width in pixels
@@ -2605,6 +2762,84 @@ components:
       required:
         - name
       type: object
+    JobExecutionView:
+      additionalProperties: false
+      properties:
+        durationMs:
+          description: Execution duration in milliseconds
+          format: int64
+          type: integer
+        error:
+          description: Failure detail when result is error
+          type: string
+        finishedAt:
+          description: When this execution finished
+          format: date-time
+          type: string
+        result:
+          description: Loomarr task outcome
+          enum:
+            - ok
+            - error
+          type: string
+        startedAt:
+          description: When this execution started
+          format: date-time
+          type: string
+        trigger:
+          description: Whether the schedule or an operator started the execution
+          enum:
+            - scheduled
+            - manual
+          type: string
+      required:
+        - startedAt
+        - finishedAt
+        - durationMs
+        - result
+        - trigger
+      type: object
+    JobHistoryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/JobHistoryView.json
+          format: uri
+          readOnly: true
+          type: string
+        averageDurationMs:
+          description: Mean completed execution duration in milliseconds
+          format: int64
+          type: integer
+        failureCount:
+          description: Failed executions in the window
+          format: int64
+          type: integer
+        recent:
+          description: Five latest trustworthy executions, newest first
+          items:
+            $ref: "#/components/schemas/JobExecutionView"
+          type: array
+        runCount:
+          description: Completed executions in the window
+          format: int64
+          type: integer
+        truncated:
+          description: True when the count reached the safety scan limit
+          type: boolean
+        windowStart:
+          description: Start of the summarized execution window
+          format: date-time
+          type: string
+      required:
+        - windowStart
+        - runCount
+        - failureCount
+        - averageDurationMs
+        - recent
+      type: object
     JobView:
       additionalProperties: false
       properties:
@@ -2613,6 +2848,17 @@ components:
           type: string
         disabledReason:
           description: Why this job cannot run here; empty when it can
+          type: string
+        group:
+          description: Operator outcome used to group tasks
+          enum:
+            - acquisitions
+            - channels
+            - filler
+            - artwork
+            - playout
+            - system
+            - backup
           type: string
         lastError:
           description: Error detail when lastResult is error
@@ -2631,6 +2877,9 @@ components:
           description: When the job is next due
           format: date-time
           type: string
+        overdue:
+          description: True when the job is past due and waiting on a worker rather than on its schedule
+          type: boolean
         paused:
           description: True when the operator paused the schedule; the job stays listed but never runs when due
           type: boolean
@@ -2648,6 +2897,7 @@ components:
           type: string
       required:
         - name
+        - group
         - title
         - description
         - schedule
@@ -2965,12 +3215,29 @@ components:
           format: uri
           readOnly: true
           type: string
+        axisCoverage:
+          items:
+            $ref: "#/components/schemas/TaxonomyAxisCoverageDTO"
+          type: array
+        taggedClips:
+          format: int64
+          type: integer
         taxa:
           items:
             $ref: "#/components/schemas/TaxonDTO"
           type: array
+        totalClips:
+          format: int64
+          type: integer
+        unclassifiedClips:
+          format: int64
+          type: integer
       required:
         - taxa
+        - totalClips
+        - taggedClips
+        - unclassifiedClips
+        - axisCoverage
       type: object
     ListUserSessionsOutputBody:
       additionalProperties: false
@@ -3086,7 +3353,7 @@ components:
           description: A flex/commercial-pod gap rather than a program
           type: boolean
         startMs:
-          description: Epoch ms; airtime as Tunarr scheduled it
+          description: Epoch ms; airtime as the selected playout backend scheduled it
           format: int64
           type: integer
         stopMs:
@@ -3137,6 +3404,10 @@ components:
             - general
             - late_night
             - ""
+          type: string
+        brand:
+          description: Grounded advertiser name. Omit to leave unchanged; send an empty string to clear.
+          maxLength: 120
           type: string
         era:
           format: int64
@@ -3248,8 +3519,6 @@ components:
           type: string
         backend:
           type: string
-        subtitles:
-          type: string
       type: object
     PlayoutStatus:
       additionalProperties: false
@@ -3267,6 +3536,8 @@ components:
           type: array
         gpu:
           $ref: "#/components/schemas/PlayoutGPU"
+        prepared:
+          $ref: "#/components/schemas/PreparedReadiness"
         running:
           description: Internal playout is wired (false on a Tunarr-only install)
           type: boolean
@@ -3274,6 +3545,7 @@ components:
         - running
         - gpu
         - channels
+        - prepared
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -3459,6 +3731,67 @@ components:
         - untagged
         - channels
       type: object
+    PreparedReadiness:
+      additionalProperties: false
+      properties:
+        available:
+          description: Whether durable prepared playout is available
+          type: boolean
+        budgetBytes:
+          format: int64
+          type: integer
+        channels:
+          description: Channels with scheduled programmes in the resolved window
+          format: int64
+          type: integer
+        lastError:
+          type: string
+        lastRunAt:
+          description: Last completed readiness pass; absent means no pass has completed
+          format: date-time
+          type: string
+        missingBindings:
+          format: int64
+          type: integer
+        protectedBytes:
+          format: int64
+          type: integer
+        queuedPublications:
+          description: Deduplicated publications exposed to the bounded warming frontier
+          format: int64
+          type: integer
+        readyBindings:
+          format: int64
+          type: integer
+        readyChannels:
+          description: Channels whose scheduled bindings are all prepared
+          format: int64
+          type: integer
+        remainingBytes:
+          format: int64
+          type: integer
+        running:
+          description: Whether a readiness pass is currently running
+          type: boolean
+        scheduledBindings:
+          description: Channel and library-item bindings in the resolved window
+          format: int64
+          type: integer
+        unavailableReason:
+          type: string
+      required:
+        - available
+        - running
+        - channels
+        - readyChannels
+        - scheduledBindings
+        - readyBindings
+        - missingBindings
+        - queuedPublications
+        - remainingBytes
+        - budgetBytes
+        - protectedBytes
+      type: object
     PreviewCycleOutputBody:
       additionalProperties: false
       properties:
@@ -3474,6 +3807,9 @@ components:
         at:
           description: The resolved wall-clock this preview was computed for (RFC3339)
           type: string
+        excluded:
+          $ref: "#/components/schemas/ExcludedDTO"
+          description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
         slots:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
@@ -3488,6 +3824,7 @@ components:
         - activeRule
         - windowMs
         - slots
+        - excluded
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -3498,6 +3835,12 @@ components:
             - https://example.com/v1/schemas/PreviewDraftPodsInputBody.json
           format: uri
           readOnly: true
+          type: string
+        breakDuration:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
           type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
@@ -3570,6 +3913,9 @@ components:
         at:
           description: The resolved wall-clock this preview was computed for (RFC3339)
           type: string
+        excluded:
+          $ref: "#/components/schemas/ExcludedDTO"
+          description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
         pods:
           $ref: "#/components/schemas/PodPoolDTO"
           description: The assembled break pool for the draft filler selection (§10)
@@ -3588,6 +3934,7 @@ components:
         - windowMs
         - slots
         - pods
+        - excluded
       type: object
     Proposal:
       additionalProperties: false
@@ -3962,12 +4309,12 @@ components:
           description: Whether this process can restart itself
           type: boolean
         pendingKeys:
-          description: Boot-time settings waiting on a restart, e.g. DATABASE_URL
+          description: Restart-scoped settings waiting on a restart, e.g. DATABASE_URL or filler.dir
           items:
             type: string
           type: array
         restartRequired:
-          description: A boot-time setting has changed and needs a restart to apply
+          description: A restart-scoped setting has changed and needs a restart to apply
           type: boolean
         streamingChannels:
           description: Channels Loomarr is streaming that will drop
@@ -3977,6 +4324,36 @@ components:
         - streamingChannels
         - restartRequired
         - available
+      type: object
+    RewindFillerClipInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RewindFillerClipInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        force:
+          type: boolean
+        from:
+          enum:
+            - probe
+            - transcode
+            - split
+            - language
+            - transcribe
+            - tag
+            - vision
+            - score
+          type: string
+        hash:
+          minLength: 1
+          type: string
+      required:
+        - hash
+        - from
       type: object
     RuleOrdering:
       additionalProperties: false
@@ -4125,13 +4502,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the new value is returned (config-design §4).
-          type: boolean
         value:
+          description: The newly generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SecretRevealOutputBody:
       additionalProperties: false
@@ -4143,13 +4518,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the value is returned (config-design §4).
-          type: boolean
         value:
+          description: The current generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SeparationPolicy:
       additionalProperties: false
@@ -4362,6 +4735,12 @@ components:
       properties:
         advanced:
           type: boolean
+        apply:
+          description: "When a saved value becomes active: live on the next owning operation, or restart in the next app generation."
+          enum:
+            - live
+            - restart
+          type: string
         caution:
           description: A stored value self-healed to default (§3).
           type: boolean
@@ -4391,6 +4770,12 @@ components:
         key:
           type: string
         kind:
+          type: string
+        label:
+          description: Registry-owned human label for workflow forms.
+          type: string
+        presentation:
+          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
           type: string
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
@@ -4428,6 +4813,7 @@ components:
         - key
         - group
         - kind
+        - apply
         - set
         - provenance
         - advanced
@@ -4699,9 +5085,14 @@ components:
       properties:
         audience:
           type: string
+        boundaryConfidence:
+          format: int64
+          type: integer
         category:
           type: string
         dupOf:
+          type: string
+        endEvidence:
           type: string
         endMs:
           format: int64
@@ -4709,10 +5100,16 @@ components:
         era:
           format: int64
           type: integer
+        holdReason:
+          type: string
         index:
           format: int64
           type: integer
+        looked:
+          type: boolean
         name:
+          type: string
+        startEvidence:
           type: string
         startMs:
           format: int64
@@ -5109,6 +5506,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        assertedClips:
+          description: Playable catalog clips directly asserted with this taxon
+          format: int64
+          type: integer
         axis:
           description: The independent dimension this taxon lives on
           enum:
@@ -5120,6 +5521,10 @@ components:
         label:
           description: Human display form
           type: string
+        matchedClips:
+          description: Playable catalog clips matching this taxon, including descendant rollups
+          format: int64
+          type: integer
         parent:
           description: Parent slug on the same axis; empty for an axis root
           type: string
@@ -5131,6 +5536,10 @@ components:
         slug:
           description: Stable machine id — the token the tagger emits and clip_tags references
           type: string
+        storedClips:
+          description: All stored clips directly assigned this taxon, including held, removed, and compilation records; blocks deletion
+          format: int64
+          type: integer
         synonyms:
           items:
             type: string
@@ -5139,6 +5548,32 @@ components:
         - slug
         - label
         - axis
+        - assertedClips
+        - matchedClips
+        - storedClips
+      type: object
+    TaxonomyAxisCoverageDTO:
+      additionalProperties: false
+      properties:
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        taggedClips:
+          description: Playable clips with at least one direct assertion on this axis
+          format: int64
+          type: integer
+        untaggedClips:
+          description: Playable clips without a direct assertion on this axis; absence may be valid for sparse cue axes
+          format: int64
+          type: integer
+      required:
+        - axis
+        - taggedClips
+        - untaggedClips
       type: object
     TimelineOutputBody:
       additionalProperties: false
@@ -5330,8 +5765,13 @@ components:
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
           description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+        revision:
+          description: Revision returned by the channel read this edit was based on. A stale revision is rejected with 409.
+          format: int64
+          minimum: 1
+          type: integer
         status:
-          description: Pause (off air, keep the channel) or resume.
+          description: Pause Loomarr-managed playout and guide surfaces, or resume. In v1, a retained Tunarr projection keeps its last lineup.
           enum:
             - paused
             - building
@@ -5342,6 +5782,41 @@ components:
             - shuffle
             - time_slot
           type: string
+      required:
+        - revision
+      type: object
+    UpdateTaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/UpdateTaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          type: string
+        parent:
+          type: string
+        retiredAliases:
+          items:
+            type: string
+          type: array
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - label
+        - axis
       type: object
     UploadIconOutputBody:
       additionalProperties: false
@@ -5494,7 +5969,7 @@ components:
         - priority
       type: object
 info:
-  description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
+  description: "Turn a sentence into a self-maintaining virtual TV channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
   title: Loomarr API
   version: 0.1.0
 openapi: 3.1.0
@@ -5718,7 +6193,7 @@ paths:
         - channels
   /v1/channels/now-next:
     get:
-      description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel."
+      description: Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.
       operationId: channels-now-next
       responses:
         "200":
@@ -5746,12 +6221,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: "Also delete the Tunarr channel (default: detach only, §7)"
+        - description: "Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"
           explode: false
           in: query
           name: purge
           schema:
-            description: "Also delete the Tunarr channel (default: detach only, §7)"
+            description: "Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"
             type: boolean
       responses:
         "204":
@@ -6103,7 +6578,7 @@ paths:
         - channels
   /v1/channels/{id}/reconcile:
     post:
-      description: Admin only. Idempotent (§9).
+      description: Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).
       operationId: reconcile-channel
       parameters:
         - in: path
@@ -6126,7 +6601,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Force desired→Tunarr reconciliation
+      summary: Force channel convergence
       tags:
         - channels
   /v1/channels/{id}/refine:
@@ -6228,7 +6703,7 @@ paths:
         - channels
   /v1/channels/{id}/upcoming:
     get:
-      description: The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
+      description: The program airing now (first) then the next few, in airtime order, from the backend that streams this channel (gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
       operationId: channel-upcoming
       parameters:
         - in: path
@@ -6568,6 +7043,32 @@ paths:
           name: category
           schema:
             type: string
+        - description: Match clips carrying this taxon directly or through a descendant rollup
+          explode: false
+          in: query
+          name: taxon
+          schema:
+            description: Match clips carrying this taxon directly or through a descendant rollup
+            type: string
+        - description: Only playable clips with no directly asserted taxonomy tags on any axis
+          explode: false
+          in: query
+          name: unclassified
+          schema:
+            description: Only playable clips with no directly asserted taxonomy tags on any axis
+            type: boolean
+        - description: Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes
+          explode: false
+          in: query
+          name: withoutAxis
+          schema:
+            description: Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes
+            enum:
+              - product
+              - format
+              - seasonal
+              - audience-cue
+            type: string
         - description: Only commercials missing match tags
           explode: false
           in: query
@@ -6742,20 +7243,20 @@ paths:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no tags, no licence (see below), and no duration or quality — those cost a metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
       operationId: discover-filler
       parameters:
-        - description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+        - description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
           explode: false
           in: query
           name: q
           schema:
-            description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
+            description: Words to search for, e.g. "1980s cereal commercial". When collection is also present, searches within that collection.
             minLength: 2
             type: string
-        - description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+        - description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
           explode: false
           in: query
           name: collection
           schema:
-            description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+            description: "An archive.org collection to list or search: a URL, a /details/<id> path, or a bare identifier. May be combined with q to search within it."
             type: string
         - description: Max results (default 25)
           explode: false
@@ -6899,7 +7400,7 @@ paths:
         - filler
   /v1/filler/incoming:
     get:
-      description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
+      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
       operationId: filler-incoming
       responses:
         "200":
@@ -7113,6 +7614,28 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Decline a pull
+      tags:
+        - filler
+  /v1/filler/rewind:
+    post:
+      description: Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. Re-running transcode requires force because the original bytes are no longer available and another encode loses quality.
+      operationId: rewind-filler-clip
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindFillerClipInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-run a clip's ingest pipeline from one stage
       tags:
         - filler
   /v1/filler/sources:
@@ -7359,7 +7882,7 @@ paths:
         - filler
   /v1/filler/tags:
     patch:
-      description: Admin only. The clip is identified by `path` in the body (§10 V45a).
+      description: Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).
       operationId: tag-filler-clip
       requestBody:
         content:
@@ -7380,7 +7903,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Edit a clip's tags
+      summary: Edit a clip's classification
       tags:
         - filler
   /v1/filler/watch:
@@ -7629,6 +8152,34 @@ paths:
       summary: List background jobs
       tags:
         - jobs
+  /v1/jobs/{name}/history:
+    get:
+      description: Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).
+      operationId: jobs-history
+      parameters:
+        - description: The job's stable id (from GET /v1/jobs)
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The job's stable id (from GET /v1/jobs)
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHistoryView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get recent job executions
+      tags:
+        - jobs
   /v1/jobs/{name}/pause:
     post:
       description: "Admin only. Pausing stops a job running on its schedule (§18.1); it stays listed, keeps its cron, and reports no next run. Run now still works on a paused job — pause stops the schedule, not the task. A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference."
@@ -7758,6 +8309,15 @@ paths:
             examples:
               - ch_abc123
             type: string
+        - description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+          explode: false
+          in: query
+          name: mode
+          schema:
+            description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+            enum:
+              - prepared
+            type: string
       responses:
         "200":
           content:
@@ -7767,12 +8327,8 @@ paths:
                 format: binary
                 type: string
           description: The HLS master playlist for the in-app and native players.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
+        "204":
+          description: No prepared presentation is currently available; live playout was not started.
       summary: Channel HLS master playlist (signed-URL authed)
       tags:
         - playout
@@ -8303,7 +8859,7 @@ paths:
       tags:
         - settings
     patch:
-      description: Admin only. Per-key results (saved | invalid | pinned); hot-applies on success (config-design §8).
+      description: "Admin only. Per-key results (saved | invalid | pinned). A saved value follows that setting's apply contract: live on the next owning operation, or restart in the next app generation (config-design §3/§8)."
       operationId: settings-patch
       requestBody:
         content:
@@ -8329,18 +8885,18 @@ paths:
         - settings
   /v1/settings/secrets/{name}:
     get:
-      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
+      description: Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.
       operationId: secret-reveal
       parameters:
-        - description: Which generated secret to reveal.
+        - description: Which generated token to reveal.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to reveal.
+            description: Which generated token to reveal.
             enum:
-              - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
@@ -8355,23 +8911,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Reveal a generated secret
+      summary: Reveal a generated token
       tags:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.
       operationId: secret-regenerate
       parameters:
-        - description: Which generated secret to rotate.
+        - description: Which generated token to rotate.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to rotate.
+            description: Which generated token to rotate.
             enum:
-              - session_secret
               - api_token
+              - playout_token
             type: string
       responses:
         "200":
@@ -8386,7 +8942,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Regenerate a generated secret
+      summary: Regenerate a generated token
       tags:
         - settings
   /v1/settings/{key}:
@@ -8471,7 +9027,7 @@ paths:
         - setup
   /v1/setup/livetv-reconnect:
     post:
-      description: Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).
+      description: Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9).
       operationId: livetv-reconnect
       responses:
         "200":
@@ -8486,7 +9042,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Force-re-wire the Tunarr tuner
+      summary: Force-re-wire the Live TV tuner
       tags:
         - setup
   /v1/setup/state:
@@ -8904,7 +9460,7 @@ paths:
         - system
   /v1/system/restart:
     get:
-      description: Admin only. The live count of channels Loomarr is streaming (which drop for a few seconds; Tunarr-backed channels keep playing), plus any boot-time setting waiting on a restart. Read-only — this does not restart anything.
+      description: Admin only. The live count of channels Loomarr is streaming (which drop for a few seconds; Tunarr-backed channels keep playing), plus any restart-scoped setting waiting on a restart. Read-only — this does not restart anything.
       operationId: system-restart-cost
       responses:
         "200":
@@ -8998,13 +9554,13 @@ paths:
       tags:
         - filler
     post:
-      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      description: Admin only. Updates the graph and catalog tags atomically (§10 V45a).
       operationId: create-taxon
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TaxonDTO"
+              $ref: "#/components/schemas/CreateTaxonDTO"
         required: true
       responses:
         "200":
@@ -9024,7 +9580,7 @@ paths:
         - filler
   /v1/taxonomy/{slug}:
     delete:
-      description: Admin only. Children are reparented to the grandparent; reindexes (§10 V45a).
+      description: Admin only. Children are reparented and catalog tags update atomically (§10 V45a).
       operationId: delete-taxon
       parameters:
         - in: path
@@ -9045,7 +9601,7 @@ paths:
       tags:
         - filler
     put:
-      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      description: Admin only. Updates the graph and catalog tags atomically (§10 V45a).
       operationId: update-taxon
       parameters:
         - in: path
@@ -9057,7 +9613,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TaxonDTO"
+              $ref: "#/components/schemas/UpdateTaxonDTO"
         required: true
       responses:
         "200":

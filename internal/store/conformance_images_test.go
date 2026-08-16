@@ -9,7 +9,7 @@ import (
 )
 
 // Image service conformance (§22, V52). Part of the ONE suite both backends run — never forked per
-// dialect (CLAUDE.md). The dialect differences here are real (INTEGER vs BOOLEAN for `animated`,
+// dialect (AGENTS.md). The dialect differences here are real (INTEGER vs BOOLEAN for `animated`,
 // TEXT vs JSONB for `meta`, INTEGER vs BIGINT for the epochs), which is exactly why these
 // assertions must be shared: a Postgres-only surprise should fail a test, not a deployment.
 
@@ -43,6 +43,8 @@ func imageAt(seed string, at time.Time) Image {
 		Height:          1500,
 		Bytes:           123456,
 		Animated:        false,
+		FrameCount:      1,
+		DurationMS:      0,
 		Placeholder:     "ph-" + seed,
 		DominantHex:     "#336699",
 		Meta:            `{"attribution":"` + seed + `"}`,
@@ -59,6 +61,11 @@ func testImageRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	at := time.Unix(1_700_000_000, 0)
 
 	want := imageAt("alpha", at)
+	loop := 0
+	want.Animated = true
+	want.FrameCount = 2
+	want.DurationMS = 400
+	want.LoopCount = &loop
 	if err := s.PutImage(ctx, want); err != nil {
 		t.Fatalf("PutImage: %v", err)
 	}
@@ -92,8 +99,11 @@ func testImageRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if !got.OriginFetchedAt.Equal(at) {
 		t.Errorf("originFetchedAt = %v, want %v", got.OriginFetchedAt, at)
 	}
-	if got.Animated {
-		t.Error("animated came back true for a still")
+	if !got.Animated {
+		t.Error("animated came back false for a timeline")
+	}
+	if got.FrameCount != 2 || got.DurationMS != 400 || got.LoopCount == nil || *got.LoopCount != 0 {
+		t.Errorf("animation metadata = frames %d duration %d loop %v", got.FrameCount, got.DurationMS, got.LoopCount)
 	}
 }
 
@@ -225,8 +235,8 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	for _, d := range []ImageDerivative{
-		{ImageHash: img.Hash, Format: "webp", Width: 342, Bytes: 9000, Path: "drv/x/y/a_w342.webp", CreatedAt: at},
-		{ImageHash: img.Hash, Format: "webp", Width: 500, Bytes: 14000, Path: "drv/x/y/a_w500.webp", CreatedAt: at},
+		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 342, Bytes: 9000, OutputHash: strings.Repeat("a", 64), Path: "drv/x/y/a_w342.webp", Animated: true, CreatedAt: at},
+		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 500, Bytes: 14000, OutputHash: strings.Repeat("b", 64), Path: "drv/x/y/a_w500.webp", Animated: true, CreatedAt: at},
 	} {
 		if err := s.PutImageDerivative(ctx, d); err != nil {
 			t.Fatal(err)
@@ -240,10 +250,14 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	if len(list) != 2 {
 		t.Fatalf("ListImageDerivatives = %d, want 2", len(list))
 	}
+	if list[0].Recipe != "loomarr-rendition-v1" || list[0].OutputHash != strings.Repeat("a", 64) || !list[0].Animated {
+		t.Errorf("derivative provenance did not round trip: %+v", list[0])
+	}
 
 	// Re-encoding one rung replaces it rather than duplicating — the key is (hash, format, width).
 	if err := s.PutImageDerivative(ctx, ImageDerivative{
-		ImageHash: img.Hash, Format: "webp", Width: 500, Bytes: 15500,
+		ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 500, Bytes: 15500,
+		OutputHash: strings.Repeat("c", 64), Animated: true,
 		Path: "drv/x/y/a_w500.webp", CreatedAt: at.Add(time.Hour),
 	}); err != nil {
 		t.Fatal(err)
@@ -252,12 +266,49 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	if len(list) != 2 {
 		t.Fatalf("re-putting a rung created a duplicate: %d rows", len(list))
 	}
+	// A new encoder recipe at the same public width is a distinct cache identity. It must not
+	// overwrite the prior bytes before the application has deliberately switched recipes.
+	if err := s.PutImageDerivative(ctx, ImageDerivative{
+		ImageHash: img.Hash, Recipe: "loomarr-rendition-v2", Format: "webp", Width: 500,
+		Bytes: 15000, OutputHash: strings.Repeat("d", 64), Path: "drv/x/y/a_v2_w500.webp", CreatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.ListImageDerivatives(ctx, img.Hash)
+	if len(list) != 3 {
+		t.Fatalf("a second recipe overwrote the first: %d rows", len(list))
+	}
 
 	if err := s.DeleteImageDerivatives(ctx, img.Hash); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ = s.ListImageDerivatives(ctx, img.Hash); len(list) != 0 {
 		t.Errorf("derivatives survived deletion: %d", len(list))
+	}
+}
+
+func testImageDerivativeBatchAtomic(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+	img := imageAt("eta-batch", at)
+	if err := s.PutImage(ctx, img); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.PutImageDerivatives(ctx, []ImageDerivative{
+		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v2", Format: "avif", Width: 185, Path: "valid", CreatedAt: at},
+		{ImageHash: strings.Repeat("f", 64), Recipe: "loomarr-rendition-v2", Format: "avif", Width: 500, Path: "missing-parent", CreatedAt: at},
+	})
+	if err == nil {
+		t.Fatal("PutImageDerivatives accepted a ladder with a missing parent")
+	}
+	rows, listErr := s.ListImageDerivatives(ctx, img.Hash)
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("failed batch committed %d rows; a ladder must publish all or nothing", len(rows))
 	}
 }
 
@@ -289,7 +340,7 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	must(s.PutImageDerivative(ctx, ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
 
-	got, err := s.ListImagesMissingFormat(ctx, "avif", 10)
+	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +720,7 @@ func testImageDerivativeBudgetAndEvictionOrder(t *testing.T, newStore NewStoreFu
 	}
 
 	// Evicting one rung leaves the other rung and both parent rows alone.
-	if err := s.DeleteImageDerivative(ctx, cold.Hash, "webp", 500); err != nil {
+	if err := s.DeleteImageDerivative(ctx, cold.Hash, "legacy-go-v1", "webp", 500); err != nil {
 		t.Fatal(err)
 	}
 	if total, err = s.TotalImageDerivativeBytes(ctx); err != nil {

@@ -1,4 +1,5 @@
-import type { SettingEntry, SettingResult } from "@loomarr/api";
+import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import type { SettingResult } from "@loomarr/api/models/settingResult";
 
 interface SettingFieldProps {
   // The generated registry entry (§8) — kind/enum/secret/provenance/doc all come from
@@ -20,6 +21,13 @@ interface SettingFieldProps {
   // the cross-tab save buffer. Routing both through one handler would either make the unlock
   // wait for a Save the operator cannot reach, or make ordinary edits commit instantly.
   onEnvOverride?: (enabled: boolean) => void;
+  // A workflow-level prerequisite that prevents this value from taking effect. Distinct from
+  // `provenance: env`: this disables the control because the capability cannot run, and renders
+  // the reason beside it while retaining the desired value (config-design §5).
+  disabledReason?: string;
+  // Id of workflow guidance rendered by the caller. Full fields combine it with the
+  // registry doc and availability reason in aria-describedby.
+  descriptionId?: string;
   // Compact renders ONLY the control — no label, doc tooltip, provenance badge or audit line.
   // For the All-settings table (V10), whose own columns already carry the key, group and
   // provenance; repeating them inside the cell would be the same facts twice.

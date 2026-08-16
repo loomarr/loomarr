@@ -1,5 +1,6 @@
 import type { SplitProposal, SplitSegment } from "@loomarr/api";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SplitReviewEditor } from "./split-review-editor";
 
@@ -77,6 +78,33 @@ describe("SplitReviewEditor", () => {
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
+  it("explains the automatic hold and shows the boundary evidence", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Needs classification",
+              holdReason: "a segment could not be classified",
+              boundaryConfidence: 90,
+              startEvidence: "reel edge",
+              endEvidence: "black + silence",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("region", { name: /segment 1: needs classification/i });
+    expect(within(row).getByText(/needs review: a segment could not be classified/i)).toBeInTheDocument();
+    expect(within(row).getByText(/cut confidence 90%/i)).toBeInTheDocument();
+    expect(within(row).getByText(/start: reel edge/i)).toBeInTheDocument();
+    expect(within(row).getByText(/end: black \+ silence/i)).toBeInTheDocument();
+  });
+
   it("confirms the edited cut list — names and mm:ss times parsed back to ms", () => {
     const { onConfirm } = renderEditor();
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });
@@ -141,6 +169,19 @@ describe("SplitReviewEditor", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("warns when an edited cut is below the resolved catalog floor", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{ ...proposal, segments: [seg({ endMs: 8_000, name: "Short legacy cut" })] }}
+        minClipDurationMs={10_000}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(/8s.*below the 10s catalog minimum/i);
+  });
+
   it("Back leaves without confirming", () => {
     const { onConfirm, onBack } = renderEditor();
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
@@ -198,5 +239,40 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     expect(wire[0]?.endMs).toBe(25_000);
     // …and the boundary they did NOT touch still keeps its sub-second value.
     expect(wire[0]?.startMs).toBe(1_500);
+  });
+
+  // --- the inline preview (§10 V54) ---------------------------------------------------------
+
+  // ⚠ Two expanded previews are two audio streams talking over each other, and a per-row
+  // `useState` would let all 52 open — 52 range requests against one 20-minute file.
+  it("keeps at most one preview open", async () => {
+    const { container } = render(
+      <SplitReviewEditor proposal={proposal} onConfirm={vi.fn()} onBack={vi.fn()} />,
+    );
+
+    const tiles = screen.getAllByRole("button", { name: /preview segment/i });
+    await userEvent.click(tiles[0] as HTMLElement);
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+
+    await userEvent.click(tiles[1] as HTMLElement);
+
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
+    expect(within(second).getByRole("button", { name: /preview segment/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  // ⚠ `/transcript/i` is the one UNANCHORED matcher the existing tests use, so a preview button
+  // whose name brushed against it would break a green suite for a cosmetic reason.
+  it("gives the preview a name that collides with no other control in the row", () => {
+    renderEditor();
+    const third = screen.getByRole("region", { name: /segment 3: long block/i });
+
+    // Each of these must still resolve to exactly one control.
+    expect(within(third).getByRole("button", { name: /transcript/i })).toBeInTheDocument();
+    expect(within(third).getByRole("button", { name: /^drop$/i })).toBeInTheDocument();
+    expect(within(third).getByRole("button", { name: /preview segment/i })).toBeInTheDocument();
   });
 });

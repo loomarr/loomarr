@@ -25,6 +25,7 @@ import (
 // back to DefaultCron — matching how Sonarr/Overseerr expose per-task schedules.
 type Job struct {
 	Name  string // stable id, e.g. "reconcile" — the API/UI key
+	Group JobGroup
 	Title string // human label for the Tasks page, e.g. "Reconcile acquisitions"
 	// Description is one plain sentence saying what running this job actually DOES, in the
 	// operator's terms rather than the code's ("Checks in-flight downloads and moves finished
@@ -37,6 +38,28 @@ type Job struct {
 	DefaultCron string // built-in cron schedule, e.g. "0 */5 * * * *"
 	ScheduleKey string // settings key, e.g. "job.reconcile.schedule"; "" ⇒ always DefaultCron
 	Run         func(ctx context.Context) error
+
+	// Timeout is how long this job may run before its context is cancelled. Zero ⇒ River's
+	// `JobTimeoutDefault`, which is **one minute**.
+	//
+	// ⚠ **A media job MUST set this, and the default being one minute is why.** Nothing here
+	// ever configured `river.Config.JobTimeout`, and `riverWorker` did not override
+	// `Timeout()`, so every job on the install ran under a 60-second deadline inherited from a
+	// dependency — a number nobody chose and nothing recorded. `exec.CommandContext` SIGKILLs
+	// its child when that fires, so the symptom was never "timed out": it was
+	//
+	//	ffmpeg black/silence detect …: signal: killed
+	//	whisper-cli: signal: killed
+	//	ffmpeg wav extract: context deadline exceeded
+	//
+	// on the maintainer's catalog, which reads as a broken file or a broken binary. Measured
+	// 2026-08-11: that same boundary scan completes in **40s** run by hand, so the file was
+	// fine and the ceiling was the fault.
+	//
+	// ⚠ It also silently halved a budget the design doc reasons about. §10 V51g compares a
+	// rung's cost "against a budget of 120", taking 120s from the two-minute CRON INTERVAL —
+	// how often the job STARTS, not how long it may run. The real ceiling was 60s.
+	Timeout time.Duration
 
 	// DisabledReason, when non-empty, means this build/backend CANNOT run this job. It is
 	// listed on the Tasks page carrying this reason, is never scheduled or claimed, and
@@ -59,6 +82,7 @@ func (j Job) Disabled() bool { return j.DisabledReason != "" }
 // JobStatus is the read model the Tasks API/UI renders.
 type JobStatus struct {
 	Name        string    `json:"name"`
+	Group       JobGroup  `json:"group"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Schedule    string    `json:"schedule"`    // effective cron expression (settings override or default)
@@ -75,6 +99,63 @@ type JobStatus struct {
 	// DisabledReason is non-empty when this job cannot run in this environment. The UI
 	// renders it in place of the schedule and offers neither Run-now nor Modify.
 	DisabledReason string `json:"disabledReason,omitempty"`
+	// Overdue means this job's next run is in the PAST and it still has not run — it is waiting
+	// on a worker, not on its schedule (§18.1).
+	//
+	// ⚠ It exists because the alternative was worse than silence: the Tasks page ran the past
+	// timestamp through a duration formatter that answers "expired" for any past instant — a word
+	// written for SESSION expiry — so a starved job reported itself in vocabulary from a different
+	// subsystem. One honest boolean beats a borrowed noun.
+	//
+	// ⚠ Deliberately NOT "which job is holding the worker". `s.running` could supply it for free,
+	// but it is per-process: on a multi-replica Postgres install it would confidently name the
+	// wrong job. A fact that is sometimes a lie is worse than a fact that is merely coarse.
+	Overdue bool `json:"overdue,omitempty"`
+}
+
+// JobHistory is the bounded execution read model for one named task. River keeps finalized
+// execution rows for 24 hours by default; the API exposes that honest window rather than
+// implying these counts are lifetime totals.
+type JobHistory struct {
+	WindowStart       time.Time
+	RunCount          int
+	FailureCount      int
+	AverageDurationMs int64
+	Truncated         bool
+	Recent            []JobExecution
+}
+
+// JobExecution is one completed run in a task's recent history.
+type JobExecution struct {
+	StartedAt  time.Time
+	FinishedAt time.Time
+	DurationMs int64
+	Result     string
+	Error      string
+	Manual     bool
+}
+
+// JobGroup is an operator outcome, not an implementation package. Keep this closed set in
+// the scheduler so every API client receives stable grouping semantics.
+type JobGroup string
+
+const (
+	GroupAcquisitions JobGroup = "acquisitions"
+	GroupChannels     JobGroup = "channels"
+	GroupFiller       JobGroup = "filler"
+	GroupArtwork      JobGroup = "artwork"
+	GroupPlayout      JobGroup = "playout"
+	GroupSystem       JobGroup = "system"
+	GroupBackup       JobGroup = "backup"
+)
+
+func (g JobGroup) valid() bool {
+	switch g {
+	case GroupAcquisitions, GroupChannels, GroupFiller, GroupArtwork, GroupPlayout, GroupSystem, GroupBackup:
+		return true
+	default:
+		return false
+	}
 }
 
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
@@ -103,6 +184,15 @@ const (
 	// leaseHorizon must comfortably exceed the longest job runtime so a still-running job
 	// isn't re-claimed by the next tick before it reschedules itself.
 	leaseHorizon = 30 * time.Minute
+
+	// LongJobTimeout is the ceiling for a job that runs real media work — ffmpeg, whisper,
+	// yt-dlp, an image encode.
+	//
+	// ⚠ Deliberately EQUAL to `leaseHorizon`, so the two ceilings cannot disagree. A job allowed
+	// to outlive its own claim would keep working after the row it holds became re-claimable,
+	// and a second worker could start the same job beside it. Tying them means "you may run
+	// until your claim would expire, and not one second further" is stated once.
+	LongJobTimeout = leaseHorizon
 )
 
 // Scheduler ticks a heartbeat, claims due jobs, runs them in bounded goroutines, records
@@ -265,7 +355,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 // execute runs one job and persists the outcome + next run.
-func (s *Scheduler) execute(ctx context.Context, j Job) {
+func (s *Scheduler) execute(ctx context.Context, j Job) jobExecutionOutput {
 	s.setRunning(j.Name, true)
 	defer s.setRunning(j.Name, false)
 
@@ -296,8 +386,12 @@ func (s *Scheduler) execute(ctx context.Context, j Job) {
 	}); uerr != nil {
 		s.log.Error("scheduler: record job result", "job", j.Name, "err", uerr)
 	}
-	if s.notifier != nil {
-		s.notifier.JobChanged(j.Name)
+	duration := now.Sub(start).Milliseconds()
+	if duration < 0 {
+		duration = 0
+	}
+	return jobExecutionOutput{
+		StartedAt: start, FinishedAt: now, DurationMs: duration, Result: result, Error: errText,
 	}
 }
 
@@ -391,7 +485,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		j := s.jobs[name]
 		st := state[name]
 		status := JobStatus{
-			Name: j.Name, Title: j.Title, Description: j.Description,
+			Name: j.Name, Group: j.Group, Title: j.Title, Description: j.Description,
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),
@@ -412,6 +506,11 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		if j.Disabled() {
 			status.NextRun = time.Time{}
 		}
+		// ⚠ Computed AFTER the two zeroing rules above, so a paused or disabled job — whose next
+		// run has just been cleared precisely because it will not fire — is never called overdue.
+		// Overdue means "due and waiting on a worker", which is a different sentence from "not
+		// scheduled to run".
+		status.Overdue = !status.NextRun.IsZero() && status.NextRun.Before(s.now())
 		out = append(out, status)
 	}
 	return out, nil

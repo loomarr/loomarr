@@ -1,9 +1,12 @@
-import { proposalsApi, toProblem } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/auth";
-import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loomarr";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { useAuth } from "@/auth/use-auth";
+import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";
@@ -32,10 +35,9 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
     mutation: {
       onSuccess: (res) => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
-        // The approval created (or patched) a channel and returned its id — navigate there so
-        // the operator lands on the new channel. Empty channelId only if creation failed
-        // server-side (the approval still stands); guard so we never navigate to "".
-        if (res.status === 200 && res.data.channelId) {
+        // Approval atomically created (or patched) the local channel and returned its required
+        // id — navigate there so the operator lands on the channel it just committed.
+        if (res.status === 200) {
           run.reset();
           onCreated(res.data.channelId);
         }

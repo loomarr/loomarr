@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
-import { TooltipProvider } from "@/components/ui";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // The root route carries the TanStack Query client in router context so loaders +
 // beforeLoad guards (the _authed gate, login) can ensureQueryData without prop-drilling

@@ -99,8 +99,8 @@ func TestSystemRestart_TriggersTheLoop(t *testing.T) {
 func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 	srv := serverWithRestart(t, api.Options{
 		Restart:         &fakeRestart{},
-		PlayoutSessions: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
-		BootstrapDrift:  func() []string { return []string{"DATABASE_URL"} },
+		PlayoutObserver: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
+		RestartDrift:    func() []string { return []string{"DATABASE_URL"} },
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/restart", adminToken, "")
@@ -124,7 +124,7 @@ func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 }
 
 // A Tunarr-backed install streams nothing itself, so zero is the correct answer — and
-// restartRequired stays false when no boot-time setting changed.
+// restartRequired stays false when no restart-scoped setting changed.
 func TestSystemRestart_CostIsZeroWhenNothingIsStreaming(t *testing.T) {
 	srv := serverWithRestart(t, api.Options{Restart: &fakeRestart{}})
 

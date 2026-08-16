@@ -1,4 +1,4 @@
-import type { PullDTO } from "@loomarr/api";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
 
 interface PullCardProps {
   // The server's answer, verbatim (contract 1:1).

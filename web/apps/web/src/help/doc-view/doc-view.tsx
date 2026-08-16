@@ -1,8 +1,8 @@
-import { anchorOf, parseDocHref } from "@loomarr/core";
+import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { DocViewProps } from "./doc-view.type";
 
 // An internal doc link is a relative one: not an absolute URL, and not a bare same-page

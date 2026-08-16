@@ -40,17 +40,24 @@ downloads until an admin approves.
 
 ## Install
 
-You need Emby or Jellyfin. Everything else is optional.
+You need Emby or Jellyfin to run Loomarr. To use its defining describe-a-channel flow, you also
+need TMDB and either Ollama or an OpenAI-compatible provider. Requesters and filler remain optional.
+
+Until `v0.1.0-beta.1` appears in GitHub Releases, this is the release-candidate install contract;
+there is no beta artifact to pull yet.
 
 ```bash
-git clone https://github.com/mantonx/loomarr && cd loomarr
-docker compose -f docker/compose.yaml --profile sqlite up -d
+git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/mantonx/loomarr && cd loomarr
+cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
+LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-Open `http://<host>:8080` and follow the wizard.
+Open the `SERVER_PUBLIC_URL` you set and follow the wizard. Traefik owns the host's port 8080 by
+default and health-checks the compiled Loomarr app on its private container port; set
+`LOOMARR_HTTP_PORT` when port 8080 is already in use.
 
-There's no published image yet, so this builds from source and the first run takes a few
-minutes.
+The image supports Linux on amd64 and arm64. On macOS, run it through Docker Desktop; Apple
+Silicon pulls the arm64 image and Intel Macs pull amd64.
 
 → [Install guide](docs/install/index.md) · [Docker](docs/install/docker.md) ·
 [Hardware acceleration](docs/install/hardware.md) · [Upgrading](docs/install/upgrading.md) ·
@@ -64,18 +71,19 @@ transcode, or if you already run it. You choose in the wizard, and can override 
 
 ## Develop
 
-Go 1.26+, Node 22.5+, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
+Go 1.26+, the Rust toolchain pinned by `rust-toolchain.toml`, Node 22.x, `ffmpeg` and `ffprobe` on `PATH`, Docker for the Postgres and browser
 test suites.
 
 ```bash
-make check          # the gate — run before every push
-make fe-install     # pnpm install
-make dev-be         # backend on :8080 with live reload
+make doctor         # toolchain and local-state diagnostics
+make bootstrap      # Rust worker + frontend dependencies + codegen
+make dev-be         # isolated Go/Rust backend with live reload
+make dev-fe         # isolated frontend pointed at that backend
 ```
 
 → [Developer guide](docs/dev/index.md) · [Setup](docs/dev/setup.md) ·
 [Dev loop](docs/dev/dev-loop.md) · [Testing](docs/dev/testing.md) · [CI](docs/dev/ci.md) ·
-[Commands](docs/dev/commands.md)
+[Commands](docs/dev/commands.md) · [Agent development](docs/dev/agents.md)
 
 ## Documentation
 
@@ -91,7 +99,8 @@ files.
 
 ## Stack
 
-One Go binary with the UI, help pages and API built in. Huma v2 for the API (OpenAPI 3.1,
+One Go binary with the UI, help pages and API built in, served behind Traefik in the supported
+Docker topology. Huma v2 for the API (OpenAPI 3.1,
 consumed by the frontend via orval), `database/sql` over SQLite or Postgres, goose migrations,
 an embedded Vite + React SPA, ffmpeg for playout, and Ollama or any OpenAI-compatible provider
 for the LLM. Details in [`docs/design.md`](docs/design.md) §14.

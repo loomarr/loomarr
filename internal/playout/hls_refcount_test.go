@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // fakeAttacher stands in for the session Manager, counting how many times Attach is called so a
@@ -46,12 +48,13 @@ func newTestHLSManager(t *testing.T, att HLSAttacher) *HLSManager {
 		if werr := os.WriteFile(filepath.Join(dir, hlsPlaylistName), []byte(stub), 0o644); werr != nil {
 			return nil, werr
 		}
-		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		cmd := exec.Command("sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if serr := cmd.Start(); serr != nil {
+		supervised, serr := proctree.Start(ctx, cmd)
+		if serr != nil {
 			return nil, serr
 		}
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return &hlsProcess{proc: supervised, stdin: stdin}, nil
 	}
 	t.Cleanup(m.Stop)
 	return m
@@ -74,12 +77,13 @@ func newTestHLSManagerWithPlaylist(t *testing.T, att HLSAttacher, stub string) *
 		if werr := os.WriteFile(filepath.Join(dir, hlsPlaylistName), []byte(stub), 0o644); werr != nil {
 			return nil, werr
 		}
-		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		cmd := exec.Command("sleep", "3600")
 		stdin, _ := cmd.StdinPipe()
-		if serr := cmd.Start(); serr != nil {
+		supervised, serr := proctree.Start(ctx, cmd)
+		if serr != nil {
 			return nil, serr
 		}
-		return &hlsProcess{cmd: cmd, stdin: stdin}, nil
+		return &hlsProcess{proc: supervised, stdin: stdin}, nil
 	}
 	t.Cleanup(m.Stop)
 	return m
@@ -206,5 +210,34 @@ func TestHLSManager_RejoinWithinGraceKeepsOneAttach(t *testing.T) {
 
 	if got := att.attaches.Load(); got != 1 {
 		t.Fatalf("a rejoin within grace caused %d attaches, want 1", got)
+	}
+}
+
+func TestHLSManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T) {
+	att := &fakeAttacher{}
+	m := newTestHLSManager(t, att)
+
+	for _, tc := range []struct {
+		channel string
+		plan    EncodePlan
+	}{
+		{"ch1", PlanBaseline},
+		{"ch1", PlanHEVC10},
+		{"ch2", PlanFull},
+	} {
+		if _, _, err := m.Playlist(tc.channel, tc.plan); err != nil {
+			t.Fatalf("Playlist(%s, %s): %v", tc.channel, tc.plan, err)
+		}
+	}
+
+	m.StopChannel("ch1")
+
+	if got := att.detaches.Load(); got != 2 {
+		t.Fatalf("session detaches = %d, want the two ch1 plans", got)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.remuxes) != 1 || m.remuxes[remuxKey{channel: "ch2", plan: PlanFull}] == nil {
+		t.Fatalf("remaining remuxes = %#v, want only ch2", m.remuxes)
 	}
 }

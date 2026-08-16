@@ -1,12 +1,17 @@
-import { proposalsApi, type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import * as titlesApi from "@loomarr/api/endpoints/titles";
+import type { TitleDTO } from "@loomarr/api/models/titleDTO";
+import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
+import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useAuth } from "@/auth";
-import { ErrorState } from "@/components/loomarr";
-import { NavTabs } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
-import { journeyProgress } from "@/queue";
+import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { NavTabs } from "@/components/ui/nav-tabs";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { journeyProgress } from "@/queue/journey";
 
 // Queue / My requests (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of
@@ -102,15 +107,14 @@ const QueueLayout = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">Queue</h1>
-        {rows.length > 0 && (
-          <p className="mt-1 text-muted-foreground text-sm">
-            {`${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed.`}{" "}
-            Channels play what's ready and fill the rest, improving as more arrives.
-          </p>
-        )}
-      </header>
+      <PageHeader
+        title="Queue"
+        description={
+          rows.length > 0
+            ? `${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed. Channels play what's ready and fill the rest, improving as more arrives.`
+            : undefined
+        }
+      />
 
       {/* The three tabs (V27). Members see only In flight — approving is admin-only (§11) and a
           history of other people's decisions is not theirs to read, so the bar renders with one

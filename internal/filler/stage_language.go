@@ -66,6 +66,9 @@ func (s *LanguageStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 	if c.Language != "" {
 		return false, "already heard: " + c.Language
 	}
+	if why := s.detector.UnavailableReason(); why != "" {
+		return false, why
+	}
 	return true, ""
 }
 

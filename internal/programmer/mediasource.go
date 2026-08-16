@@ -37,6 +37,7 @@ func isProgrammable(mediaType string) bool { return mediaType == "movies" || med
 // existing source for embyURL rather than creating a duplicate. token/userID are the
 // admin API key + the admin user's id (Tunarr uses them as the source access token).
 func (t *Tunarr) EnsureEmbySource(ctx context.Context, flavor, embyURL, token, userID string) (string, error) {
+	ctx, _ = t.operation(ctx)
 	var existing []embyMediaSource
 	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources", nil, &existing); err != nil {
 		return "", err
@@ -64,6 +65,7 @@ func (t *Tunarr) EnsureEmbySource(ctx context.Context, flavor, embyURL, token, u
 // it just enabled. Idempotent — an already-enabled library is left untouched (no
 // re-scan on every call). Returns the number of movie/show libraries now enabled.
 func (t *Tunarr) ConnectLibraries(ctx context.Context, sourceID string) (int, error) {
+	ctx, _ = t.operation(ctx)
 	var libs []srcLibrary
 	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources/"+sourceID+"/libraries", nil, &libs); err != nil {
 		return 0, err
@@ -92,6 +94,7 @@ func (t *Tunarr) ConnectLibraries(ctx context.Context, sourceID string) (int, er
 // enabled movie/show library — the tunarr_library setup check (§6). false means a
 // channel's slots would find no Tunarr program and degrade to flex/dead-air.
 func (t *Tunarr) MediaLibrariesReady(ctx context.Context) (bool, error) {
+	ctx, _ = t.operation(ctx)
 	var sources []embyMediaSource
 	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources", nil, &sources); err != nil {
 		return false, err

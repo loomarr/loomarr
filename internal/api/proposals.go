@@ -291,7 +291,7 @@ type approveOutput struct {
 	Body struct {
 		Status    string `json:"status"`
 		Enqueued  int    `json:"enqueued" doc:"Acquisitions enqueued as wanted titles"`
-		ChannelID string `json:"channelId,omitempty" doc:"The channel this approval created or patched (§7). Empty only if channel creation failed — the approval itself still stands."`
+		ChannelID string `json:"channelId" doc:"The channel atomically created or patched by this approval (§7)"`
 	}
 }
 
@@ -317,50 +317,36 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	// ⚠ The edit is PASSED to Approve rather than applied here first. Approving decides what
 	// gets acquired; applying the edit in the handler would move that decision outside the gate
 	// and leave auto-approve running different logic (§7, D-K).
-	enqueued, err := suggest.Approve(ctx, s.store, p, approvalEditFromDTO(in.Body), userIDFromHuma(ctx), time.Now)
+	if s.approver == nil {
+		return nil, errors.New("approve: approval coordinator is not configured")
+	}
+	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), userIDFromHuma(ctx))
 	if errors.Is(err, suggest.ErrNotSubmitted) {
 		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+	}
+	if errors.Is(err, suggest.ErrSuperseded) {
+		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	out := &approveOutput{}
 	out.Body.Status = "approved"
-	out.Body.Enqueued = enqueued
+	out.Body.Enqueued = result.Enqueued
+	out.Body.ChannelID = result.ChannelID
 
 	// The Dashboard feed (§12, V32). Written AFTER the gate, so a line only appears for an
 	// approval that actually happened — recording intent would put entries in the feed for
 	// requests that were refused.
 	//
-	// Deliberately NOT inside suggest.Approve: that is the one chokepoint every approve path
+	// Deliberately NOT inside suggest.Approver: that is the one chokepoint every approve path
 	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
 	// widen the gate's signature for telemetry.
 	//
 	// The line says WHAT HAPPENED, not what was requested: the proposal's channel name lives
 	// inside ProposalJSON and this handler never unmarshals it, so parsing one purely for a
 	// feed label would add a failure mode to the approval path for a cosmetic gain.
-	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(enqueued))
-
-	// …and materialize the channel. §7: approve → "enqueue acquisitions + create/patch
-	// channel". Only the first half was ever implemented, which made Loomarr's whole
-	// purpose unreachable from the UI: describe → review → approve, and then no channel
-	// ever appeared. There is no create-a-channel screen because this is meant to BE the
-	// path (§13), so nothing else could close the gap.
-	//
-	// Deliberately AFTER the gate and non-fatal: the approval and its acquisitions are
-	// durable regardless. If channel creation fails, the operator has an approved
-	// proposal and a logged error, not a half-applied approval that must be retried
-	// from scratch. A nil binder (unwired in a narrow unit test) is treated the same
-	// way — approval still stands, there's just no channel to report.
-	if s.binder == nil {
-		return out, nil
-	}
-	chID, err := s.binder.BindApprovedChannel(ctx, p)
-	if err != nil {
-		s.log.Error("approved, but the channel could not be created", "proposal", p.ID, "err", err)
-		return out, nil
-	}
-	out.Body.ChannelID = chID
+	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(result.Enqueued))
 	return out, nil
 }
 
@@ -402,7 +388,7 @@ type bulkApproveOutput struct {
 // single approve it delegates to.
 //
 // ⚠ It calls `s.approveProposal` per id — the same handler, not a copy of its body. Everything
-// that makes a single approval correct (the submitted-status check, the one `suggest.Approve`
+// that makes a single approval correct (the submitted-status check, the one `Approver.Approve`
 // call, the channel bind, the audit stamps) therefore applies unchanged, and a future change to
 // approval semantics cannot land in one path and miss the other.
 //
@@ -462,7 +448,10 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.Status = "denied"
 	p.ApprovedBy = userIDFromHuma(ctx)
 	p.DenyReason = in.Body.Reason
-	if err := s.store.UpdateProposal(ctx, p); err != nil {
+	p.UpdatedAt = time.Now()
+	if err := s.store.CommitProposalDenial(ctx, p); errors.Is(err, store.ErrProposalNotSubmitted) {
+		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+	} else if err != nil {
 		return nil, err
 	}
 	out := &denyOutput{}

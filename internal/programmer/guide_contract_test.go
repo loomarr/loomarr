@@ -13,7 +13,7 @@ import (
 
 // Guide parsing runs against the PINNED capture
 // (fixtures/tunarr/guide_channels_response.json, Tunarr 1.3.8) rather than remembered
-// field names — the CLAUDE.md rule. It matters more than usual here because the vendored
+// field names — the AGENTS.md rule. It matters more than usual here because the vendored
 // OpenAPI does NOT type the guide response, so the only two authorities are Tunarr's own
 // zod schemas at the pinned tag and this capture.
 //

@@ -9,7 +9,7 @@ exploring the codebase.
 nothing else — deliberately devoid of behavior, endpoints, and decisions. Read it first
 so your output uses the project's own vocabulary.
 
-**`docs/design.md` is the source of truth: what the system DOES.** CLAUDE.md's prime
+**`docs/design.md` is the source of truth: what the system DOES.** AGENTS.md's prime
 directive stands unchanged — code deviating from it updates the doc *first*, in the same
 PR, and its numbered sections (`§7`, `§11`, …) are cited from ~2,600 places in the code.
 
@@ -19,7 +19,7 @@ glossary and a behavior spec answer different questions. **Where they appear to 
 its behavior, so the glossary points at the authority rather than restating it.
 
 ⚠ **Do not let `CONTEXT.md` grow into a spec.** The moment it starts describing flows,
-endpoints, or decisions, it becomes the second authority that CLAUDE.md's doc-first rule
+endpoints, or decisions, it becomes the second authority that AGENTS.md's doc-first rule
 exists to prevent. Add a term; put the behavior behind its §.
 
 ⚠ **`docs/adr/` does not exist here, and creating one is a decision, not a default.**
@@ -29,16 +29,16 @@ maintainer choose.
 
 ## Before exploring, read these
 
-Read only what the task needs — the design doc is large, and CLAUDE.md's session ritual
+Read only what the task needs — the design doc is large, and AGENTS.md's session ritual
 is explicit that loading all of it wastes context.
 
 - **`docs/design.md`** — authoritative on *behavior*: endpoints, flows, auth, phases,
-  and the numbered sections (§) the whole codebase cites. Start from the phase →
-  section map in CLAUDE.md rather than reading it end to end.
+  and the numbered sections (§) the whole codebase cites. Follow the active plan's section links, or
+  search its table of contents, rather than reading it end to end.
 - **`PROGRESS.md`** — what is actually built, one row per phase, with the commit SHA and
   test command proving each gate. Also carries the deviations and findings; the "notes"
   column is where hard-won context is recorded.
-- **`CLAUDE.md`** — the prime directives, the harness contract (`make` targets), the
+- **`AGENTS.md`** — the prime directives, the harness contract (`make` targets), the
   testing rules, and the do-nots. Read before proposing any process change.
 
 Companion docs, each authoritative for its own domain:
@@ -71,6 +71,6 @@ overriding:
 
 > _Contradicts §11 (the allowlist decides access) — but worth reopening because…_
 
-Per CLAUDE.md, that is a design conversation with the maintainer, not something to work
+Per AGENTS.md, that is a design conversation with the maintainer, not something to work
 around. The non-negotiables are the grounding rules (§8), the approval gate and
 authorization model (§7, §11), and forward-only migrations (§16).

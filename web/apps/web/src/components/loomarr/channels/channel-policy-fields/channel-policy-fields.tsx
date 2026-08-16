@@ -1,5 +1,7 @@
-import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
-import { cn } from "@/lib";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
 
@@ -18,7 +20,7 @@ const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: s
 // §8). Controlled: the parent holds `policy` and persists whatever this calls `onChange`
 // with. `applied` is reconcile-owned (§9) and never rendered here — it is read-only history
 // of what the scheduler had to ease, not a setting an operator edits. A field left blank
-// clears the window entirely (undefined — "no restriction"), not zero.
+// clears the authored override; its effective behavior is field-specific and named below.
 
 // A no-repeat window is a Go-duration STRING on the wire ("168h", "30h0m0s"). For display
 // we tidy the zero units the backend's Duration.String() emits: "30h0m0s" → "30h", "0s" →
@@ -33,27 +35,32 @@ const tidyDuration = (v: string | undefined): string => {
 };
 
 // On save: pass the typed duration straight through (the backend accepts "24h"/"168h"),
-// or undefined for blank — undefined = "no restriction", never "0" (which would mean the
-// real, different thing "never repeat"). Whitespace-only is treated as blank.
+// or undefined for blank — undefined returns to Loomarr's built-in spacing. Whitespace-only
+// is treated as blank.
 const durationOrUndefined = (v: string): string | undefined => {
   const trimmed = v.trim();
   return trimmed === "" ? undefined : trimmed;
 };
 
-const ORDERING_OPTIONS: { value: string; label: string }[] = [
-  { value: "inherit", label: "Inherit channel default" },
+const STRATEGY_LABELS: Record<string, string> = {
+  sequential: "In order",
+  shuffle: "Shuffled",
+  time_slot: "Time slots",
+};
+
+// Channel.Strategy is a stored create-time fallback, not a second operator-facing order knob.
+// Name its resolved value inside the one policy control so "inherit" never asks the operator to
+// remember which similarly-named setting it refers to.
+const orderingOptions = (strategy?: string): { value: string; label: string }[] => [
+  {
+    value: "inherit",
+    label: strategy
+      ? `Use channel strategy (${STRATEGY_LABELS[strategy] ?? strategy})`
+      : "Use channel strategy",
+  },
   { value: "sequential", label: "In order" },
   { value: "shuffle", label: "Shuffled" },
   { value: "syndication", label: "Syndication" },
-];
-
-// The CHANNEL's playback strategy (ChannelDTO.strategy), the value "Inherit channel default"
-// above refers to. Note it is NOT the same set as ORDERING_OPTIONS: `time_slot` is a channel
-// strategy with no policy-level equivalent, and `syndication` is the reverse.
-const STRATEGY_OPTIONS: { value: string; label: string }[] = [
-  { value: "sequential", label: "In order" },
-  { value: "shuffle", label: "Shuffled" },
-  { value: "time_slot", label: "Time slots" },
 ];
 
 // The rating ladder, mirroring schedule/policy.go's `ladderRank`. Mirrored ONLY so the
@@ -104,14 +111,7 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
   { value: "R", label: "R" },
 ];
 
-const ChannelPolicyFields = ({
-  policy,
-  onChange,
-  className,
-  show,
-  strategy,
-  onStrategyChange,
-}: ChannelPolicyFieldsProps) => {
+const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: ChannelPolicyFieldsProps) => {
   const era = policy.scope?.era;
   const separation = policy.separation;
   // Split for the Programming surface's blocks (§12): scope = audience ceiling + era ("What
@@ -124,39 +124,15 @@ const ChannelPolicyFields = ({
     // while Era + No-repeat span the full width because they each hold a nested 2-up input row.
     // gap-x for columns, gap-y for rows.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      {/* Channel strategy — the value Ordering's "inherit" refers to. Orphaned until now:
-          PATCH accepted `strategy` and no UI sent it, so "Inherit channel default" pointed
-          at something an operator could neither see nor choose. Rendered only when the
-          caller supplies it (the standalone policy form has no channel in scope). */}
-      {showOrdering && strategy !== undefined && onStrategyChange && (
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            htmlFor="channel-strategy"
-            help="The channel's default playback order. Ordering below can override it per policy."
-          >
-            Playback
-          </FieldLabel>
-          <Select value={strategy || "sequential"} onValueChange={onStrategyChange}>
-            <SelectTrigger id="channel-strategy">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STRATEGY_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
       {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
           forbids an empty-string item value, so "inherit" is the sentinel. */}
       {showOrdering && (
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="policy-ordering" help="How programs are sequenced on this channel.">
-            Ordering
+          <FieldLabel
+            htmlFor="policy-ordering"
+            help="The channel's normal play order. Scheduled rules can temporarily override it."
+          >
+            Play order
           </FieldLabel>
           <Select
             value={policy.ordering || "inherit"}
@@ -166,7 +142,7 @@ const ChannelPolicyFields = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ORDERING_OPTIONS.map((o) => (
+              {orderingOptions(strategy).map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -339,19 +315,19 @@ const ChannelPolicyFields = ({
           2-up row). */}
       {showOrdering && (
         <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <FieldLabel help="How long before the same title can play again (e.g. 168h = 7 days).">
-            No-repeat windows
+          <FieldLabel help="Minimum time before content repeats. Leave blank to use Loomarr's built-in spacing.">
+            Repeat spacing
           </FieldLabel>
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="policy-movie-norepeat" className="text-muted-foreground text-xs">
-                Movies
+                Same movie
               </Label>
               <Input
                 id="policy-movie-norepeat"
                 className="w-28"
                 defaultValue={tidyDuration(separation?.movieNoRepeat)}
-                placeholder="e.g. 168h"
+                placeholder="Use built-in"
                 onBlur={(e) => {
                   const next = durationOrUndefined(e.target.value);
                   if (next === tidyDuration(separation?.movieNoRepeat) || next === separation?.movieNoRepeat)
@@ -362,13 +338,13 @@ const ChannelPolicyFields = ({
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="policy-episode-norepeat" className="text-muted-foreground text-xs">
-                Episodes
+                Same episode
               </Label>
               <Input
                 id="policy-episode-norepeat"
                 className="w-28"
                 defaultValue={tidyDuration(separation?.episodeNoRepeat)}
-                placeholder="e.g. 24h"
+                placeholder="Use built-in"
                 onBlur={(e) => {
                   const next = durationOrUndefined(e.target.value);
                   if (
@@ -389,13 +365,13 @@ const ChannelPolicyFields = ({
           <div className="mt-3 flex flex-wrap gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="policy-series-gap" className="text-muted-foreground text-xs">
-                Series gap
+                Same series
               </Label>
               <Input
                 id="policy-series-gap"
                 className="w-28"
                 defaultValue={tidyDuration(separation?.seriesMinGap)}
-                placeholder="e.g. 2h"
+                placeholder="Use built-in"
                 onBlur={(e) => {
                   const next = durationOrUndefined(e.target.value);
                   if (next === tidyDuration(separation?.seriesMinGap) || next === separation?.seriesMinGap)
@@ -406,7 +382,7 @@ const ChannelPolicyFields = ({
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="policy-block-max" className="text-muted-foreground text-xs">
-                Max in a row
+                Max from one series
               </Label>
               <Input
                 id="policy-block-max"
@@ -414,10 +390,10 @@ const ChannelPolicyFields = ({
                 type="number"
                 min={0}
                 defaultValue={separation?.blockMax ?? ""}
-                placeholder="e.g. 2"
+                placeholder="Use built-in"
                 onBlur={(e) => {
-                  // Blank clears the cap (undefined = "no limit"), never 0 — which would
-                  // mean the different and impossible "never air two in a row".
+                  // Blank clears the authored cap and returns to the built-in limit. `0` is
+                  // also resolved as built-in here, so there is no separate no-limit state.
                   const raw = e.target.value.trim();
                   const next = raw === "" ? undefined : Number(raw);
                   if (next === separation?.blockMax) return;

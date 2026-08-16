@@ -18,7 +18,7 @@ import (
 // no source proposal and gets its lineup via PUT /v1/channels/{id} instead.
 //
 // Delegates to the shared *binder.Binder (§7) — the same lineup resolution the
-// approve path uses, so createChannel and BindApprovedChannel can never disagree
+// approval planning uses, so explicit create and approval cannot disagree
 // about what an approved proposal's lineup is. Guarded for a nil binder the same
 // way an empty intentRef is: unit tests that only exercise hand-made channels
 // (no intentRef) needn't wire one.

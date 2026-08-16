@@ -36,40 +36,6 @@ var clipExtensions = map[string]bool{
 	".m4v": true, ".webm": true, ".ts": true, ".mpg": true, ".mpeg": true,
 }
 
-// Probed is what one ffprobe pass learns about a clip.
-//
-// A STRUCT rather than a second probe call: ffprobe returns duration and stream height in one
-// invocation, so splitting them would double the exec cost per file for no benefit — and would
-// create a state where a clip has a duration but silently lost its quality, which is exactly
-// the kind of half-populated row that is painful to notice later.
-type Probed struct {
-	DurationMs int64
-	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
-	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
-	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders
-	// actually write.
-	Height int
-	// Silent reports that the file carries NO audio stream at all (§10 V40).
-	//
-	// ⚠ Presence, not loudness — a clip CAN be legitimately quiet, and that is normalisation's
-	// problem at playout, not grounds for a reject. This is the harder failure: a video-only file
-	// plays as dead air in the middle of a break, which reads as the stream having dropped.
-	//
-	// ⚠ **Phrased NEGATIVELY on purpose, so the zero value is permissive.** The first cut was
-	// `HasAudio bool`, which made `false` mean "reject" — and retroactively changed the meaning
-	// of every `Probed{...}` literal written before this field existed. Nine test doubles that
-	// were correct when written started rejecting every clip, and the suite panicked on an empty
-	// catalog. A gate whose zero value denies is a gate that breaks its own callers.
-	//
-	// Costs nothing extra to fill: the probe already asks for `codec_type` per stream so it can
-	// find the VIDEO height, and this reads the same answer.
-	Silent bool
-}
-
-// Prober reads a media file's duration and dimensions. Satisfied by FFprobe; injected so the
-// scanner is testable without executing a binary.
-type Prober func(ctx context.Context, path string) (Probed, error)
-
 // QualityFromHeight buckets a pixel height into the label the guide shows.
 //
 // Bucketed by NEAREST standard rather than by exact match: real files are 1088, 1082, 718 —
@@ -116,6 +82,23 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 	if len(minDurationMs) > 0 {
 		minMs = minDurationMs[0]
 	}
+	return scanDir(ctx, dir, "", probe, minMs)
+}
+
+// scanDir is ScanDir with the generation's applied watch folder excluded. The public ScanDir
+// remains the small standalone filesystem helper; DirSource is the storage-layout-aware module.
+func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (clips []RawClip, skipped int, err error) {
+	if dir == "" {
+		return nil, 0, nil
+	}
+	if probe == nil {
+		probe = FFprobe
+	}
+	watchInside := ""
+	if rel, relErr := filepath.Rel(dir, watchDir); watchDir != "" && relErr == nil && rel != "." &&
+		!filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		watchInside = filepath.Clean(filepath.Join(dir, rel))
+	}
 
 	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -133,13 +116,18 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 			return nil //nolint:nilerr // deliberate: skip and continue
 		}
 		if d.IsDir() {
+			if watchInside != "" && filepath.Clean(path) == watchInside {
+				return fs.SkipDir
+			}
 			// ⚠ The watch folder sits INSIDE the clip folder by default (§10 V38c), and the scan
 			// must not descend into it. A file still waiting to be filed would otherwise be
 			// catalogued at its ARRIVAL path — and then pruned on the very next sync, once intake
-			// moved it to its hash. The catalog would show clips appearing and vanishing with
-			// nothing wrong on disk. Skipped by NAME so it holds however `filler.watch_dir` is
-			// configured, including when it is somewhere else entirely and this never matches.
-			if path != dir && d.Name() == WatchDirName {
+			// moved it to its hash. DirSource excludes the exact applied watch subtree above;
+			// the name check remains for legacy/generated `_watch` folders elsewhere in the tree.
+			// Dot-directories are Loomarr's generated/staging data. In particular, the transcode
+			// rung builds a fully-probed replacement under `.transcode` before publishing it at its
+			// content-addressed path; cataloguing that work-in-progress would create a second clip.
+			if path != dir && (d.Name() == WatchDirName || strings.HasPrefix(d.Name(), ".")) {
 				return fs.SkipDir
 			}
 			return nil
@@ -177,14 +165,18 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 		// **33-millisecond** truncated download passed it — then sat filed and airable in the dev
 		// catalog. "Has a readable duration" and "is a usable clip" are different questions.
 		//
-		// A missing AUDIO stream is the other one: a video-only file plays as dead air in the
-		// middle of a break, which reads to a viewer as the stream having dropped. (Loudness is
+		// Missing streams are the other hard failures: a video-only file plays as dead air in the
+		// middle of a break, while an audio-only file gives a channel nothing to show. (Loudness is
 		// NOT judged here — a quiet clip is normalisation's problem at playout, not a reject.)
 		if minMs > 0 && pr.DurationMs < minMs {
 			skipped++
 			return nil
 		}
 		if pr.Silent {
+			skipped++
+			return nil
+		}
+		if pr.NoVideo {
 			skipped++
 			return nil
 		}
@@ -346,18 +338,22 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	height, hasAudio := 0, false
+	height, hasAudio, hasVideo := 0, false, false
 	for _, s := range probed.Streams {
-		if height == 0 && s.CodecType == "video" && s.Height > 0 {
-			height = s.Height
+		if s.CodecType == "video" {
+			hasVideo = true
+			if height == 0 && s.Height > 0 {
+				height = s.Height
+			}
 		}
 		if s.CodecType == "audio" {
 			hasAudio = true
 		}
 	}
-	// A missing height is NOT an error: quality is display-only, and refusing the clip would
-	// mean one odd file costs a channel its commercials.
-	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio}, nil
+	// A missing height is not a probe error, because the caller owns the policy decision. ScanDir
+	// and ProbeStage both reject it as an audio-only file; keeping that decision out of FFprobe
+	// also lets callers distinguish "valid media with no video" from "could not inspect media".
+	return Probed{DurationMs: int64(secs * 1000), Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
 }
 
 // ShardDepth is how many 2-character directory levels a clip is filed under.
@@ -432,9 +428,9 @@ func validShardPath(p string) bool { return shardPath.MatchString(p) }
 // annotates. That ordering is the fix: previously Tunarr's knowledge determined the catalog, so
 // no Tunarr meant no clips at all.
 type DirSource struct {
-	// Dir is FILLER_DIR. Read through a func so a settings change applies on the next sync
-	// without a restart (config-design §3 hot-apply).
-	Dir func() string
+	// Layout is the immutable clip/watch topology for this application generation. Scan excludes
+	// the applied watch subtree, so a delayed arrival is never catalogued before intake files it.
+	Layout Layout
 	// Probe reads durations; nil ⇒ FFprobeDuration.
 	Probe Prober
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
@@ -451,8 +447,8 @@ type DirSource struct {
 	// MinDuration is the quality gate's floor (§10 V40, `filler.min_duration`). A file shorter
 	// than this is rejected at the scan boundary and never becomes a clip.
 	//
-	// Read through a func like `Dir`, so a settings change applies on the next sync without a
-	// restart (config-design §3 hot-apply). nil or 0 ⇒ no floor.
+	// Read through a func because policy remains live even though storage topology does not.
+	// nil or 0 ⇒ no floor.
 	MinDuration func() time.Duration
 	// Log records how many clips could not have their artwork generated. Optional, but the reason it
 	// exists is not cosmetic: extraction is best-effort and failures are skipped, which is
@@ -488,17 +484,13 @@ func (d DirSource) EnsureLocalSource(ctx context.Context, dir string) error {
 
 // ListLocalClips scans FILLER_DIR, then annotates with Tunarr uuids where available.
 func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
-	dir := ""
-	if d.Dir != nil {
-		dir = d.Dir()
-	}
 	// The floor is read HERE rather than captured at wiring, so `filler.min_duration` hot-applies
 	// like every other setting the scan consults.
 	var minMs int64
 	if d.MinDuration != nil {
 		minMs = d.MinDuration().Milliseconds()
 	}
-	clips, rejected, err := ScanDir(ctx, dir, d.Probe, minMs)
+	clips, rejected, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, minMs)
 	if err != nil {
 		return nil, err
 	}
@@ -509,11 +501,11 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	if rejected > 0 && d.Log != nil {
 		d.Log("filler: some files were rejected at the scan boundary",
 			"rejected", rejected, "catalogued", len(clips),
-			"hint", "unreadable, shorter than filler.min_duration, or carrying no audio stream")
+			"hint", "unreadable, shorter than filler.min_duration, or missing an audio/video stream")
 	}
 	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
 	// catalog UI and have nothing to do with whether Tunarr is reachable.
-	if failed := GenerateArtwork(ctx, dir, clips, d.Artwork); failed > 0 && d.Log != nil {
+	if failed := GenerateArtwork(ctx, d.Layout.ClipDir(), clips, d.Artwork); failed > 0 && d.Log != nil {
 		d.Log("filler: some clip artwork could not be generated",
 			"failed", failed, "of", len(clips),
 			"hint", "check playout.ffmpeg_path — a wrong binary fails every render, and the "+

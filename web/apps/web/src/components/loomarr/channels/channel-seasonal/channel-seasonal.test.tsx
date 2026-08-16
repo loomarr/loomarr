@@ -27,9 +27,18 @@ const POPULATED: ChannelPolicy = {
 };
 
 describe("ChannelSeasonal", () => {
-  it("renders the default sentinel for an unset seasonal policy", () => {
+  it("names the built-in source for an unset seasonal policy", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.getByRole("combobox", { name: "Holidays" })).toHaveTextContent("Automatic");
+    expect(screen.getByRole("combobox", { name: "Seasonal behavior" })).toHaveTextContent(
+      "Use built-in seasonal rotation",
+    );
+  });
+
+  it("collapses the explicit auto wire value into the same built-in choice", () => {
+    render(<ChannelSeasonal policy={{ seasonal: { mode: "auto" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
+    expect(screen.getByRole("combobox", { name: "Seasonal behavior" })).toHaveTextContent(
+      "Use built-in seasonal rotation",
+    );
   });
 
   // The holiday list comes from the BE vocabulary, never a hand-mirrored copy: BuildVocabulary
@@ -47,8 +56,8 @@ describe("ChannelSeasonal", () => {
     const onChange = vi.fn();
     render(<ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Holidays" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Holiday channel" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Seasonal behavior" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Holiday-only channel" }));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { mode: "exclusive" } }));
     expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
@@ -60,8 +69,8 @@ describe("ChannelSeasonal", () => {
       <ChannelSeasonal policy={{ seasonal: { mode: "exclusive" } }} onChange={onChange} vocabulary={VOCAB} />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Holidays" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Automatic" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Seasonal behavior" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Use built-in seasonal rotation" }));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { mode: "" } }));
   });
@@ -69,23 +78,29 @@ describe("ChannelSeasonal", () => {
   it("ticking a holiday adds its id; unticking removes it", async () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />,
+      <ChannelSeasonal
+        policy={{ ...POPULATED, seasonal: { holidays: ["christmas"] } }}
+        onChange={onChange}
+        vocabulary={VOCAB}
+      />,
     );
 
     await userEvent.click(screen.getByLabelText("Halloween"));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { holidays: ["halloween"] } }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ seasonal: { holidays: ["christmas", "halloween"] } }),
+    );
 
     rerender(
       <TooltipProvider>
         <ChannelSeasonal
-          policy={{ ...POPULATED, seasonal: { holidays: ["halloween"] } }}
+          policy={{ ...POPULATED, seasonal: { holidays: ["christmas", "halloween"] } }}
           onChange={onChange}
           vocabulary={VOCAB}
         />
       </TooltipProvider>,
     );
     await userEvent.click(screen.getByLabelText("Halloween"));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { holidays: [] } }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { holidays: ["christmas"] } }));
   });
 
   // Stored in vocabulary order regardless of tick order, so re-saving an unchanged selection
@@ -108,12 +123,25 @@ describe("ChannelSeasonal", () => {
     );
   });
 
-  // An empty selection means ALL built-in holidays (schedule/seasonal.go:78 — "empty subset =
-  // all built-in holidays"), which is the opposite of what an empty list usually implies. The
-  // legend says so rather than leaving the operator to guess that none means every.
-  it("says an empty selection means all holidays", () => {
+  // An empty WIRE selection means ALL built-in holidays (schedule/seasonal.go:78). Render the
+  // effective state, not the sentinel, so the checkbox contract stays conventional.
+  it("shows every holiday checked when the empty wire subset means all", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.getByText(/none picked: all of them/)).toBeInTheDocument();
+    expect(screen.getByText("All built-in holidays are included.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Christmas")).toBeChecked();
+    expect(screen.getByLabelText("Halloween")).toBeChecked();
+    expect(screen.getByLabelText("New Year")).toBeChecked();
+  });
+
+  it("materializes the remaining subset when one built-in holiday is unchecked", async () => {
+    const onChange = vi.fn();
+    render(<ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />);
+
+    await userEvent.click(screen.getByLabelText("Halloween"));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ seasonal: { holidays: ["christmas", "newyear"] } }),
+    );
   });
 
   it("hides the holiday list when holidays are ignored", () => {
@@ -147,6 +175,19 @@ describe("ChannelSeasonal", () => {
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ seasonal: { mode: "exclusive", offSeason: "dark" } }),
+    );
+  });
+
+  it("collapses the explicit loop wire value into regular programming", () => {
+    render(
+      <ChannelSeasonal
+        policy={{ seasonal: { mode: "exclusive", offSeason: "loop" } }}
+        onChange={vi.fn()}
+        vocabulary={VOCAB}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Out of season" })).toHaveTextContent(
+      "Keep regular programming",
     );
   });
 

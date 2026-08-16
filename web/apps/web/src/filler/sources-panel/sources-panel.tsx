@@ -1,22 +1,19 @@
-import { fillerApi, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
-import { ErrorState, FillerSources, SourceSearch } from "@/components/loomarr";
+import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FillerSources } from "@/components/loomarr/filler/filler-sources";
+import { SourceSearch } from "@/components/loomarr/filler/source-search";
 // ⚠ No `Card` and no `Label`. Add-a-source is a plain block under a single top rule (the mock
 // draws no box), and its fields are labelled by their per-kind PLACEHOLDER plus `aria-label` —
 // a static visible label above an input whose meaning changes with the kind would contradict it.
-import {
-  Button,
-  Caption,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SourcesPanelProps } from "./sources-panel.type";
 
 // Per-kind copy for "Add a source" (the mock's `newSourcePlaceholder`).
@@ -44,7 +41,14 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
 
   // The per-source search expander (V35b). Local rather than in the URL: an open panel with an
   // empty query is not a view worth sharing, and the search TERM is already transient here.
-  const [searchOpen, setSearchOpen] = useState(false);
+  //
+  // ⚠ **Which source's panel is open, not WHETHER one is (§10 V54 B6).** This was a single
+  // boolean shared by every row, and `renderSearch` is called once per source — so pressing
+  // "Search it" on one archive collection expanded the panel on EVERY searchable row at once,
+  // each showing the same query, the same results and the same "Close" button. With one
+  // collection registered it looked correct; the roll-up this phase renders is precisely what
+  // puts several of them on screen together.
+  const [searchOpenFor, setSearchOpenFor] = useState<string>();
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
 
@@ -118,11 +122,20 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // rude — and the results would flicker under the cursor.
   const [sourceQuery, setSourceQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const searchedSource = sources.find((source) => source.id === searchOpenFor);
   const discover = fillerApi.useDiscoverFiller(
-    { q: submittedQuery },
+    { q: submittedQuery, collection: searchedSource?.uri },
     // Admin-only on the server, and only once something has actually been submitted — an
     // enabled query with an empty q would 422 on mount.
-    { query: { enabled: isAdmin && submittedQuery.trim().length >= 2 } },
+    {
+      query: {
+        enabled:
+          isAdmin &&
+          submittedQuery.trim().length >= 2 &&
+          searchedSource?.kind === "archive" &&
+          Boolean(searchedSource.uri),
+      },
+    },
   );
 
   // Runtime + quality for the rows on screen (V35).
@@ -140,6 +153,24 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
     { query: { enabled: isAdmin && statIds.length > 0 } },
   );
   const discoveredStats = unwrap(statsQuery.data, (b) => b.stats) ?? {};
+
+  // Opening a DIFFERENT source's search is a new search, so the query and the result set start
+  // clean rather than showing the previous row's answers under this row's name.
+  //
+  // ⚠ One panel open at a time, which is what lets the query state below stay single. Several
+  // open panels would each need their own query, submitted term and `statIds` — and `statIds`
+  // spends a real ~1.8s archive.org call per id, so two result sets on screen would quietly
+  // double that.
+  const toggleSearch = (id: string) => {
+    if (searchOpenFor === id) {
+      setSearchOpenFor(undefined);
+      return;
+    }
+    setSourceQuery("");
+    setSubmittedQuery("");
+    setStatIds([]);
+    setSearchOpenFor(id);
+  };
 
   // Which results have been queued this session. ⚠ Session state, deliberately NOT derived from
   // the catalog: a queued download has not landed yet, so the clip it becomes is not in the
@@ -164,7 +195,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   return (
-    <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <FillerSources
         sources={sources}
         // ⚠ The pending row is tracked by ID. This used to be
@@ -209,12 +240,20 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSearchOpen((open) => !open)}
-                aria-expanded={searchOpen}
+                onClick={() => toggleSearch(source.id)}
+                aria-expanded={searchOpenFor === source.id}
+                // ⚠ The accessible name carries the SOURCE. With several collections on screen
+                // under one provider, five buttons all reading "Search it" are indistinguishable
+                // to anyone not looking at the row they sit in.
+                aria-label={
+                  searchOpenFor === source.id
+                    ? `Close the search of ${source.target}`
+                    : `Search ${source.target}`
+                }
               >
-                {searchOpen ? "Close" : "Search it"}
+                {searchOpenFor === source.id ? "Close" : "Search it"}
               </Button>
-              {searchOpen && (
+              {searchOpenFor === source.id && (
                 <div className="mt-3">
                   <SourceSearch
                     results={discoveredResults}

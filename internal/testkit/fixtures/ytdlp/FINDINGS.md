@@ -46,5 +46,5 @@ is *that* pin and this capture.
 
 ## Not in the core gate
 
-Parsing is unit-tested against this fixture with NO live network (CLAUDE.md rule). The search
+Parsing is unit-tested against this fixture with NO live network (AGENTS.md rule). The search
 above is a manual capture, not a committed test.

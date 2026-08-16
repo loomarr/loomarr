@@ -1,4 +1,8 @@
-import { getDeleteChannelMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
+import {
+  getDeleteChannelMockHandler,
+  getGetChannelMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +33,7 @@ const stubChannel = () => {
   const patches: unknown[] = [];
   const deletes: string[] = [];
   server.use(
+    getGetChannelMockHandler(channel({ revision: 7 })),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
       return channel();
@@ -74,7 +79,7 @@ describe("ChannelRowMenu", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Pause" }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toMatchObject({ status: "paused" });
+    expect(patches[0]).toMatchObject({ revision: 7, status: "paused" });
   });
 
   it("a paused channel offers Resume (status:building)", async () => {
@@ -86,7 +91,7 @@ describe("ChannelRowMenu", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Resume" }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toMatchObject({ status: "building" });
+    expect(patches[0]).toMatchObject({ revision: 7, status: "building" });
   });
 
   it("Delete is a two-step confirm (no name typing) and DELETEs with purge=true", async () => {

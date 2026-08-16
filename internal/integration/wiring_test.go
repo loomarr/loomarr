@@ -2,14 +2,249 @@ package integration_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
+
+// TestWiring_TMDBConfigHotApplies proves the composition root owns one real dynamic
+// TMDB adapter rather than swapping in a boot-frozen test client. The sequence drives
+// the public settings and connection-test APIs exactly as an operator does: an empty
+// key sends no outbound request, configure and rotate affect the very next operation,
+// and clear returns to the no-request state without rebuilding the handler.
+func TestWiring_TMDBConfigHotApplies(t *testing.T) {
+	h := newHarness(t, withoutConnections())
+	admin := h.asAdmin()
+
+	probe := func() (bool, string) {
+		t.Helper()
+		var out struct {
+			OK   bool   `json:"ok"`
+			Hint string `json:"hint"`
+		}
+		resp := h.do(http.MethodPost, "/v1/setup/test", `{"check":"tmdb"}`, admin)
+		decodeBody(t, resp, &out)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST /v1/setup/test tmdb → %d, want 200", resp.StatusCode)
+		}
+		return out.OK, out.Hint
+	}
+	assertLastCredential := func(want string) {
+		t.Helper()
+		requests := h.tmdb.Requests()
+		if len(requests) == 0 {
+			t.Fatal("TMDB double received no request")
+		}
+		if got := requests[len(requests)-1].Authorization; got != "Bearer "+want {
+			t.Fatalf("TMDB Authorization = %q, want bearer for newly saved credential", got)
+		}
+	}
+
+	before := h.tmdb.RequestCount()
+	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
+		t.Fatalf("empty TMDB probe = (%v, %q), want unconfigured", ok, hint)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("empty TMDB credential sent %d outbound requests, want none", got-before)
+	}
+
+	if code := h.patchSettings(admin, map[string]string{"tmdb.api_key": "first-key"}); code != http.StatusOK {
+		t.Fatalf("configure TMDB key → %d, want 200", code)
+	}
+	if ok, hint := probe(); !ok {
+		t.Fatalf("configured TMDB probe failed: %q", hint)
+	}
+	assertLastCredential("first-key")
+	before = h.tmdb.RequestCount()
+	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusOK {
+		t.Fatalf("TMDB-only search after configure → %d, want 200 without a library connection", code)
+	}
+	if got := h.tmdb.RequestCount(); got != before+1 {
+		t.Fatalf("TMDB-only search sent %d outbound requests, want one through the shared client", got-before)
+	}
+	assertLastCredential("first-key")
+
+	if code := h.patchSettings(admin, map[string]string{"tmdb.api_key": "rotated-key"}); code != http.StatusOK {
+		t.Fatalf("rotate TMDB key → %d, want 200", code)
+	}
+	if ok, hint := probe(); !ok {
+		t.Fatalf("rotated TMDB probe failed: %q", hint)
+	}
+	assertLastCredential("rotated-key")
+
+	before = h.tmdb.RequestCount()
+	if code := h.status(http.MethodDelete, "/v1/settings/tmdb.api_key", "", admin); code != http.StatusNoContent {
+		t.Fatalf("clear TMDB key → %d, want 204", code)
+	}
+	if ok, hint := probe(); ok || hint != "set your TMDB API key" {
+		t.Fatalf("cleared TMDB probe = (%v, %q), want unconfigured", ok, hint)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("cleared TMDB credential sent %d outbound requests, want none", got-before)
+	}
+	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusNotImplemented {
+		t.Fatalf("TMDB-only search after clear → %d, want 501 unconfigured", code)
+	}
+	if got := h.tmdb.RequestCount(); got != before {
+		t.Fatalf("TMDB-only search after clear sent %d outbound requests, want none", got-before)
+	}
+}
+
+// TestWiring_LibraryConfigHotApplies proves one app generation keeps every optional
+// media-library adapter wired while its complete connection snapshot changes live. The
+// same handler starts empty, consumes a saved Jellyfin triple, observes a secret rotation,
+// and returns to a dormant/no-outbound state after clear.
+func TestWiring_LibraryConfigHotApplies(t *testing.T) {
+	h := newHarness(t, withoutConnections(), withFillerStorage())
+	admin := h.asAdmin()
+	if err := h.store.UpsertFillerSource(t.Context(),
+		store.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+
+	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	if got := len(h.ms.Requests()); got != 0 {
+		t.Fatalf("empty connection made %d media-server requests, want none", got)
+	}
+
+	if code := h.patchSettings(admin, map[string]string{
+		"library.flavor": "jellyfin",
+		"library.url":    h.ms.URL,
+		"library.token":  "jellyfin-token-one",
+	}); code != http.StatusOK {
+		t.Fatalf("configure Jellyfin connection → %d, want 200", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
+	assertUserImportStatus(t, h, admin, http.StatusOK)
+	assertUserSyncStatus(t, h, admin, http.StatusOK)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	requests := h.ms.Requests()
+	assertJellyfinSearchAuth(t, requests, "jellyfin-token-one")
+	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
+	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
+
+	if code := h.patchSettings(admin, map[string]string{"library.token": "jellyfin-token-two"}); code != http.StatusOK {
+		t.Fatalf("rotate Jellyfin token → %d, want 200", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
+	assertUserImportStatus(t, h, admin, http.StatusOK)
+	requests = h.ms.Requests()
+	assertJellyfinSearchAuth(t, requests, "jellyfin-token-two")
+	assertJellyfinUserAuth(t, requests, "jellyfin-token-two")
+
+	beforeClear := len(requests)
+	if code := h.status(http.MethodDelete, "/v1/settings/library.token", "", admin); code != http.StatusNoContent {
+		t.Fatalf("clear library.token → %d, want 204", code)
+	}
+	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
+	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
+	assertFillerSyncStatus(t, h, admin, http.StatusOK)
+	if got := len(h.ms.Requests()); got != beforeClear {
+		t.Fatalf("cleared connection made an outbound request: before=%d after=%d", beforeClear, got)
+	}
+}
+
+func assertUserImportStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodGet, "/v1/users/candidates", "", admin); got != want {
+		t.Fatalf("user import candidates = %d, want %d", got, want)
+	}
+}
+
+func assertUserSyncStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodPost, "/v1/users/sync", "", admin); got != want {
+		t.Fatalf("user sync = %d, want %d", got, want)
+	}
+}
+
+func assertFillerSyncStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodPost, "/v1/filler/sync", "", admin); got != want {
+		t.Fatalf("filler sync = %d, want %d", got, want)
+	}
+}
+
+func assertLibrarySearchStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {
+	t.Helper()
+	if got := h.status(http.MethodGet, "/v1/search?q=matrix&scope=library", "", admin); got != want {
+		t.Fatalf("library search = %d, want %d", got, want)
+	}
+}
+
+func assertFillerLibraryScanned(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	foundFolder, foundItems := false, false
+	for _, request := range requests {
+		isFolder := request.Path == "/Library/VirtualFolders"
+		isItems := request.Path == "/Items" && strings.Contains(request.RawQuery, "ParentId=")
+		if isFolder {
+			foundFolder = true
+		}
+		if isItems {
+			foundItems = true
+		}
+		if isFolder || isItems {
+			assertJellyfinAuthorization(t, "filler library request", request.Authorization, token)
+		}
+	}
+	if !foundFolder || !foundItems {
+		t.Fatalf("filler library scanner did not issue both lookup requests: %+v", requests)
+	}
+}
+
+func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	for i := len(requests) - 1; i >= 0; i-- {
+		request := requests[i]
+		if request.Path != "/Users" {
+			continue
+		}
+		assertJellyfinAuthorization(t, "Jellyfin user-list", request.Authorization, token)
+		if request.EmbyToken != "" {
+			t.Fatalf("Jellyfin user-list sent X-Emby-Token %q", request.EmbyToken)
+		}
+		return
+	}
+	t.Fatalf("no media-server user-list request found in %+v", requests)
+}
+
+func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
+	t.Helper()
+	for i := len(requests) - 1; i >= 0; i-- {
+		request := requests[i]
+		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
+			continue
+		}
+		assertJellyfinAuthorization(t, "Jellyfin search", request.Authorization, token)
+		if request.EmbyToken != "" {
+			t.Fatalf("Jellyfin search sent X-Emby-Token %q", request.EmbyToken)
+		}
+		return
+	}
+	t.Fatalf("no media-server search request found in %+v", requests)
+}
+
+func assertJellyfinAuthorization(t *testing.T, surface, authorization, token string) {
+	t.Helper()
+	if !strings.HasPrefix(authorization, "MediaBrowser ") ||
+		!strings.Contains(authorization, `Token="`+token+`"`) {
+		t.Fatalf("%s Authorization = %q, want token %q", surface, authorization, token)
+	}
+}
 
 // TestWiring_FreshInstall pins the composition-root contract for a store-only
 // "nothing configured yet" install — the FE's initial state. It asserts the two
-// distinct nil-dep behaviors from ONE real app build: store-alone routes work
-// (onboarding, settings, status, backup), feature/scheduler routes report
-// unconfigured (501), and a route whose dep is absent is 404 (not registered).
+// distinct dependency behaviors from ONE real app build: store-alone routes work
+// (onboarding, settings, status, backup), external-feature routes report unconfigured
+// (501), and missing resources or routes are 404.
 // This is the seam no other test covers: the whole api.Options wiring for an empty
 // store, exactly as a freshly-installed backend answers the frontend.
 func TestWiring_FreshInstall(t *testing.T) {
@@ -29,19 +264,24 @@ func TestWiring_FreshInstall(t *testing.T) {
 		}
 	}
 
-	// Feature/scheduler routes report UNCONFIGURED (501) — no library/tunarr/llm.
+	// External-feature routes report UNCONFIGURED (501) — no library/tunarr/llm.
 	// (After the live-enable fix these still 501 when unconfigured; saving the config
 	// makes them work live — see TestWiring_ConfigEnablesLive.)
 	unconfigured := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
 	}
 	for _, r := range unconfigured {
 		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
 			t.Errorf("fresh install: %s %s → %d, want 501 (unconfigured)", r.method, r.path, code)
 		}
+	}
+
+	// Channel scheduling is local control-plane behavior on the default internal backend. It is
+	// available without Tunarr; this id simply does not exist.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Errorf("fresh install: POST /v1/channels/x/reconcile → %d, want 404 (missing channel)", code)
 	}
 
 	// ⚠ Filler is NOT in that list, and the distinction is the point. `filler.dir` defaults
@@ -54,14 +294,10 @@ func TestWiring_FreshInstall(t *testing.T) {
 		t.Error("fresh install: POST /v1/filler/sync → 501; filler.dir has a default, so it is configured")
 	}
 
-	// A dep that's ABSENT (no library ⇒ no user-sync route registered) is NOT a 501:
-	// the route simply doesn't exist. With the embedded SPA mounted as the "/"
-	// catch-all (§12), an unhandled /v1 path is guarded to a uniform 404 (never
-	// index.html) rather than the ServeMux method-shadow 405 it returned before the
-	// FE landed. Either way the contract the FE relies on holds — route absent ≠ 501
-	// ("configured but broken"), so the FE must not treat this as a feature that's on.
-	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusNotFound {
-		t.Errorf("fresh install: POST /v1/users/sync → %d, want 404 (route absent, SPA-guarded)", code)
+	// Optional routes remain registered for the life of the process. With no complete
+	// library triple, user sync reports unconfigured and makes no outbound request.
+	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusNotImplemented {
+		t.Errorf("fresh install: POST /v1/users/sync → %d, want 501 (library unconfigured)", code)
 	}
 
 	// The embedded SPA (§12) is served at / and client routes fall back to it —
@@ -89,12 +325,16 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	preCheck := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 	}
 	for _, r := range preCheck {
 		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
 			t.Fatalf("pre-config %s %s → %d, want 501", r.method, r.path, code)
 		}
+	}
+	// Reconcile is already live for internal playout; a missing channel is a resource miss, not
+	// an unconfigured Tunarr feature.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Fatalf("pre-config reconcile missing channel → %d, want 404", code)
 	}
 
 	// SAVE the connections through the settings API — exactly what the wizard does.
@@ -122,9 +362,9 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {
 		t.Errorf("GET /v1/search → %d after saving library, want 200 (live-enabled)", code)
 	}
-	// The scheduler gate opened: reconcile of a missing channel is now 404, not 501.
-	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code == http.StatusNotImplemented {
-		t.Error("reconcile still 501 after saving tunarr.url — scheduler not live-enabled")
+	// Saving external connections does not change the already-live channel scheduler contract.
+	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {
+		t.Errorf("post-config reconcile missing channel → %d, want 404", code)
 	}
 
 	// The model-picker probe ALSO goes live — it reads the saved llm.url with no

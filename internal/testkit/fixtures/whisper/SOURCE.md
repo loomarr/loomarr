@@ -1,6 +1,6 @@
 # whisper-cli language-detection captures
 
-Real output from the **vendored** binary and model, not hand-written JSON. CLAUDE.md's
+Real output from the **vendored** binary and model, not hand-written JSON. AGENTS.md's
 "fixtures are pinned truth" rule is why: a parser written against remembered field names works
 until it meets the tool.
 

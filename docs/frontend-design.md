@@ -105,6 +105,7 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 | Component | Purpose | States to register |
 | --- | --- | --- |
 | `AppShell` | Nav rail (Channels, Board, Suggest, Filler, Users, Settings, Help) + ⌘K + user menu | member / admin / mobile-web collapsed |
+| `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
 | `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
@@ -155,6 +156,34 @@ web/
 
 - **TanStack Form + zod**, the zod schema passed straight to the form as a **Standard Schema** validator — no resolver adapter. Zod schemas live in `packages/core` so mobile reuses validation verbatim, and `@tanstack/form-core` lets it reuse the form logic too. (Not shadcn's `<Form>`: that wrapper is react-hook-form-bound and Loomarr hand-composes `Label`+`Input`, so there was nothing to inherit.)
 - **No global state library.** TanStack Query owns server state (SSE-invalidated, main doc §12); local UI state is React state. Introducing zustand/jotai requires updating this doc first.
+
+### 4.4 Route payloads are bounded
+
+File-route code splitting only helps when a route's imports stay behind that route boundary. Production
+code imports the nearest component or domain barrel (`@/components/ui/button`,
+`@/components/loomarr/dashboard`, `@/filler/filler-page`), never an app-wide barrel such as
+`@/components/ui`, `@/components/loomarr`, `@/channels`, `@/filler`, or `@/settings`. The same rule
+applies to workspace packages: runtime code imports a tag/model subpath from `@loomarr/api` and a
+single module from `@loomarr/core`, while their package roots remain the complete public catalogs for
+tests and tooling. Using a catalog barrel in the running app lets the bundler merge unrelated screens
+back into one eagerly preloaded chunk.
+
+The production build enforces both sides of this contract: no JavaScript chunk may exceed 500 KiB, and
+the entry script plus its module preloads may not exceed 1 MiB uncompressed. The first bound keeps one
+heavy screen from becoming a parse cliff; the second catches a nominally split build that still downloads
+the whole app before authentication or route selection.
+
+The frontend lint gate also reads every production TypeScript import and rejects those catalog roots,
+including type-only imports. That stricter source rule keeps the interface obvious in editors and prevents
+a later value import from silently changing a type-only dependency into an eager runtime dependency. Tests
+and stories may use the complete catalogs because they are tooling entrypoints rather than route payloads.
+
+The embedded production server negotiates gzip for HTML, JavaScript, CSS, and other compressible static
+formats. It prepares those representations once when its handler is constructed, not on every request;
+the route budget above remains uncompressed so compression cannot hide parse and evaluation regressions.
+The document also starts the initial `/v1/auth/me` read while that entry graph is downloading. The shared
+API transport adopts that exact response once, preserving the route guard's error handling without putting
+the session round trip after JavaScript evaluation or issuing a duplicate request.
 
 ---
 
@@ -244,6 +273,8 @@ These suites join **phase 13's gate** in the main doc's build plan.
 
 ### Responsive posture
 - Desktop-first admin surfaces, fully functional ≥768px. Mobile web is a first-class *read-and-approve* experience (Board, approval queue, channel status); creation flows are optimized for desktop. The true mobile app is the future Expo target (§4.2) — mobile web is not asked to fake it.
+- **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
+- **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---
 
@@ -258,6 +289,6 @@ These suites join **phase 13's gate** in the main doc's build plan.
   - a story whose args contain domain data imports them from `@loomarr/fixtures`.
 
   **Written as a gate on purpose.** Every finding in §5.1a/§5.1c was a rule the library outgrew, not a rule anyone broke: 46 components under one flat namespace, nine primitives with no story coverage, `StateBadge` forking `Badge`, 21 hand-rolled captions across three off-scale sizes. None of that was visible to a gate, so none of it surfaced until someone went looking — and the one finding that turned out to be a miscount (§5.1b) is itself the argument for gates over audits: a number nobody can re-derive is a number that will be wrong. A convention that only lives in prose decays at exactly the rate the library grows.
-- **Makefile additions:** `fe-tokens`, `storybook`, `storybook-build`, `fe-visual`, `fe-visual-update` (join the CLAUDE.md command contract).
+- **Makefile additions:** `fe-tokens`, `storybook`, `storybook-build`, `fe-visual`, `fe-visual-update` (join the AGENTS.md command contract).
 - This doc is a **seed doc**: incorporate as `docs/frontend-design.md` during phase 14; the palette table also feeds the docs site's own styling.
 - **Visual reference (authoritative for look):** the Claude Design prototypes ship in-repo at `design/loomarr-prototype-desktop.dc.html` and `design/loomarr-prototype-mobile.dc.html` — recreate them pixel-perfectly per the handoff README (match visual output, not internal structure). Two reconciliation deltas apply on top of the prototypes: badge text on tints uses the `-300` stops (the prototypes predate the contrast calibration), and `static-500` text is demoted to disabled/decorative. Gallery baselines (§5) are judged against the prototypes-plus-deltas.

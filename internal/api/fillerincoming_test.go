@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -51,8 +52,11 @@ type incomingBody struct {
 		Reason     string `json:"reason"`
 		Restorable bool   `json:"restorable"`
 	} `json:"rejected"`
-	StageOrder []string `json:"stageOrder"`
-	Total      int      `json:"total"`
+	StageOrder     []string `json:"stageOrder"`
+	ClipsTotal     int      `json:"clipsTotal"`
+	DecisionsTotal int      `json:"decisionsTotal"`
+	ReelsTotal     int      `json:"reelsTotal"`
+	Total          int      `json:"total"`
 }
 
 func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody) {
@@ -158,6 +162,7 @@ func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "clean"},
 			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "dup", DupOf: "old/ad.mp4"},
 			{Index: 2, StartMs: 61_000, EndMs: 149_000, Name: "stuck", Unsplittable: true},
+			{Index: 3, StartMs: 149_000, EndMs: 179_000, Name: "unknown", Looked: true},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -168,17 +173,32 @@ func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 	if len(body.Reels) != 1 {
 		t.Fatalf("reels = %d, want 1", len(body.Reels))
 	}
-	if body.Reels[0].Segments != 3 {
-		t.Errorf("segments = %d, want 3", body.Reels[0].Segments)
+	if body.Reels[0].Segments != 4 {
+		t.Errorf("segments = %d, want 4", body.Reels[0].Segments)
 	}
-	if body.Reels[0].NeedsAttention != 2 {
-		t.Errorf("needsAttention = %d, want 2 (a duplicate and an unsplittable stretch)", body.Reels[0].NeedsAttention)
+	if body.Reels[0].NeedsAttention != 3 {
+		t.Errorf("needsAttention = %d, want 3 (legacy duplicate, unsplittable, and examined-but-unclassified)", body.Reels[0].NeedsAttention)
 	}
 	// ⚠ No clip backs this proposal, so the name falls back to the identity rather than rendering
 	// blank. A reel whose compilation has been deleted is a real state an operator must still be
 	// able to see and dismiss.
 	if body.Reels[0].ClipName != "hash-of-comps/1987.mp4" {
 		t.Errorf("clipName = %q, want the hash as the fallback for a missing clip", body.Reels[0].ClipName)
+	}
+}
+
+func TestFillerIncoming_HidesBoundaryDetectionCheckpointFromReview(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Reels) != 0 {
+		t.Fatalf("detector checkpoint appeared as work owed by the operator: %+v", body.Reels)
 	}
 }
 
@@ -232,6 +252,32 @@ func TestFillerIncoming_TotalCoversBothHalves(t *testing.T) {
 	}
 }
 
+func TestFillerIncoming_CapsRowsButKeepsTheFullTotals(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for i := 0; i < incomingListLimitForTest+7; i++ {
+		path := fmt.Sprintf("incoming-%03d.mp4", i)
+		putClip(t, st, filler.Clip{
+			Path: path, Name: path, Kind: filler.Commercial, DurationMs: 30_000, Held: true,
+		})
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+	if len(body.Clips) != incomingListLimitForTest {
+		t.Fatalf("clips = %d, want bounded page of %d", len(body.Clips), incomingListLimitForTest)
+	}
+	if body.ClipsTotal != incomingListLimitForTest+7 {
+		t.Errorf("clipsTotal = %d, want all %d conveyor clips", body.ClipsTotal, incomingListLimitForTest+7)
+	}
+	if body.Total != incomingListLimitForTest+7 {
+		t.Errorf("total = %d, want all decisions rather than the page length", body.Total)
+	}
+	if body.DecisionsTotal != incomingListLimitForTest+7 {
+		t.Errorf("decisionsTotal = %d, want all decisions", body.DecisionsTotal)
+	}
+}
+
+const incomingListLimitForTest = 100
+
 // Empty is an array, never null: a null makes every consumer guard before iterating, and "nothing
 // needs you" is a real answer the tab renders as its all-clear state.
 func TestFillerIncoming_EmptyHalvesAreArrays(t *testing.T) {
@@ -267,6 +313,13 @@ func TestFillerIncoming_PipelineRowCarriesTheClipItDescribes(t *testing.T) {
 		ClipHash: "hash-cola", Stage: filler.StageTag, Status: filler.StatusRunning,
 		// -1 is the "this rung cannot measure itself" sentinel, and it must survive the wire as
 		// -1 rather than being flattened to 0 by an `omitempty` someone adds later.
+		//
+		// ⚠ Seeded here because this test is about SERIALIZATION, and that is all it proves. It was
+		// for a long time the only artefact mentioning -1, and it stayed green throughout the period
+		// production could not emit one at all: `onProgress` dropped the sentinel on a blanket
+		// `percent < 0` guard, so `tag` and `vision` rendered a bar frozen at zero on every run.
+		// That the runner actually PRODUCES -1 is pinned in
+		// internal/filler/pipelineprogress_test.go, which drives the real pipeline (V54 A6).
 		Progress: -1, Disposition: filler.DispositionRunning,
 		Stages: []filler.StageRecord{
 			{Stage: filler.StageProbe, Status: filler.StatusDone, At: time.Now().UTC()},
@@ -347,9 +400,14 @@ func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
 		Hash: "hash-review", Path: "review.mp4", Name: "Machine gave up",
 		Kind: filler.Commercial, DurationMs: 30_000, Held: true,
 	})
+	now := time.Now().UTC()
 	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
 		ClipHash: "hash-review", Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionReview, UpdatedAt: time.Now().UTC(),
+		Disposition: filler.DispositionReview, UpdatedAt: now,
+		Stages: []filler.StageRecord{{
+			Stage: filler.StageScore, Status: filler.StatusDone,
+			Note: "The picture is unchanged for 12.0s; this may be intentional.", At: now,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -364,6 +422,122 @@ func TestFillerIncoming_ReviewDispositionIsWhatAsksForADecision(t *testing.T) {
 	}
 	if body.Total != 1 {
 		t.Errorf("total = %d, want 1", body.Total)
+	}
+	if body.Clips[0].Reason != "The picture is unchanged for 12.0s; this may be intentional." {
+		t.Errorf("review reason = %q, want the stage's measured explanation", body.Clips[0].Reason)
+	}
+}
+
+// ⚠ **A compilation appears ONCE, as a reel — never also as a taggable ask** (§10 V51e, V54).
+//
+// It appeared twice: as a "needs a decision" card carrying "Loomarr couldn't work out what this
+// is", and as a reel below. Both halves were individually correct — the pipeline deliberately
+// skips tag/vision for a composite ("a compilation is cut up rather than filed"), so `askReasonFor`
+// truthfully reported it as unidentified — which is exactly why no existing test caught it. The
+// tab was asking an operator to tag a container of adverts it never intended to file.
+func TestFillerIncoming_ACompilationIsAReelNotAnAsk(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	putClip(t, st, filler.Clip{
+		Hash: "hash-reel", Path: "comps/reel.mp4", Name: "WTTV-4 Commercial Breaks(5/18/1987)",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	// ⚠ Parked at split/review — the state ~50 live reels were in.
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: "hash-reel", Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionReview, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp_reel", ClipHash: "hash-reel", CreatedAt: time.Now().UTC(),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 0 {
+		t.Errorf("clips = %d, want 0 — the reel below IS the handoff; %+v", len(body.Clips), body.Clips)
+	}
+	if len(body.Reels) != 1 {
+		t.Fatalf("reels = %d, want 1", len(body.Reels))
+	}
+	if body.Reels[0].ClipName != "WTTV-4 Commercial Breaks(5/18/1987)" {
+		t.Errorf("reel name = %q, want the compilation's name", body.Reels[0].ClipName)
+	}
+	// The badge counted the same reel twice, once per half.
+	if body.Total != 1 {
+		t.Errorf("total = %d, want 1 — a reel must not be counted as both an ask and a reel", body.Total)
+	}
+}
+
+// ⚠ The other half, and the one a blunt "exclude every composite from the belt" fix would break:
+// a compilation still BEING DETECTED has no proposal yet, and detection runs minutes per file. It
+// must show as a preparing row — V51e exists so that "nothing is happening" is never the answer —
+// but still not as a decision.
+func TestFillerIncoming_ACompilationBeingDetectedStillShows(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Hash: "hash-detecting", Path: "comps/detecting.mp4", Name: "TBS Commercial Breaks(12/15/1989)",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "hash-detecting", Stage: filler.StageSplit, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want 1 — a compilation mid-detection must stay visible", len(body.Clips))
+	}
+	if body.Clips[0].NeedsDecision {
+		t.Error("a compilation mid-detection is asking for nothing; it is being worked on")
+	}
+	if body.Total != 0 {
+		t.Errorf("total = %d, want 0 — nothing here needs a human yet", body.Total)
+	}
+}
+
+// A detection checkpoint is private pipeline state, not a reviewable reel. The list side already
+// filters these drafts out of `reels` and leaves their compilation on the conveyor; the server-side
+// total must apply the same readiness rule or the UI renders one preparing card beneath a zero
+// count. This is the production shape between the first boundary-scan pass and its resume.
+func TestFillerIncoming_ACompilationDetectionCheckpointCountsOnTheConveyor(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+	putClip(t, st, filler.Clip{
+		Hash: "hash-checkpoint", Path: "comps/checkpoint.mp4", Name: "Commercial Break Checkpoint",
+		Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true,
+	})
+	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		ClipHash: "hash-checkpoint", Stage: filler.StageSplit, Status: filler.StatusQueued,
+		Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSplitProposal(ctx, filler.SplitProposal{
+		ID: "sp_checkpoint", ClipHash: "hash-checkpoint", CreatedAt: time.Now().UTC(),
+		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Clips) != 1 {
+		t.Fatalf("clips = %d, want one compilation still being detected", len(body.Clips))
+	}
+	if body.ClipsTotal != 1 {
+		t.Errorf("clipsTotal = %d, want 1 — a draft proposal does not take its clip off the conveyor", body.ClipsTotal)
+	}
+	if len(body.Reels) != 0 || body.ReelsTotal != 0 {
+		t.Errorf("reels = %d total %d, want no reviewable reel for a detection checkpoint",
+			len(body.Reels), body.ReelsTotal)
 	}
 }
 

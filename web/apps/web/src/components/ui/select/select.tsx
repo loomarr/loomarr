@@ -1,7 +1,7 @@
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { Check, ChevronDown } from "lucide-react";
 import { Children, isValidElement, useMemo } from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { SelectContentProps, SelectItemProps, SelectRootProps, SelectTriggerProps } from "./select.type";
 
 // The enum control (config-design §2 KindEnum), on Base UI Select (design §14). A native

@@ -5,13 +5,17 @@
   "type": "module",
   "description": "Orval-generated types + TanStack Query hooks from api/openapi.yaml (platform-agnostic).",
   "exports": {
-    ".": "./src/index.ts",
-    "./mutator": "./src/mutator/index.ts",
-    "./zod": "./src/zod/index.ts",
-    "./msw": "./src/msw/index.ts"
+    ".": "./index.ts",
+    "./endpoints/*": "./endpoint-*.ts",
+    "./models/*": "./model-*.ts",
+    "./mutator": "./mutator.ts",
+    "./msw": "./msw.ts",
+    "./unwrap": "./unwrap.ts",
+    "./zod": "./zod.ts",
+    "./zod/*": "./zod-*.ts"
   },
   "scripts": {
-    "generate": "orval --config orval.config.ts",
+    "generate": "orval --config orval.config.ts && node scripts/generate-entrypoints.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },

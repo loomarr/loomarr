@@ -52,13 +52,20 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	return ch
 }
 
+func mustSaveChannel(t *testing.T, s Store, ch Channel) Channel {
+	t.Helper()
+	saved, err := s.SaveChannel(context.Background(), ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return saved
+}
+
 func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	want := sampleChannel("ch-a", 5, time.Unix(1_800_000_000, 0).UTC())
-	if err := s.UpsertChannel(ctx, want); err != nil {
-		t.Fatal(err)
-	}
+	want = mustSaveChannel(t, s, want)
 	got, err := s.GetChannel(ctx, "ch-a")
 	if err != nil {
 		t.Fatal(err)
@@ -94,18 +101,16 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
 		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)
 	}
-	// Upsert is idempotent: a second write with an edited field updates in place.
+	// A CAS save with the returned revision updates the row in place.
 	want.Status = schedule.StatusDrifted
-	if err := s.UpsertChannel(ctx, want); err != nil {
-		t.Fatal(err)
-	}
+	want = mustSaveChannel(t, s, want)
 	got2, _ := s.GetChannel(ctx, "ch-a")
 	if got2.Status != schedule.StatusDrifted {
-		t.Errorf("upsert didn't update status: %s", got2.Status)
+		t.Errorf("save didn't update status: %s", got2.Status)
 	}
 	all, _ := s.ListChannels(ctx)
 	if len(all) != 1 {
-		t.Errorf("upsert created a duplicate channel: %d rows", len(all))
+		t.Errorf("save created a duplicate channel: %d rows", len(all))
 	}
 	// GetChannelByNumber resolves the same row.
 	byNum, err := s.GetChannelByNumber(ctx, 5)
@@ -121,12 +126,93 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testChannelRevisionCAS(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	created, err := s.SaveChannel(ctx, sampleChannel("ch-cas", 51, time.Time{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Revision != 1 {
+		t.Fatalf("created revision = %d, want 1", created.Revision)
+	}
+	stale := created
+	created.Name = "winner"
+	saved, err := s.SaveChannel(ctx, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Revision != 2 {
+		t.Fatalf("updated revision = %d, want 2", saved.Revision)
+	}
+	stale.Name = "loser"
+	if _, err := s.SaveChannel(ctx, stale); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("stale save = %v, want ErrChannelStale", err)
+	}
+	got, err := s.GetChannel(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "winner" || got.Revision != 2 {
+		t.Fatalf("stale save changed row: name=%q revision=%d", got.Name, got.Revision)
+	}
+
+	if err := s.DeleteChannel(ctx, got.ID, stale.Revision); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("stale delete = %v, want ErrChannelStale", err)
+	}
+	if err := s.DeleteChannel(ctx, got.ID, got.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveChannel(ctx, got); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("save after delete = %v, want ErrNotFound", err)
+	}
+}
+
+func testChannelTargetedRevisionWrites(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	created := mustSaveChannel(t, s, sampleChannel("ch-targeted", 52, time.Time{}))
+
+	codecRevision, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, BroadcastCodecH264)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codecRevision != 2 {
+		t.Fatalf("codec revision = %d, want 2", codecRevision)
+	}
+	if _, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, BroadcastCodecHEVC); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("stale codec write = %v, want ErrChannelStale", err)
+	}
+
+	attachedRevision, err := s.AttachTunarrChannel(ctx, created.ID, "", "tunarr-52", created.Number, 53)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attachedRevision != 3 {
+		t.Fatalf("attach revision = %d, want 3", attachedRevision)
+	}
+	if _, err := s.AttachTunarrChannel(ctx, created.ID, "", "tunarr-other", created.Number, 54); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("stale Tunarr attach = %v, want ErrChannelStale", err)
+	}
+	got, err := s.GetChannel(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TunarrID != "tunarr-52" || got.Number != 53 || got.BroadcastCodec != BroadcastCodecH264 || got.Revision != 3 {
+		t.Fatalf("targeted writes = tunarr %q number %d codec %q revision %d", got.TunarrID, got.Number, got.BroadcastCodec, got.Revision)
+	}
+	if _, err := s.SaveChannel(ctx, created); !errors.Is(err, ErrChannelStale) {
+		t.Fatalf("pre-targeted snapshot save = %v, want ErrChannelStale", err)
+	}
+}
+
 func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-2", 2, time.Time{}))
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-1", 1, time.Time{}))
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-3", 3, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("ch-2", 2, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("ch-1", 1, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("ch-3", 3, time.Time{}))
 
 	all, err := s.ListChannels(ctx)
 	if err != nil {
@@ -139,7 +225,8 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	if all[0].Number != 1 || all[1].Number != 2 || all[2].Number != 3 {
 		t.Errorf("ListChannels not ordered by number: %d,%d,%d", all[0].Number, all[1].Number, all[2].Number)
 	}
-	if err := s.DeleteChannel(ctx, "ch-2"); err != nil {
+	toDelete, _ := s.GetChannel(ctx, "ch-2")
+	if err := s.DeleteChannel(ctx, "ch-2", toDelete.Revision); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := s.ListChannels(ctx)
@@ -162,7 +249,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-ico", 7, time.Time{}))
+	iconChannel := mustSaveChannel(t, s, sampleChannel("ch-ico", 7, time.Time{}))
 
 	img := imageAt("channel-icon", time.Unix(1_700_000_000, 0))
 	if err := s.PutImage(ctx, img); err != nil {
@@ -179,7 +266,7 @@ func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("before delete: %d images for the channel (err=%v), want 1", len(owned), err)
 	}
 
-	if err := s.DeleteChannel(ctx, "ch-ico"); err != nil {
+	if err := s.DeleteChannel(ctx, "ch-ico", iconChannel.Revision); err != nil {
 		t.Fatal(err)
 	}
 
@@ -205,13 +292,17 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	// Due: deadline in the past, live.
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-due", 1, now.Add(-time.Hour)))
+	dueBefore := mustSaveChannel(t, s, sampleChannel("ch-due", 1, now.Add(-time.Hour)))
 	// Not due: future deadline.
-	_ = s.UpsertChannel(ctx, sampleChannel("ch-future", 2, now.Add(time.Hour)))
+	mustSaveChannel(t, s, sampleChannel("ch-future", 2, now.Add(time.Hour)))
 	// Not eligible: detached, even with a past deadline.
 	detached := sampleChannel("ch-detached", 3, now.Add(-time.Hour))
 	detached.Status = schedule.StatusDetached
-	_ = s.UpsertChannel(ctx, detached)
+	mustSaveChannel(t, s, detached)
+	// Not eligible: paused is deliberately off air and must not be claimed either.
+	paused := sampleChannel("ch-paused", 5, now.Add(-time.Hour))
+	paused.Status = schedule.StatusPaused
+	mustSaveChannel(t, s, paused)
 	// ⚠ **DUE: a ZERO deadline means due NOW** (§9 V54), and this case was never covered.
 	//
 	// The claim carried `AND reconcile_deadline > 0`, and the deadline's only writer is the LAST
@@ -224,7 +315,7 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 	// exists to catch.
 	zero := sampleChannel("ch-never-reconciled", 4, time.Time{})
 	zero.Status = schedule.StatusBuilding
-	_ = s.UpsertChannel(ctx, zero)
+	mustSaveChannel(t, s, zero)
 
 	claimed, err := s.ClaimDueChannels(ctx, now, time.Minute, 10)
 	if err != nil {
@@ -247,6 +338,13 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 	if !got.ReconcileDeadline.Equal(now.Add(time.Minute)) {
 		t.Errorf("claimed channel deadline = %v, want leased %v", got.ReconcileDeadline, now.Add(time.Minute))
 	}
+	if got.Revision != dueBefore.Revision+1 {
+		t.Errorf("claimed channel revision = %d, want %d", got.Revision, dueBefore.Revision+1)
+	}
+	dueBefore.Name = "stale writer"
+	if _, err := s.SaveChannel(ctx, dueBefore); !errors.Is(err, ErrChannelStale) {
+		t.Errorf("pre-claim snapshot save = %v, want ErrChannelStale", err)
+	}
 }
 
 // testClaimChannelsConcurrent is the §18 guarantee: two replicas never reconcile
@@ -257,7 +355,7 @@ func testClaimChannelsConcurrent(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	const n = 20
 	for i := 0; i < n; i++ {
-		_ = s.UpsertChannel(ctx, sampleChannel("chan-"+string(rune('a'+i)), i+1, now.Add(-time.Hour)))
+		mustSaveChannel(t, s, sampleChannel("chan-"+string(rune('a'+i)), i+1, now.Add(-time.Hour)))
 	}
 
 	var mu sync.Mutex

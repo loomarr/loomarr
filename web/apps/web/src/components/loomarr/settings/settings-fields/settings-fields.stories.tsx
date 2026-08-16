@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -16,6 +17,7 @@ const withTooltip: Decorator = (Story) => (
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind" | "doc">): SettingEntry => ({
   group: "connections.media_server",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: true,
   provenance: "db",
@@ -47,14 +49,6 @@ const mediaServer: SettingEntry[] = [
     preview: "…9f3c",
     doc: "Admin API token.",
     value: "",
-  }),
-  entry({
-    key: "season.precision",
-    kind: "enum",
-    enum: ["series", "season"],
-    doc: "Availability granularity.",
-    value: "series",
-    advanced: true,
   }),
 ];
 

@@ -32,18 +32,15 @@ type ProbeStage struct {
 	// minDurationMs is the floor below which a file is not a usable clip. A closure so a settings
 	// change hot-applies, matching AutoFilePolicy's contract.
 	minDurationMs func() int64
-	// tools runs the boundary scan that decides whether a long file is a compilation. nil ⇒
-	// composite detection is off and a long recording stays airable until someone splits it by
-	// hand — the pre-V51b behaviour.
-	tools MediaTools
 	// compositeOver is `filler.autosplit.max_duration`: longer than one advert, so worth asking
-	// whether it is many.
+	// whether it is many. Probe owns only this cheap duration decision; the split stage owns the
+	// full-file boundary scan.
 	compositeOver func() time.Duration
 	now           func() time.Time
 }
 
 // NewProbeStage builds the stage. A nil prober defaults to the real ffprobe.
-func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, tools MediaTools, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
+func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
 	if probe == nil {
 		probe = FFprobe
 	}
@@ -52,7 +49,7 @@ func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurati
 	}
 	return &ProbeStage{
 		probe: probe, store: store, clipDir: clipDir, minDurationMs: minDurationMs,
-		tools: tools, compositeOver: compositeOver, now: now,
+		compositeOver: compositeOver, now: now,
 	}
 }
 
@@ -83,6 +80,18 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if v, reason, detail := s.verdict(pr); v == VerdictReject {
 		return StageResult{Verdict: VerdictReject, Reason: reason, Detail: detail}, nil
 	}
+	// A catalog rebuild loses pipeline state but not sidecar evidence. Re-apply a prior content
+	// quality decision here so a near-total-black clip cannot become airable merely because the
+	// database was recreated; first-time clips have no report yet and continue to transcode.
+	if tags, ok := ReadSidecarTags(file); ok && tags.MediaQuality != nil {
+		if v, reason, detail := mediaQualityVerdict(*tags.MediaQuality); v != VerdictContinue {
+			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
+			if v == VerdictReview {
+				out.Note, out.Detail = detail, ""
+			}
+			return out, nil
+		}
+	}
 
 	// Persist what the probe learned. `UpsertClip` owns duration and quality (they are scan-derived
 	// facts, in its DO UPDATE list by design), so this needs no new writer.
@@ -98,10 +107,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}
 	}
 
-	composite, err := s.looksComposite(ctx, file, updated)
-	if err != nil {
-		return StageResult{}, err
-	}
+	composite := s.looksComposite(updated)
 	if composite && !updated.IsComposite {
 		if s.store != nil {
 			if err := s.store.SetClipComposite(ctx, updated.Hash, true, s.now().UTC()); err != nil {
@@ -115,19 +121,14 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
 }
 
-// compositeBoundaries is how many black/silence gaps make a long file a compilation rather than
-// one long advert.
-//
-// Two: a single gap is what a fade-out at the end of one clip looks like, while two interior
-// boundaries mean at least three spans — a shape a single advert does not have.
-const compositeBoundaries = 2
-
 // looksComposite decides whether a clip is a CONTAINER of adverts (§10 V45).
 //
-// ⚠ **The expensive half is gated on duration, and without that gate this rung becomes the most
-// expensive one in the pipeline.** `BlackSilence` is a full decode — minutes on a 16-minute file —
-// so it runs only for clips longer than `filler.autosplit.max_duration`. Under that a clip is
-// advert-shaped by definition and there is nothing to ask.
+// ⚠ Duration is the ONLY question probe owns. The previous version also ran BlackSilence here,
+// fully decoding a long recording before the split stage fully decoded it again. Besides doubling
+// work, an hour-scale capture could exhaust the pass while merely deciding whether the stage that
+// owns boundary detection should run. Over the configured maximum is enough to prove the file is
+// not a normally airable advert; split determines whether it contains many adverts or one long
+// infomercial.
 //
 // ⚠ **Moving this mark to probe is a real behaviour change, and a deliberate one.** Until V51b
 // `is_composite` was set only by split `Confirm`, so a 16-minute recording was AIRABLE until
@@ -135,26 +136,15 @@ const compositeBoundaries = 2
 // default-off `IncludeComposites` filter exclude it immediately, so the worst case is a long
 // recording sitting out of rotation until its cuts are reviewed, rather than sixteen minutes of
 // unrelated adverts airing as one break.
-func (s *ProbeStage) looksComposite(ctx context.Context, file string, c StoreClip) (bool, error) {
+func (s *ProbeStage) looksComposite(c StoreClip) bool {
 	if c.IsComposite {
-		return true, nil // already marked; nothing to re-measure
+		return true // already marked; nothing to re-measure
 	}
-	if s.tools == nil || s.compositeOver == nil {
-		return false, nil
+	if s.compositeOver == nil {
+		return false
 	}
 	over := s.compositeOver()
-	if over <= 0 || time.Duration(c.DurationMs)*time.Millisecond <= over {
-		return false, nil
-	}
-	// ⚠ A boundary-scan failure is NOT an error the rung fails on. The clip has been measured and
-	// is perfectly usable; all we lose is the composite mark, and the split rung's own detection
-	// would fail the same way. Failing here would retry an expensive decode three times and then
-	// REJECT a clip for being long, which is not a fault.
-	blacks, silences, err := s.tools.BlackSilence(ctx, file)
-	if err != nil {
-		return false, nil
-	}
-	return len(blacks)+len(silences) >= compositeBoundaries, nil
+	return over > 0 && time.Duration(c.DurationMs)*time.Millisecond > over
 }
 
 // verdict applies the hard gates. Each carries the MEASURED fact, not just a code — "8.2s; floor
@@ -177,7 +167,7 @@ func (s *ProbeStage) verdict(pr Probed) (Verdict, RejectReason, string) {
 			fmt.Sprintf("%.1fs; the floor is %.1fs", float64(pr.DurationMs)/1000, float64(floor)/1000)
 	case pr.Silent:
 		return VerdictReject, ReasonNoAudio, "the file carries no audio stream at all"
-	case pr.Height <= 0:
+	case pr.NoVideo:
 		return VerdictReject, ReasonNoVideo, "the file carries no video stream"
 	default:
 		return VerdictContinue, "", ""

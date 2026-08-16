@@ -16,6 +16,14 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
 
+# dependency-cruiser intentionally leaves transpilers optional. Declare the
+# analyzer-only compatible compiler beside it so pnpm's isolated linker makes
+# it resolvable without changing any package's TypeScript 7 compiler.
+packageExtensions:
+  "dependency-cruiser@17.4.3":
+    dependencies:
+      typescript: "~6.0.3"
+
 # esbuild (used by tsx + vitest + vite) ships a platform binary via a postinstall
 # build script; pnpm blocks build scripts by default. Approve exactly this one.
 onlyBuiltDependencies:
@@ -30,11 +38,12 @@ onlyBuiltDependencies:
 overrides:
   # GHSA: code injection via `_.template` + prototype pollution in `_.unset`/`_.omit`.
   lodash: "^4.18.1"
-  # GHSA-2v37-7h3g-55p8 (high): predictable output in nanoid when given a non-integer
-  # size (a randomness weakness); affects <3.3.17, patched in 3.3.17. Arrives via
-  # postcss ← vite (the build/storybook toolchain), so build-time only and absent from
-  # the shipped SPA — pinned anyway to keep the alert list actionable. Same-major bump.
-  nanoid: "^3.3.17"
+  # GHSA-2v37-7h3g-55p8 (high): customAlphabet/customRandom loop forever when an
+  # unvalidated size is zero; affects <3.3.18, patched in 3.3.18. Arrives via
+  # postcss ← vite (the build/storybook toolchain), which calls nanoid(6), so it is
+  # build-time only and absent from the shipped SPA. Pinned anyway to keep the alert
+  # list actionable. Same-major bump.
+  nanoid: "^3.3.18"
   # GHSA-5p4m-2wfm-xmqj (high): quadratic CPU consumption in `!!omap` resolution
   # (CVE-2026-59870), a newer DoS than the merge-key one and NOT backported to 4.2.x —
   # affects >=4.0.0 <4.3.1, patched in 4.3.1. Bumped from the prior `^4.2.0` pin.

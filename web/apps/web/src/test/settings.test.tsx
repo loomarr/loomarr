@@ -34,6 +34,26 @@ const SETTINGS = [
     value: "",
   }),
   setting({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
+  setting({
+    key: "session.ttl",
+    label: "Sign-in lifetime",
+    group: "users_security",
+    kind: "duration",
+    value: "720h",
+  }),
+  setting({
+    key: "cookie.secure",
+    label: "Secure cookies",
+    group: "users_security",
+    kind: "enum",
+    value: "auto",
+    advanced: true,
+    enumOptions: [
+      { value: "auto", label: "Auto (match the request)" },
+      { value: "always", label: "Always" },
+      { value: "never", label: "Never (local dev only)" },
+    ],
+  }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
 ];
 
@@ -52,7 +72,10 @@ const stubSettings = () => {
   server.use(
     getMeMockHandler(me()),
     getSetupStatusMockHandler({
-      checks: [{ name: "media_server", ok: false, hint: "Emby refused the token." }],
+      checks: [
+        { name: "media_server", ok: false, hint: "Emby refused the token." },
+        { name: "tunarr", ok: false, hint: "Tunarr is not connected." },
+      ],
     }),
     getSetupTestMockHandler(() => {
       seq.push("test");
@@ -104,6 +127,16 @@ describe("Settings", () => {
     // media_server's check fails, so its ConnectionBlock opens and shows the BE's hint
     // inline — diagnosis on the thing that fixes it, not in a separate checklist above.
     expect(await screen.findByText("Emby refused the token.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "true");
+    // Tunarr has no passing verdict either, but a fresh install must not expand every problem
+    // into one long wall of controls. Its collapsed header still says it needs attention.
+    const tunarr = screen.getByRole("button", { name: /tunarr/i });
+    expect(tunarr).toHaveAttribute("aria-expanded", "false");
+    expect(tunarr).toHaveTextContent("needs attention");
+    // Exploring the next service stays focused: connection forms behave as an accordion.
+    await userEvent.click(tunarr);
+    expect(tunarr).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "false");
     // No standalone "connection checklist" duplicating the block statuses — the wiring
     // actions self-report on their own blocks, quiet once set up (§5, §13).
     expect(screen.queryByRole("heading", { name: /connection checklist/i })).not.toBeInTheDocument();
@@ -308,10 +341,148 @@ describe("Settings page footers", () => {
     stubSettings();
 
     renderAt("/settings/security");
-    // The three generated secrets are a closed set held in the component (config-design
+    // The two operator-facing credentials are a closed set held in the component (config-design
     // §4), not a fetched list — so the assertion is that the panel is on the page at all.
     expect(await screen.findByText(/API token/i)).toBeInTheDocument();
-    expect(screen.getByText(/Session secret/i)).toBeInTheDocument();
+    expect(screen.getByText(/Playback token/i)).toBeInTheDocument();
+  });
+});
+
+describe("Settings progressive disclosure", () => {
+  it("keeps cookie transport policy behind Security's Advanced disclosure", async () => {
+    stubSettings();
+    renderAt("/settings/security");
+
+    expect(await screen.findByLabelText("Sign-in lifetime")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Secure cookies")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /show advanced/i }));
+    expect(await screen.findByLabelText("Secure cookies")).toBeInTheDocument();
+  });
+});
+
+describe("Settings honesty", () => {
+  it("prefills the backend-owned OpenRouter API base instead of asking the operator to guess", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "llm.provider",
+            label: "Lineup AI provider",
+            group: "ai",
+            kind: "enum",
+            value: "openai",
+            enumOptions: [
+              { value: "ollama", label: "Ollama" },
+              { value: "openai", label: "OpenAI-compatible" },
+            ],
+          }),
+          setting({
+            key: "llm.url",
+            label: "AI service address",
+            group: "ai",
+            kind: "url",
+            value: "",
+          }),
+          setting({ key: "llm.model", label: "Hosted lineup model", group: "ai", value: "" }),
+          setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+        ],
+      }),
+      getSystemLlmStatusMockHandler({
+        provider: "openai",
+        local: false,
+        reachable: false,
+        model: "",
+        catalog: [],
+        hosted: [
+          {
+            key: "openrouter",
+            label: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            keysUrl: "https://openrouter.ai/keys",
+            keyConfigured: false,
+            active: false,
+            modelsLive: false,
+            models: [],
+          },
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/settings/ai");
+
+    expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
+    expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
+    expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
+  });
+
+  it("disables the spoken-language filter with the reason when its local model is missing", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "filler.language",
+            label: "Expected spoken language",
+            group: "filler",
+            presentation: "language",
+            value: "en",
+            advanced: true,
+          }),
+          setting({ key: "filler.language_provider", group: "filler", value: "whisper", advanced: true }),
+          setting({ key: "filler.language_model", group: "filler", value: "", advanced: true }),
+          setting({ key: "ingest.whisper_path", group: "filler", value: "/usr/bin/whisper", advanced: true }),
+          setting({ key: "playout.ffmpeg_path", group: "playout", value: "/usr/bin/ffmpeg", advanced: true }),
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/filler/settings");
+    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
+    for (const button of advancedButtons) await userEvent.click(button);
+
+    expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Language filtering is off because no multilingual detection model is configured",
+    );
+  });
+
+  it("keeps hosted language filtering available for a configured keyless endpoint", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler({
+        features: {},
+        settings: [
+          setting({
+            key: "filler.language",
+            label: "Expected spoken language",
+            group: "filler",
+            presentation: "language",
+            value: "en",
+            advanced: true,
+          }),
+          setting({ key: "filler.language_provider", group: "filler", value: "hosted", advanced: true }),
+          setting({ key: "llm.url", group: "ai", value: "http://ai.internal/v1" }),
+          setting({ key: "llm.model", group: "ai", value: "audio-model" }),
+          setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+          setting({ key: "playout.ffmpeg_path", group: "playout", value: "/usr/bin/ffmpeg", advanced: true }),
+        ],
+      }),
+      ...appHandlers(),
+    );
+
+    renderAt("/filler/settings");
+    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
+    for (const button of advancedButtons) await userEvent.click(button);
+
+    expect(await screen.findByLabelText("Expected spoken language")).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

@@ -32,7 +32,7 @@ import (
 //  4. Skip files already in the drop-folder (idempotent re-runs).
 //
 // HTTP + filesystem are injected so this is unit-tested against a mock Archive
-// server with no live network (CLAUDE.md: unit tests never touch the network).
+// server with no live network (AGENTS.md: unit tests never touch the network).
 
 // archiveBase is the Archive.org host; overridable in tests.
 type archiveClient struct {

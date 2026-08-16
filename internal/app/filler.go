@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -15,43 +17,43 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
-// fillerSourceAdapter bridges the Tunarr client → filler.FillerSource (§10): it
-// ensures the `local` filler source over FILLER_DIR and reads the scanned clips.
-// Clip identity = the Tunarr program uuid; duration comes from Tunarr's scan.
-type fillerSourceAdapter struct{ prog *programmer.Tunarr }
-
-func (a fillerSourceAdapter) EnsureLocalSource(ctx context.Context, dir string) error {
-	_, err := a.prog.EnsureLocalFillerSource(ctx, dir)
-	return err
+// fillerSourceAdapter bridges the optional Tunarr annotation slice used by
+// filler.DirSource (§10): it registers FILLER_DIR and joins Tunarr program uuids
+// onto Loomarr's locally-scanned, content-hash-identified clips.
+type fillerSourceAdapter struct {
+	prog       tunarrFillerClient
+	configured func() bool
 }
 
-func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
-	// Find Loomarr's local source, then read its clips. EnsureLocalFillerSource ran
-	// first (Sync ensures before listing), so a local source exists.
-	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
-	if err != nil {
-		return nil, err
+// tunarrFillerClient is the exact programmer slice needed to annotate Loomarr's local
+// filler catalog with optional Tunarr program ids. Keeping the seam narrow lets the adapter's
+// live-enable behavior be tested without starting a network service.
+type tunarrFillerClient interface {
+	EnsureLocalFillerSource(ctx context.Context, dir string) (programmer.EnsureLocalSourceResult, error)
+	ListLocalFillerClipsAll(ctx context.Context) ([]programmer.LocalClip, error)
+}
+
+// available is resolved per call so an internal-only process can gain Tunarr filler
+// annotation after the connection is saved, without turning an empty Tunarr URL into a
+// warning on every ordinary local scan. A nil resolver preserves the adapter's historical
+// always-on behavior for direct construction in tests.
+func (a fillerSourceAdapter) available() bool {
+	return a.configured == nil || a.configured()
+}
+
+func (a fillerSourceAdapter) EnsureLocalSource(ctx context.Context, dir string) error {
+	if !a.available() {
+		return nil
 	}
-	out := make([]filler.RawClip, len(clips))
-	for i, c := range clips {
-		// Infer kind + era from the clip name (§10 cheapest tagging tier): Tunarr's
-		// scan gives id/name/duration only, so kind defaults to Commercial (pod-
-		// eligible) unless the name says bumper/station/psa/trailer. Without this a
-		// clip lands as a generic interstitial the pod assembler can never place, so
-		// filler would silently never build unless AI tagging is on. AI tagging (§10)
-		// still refines era/audience/category afterward.
-		out[i] = filler.RawClip{
-			TunarrProgramID: c.ProgramID, Name: c.Name, DurationMs: c.DurationMs,
-			Kind: filler.KindFromName(c.Name), Era: filler.EraFromName(c.Name),
-		}
-	}
-	return out, nil
+	_, err := a.prog.EnsureLocalFillerSource(ctx, dir)
+	return err
 }
 
 // LocalClipIDsByName maps a clip's file name to the Tunarr program uuid Tunarr assigned it.
@@ -62,6 +64,9 @@ func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawCl
 // a Tunarr filler-list, it cannot corrupt the catalog or misdirect internal playout, both of
 // which key on the path.
 func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string]string, error) {
+	if !a.available() {
+		return map[string]string{}, nil
+	}
 	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
 	if err != nil {
 		return nil, err
@@ -111,8 +116,14 @@ func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (fill
 func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return fillerStoreAdapter(a).UpsertClip(ctx, c)
 }
+func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
+	return a.st.ReplaceClipIdentity(ctx, oldHash, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
@@ -140,6 +151,36 @@ func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.S
 }
 func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
+}
+
+// fillerSweepStoreAdapter bridges the store → filler.SweepStore (§10 V54).
+//
+// ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
+// domain must not import the store (Tier 3), and the store's row type is a query result rather
+// than a domain concept, so the two are deliberately separate structs with the same shape.
+type fillerSweepStoreAdapter struct{ st store.Store }
+
+func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]filler.SweepableProposal, error) {
+	rows, err := a.st.ListSweepableSplitProposals(ctx, before)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.SweepableProposal, len(rows))
+	for i, r := range rows {
+		out[i] = filler.SweepableProposal{
+			ProposalID: r.ProposalID, ClipHash: r.ClipHash, ClipPath: r.ClipPath, Segments: r.Segments,
+		}
+	}
+	return out, nil
+}
+func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkClipReaped(ctx, hash, at)
+}
+func (a fillerSweepStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineFiled(ctx, hash, at)
 }
 
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
@@ -179,14 +220,21 @@ func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string)
 	if a.lib == nil || name == "" {
 		return nil, nil
 	}
-	id, err := a.lib.LibraryIDByName(ctx, name)
+	lib := a.lib.Snapshot()
+	id, err := lib.LibraryIDByName(ctx, name)
+	if errors.Is(err, library.ErrConnectionRequired) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	if id == "" {
 		return nil, nil // no such library on this server
 	}
-	clips, err := a.lib.ListFillerClips(ctx, id)
+	clips, err := lib.ListFillerClips(ctx, id)
+	if errors.Is(err, library.ErrConnectionRequired) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +259,8 @@ func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]f
 	}
 	return out, nil
 }
-func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
-	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
+func (a fillerTagStoreAdapter) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+	return a.st.UpdateClipClassification(ctx, id, era, audience, suggestedEra, aiTagged, updatedAt)
 }
 
 func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
@@ -235,8 +283,8 @@ func (a fillerTagStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, 
 func (a fillerTagStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
 	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
 }
-func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error {
-	return a.st.SetClipTags(ctx, clipHash, leaves, forest, at)
+func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves)
 }
 
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
@@ -306,8 +354,8 @@ func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQu
 	return out, nil
 }
 
-func (a fillerVisionStoreAdapter) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
-	return a.st.SetClipVisionTags(ctx, path, brand, visibleText, era, suggestedEra, category, at)
+func (a fillerVisionStoreAdapter) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
+	return a.st.ApplyClipVision(ctx, hash, path, brand, visibleText, era, suggestedEra, leaves, at)
 }
 
 // ListTaxa: the vision tier grounds its category against the taxonomy graph (§10 V45a).
@@ -425,14 +473,32 @@ func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreC
 	}
 	return out, nil
 }
+func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error) {
+	return a.st.ListClipFingerprints(ctx, algorithm)
+}
+func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, frames)
+}
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
+func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
+	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
+}
+func (a fillerSplitStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves)
+}
+func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	return a.st.ReplaceSplitChildren(ctx, parentHash, keepHashes, at)
 }
 func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.st.DeleteClip(ctx, id)
 }
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
 
 // ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
@@ -447,6 +513,21 @@ func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string
 }
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
+}
+func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineFiled(ctx, hash, at)
+}
+
+// ⚠ Translates the store's ErrNotFound into the DOMAIN's ErrProposalGone. `internal/filler` does
+// not import `internal/store` (Tier 3), and the distinction is load-bearing rather than cosmetic:
+// the split rung must tell "the proposal was confirmed under me" apart from a real write failure,
+// because the first is a normal outcome and the second must fail the pass.
+func (a fillerSplitStoreAdapter) UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	err := a.st.UpdateSplitProposal(ctx, p)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("%w: %s", filler.ErrProposalGone, p.ID)
+	}
+	return err
 }
 
 // ListSplitProposals is the split RUNG's "is one already waiting?" read (§10 V51b) — one read of
@@ -480,6 +561,23 @@ type fillerServiceAdapter struct {
 	// the runner instead of leaving a fresh download until the next tick. nil on an install with
 	// no drop-folder, where there is nothing to ingest.
 	pipeline *filler.Pipeline
+	// autoFetch supplies the live limit status rendered by /v1/filler/watch. It is the same
+	// Fetcher the scheduler runs, so reporting and enforcement cannot drift.
+	autoFetch *filler.Fetcher
+}
+
+func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {
+	if a.autoFetch == nil {
+		return filler.FetchStatus{}, nil
+	}
+	return a.autoFetch.Status(ctx)
+}
+
+func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error {
+	if a.pipeline == nil {
+		return errors.New("filler pipeline is not configured")
+	}
+	return a.pipeline.Rewind(ctx, hash, from, force)
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -593,6 +691,25 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 			a.publishSplit(jobID, clipID, "error", "", 0, err.Error())
 			return
 		}
+		// ⚠ Un-park the reel, for the same reason ConfirmSplit enrols its cuts (§10 V54a): the
+		// operator-triggered path must leave the clip where the unattended one would. A reel parked
+		// at `split`/`review` is claimed by nothing — `ListPipelineWork` takes `running` only — so
+		// without this a re-detect writes a freshly scored proposal that no rung will ever read,
+		// and the remedy §10 names for a stale proposal silently does half its job.
+		//
+		// ⚠ STRICTLY AFTER `Propose`. Un-parking first makes the row claimable while detection is
+		// still running, and the rung would then ground the outgoing segment list or re-`Propose`
+		// the same reel concurrently. A failed detection (above) returns before reaching here, so
+		// the row keeps its original state.
+		//
+		// ⚠ The error is DROPPED, per this adapter's convention (see `registerSources` below): it
+		// has no logger and reports through the event bus, whose `filler_split` frames describe
+		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
+		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
+		// state the reel was already in: parked, reviewable by hand, nothing lost.
+		if a.pipeline != nil {
+			_, _ = a.pipeline.Requeue(bg, clipID)
+		}
 		a.publishSplit(jobID, clipID, "success", p.ID, len(p.Segments), "")
 	}()
 	return jobID, nil
@@ -605,8 +722,23 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}
+	// Read the parent identity before Confirm deletes the proposal. The parent remains in the
+	// catalog for lineage (§10 V45), but accepting the remaining proposal is its terminal pipeline
+	// decision: leaving it at `review` makes Incoming claim the reel is still being prepared after
+	// the operator has finished it.
+	proposal, err := a.splitClips.GetSplitProposal(ctx, proposalID)
+	if err != nil {
+		return err
+	}
 	spawned, err := a.splitter.Confirm(ctx, proposalID, segments)
 	if err != nil {
+		return err
+	}
+	now := time.Now
+	if a.now != nil {
+		now = a.now
+	}
+	if err := a.splitClips.MarkPipelineFiled(ctx, proposal.ClipHash, now().UTC()); err != nil {
 		return err
 	}
 	// ⚠ Enrol the cuts, exactly as the split RUNG does (§10 V51b). Without this a segment an
@@ -856,8 +988,17 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // complete and conformant and reachable by nothing — the same built-but-unimported shape as
 // `filler_sources` (V33) and the eight instances before it. Worth naming, because the
 // function looking finished is exactly what made it easy to leave unwired.
-func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
-	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
+func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+	discoverer := clipfetch.NewArchiveDownloader(false)
+	var (
+		res clipfetch.DiscoveryResult
+		err error
+	)
+	if strings.TrimSpace(query) == "" {
+		res, err = discoverer.DiscoverCollection(ctx, ref, limit)
+	} else {
+		res, err = discoverer.SearchCollection(ctx, ref, query, limit)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1017,6 +1158,27 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 		Model: req.Model, Prompt: req.Prompt, Audio: req.Audio,
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
+}
+
+// hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
+// seam. OpenRouter uses the same base URL and bearer key as the rest of Loomarr's hosted AI work;
+// only the capability-specific model differs.
+type hostedSTTAdapter struct{ oa *llm.OpenAI }
+
+func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) ([]mediatools.TranscriptSegment, error) {
+	segments, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
+		Model: model, Audio: audio, Format: format, Language: language,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mediatools.TranscriptSegment, 0, len(segments))
+	for _, seg := range segments {
+		out = append(out, mediatools.TranscriptSegment{
+			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
+		})
+	}
+	return out, nil
 }
 
 // (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its

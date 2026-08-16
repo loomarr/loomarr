@@ -10,7 +10,7 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
-// Tunarr is the shared Programmer test double (CLAUDE.md: one mock per service,
+// Tunarr is the shared Programmer test double (AGENTS.md: one mock per service,
 // never private). It is an in-memory Tunarr that faithfully models the two
 // contract facts the reconcile engine depends on: the server assigns channel ids
 // (Phase-0 finding 1), and lineup pushes replace programming. It records call
@@ -26,8 +26,24 @@ type Tunarr struct {
 	Pushes       int // SetLineup calls that actually happened
 	Deletes      int
 	FillerWrites int // EnsureFillerList calls that changed the attached list
+	// Local filler-source observations let adapter tests prove optional Tunarr annotation
+	// stays dormant while unconfigured and hot-enables without a network service.
+	FillerSourceEnsures int
+	FillerClipReads     int
+	LocalFillerClips    []programmer.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
+	// fleet operation to continue exercising the remaining Programmer calls.
+	SetLineupErrByChannel map[string]error
+	// Optional synchronization hooks for deterministic concurrency tests. They run
+	// BEFORE the fake takes its mutex, so a hook may block while the test commits a
+	// competing store write without deadlocking Tunarr introspection. Production
+	// interfaces do not expose these; they are observation points on the one shared
+	// Programmer adapter rather than private per-package doubles.
+	BeforeEnsureChannel func(programmer.ChannelSpec)
+	BeforeSetLineup     func(tunarrID string, slots []schedule.Slot)
+	BeforeDeleteChannel func(tunarrID string)
 	// NowMs is the fake's clock for stamping a new channel's loop anchor (epoch ms). 0 ⇒ a
 	// fixed non-zero default so a create always has a plausible, non-1970 anchor a test can
 	// assert against; a test can set it to script the "preserve on update" check.
@@ -36,6 +52,9 @@ type Tunarr struct {
 	// models EnsureFillerList's internal idempotency (a second identical call is a
 	// no-op → FillerWrites unchanged), mirroring the real adapter (§10).
 	fillerLists map[string][]string
+	// localFillerSource records whether EnsureLocalFillerSource has already created the
+	// shared source, preserving the real adapter's idempotent result shape.
+	localFillerSource bool
 	// Media-source state for tunarr-connect (§6): the Emby source Loomarr wires so
 	// Tunarr can index the library. sourceID is empty until EnsureEmbySource.
 	sourceID         string
@@ -74,7 +93,35 @@ func (m *Tunarr) nowMs() int64 {
 	return defaultNowMs
 }
 
+// EnsureLocalFillerSource models the idempotent local-source registration used by filler
+// annotation. It is part of the shared Tunarr service double so unit tests never need a
+// private HTTP server for this programmer slice.
+func (m *Tunarr) EnsureLocalFillerSource(
+	_ context.Context, _ string,
+) (programmer.EnsureLocalSourceResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.FillerSourceEnsures++
+	added := !m.localFillerSource
+	m.localFillerSource = true
+	return programmer.EnsureLocalSourceResult{
+		SourceID: "local-source", LibraryIDs: []string{"local-library"},
+		SourceAdded: added, Scanned: true,
+	}, nil
+}
+
+// ListLocalFillerClipsAll returns the configured in-memory local clips and records the read.
+func (m *Tunarr) ListLocalFillerClipsAll(context.Context) ([]programmer.LocalClip, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.FillerClipReads++
+	return append([]programmer.LocalClip(nil), m.LocalFillerClips...), nil
+}
+
 func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (string, error) {
+	if m.BeforeEnsureChannel != nil {
+		m.BeforeEnsureChannel(spec)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if spec.TunarrID == "" {
@@ -165,10 +212,16 @@ func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.Actu
 }
 
 func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.Slot) error {
+	if m.BeforeSetLineup != nil {
+		m.BeforeSetLineup(tunarrID, slots)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.SetLineupErr != nil {
 		return m.SetLineupErr
+	}
+	if err := m.SetLineupErrByChannel[tunarrID]; err != nil {
+		return err
 	}
 	ch, ok := m.channels[tunarrID]
 	if !ok {
@@ -200,6 +253,9 @@ func (m *Tunarr) GetLineup(_ context.Context, tunarrID string) ([]schedule.Slot,
 }
 
 func (m *Tunarr) DeleteChannel(_ context.Context, tunarrID string) error {
+	if m.BeforeDeleteChannel != nil {
+		m.BeforeDeleteChannel(tunarrID)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.channels, tunarrID)

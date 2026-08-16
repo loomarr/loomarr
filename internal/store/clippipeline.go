@@ -20,7 +20,7 @@ import (
 // convention `UpsertClip`'s DO UPDATE list has to remember.
 
 const clipPipelineSelect = `SELECT clip_hash, stage, status, progress, disposition,
-	reject_reason, reject_detail, attempts, next_run, stages_json, enrolled_at, updated_at
+	reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at
 	FROM filler_clip_pipeline`
 
 // scanClipPipeline reads one row, decoding the ladder.
@@ -41,7 +41,7 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 		updatedAt  int64
 	)
 	if err := sc.Scan(&p.ClipHash, &stage, &status, &p.Progress, &dispo,
-		&reason, &p.RejectDetail, &p.Attempts, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
+		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
 		return filler.ClipPipeline{}, err
 	}
 	p.Stage = filler.StageID(stage)
@@ -75,16 +75,17 @@ func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, stage, status, progress, disposition,
-		   reject_reason, reject_detail, attempts, next_run, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
 		   disposition=excluded.disposition, reject_reason=excluded.reject_reason,
 		   reject_detail=excluded.reject_detail, attempts=excluded.attempts,
+		   force_run=excluded.force_run,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
 		p.ClipHash, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
-		string(p.RejectReason), p.RejectDetail, p.Attempts, epoch(p.NextRun), string(raw),
+		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw),
 		epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)
@@ -102,6 +103,26 @@ func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.Cli
 		return filler.ClipPipeline{}, false, fmt.Errorf("get clip pipeline %s: %w", hash, err)
 	}
 	return p, true, nil
+}
+
+// MarkPipelineFiled takes a clip OFF the belt (§10 V54) — the split sweep's step 1.
+//
+// ⚠ **This is what stops the sweep becoming a churn loop.** A swept composite is still marked
+// `is_composite` and still enrolled, so leaving its row `running` means the split rung re-detects
+// it on the very next pass — propose → partly confirm → leftovers → sweep → re-propose, burning a
+// boundary scan every cycle and never converging. `ListPipelineWork` claims only `running`, so
+// `filed` is the existing, one-word way to say "this reel is finished".
+//
+// A missing row is not an error: a clip catalogued before the pipeline existed has none, and there
+// is nothing to take off a belt it was never on.
+func (s *sqlStore) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ?`),
+		string(filler.DispositionFiled), epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("mark pipeline filed %s: %w", hash, err)
+	}
+	return nil
 }
 
 // ListPipelineWork returns the non-terminal rows that are due, oldest first.
@@ -156,6 +177,97 @@ func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilte
 	}
 	defer func() { _ = rows.Close() }()
 	return collectClipPipelines(rows)
+}
+
+// CountClipPipelines answers the same filtered question without materialising an audit feed.
+// Incoming uses it to report an honest total while keeping the returned rows to one page.
+func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error) {
+	q := `SELECT COUNT(*) FROM filler_clip_pipeline`
+	var where []string
+	var args []any
+	if f.ConveyorOnly {
+		where = append(where, `disposition IN (?, ?)`)
+		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
+	}
+	if f.RejectedOnly {
+		where = append(where, `disposition = ?`)
+		args = append(args, string(filler.DispositionRejected))
+	}
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, ` AND `)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, s.ph(q), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count clip pipelines: %w", err)
+	}
+	return n, nil
+}
+
+// CountIncomingConveyor counts the exact union rendered by the Incoming belt: held legacy clips
+// plus running/review pipeline rows, minus READY reels that have their own row. A split detection
+// checkpoint is still machine work and therefore stays on the belt; only a complete proposal
+// claims its composite into the reels list.
+//
+// Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
+// candidate and only intersecting proposal documents are decoded here. One query matters: counting
+// candidates and reading proposals separately can race a pipeline transition and briefly return a
+// negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
+// syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
+func (s *sqlStore) CountIncomingConveyor(ctx context.Context) (int, error) {
+	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
+	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
+		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT sp.id, sp.segments_json
+		FROM clips c
+		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
+		WHERE `+candidate), args...)
+	if err != nil {
+		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		n++
+		var id, raw sql.NullString
+		if err := rows.Scan(&id, &raw); err != nil {
+			return 0, fmt.Errorf("scan incoming conveyor: %w", err)
+		}
+		if !raw.Valid {
+			continue
+		}
+		var proposal filler.SplitProposal
+		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
+			return 0, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
+		}
+		if proposal.Ready() {
+			n--
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+	}
+	return n, nil
+}
+
+// CountIncomingDecisions counts only conveyor rows the machine has handed to a person. It is the
+// source for the tab badge, which must not shrink to the first response page.
+func (s *sqlStore) CountIncomingDecisions(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips c
+		WHERE c.is_composite = ?
+		  AND NOT EXISTS (SELECT 1 FROM filler_split_proposals sp WHERE sp.clip_hash = c.hash)
+		  AND (EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		         WHERE p.clip_hash = c.hash AND p.disposition = ?)
+		    OR (c.removed_at = 0 AND c.held = ? AND NOT EXISTS
+		       (SELECT 1 FROM filler_clip_pipeline p
+		        WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?))))`),
+		false, string(filler.DispositionReview), true,
+		string(filler.DispositionRunning), string(filler.DispositionReview)).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count incoming decisions: %w", err)
+	}
+	return n, nil
 }
 
 // ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet.

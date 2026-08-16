@@ -1,6 +1,7 @@
-import { formatMmSs } from "@loomarr/core";
+import { formatMmSs } from "@loomarr/core/format";
 import { Scissors, TriangleAlert } from "lucide-react";
-import { Button, Card } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { ConfirmSplitDialogProps } from "./confirm-split-dialog.type";
 
 // ConfirmSplitDialog — the confirmation "Split into clips" never had (§10 V54 A8).

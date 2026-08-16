@@ -1,10 +1,15 @@
-import type { SplitSegment } from "@loomarr/api";
-import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core";
+import type { SplitSegment } from "@loomarr/api/models/splitSegment";
+import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
 import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Badge, Button, Card, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
+import { SegmentPreview } from "../segment-preview";
 import type { SplitReviewEditorProps } from "./split-review-editor.type";
 
 // SplitReviewEditor — the §10 V34 review gate. Detection quality is a property of the
@@ -91,6 +96,7 @@ const AUDIENCE_LABEL: Record<string, string> = {
 
 const SplitReviewEditor = ({
   proposal,
+  minClipDurationMs,
   confirming,
   onConfirm,
   onBack,
@@ -101,6 +107,8 @@ const SplitReviewEditor = ({
   // and a shared link carrying it would deep-link someone to a segment index that a merge or a
   // drop has since renumbered.
   const [focusedKey, setFocusedKey] = useState<string>();
+  // ⚠ At most ONE preview open, held here rather than per row — see the prop's comment below.
+  const [previewKey, setPreviewKey] = useState<string>();
 
   const setSegment = (i: number, patch: Partial<DraftSegment>) =>
     setDraft((prev) => prev.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -170,6 +178,13 @@ const SplitReviewEditor = ({
           position={i}
           last={i === draft.length - 1}
           focused={focusedKey === seg.key}
+          clipHash={proposal.clipHash}
+          minClipDurationMs={minClipDurationMs}
+          // ⚠ ONE open at a time, held here rather than per row. Two expanded previews are two
+          // audio streams talking over each other, and a per-row `useState` would let all 52
+          // open — 52 range requests against one 20-minute file.
+          previewOpen={previewKey === seg.key}
+          onPreviewChange={(open) => setPreviewKey(open ? seg.key : undefined)}
           onChange={(patch) => setSegment(i, patch)}
           onDrop={() => drop(i)}
           onMergeWithNext={() => mergeWithNext(i)}
@@ -205,6 +220,11 @@ interface SegmentRowProps {
   position: number;
   last: boolean;
   focused: boolean;
+  // The COMPOSITE's hash — what the preview plays a window of. A proposed cut has no bytes yet.
+  clipHash: string;
+  minClipDurationMs?: number;
+  previewOpen: boolean;
+  onPreviewChange: (open: boolean) => void;
   onChange: (patch: Partial<DraftSegment>) => void;
   onDrop: () => void;
   onMergeWithNext: () => void;
@@ -215,6 +235,10 @@ const SegmentRow = ({
   position,
   last,
   focused,
+  clipHash,
+  minClipDurationMs,
+  previewOpen,
+  onPreviewChange,
   onChange,
   onDrop,
   onMergeWithNext,
@@ -236,7 +260,24 @@ const SegmentRow = ({
     <Card ref={ref} className={cn(focused && "ring-1 ring-signal-300")}>
       <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <span className="font-mono text-muted-foreground text-sm tabular-nums">#{n}</span>
+          {/* ⚠ Inserted into the EXISTING flex row rather than converting to the mock's
+              `84px 1fr 208px` grid: that grid's 208px rail carries controls which do not exist
+              yet, so adopting it would reshape every baseline for reasons unrelated to preview. */}
+          <SegmentPreview
+            clipHash={clipHash}
+            startMs={segment.startMs}
+            endMs={segment.endMs}
+            position={position}
+            labelledBy={`seg-num-${position}`}
+            open={previewOpen}
+            onOpenChange={onPreviewChange}
+            // Safe: the click IS the gesture browsers require for autoplay.
+            autoPlay
+          />
+          {/* ⚠ `id` so the preview tile can borrow it as a VISIBLE label — see SegmentPreview. */}
+          <span id={`seg-num-${position}`} className="font-mono text-muted-foreground text-sm tabular-nums">
+            #{n}
+          </span>
           <div className="min-w-48 flex-1">
             <Label htmlFor={`seg-name-${position}`}>Name</Label>
             <Input
@@ -343,6 +384,20 @@ const SegmentRow = ({
           ) : null}
         </div>
 
+        {segment.holdReason ? (
+          <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
+            {`Needs review: ${segment.holdReason}.`}
+          </p>
+        ) : null}
+
+        {segment.boundaryConfidence ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-muted-foreground text-xs">
+            <span>{`Cut confidence ${segment.boundaryConfidence}%`}</span>
+            {segment.startEvidence ? <span>{`Start: ${segment.startEvidence}`}</span> : null}
+            {segment.endEvidence ? <span>{`End: ${segment.endEvidence}`}</span> : null}
+          </div>
+        ) : null}
+
         {/* Unsplittable: over-long AND the rescue could not see boundaries (no whisper, or
             none detectable in the text). Said unmistakably, because the alternative is
             guessing — exactly what the era rule forbids in tag form. */}
@@ -350,6 +405,13 @@ const SegmentRow = ({
           <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
             Loomarr couldn't see boundaries in this span, either because there's no transcript or because
             there are no detectable breaks. Cut it by hand with the times above, or drop it.
+          </p>
+        ) : null}
+
+        {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
+          <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+            This cut is {formatClipDuration(span)}, below the {formatClipDuration(minClipDurationMs)} catalog
+            minimum. It can be confirmed, but the ingest gate will reject it unless you widen or merge it.
           </p>
         ) : null}
 

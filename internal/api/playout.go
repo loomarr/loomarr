@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +17,10 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+const atCapacityDetail = "Loomarr is already using its measured transcode capacity. " +
+	"Please wait for a channel to stop, or choose a lower quality tier. " +
+	"If a safety cap is below measured capacity, increase or clear it; Loomarr will never exceed what it measured."
 
 // Internal playout's HTTP surface (§9.1, §11 device auth).
 //
@@ -61,15 +64,27 @@ const playoutTokenParam = "token"
 // (see scripts/check-retired.sh).
 const playoutPlanParam = "plan"
 
-// PlayoutSessions is the session surface the handlers need (implemented by playout.Manager).
-// Nil ⇒ the /playout/ routes still mount but report "not running", so a misconfigured install
-// gets an explanation rather than a 404 that looks like a wiring mistake.
-type PlayoutSessions interface {
-	// Attach connects a viewer to a (channel, target) and returns its chunk channel plus a detach
-	// func (§9.1 V47). The caller MUST call detach — it decrements the refcount that keeps the
-	// encoder alive. The tuner path attaches as TargetMediaServer; only the copy plan differs.
-	Attach(ctx context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error)
+// playoutModeParam is an unsigned least-privilege modifier on the signed HLS master route. The
+// only accepted behavior today is `prepared`: it removes live fallback, so changing it cannot
+// expand what the channel-scoped signature authorizes.
+const playoutModeParam = "mode"
 
+// Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
+// prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
+type Playout interface {
+	// AcquireAdmission applies the canonical lifecycle/backend gate and tracks raw transport work
+	// until Release. Lifecycle teardown cancels the lease context before retiring live delivery.
+	AcquireAdmission(ctx context.Context, channelID string) (playout.Admission, error)
+	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
+	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
+	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
+	// transitions that make the channel ineligible for internal playout.
+	StopChannel(channelID string)
+}
+
+// PlayoutObserver is operational observation of playout, separate from the playback interface.
+type PlayoutObserver interface {
 	// Stats snapshots every live encoder for the dashboard (§12, V16).
 	Stats(now time.Time) []playout.SessionStat
 	// Capacity is the admission bound — the denominator in "2 / 4".
@@ -81,22 +96,6 @@ type PlayoutSessions interface {
 	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
 	// and the load-aware Resolve can legitimately pick differently between programs.
 	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress)
-}
-
-// PlayoutHLS is the HLS repackaging surface the Watch handlers need (§9.1, V46), implemented by
-// playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running", so an install without
-// internal playout wired explains itself rather than 404ing.
-type PlayoutHLS interface {
-	// Playlist starts (or joins) a channel's HLS remux for `plan` and returns the on-disk MASTER
-	// playlist path plus a detach func the caller MUST invoke — it releases the viewer refcount that
-	// keeps the remux, and through it the channel's encoder, alive. The plan selects the copy plan: a
-	// baseline client (h264) and an HEVC-capable client get SEPARATE remuxes/sessions of one channel,
-	// so an HEVC channel copies its video for the capable client while transcoding for the baseline one.
-	Playlist(channelID string, plan playout.EncodePlan) (playlistPath string, detach func(), err error)
-	// AssetPath resolves an HLS asset under a channel's `plan` remux — a variant playlist or a
-	// segment, by its path relative to the channel dir (e.g. "720p/seg-3.ts") — to its on-disk path
-	// for a live channel; ok=false when no remux is running or the path would escape the dir.
-	AssetPath(channelID string, plan playout.EncodePlan, rel string) (string, bool)
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.
@@ -112,8 +111,8 @@ type PlayoutHLS interface {
 // what a media server handles most gracefully — it retries rather than prompting for
 // credentials it does not have.
 func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
-	want := s.playoutToken()
-	if want == "" {
+	want, err := s.currentPlayoutToken(r.Context())
+	if err != nil || want == "" {
 		// No token configured means playout is not set up. Refusing is the safe default:
 		// serving streams unauthenticated because a secret failed to mint would be a silent
 		// downgrade of the only auth these routes have.
@@ -130,12 +129,23 @@ func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
 	// channel-less routes take the device token alone. Same 404-on-failure as the token path,
 	// so a bad or expired signature is indistinguishable from a wrong token.
 	if sig := r.URL.Query().Get(signQueryParam); sig != "" {
-		if id := r.PathValue("id"); id != "" && s.verifyPlayoutSignature(sig, id, time.Now()) {
+		if id := r.PathValue("id"); id != "" && verifyPlayoutSignatureWithKey(want, sig, id, time.Now()) {
 			return true
 		}
 	}
 	http.NotFound(w, r)
 	return false
+}
+
+// currentPlayoutToken is the request-boundary credential read. Postgres production
+// uses a durable resolver so every replica observes rotation before accepting either
+// the raw device token or an HMAC signed with it. The legacy local resolver keeps unit
+// tests and single-process SQLite free from a database read per HLS request.
+func (s *Server) currentPlayoutToken(ctx context.Context) (string, error) {
+	if s.playoutSecretCurrent != nil {
+		return s.playoutSecretCurrent(ctx)
+	}
+	return s.playoutToken(), nil
 }
 
 // playoutToken reads the generated device secret (§15 `playout_token`).
@@ -198,13 +208,24 @@ func withPlan(rawURL string, t playout.EncodePlan) string {
 //   - The request context IS the disconnect signal. Nothing else reports it: the tuner path
 //     never re-requests, so there is no next request whose absence we could notice.
 func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutSessions == nil {
+	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
 		return
 	}
 	channelID := r.PathValue("id")
 	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	canTune, err := s.canTuneInternally(r.Context(), channelID)
+	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
 		http.NotFound(w, r)
 		return
 	}
@@ -221,17 +242,17 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin), which ingests HEVC/AC3 and
 	// adapts per-client downstream — so it attaches as TargetMediaServer and keeps HEVC as a copy
 	// (§9.1 V47). The browser's HLS remux attaches as TargetBrowser separately.
-	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID, playout.PlanFull)
+	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
+		ChannelID: channelID, Plan: playout.PlanFull, Delivery: playout.DeliveryMPEGTS,
+	})
 	if err != nil {
-		// At capacity is a real, actionable condition rather than a generic failure: the
-		// operator can raise playout.max_channels or lower the quality tier so more channels
-		// fit. 503 + Retry-After is also what makes a media server back off politely instead
-		// of hammering.
+		// At capacity is a real, actionable condition rather than a generic failure. 503 +
+		// Retry-After makes a media server back off politely instead of hammering; the detail
+		// offers only recovery choices that preserve the measured safety boundary.
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
-				"Loomarr is already encoding as many channels as it's configured to handle. "+
-					"Raise the channel limit in Settings → Playout, or choose a lower quality tier.")
+				atCapacityDetail)
 			return
 		}
 		s.log.Warn("playout: attach failed", "channel", channelID, "err", err)
@@ -241,7 +262,8 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// MUST run: it is what decrements the refcount, and a leaked viewer keeps a channel
 	// encoding forever (playout.Manager.Attach).
-	defer detach()
+	defer presentation.Release()
+	chunks := presentation.Stream
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	// A live stream must never be cached, by the client or anything between us.
@@ -276,7 +298,19 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 // `-stream_loop -1` cycles between them forever; each open of the program URL asks "what is
 // airing now?" and gets whatever is current.
 func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
-	programURL := s.playoutURL("program", r.PathValue("id"))
+	channelID := r.PathValue("id")
+	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
+	if !ok {
+		return
+	}
+	// The playlist performs no resolver or encoder work, so its lease is needed only for the
+	// fail-closed durable decision at this admission boundary.
+	admission.Release()
+	programURL := s.playoutURL("program", channelID)
 	if programURL == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
 			"Set Loomarr's public address in Settings → Server so streams can be reached.")
@@ -300,6 +334,33 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(playout.Playlist(programURL)))
 }
 
+// acquirePlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
+// contract. Ineligible channel ids stay indistinguishable from missing routes; a replica that
+// cannot prove durable state reports temporary unavailability and performs no downstream work.
+func (s *Server) acquirePlayoutAdmission(
+	w http.ResponseWriter, r *http.Request, channelID string,
+) (playout.Admission, bool) {
+	if s.playout == nil {
+		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout unavailable",
+			"Internal playout isn't available on this instance right now.")
+		return playout.Admission{}, false
+	}
+	admission, err := s.playout.AcquireAdmission(r.Context(), channelID)
+	if err == nil {
+		return admission, true
+	}
+	if errors.Is(err, playout.ErrIneligible) {
+		http.NotFound(w, r)
+		return playout.Admission{}, false
+	}
+	if s.log != nil {
+		s.log.Warn("playout: lifecycle admission unavailable", "channel", channelID, "err", err)
+	}
+	s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout temporarily unavailable",
+		"Loomarr couldn't verify this channel's current lifecycle state. Try again in a moment.")
+	return playout.Admission{}, false
+}
+
 // tunerHandler serves the M3U channel list the media server registers as a tuner.
 //
 // `#EXTINF` + the tvg-* attributes are how a media server correlates a stream with its guide
@@ -316,7 +377,7 @@ func (s *Server) tunerHandler(w http.ResponseWriter, r *http.Request) {
 	channels, err := s.playoutChannels(r.Context())
 	if err != nil {
 		s.log.Warn("playout: tuner list failed", "err", err)
-		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't build the channel list",
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't build the channel list",
 			"Something went wrong reading your channels.")
 		return
 	}
@@ -350,19 +411,24 @@ type playoutChannel struct {
 
 // playoutChannels lists the channels internal playout serves.
 //
-// ONLY channels actually on the internal backend. A channel Tunarr is playing must not appear
+// ONLY channels in the internal surfable catalog. A channel Tunarr is playing must not appear
 // in Loomarr's tuner, or the media server has two tuners offering the same channel and picks
-// between them unpredictably — which presents as a channel that plays fine sometimes and not
-// others. `playout.backend` is per-channel overridable via policy_json (§15), so this is a real
-// filter and not a global on/off.
+// between them unpredictably. Paused/detached/empty channels remain visible in Loomarr's Guide,
+// but are deliberately off-air and therefore absent from both this M3U and its XMLTV document.
+// `playout.backend` is per-channel overridable via policy_json (§15), so this is a real filter
+// and not a global on/off.
 func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	chans, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]playoutChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !s.playsInternally(ch) {
+		if !transportPlayableAt(ch, checkpoint) {
 			continue
 		}
 		out = append(out, playoutChannel{
@@ -375,22 +441,78 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 	return out, nil
 }
 
-// playsInternally reports whether a channel is served by internal playout.
-//
-// The precedence rule itself lives in schedule.PlaysInternally — ONE copy, because it decides
-// which subsystem answers for a channel and is consulted from several surfaces. See the note
-// there on why a drifted second copy fails silently rather than loudly.
-//
-// No liveConfig ⇒ false: with no way to read the global, the safe answer is "not ours", so the
-// tuner advertises nothing rather than advertising channels it may not be serving.
-func (s *Server) playsInternally(ch store.Channel) bool {
-	if s.liveConfig == nil {
-		if p := ch.Policy.Playout; p != nil && p.Backend != "" {
-			return p.Backend == schedule.PlayoutBackendInternal
-		}
-		return false
+// canTuneInternally applies the same effective-backend + lifecycle policy as the advertised
+// tuner list and the in-app surfable catalog. Returning 404 for an ineligible id keeps direct
+// token-bearing URLs from becoming a lifecycle/backend enumeration oracle.
+func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return false, err
 	}
-	return schedule.PlaysInternally(ch.Policy, s.liveConfig("playout.backend"))
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return transportPlayableAt(ch, checkpoint), nil
+}
+
+// canPlayInApp gates browser HLS and signed watch URLs on Applied, never merely prepared
+// transport. The media server needs to fetch an internal feed before cutover; a person should
+// not see that unpublished backend in ordinary UI routing.
+func (s *Server) canPlayInApp(ctx context.Context, channelID string) (bool, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return false, err
+	}
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return inAppPlayableAt(ch, checkpoint), nil
+}
+
+// BackendCheckpoint is the transport-layer projection of the durable transition state.
+type BackendCheckpoint struct {
+	Applied           string
+	Prepared          string
+	PublishedInternal bool
+}
+
+func (s *Server) checkpoint(ctx context.Context) (BackendCheckpoint, error) {
+	if s.backendCheckpoint != nil {
+		checkpoint, err := s.backendCheckpoint(ctx)
+		if err != nil {
+			return BackendCheckpoint{}, apiErrWithCause(http.StatusServiceUnavailable,
+				"Playout state unavailable",
+				"Loomarr couldn't read the current playout state. Try again in a moment.", err)
+		}
+		return checkpoint, nil
+	}
+	return s.legacyBackendCheckpoint(), nil
+}
+
+func (s *Server) legacyBackendCheckpoint() BackendCheckpoint {
+	applied := ""
+	if s.liveConfig != nil {
+		applied = s.liveConfig("playout.backend")
+	}
+	return BackendCheckpoint{
+		Applied: applied, PublishedInternal: applied == schedule.PlayoutBackendInternal,
+	}
+}
+
+func playsInternallyAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	return schedule.PlaysInternally(ch.Policy, checkpoint.Applied)
+}
+
+func transportPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
 }
 
 // hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
@@ -405,7 +527,7 @@ func (s *Server) playsInternally(ch store.Channel) bool {
 // grace window after the last fetch (the remux's own idle timer), and the refcount is taken-and-
 // released per fetch: each poll re-arms the grace timer, and when the polls stop, the timer fires.
 func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutHLS == nil {
+	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
 		return
@@ -415,14 +537,36 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-
-	path, detach, err := s.playoutHLS.Playlist(channelID, clientPlan(r))
+	canTune, err := s.canPlayInApp(r.Context(), channelID)
 	if err != nil {
+		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+			"Something went wrong reading the channel.")
+		return
+	}
+	if !canTune {
+		http.NotFound(w, r)
+		return
+	}
+
+	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
+		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
+		PreparedOnly: r.URL.Query().Get(playoutModeParam) == "prepared",
+	})
+	if err != nil {
+		if errors.Is(err, playout.ErrPreparedUnavailable) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if errors.Is(err, playout.ErrUnsupportedDelivery) {
+			s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
+				"Internal playout isn't running on this instance.")
+			return
+		}
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
-				"Loomarr is already encoding as many channels as it's configured to handle. "+
-					"Raise the channel limit in Settings → Playout, or choose a lower quality tier.")
+				atCapacityDetail)
 			return
 		}
 		s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
@@ -432,16 +576,24 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Release THIS fetch's refcount as it returns — the remux's grace timer keeps it alive
 	// between the client's playlist polls (see the handler doc).
-	defer detach()
-
-	body, rerr := os.ReadFile(path)
-	if rerr != nil {
-		http.NotFound(w, r) // the playlist vanished between the readiness wait and now (teardown)
-		return
-	}
+	defer presentation.Release()
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(rewritePlaylistAuth(body, r.URL.RawQuery))
+	_, _ = w.Write(rewritePlaylistAuth(presentation.Manifest, hlsAssetQuery(r.URL.Query())))
+}
+
+// hlsAssetQuery carries the channel-scoped signature and rendition selectors onto asset requests,
+// but never the prepared-only master hint. Prepared publication URLs are immutable cache keys and
+// must be byte-identical when the real tune follows the warm request.
+func hlsAssetQuery(query url.Values) string {
+	asset := make(url.Values, len(query))
+	for key, values := range query {
+		if key == playoutModeParam {
+			continue
+		}
+		asset[key] = append([]string(nil), values...)
+	}
+	return asset.Encode()
 }
 
 // clientPlan reads the EncodePlan for a Watch HLS request (a browser OR a native app) from `?plan=`.
@@ -521,7 +673,7 @@ func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 // Same dual auth as the master playlist. The asset path (captured as a trailing wildcard) is
 // validated against traversal here AND again in AssetPath (defence in depth).
 func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
-	if s.playoutHLS == nil {
+	if s.playout == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -534,11 +686,12 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := s.playoutHLS.AssetPath(channelID, clientPlan(r), rel)
-	if !ok {
+	asset, ok, err := s.playout.OpenAsset(r.Context(), channelID, clientPlan(r), rel)
+	if err != nil || !ok {
 		http.NotFound(w, r)
 		return
 	}
+	defer func() { _ = asset.Content.Close() }()
 	// Content type by suffix — the only discriminator the asset carries. MPEG-TS segments (.ts) are
 	// the baseline plan; fMP4 segments (.m4s) and their init segment (init.mp4) are the HEVC plans
 	// (§9.1 V48 — HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless
@@ -551,8 +704,12 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	http.ServeFile(w, r, path)
+	if asset.Immutable {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	http.ServeContent(w, r, rel, asset.Modified, asset.Content)
 }
 
 // registerPlayout mounts the playout streaming routes on the Huma API (§9.1, V47).
@@ -612,11 +769,13 @@ func (s *Server) registerPlayout(api huma.API) {
 	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
 	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
 	// that works across every player + the browser.
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
+	hlsMaster := bytesResponse(huma.Operation{
 		OperationID: "playout-hls-master", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/master.m3u8",
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "The HLS master playlist for the in-app and native players.",
-		"application/vnd.apple.mpegurl"), s.hlsPlaylistHandler)
+		"application/vnd.apple.mpegurl")
+	hlsMaster.Responses["204"] = &huma.Response{Description: "No prepared presentation is currently available; live playout was not started."}
+	streamOp[playoutHLSInput](s, api, hlsMaster, s.hlsPlaylistHandler)
 	// A segment is a bare file beside the master (`seg-N.ts`) — direct play is one playlist, no
 	// variant subdirs, so a single `{asset}` segment (not a trailing wildcard) is enough.
 	//
@@ -644,6 +803,13 @@ type playoutChannelInput struct {
 type playoutAssetInput struct {
 	ID    string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
 	Asset string `path:"asset" example:"seg-7.ts" doc:"A file beside the master playlist — a segment, or the media playlist"`
+}
+
+// playoutHLSInput documents the master-only prepared mode. Keeping it separate from
+// playoutChannelInput avoids claiming that MPEG-TS/program routes accept the hint.
+type playoutHLSInput struct {
+	ID   string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
+	Mode string `query:"mode" enum:"prepared" doc:"Optional prepared-only lookup; returns 204 on a miss and never starts live playout"`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout

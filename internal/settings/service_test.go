@@ -14,11 +14,9 @@ import (
 // fakeLoader is an in-memory Loader for resolution tests (no store dependency).
 type fakeLoader struct{ m map[string]string }
 
-func (f fakeLoader) Load(_ context.Context, k string) (string, bool, error) {
-	v, ok := f.m[k]
-	return v, ok, nil
+func (f fakeLoader) LoadSnapshot(context.Context) (Snapshot, error) {
+	return Snapshot{Values: f.m}, nil
 }
-func (f fakeLoader) LoadAll(context.Context) (map[string]string, error) { return f.m, nil }
 
 // newTestService builds a Service with an injected env and db, over a tiny
 // registry so the assertions are about resolution, not the full key set.
@@ -53,6 +51,23 @@ func TestResolve_Precedence(t *testing.T) {
 	s = newTestService(t, map[string]string{"JOB_WORKERS": "9"}, map[string]string{"job.workers": "5"})
 	if r := s.Resolve("job.workers"); r.Value != 9 || r.Provenance != ProvenanceEnv {
 		t.Errorf("env: got %v/%s, want 9/env", r.Value, r.Provenance)
+	}
+}
+
+func TestResolveMany_UsesOneSnapshotWithOrdinaryPrecedence(t *testing.T) {
+	s := newTestService(t,
+		map[string]string{"LIBRARY_URL": "http://env-emby:8096"},
+		map[string]string{"library.url": "http://db-emby:8096", "job.workers": "5"},
+	)
+	got := s.ResolveMany("library.url", "job.workers", "library.token")
+	if value := got["library.url"]; value.Value != "http://env-emby:8096" || value.Provenance != ProvenanceEnv {
+		t.Errorf("library.url = %v/%s, want env value", value.Value, value.Provenance)
+	}
+	if value := got["job.workers"]; value.Value != 5 || value.Provenance != ProvenanceDB {
+		t.Errorf("job.workers = %v/%s, want db value", value.Value, value.Provenance)
+	}
+	if value := got["library.token"]; value.Value != "" || value.Provenance != ProvenanceDefault {
+		t.Errorf("library.token = %v/%s, want empty default", value.Value, value.Provenance)
 	}
 }
 

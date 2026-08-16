@@ -2,7 +2,7 @@
 // typed registry declares every app-managed setting exactly once, and resolution
 // (env > database > default), the Settings API, the wizard, feature gating, and
 // the generated docs all derive from it. A setting that isn't in the registry
-// does not exist (CLAUDE.md do-nots; config-design §2).
+// does not exist (AGENTS.md do-nots; config-design §2).
 //
 // The split (config-design §1): env-only keys — those needed before the database
 // opens, or that describe process topology (DATABASE_URL, AUTO_MIGRATE,
@@ -26,6 +26,28 @@ const (
 	KindSecret     Kind = "secret"   // stored, masked on read, never echoed (§4)
 	KindStringList Kind = "string_list"
 	KindCron       Kind = "cron" // a 6-field seconds-leading cron expr (job schedules, §18.1)
+)
+
+// Presentation describes how a valid stored value should be edited and explained.
+// Kind owns validation; Presentation owns the human control. Keeping those separate lets an
+// integer remain an integer on the wire while the UI edits it as bytes or megabytes.
+type Presentation string
+
+const (
+	PresentationDefault  Presentation = ""
+	PresentationBytes    Presentation = "bytes"
+	PresentationPath     Presentation = "path"
+	PresentationLanguage Presentation = "language"
+)
+
+// ApplyTiming says when a persisted setting becomes the running value. The zero
+// value is deliberately live: declarations have always hot-applied unless they
+// explicitly opt into the much rarer generation boundary.
+type ApplyTiming string
+
+const (
+	ApplyLive    ApplyTiming = ""
+	ApplyRestart ApplyTiming = "restart"
 )
 
 // Group is a Settings-UI page (config-design §5). Every setting belongs to
@@ -101,16 +123,19 @@ func opt(value, label string) EnumOption { return EnumOption{Value: value, Label
 // Setting declares one app-managed configuration key (config-design §2). Declared
 // exactly once, in the registry; nothing constructs a Setting elsewhere.
 type Setting struct {
-	Key      string // canonical key, e.g. "library.url" — the DB + API identity
-	EnvVar   string // the env pin, e.g. "LIBRARY_URL" (config-design §1)
-	Group    Group
-	Kind     Kind
-	Default  any          // zero value of the Kind if a key has no default (e.g. a secret)
-	Enum     []EnumOption // Kind == KindEnum: the closed set, each with a display label
-	Advanced bool         // hidden behind the per-page "Show advanced" toggle (§5)
-	Required Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
-	Validate ValidateFunc // shape validation; nil = Kind-default only
-	Doc      string       // one-liner: UI help text + generated docs (§2)
+	Key          string // canonical key, e.g. "library.url" — the DB + API identity
+	Label        string // human label for workflow forms; raw-key views still show Key
+	EnvVar       string // the env pin, e.g. "LIBRARY_URL" (config-design §1)
+	Group        Group
+	Kind         Kind
+	Presentation Presentation // optional richer editor semantics beyond Kind
+	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
+	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
+	Enum         []EnumOption // Kind == KindEnum: the closed set, each with a display label
+	Advanced     bool         // hidden behind the per-page "Show advanced" toggle (§5)
+	Required     Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
+	Validate     ValidateFunc // shape validation; nil = Kind-default only
+	Doc          string       // one-liner: UI help text + generated docs (§2)
 	// ShowWhen makes a field CONDITIONAL (config-design §5): it is shown only when the
 	// current value of a named key is one of the listed values. Empty/nil = always shown.
 	// e.g. llm.api_key: {"llm.provider": {"openai"}} hides the key when Ollama is picked.

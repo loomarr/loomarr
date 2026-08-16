@@ -1,8 +1,8 @@
 import { Collapsible } from "@base-ui/react/collapsible";
-import { parseDocHref } from "@loomarr/core";
+import { parseDocHref } from "@loomarr/core/anchor";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Check, ChevronDown, X } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
 // ConnectionBlock — one service (Media server, Tunarr, …) as a self-diagnosing, collapsible

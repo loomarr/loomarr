@@ -38,7 +38,7 @@ func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)
 	}
-	entry, ok := got["tun1"]
+	entry, ok := got["ch1"]
 	if !ok {
 		t.Fatal("no entry for the internal channel")
 	}
@@ -65,8 +65,43 @@ func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
 	}
 
 	got, _ := r.NowNext(context.Background(), now)
-	if got["tun1"].Now == nil || got["tun1"].Now.Title != "Tunarr Says This" {
-		t.Errorf("now = %+v, want Tunarr's answer for a Tunarr-backed channel", got["tun1"].Now)
+	if got["ch1"].Now == nil || got["ch1"].Now.Title != "Tunarr Says This" {
+		t.Errorf("now = %+v, want Tunarr's answer for a Tunarr-backed channel", got["ch1"].Now)
+	}
+}
+
+func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	reads := 0
+	r := nowNextRouter{
+		internal: stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels: routerChannels{list: []store.Channel{
+			{Channel: schedule.Channel{ID: "one", Status: schedule.StatusLive}},
+			{Channel: schedule.Channel{ID: "two", Status: schedule.StatusLive}},
+		}},
+		appliedBackend: func(context.Context) (string, error) {
+			reads++
+			return schedule.PlayoutBackendInternal, nil
+		},
+		window: 2 * time.Hour,
+	}
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 1 || len(got) != 2 {
+		t.Fatalf("now/next = %d channels with %d checkpoint reads, want 2/1", len(got), reads)
+	}
+}
+
+func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
+	want := errors.New("checkpoint unavailable")
+	r := nowNextRouter{
+		channels:       routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "one"}}}},
+		appliedBackend: func(context.Context) (string, error) { return "", want },
+	}
+	if _, err := r.NowNext(context.Background(), time.Now()); !errors.Is(err, want) {
+		t.Fatalf("NowNext error = %v, want checkpoint failure", err)
 	}
 }
 
@@ -96,11 +131,11 @@ func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 	}
 
 	got, _ := r.NowNext(context.Background(), now)
-	if got["tun-int"].Now == nil || got["tun-int"].Now.Title != "From Internal" {
-		t.Errorf("internal channel: now = %+v, want the internal resolver", got["tun-int"].Now)
+	if got["ch-int"].Now == nil || got["ch-int"].Now.Title != "From Internal" {
+		t.Errorf("internal channel: now = %+v, want the internal resolver", got["ch-int"].Now)
 	}
-	if got["tun-tun"].Now == nil || got["tun-tun"].Now.Title != "From Tunarr" {
-		t.Errorf("tunarr channel: now = %+v, want Tunarr's guide", got["tun-tun"].Now)
+	if got["ch-tun"].Now == nil || got["ch-tun"].Now.Title != "From Tunarr" {
+		t.Errorf("tunarr channel: now = %+v, want Tunarr's guide", got["ch-tun"].Now)
 	}
 }
 
@@ -117,7 +152,7 @@ func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
 	}
 
 	got, _ := r.NowNext(context.Background(), now)
-	if entry, ok := got["tun1"]; ok {
+	if entry, ok := got["ch1"]; ok {
 		t.Errorf("got entry %+v for an internal channel with no resolver; want none — "+
 			"falling back to Tunarr's guide is the bug", entry)
 	}
@@ -168,17 +203,17 @@ func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NowNext returned an error on a Tunarr outage: %v", err)
 	}
-	if got["tun-int"].Now == nil {
+	if got["ch-int"].Now == nil {
 		t.Error("internal channel lost its card because Tunarr was down")
 	}
-	if _, ok := got["tun-tun"]; ok {
+	if _, ok := got["ch-tun"]; ok {
 		t.Error("tunarr channel got an entry despite the guide failing")
 	}
 }
 
-// A channel that has never been reconciled has no TunarrID and cannot be keyed into this
-// endpoint's map. That is pre-existing, and must stay a quiet omission rather than a panic.
-func TestNowNextRouter_ChannelWithNoTunarrIDIsSkipped(t *testing.T) {
+// Internal playout has no remote identity requirement: a fresh internal-only channel must get
+// now/next from its local timeline even when it has never had a Tunarr id.
+func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	r := nowNextRouter{
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
@@ -190,8 +225,49 @@ func TestNowNextRouter_ChannelWithNoTunarrIDIsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)
 	}
+	if got["ch1"].Now == nil || got["ch1"].Now.Title != "Internal" {
+		t.Errorf("now = %+v, want the internal timeline without a Tunarr id", got["ch1"].Now)
+	}
+}
+
+func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	guide := &countingGuide{}
+	r := nowNextRouter{
+		tunarr: guide,
+		internal: stubBroadcasts{
+			title: "Must not air", start: now.Add(-time.Hour), stop: now.Add(time.Hour),
+		},
+		channels: routerChannels{list: []store.Channel{
+			{Channel: schedule.Channel{ID: "paused", Status: schedule.StatusPaused}},
+			{Channel: schedule.Channel{ID: "detached", TunarrID: "tun-detached", Status: schedule.StatusDetached}},
+			{Channel: schedule.Channel{ID: "empty", TunarrID: "tun-empty", Status: schedule.StatusEmpty}},
+		}},
+		internalFor: func(ch store.Channel) bool { return ch.ID == "paused" },
+		window:      2 * time.Hour,
+	}
+
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatalf("NowNext: %v", err)
+	}
 	if len(got) != 0 {
-		t.Errorf("got %d entries, want 0 for a never-reconciled channel", len(got))
+		t.Fatalf("NowNext = %+v, want no off-air channels", got)
+	}
+	if guide.calls != 0 {
+		t.Fatalf("Tunarr guide calls = %d, want none for detached channels", guide.calls)
+	}
+	for _, id := range []string{"paused", "detached", "empty"} {
+		upcoming, uerr := r.Upcoming(context.Background(), id, now, 6)
+		if uerr != nil {
+			t.Fatalf("Upcoming(%s): %v", id, uerr)
+		}
+		if len(upcoming) != 0 {
+			t.Fatalf("Upcoming(%s) = %+v, want no off-air entries", id, upcoming)
+		}
+	}
+	if guide.calls != 0 {
+		t.Fatalf("Tunarr guide calls after Upcoming = %d, want none", guide.calls)
 	}
 }
 
@@ -202,12 +278,12 @@ func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
 		internalFor: func(store.Channel) bool { return true },
 		window:      2 * time.Hour,
 	}
 
-	got, err := r.Upcoming(context.Background(), "tun1", now, 6)
+	got, err := r.Upcoming(context.Background(), "ch1", now, 6)
 	if err != nil {
 		t.Fatalf("Upcoming: %v", err)
 	}
@@ -216,6 +292,34 @@ func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 	}
 	if got[0].Title != "Internal Says This" {
 		t.Errorf("upcoming[0] = %q, want the internal resolver's answer", got[0].Title)
+	}
+}
+
+func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	var upcomingID string
+	guide := stubGuide{
+		now: "From Tunarr",
+		onUpcoming: func(id string) {
+			upcomingID = id
+		},
+	}
+	r := nowNextRouter{
+		tunarr:      guide,
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(store.Channel) bool { return false },
+		window:      2 * time.Hour,
+	}
+
+	got, err := r.Upcoming(context.Background(), "ch1", now, 6)
+	if err != nil {
+		t.Fatalf("Upcoming: %v", err)
+	}
+	if upcomingID != "tun1" {
+		t.Fatalf("Tunarr Upcoming id = %q, want translated remote id tun1", upcomingID)
+	}
+	if len(got) != 1 || got[0].Title != "From Tunarr" {
+		t.Fatalf("upcoming = %+v", got)
 	}
 }
 
@@ -249,7 +353,10 @@ func TestTMDBIDFromKey(t *testing.T) {
 
 // --- stubs ---
 
-type stubGuide struct{ now string }
+type stubGuide struct {
+	now        string
+	onUpcoming func(string)
+}
 
 func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
 	return map[string]api.ChannelNowNext{
@@ -259,7 +366,10 @@ func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNo
 	}, nil
 }
 
-func (s stubGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]api.NowNextEntry, error) {
+	if s.onUpcoming != nil {
+		s.onUpcoming(id)
+	}
 	return []api.NowNextEntry{{Title: s.now}}, nil
 }
 

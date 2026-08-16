@@ -3,26 +3,54 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/binder"
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
+
+// staleOnceChannelStore forces one deterministic read/write interleaving around SaveChannel.
+// Embedding the real store keeps the test on the production SQL contract; the hook performs one
+// winning mutation immediately before the handler attempts to save its older snapshot.
+type staleOnceChannelStore struct {
+	store.Store
+	once   sync.Once
+	before func(context.Context, store.Channel) error
+}
+
+func (s *staleOnceChannelStore) SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error) {
+	var hookErr error
+	s.once.Do(func() {
+		if s.before != nil {
+			hookErr = s.before(ctx, ch)
+		}
+	})
+	if hookErr != nil {
+		return store.Channel{}, hookErr
+	}
+	return s.Store.SaveChannel(ctx, ch)
+}
 
 // fakeChannelSvc records reconcile + purge calls and returns canned cycle-preview output.
 type fakeChannelSvc struct {
-	reconciles int
-	purges     int
-	err        error
+	reconciles    int
+	reconciledIDs []string
+	purges        int
+	err           error
 
 	// cycle-preview stubs (§8.1)
 	cycleCalls  int
@@ -31,6 +59,9 @@ type fakeChannelSvc struct {
 	cycleActive schedule.ActiveRuleAttribution // returned attribution
 	cycleWindow time.Duration                  // returned window
 	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
+	// cycleExcluded is the §4 exclusion report the draft preview reports back — what the
+	// audience ceiling / scope filters refused.
+	cycleExcluded schedule.ExclusionReport
 
 	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
 	draftLineup []schedule.LineupEntry
@@ -39,6 +70,7 @@ type fakeChannelSvc struct {
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
 	f.reconciles++
+	f.reconciledIDs = append(f.reconciledIDs, id)
 	return f.err
 }
 
@@ -67,12 +99,20 @@ func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Ti
 // CyclePreviewDraft records the draft it was handed (so a test can assert the handler passed
 // the draft lineup/policy through) and otherwise mirrors CyclePreview's echo.
 func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at time.Time,
-	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
-	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
-) {
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error) {
 	f.draftLineup = draftLineup
 	f.draftPolicy = draftPolicy
-	return f.CyclePreview(ctx, id, at)
+	resolved, slots, active, window, err := f.CyclePreview(ctx, id, at)
+	if err != nil {
+		return channels.CycleResult{}, err
+	}
+	return channels.CycleResult{
+		At: resolved, Slots: slots, Active: active, Window: window,
+		// ⚠ Served from a field, not left zero. The report is the whole point of the endpoint
+		// for a channel that refused something, and a double that can only ever answer "nothing
+		// was excluded" cannot fail the test that asserts the handler renders it.
+		Excluded: f.cycleExcluded,
+	}, nil
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
@@ -118,6 +158,30 @@ func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeC
 	return srv, st, chSvc, ltv
 }
 
+// newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
+// bug: internal playout is selected and tunarr.url is empty, but channel convergence is still a
+// real local operation rather than an unconfigured route.
+func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, store.Store, *fakeChannelSvc) {
+	t.Helper()
+	st := openTestStore(t, t.TempDir()+"/internal-no-tunarr.db")
+	t.Cleanup(func() { _ = st.Close() })
+	chSvc := &fakeChannelSvc{}
+	log := slog.New(slog.DiscardHandler)
+	h := api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
+		Binder: binder.New(st, chSvc, nil, log),
+		LiveConfig: func(key string) string {
+			if key == "playout.backend" {
+				return schedule.PlayoutBackendInternal
+			}
+			return "" // in particular: tunarr.url is unconfigured
+		},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv, st, chSvc
+}
+
 func TestCreateChannelAdmin(t *testing.T) {
 	srv, _, chSvc, _ := newServerWithScheduler(t)
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
@@ -136,6 +200,100 @@ func TestCreateChannelAdmin(t *testing.T) {
 	// Creation kicks an initial reconcile (§9 live-immediately).
 	if chSvc.reconciles != 1 {
 		t.Errorf("create should kick 1 reconcile, got %d", chSvc.reconciles)
+	}
+}
+
+func TestInternalChannelActionsDoNotRequireTunarrURL(t *testing.T) {
+	srv, st, chSvc := newInternalServerWithoutTunarr(t)
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create without Tunarr → %d, want 200", resp.StatusCode)
+	}
+	if chSvc.reconciles != 1 {
+		t.Fatalf("create reconciles = %d, want 1", chSvc.reconciles)
+	}
+
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/internal", adminToken,
+		channelPatchBody(t, st, "internal", `{"name":"Internal Two"}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("update without Tunarr → %d, want 200", resp.StatusCode)
+	}
+	if chSvc.reconciles != 2 {
+		t.Fatalf("create + update reconciles = %d, want 2", chSvc.reconciles)
+	}
+
+	resp = do(t, srv, http.MethodPost, "/v1/channels/internal/reconcile", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("manual reconcile without Tunarr → %d, want 200", resp.StatusCode)
+	}
+	if chSvc.reconciles != 3 {
+		t.Fatalf("reconciles after manual request = %d, want 3", chSvc.reconciles)
+	}
+
+	resp = do(t, srv, http.MethodDelete, "/v1/channels/internal?purge=true", adminToken, "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("purge without Tunarr → %d, want 204", resp.StatusCode)
+	}
+	if chSvc.purges != 1 {
+		t.Fatalf("purges = %d, want 1", chSvc.purges)
+	}
+}
+
+func TestChannelActionErrorsUseAccurateBackendCopy(t *testing.T) {
+	srv, _, chSvc := newInternalServerWithoutTunarr(t)
+	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
+	chSvc.err = errors.New("selected backend unavailable")
+
+	for _, request := range []struct {
+		method, path       string
+		mentionsProjection bool
+	}{
+		{http.MethodPost, "/v1/channels/internal/reconcile", false},
+		{http.MethodDelete, "/v1/channels/internal?purge=true", true},
+	} {
+		resp := do(t, srv, request.method, request.path, adminToken, "")
+		if resp.StatusCode != http.StatusBadGateway {
+			t.Fatalf("%s %s → %d, want 502", request.method, request.path, resp.StatusCode)
+		}
+		var problem struct {
+			Title  string `json:"title"`
+			Detail string `json:"detail"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+			t.Fatal(err)
+		}
+		mentionsTunarr := strings.Contains(strings.ToLower(problem.Title+" "+problem.Detail), "tunarr")
+		if mentionsTunarr != request.mentionsProjection {
+			t.Errorf("%s %s Tunarr projection copy = %v, want %v: %+v",
+				request.method, request.path, mentionsTunarr, request.mentionsProjection, problem)
+		}
+	}
+}
+
+func TestPurgeConflictReturnsConflictInsteadOfBadGateway(t *testing.T) {
+	srv, _, chSvc := newInternalServerWithoutTunarr(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create → %d", resp.StatusCode)
+	}
+
+	chSvc.err = store.ErrChannelStale
+	resp = do(t, srv, http.MethodDelete, "/v1/channels/internal?purge=true", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("stale purge → %d, want 409", resp.StatusCode)
+	}
+	var problem struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Title != "Channel changed" {
+		t.Fatalf("problem title = %q, want Channel changed", problem.Title)
 	}
 }
 
@@ -167,6 +325,24 @@ func TestCreateChannelServerAssignsIDWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestCreateChannel_DuplicateIDIsConflictAndPreservesOriginal(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "same-id", "Original", 7)
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"same-id","name":"Replacement","number":8,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate id create -> %d, want 409", resp.StatusCode)
+	}
+	got, err := st.GetChannel(context.Background(), "same-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Original" || got.Number != 7 {
+		t.Fatalf("duplicate create replaced original: %+v", got.Channel)
+	}
+}
+
 func TestCreateChannelRequiresAdmin(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	for _, tok := range []string{"", "wrong"} {
@@ -186,6 +362,32 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 		`{"id":"c2","name":"B","number":5,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate number → %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestCreateChannelDuplicateIntentRef(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	ctx := context.Background()
+	if _, err := st.SaveChannel(ctx, store.Channel{
+		Channel: schedule.Channel{
+			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
+			IntentRef: "job-bound", Status: schedule.StatusBuilding,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
+	}
+	channels, err := st.ListChannels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channels) != 1 || channels[0].ID != "bound" {
+		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
 	}
 }
 
@@ -405,6 +607,82 @@ func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
 	}
 }
 
+// The preview answers "why isn't X on my channel" (#263). The §4 exclusion report is computed
+// on every reconcile and, until this endpoint carried it, was discarded by every caller — so a
+// title the audience ceiling refused was invisible everywhere in the product, and diagnosing one
+// meant querying the media server by hand.
+func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Cartoons", 6)
+	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
+	chSvc.cycleExcluded = schedule.ExclusionReport{
+		OverCeiling: 2, Unrated: 1,
+		Items: []schedule.ExcludedItem{
+			{Key: "series:tmdb:2190", Title: "South Park", Reason: "over_ceiling"},
+			// A per-episode refusal: same series key as its parent would carry, distinguished
+			// only by the title. This is why `title` is the label to render and `key` is not.
+			{Key: "series:tmdb:2122", Title: "King of the Hill S04E06 — Wings of the Dope", Reason: "over_ceiling"},
+			{Key: "movie:tmdb:9", Title: "Unrated Short", Reason: "unrated"},
+		},
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Excluded struct {
+			OverCeiling int `json:"overCeiling"`
+			Unrated     int `json:"unrated"`
+			Items       []struct {
+				Key, Title, Reason string
+			} `json:"items"`
+		} `json:"excluded"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Excluded.OverCeiling != 2 || out.Excluded.Unrated != 1 {
+		t.Errorf("counts = over:%d unrated:%d, want over:2 unrated:1",
+			out.Excluded.OverCeiling, out.Excluded.Unrated)
+	}
+	if len(out.Excluded.Items) != 3 {
+		t.Fatalf("items = %d, want 3 — the report must not be truncated; a short list of what a "+
+			"SAFETY filter refused is worse than none", len(out.Excluded.Items))
+	}
+	// The reason has to survive per item: "2 over ceiling" is a count, and the operator's actual
+	// question is WHICH ones, so an items array that lost its reasons answers nothing.
+	if out.Excluded.Items[0].Title != "South Park" || out.Excluded.Items[0].Reason != "over_ceiling" {
+		t.Errorf("item[0] = %+v, want South Park/over_ceiling", out.Excluded.Items[0])
+	}
+	if !strings.Contains(out.Excluded.Items[1].Title, "S04E06") {
+		t.Errorf("item[1] = %+v, want the refused EPISODE named", out.Excluded.Items[1])
+	}
+	if out.Excluded.Items[2].Reason != "unrated" {
+		t.Errorf("item[2] reason = %q, want unrated", out.Excluded.Items[2].Reason)
+	}
+}
+
+// A channel that refused nothing still gets an ITEMS ARRAY, never a JSON null: the FE reads
+// "nothing was excluded" off the length, and null reads as neither empty nor present.
+func TestProgrammingPreview_EmptyExclusionReportIsAnArray(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Clean", 7)
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{}`)
+	var out struct {
+		Excluded struct {
+			Items []struct{ Key string } `json:"items"`
+		} `json:"excluded"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Excluded.Items == nil {
+		t.Error("excluded.items must be [] when nothing was refused, never null")
+	}
+}
+
 // An invalid draft policy is a 422 (validated exactly like a policy write, §4).
 func TestProgrammingPreview_InvalidPolicyIs422(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
@@ -470,6 +748,46 @@ func TestDeleteChannelDetaches(t *testing.T) {
 	}
 }
 
+func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
+	base := openTestStore(t, t.TempDir()+"/detach-race.db")
+	t.Cleanup(func() { _ = base.Close() })
+	if _, err := base.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+		ID: "c1", Name: "Original", Number: 5, Strategy: schedule.Sequential, Status: schedule.StatusLive,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+		winner, err := base.GetChannel(ctx, "c1")
+		if err != nil {
+			return err
+		}
+		winner.Group = "Concurrent edit"
+		_, err = base.SaveChannel(ctx, winner)
+		return err
+	}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{Store: wrapped, Auth: testAuthorizer{}, Log: log}))
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodDelete, "/v1/channels/c1", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("detach racing an edit -> %d, want 409", resp.StatusCode)
+	}
+	read := do(t, srv, http.MethodGet, "/v1/channels/c1", adminToken, "")
+	defer func() { _ = read.Body.Close() }()
+	if read.StatusCode != http.StatusOK {
+		t.Fatalf("read after stale detach -> %d, want 200", read.StatusCode)
+	}
+	var got api.ChannelDTO
+	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != string(schedule.StatusLive) || got.Group != "Concurrent edit" {
+		t.Fatalf("stale detach overwrote the winner: %+v", got)
+	}
+}
+
 // --- edit (PATCH), pause/resume, purge ---
 
 func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) {
@@ -479,6 +797,18 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("seed channel %s → %d", id, resp.StatusCode)
 	}
+}
+
+// channelPatchBody attaches the revision an editor read to a PATCH payload. Keeping this in the
+// HTTP tests makes every successful edit exercise the real optimistic-concurrency contract while
+// letting each case keep its payload focused on the field whose behavior it asserts.
+func channelPatchBody(t *testing.T, st store.Store, id, body string) string {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatalf("read channel revision: %v", err)
+	}
+	return `{"revision":` + strconv.FormatInt(ch.Revision, 10) + `,` + strings.TrimPrefix(body, "{")
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -519,7 +849,7 @@ func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
 	ch := store.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/channels/handmade/refine", adminToken, `{"change":"more action"}`)
@@ -547,7 +877,7 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -593,7 +923,7 @@ func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 	before := chSvc.reconciles
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"name":"New Name","number":7,"group":"Kids"}`)
+		channelPatchBody(t, st, "c1", `{"name":"New Name","number":7,"group":"Kids"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d, want 200", resp.StatusCode)
 	}
@@ -607,24 +937,145 @@ func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 	}
 }
 
-func TestUpdateChannel_RenumberCollision409(t *testing.T) {
+func TestUpdateChannel_OrdinaryEditPreservesSettledStatusAndIsDueForRetry(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Original", 5)
+	ctx := context.Background()
+	ch, err := st.GetChannel(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Status = schedule.StatusLive
+	ch.ReconcileDeadline = time.Now().Add(24 * time.Hour).UTC()
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	before := chSvc.reconciles
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:1","name":"Heat"}]}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d, want 200", resp.StatusCode)
+	}
+	ch, err = st.GetChannel(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusLive {
+		t.Fatalf("status after lineup-only edit = %s, want live (guide refresh, not tuner rescan)", ch.Status)
+	}
+	if !ch.ReconcileDeadline.IsZero() {
+		t.Fatalf("reconcile deadline = %v, want due-now zero so a failed immediate reconcile retries", ch.ReconcileDeadline)
+	}
+	if chSvc.reconciles != before+1 {
+		t.Fatalf("reconcile calls = %d, want %d", chSvc.reconciles, before+1)
+	}
+}
+
+func TestUpdateChannel_ChannelListTransitionsPersistBuilding(t *testing.T) {
+	tests := []struct {
+		name       string
+		patch      string
+		status     schedule.ChannelStatus
+		setBackend string
+	}{
+		{name: "identity change", patch: `{"name":"Edited"}`, status: schedule.StatusLive},
+		{name: "backend change", patch: `{"policy":{"playout":{"backend":"internal"}}}`, status: schedule.StatusLive},
+		{name: "empty internal rematerialization", patch: `{"strategy":"shuffle"}`, status: schedule.StatusEmpty, setBackend: schedule.PlayoutBackendInternal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, st, _, _ := newServerWithScheduler(t)
+			mkChannel(t, srv, "c1", "Original", 5)
+			ctx := context.Background()
+			ch, err := st.GetChannel(ctx, "c1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch.Status = tt.status
+			if tt.setBackend != "" {
+				ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: tt.setBackend}
+			}
+			if _, err := st.SaveChannel(ctx, ch); err != nil {
+				t.Fatal(err)
+			}
+
+			resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+				channelPatchBody(t, st, "c1", tt.patch))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("patch → %d, want 200", resp.StatusCode)
+			}
+			ch, err = st.GetChannel(ctx, "c1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ch.Status != schedule.StatusBuilding {
+				t.Fatalf("status after %s = %s, want building", tt.name, ch.Status)
+			}
+		})
+	}
+}
+
+func TestUpdateChannel_StaleRevisionIs409AndDoesNotReconcile(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Original", 5)
+	stale, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	winner := stale
+	winner.Group = "Newer edit"
+	if _, err := st.SaveChannel(context.Background(), winner); err != nil {
+		t.Fatal(err)
+	}
+	before := chSvc.reconciles
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"revision":`+strconv.FormatInt(stale.Revision, 10)+`,"name":"Stale overwrite"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("stale patch -> %d, want 409", resp.StatusCode)
+	}
+	if chSvc.reconciles != before {
+		t.Fatalf("reconcile calls = %d -> %d; a rejected edit must not reconcile", before, chSvc.reconciles)
+	}
+	got, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Original" || got.Group != "Newer edit" {
+		t.Fatalf("stale edit changed the winner: %+v", got.Channel)
+	}
+}
+
+func TestUpdateChannel_RequiresRevision(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Original", 5)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"No revision"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("patch without revision -> %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannel_RenumberCollision409(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 	mkChannel(t, srv, "c2", "B", 6)
 
 	// Renumber c2 onto c1's number → 409 (not a 500 from the unique index).
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c2", adminToken, `{"number":5}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c2", adminToken,
+		channelPatchBody(t, st, "c2", `{"number":5}`))
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("renumber collision → %d, want 409", resp.StatusCode)
 	}
 }
 
 func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// Re-setting a channel to its OWN number must not false-positive as a collision.
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"number":5}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"number":5}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("renumber to self → %d, want 200", resp.StatusCode)
 	}
@@ -638,14 +1089,14 @@ func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
 	ctx := context.Background()
 	ch, _ := st.GetChannel(ctx, "c1")
 	ch.Policy.Applied = []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}}
-	if err := st.UpsertChannel(ctx, ch); err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
 	// A policy edit that tries to also set `applied` must be ignored — the stored
 	// `applied` is reconcile-owned and preserved.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`)
+		channelPatchBody(t, st, "c1", `{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("policy patch → %d, want 200", resp.StatusCode)
 	}
@@ -659,12 +1110,12 @@ func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
 }
 
 func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	srv, st, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// An off-ladder audience ceiling is a §4 safety violation → 422.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"policy":{"audience":{"ceiling":"NOT-A-RATING"}}}`)
+		channelPatchBody(t, st, "c1", `{"policy":{"audience":{"ceiling":"NOT-A-RATING"}}}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("invalid policy → %d, want 422", resp.StatusCode)
 	}
@@ -677,7 +1128,8 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 
 	// Pause: status → paused, and NO reconcile is kicked (a paused channel is off the sweep).
 	before := chSvc.reconciles
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"paused"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"status":"paused"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pause → %d, want 200", resp.StatusCode)
 	}
@@ -688,9 +1140,24 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 	if chSvc.reconciles != before {
 		t.Errorf("pause must NOT reconcile: %d → %d", before, chSvc.reconciles)
 	}
+	// Editing a paused channel does not implicitly resume it; it remains paused and outside
+	// reconciliation until the operator explicitly sends status=building.
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"name":"Edited while paused"}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("edit while paused → %d, want 200", resp.StatusCode)
+	}
+	ch, _ = st.GetChannel(ctx, "c1")
+	if ch.Status != schedule.StatusPaused {
+		t.Errorf("status after paused edit = %s, want paused", ch.Status)
+	}
+	if chSvc.reconciles != before {
+		t.Errorf("paused edit must NOT reconcile: %d → %d", before, chSvc.reconciles)
+	}
 
 	// Resume: status → building, and it reconciles again.
-	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"building"}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"status":"building"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("resume → %d, want 200", resp.StatusCode)
 	}
@@ -700,6 +1167,121 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 	}
 	if chSvc.reconciles != before+1 {
 		t.Errorf("resume should reconcile once: %d → %d", before, chSvc.reconciles)
+	}
+}
+
+func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/lifecycle.db")
+	t.Cleanup(func() { _ = st.Close() })
+	channelSvc := &fakeChannelSvc{}
+	playback := &testkit.Playout{}
+	rescanner := &testkit.TunerRescanner{}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
+		LiveConfig: func(key string) string {
+			if key == "playout.backend" {
+				return schedule.PlayoutBackendInternal
+			}
+			return ""
+		},
+	}))
+	t.Cleanup(srv.Close)
+
+	for i, id := range []string{"pause", "detach", "switch", "remote", "join"} {
+		mkChannel(t, srv, id, id, 60+i)
+	}
+
+	pause := do(t, srv, http.MethodPatch, "/v1/channels/pause", adminToken,
+		channelPatchBody(t, st, "pause", `{"status":"paused"}`))
+	if pause.StatusCode != http.StatusOK {
+		t.Fatalf("pause → %d, want 200", pause.StatusCode)
+	}
+
+	detach := do(t, srv, http.MethodDelete, "/v1/channels/detach", adminToken, "")
+	if detach.StatusCode != http.StatusNoContent {
+		t.Fatalf("detach → %d, want 204", detach.StatusCode)
+	}
+
+	switchBackend := do(t, srv, http.MethodPatch, "/v1/channels/switch", adminToken,
+		channelPatchBody(t, st, "switch", `{"policy":{"playout":{"backend":"tunarr"}}}`))
+	if switchBackend.StatusCode != http.StatusOK {
+		t.Fatalf("backend switch → %d, want 200", switchBackend.StatusCode)
+	}
+
+	remote, err := st.GetChannel(context.Background(), "remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote.Policy.Playout = &schedule.PlayoutPolicy{Backend: "tunarr"}
+	if _, err := st.SaveChannel(context.Background(), remote); err != nil {
+		t.Fatal(err)
+	}
+	remotePause := do(t, srv, http.MethodPatch, "/v1/channels/remote", adminToken,
+		channelPatchBody(t, st, "remote", `{"status":"paused"}`))
+	if remotePause.StatusCode != http.StatusOK {
+		t.Fatalf("Tunarr pause → %d, want 200", remotePause.StatusCode)
+	}
+
+	join, err := st.GetChannel(context.Background(), "join")
+	if err != nil {
+		t.Fatal(err)
+	}
+	join.Policy.Playout = &schedule.PlayoutPolicy{Backend: "tunarr"}
+	if _, err := st.SaveChannel(context.Background(), join); err != nil {
+		t.Fatal(err)
+	}
+	joinInternal := do(t, srv, http.MethodPatch, "/v1/channels/join", adminToken,
+		channelPatchBody(t, st, "join", `{"policy":{"playout":{"backend":"internal"}}}`))
+	if joinInternal.StatusCode != http.StatusOK {
+		t.Fatalf("switch to internal → %d, want 200", joinInternal.StatusCode)
+	}
+
+	if got, want := playback.StoppedChannels(), []string{"pause", "detach", "switch"}; !slices.Equal(got, want) {
+		t.Fatalf("stopped channels = %v, want %v", got, want)
+	}
+	if got := rescanner.Calls(); got != 4 {
+		t.Fatalf("tuner rescans = %d, want one per internal membership change", got)
+	}
+}
+
+func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/prepared-lifecycle.db")
+	t.Cleanup(func() { _ = st.Close() })
+	playback := &testkit.Playout{}
+	rescanner := &testkit.TunerRescanner{}
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
+		BackendCheckpoint: func(context.Context) (api.BackendCheckpoint, error) {
+			return api.BackendCheckpoint{
+				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
+				PublishedInternal: true,
+			}, nil
+		},
+	}))
+	t.Cleanup(srv.Close)
+
+	mkChannel(t, srv, "pause-prepared", "Pause Prepared", 70)
+	mkChannel(t, srv, "detach-prepared", "Detach Prepared", 71)
+
+	pause := do(t, srv, http.MethodPatch, "/v1/channels/pause-prepared", adminToken,
+		channelPatchBody(t, st, "pause-prepared", `{"status":"paused"}`))
+	if pause.StatusCode != http.StatusOK {
+		t.Fatalf("pause prepared internal channel -> %d, want 200", pause.StatusCode)
+	}
+	detach := do(t, srv, http.MethodDelete, "/v1/channels/detach-prepared", adminToken, "")
+	if detach.StatusCode != http.StatusNoContent {
+		t.Fatalf("detach prepared internal channel -> %d, want 204", detach.StatusCode)
+	}
+
+	if got, want := playback.StoppedChannels(), []string{"pause-prepared", "detach-prepared"}; !slices.Equal(got, want) {
+		t.Fatalf("stopped prepared channels = %v, want %v", got, want)
+	}
+	if got := rescanner.Calls(); got != 2 {
+		t.Fatalf("prepared tuner rescans = %d, want one per removal", got)
 	}
 }
 
@@ -729,7 +1311,7 @@ func TestUpdateChannel_RequiresAdmin(t *testing.T) {
 
 func TestUpdateChannel_NotFound(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"name":"X"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"revision":1,"name":"X"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
 	}
@@ -742,7 +1324,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // they seed the starting state in the store).
 func seedChannelWithLineup(t *testing.T, st store.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
-	err := st.UpsertChannel(context.Background(), store.Channel{
+	_, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
 			ID: id, Name: "Seed", Number: 5, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,
@@ -774,8 +1356,8 @@ func TestUpdateChannel_LineupReorder(t *testing.T) {
 
 	// Swap the order.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
@@ -801,8 +1383,8 @@ func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
 
 	// Keep The Matrix, drop Terminator 2, add Predator (not in this store — a pending add).
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("add/remove → %d, want 200", resp.StatusCode)
 	}
@@ -822,7 +1404,8 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	// Omitting lineup leaves it untouched (renames only).
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"Renamed"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"name":"Renamed"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("rename → %d", resp.StatusCode)
 	}
@@ -832,7 +1415,8 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 	}
 
 	// An explicit empty array clears it.
-	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"lineup":[]}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"lineup":[]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("clear → %d", resp.StatusCode)
 	}
@@ -850,7 +1434,7 @@ func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("malformed key → %d, want 422", resp.StatusCode)
 	}
@@ -877,8 +1461,8 @@ func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
 	// Reorder (series now second) using ONLY the lossy DTO fields — season/rating/runtime
 	// are not in the payload.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
@@ -912,8 +1496,8 @@ func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("duplicate key → %d, want 422", resp.StatusCode)
 	}
@@ -927,7 +1511,7 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 	// A padded key must validate (trimmed) and land canonicalized.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("padded key → %d, want 200", resp.StatusCode)
 	}
@@ -938,7 +1522,7 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 	// The same key padded differently in two entries is still one key → duplicate → 422.
 	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		`{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`)
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("whitespace-disguised duplicate → %d, want 422", resp.StatusCode)
 	}
@@ -1063,7 +1647,7 @@ func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
 // --- setup routes ---
 
 // Live TV wiring is no longer a standalone endpoint (config-design §6): it auto-runs on a
-// Connections save (settings.autoWireAfterSave) and its status surfaces via the `livetv`
+// Connections save (settings.mutateLiveTVSettings) and its status surfaces via the `livetv`
 // setup check. The idempotent Connect/Wired behavior is exercised through the settings
 // auto-wire path (see settings_test.go) and the connector's own tests; here we only assert
 // the check reflects the wired state.
@@ -1120,18 +1704,18 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 	}
 }
 
-// fakeGuide is a scripted api.GuideReader keyed by TUNARR id (as the real one is).
+// fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byTunarr map[string]api.ChannelNowNext
-	upcoming map[string][]api.NowNextEntry // per-tunarr-id "what's on later"; nil ⇒ empty
+	byChannel map[string]api.ChannelNowNext
+	upcoming  map[string][]api.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
 }
 
 func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
-	return f.byTunarr, nil
+	return f.byChannel, nil
 }
 
-func (f fakeGuide) Upcoming(_ context.Context, tunarrID string, _ time.Time, limit int) ([]api.NowNextEntry, error) {
-	got := f.upcoming[tunarrID]
+func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]api.NowNextEntry, error) {
+	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
 	}
@@ -1146,13 +1730,13 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/nn.db")
 	t.Cleanup(func() { _ = st.Close() })
 
-	// A reconciled channel (has a Tunarr id) and one that has never reconciled.
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	// A remote-backed channel and one internal-only shape with no Tunarr id.
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-live", Name: "Live", Number: 42, TunarrID: "tunarr-1", Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-new", Name: "New", Number: 43, Status: "building"},
 	}); err != nil {
 		t.Fatal(err)
@@ -1162,8 +1746,9 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byTunarr: map[string]api.ChannelNowNext{
-			"tunarr-1": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
+		Guide: fakeGuide{byChannel: map[string]api.ChannelNowNext{
+			"ch-live": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
+			"ch-new":  {Now: &api.NowNextEntry{Title: "Internal Now"}},
 		}},
 	})
 	srv := httptest.NewServer(h)
@@ -1178,8 +1763,8 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 
-	if len(body.Channels) != 1 {
-		t.Fatalf("got %d entries, want 1 (the never-reconciled channel has nothing airing)", len(body.Channels))
+	if len(body.Channels) != 2 {
+		t.Fatalf("got %d entries, want both local ids including the channel with no Tunarr id", len(body.Channels))
 	}
 	// The response is keyed by the LOOMARR channel id — the FE never sees Tunarr ids.
 	if body.Channels[0].ChannelID != "ch-live" {
@@ -1188,9 +1773,44 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	if body.Channels[0].Now == nil || body.Channels[0].Now.Title != "On Now" {
 		t.Errorf("now = %+v", body.Channels[0].Now)
 	}
+	if body.Channels[1].ChannelID != "ch-new" || body.Channels[1].Now == nil || body.Channels[1].Now.Title != "Internal Now" {
+		t.Errorf("internal-only now/next = %+v, want ch-new without a Tunarr id", body.Channels[1])
+	}
 }
 
-// With no Tunarr configured the page still loads: now/next is a nicety on a list view,
+func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/upcoming.db")
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
+		Guide: fakeGuide{upcoming: map[string][]api.NowNextEntry{
+			"ch-internal": {{Title: "Playing locally"}},
+		}},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-internal/upcoming", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upcoming for internal-only channel → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Upcoming []api.NowNextEntry `json:"upcoming"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Upcoming) != 1 || body.Upcoming[0].Title != "Playing locally" {
+		t.Fatalf("upcoming = %+v, want local-id guide result", body.Upcoming)
+	}
+}
+
+// With no guide configured the page still loads: now/next is a nicety on a list view,
 // so an absent guide reads as "nothing airing", never an error.
 func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t) // wired without a Guide

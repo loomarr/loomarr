@@ -28,13 +28,24 @@ const toProblem = (err: unknown): ErrorModel => {
 };
 
 const CSRF_HEADER = "X-Loomarr-Csrf";
+type InitialAuthGlobal = typeof globalThis & {
+  __loomarrInitialAuthResponse?: Promise<Response>;
+};
 
 const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T> => {
   const method = (options.method ?? "GET").toUpperCase();
   const headers = new Headers(options.headers);
   if (method !== "GET" && method !== "HEAD") headers.set(CSRF_HEADER, "1");
 
-  const res = await fetch(url, { ...options, headers, credentials: "include" });
+  // The embedded document starts its one inevitable auth read while the entry graph is
+  // downloading. Adopt that Response here so the route guard keeps its single-query and
+  // error semantics without serializing auth behind JavaScript evaluation. React Native
+  // never defines this optional browser bootstrap, so the shared transport remains portable.
+  const initialAuthGlobal = globalThis as InitialAuthGlobal;
+  const prefetchedAuth =
+    method === "GET" && url === "/v1/auth/me" ? initialAuthGlobal.__loomarrInitialAuthResponse : undefined;
+  if (prefetchedAuth) delete initialAuthGlobal.__loomarrInitialAuthResponse;
+  const res = await (prefetchedAuth ?? fetch(url, { ...options, headers, credentials: "include" }));
 
   // 204 / empty body → undefined; otherwise parse JSON (problem+json on error).
   const text = await res.text();

@@ -3,11 +3,11 @@
 // live channel with a real desired lineup, and a handful of filler clips — so the
 // UI can be exercised without a live media server / Tunarr / *arr stack.
 //
-// It exists to satisfy `make seed` (CLAUDE.md harness contract). The one rule that
+// It exists to satisfy `make seed` (AGENTS.md harness contract). The one rule that
 // shapes every line below: seed goes through the SAME domain paths the app does and
-// NEVER writes raw rows that skip a gate. Concretely (CLAUDE.md do-nots):
+// NEVER writes raw rows that skip a gate. Concretely (AGENTS.md do-nots):
 //
-//   - `available` titles are produced ONLY by suggest.Approve — the single approval
+//   - `available` titles are produced ONLY by suggest.Approver — the single approval
 //     gate. Seed builds a submitted proposal and approves it, exactly as the admin's
 //     "approve" button does. It never UpsertTitle's an `available` record directly.
 //   - the channel's desired lineup + any relaxation chips are the REAL output of
@@ -24,12 +24,15 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
@@ -139,8 +142,9 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 //
 //  1. record the suggest job + a submitted proposal (a lineup of in-library picks +
 //     an acquisition list), exactly the shape the suggester emits;
-//  2. suggest.Approve — THE gate — turns in-library picks into `available` records
-//     and acquisitions into `wanted` ones, and flips the proposal to approved;
+//  2. suggest.Approver — THE gate — atomically turns in-library picks into
+//     `available` records, acquisitions into `wanted` ones, flips the proposal to
+//     approved, and creates its local channel;
 //  3. walk two acquisitions forward through the pure provision.Apply state machine
 //     (requested → downloading, and one all the way to available via a library
 //     confirmation) so the Board shows titles in every stage — never by shortcutting
@@ -234,12 +238,14 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		return fmt.Errorf("get proposal: %w", err)
 	}
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
-	// than writing `available` rows directly — CLAUDE.md's do-not list names that explicitly.
-	enq, err := suggest.Approve(ctx, st, stored, nil, adminID, time.Now)
+	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
+	channelPlanner := binder.New(st, nil, nil, slog.New(slog.DiscardHandler))
+	approver := suggest.NewApprover(st, channelPlanner, time.Now)
+	approved, err := approver.Approve(ctx, stored, nil, adminID)
 	if err != nil {
 		return fmt.Errorf("approve (the gate): %w", err)
 	}
-	log.Printf("seed: approved proposal %s — %d in-library picks → available, %d acquisitions → wanted", propID, len(lineup), enq)
+	log.Printf("seed: approved proposal %s — %d in-library picks → available, %d acquisitions → wanted", propID, len(lineup), approved.Enqueued)
 
 	// Advance two of the wanted acquisitions through the real state machine so the
 	// Board isn't all-or-nothing: one to `downloading`, one all the way to `available`
@@ -254,7 +260,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// acquisitions[2] stays `wanted` — a title still queued, so the Board's "Waiting"
 	// stage is populated too.
 
-	return seedChannel(ctx, st, jobID, picks, policy)
+	return seedChannel(ctx, st, approved.ChannelID, picks, policy)
 }
 
 // advance moves an acquisition (currently `wanted` from approval) forward by one
@@ -283,30 +289,37 @@ func advance(ctx context.Context, st store.Store, item suggest.ProposalItem, kin
 	return nil
 }
 
-// seedChannel builds a live channel from the approved lineup and computes its desired
-// slots + applied relaxations with the reconciler's pure core, then persists it. The
+// seedChannel enriches the channel the approval gate already created with a computed
+// desired schedule + applied relaxations, then persists it. The
 // Desired slots reuse the approved titles' keys + library ids, so they are real
 // SlotProgram entries (non-zero programCount) — not decorative placeholders.
-func seedChannel(ctx context.Context, st store.Store, intentRef string, picks []pick, policy schedule.ChannelPolicy) error {
-	dom := schedule.Channel{
-		ID:        "ch_seed90s",
-		IntentRef: intentRef,
-		Name:      "90s Action",
-		Number:    42,
-		Group:     "Loomarr",
-		Strategy:  schedule.Sequential,
-		// StatusBuilding, NOT StatusLive: seed has no Tunarr, so this channel was never
-		// pushed and has no TunarrID. `live` is only reached BY the reconcile that assigns
-		// a TunarrID — seeding `live` without one is an impossible state that renders as the
-		// contradictory "On air" + "Nothing scheduled". `building` is the honest state:
-		// created, lineup computed, awaiting its first push to Tunarr.
-		Status:  schedule.StatusBuilding,
-		Shuffle: schedule.ShuffleParams{Seed: chanSeed},
+func seedChannel(ctx context.Context, st store.Store, channelID string, picks []pick, policy schedule.ChannelPolicy) error {
+	ch, err := st.GetChannel(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("get approved channel: %w", err)
 	}
+	dom := ch.Channel
+	dom.Name = "90s Action"
+	dom.Number = 42
+	dom.Group = "Loomarr"
+	dom.Strategy = schedule.Sequential
+	dom.Shuffle = schedule.ShuffleParams{Seed: chanSeed}
+	// StatusBuilding, NOT StatusLive: seed has no Tunarr, so this channel was never
+	// pushed and has no TunarrID. `live` is only reached BY the reconcile that assigns
+	// a TunarrID — seeding `live` without one is an impossible state that renders as the
+	// contradictory "On air" + "Nothing scheduled". `building` is the honest state:
+	// created, lineup computed, awaiting its first push to Tunarr.
+	dom.Status = schedule.StatusBuilding
 
-	// LineupEntry carries the policy-enforcement metadata (rating/genres/year) the
-	// filters read, stamped from the grounded proposal item — same as channel-create.
-	entries := make([]schedule.LineupEntry, 0, len(picks))
+	// Preserve the complete approved lineup, including acquisitions that are still pending.
+	// Only enrich the in-library entries with the deterministic runtime/rating data this dev
+	// fixture owns. Rebuilding from `picks` alone used to erase every wanted/downloading key,
+	// so those titles could never backfill into the channel after landing.
+	entries := append([]schedule.LineupEntry(nil), ch.Lineup...)
+	entryByKey := make(map[provision.Key]int, len(entries))
+	for i := range entries {
+		entryByKey[entries[i].Key] = i
+	}
 	avail := seedAvailability{}
 	for _, p := range picks {
 		it := p.item
@@ -314,13 +327,12 @@ func seedChannel(ctx context.Context, st store.Store, intentRef string, picks []
 		if err != nil {
 			return fmt.Errorf("lineup key %q: %w", it.Name, err)
 		}
-		entries = append(entries, schedule.LineupEntry{
-			Key:            key,
-			Title:          it.Name,
-			DurationMs:     p.durMs,
-			Year:           it.Year,
-			OfficialRating: schedule.Rating("R"),
-		})
+		if i, ok := entryByKey[key]; ok {
+			entries[i].Title = it.Name
+			entries[i].DurationMs = p.durMs
+			entries[i].Year = it.Year
+			entries[i].OfficialRating = schedule.Rating("R")
+		}
 		avail[key] = resolved{libID: it.LibraryItemID, dur: p.durMs, title: it.Name}
 	}
 
@@ -328,13 +340,16 @@ func seedChannel(ctx context.Context, st store.Store, intentRef string, picks []
 	// now=time.Now() enables seasonality (no-op here); the seed drives determinism.
 	desired := schedule.ComputeDesiredAt(dom, entries, avail, schedule.PodFill, policy, time.Now())
 
-	ch := store.Channel{Channel: dom, Lineup: entries, Desired: desired.Slots, Policy: policy}
+	ch.Channel = dom
+	ch.Lineup = entries
+	ch.Desired = desired.Slots
+	ch.Policy = policy
 	ch.Policy.Applied = desired.Applied // surface the relaxations the ladder actually applied
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("validate channel: %w", err)
 	}
-	if err := st.UpsertChannel(ctx, ch); err != nil {
-		return fmt.Errorf("upsert channel: %w", err)
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		return fmt.Errorf("save channel: %w", err)
 	}
 	programs := 0
 	for _, s := range desired.Slots {
@@ -351,15 +366,23 @@ func seedChannel(ctx context.Context, st store.Store, intentRef string, picks []
 // assembly can match them. Clips aren't gated — they're a parallel catalog, not
 // titles — so a direct upsert is the correct construction.
 func seedClips(ctx context.Context, st store.Store) error {
-	clips := []filler.Clip{
-		clip("clip-frostedflakes", "Frosted Flakes — They're Grrreat!", filler.Commercial, 1992, filler.Kids, "cereal", 30000),
-		clip("clip-supernintendo", "Super Nintendo — Now You're Playing", filler.Commercial, 1993, filler.Kids, "toys", 30000),
-		clip("clip-nike", "Nike — Just Do It", filler.Commercial, 1994, filler.General, "apparel", 30000),
-		clip("clip-bumper-nite", "You're watching 90s Action", filler.Bumper, 0, filler.General, "", 8000),
+	type seededClip struct {
+		clip filler.Clip
+		tags []string
 	}
-	for _, c := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: c, UpdatedAt: time.Now()}); err != nil {
-			return fmt.Errorf("upsert clip %q: %w", c.Name, err)
+	clips := []seededClip{
+		{clip("clip-frostedflakes", "Frosted Flakes — They're Grrreat!", filler.Commercial, 1992, filler.Kids, "cereal", "Kellogg's", 30000), []string{"cereal"}},
+		{clip("clip-supernintendo", "Super Nintendo — Now You're Playing", filler.Commercial, 1993, filler.Kids, "toys", "Nintendo", 30000), []string{"toys", "kids-cue"}},
+		{clip("clip-nike", "Nike — Just Do It", filler.Commercial, 1994, filler.General, "apparel", "Nike", 30000), []string{"apparel"}},
+		{clip("clip-bumper-nite", "You're watching 90s Action", filler.Bumper, 0, filler.General, "", "", 8000), []string{"bumper"}},
+	}
+	now := time.Now()
+	for _, seeded := range clips {
+		if err := st.UpsertClip(ctx, store.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
+			return fmt.Errorf("upsert clip %q: %w", seeded.clip.Name, err)
+		}
+		if err := st.SetClipTags(ctx, seeded.clip.Hash, seeded.tags); err != nil {
+			return fmt.Errorf("tag clip %q: %w", seeded.clip.Name, err)
 		}
 	}
 	log.Printf("seed: inserted %d filler clips", len(clips))
@@ -421,10 +444,12 @@ func acqItem(mt string, tmdb int, name string, year int) suggest.ProposalItem {
 	}
 }
 
-func clip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string, durMs int64) filler.Clip {
+func clip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat, brand string, durMs int64) filler.Clip {
+	hash := sha256.Sum256([]byte("loomarr-dev-seed:" + id))
 	return filler.Clip{
-		TunarrProgramID: id, Name: name, Kind: kind, Era: era, Audience: aud,
-		Category: cat, DurationMs: durMs, Source: "seed",
+		Hash: fmt.Sprintf("%x", hash), Path: "seed/" + id + ".mp4", TunarrProgramID: id,
+		Name: name, Kind: kind, Era: era, Audience: aud, Category: cat, Brand: brand,
+		DurationMs: durMs, Source: "seed",
 	}
 }
 

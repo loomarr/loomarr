@@ -17,7 +17,7 @@ import (
 //     the source), sampled 1s–11s exactly as `LanguageSpan(29814)` asks for.
 //   - `lang_en.json` — a real catalog clip from the dev drop-folder, same span rule.
 //
-// Hand-written fixtures test my understanding of the format; these test the format. CLAUDE.md's
+// Hand-written fixtures test my understanding of the format; these test the format. AGENTS.md's
 // "fixtures are pinned truth" rule exists because a parser written against remembered field names
 // is a parser that works until it meets the tool.
 //

@@ -1,6 +1,9 @@
-import type { IncomingClipDTO } from "@loomarr/api";
-import { formatClipDuration } from "@loomarr/core";
-import { Caption, Disclosure, Image } from "@/components/ui";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import { formatClipDuration } from "@loomarr/core/format";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Image } from "@/components/ui/image";
 import { ClipPipeline, copyFor } from "../../clip-pipeline";
 
 // One row of the Incoming conveyor for a clip the MACHINE still owns (§10 V51b/V51e).
@@ -27,7 +30,17 @@ const sentenceFor = (row: { stage: string; status: string }): string => {
   return label;
 };
 
-const PreparingRow = ({ clip, ladder }: { clip: IncomingClipDTO; ladder: string[] }) => {
+const PreparingRow = ({
+  clip,
+  ladder,
+  busy,
+  onRetryStage,
+}: {
+  clip: IncomingClipDTO;
+  ladder: string[];
+  busy?: boolean;
+  onRetryStage?: (clip: IncomingClipDTO, stage: string) => void;
+}) => {
   const name = clip.name || clip.hash;
   const pipeline = clip.pipeline;
   if (!pipeline) return null;
@@ -76,6 +89,21 @@ const PreparingRow = ({ clip, ladder }: { clip: IncomingClipDTO; ladder: string[
 
         <Disclosure.Panel className="border-border border-t p-3">
           <ClipPipeline row={pipeline} name={name} ladder={ladder} variant="list" />
+          {pipeline.status === "failed" && onRetryStage ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-border border-t pt-3">
+              <p className="min-w-0 flex-1 text-muted-foreground text-xs">
+                Fixed the cause? Retry this stage now instead of waiting for its backoff.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => onRetryStage(clip, pipeline.stage)}
+              >
+                Retry {copyFor(pipeline.stage).label.toLowerCase()} now
+              </Button>
+            </div>
+          ) : null}
         </Disclosure.Panel>
       </Disclosure>
     </li>

@@ -14,7 +14,7 @@ import (
 // fakeImageService is the api package's stand-in for api.ImageService (§22, V52).
 //
 // ⚠ **This is a fake of an INTERNAL collaborator, not a private mock of an external service.**
-// CLAUDE.md's "phases do not invent private mocks; extend the testkit" rule governs the services
+// AGENTS.md's "phases do not invent private mocks; extend the testkit" rule governs the services
 // Loomarr talks to over a network — media server, Tunarr, Seerr, TMDB, the LLM — which is why
 // `internal/testkit` holds exactly those and nothing else. The image service is ours, is already
 // covered by its own tests in internal/images, and writes to DISK; wiring the real one here would
@@ -113,13 +113,17 @@ func (f *fakeImageService) URLFor(hash string, width int, format images.Format) 
 	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
 }
 
+func (f *fakeImageService) PathFor(hash string, width int, format images.Format) string {
+	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
+}
+
 func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format) string {
 	out := ""
 	for i, w := range role.Widths() {
 		if i > 0 {
 			out += ", "
 		}
-		out += fmt.Sprintf("%s %dw", f.URLFor(hash, w, format), w)
+		out += fmt.Sprintf("%s %dw", f.PathFor(hash, w, format), w)
 	}
 	return out
 }

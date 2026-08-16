@@ -1,6 +1,6 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { CollapsibleSectionProps } from "./collapsible-section.type";
 
 // CollapsibleSection — the app's accordion section (§12/§13): a bordered card whose body

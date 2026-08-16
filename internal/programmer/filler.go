@@ -92,6 +92,7 @@ func (r EnsureLocalSourceResult) AlreadyWired() bool { return !r.SourceAdded }
 // a no-op create (scanning is always safe to re-run). Returns the source + its
 // library ids (the catalog read enumerates those libraries' programs).
 func (t *Tunarr) EnsureLocalFillerSource(ctx context.Context, dir string) (EnsureLocalSourceResult, error) {
+	ctx, _ = t.operation(ctx)
 	var res EnsureLocalSourceResult
 	if dir == "" {
 		return res, fmt.Errorf("ensure local filler source: empty dir")
@@ -156,6 +157,7 @@ func (t *Tunarr) EnsureLocalFillerSource(ctx context.Context, dir string) (Ensur
 // ListLocalFillerClips reads the scanned clips from a source's libraries (§10).
 // Identity = the Tunarr program uuid; duration + title come from Tunarr's scan.
 func (t *Tunarr) ListLocalFillerClips(ctx context.Context, sourceID string) ([]LocalClip, error) {
+	ctx, _ = t.operation(ctx)
 	var detail mediaSourceDetail
 	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources/"+sourceID, nil, &detail); err != nil {
 		return nil, fmt.Errorf("read filler source %s: %w", sourceID, err)
@@ -185,6 +187,7 @@ func (t *Tunarr) ListLocalFillerClips(ctx context.Context, sourceID string) ([]L
 // id. Returns an empty slice when no local source exists yet (before the first
 // EnsureLocalFillerSource).
 func (t *Tunarr) ListLocalFillerClipsAll(ctx context.Context) ([]LocalClip, error) {
+	ctx, _ = t.operation(ctx)
 	var sources []mediaSourceSummary
 	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources", nil, &sources); err != nil {
 		return nil, fmt.Errorf("enumerate media sources: %w", err)
@@ -232,6 +235,14 @@ type fillerListProgramEntry struct {
 	ID string `json:"id"`
 }
 
+// fillerCollection is the channel-side reference to one filler list. Tunarr
+// requires all three fields when the channel is updated.
+type fillerCollection struct {
+	ID              string `json:"id"`
+	Weight          int    `json:"weight"`
+	CooldownSeconds int    `json:"cooldownSeconds"`
+}
+
 // existingProgramIDs returns the program-id set currently in a filler list, so the
 // idempotency check compares CONTENTS (not just count) — a re-tagged catalog that
 // yields a different but equal-sized pool must still update (count alone would miss
@@ -268,13 +279,15 @@ func fillerListName(tunarrID string) string { return "loomarr:" + tunarrID }
 
 // EnsureFillerList builds/updates the channel's Loomarr-owned filler list from the
 // matched clip pool (program uuids) and attaches it to the channel (§10). It is
-// enumerate-first and internally idempotent: if a list with this channel's stable
-// name already holds this many programs, it makes NO write (the contents aren't
-// part of the lineup diff, so a redundant write would churn Tunarr every reconcile
-// — §9). Each uuid is resolved to its full program object from the cached local-
-// source index (Tunarr rejects a minimal {id,duration}); an uuid absent from the
-// index (not yet scanned) is skipped rather than failing the whole list.
+// enumerate-first and internally idempotent: unchanged list contents are not
+// rewritten, and an unchanged channel attachment is also a no-op. A policy-only
+// change still updates the attachment so live weight/cooldown settings apply on
+// the next operation. Each uuid is resolved to its full program object from the
+// cached local-source index (Tunarr rejects a minimal {id,duration}); an uuid
+// absent from the index (not yet scanned) is skipped rather than failing the whole
+// list.
 func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string) error {
+	ctx, _ = t.operation(ctx)
 	name := fillerListName(tunarrID)
 
 	var existing []fillerListSummary
@@ -336,7 +349,10 @@ func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programI
 	// through and rebuild (safe: an idempotent PUT), never wrongly no-op.
 	if found != nil {
 		if current, err := t.existingProgramIDs(ctx, found.ID); err == nil && sameProgramSet(current, desiredIDs) {
-			return nil
+			// The list contents are already correct, but its channel-side weight and
+			// cooldown are independent live settings. Reconcile that attachment so a
+			// policy save applies on this operation without rewriting the list itself.
+			return t.attachFillerList(ctx, tunarrID, found.ID)
 		}
 	}
 
@@ -413,29 +429,65 @@ func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) 
 	if err := t.doJSON(ctx, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch); err != nil {
 		return fmt.Errorf("read channel %s for filler attach: %w", tunarrID, err)
 	}
-	if listID == "" {
-		ch.FillerColls = []any{}
-	} else {
+	// An empty desired attachment detaches every Loomarr-managed filler list.
+	desired := []fillerCollection{}
+	if listID != "" {
 		// Tunarr's channel fillerCollections entry REQUIRES id + weight +
 		// cooldownSeconds (all three; a bare {id} → 400 "Bad Request"). weight =
 		// relative draw, cooldownSeconds = min seconds before a clip repeats — both
 		// configurable (FILLER_WEIGHT / FILLER_COOLDOWN_SECONDS, §15), with defaults
 		// here so a zero-config client still attaches validly. (Caught by the live
 		// smoke: a PUT with only {id} failed validation, so the list never attached.)
-		weight := t.fillerWeight
+		cfg := t.configFor(ctx)
+		weight := cfg.FillerWeight
 		if weight <= 0 {
 			weight = 1
 		}
-		cooldown := t.fillerCooldown
+		cooldown := cfg.FillerCooldownSeconds
 		if cooldown < 0 {
 			cooldown = 30
 		}
-		ch.FillerColls = []any{map[string]any{"id": listID, "weight": weight, "cooldownSeconds": cooldown}}
+		desired = append(desired, fillerCollection{
+			ID: listID, Weight: weight, CooldownSeconds: cooldown,
+		})
+	}
+	// Preserve the established detach write after deleting a list: Tunarr may
+	// still hold the deleted reference even when its GET response omits it. For a
+	// live attachment, however, an exact match is a true no-op.
+	if listID != "" && sameFillerCollections(ch.FillerColls, desired) {
+		return nil
+	}
+	ch.FillerColls = make([]any, len(desired))
+	for i := range desired {
+		ch.FillerColls[i] = desired[i]
 	}
 	if err := t.doJSON(ctx, http.MethodPut, "/api/channels/"+tunarrID, ch, nil); err != nil {
 		return fmt.Errorf("attach filler list to channel %s: %w", tunarrID, err)
 	}
 	return nil
+}
+
+// sameFillerCollections compares only the required attachment contract. GET
+// decodes tunarrChannel.FillerColls into generic maps, so round-trip through the
+// typed wire shape before comparing it with the desired policy.
+func sameFillerCollections(raw []any, desired []fillerCollection) bool {
+	if len(raw) != len(desired) {
+		return false
+	}
+	blob, err := json.Marshal(raw)
+	if err != nil {
+		return false
+	}
+	var current []fillerCollection
+	if err := json.Unmarshal(blob, &current); err != nil || len(current) != len(desired) {
+		return false
+	}
+	for i := range current {
+		if current[i] != desired[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // containsPath reports whether dir is among a source's configured paths.

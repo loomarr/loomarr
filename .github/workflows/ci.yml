@@ -1,4 +1,4 @@
-# CI — mirrors the harness contract (CLAUDE.md / design §16):
+# CI — mirrors the harness contract (AGENTS.md / design §16):
 # check + openapi-verify + config-docs-verify + test-pg + fe + e2e/visual.
 # Every gate here is a `make` target so local and CI never diverge.
 name: CI
@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # full release-candidate rerun on the exact main commit
 
 # Least privilege: CI only reads the repo.
 permissions:
@@ -36,12 +37,13 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       image: ${{ steps.filter.outputs.image }}
       docs: ${{ steps.filter.outputs.docs }}
+      agent: ${{ steps.filter.outputs.agent }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # need the merge base to diff against
       # Plain git rather than a third-party action: this is ~15 lines of shell, and a
-      # marketplace action here would be a new dependency (CLAUDE.md §5) whose whole job is
+      # marketplace action here would be a new dependency (AGENTS.md) whose whole job is
       # `git diff --name-only`. It also fails SAFE — any error, or an unresolvable base,
       # falls through to running everything.
       - name: Which trees moved
@@ -55,7 +57,7 @@ jobs:
           if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
-            { echo "go=true"; echo "web=true"; echo "image=true"; } >> "$GITHUB_OUTPUT"
+            { echo "go=true"; echo "web=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$BASE" HEAD)
@@ -83,17 +85,25 @@ jobs:
           # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
           # the Makefile and this workflow — already trigger the job, but a hand-edit to the
           # generated file itself would otherwise sail past the only check that reads it.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
           fi
           # Prose. Cheap and fast, so it gates on the whole documentation set rather than
           # trying to be clever about which page changed.
-          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The tool-neutral harness has a small macOS contract test below. Linux is already
+          # exercised by `make check`; this output prevents unrelated product changes from
+          # spending a macOS runner while keeping every harness input covered.
+          if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/dev/'; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "agent=false" >> "$GITHUB_OUTPUT"
           fi
           if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
@@ -111,18 +121,47 @@ jobs:
           # A PR that changed it in commit 1 keeps building the image for every later
           # push, which is correct — skipping would leave the PR's own change unproven.
           #
-          # ⚠ DELIBERATELY NARROWER THAN THE go/web FILTERS ABOVE — the only one that does
-          # NOT gate on `Makefile` or `.github/workflows/`. Those two are edited often and
-          # neither changes what `docker build` produces, while this job costs ~30 min of
-          # billed CI because the arm64 half is QEMU-emulated. Gating it on them would
-          # spend that on every workflow tweak. The rule for the others ("they define how
-          # every job runs, so prove them against everything") does not apply to a job
-          # whose only input is the Dockerfile itself.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$'; then
+          # Match every source family the Dockerfile consumes. The Go stage copies the
+          # repository and embeds docs/help; the frontend stage copies web, OpenAPI, and
+          # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
+          # frontend, or embedded-help change to reach a tag before the production image
+          # containing it had ever been built.
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
           fi
+
+  agent-harness-macos:
+    name: Agent harness (macOS)
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
+      # `make check`, where `/proc` is available.
+      - name: Worktree isolation, claims, leases, and process ownership
+        run: make agent-harness-test
+
+  windows-playout:
+    name: Windows playout process tree
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # Linux's permanent cross-compile gate catches accidental Unix-only fields in generic
+      # files. This native runner proves the Windows-only Job Object adapter actually assigns,
+      # resumes, cancels, and reaps a descendant process rather than merely compiling.
+      - name: Job Object owns the complete ffmpeg-shaped process tree
+        run: go test ./internal/playout -run '^(TestCombinedProgressPreservesDiagnostics|TestProcessProgressTransport|TestProcessTree.*)$' -count=1
+      - name: Complete Windows binary builds
+        run: go build -o "${{ runner.temp }}\loomarr.exe" ./cmd/loomarr
 
   go:
     name: Go — check + spec/config drift (${{ matrix.shard }}/${{ strategy.job-total }})
@@ -159,6 +198,8 @@ jobs:
           # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
           # very cache the rolling key was added to keep fresh.
           cache: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
       # ONE cache for the whole Go toolchain: module downloads, build objects, and
       # golangci's analysis cache. `make lint` runs golangci-lint via `go run …@v2.12.2`,
       # whose dependencies are NOT in go.sum, so nothing keyed on go.sum alone ever covers
@@ -199,15 +240,18 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
           # a shared key would have them overwrite each other's build objects every run — each
           # shard restoring a cache built for the other's packages and recompiling its own.
           # It also makes the save well-defined: without it both shards race to write one key
           # and whichever lost simply skipped, so half the objects were never cached at all.
-          key: go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
-            go-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
+            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-${{ hashFiles('go.sum', 'Cargo.lock') }}-
+            go-rust-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.12.2-s${{ matrix.shard }}-
       # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
       # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
       # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
@@ -305,6 +349,22 @@ jobs:
       - name: The shard split covers every package
         run: make go-shard-verify SHARDS=${{ strategy.job-total }}
       - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      # One shard certifies the RELEASE-profile worker against the deterministic real-codec
+      # corpus. `make check` already covers debug Rust tests in both shards; this is the packaged
+      # Go-to-Rust protocol, resource-boundary, and output-manifest gate operators run locally.
+      - name: Rust image runtime certification
+        if: matrix.shard == 1
+        run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
+      - name: Keep the Rust image certification report
+        if: always() && matrix.shard == 1
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-image-certification
+          path: ${{ runner.temp }}/image-certification.json
+          # An earlier `make check` failure means certification never ran; do not bury that cause
+          # under a second artifact error. A certification failure itself still writes this report.
+          if-no-files-found: ignore
+          retention-days: 14
       # The drift checks are whole-repo and shard-independent: running them per shard would
       # just diff the same generated files N times. Shard 1 by the same convention that runs
       # e2e on one Playwright shard.
@@ -550,33 +610,42 @@ jobs:
   # would report success while a real job was red. Only `skipped` and `success` are accepted;
   # anything else (failure, cancelled) fails the gate.
   image:
-    name: Image — builds on both release platforms
+    name: Image — release build (${{ matrix.platform }})
     needs: changes
     if: needs.changes.outputs.image == 'true'
-    runs-on: ubuntu-latest
-    # ⚠ The only capped job here, because it is the only one that can run away: the arm64
-    # half is QEMU-emulated and a first (uncached) build takes ~30 min. GitHub's default is
-    # SIX HOURS, so a hang would burn a day of billed minutes before anyone noticed. 45
-    # leaves headroom over the measured cold build without being an afternoon.
+    runs-on: ${{ matrix.runner }}
+    # Build each release architecture on a native four-core runner. The old combined amd64
+    # job emulated arm64 through QEMU and spent ~30 minutes compiling the Rust worker; GitHub's
+    # standard arm64 runner makes the same architecture proof without emulation. Keep this a
+    # matrix so the two complete images build in parallel and one architecture cannot answer
+    # for the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    # Still cap either native build. GitHub's default is six hours; 45 minutes leaves ample
+    # headroom for a completely cold Docker build without allowing a hung download to run all day.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      # QEMU is what makes the arm64 half real on an amd64 runner. Without it this job
-      # would build amd64 twice and report green on exactly the failure it exists to catch.
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
-      # BOTH platforms, because the bug this job exists for was arch-specific and
-      # release.yml publishes both. Load/push nothing — the build IS the assertion, and
-      # the Dockerfile's own build-time proofs (yt-dlp --version, ffmpeg -version, and a
-      # real whisper transcription) run inside it.
+      # BOTH matrix entries are required because the bug this job exists for was arch-specific
+      # and release.yml publishes both. Load/push nothing — the build IS the assertion, and the
+      # Dockerfile's own build-time proofs (yt-dlp --version, ffmpeg -version, and a real whisper
+      # transcription) run inside it.
       #
-      # ⚠ Cache scoped per platform. A shared key lets one arch's layers answer for the
-      # other's, which is how an arch-specific break hides.
-      - name: Build (linux/amd64, linux/arm64)
+      # ⚠ READ the release cache but never write a CI copy. release.yml owns that multi-platform
+      # cache and refreshes it only after publishing a real image. The former `image-ci` scope was
+      # never written anywhere, despite the comment claiming this job consumed the release cache.
+      - name: Build (${{ matrix.platform }})
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: false
           # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
           # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
@@ -586,11 +655,9 @@ jobs:
           # for themselves.
           #
           # It still READS anything release.yml populates, so this is not "no caching" —
-          # it is declining to pay export cost for a job whose expensive layer is invalidated
-          # by the only file that triggers it. This job runs ONLY when the Dockerfile
-          # changes, which busts that layer by definition, so a written cache would be
-          # stale essentially every time it was read.
-          cache-from: type=gha,scope=image-ci
+          # it is declining to pay the export cost on every PR. Dockerfile and Rust changes
+          # invalidate only their affected layers; unchanged release layers remain reusable.
+          cache-from: type=gha,scope=release
 
   docs:
     name: Docs — links + structure + prose
@@ -622,7 +689,7 @@ jobs:
           args: >-
             --offline --no-progress
             README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
-            docs 'design/*.md' .claude
+            docs 'design/*.md' .agents .claude
           fail: true
 
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
@@ -645,7 +712,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, go, store-postgres, frontend, playwright, image, docs]
+    needs: [changes, agent-harness-macos, go, store-postgres, frontend, playwright, image, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

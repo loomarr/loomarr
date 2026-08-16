@@ -19,14 +19,38 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make help` |  | List targets |
 
+## Agent / worktree harness
+
+| Target | CI | What it does |
+| --- | --- | --- |
+| `make agent-start` |  | register this worktree and claim shared outputs (TASK=... CLAIMS=a,b) |
+| `make agent-status` |  | list tool-neutral agent sessions across every worktree |
+| `make agent-renew` |  | renew this worktree's claim lease (AGENT_LEASE_HOURS=12) |
+| `make agent-prune` |  | remove expired entries from the shared agent registry |
+| `make agent-stop` |  | release this worktree's task and shared-output claims |
+| `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
+| `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
+| `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
+| `make agent-worktree` |  | create + bootstrap a ready-to-use sibling worktree (TOPIC=branch) |
+| `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
+| `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
+| `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
+| `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
+| `make release-verify` |  | verify release tag, OCI naming, and immutable publication policy |
+
 ## The default gate
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | fmt + vet (incl. tagged) + tag-list guard + lint + unit tests (the default gate) <br>*runs:* `fmt` `vet` `tags-verify` `vet-tags` `lint` `test` |
+| `make check` | ✅ | Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
+| `make rust-check` |  | format, lint, and test the required Rust image worker |
+| `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
+| `make shellcheck` |  | shellcheck every repository shell script |
 | `make vet` |  | go vet |
-| `make vet-tags` |  | go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS) |
+| `make vet-tags` |  | go vet over custom-tagged sources; platform constraints use their cross-compile gate |
+| `make windows-compile` |  | cross-compile every Go package and test for Windows (does not execute them) |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` |  | unit tests only (never touch the network — §19) |
@@ -38,17 +62,23 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make build` |  | build the loomarr binary (static, cgo-free — §16) |
+| `make build` |  | build the cgo-free Go server and required Rust image worker <br>*runs:* `rust-build` |
+| `make rust-build` |  | build the required Rust image worker |
+| `make image-cert` | ✅ | certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path <br>*runs:* `rust-build` |
+| `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
+| `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
-| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on any Go change |
+| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
+| `make rust-dev-build` |  | build the required Rust worker for local development |
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
+| `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 
 ## Store conformance (Phase 3/4)
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make test-pg` | ✅ | store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker) |
+| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` |
 
 ## OpenAPI (Phase 8)
 
@@ -100,7 +130,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make fe-lint` |  | Biome lint + format check (web/) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
-| `make storybook` |  | Storybook dev workshop (the component gallery/contract) on :6006 |
+| `make storybook` |  | Storybook dev workshop on this worktree's isolated port |
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
 | `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` |
 | `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` |
@@ -115,11 +145,11 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make smoke-livetv` |  | Live TV wiring vs a DISPOSABLE Jellyfin (destroyed after — never touches your media server) |
 | `make smoke-down` |  | tear down the smoke stack (container, volume, temp database) |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` |
-| `make seed` |  | populate a dev store via the real domain paths (approval gate honored — CLAUDE.md) |
+| `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
 
 ## What CI runs
 
-`arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

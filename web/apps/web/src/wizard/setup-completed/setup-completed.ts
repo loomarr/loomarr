@@ -1,4 +1,4 @@
-import { settingsApi } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { QueryClient } from "@tanstack/react-query";
 
 // The `setup.completed` registry key drives first-run routing: until it's set, `/` goes

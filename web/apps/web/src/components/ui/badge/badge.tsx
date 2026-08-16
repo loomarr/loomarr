@@ -1,5 +1,5 @@
 import { cva } from "class-variance-authority";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { BadgeProps } from "./badge.type";
 
 // shadcn/ui Badge (new-york), restyled via Test Card tokens only (§3, Layer 1).

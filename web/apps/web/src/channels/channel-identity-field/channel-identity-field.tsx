@@ -1,7 +1,9 @@
 import { Check, X } from "lucide-react";
 import { useId, useState } from "react";
-import { Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
 
 // ChannelIdentityField — an inline-editable channel identity field (name / number) with

@@ -7,7 +7,7 @@ import (
 )
 
 // Job returns the channel sweep as a scheduler job (§9, §18.1) — the periodic reconcile
-// that keeps Tunarr matching Loomarr's desired state.
+// that refreshes every channel's durable desired state and projects Tunarr-backed channels.
 //
 // ⚠ Sweep returns a COUNT and no error: it is best-effort by design, reconciling what it
 // can and leaving the rest for the next tick. The job reports success accordingly — a
@@ -15,9 +15,9 @@ import (
 // page for normal operation.
 func (r *Runner) Job() scheduler.Job {
 	return scheduler.Job{
-		Name: "channel-sweep", Title: "Reconcile channels with Tunarr",
-		Description: "Rebuilds each live channel's upcoming schedule and pushes it to Tunarr, so the guide stays filled and newly available titles start airing.",
-		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_sweep.schedule",
+		Name: "channel-maintenance", Group: scheduler.GroupChannels, Title: "Maintain live channels",
+		Description: "Rebuilds upcoming schedules and updates each channel's selected playout backend.",
+		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_maintenance.schedule",
 		Run: func(ctx context.Context) error { r.Sweep(ctx); return nil },
 	}
 }

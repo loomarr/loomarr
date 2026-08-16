@@ -197,7 +197,7 @@ close.** The auth rework closed two such hatches (login and sync); this re-opens
 adds group-derived role assignment on top, which also bypasses the *"Loomarr doesn't infer role from
 the media server"* stance the mock's own People tab states.
 
-Per CLAUDE.md prime directive 3, the authorization model (§7/§11) is **not negotiable, including in
+Per AGENTS.md prime directive 3, the authorization model (§7/§11) is **not negotiable, including in
 tests and seed data**. So this is not a build item:
 
 > **⛔ Do not implement the SSO surface as drawn.** It requires an explicit §11 amendment first, and
@@ -231,7 +231,7 @@ uploaded channel icons"* and files it under `GroupTunarr`. The mock makes it **s
 (*"Get it wrong and channels appear in the guide but never play"*). Same key, materially different
 contract and blast radius — this is Program Plan fact **T3**, now confirmed from the mock side.
 
-Per CLAUDE.md, config that isn't in §15 must be **added to §15 first**. So the playout/backup groups
+Per AGENTS.md, config that isn't in §15 must be **added to §15 first**. So the playout/backup groups
 are doc-first work, not UI work.
 
 ### 2d.3 Save-bar shape differs from the shipped model
@@ -277,7 +277,7 @@ requiring the suggester to emit per-title rationale.
 ## 2e. ⛔ STOP POINT — Internal playout reverses `design.md`'s first principle
 
 **Found in the second interior pass (GUIDE + WIZARD). This is a bigger conflict than §2d.1, and it
-invalidates the premise of three already-ratified decisions.** Per CLAUDE.md ("Ask the maintainer"),
+invalidates the premise of three already-ratified decisions.** Per AGENTS.md ("Ask the maintainer"),
 a gate that requires weakening a prime directive is a design conversation, not a workaround.
 
 ### What the design doc actually says
@@ -614,7 +614,7 @@ Now recovered — these are build inputs for V16/V31/V32 and the Settings phases
 That rule was written because the v1 console mock and the shipped app silently disagreed. The v2
 mocks propose a *larger* structural change than v1 did, so the rule binds harder, not softer. The
 mocks win on **look**; §12 wins on **what the page is**. Anything in §4 below that changes IA is a
-**doc-first change to §12**, per CLAUDE.md prime directive 1 — not a mock-driven refactor.
+**doc-first change to §12**, per AGENTS.md prime directive 1 — not a mock-driven refactor.
 
 ---
 
@@ -809,7 +809,7 @@ allowlisted row), and **"Show break-glass URL"** (ties to the existing `api_toke
 
 **Required work:** a §11 amendment adding SSO as a credential path, stating explicitly that it does
 **not** provision. §19's negative auth tests extend with: *an SSO identity with no allowlist row is
-rejected* — the direct analogue of the existing media-server case. Per CLAUDE.md, the negative cases
+rejected* — the direct analogue of the existing media-server case. Per AGENTS.md, the negative cases
 are part of the gate.
 
 ### D-G — one §15 amendment before any UI
@@ -1015,7 +1015,7 @@ ships against `Channels`/`Users` is a PR that gets paid for twice.
    mock silently redefine the IA; it is the reason the doc-first update is *cheap*.
 
 One caveat: no-users means no *external* users. The maintainer is still a user, and the manual smoke
-on the live homelab remains half the definition of done (CLAUDE.md) — it is where the last two rounds
+on the live homelab remains half the definition of done (AGENTS.md) — it is where the last two rounds
 of real bugs surfaced.
 
 ### Prerequisites — both now cleared
@@ -1030,7 +1030,7 @@ of real bugs surfaced.
 > Retained here because the gates were written alongside the evidence that motivated them; if the two
 > tables ever disagree, the build plan wins and this one is stale.
 
-CLAUDE.md requires **one phase per PR** with a **hard gate** recorded in `PROGRESS.md`. What follows
+AGENTS.md requires **one phase per PR** with a **hard gate** recorded in `PROGRESS.md`. What follows
 is that phase list. Each row is one PR. `make check` · `make fe` · `make e2e` green is assumed
 throughout and not restated; the **Gate** column is the *additional* proof specific to that phase.
 Nothing here starts before its dependency lands.

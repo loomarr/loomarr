@@ -1,4 +1,4 @@
-import { fillerApi } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { useQueryClient } from "@tanstack/react-query";
 
 // The filler page's cache-invalidation vocabulary, in one place.

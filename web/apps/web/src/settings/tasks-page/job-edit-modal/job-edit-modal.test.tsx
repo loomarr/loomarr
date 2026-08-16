@@ -21,6 +21,7 @@ const makeWrapper = () => {
 // on that preset and no Advanced field is shown.
 const job: JobView = {
   name: "reconcile",
+  group: "acquisitions",
   title: "Reconcile acquisitions",
   description: "Checks in-flight downloads.",
   paused: false,

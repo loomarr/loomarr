@@ -17,6 +17,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 	"log/slog"
 )
 
@@ -56,6 +57,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		Auth:            api.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutSecret:   func() string { return playoutToken },
+		Playout:         &testkit.Playout{},
 		PlayoutResolver: &chainResolver{profile: profile, n: &requests, src: srcFile},
 		PlayoutEncoder: func(ctx context.Context, args []string, onProgress func(playout.Progress)) (*playout.Process, error) {
 			return playout.Start(ctx, bin, args, nil, onProgress)
@@ -73,7 +75,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", Name: "Chain", Number: 1}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: "internal"}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,7 +155,7 @@ func (c *chainResolver) Profile(context.Context) playout.Profile { return c.prof
 // The source clip is built with a single `anullsrc` track, so track 0 is the only honest
 // answer here — and 0 is also the interface's documented fallback, which keeps this double
 // from asserting a language preference the chain test does not exercise.
-func (c *chainResolver) AudioTrackFor(context.Context, string) int { return 0 }
+func (c *chainResolver) AudioTrackFor(context.Context, string, string) int { return 0 }
 
 // Tracks and PlanFor complete api.PlayoutResolver.
 //

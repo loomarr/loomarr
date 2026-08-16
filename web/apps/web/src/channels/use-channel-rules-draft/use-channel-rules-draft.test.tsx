@@ -21,6 +21,9 @@ const previewBody: PreviewProgrammingOutputBody = {
   windowMs: 0,
   slots: [],
   pods: { entries: [], totalMs: 0, matchLevel: "exact" },
+  // Empty-but-present, like every other required array in this fixture: this hook's tests are
+  // about the draft round-trip, not about what the §4 filters refused.
+  excluded: { overCeiling: 0, unrated: 0, items: [] },
 };
 
 // Records what the preview POST / apply PATCH actually SENT — the wire shape, not a mocked
@@ -87,7 +90,7 @@ describe("canonicalize", () => {
 describe("useChannelRulesDraft", () => {
   it("previews the DRAFT through POST …/programming/preview, not the saved policy", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
       wrapper: makeWrapper(),
     });
 
@@ -112,7 +115,7 @@ describe("useChannelRulesDraft", () => {
   // must not reach Tunarr. Nothing may PATCH until apply is called.
   it("does NOT save while editing — only apply writes", async () => {
     const { previews, saves } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
       wrapper: makeWrapper(),
     });
 
@@ -135,7 +138,7 @@ describe("useChannelRulesDraft", () => {
   it("is dirty only once the draft differs, and discard returns to saved", () => {
     stubDraft();
     const saved = policy();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", saved), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", saved, 1), {
       wrapper: makeWrapper(),
     });
 
@@ -153,7 +156,7 @@ describe("useChannelRulesDraft", () => {
   // edit would show an Apply bar nobody asked for, on a page nobody touched.
   it("a re-render with an equal-but-new policy object is not dirty", () => {
     stubDraft();
-    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
+    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p, 1), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
     });
@@ -166,7 +169,7 @@ describe("useChannelRulesDraft", () => {
   // the draft would silently shadow what the server now holds.
   it("adopts a genuinely changed saved policy", () => {
     stubDraft();
-    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
+    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p, 1), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
     });
@@ -180,7 +183,7 @@ describe("useChannelRulesDraft", () => {
   // keep showing the previous moment.
   it("re-previews when the evaluation time changes", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
       wrapper: makeWrapper(),
     });
 

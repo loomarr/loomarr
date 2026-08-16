@@ -1,11 +1,16 @@
-import { settingsApi, setupApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
-import { ConnectionBlock, SettingsFields } from "@/components/loomarr";
-import { Badge, Button } from "@/components/ui";
-import { cn } from "@/lib";
-import { useSettingsEntries } from "@/settings";
+import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
 
@@ -69,30 +74,50 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
 
   // --- Tunarr's own connection form, shown inline once Tunarr is chosen ---
   const entries = useSettingsEntries();
+  const publicURLEntries = entries.filter((e) => e.key === "server.public_url");
   // Essentials only, exactly as the checklist does it (§6): advanced keys live in Settings.
   const tunarrEntries = entries.filter((e) => e.group === "connections.tunarr" && !e.advanced);
   const status = setupApi.useSetupStatus();
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standing = checks.find((c) => c.name === "tunarr");
 
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [publicURLEdits, setPublicURLEdits] = useState<Record<string, string>>({});
+  const [tunarrEdits, setTunarrEdits] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(true);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState<{ ok: boolean; hint?: string } | undefined>();
   const runTest = settingsApi.useSetupTest();
 
   const patchResults = unwrap(patch.data, (b) => b.results) ?? undefined;
-  const dirty = Object.keys(edits).length > 0;
+  const publicURLDirty = Object.keys(publicURLEdits).length > 0;
+  const tunarrDirty = Object.keys(tunarrEdits).length > 0;
   // A just-run Test wins over the standing verdict, same precedence the checklist uses.
   const verdict = tested ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
 
-  const save = () => patch.mutate({ data: { edits } });
+  // Keep rejected values editable, but drop drafts once every submitted key is durably
+  // saved. Otherwise SettingsFields keeps preferring the stale local copy over the freshly
+  // invalidated registry and advertises a Save action for an edit that no longer exists.
+  const saveEdits = async (edits: Record<string, string>, clear: () => void) => {
+    const response = await patch.mutateAsync({ data: { edits } });
+    const results = unwrap(response, (body) => body.results) ?? [];
+    const submitted = Object.keys(edits);
+    if (
+      submitted.length > 0 &&
+      submitted.every((key) =>
+        results.some((result) => result.key === key && result.status === SettingResultStatus.saved),
+      )
+    ) {
+      clear();
+    }
+  };
+  const savePublicURL = () => saveEdits(publicURLEdits, () => setPublicURLEdits({}));
+  const saveTunarr = () => saveEdits(tunarrEdits, () => setTunarrEdits({}));
   // Test evaluates PERSISTED settings, so unsaved edits must be written first or the operator
   // tests the OLD address right after typing a new one (the flavor-save bug, config-design §6).
   const test = async () => {
     setTesting(true);
     try {
-      if (dirty) await patch.mutateAsync({ data: { edits } });
+      if (tunarrDirty) await saveTunarr();
       const res = await runTest.mutateAsync({ data: { check: "tunarr" } });
       if (res.status === 200) setTested({ ok: res.data.ok, hint: res.data.hint });
     } catch {
@@ -165,6 +190,32 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
         </p>
       )}
 
+      {/* Internal playout publishes absolute tuner/guide/stream URLs from this registry key.
+          It belongs beside the backend choice because selecting Loomarr without supplying its
+          machine-reachable address is not a complete answer to "who plays the channel?". */}
+      {value === PLAYOUT_INTERNAL && (
+        <div className="rounded-lg border border-input p-4">
+          <SettingsFields
+            entries={publicURLEntries}
+            values={publicURLEdits}
+            onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
+            results={patchResults}
+            descriptionIds={{ "server.public_url": "server-public-url-requirement" }}
+          />
+          <p id="server-public-url-requirement" className="mt-3 text-muted-foreground text-sm">
+            Required for Loomarr playback. Your media server must be able to reach this address to fetch the
+            guide and every channel stream.
+          </p>
+          {publicURLDirty && (
+            <div className="mt-3">
+              <Button onClick={() => void savePublicURL()} disabled={patch.isPending}>
+                {patch.isPending ? "Saving…" : "Save address"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ⚠ Tunarr's own settings live HERE, under the choice that makes them relevant, rather
           than in Connections. Choosing Tunarr and then being sent to a different step to say
           where it is splits one decision across two screens. Keeping them together also means
@@ -188,13 +239,13 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
         >
           <SettingsFields
             entries={tunarrEntries}
-            values={edits}
-            onChange={(key, v) => setEdits((p) => ({ ...p, [key]: v }))}
+            values={tunarrEdits}
+            onChange={(key, v) => setTunarrEdits((p) => ({ ...p, [key]: v }))}
             results={patchResults}
           />
-          {dirty && (
+          {tunarrDirty && (
             <div className="mt-3">
-              <Button onClick={save} disabled={patch.isPending}>
+              <Button onClick={() => void saveTunarr()} disabled={patch.isPending}>
                 {patch.isPending ? "Saving…" : "Save"}
               </Button>
             </div>
@@ -203,7 +254,8 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       )}
 
       <p className="text-muted-foreground text-sm">
-        You can change this later in Settings, and set it per channel too.
+        The playback engine can be changed later in Settings and overridden per channel.
+        {value === PLAYOUT_INTERNAL && " The Loomarr address applies to the whole install."}
       </p>
     </div>
   );
