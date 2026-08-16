@@ -154,7 +154,13 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (requestFrame) frameCallback = requestFrame(() => onFirstFrame());
         else video.addEventListener("playing", onFirstFrame, { once: true });
       };
+      let joinReplacementOnLoadedMetadata: (() => void) | undefined;
       let joinReplacementOnLoadedData: (() => void) | undefined;
+      const onLoadedMetadata = () => {
+        const joinReplacement = joinReplacementOnLoadedMetadata;
+        joinReplacementOnLoadedMetadata = undefined;
+        joinReplacement?.();
+      };
       const onLoadedData = () => {
         armFirstFrameWatch();
         const joinReplacement = joinReplacementOnLoadedData;
@@ -162,8 +168,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         joinReplacement?.();
       };
       const stopFirstFrameWatch = () => {
+        joinReplacementOnLoadedMetadata = undefined;
         joinReplacementOnLoadedData = undefined;
         if (frameCallback !== undefined) video.cancelVideoFrameCallback?.(frameCallback);
+        video.removeEventListener("loadedmetadata", onLoadedMetadata);
         video.removeEventListener("loadeddata", onLoadedData);
         video.removeEventListener("playing", onFirstFrame);
       };
@@ -216,6 +224,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
             /* autoplay policy — the control handles it */
           });
         };
+        joinReplacementOnLoadedMetadata = playReplacement;
         joinReplacementOnLoadedData = playReplacement;
         const onManifestParsed = () => {
           manifestParsed = true;
@@ -256,8 +265,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               hls.destroy();
           }
         };
-        if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
-        else armFirstFrameWatch();
+        if (requestFrame) {
+          video.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+          video.addEventListener("loadeddata", onLoadedData, { once: true });
+        } else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);

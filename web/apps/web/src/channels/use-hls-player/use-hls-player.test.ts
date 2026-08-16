@@ -240,10 +240,12 @@ describe("useHlsPlayer", () => {
     channelPlayUrl.mockImplementation((id: string) =>
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
+    let replacementLoadedMetadata!: () => void;
     let replacementLoadedData!: () => void;
     const video = {
       ...videoEl(),
       addEventListener: vi.fn((event: string, callback: () => void) => {
+        if (event === "loadedmetadata") replacementLoadedMetadata = callback;
         if (event === "loadeddata") replacementLoadedData = callback;
       }),
       requestVideoFrameCallback: vi.fn(() => 1),
@@ -358,6 +360,10 @@ describe("useHlsPlayer", () => {
     expect(vi.mocked(video.play).mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
     );
+    vi.mocked(video.play).mockClear();
+    expect(replacementLoadedMetadata).toBeTypeOf("function");
+    replacementLoadedMetadata();
+    expect(video.play).toHaveBeenCalledOnce();
     vi.mocked(video.play).mockClear();
     const manifestParsed = replacement.on.mock.calls
       .filter((call: unknown[]) => call[0] === "manifestParsed")

@@ -1416,7 +1416,9 @@ replacement can fetch init bytes before it adopts the transferred SourceBuffers 
 before the media request. Arming after attachment but before loading means the observer cannot
 attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
 loading means that same cached target cannot decode while the element is still paused; manifest,
-fragment, and loaded-data joins remain generation-scoped recovery for later platform load resets.
+metadata, fragment, and loaded-data joins remain generation-scoped recovery for later platform load
+resets. In particular, the metadata join occurs after WebKit's queued source reset but before its
+first target frame becomes available.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
 destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
 before that frame retires the detached controller before creating its one-source replacement, so no
