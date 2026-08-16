@@ -17,6 +17,9 @@ interface SettingsFieldsProps {
   // Per-key workflow availability. A reason disables that field and is rendered beside it;
   // omitted keys remain ordinary editable settings (config-design §5).
   disabledReasons?: Record<string, string>;
+  // Extra visible guidance owned by the surrounding workflow. The shared field adds the
+  // supplied id to aria-describedby without duplicating that prose in the registry.
+  descriptionIds?: Record<string, string>;
   className?: string;
 }
 
