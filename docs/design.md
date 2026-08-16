@@ -5051,7 +5051,7 @@ volumes:
 ### Backup & restore
 The database **is** the product — channels, tags, proposals, audit trail — so data safety is not optional (every mature *arr app ships backups):
 - **SQLite:** `GET /v1/backup` (admin) streams a **consistent snapshot** produced via `VACUUM INTO` a temp file — pure SQL, so it works with the cgo-free driver and is safe while WAL is active (never `cp` a live SQLite file). Restore = stop container, replace `/data/loomarr.db`, start.
-- **Postgres:** `/v1/backup` returns **501 + a docs pointer** — the container has no `pg_dump` (scratch image, by design); back up with `pg_dump` against the DB directly, restore with `pg_restore`. The docs Quickstart shows a one-line cron example for each backend.
+- **Postgres:** `/v1/backup` returns **501 + a docs pointer** — the application image deliberately ships no PostgreSQL client. The supported Compose path runs `pg_dump --format=custom` and `pg_restore --exit-on-error` inside its private Postgres service while streaming a mode-`0600` archive to/from the trusted host; an external database may use equivalent trusted client tooling. Restore targets a newly-created empty database owned by the Loomarr database user. Plain `pg_dump` output is SQL and cannot be consumed by `pg_restore`, so the format flag is part of the recovery contract rather than an optional compression choice.
 - **Server-written backups** (`backup.dir`, default `/data/backups`) exist as of V11, because the
   migration's backup gate has to be enforceable by the server: a streamed download leaves no
   evidence, so "a backup is required, not suggested" would be unenforceable. Same `VACUUM INTO`
@@ -5075,9 +5075,20 @@ The database **is** the product — channels, tags, proposals, audit trail — s
   - **On Postgres the job does not register.** `WriteBackup` is SQLite-only by design (§16 above),
     so a registered job would fail on every fire and the Tasks page would show a permanently red
     row for a backup strategy the operator is correctly running with `pg_dump`.
-- **Restore stays a CLI operation, deliberately.** Stop the container, replace the database file,
-  start. There is no in-app restore button: the operation replaces the store the app is running
-  on, including the accounts and sessions authorizing the click.
+- **Restore stays a CLI operation, deliberately.** Stop Loomarr first. For SQLite, replace the
+  database file, set mode `0600` and ownership to the image's uid/gid `65532:65532`, then start.
+  For Postgres, restore the custom archive into a newly-created empty database owned by the Loomarr
+  database user, then start. In both cases readiness plus an account/session, stored secret, title,
+  proposal audit, and channel are the validation set. There is no in-app restore button: the
+  operation replaces the store the app is running on, including the accounts and sessions
+  authorizing the click.
+- **The restore drill is executable and isolated.** `make backup-restore-verify` creates a temporary
+  SQLite data directory, writes a consistent snapshot outside it, destroys only that temporary live
+  directory, restores mode `0600`, reopens the Store, and validates the representative state above.
+  `make backup-restore-drill` adds the same proof for Postgres using a dedicated testcontainers
+  database: it creates a mode-`0600` custom archive, drops and recreates only that ephemeral database
+  with the expected owner, restores it, and reopens the Store. The normal Go and `test-pg` CI gates
+  also execute the SQLite and Postgres tests respectively.
 
 ### Upgrades & downgrades
 - **Images are semver-tagged**; docs steer production installs to pinned tags, not `:latest`.

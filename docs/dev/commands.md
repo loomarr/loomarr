@@ -37,6 +37,8 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
 | `make release-verify` |  | verify release tag, OCI naming, and immutable publication policy |
+| `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
+| `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
 
 ## The default gate
 

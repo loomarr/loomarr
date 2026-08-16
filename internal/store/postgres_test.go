@@ -20,6 +20,12 @@ import (
 // sub-test still gets a freshly-migrated store on its own schema via newStore.
 func startPostgres(t *testing.T) string {
 	t.Helper()
+	dsn, _ := startPostgresContainer(t)
+	return dsn
+}
+
+func startPostgresContainer(t *testing.T) (string, testcontainers.Container) {
+	t.Helper()
 	ctx := context.Background()
 	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
 		postgres.WithDatabase("loomarr"),
@@ -38,7 +44,7 @@ func startPostgres(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("postgres connection string: %v", err)
 	}
-	return dsn
+	return dsn, ctr
 }
 
 // TestPostgresConformance runs the SAME suite as SQLite (AGENTS.md: one suite,
