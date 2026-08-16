@@ -99,13 +99,24 @@ func TestJourney_NewAdmin(t *testing.T) {
 		t.Fatalf("system/llm = %+v, want reachable ollama 0.13.5", sys)
 	}
 
-	// A6: SELECT a model — must be pulled first (409), then succeeds once pulled.
+	// A6: SELECT a model — pulling is necessary but not sufficient when Ollama cannot
+	// advertise tool support. The operator must explicitly verify tool calling before
+	// the model can become active; that one action makes exactly one small inference.
 	if code := h.status(http.MethodPost, "/v1/system/llm/select", `{"provider":"ollama","model":"qwen3:8b"}`, admin); code != http.StatusConflict {
 		t.Fatalf("select un-pulled model → %d, want 409", code)
 	}
 	h.ollama.SetPulled("qwen3:8b")
+	if code := h.status(http.MethodPost, "/v1/system/llm/select", `{"provider":"ollama","model":"qwen3:8b"}`, admin); code != http.StatusConflict {
+		t.Fatalf("select unverified model → %d, want 409", code)
+	}
+	if code := h.status(http.MethodPost, "/v1/system/llm/verify", `{"provider":"ollama","model":"qwen3:8b"}`, admin); code != http.StatusOK {
+		t.Fatalf("verify pulled model → %d, want 200", code)
+	}
+	if calls := h.ollama.ChatHits(); calls != 1 {
+		t.Fatalf("explicit verification inference calls = %d, want 1", calls)
+	}
 	if code := h.status(http.MethodPost, "/v1/system/llm/select", `{"provider":"ollama","model":"qwen3:8b"}`, admin); code != http.StatusOK {
-		t.Fatalf("select pulled model → %d, want 200", code)
+		t.Fatalf("select verified model → %d, want 200", code)
 	}
 
 	// A7: PULL a model — a background job streaming over SSE; the double records the hit.

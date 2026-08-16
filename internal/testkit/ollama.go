@@ -10,11 +10,11 @@ import (
 
 // Ollama is a minimal, scriptable Ollama HTTP double (AGENTS.md: one mock per
 // service). It serves exactly the endpoints the llm.Prober calls for the §8.1
-// model picker — GET /api/version, GET /api/tags, POST /api/pull (NDJSON stream)
-// — so the picker probe/select/pull flow can be driven end to end through the
-// real systemLLMService. It intentionally does NOT implement /api/chat: the
-// suggester runs on the injected in-process testkit.LLM; only the picker probes
-// this host.
+// model picker — GET /api/version, GET /api/tags, POST /api/pull (NDJSON stream),
+// and the explicit tool-capability POST /api/chat — so the picker
+// probe/verify/select/pull flow can be driven end to end through the real
+// systemLLMService. The suggester still runs on the injected in-process
+// testkit.LLM; this host's chat endpoint is only the verification boundary.
 type Ollama struct {
 	*httptest.Server
 	mu         sync.Mutex
@@ -22,6 +22,7 @@ type Ollama struct {
 	pulled     []string         // tags reported present by /api/tags
 	pullFrames []map[string]any // finite NDJSON stream /api/pull writes
 	pullHits   int
+	chatHits   int
 }
 
 // NewOllama starts the double. Defaults: version "0.13.5", no models pulled, and a
@@ -71,6 +72,37 @@ func NewOllama(t testing.TB) *Ollama {
 			}
 		}
 	})
+	mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Tools []struct {
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			} `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid chat request", http.StatusBadRequest)
+			return
+		}
+		if len(request.Tools) != 1 || request.Tools[0].Function.Name != "loomarr_capability_check" {
+			http.Error(w, "expected capability-check tool", http.StatusBadRequest)
+			return
+		}
+		o.mu.Lock()
+		o.chatHits++
+		o.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message": map[string]any{
+				"role": "assistant",
+				"tool_calls": []map[string]any{{
+					"function": map[string]any{
+						"name":      "loomarr_capability_check",
+						"arguments": map[string]any{},
+					},
+				}},
+			},
+		})
+	})
 	o.Server = httptest.NewServer(mux)
 	t.Cleanup(o.Close)
 	return o
@@ -103,4 +135,11 @@ func (o *Ollama) PullHits() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.pullHits
+}
+
+// ChatHits reports how many explicit capability-check inference calls were made.
+func (o *Ollama) ChatHits() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.chatHits
 }
