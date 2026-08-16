@@ -58,6 +58,10 @@ type searchResponse struct {
 // merge against TMDB and set in_library. Header auth per flavor (§6). This is the
 // same /Items surface as Lookup — one media-server client.
 func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchResult, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -72,7 +76,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out searchResponse
 	if err := c.do(req, &out); err != nil {

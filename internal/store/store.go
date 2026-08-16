@@ -477,6 +477,10 @@ type SettingStore interface {
 	// (config-design §3). The settings service loads this into its snapshot; the
 	// API surfaces updatedBy/updatedAt per field.
 	ListSettings(ctx context.Context) ([]SettingRow, error)
+	// ApplySettingBatch commits one settings PATCH's valid upserts and deletes in
+	// one transaction. Readers therefore observe either the complete old settings
+	// generation or the complete new one (config-design §8).
+	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
 	// This is the audited write path; SetSetting stays the un-audited system path

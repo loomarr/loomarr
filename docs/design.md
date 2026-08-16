@@ -152,7 +152,7 @@ flowchart TD
   p_catalog["catalog<br/><small>5 importers</small>"]
   p_filler["filler<br/><small>6 importers</small>"]
   p_httpx["httpx<br/><small>5 importers</small>"]
-  p_library["library<br/><small>6 importers</small>"]
+  p_library["library<br/><small>7 importers</small>"]
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
@@ -198,8 +198,6 @@ flowchart TD
   Supervises one child process and every descendant it starts.
 - **`provision`** · 16 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`settings`** · 1 importer
-  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`taxonomy`** · 4 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`web`** · 1 importer
@@ -251,7 +249,7 @@ flowchart TD
 
 - **`clipfetch`** · 1 importer · → `filler`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`library`** · 6 importers · → `filler`, `httpx`
+- **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
@@ -270,6 +268,8 @@ flowchart TD
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`retention`** · 1 importer · → `scheduler`, `store`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
+- **`settings`** · 1 importer · → `library`
+  Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`testkit`** · → `images`, `llm`, `playout`, `programmer`, `provision`, `schedule`, `store`
@@ -572,6 +572,13 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
   same target paths to every replica and restart every replica; until that roll completes, each
   process honestly reports drift against its own applied generation. A database advisory lock is
   not a substitute for deployment orchestration over host filesystems.
+- **Runtime settings converge on ordinary Postgres replicas within 30 seconds.** Each application
+  generation owns one cancellable periodic reader. A tick performs one `ListSettings` statement,
+  carrying values and environment-override ownership as one coherent snapshot, then atomically
+  replaces the process-local view; a failed read preserves the last complete generation and is
+  retried on the next tick. Per-operation consumers still use `ResolveMany` so a refresh cannot
+  assemble a media-server or Tunarr connection from different generations. SQLite starts no
+  reader and pays zero polling reads because it remains single-process by contract.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
 ### Migrating SQLite → PostgreSQL (V11)
@@ -678,6 +685,16 @@ Flavor via `LIBRARY_FLAVOR`. A series counts as in-library when the show exists;
 availability is not inferred from a registry switch. Provider-name casing in
 `AnyProviderIdEquals` can differ across versions — if a known-present title returns empty, check
 casing first.
+
+**Live configuration is one per-operation connection snapshot.** The library adapter is always
+constructed, including on an install where the connection is empty. At the start of each public
+operation it resolves `library.flavor`, `library.url`, and `library.token` together from one settings
+snapshot and carries that immutable `{flavor, url, token}` through every nested or batched request.
+All three values must be present and valid before the operation makes an outbound request. Saving a
+complete Emby or Jellyfin connection therefore enables the next operation without rebuilding
+`BuildHandler`; changing flavor, repointing the URL, rotating the token, or clearing any member takes
+effect on the next operation. A concurrent save can never send one server's credential to another
+server or choose authentication headers from a different generation of settings.
 
 **Bulk scan (poll-based availability, §4 + §18.1).** Beyond the id-only `Lookup`, the library adapter exposes two bulk reads that drive the `library-scan`/`library-full-scan` jobs — one call returns *many* items with their provider ids, so availability is confirmed without an N-lookup storm:
 
@@ -873,12 +890,13 @@ Two consequences worth stating, because both look like details and are not:
 
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
 
-**Scopes follow live configuration, not boot-time construction.** `library` requires a current
-`library.url`; `tmdb` requires a current `tmdb.api_key`. `all` (and an omitted scope) searches
+**Scopes follow live configuration, not boot-time construction.** `library` requires a current,
+complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current
+`tmdb.api_key`. `all` (and an omitted scope) searches
 whichever of those corpora are configured now: both when both are available, or the one usable
 corpus when only one is. It returns 501 only when neither corpus is configured, rather than making
 TMDB a hidden prerequisite for searching a perfectly usable media library (or vice versa). The
-adapters stay constructed across configuration changes, so saving or clearing either setting
+adapters stay constructed across configuration changes, so saving or clearing either connection
 changes the next request without a restart. Channel icon suggestions have no library-only fallback
 and therefore remain gated on the live TMDB key even though their adapter also stays constructed.
 
@@ -4121,7 +4139,7 @@ Internal playout (§9.1) serves segments to a **television**, which cannot hold 
 
 ### Explicit import & sync (admin-only, never implicit)
 - `GET {LIBRARY_URL}/Users` with Loomarr's admin `library.token` lists server users; `GET /v1/users/candidates` (admin-only) surfaces that list to the UI with an `imported` flag per account, so picking is a choice from real names rather than pasted ids. `POST /v1/users/import` (admin-only) takes an explicit set of media-server user ids and upserts them as allowlisted rows (`password_hash` null; media-server admins may map to `admin` at the importing admin's choice, default `member`). This is the **only** way a media-server user gains access.
-- `POST /v1/users/sync` (and a periodic sync, same pattern as the filler catalog) refreshes **already-imported** users: name + disabled state from the source. It **never adds** new users — sync reconciles the allowlist, import defines it. **This route is registered only when a media server is configured**, yet it is unconditionally present in the committed spec (which is generated in schema-only mode), so the generated client would otherwise offer a call that 404s. The computed `user_sync` feature (config-design §7) gates it, mirroring the same `library.flavor` condition the wiring uses. Users disabled/deleted server-side are disabled in Loomarr on next sync, and their sessions revoked. Local users are untouched by sync.
+- `POST /v1/users/sync` (and a periodic sync, same pattern as the filler catalog) refreshes **already-imported** users: name + disabled state from the source. It **never adds** new users — sync reconciles the allowlist, import defines it. The route and its adapter are always registered; the live, complete `{flavor, url, token}` connection gates each operation, so an empty or cleared connection returns the supported unconfigured response instead of turning the committed route into a boot-dependent 404. The computed `user_sync` feature (config-design §7) follows that same complete-connection predicate. Users disabled/deleted server-side are disabled in Loomarr on next sync, and their sessions revoked. Local users are untouched by sync.
 
 ### Roles & quotas (v1: deliberately simple)
 - **`admin`** — approve proposals/acquisitions, manage channels destructively, manage users (import/disable/role), settings, filler ingestion.
@@ -5524,3 +5542,4 @@ render through the shared frontend `Image` primitive. An animated filler hover m
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
+

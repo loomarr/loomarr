@@ -3,7 +3,6 @@ package settings
 import (
 	"context"
 	"testing"
-	"time"
 )
 
 // The unlock (config-design §3.1): a key an admin has taken back from the environment.
@@ -19,13 +18,8 @@ type unlockLoader struct {
 	unlocked map[string]bool
 }
 
-func (f *unlockLoader) Load(_ context.Context, k string) (string, bool, error) {
-	v, ok := f.m[k]
-	return v, ok, nil
-}
-func (f *unlockLoader) LoadAll(context.Context) (map[string]string, error) { return f.m, nil }
-func (f *unlockLoader) LoadEnvOverrides(context.Context) (map[string]bool, error) {
-	return f.unlocked, nil
+func (f *unlockLoader) LoadSnapshot(context.Context) (Snapshot, error) {
+	return Snapshot{Values: f.m, EnvOverrides: f.unlocked}, nil
 }
 
 // SetEnvOverride doubles as the EnvOverrideSetter, so a claim written by the service is
@@ -242,11 +236,12 @@ func TestEnvOverride_UnlockedKeyBecomesPatchable(t *testing.T) {
 // patchPersister adapts the loader into the Persister the PATCH path needs.
 type patchPersister struct{ l *unlockLoader }
 
-func (p patchPersister) Upsert(_ context.Context, key, value, _ string, _ time.Time) error {
-	p.l.m[key] = value
-	return nil
-}
-func (p patchPersister) Delete(_ context.Context, key string) error {
-	delete(p.l.m, key)
+func (p patchPersister) Apply(_ context.Context, batch PersistenceBatch) error {
+	for _, row := range batch.Upserts {
+		p.l.m[row.Key] = row.Value
+	}
+	for _, key := range batch.Deletes {
+		delete(p.l.m, key)
+	}
 	return nil
 }

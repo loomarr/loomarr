@@ -27,7 +27,7 @@ type collectionsOutput struct {
 }
 
 func (s *Server) doListCollections(ctx context.Context, _ *struct{}) (*collectionsOutput, error) {
-	if s.collections == nil || s.unconfigured("library.url") {
+	if s.collections == nil || s.libraryUnconfigured() {
 		return nil, errNotImplemented("Collections aren't available",
 			"Connect your media library in Settings to use collections.")
 	}

@@ -96,8 +96,9 @@ const stubUsers = ({
     getResetUserPasswordMockHandler(async ({ request, params }) => {
       resets.push({ id: String(params.id), body: await request.json() });
     }),
-    // ⚠ `user_sync` is a COMPUTED feature, not a setting: POST /v1/users/sync is registered only
-    // when a media server is configured, so the page reads the feature set before offering it.
+    // ⚠ `user_sync` is a COMPUTED feature, not a setting: the route stays registered while the
+    // complete live media-server connection gates the operation, so the page reads the same
+    // feature set before offering it.
     getSettingsListMockHandler({ settings: [], features: { user_sync: userSync } }),
     // Spread LAST — see handlers.ts: MSW takes the FIRST match and `use()` prepends, so a
     // baseline spread first would shadow every override above it.
@@ -189,8 +190,8 @@ describe("Users page", () => {
     expect(screen.getByLabelText(/lovelace/i)).toBeDisabled();
   });
 
-  // POST /v1/users/sync is registered only when a media server is configured, so the FE
-  // must read the computed feature set first — otherwise it offers a call that 404s.
+  // POST /v1/users/sync stays registered while unconfigured and returns the supported
+  // unavailable result, so the FE reads the computed feature set instead of offering a dead end.
   it("explains rather than offering import when no media server is connected", async () => {
     stubUsers({ userSync: false });
     renderAt("/people");
