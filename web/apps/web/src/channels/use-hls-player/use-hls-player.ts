@@ -80,10 +80,27 @@ const releaseTransferredDecoder = async (
   // not that acknowledgement: hosted WebKit can deliver rAF while the decoder still owns the old
   // position, then block remove() for the rest of the four-second fragment. The held poster keeps
   // the outgoing picture visible while no decoded byte is leased.
-  if (video.currentTime >= edge) return;
+  // currentTime identifies the currently presented frame, while TimeRanges.end() is the half-open
+  // boundary after that frame. All three engines can therefore report the final frame up to one
+  // frame before the range end; seeking to the non-presentable boundary then remains in `seeking`
+  // forever. Fifty milliseconds recognizes only that final-frame interval (20 fps or faster), not
+  // an earlier point in the outgoing segment where WebKit still owns a meaningful decoder lease.
+  const atEdge = () => video.currentTime + 0.05 >= edge;
+  if (atEdge()) return;
   await new Promise<void>((resolve) => {
-    video.addEventListener("seeked", () => resolve(), { once: true });
+    let complete = false;
+    const onSeeked = () => {
+      if (complete) return;
+      complete = true;
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    video.addEventListener("seeked", onSeeked, { once: true });
     video.currentTime = edge;
+    // Some engines clamp an exact half-open range end to the final decoded timestamp without
+    // ever completing their nominal seeking state. Once the media clock itself reaches that edge,
+    // the decoder is parked at the only representable boundary and no later `seeked` can add proof.
+    if (atEdge()) onSeeked();
   });
 };
 
@@ -201,6 +218,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       };
       let joinReplacementOnLoadedMetadata: (() => void) | undefined;
       let joinReplacementOnLoadedData: (() => void) | undefined;
+      let joinReplacementOnCanPlay: (() => void) | undefined;
       const onLoadedMetadata = () => {
         const joinReplacement = joinReplacementOnLoadedMetadata;
         joinReplacementOnLoadedMetadata = undefined;
@@ -212,12 +230,19 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         joinReplacementOnLoadedData = undefined;
         joinReplacement?.();
       };
+      const onCanPlay = () => {
+        const joinReplacement = joinReplacementOnCanPlay;
+        joinReplacementOnCanPlay = undefined;
+        joinReplacement?.();
+      };
       const stopFirstFrameWatch = () => {
         joinReplacementOnLoadedMetadata = undefined;
         joinReplacementOnLoadedData = undefined;
+        joinReplacementOnCanPlay = undefined;
         if (frameCallback !== undefined) video.cancelVideoFrameCallback?.(frameCallback);
         video.removeEventListener("loadedmetadata", onLoadedMetadata);
         video.removeEventListener("loadeddata", onLoadedData);
+        video.removeEventListener("canplay", onCanPlay);
         video.removeEventListener("playing", onFirstFrame);
       };
 
@@ -273,6 +298,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         };
         joinReplacementOnLoadedMetadata = playReplacement;
         joinReplacementOnLoadedData = playReplacement;
+        joinReplacementOnCanPlay = playReplacement;
         const onManifestParsed = () => {
           manifestParsed = true;
           markTunePhase(attempt, "manifest");
@@ -315,6 +341,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         if (requestFrame) {
           video.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
           video.addEventListener("loadeddata", onLoadedData, { once: true });
+          video.addEventListener("canplay", onCanPlay, { once: true });
         } else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);

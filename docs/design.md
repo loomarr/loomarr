@@ -1446,7 +1446,10 @@ compatible SourceBuffers, then clears the old Channel-relative ranges. It stops 
 and pauses the media element before transferring those buffers; the Watch surface's held poster
 preserves the last decoded picture while the decoder gives up its lease on the old range. It parks
 the paused element at the half-open buffered range's end and waits for the element's `seeked`
-acknowledgement before removal. A render callback is not sufficient evidence that WebKit's decoder
+acknowledgement before removal when the element is earlier than its final decoded frame. A media
+clock can name that frame up to 50 ms before the half-open buffered end; once the clock accepts that
+end there is no later presentation timestamp to await, even if the engine leaves its nominal
+`seeking` flag set. Removal then proceeds. A render callback is not sufficient evidence that WebKit's decoder
 released the old position. The element stays at that edge until every removal reaches `updateend`;
 rewinding into the range being removed can hold WebKit's decoder on those bytes and turn a cached
 tune into a multi-second stall.

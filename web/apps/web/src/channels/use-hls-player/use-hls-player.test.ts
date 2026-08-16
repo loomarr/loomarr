@@ -246,12 +246,14 @@ describe("useHlsPlayer", () => {
     );
     let replacementLoadedMetadata!: () => void;
     let replacementLoadedData!: () => void;
+    let replacementCanPlay!: () => void;
     let finishOutgoingSeek!: () => void;
     const video = {
       ...videoEl(),
       addEventListener: vi.fn((event: string, callback: () => void) => {
         if (event === "loadedmetadata") replacementLoadedMetadata = callback;
         if (event === "loadeddata") replacementLoadedData = callback;
+        if (event === "canplay") replacementCanPlay = callback;
         if (event === "seeked") finishOutgoingSeek = callback;
       }),
       requestVideoFrameCallback: vi.fn(() => 1),
@@ -394,6 +396,90 @@ describe("useHlsPlayer", () => {
     expect(video.play).toHaveBeenCalledOnce();
     replacementLoadedData();
     expect(video.play).toHaveBeenCalledOnce();
+
+    vi.mocked(video.play).mockClear();
+    expect(replacementCanPlay).toBeTypeOf("function");
+    replacementCanPlay();
+    expect(video.play).toHaveBeenCalledOnce();
+  });
+
+  it("does not wait for a seek event when playback is already at the buffered edge", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockImplementation((id: string) =>
+      Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
+    );
+    let mediaTime = 4.041666;
+    let seeking = false;
+    const video = {
+      ...videoEl(),
+      requestVideoFrameCallback: vi.fn(() => 1),
+      cancelVideoFrameCallback: vi.fn(),
+    } as unknown as HTMLVideoElement;
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => mediaTime,
+      // Chromium, Firefox, and WebKit all clamp this fixture's exact half-open range end to the last
+      // decoded timestamp and can remain in `seeking` without ever dispatching `seeked`.
+      set: () => {
+        mediaTime = 4.083332;
+        seeking = true;
+      },
+    });
+    Object.defineProperty(video, "seeking", {
+      configurable: true,
+      get: () => seeking,
+    });
+    const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
+      initialProps: { id: "ch-3" },
+    });
+
+    let release!: () => void;
+    act(() => {
+      release = result.current.attach(video);
+    });
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const first = hls.instances[0] as {
+      loadSource: ReturnType<typeof vi.fn>;
+      transferMedia: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() => expect(first.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-3/master.m3u8"));
+
+    let finishRemoval!: () => void;
+    const remove = vi.fn();
+    first.transferMedia.mockReturnValue({
+      media: video,
+      mediaSource: { readyState: "open" },
+      tracks: {
+        video: {
+          buffer: {
+            updating: false,
+            buffered: { length: 1, start: () => 0, end: () => 4.083333333333333 },
+            addEventListener: vi.fn((event: string, callback: () => void) => {
+              if (event === "updateend") finishRemoval = callback;
+            }),
+            removeEventListener: vi.fn(),
+            remove,
+          },
+        },
+      },
+    });
+
+    act(() => release());
+    rerender({ id: "ch-17" });
+    act(() => {
+      result.current.attach(video);
+    });
+
+    // Browser media clocks round the same frame edge slightly differently from TimeRanges. Setting
+    // the range end clamps to an effectively identical decoded timestamp without starting a seek,
+    // so the handoff must proceed instead of waiting forever before HLS attachment.
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 4.083333333333333));
+    expect(video.seeking).toBe(false);
+    act(() => finishRemoval());
+    const replacement = hls.instances[1] as { loadSource: ReturnType<typeof vi.fn> };
+    await waitFor(() =>
+      expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-17/master.m3u8"),
+    );
   });
 
   it("replaces an ended MediaSource without waiting on its decoded range", async () => {
