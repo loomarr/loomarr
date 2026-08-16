@@ -34,11 +34,11 @@ var (
 		Help:    "Peak resident bytes of one Rust image worker process where the host reports it.",
 		Buckets: prometheus.ExponentialBuckets(16<<20, 2, 7),
 	}, []string{"kind"})
-	imageWorkerQueueWait = promauto.NewHistogram(prometheus.HistogramOpts{
+	imageWorkerQueueWait = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loomarr", Subsystem: "image_worker", Name: "queue_wait_seconds",
-		Help:    "Time spent waiting for the global image worker semaphore.",
+		Help:    "Time spent waiting for image worker capacity by admission class.",
 		Buckets: []float64{0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 1, 5, 30},
-	})
+	}, []string{"class"})
 	imageWorkerInFlight = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "loomarr", Subsystem: "image_worker", Name: "in_flight",
 		Help: "Rust image worker processes currently holding a global image slot.",
@@ -56,8 +56,10 @@ func ImageWorkerObserved(observation rustgen.Observation) {
 	}
 }
 
-// ImageWorkerQueueWait records one attempt to acquire the global image worker semaphore.
-func ImageWorkerQueueWait(wait time.Duration) { imageWorkerQueueWait.Observe(wait.Seconds()) }
+// ImageWorkerQueueWait records one attempt to acquire image capacity by its stable admission class.
+func ImageWorkerQueueWait(class string, wait time.Duration) {
+	imageWorkerQueueWait.WithLabelValues(class).Observe(wait.Seconds())
+}
 
 // ImageWorkerInFlight applies the service's balanced +1/-1 process transition.
 func ImageWorkerInFlight(delta int) { imageWorkerInFlight.Add(float64(delta)) }
