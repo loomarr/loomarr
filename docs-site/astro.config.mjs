@@ -39,13 +39,16 @@ export default defineConfig({
             { label: "Upgrading", slug: "install/upgrading" },
           ],
         },
+        // ⚠ `autogenerate` must sit INSIDE `items`, not beside `label`. Starlight v0.39
+        // removed the labelled-autogenerate shorthand; the old form is a config error, not a
+        // deprecation warning, so it fails the build outright.
         {
           label: "Using Loomarr",
-          autogenerate: { directory: "help" },
+          items: [{ autogenerate: { directory: "help" } }],
         },
         {
           label: "Development",
-          autogenerate: { directory: "dev" },
+          items: [{ autogenerate: { directory: "dev" } }],
         },
         {
           label: "Reference",
