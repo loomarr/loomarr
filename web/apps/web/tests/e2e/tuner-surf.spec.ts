@@ -4,6 +4,8 @@ import { channelId, installTunerBackend } from "./tuner-backend";
 
 test.setTimeout(120_000);
 
+const TARGET_PLAYING_TIMEOUT_MS = 250;
+
 const p95 = (samples: number[]): number => {
   const ordered = [...samples].sort((a, b) => a - b);
   return ordered[Math.max(0, Math.ceil(ordered.length * 0.95) - 1)] ?? Number.POSITIVE_INFINITY;
@@ -91,6 +93,43 @@ const waitForDecodedFrame = async (page: Page) => {
   await decoded;
 };
 
+const waitForTargetPlaying = async (page: Page, channel: string, since: number) => {
+  try {
+    await page.waitForFunction(
+      ({ channel, since }) =>
+        (
+          window as Window & {
+            __loomarrMediaEvents?: Array<{ at: number; channel: string; type: string }>;
+          }
+        ).__loomarrMediaEvents?.some(
+          (event) => event.at >= since && event.channel === channel && event.type === "playing",
+        ) ?? false,
+      { channel, since },
+      { timeout: TARGET_PLAYING_TIMEOUT_MS },
+    );
+  } catch (error) {
+    const playback = await playbackSnapshot(page, channel, since);
+    throw new Error(
+      `${channel} did not join target playback within ${TARGET_PLAYING_TIMEOUT_MS}ms: ${JSON.stringify(playback)}`,
+      { cause: error },
+    );
+  }
+
+  const playback = await playbackSnapshot(page, channel, since);
+  const firstFrame = playback.frames?.at(0);
+  const playing = playback.events?.find((event) => event.type === "playing");
+  expect(
+    (playing?.at ?? Number.POSITIVE_INFINITY) - (firstFrame?.at ?? Number.NEGATIVE_INFINITY),
+    `${channel} target playback join lag: ${JSON.stringify(playback)}`,
+  ).toBeLessThanOrEqual(TARGET_PLAYING_TIMEOUT_MS);
+  // WebKit may deliver the first attributed rVFC just before its target-generation playing event.
+  // The decoded-frame timestamp still owns latency; this bounded join proves the replacement did
+  // not remain paused. A compact VOD may naturally end after that playing proof.
+  expect(playback.paused && !playback.ended, `${channel} playback state: ${JSON.stringify(playback)}`).toBe(
+    false,
+  );
+};
+
 // Change routes through the already-running application. `page.goto` tears down the document,
 // recompiles the app bundle, and cold-starts a new decoder on every sample; that measures browser
 // startup rather than a viewer selecting another Channel. The real-runtime gate owns cold boot.
@@ -166,21 +205,7 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
         .find((frame) => frame.channel === channel),
     { channel: id, count: before.count },
   );
-  const joined = await page.evaluate(
-    ({ channel, since }) =>
-      (
-        window as Window & {
-          __loomarrMediaEvents?: Array<{ at: number; channel: string; type: string }>;
-        }
-      ).__loomarrMediaEvents?.some(
-        (event) => event.at >= since && event.channel === channel && event.type === "playing",
-      ) ?? false,
-    { channel: id, since: started },
-  );
-  const unjoined = joined ? undefined : await playbackSnapshot(page, id, started);
-  expect(joined, `${id} decoded target media without joining playback: ${JSON.stringify(unjoined)}`).toBe(
-    true,
-  );
+  await waitForTargetPlaying(page, id, started);
   const trace = await page.evaluate((since) => {
     const resources = performance
       .getEntriesByType("resource")
@@ -399,18 +424,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       };
     });
     expect(timing.detail).toMatchObject({ adjacent: true, warmed: true });
-    const playback = await playbackSnapshot(page, id, started);
-    expect(
-      playback.events?.some((event) => event.type === "playing"),
-      `${id} never joined target playback: ${JSON.stringify(playback)}`,
-    ).toBe(true);
-    // WebKit can consume this compact VOD faster than wall time and expose its decoded frame only
-    // after natural completion. ended implies paused by the media-element contract, so accept that
-    // state only after the target-generation playing proof above. A paused, non-ended replacement
-    // is the production regression and remains a hard failure.
-    expect(playback.paused && !playback.ended, `${id} playback state: ${JSON.stringify(playback)}`).toBe(
-      false,
-    );
+    await waitForTargetPlaying(page, id, started);
     osd.push(timing.osd);
     adjacentFrames.push(timing.frame);
     adjacentTraces.push(

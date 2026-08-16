@@ -1415,10 +1415,12 @@ source on that mutation. This attach-before-source order is hls.js's transfer co
 replacement can fetch init bytes before it adopts the transferred SourceBuffers and strand WebKit
 before the media request. Arming after attachment but before loading means the observer cannot
 attribute an outgoing frame and cannot miss a fast cached target. Queuing playback before media
-loading means that same cached target cannot decode while the element is still paused; manifest,
-metadata, fragment, and loaded-data joins remain generation-scoped recovery for later platform load
-resets. In particular, the metadata join occurs after WebKit's queued source reset but before its
-first target frame becomes available.
+loading minimizes the paused interval, while manifest, metadata, fragment, and loaded-data joins
+remain generation-scoped recovery for later platform load resets. WebKit may expose the first
+attributed frame callback immediately before it dispatches `playing`; the controller gate therefore
+keeps first-frame latency at that callback and separately requires the same target to enter an
+unpaused `playing` state within 250 ms, with no retry. In particular, the metadata join occurs after
+WebKit's queued source reset and before its target is ready to play.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
 destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
 before that frame retires the detached controller before creating its one-source replacement, so no
