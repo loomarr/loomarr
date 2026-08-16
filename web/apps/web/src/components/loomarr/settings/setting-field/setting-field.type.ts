@@ -25,6 +25,9 @@ interface SettingFieldProps {
   // `provenance: env`: this disables the control because the capability cannot run, and renders
   // the reason beside it while retaining the desired value (config-design §5).
   disabledReason?: string;
+  // Id of workflow guidance rendered by the caller. Full fields combine it with the
+  // registry doc and availability reason in aria-describedby.
+  descriptionId?: string;
   // Compact renders ONLY the control — no label, doc tooltip, provenance badge or audit line.
   // For the All-settings table (V10), whose own columns already carry the key, group and
   // provenance; repeating them inside the cell would be the same facts twice.

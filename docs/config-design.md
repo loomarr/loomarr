@@ -15,7 +15,11 @@ Loomarr's model is the *arr convention with one addition:
 | **Seerr** | Wizard-driven; settings persisted by the app | Onboarding *is* configuration: wizard steps are settings forms with live tests |
 | **Loomarr** | Both of the above, **plus deterministic env pinning** | GitOps users pin any key via env; it wins and locks the field with provenance |
 
-**The classification rule (so future keys self-classify):** a setting is **bootstrap** iff it is needed *before the database opens* or describes *process topology* — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything else is app-managed and env-pinnable.
+**The storage-tier rule (so future keys self-classify):** a setting is **bootstrap** iff it is
+needed before the database opens or shapes the process envelope that must exist before the app
+graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything
+else is app-managed and env-pinnable. That answers **where a value is stored**, not **when a saved
+value is safe to apply**: app-managed settings still classify into the runtime lifecycles in §3.
 
 **The bootstrap FILE tier (revised — V5).** Bootstrap keys were env-**only**, because the registry lives in the database they are needed to open. That reasoning is unchanged; what it did not anticipate is the wizard needing to **write** one. The Database step (§13) asks "SQLite or PostgreSQL?" and must persist the answer — it cannot write into the database it is choosing, and it cannot set an env var that survives a restart. A file beside the database is the only writable store that exists before the database does. So:
 
@@ -143,24 +147,101 @@ exactly the old contract.
 
 **Secrets via files:** every secret env var also accepts the Docker-secrets idiom — `LIBRARY_TOKEN_FILE=/run/secrets/emby` loads the value from the file (trailing newline stripped). `<VAR>` and `<VAR>_FILE` both set → boot error (ambiguous).
 
-**Hot-apply (no restart to reconfigure):**
-- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for Postgres replicas, on a ~30s read-through interval (main doc §17).
-- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches URL/token from the snapshot at call time — saving a new Emby token means the *next* lookup uses it. An adapter operation that spans several requests takes one immutable snapshot before the first request. In particular, every Tunarr Programmer operation snapshots its URL, transcode override, and filler attach policy together; a settings save affects the next operation, never the middle of the current one. Endpoint-derived caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr cannot reuse a transcode id or content index learned from the previous instance. Optional adapters remain constructed while their credentials are empty: saving or clearing `tmdb.api_key` enables or disables TMDB search, channel icon suggestions, and suggestion grounding on the next operation without a restart. `/v1/search?scope=all` independently considers the live media-library URL and TMDB key, so either configured corpus remains useful on its own.
+**Runtime application has three lifecycles; “app-managed” does not mean “hot-applied”:**
+
+1. **Per-operation snapshot.** Connections and other multi-request adapters resolve all coupled
+   values once before an operation begins. A save affects the next operation, never the middle of
+   the current one.
+2. **Per-run policy.** Job intervals, limits, and selection policy resolve when the next tick, pass,
+   reconcile, or pod begins. They change what future work decides without rebuilding the module
+   that performs it.
+3. **Generation-scoped topology/resource.** A filesystem root or similar resource that gives
+   durable relative data its meaning is resolved once while `BuildHandler` constructs a generation.
+   Saving a replacement persists the **desired** value immediately, but every module continues to
+   use the generation's immutable **applied** value until Loomarr restarts in place. This is not a
+   failed hot-apply: it is the safety boundary that prevents one catalog row from being interpreted
+   under two roots while requests and jobs overlap.
+
+The concrete rules are:
+
+- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for
+  Postgres replicas, by one generation-owned reader every 30 seconds (main doc §5). Each tick uses
+  one full-table read that returns values and environment-override ownership together, then
+  publishes both under one lock; a failed read keeps the prior complete generation and retries on
+  the next tick. Cancelling the application generation stops the reader. SQLite starts no reader
+  and incurs no polling queries because it remains single-process by contract.
+- **One PATCH is one durable commit.** Validation, env-pin refusal, and result reporting remain
+  per key: invalid and pinned edits are reported and excluded, while every valid upsert or clear in
+  the request commits in one store transaction with its own canonical value and shared audit
+  timestamp/author. The in-memory snapshot reloads only after that commit. This is load-bearing for
+  coupled settings such as `{library.flavor, library.url, library.token}`: a Postgres replica that
+  refreshes during another replica's save sees the complete old tuple or the complete new tuple,
+  never durable intermediate rows assembled from both generations.
+- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches one
+  complete connection from the snapshot at call time. Every media-library operation resolves
+  `library.flavor`, `library.url`, and `library.token` together with `ResolveMany`, then carries that
+  immutable `{flavor, url, token}` through all of its requests. Saving a Jellyfin flavor, URL, and
+  token therefore enables the *next* lookup; rotating the token or changing flavor affects the next
+  operation; and an operation already in flight never mixes a credential with another server or
+  auth scheme. An incomplete triple is unconfigured and makes no outbound request. The library and
+  other optional adapters remain constructed while configuration is empty, so saving, rotating, or
+  clearing settings takes effect without rebuilding `BuildHandler`. In particular, every Tunarr
+  Programmer operation snapshots its URL, transcode override, and filler attach policy together; a
+  settings save affects the next operation, never the middle of the current one. Endpoint-derived
+  caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr
+  cannot reuse a transcode id or content index learned from the previous instance. Saving or
+  clearing `tmdb.api_key` likewise enables or disables TMDB search, channel icon suggestions, and
+  suggestion grounding on the next operation without a restart. `/v1/search?scope=all`
+  independently considers the complete live media-library connection and TMDB key, so either
+  configured corpus remains useful on its own.
 - **Intervals re-read per tick:** tickers ask the snapshot each cycle; changing `CHANNEL_RECONCILE_EVERY` takes effect next tick.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
-- `RestartRequired` exists as a flag for honesty and applies only to the bootstrap set. **Revised (V5): the UI now edits exactly one of them** — the wizard's Database step writes `DATABASE_URL` to the bootstrap file (above). That is precisely why the flag stops being decorative: the step that writes it is also the step that must say a restart is coming.
+- **`filler.dir` and `filler.watch_dir` are one generation-scoped storage layout.** The clip root is
+  the interpretation base for every catalog path; the watch folder drains into it. Applying either
+  one independently would let a saved watch path move files into the old root, or let playout serve
+  the new root while the pipeline still writes the old one. One immutable pair is handed to scan,
+  intake, fetch, split, pipeline, artwork adoption, media serving, source/watch status, and internal
+  playout. The settings Test probes the desired pair before restart; operational routes report and
+  use the applied pair.
+- **The configured clip spelling and Loomarr's traversal spelling have distinct roles.** Loomarr
+  may resolve symlinks and filesystem aliases for safe local traversal, but it registers the
+  operator-configured shared-volume path with Tunarr. A path that Loomarr can resolve is not
+  necessarily present under the same spelling in Tunarr's mount namespace.
+- `RestartRequired` is honest for both bootstrap drift and generation-scoped app-setting drift.
+  **Revised (V5): the UI edits one bootstrap key** — the wizard's Database step writes
+  `DATABASE_URL` to the bootstrap file (above). **Revised again here:** app-managed storage topology
+  can also be saved in the registry while waiting on the same restart control. Storage tier and
+  runtime lifecycle are orthogonal.
 
   **Revised again (V13): the flag is now computed, and there is a restart control to act on it.**
   It was a hardcoded `true` on the database switchover response — the only place that could set
   it — which made it a property of *one endpoint* rather than of the instance. It is now derived
-  by comparing each bootstrap key's **running** value against its **resolved** value, so
-  `GET /v1/system/restart` can name the specific key: *"You changed a boot-time setting
-  (`DATABASE_URL`). Loomarr is still running the old value until it restarts."*
+  by comparing each restart-scoped key's **running/applied** value against its **resolved/desired**
+  value, so
+  `GET /v1/system/restart` can name the specific key: *"You changed `filler.dir`. Loomarr is still
+  running the old value until it restarts."*
   ⚠ **Derived, never a sticky boolean someone remembers to set.** A flag written at the moment of
   an edit is wrong the moment the operator edits it back, and would nag about a restart that is
   no longer needed. Comparing running-vs-resolved cannot drift, because it re-reads the same
-  resolution the app itself uses.
+  resolution the app itself uses. Reverting `filler.dir` or `filler.watch_dir` to the applied value
+  likewise removes it from the pending list; no sticky “restart needed” bit is written.
   The restart mechanism (in-process rebuild, no supervisor, no re-exec) is `design.md` §9.2.
+
+**A storage-layout save is not a data migration.** Loomarr never copies, moves, or deletes the old
+clip library merely because either path was edited. The operator makes the target directory and its
+mount available, moves or copies media deliberately when that is the intent, tests the desired
+layout, then restarts. The next generation reconciles the catalog against the selected root. A
+missing target may be created by the generation; a later create/scan failure degrades filler
+visibly and must not turn into a successful empty scan that prunes the last known catalog. An
+existing ancestor that cannot be inspected far enough to rule out a watch/clip alias fails the
+new generation before any filler consumer starts. That stricter fail-closed case is deliberate:
+continuing with an unverifiable topology could let duplicate intake delete the catalog itself.
+
+**Replica consequence.** Restart state is per running process even though the desired registry
+value is shared. A Postgres deployment must give every Loomarr replica the same filesystem mounts
+and roll every replica before the layout is considered applied fleet-wide. The in-app restart
+endpoint restarts the replica that handled it; a database lock cannot make an unmounted host path
+appear on another machine. SQLite remains one replica by contract.
 
 **Audit:** the settings table carries `updated_at` + `updated_by` (nullable — env/migration writes have none). The UI shows "changed by Matt · 2d ago" per field; same spirit as `approved_by`.
 
@@ -322,7 +403,7 @@ routine sign-in preference.
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
 navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
-Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → hot-apply → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation).
+Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → apply by §3 lifecycle → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation). A generation-scoped save is still successful: the field shows the desired value and the derived restart notice explains why the applied value has not moved yet.
 
 **The save bar spans TABS, not just a page (V9).** Dirty state survives switching between
 Connections, AI, Defaults and so on: an operator who edits a connection, checks a default, and
@@ -359,13 +440,13 @@ action. Being closer to the affected clips is not permission to introduce an unc
 
 No parallel form system. Each wizard step renders the relevant **settings group's form** (essentials only — `Advanced` keys hidden), pre-resolved (env-pinned fields render locked), with the group's live test inline. **Configure → validate → save → advance.** The wizard writes through the exact same PATCH path as Settings.
 
-- **Step → group mapping:** claim (auth, pre-settings) → **playout choice** (`playout.backend`; see below) *(picking Tunarr reveals Connections/Tunarr + its media-source check* **on that same step**, *because "who plays my channels" and "where is it" are one decision;* **saving auto-wires Live TV into the guide** — no separate step*)* → Connections/media-server → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; drop-folder path + optional starter ingest targets) → guided first channel.
+- **Step → group mapping:** claim (auth, pre-settings) → **playout choice** (`playout.backend`; see below) *(picking internal reveals `server.public_url`* **on that same step** *and requires a persisted absolute address the media server can reach; picking Tunarr instead reveals Connections/Tunarr + its media-source check there, because "who plays my channels" and "where is it" are one decision;* **saving auto-wires Live TV into the guide** — no separate step*)* → Connections/media-server → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; drop-folder path + optional starter ingest targets) → guided first channel.
 - ⚠ **The step list is DERIVED from `playout.backend`, not constant** (design §13). Internal playout is the default since §9.1, but the wizard hardcoded `tunarr` as a blocking check and gave it a wiring step, so the default path demanded a second server it would never use and refused to continue without it. The blocking set is now `media_server` alone on the internal path, `media_server` + `tunarr` on the Tunarr path; the Tunarr form and the "give Tunarr your library" step exist **only** on the Tunarr path. Removed steps are **hidden, not marked satisfied** — a rail entry reading "not needed" still advertises work that is not part of this install.
 - **Being configured elsewhere does not stop a check blocking.** Tunarr's form lives on the Playout step, but on the Tunarr path its check still gates the Connections step. Where a setting is *edited* and where its failure is *reported* are separate questions, and conflating them would either hide a real blocker or move the whole checklist.
 - **A blocking check is a property of the chosen path, so nothing that cannot be satisfied can block.** This is the same rule the skippable steps encode, applied one level up: an internal install can never turn `tunarr` green, and a gate on a check the operator cannot satisfy is a dead end the wizard's Back/Continue offers no way around.
 - **Skippable steps are neutral, not red:** checklist states are `pass | fail | skipped | pinned`. Skipping AI doesn't shame you with a red X — it shows a neutral "not configured" that links back here.
 - **First-run detection:** the `setup.completed` registry key (bool, `SETUP_COMPLETED`, Advanced — dotted to match every other key); until set, `/` routes to the wizard. The wizard's final step sets it through the ordinary `PATCH /v1/settings` path, so it is a setting like any other. "Re-run setup" lives in Settings forever.
-- **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is **the media server alone** — Loomarr plays the channels itself (§9.1). Choosing Tunarr adds it to that path. Seerr adds acquisitions; AI adds suggestions.
+- **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is **the media server plus Loomarr's reachable address** — Loomarr plays the channels itself (§9.1), and `server.public_url` tells that media server where to fetch the streams. The address is required only on this path, stays locked when `SERVER_PUBLIC_URL` pins it, and is never guessed from request headers. Choosing Tunarr replaces that address requirement with Tunarr. Seerr adds acquisitions; AI adds suggestions.
 
 ---
 
@@ -394,9 +475,9 @@ does not exist.
 
 ## 8. API contract (extends main doc §7)
 
-- `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
-- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
-- `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
+- `GET /v1/settings` → grouped entries: `{key, group, kind, apply: live | restart, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
+- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; persistence is immediate and runtime application follows the key's §3 lifecycle. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
+- `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Runtime application follows the same lifecycle as PATCH.
 - **Backend hot-apply is a durable mutate → prepare → publish → retire transition, not merely an
   immediate callback.** PATCH, clear, environment takeover/hand-back, and `PLAYOUT_TOKEN` rotation
   enter one coordinator before their durable mutation. The coordinator holds the same workflow lock
@@ -463,6 +544,11 @@ does not exist.
 - **Resolution matrix** per Kind: env beats db beats default; invalid **env fails boot** with the var named; invalid **db self-heals** to default + warning surfaced.
 - **Pin lifecycle:** set env → locked + `pinned` on PATCH; unset env + reboot → unlocked, provenance `db`.
 - **Hot-apply:** change library URL via PATCH → next `Lookup` hits the new host (mock); interval change takes effect next tick; an §8.1 model `select` hot-swaps the live suggester provider without restart.
+- **Generation-scoped layout:** build on clip/watch layout A, save layout B, and prove settings show
+  desired B while scan, intake, pipeline, media serving, artwork adoption and playout all stay on
+  applied A; restart into a fresh generation and prove every consumer moves to B together. Saving
+  both paths in one PATCH must never combine old root with new watch. Reverting both before restart
+  clears derived drift. A failed target scan must preserve the last known catalog.
 - **Secrets:** generation idempotent across restarts; `<VAR>_FILE` loads (and `<VAR>`+`_FILE` together fails boot); regen side-effects (sessions die incl. caller's; handshake check goes red until fresh `Test`); the **log-grep redaction test** (a known secret never appears in captured logs, error bodies, or setup/status).
 - **Feature gating:** AI keys absent → Suggest returns the 409 problem and the computed feature set says so; add the keys → gate opens without restart.
 - **`make config-docs` drift check** green.
@@ -476,3 +562,4 @@ does not exist.
 - **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
+

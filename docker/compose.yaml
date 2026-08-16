@@ -118,10 +118,10 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       LLM_API_KEY: ${LLM_API_KEY:-}
       TMDB_API_KEY: ${TMDB_API_KEY}
-      # Filler (§10): the drop-folder the core registers as a Tunarr `local` media
-      # source. Set FILLER_DIR to the in-container mount below; the SAME host folder
-      # must be mounted into your Tunarr container at the same path so Tunarr can
-      # scan it (Tunarr is external — see compose.dev.yaml / your Tunarr deployment).
+      # Filler (§10): empty uses the registry default /data/filler, already carried by
+      # loomarr-data below. Set FILLER_DIR only when an additional bind mount makes that
+      # absolute in-container path visible. A Tunarr-backed install must mount the same
+      # bytes at that same path inside Tunarr; internal playout needs no second mount.
       FILLER_DIR: ${FILLER_DIR:-}
       FILLER_BREAKS_PER_HOUR: ${FILLER_BREAKS_PER_HOUR:-}
       # Loomarr's own address as your media server and Tunarr reach it (§9.1, §15).
@@ -150,9 +150,6 @@ services:
       # simply does not write there), so this is unconditional rather than profiled —
       # a mount that is wrong to omit should not depend on remembering a flag.
       - loomarr-data:/data
-      # The filler drop-folder, so the core can hand its path to Tunarr as a `local`
-      # source. Empty/unused when FILLER_DIR isn't set.
-      - ${FILLER_DROP_DIR:-filler-drop}:/filler
     # GPU render nodes for hardware encoding (§9.1). /dev/dri is the KMS/DRM interface
     # every Linux hardware encoder reaches through — VAAPI (Intel + AMD), QSV, and Vulkan
     # all need it. VENDOR-NEUTRAL: one device, every GPU.
@@ -263,7 +260,6 @@ services:
 volumes:
   loomarr-data: # sqlite backend
   pg-data: # postgres profile
-  filler-drop: # filler drop-folder (override with FILLER_DROP_DIR bind mount)
   ollama: # ai profile
 
 networks:

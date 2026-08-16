@@ -24,7 +24,7 @@ func visionSet(t *testing.T, rows map[string]string) resolved {
 	if err != nil {
 		t.Fatalf("settings.New: %v", err)
 	}
-	return resolved{svc}
+	return resolved{svc: svc}
 }
 
 // Unset vision provider ⇒ byte-identical to the pre-V54a behaviour. Every existing install must

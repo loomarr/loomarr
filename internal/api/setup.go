@@ -166,7 +166,7 @@ type tunarrConnectOutput struct {
 // tunarrConnectHandler wires the media server as Tunarr's media source + scans it
 // (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
 func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
-	if s.tunarrConnect == nil || s.unconfigured("tunarr.url", "library.url") {
+	if s.tunarrConnect == nil || s.unconfigured("tunarr.url") || s.libraryUnconfigured() {
 		return nil, errNotImplemented("Setup incomplete",
 			"Connect Tunarr and your media server in Settings before wiring them together.",
 			"troubleshooting#tunarr")
@@ -191,7 +191,7 @@ type livetvReconnectOutput struct {
 // re-scan, to drop a stale channel→stream binding. The transition coordinator owns the
 // operation so a reconnect cannot interleave with a backend cutover on another replica.
 func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
-	if s.backendTransition == nil {
+	if s.backendTransition == nil || s.libraryUnconfigured() {
 		return nil, errNotImplemented("Live TV isn't set up",
 			"Connect your media server and configure the selected playout backend before re-wiring the tuner.", "troubleshooting#livetv")
 	}

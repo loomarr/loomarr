@@ -289,9 +289,10 @@ type libraryBoxSets struct {
 	lib *library.Client
 	ttl time.Duration
 
-	mu      sync.Mutex
-	index   map[provision.Key][]string
-	fetched time.Time
+	mu         sync.Mutex
+	index      map[provision.Key][]string
+	fetched    time.Time
+	generation library.ConnectionGeneration
 }
 
 func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
@@ -307,16 +308,21 @@ func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]stri
 func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.index != nil && time.Since(a.fetched) < a.ttl {
-		return a.index, nil
+	lib := a.lib.Snapshot()
+	generation, err := lib.Connection().Generation()
+	if err != nil {
+		return nil, err
 	}
-	colls, err := a.lib.Collections(ctx)
+	if index, ok := a.cachedIndex(generation, time.Now()); ok {
+		return index, nil
+	}
+	colls, err := lib.Collections(ctx)
 	if err != nil {
 		return nil, err
 	}
 	idx := make(map[provision.Key][]string)
 	for _, c := range colls {
-		members, err := a.lib.CollectionMembers(ctx, c.ID)
+		members, err := lib.CollectionMembers(ctx, c.ID)
 		if err != nil {
 			// One unreadable collection must not discard the whole index — the rest is still
 			// true, and a missing membership only ever admits a title (§2.2 fail-open).
@@ -328,8 +334,17 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			}
 		}
 	}
-	a.index, a.fetched = idx, time.Now()
+	a.index, a.fetched, a.generation = idx, time.Now(), generation
 	return idx, nil
+}
+
+func (a *libraryBoxSets) cachedIndex(
+	generation library.ConnectionGeneration, now time.Time,
+) (map[provision.Key][]string, bool) {
+	if a.index == nil || a.generation != generation || now.Sub(a.fetched) >= a.ttl {
+		return nil, false
+	}
+	return a.index, true
 }
 
 // libraryCollections adapts library.Client to api.CollectionService: the read-only list

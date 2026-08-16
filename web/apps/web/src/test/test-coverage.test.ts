@@ -56,7 +56,6 @@ const KNOWN_GAPS = new Set([
   "channels/use-tunarr-ready/use-tunarr-ready.ts",
   "components/loomarr/channels/channel-rules-editor/label/label.ts",
   "components/loomarr/channels/channel-rules-editor/presets/presets.ts",
-  "components/loomarr/channels/channel-upcoming/channel-upcoming.tsx",
   "components/loomarr/settings/settings-save-bar/settings-save-bar.tsx",
   "components/ui/checkbox/checkbox.tsx",
   "dashboard/restart-watch-provider/restart-watch-provider.tsx",

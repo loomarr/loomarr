@@ -28,42 +28,22 @@ type StoreLoader struct {
 	List func(ctx context.Context) ([]SettingRow, error)
 }
 
-// LoadAll implements Loader: the whole override map, key→value.
-func (l StoreLoader) LoadAll(ctx context.Context) (map[string]string, error) {
+// LoadSnapshot implements Loader with one store read, keeping values and environment-
+// override ownership from the same durable generation.
+func (l StoreLoader) LoadSnapshot(ctx context.Context) (Snapshot, error) {
 	rows, err := l.List(ctx)
 	if err != nil {
-		return nil, err
+		return Snapshot{}, err
 	}
-	out := make(map[string]string, len(rows))
+	out := Snapshot{
+		Values:       make(map[string]string, len(rows)),
+		EnvOverrides: make(map[string]bool),
+	}
 	for _, r := range rows {
-		out[r.Key] = r.Value
-	}
-	return out, nil
-}
-
-// LoadEnvOverrides implements EnvOverrideLoader: the set of keys an admin has taken back
-// from the environment (§3.1). Only true entries are returned — absence is the default and
-// the overwhelmingly common case, so a map of every key mapped to false would be noise.
-func (l StoreLoader) LoadEnvOverrides(ctx context.Context) (map[string]bool, error) {
-	rows, err := l.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]bool{}
-	for _, r := range rows {
+		out.Values[r.Key] = r.Value
 		if r.EnvOverride {
-			out[r.Key] = true
+			out.EnvOverrides[r.Key] = true
 		}
 	}
 	return out, nil
-}
-
-// Load implements Loader: one key's stored value.
-func (l StoreLoader) Load(ctx context.Context, key string) (string, bool, error) {
-	all, err := l.LoadAll(ctx)
-	if err != nil {
-		return "", false, err
-	}
-	v, ok := all[key]
-	return v, ok, nil
 }

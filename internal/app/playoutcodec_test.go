@@ -3,8 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
+	"time"
 
+	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
@@ -79,5 +84,52 @@ func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
 	_, err := r.ComputeChannelCodec(context.Background(), "ch1")
 	if !errors.Is(err, boom) {
 		t.Fatalf("error = %v, want database failure", err)
+	}
+}
+
+func TestMeasureChannelCodecPinsOneLibraryConnectionAcrossBatch(t *testing.T) {
+	providerCalls := 0
+	lib := library.NewDynamic(func() library.Connection {
+		providerCalls++
+		if providerCalls == 1 {
+			return library.Connection{
+				Flavor: library.Emby, BaseURL: "https://emby-a.invalid", Token: "token-a",
+			}
+		}
+		return library.Connection{
+			Flavor: library.Jellyfin, BaseURL: "https://jellyfin-b.invalid", Token: "token-b",
+		}
+	}, "device-1")
+	var inputs []string
+	r := &playoutResolver{
+		engine: stubCycle{slots: []schedule.Slot{
+			{Kind: schedule.SlotProgram, LibraryItemID: "item-1"},
+			{Kind: schedule.SlotProgram, LibraryItemID: "item-2"},
+		}},
+		lib: lib,
+		now: time.Now,
+		probeFormat: func(_ context.Context, input string) (playout.MediaFormat, error) {
+			inputs = append(inputs, input)
+			return playout.MediaFormat{VideoCodec: "hevc"}, nil
+		},
+	}
+
+	if got := r.measureChannelCodec(context.Background(), "channel-1"); got != store.BroadcastCodecHEVC {
+		t.Fatalf("codec = %q, want hevc", got)
+	}
+	if providerCalls != 1 {
+		t.Fatalf("connection provider calls = %d, want one for the full batch", providerCalls)
+	}
+	if len(inputs) != 2 {
+		t.Fatalf("probe inputs = %d, want 2", len(inputs))
+	}
+	for _, input := range inputs {
+		parsed, err := url.Parse(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Host != "emby-a.invalid" || parsed.Query().Get("api_key") != "token-a" {
+			t.Fatalf("probe input = %q, want pinned first connection", input)
+		}
 	}
 }

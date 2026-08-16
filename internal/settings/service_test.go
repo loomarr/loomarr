@@ -14,11 +14,9 @@ import (
 // fakeLoader is an in-memory Loader for resolution tests (no store dependency).
 type fakeLoader struct{ m map[string]string }
 
-func (f fakeLoader) Load(_ context.Context, k string) (string, bool, error) {
-	v, ok := f.m[k]
-	return v, ok, nil
+func (f fakeLoader) LoadSnapshot(context.Context) (Snapshot, error) {
+	return Snapshot{Values: f.m}, nil
 }
-func (f fakeLoader) LoadAll(context.Context) (map[string]string, error) { return f.m, nil }
 
 // newTestService builds a Service with an injected env and db, over a tiny
 // registry so the assertions are about resolution, not the full key set.

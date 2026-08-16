@@ -209,7 +209,7 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 
 	s := &Syncer{
 		dir:   t.TempDir(),
-		watch: func() string { return watch },
+		watch: watch,
 		scanSources: fakeScanSources{srcs: []ScanSource{
 			{ID: "lib:broken", Kind: "library", URI: "Broken"},
 			{ID: "lib:working", Kind: "library", URI: "Working"},
@@ -243,7 +243,7 @@ func TestDrainScanSources_RegisteredFolderIsDrainedNotScannedInPlace(t *testing.
 
 	s := &Syncer{
 		dir:         clipDir,
-		watch:       func() string { return filepath.Join(clipDir, WatchDirName) },
+		watch:       filepath.Join(clipDir, WatchDirName),
 		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:extra", Kind: "folder", URI: extra}}},
 	}
 	s.drainScanSources(context.Background())
@@ -280,7 +280,7 @@ func TestDrainScanSources_SkipsTheClipFolderItself(t *testing.T) {
 
 	s := &Syncer{
 		dir:         clipDir,
-		watch:       func() string { return filepath.Join(clipDir, WatchDirName) },
+		watch:       filepath.Join(clipDir, WatchDirName),
 		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:self", Kind: "folder", URI: clipDir}}},
 	}
 	s.drainScanSources(context.Background())
@@ -288,6 +288,83 @@ func TestDrainScanSources_SkipsTheClipFolderItself(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(clipDir, "already-here.mp4")); err != nil {
 		t.Errorf("the clip folder was drained into itself — the whole catalog would re-file "+
 			"on every pass: %v", err)
+	}
+}
+
+func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source func(t *testing.T, parent, clipDir, filed string) string
+	}{
+		{
+			name: "symlink alias",
+			source: func(t *testing.T, _, clipDir, _ string) string {
+				alias := filepath.Join(t.TempDir(), "clip-alias")
+				if err := os.Symlink(clipDir, alias); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+				return alias
+			},
+		},
+		{
+			name: "symlink descendant",
+			source: func(t *testing.T, _, _, filed string) string {
+				alias := filepath.Join(t.TempDir(), "shard-alias")
+				if err := os.Symlink(filepath.Dir(filed), alias); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+				return alias
+			},
+		},
+		{name: "parent", source: func(_ *testing.T, parent, _, _ string) string { return parent }},
+		{name: "descendant", source: func(_ *testing.T, _, _, filed string) string { return filepath.Dir(filed) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := t.TempDir()
+			clipDir := filepath.Join(parent, "clips")
+			layout, err := NewLayout(clipDir, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := make([]byte, 2048)
+			for i := range body {
+				body[i] = byte(i % 251)
+			}
+			candidate := filepath.Join(t.TempDir(), "candidate.mp4")
+			if err := os.WriteFile(candidate, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			id, err := ClipID(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			filed, err := ClipPath(layout.ClipDir(), id, ".mp4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(filed), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(candidate, filed); err != nil {
+				t.Fatal(err)
+			}
+
+			source := tc.source(t, parent, layout.ClipDir(), filed)
+			if _, err := layout.intakeSource(source); err == nil {
+				t.Fatalf("overlapping registered source %q passed layout validation", source)
+			}
+			s := &Syncer{
+				layout:      layout,
+				dir:         layout.ClipDir(),
+				watch:       layout.WatchDir(),
+				scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:overlap", Kind: "folder", URI: source}}},
+			}
+			s.drainScanSources(context.Background())
+
+			if _, err := os.Stat(filed); err != nil {
+				t.Errorf("registered overlap removed the live catalog clip: %v", err)
+			}
+		})
 	}
 }
 
@@ -306,7 +383,7 @@ func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
 
 	s := &Syncer{
 		dir:   clipDir,
-		watch: func() string { return filepath.Join(clipDir, WatchDirName) },
+		watch: filepath.Join(clipDir, WatchDirName),
 		scanSources: fakeScanSources{srcs: []ScanSource{
 			{ID: "lib:none", Kind: "library", URI: "Commercials"},
 			{ID: "folder:extra", Kind: "folder", URI: extra},
