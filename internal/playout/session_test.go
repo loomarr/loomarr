@@ -447,6 +447,65 @@ func TestBroadcast_StalledViewerIsClosed(t *testing.T) {
 	}
 }
 
+// HLS is an in-process remux sink, not a network viewer. A warm parent can release its finite
+// readrate burst faster than a goroutine can cross the normal eight-chunk viewer mailbox; the sink
+// must therefore be offered every chunk synchronously while retaining its own bounded queue.
+func TestAttachSink_PreservesWarmStartupBurst(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 4, time.Minute)
+	relay := newHLSRelay()
+	detach, err := m.AttachSink(context.Background(), "ch1", PlanFull, relay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+
+	const writes = viewerBuffer * 4
+	payload := make([]byte, 64*1024)
+	written := make(chan error, 1)
+	go func() {
+		for range writes {
+			if _, err := encoder("ch1").w.Write(payload); err != nil {
+				written <- err
+				return
+			}
+		}
+		written <- nil
+	}()
+
+	want := writes * len(payload)
+	received := make(chan int, 1)
+	go func() {
+		total := 0
+		for total < want {
+			chunk, err := relay.next()
+			if err != nil {
+				received <- -1
+				return
+			}
+			total += len(chunk)
+		}
+		received <- total
+	}()
+
+	select {
+	case err := <-written:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("encoder stalled while delivering to the HLS sink")
+	}
+	select {
+	case got := <-received:
+		if got != want {
+			t.Fatalf("HLS sink received %d bytes, want %d without a mailbox drop", got, want)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("HLS sink did not receive the complete startup burst")
+	}
+}
+
 // The admission bound (§9.1 V49 — COST-AWARE). viewra EVICTED an existing session to make room
 // (prior-art viewra §1); for playout that means one person tuning in kills someone else's channel.
 // We refuse the newcomer instead and keep faith with whoever is already watching. ⚠ The bound counts

@@ -24,10 +24,11 @@
 // These are the properties the rest of the system relies on. Each one has a test, and each one
 // has broken a live channel at least once when it did not.
 //
-//   - ONE SOURCE OF TRUTH FOR "WHAT IS ON". AiringAt and BroadcastsBetween walk the same cycle
-//     arithmetic over the same CyclePreview the reconciler and the UI use. A guide that computed
-//     its own timeline would drift, and "the guide says Heat but Predator is playing" is a bug
-//     nobody can reproduce on demand. A test samples 200 instants and asserts the two agree.
+//   - ONE SOURCE OF TRUTH FOR "WHAT IS ON". Reconciliation persists the accepted Desired cycle;
+//     AiringAt and the current BroadcastsBetween segment walk the same cycle arithmetic over that
+//     snapshot. CyclePreview forecasts future windows and unsaved edits, but is never called by the
+//     encoder at a programme boundary: its mutable airing-history inputs could otherwise reorder
+//     the deck while it is playing.
 //
 //   - A CHANNEL IS A WALL CLOCK, NOT A PLAYLIST. Tuning in 40 minutes into a 60-minute film
 //     lands 40 minutes in, for every viewer simultaneously. That is what `epoch` anchors: a

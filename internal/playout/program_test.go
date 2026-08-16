@@ -363,7 +363,7 @@ func TestProgramArgs_PinsEverythingConcatDependsOn(t *testing.T) {
 // Realtime pacing WITH a burst. Pacing alone is correct but feels broken: a joining player
 // has an empty buffer and waits for it to fill at 1.0x before showing anything.
 func TestProgramArgs_PacesRealtimeWithATuneInBurst(t *testing.T) {
-	args := transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour)
+	args := transcodeArgs(DefaultProfile(), testStreamURL, 5*time.Minute, time.Hour)
 
 	if v, ok := argsAfter(args, "-readrate"); !ok || v != "1.0" {
 		t.Errorf("-readrate = %q, want 1.0 — without pacing we race ahead of wall-clock", v)
@@ -374,6 +374,29 @@ func TestProgramArgs_PacesRealtimeWithATuneInBurst(t *testing.T) {
 	// Pacing must be an INPUT option (before -i) or it applies to nothing.
 	if rr := argIndex(args, "-readrate"); rr > argIndex(args, "-i") {
 		t.Error("-readrate is after -i, so it applies to no input")
+	}
+}
+
+// A burst is tune-in acceleration, not ordinary channel pacing. At a programme boundary the
+// parent asks for the new child at offset zero; bursting that child makes it reach EOF ten seconds
+// before the wall clock boundary, so the next resolve returns the same programme and repeats its
+// tail. The viewer sees every commercial transition roughly ten seconds late in both directions.
+func TestProgramArgs_DoesNotBurstAtAProgrammeBoundary(t *testing.T) {
+	for _, offset := range []time.Duration{0, time.Second, 9 * time.Second} {
+		args := transcodeArgs(DefaultProfile(), testStreamURL, offset, time.Hour)
+		if v, ok := argsAfter(args, "-readrate_initial_burst"); ok {
+			t.Errorf("offset %s: -readrate_initial_burst = %q; a boundary child must stay on wall clock", offset, v)
+		}
+	}
+}
+
+// The initial child can finish early when a viewer tunes into the last few seconds of an airing.
+// Its follow-up request is still the SAME airing until the wall clock catches up; bursting that
+// short tail again turns one early finish into a replay loop.
+func TestProgramArgs_DoesNotBurstTheShortTailBeforeABoundary(t *testing.T) {
+	args := transcodeArgs(DefaultProfile(), testStreamURL, 40*time.Minute, 9*time.Second)
+	if v, ok := argsAfter(args, "-readrate_initial_burst"); ok {
+		t.Errorf("-readrate_initial_burst = %q; a tail shorter than the burst must play at wall-clock pace", v)
 	}
 }
 
