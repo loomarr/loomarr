@@ -91,6 +91,15 @@ func (m *memImageStore) PutDerivative(_ context.Context, d images.Derivative) er
 	return nil
 }
 
+func (m *memImageStore) PutDerivatives(_ context.Context, derivatives []images.Derivative) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range derivatives {
+		m.derivs[d.ImageHash] = append(m.derivs[d.ImageHash], d)
+	}
+	return nil
+}
+
 func (m *memImageStore) ListDerivatives(_ context.Context, hash string) ([]images.Derivative, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

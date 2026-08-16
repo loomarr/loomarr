@@ -25,7 +25,7 @@ import (
 	"github.com/mantonx/loomarr/internal/images/rustgen"
 )
 
-const benchmarkRecipe = "loomarr-rendition-v1"
+const benchmarkRecipe = "loomarr-rendition-v2"
 
 type benchmarkReport struct {
 	SchemaVersion int                `json:"schemaVersion"`
@@ -162,7 +162,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 func benchmark(ctx context.Context, renderer images.Renderer, release string, profiles []benchmarkProfile, runs, warmups int) (benchmarkReport, error) {
 	report := benchmarkReport{
-		SchemaVersion: 1, Corpus: "synthetic-role-v1", Strategy: "serial-per-rendition-v1",
+		SchemaVersion: 1, Corpus: "synthetic-role-v1", Strategy: "single-process-stepped-ladder-v2",
 		Recipe: benchmarkRecipe, Release: release,
 		GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, LogicalCPUs: runtime.NumCPU(),
 		GOMAXPROCS: runtime.GOMAXPROCS(0), Runs: runs, Warmups: warmups, Profiles: profiles,
@@ -208,40 +208,45 @@ func benchmark(ctx context.Context, renderer images.Renderer, release string, pr
 }
 
 func measureLadder(ctx context.Context, renderer images.Renderer, root, source, digest string, profile benchmarkProfile, runID string) (benchmarkSample, error) {
-	sample := benchmarkSample{WorkerTimesMS: make([]int64, 0, len(profile.Widths))}
+	sample := benchmarkSample{WorkerTimesMS: make([]int64, 0, 1)}
 	started := time.Now()
+	staging := filepath.Join(root, "staging", profile.Role, runID)
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		return sample, err
+	}
+	targets := make([]rustgen.Target, 0, len(profile.Widths))
 	for _, width := range profile.Widths {
-		staging := filepath.Join(root, "staging", profile.Role, runID, fmt.Sprintf("w%d", width))
-		if err := os.MkdirAll(staging, 0o700); err != nil {
-			return sample, err
-		}
-		var observations []rustgen.Observation
-		observed := rustgen.WithObserver(ctx, func(observation rustgen.Observation) {
-			observations = append(observations, observation)
+		targets = append(targets, rustgen.Target{
+			ID: fmt.Sprintf("avif-w%d", width), Format: "avif", Width: width, Motion: "first_frame",
 		})
-		manifest, err := renderer.Generate(observed, rustgen.Request{
-			RequestID: fmt.Sprintf("bench-%s-%s-w%d", profile.Role, runID, width),
-			Source:    rustgen.Source{Path: source, ExpectedSHA256: digest}, StagingDir: staging,
-			Targets: []rustgen.Target{{ID: fmt.Sprintf("avif-w%d", width), Format: "avif", Width: width, Motion: "first_frame"}},
-			Budget:  benchmarkBudget(),
-		})
-		if err != nil {
-			_ = os.RemoveAll(staging)
-			return sample, err
-		}
-		if len(observations) != 1 || len(manifest.Outputs) != 1 {
-			_ = os.RemoveAll(staging)
-			return sample, fmt.Errorf("w%d returned %d observations and %d outputs", width, len(observations), len(manifest.Outputs))
-		}
-		observation := observations[0]
-		sample.Processes++
-		sample.Renditions++
-		sample.OutputBytes += manifest.Outputs[0].Bytes
-		sample.PeakRSSBytes = max(sample.PeakRSSBytes, observation.PeakRSSBytes)
-		sample.WorkerTimesMS = append(sample.WorkerTimesMS, max(1, observation.Duration.Milliseconds()))
-		if err := os.RemoveAll(staging); err != nil {
-			return sample, err
-		}
+	}
+	var observations []rustgen.Observation
+	observed := rustgen.WithObserver(ctx, func(observation rustgen.Observation) {
+		observations = append(observations, observation)
+	})
+	manifest, err := renderer.Generate(observed, rustgen.Request{
+		RequestID: fmt.Sprintf("bench-%s-%s", profile.Role, runID),
+		Source:    rustgen.Source{Path: source, ExpectedSHA256: digest}, StagingDir: staging,
+		Targets: targets, Budget: benchmarkBudget(),
+	})
+	if err != nil {
+		_ = os.RemoveAll(staging)
+		return sample, err
+	}
+	if len(observations) != 1 || len(manifest.Outputs) != len(profile.Widths) {
+		_ = os.RemoveAll(staging)
+		return sample, fmt.Errorf("ladder returned %d observations and %d outputs", len(observations), len(manifest.Outputs))
+	}
+	observation := observations[0]
+	sample.Processes = 1
+	sample.Renditions = len(manifest.Outputs)
+	for _, output := range manifest.Outputs {
+		sample.OutputBytes += output.Bytes
+	}
+	sample.PeakRSSBytes = observation.PeakRSSBytes
+	sample.WorkerTimesMS = append(sample.WorkerTimesMS, max(1, observation.Duration.Milliseconds()))
+	if err := os.RemoveAll(staging); err != nil {
+		return sample, err
 	}
 	sample.WallTimeMS = max(1, time.Since(started).Milliseconds())
 	return sample, nil

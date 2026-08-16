@@ -118,7 +118,7 @@ func TestTimelineThumbResolver(t *testing.T) {
 			}
 			wantURL := ""
 			if c.wantHash != "" {
-				wantURL = "/v1/images/" + c.wantHash + "/w300.jpg?r=loomarr-rendition-v1"
+				wantURL = "/v1/images/" + c.wantHash + "/w300.jpg?r=loomarr-rendition-v2"
 			}
 			if gotURL != wantURL {
 				t.Errorf("ThumbFor(%q, %d, %d) url = %q, want %q", c.key, c.season, c.episode, gotURL, wantURL)
@@ -159,7 +159,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 	}
 
 	url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6)
-	if want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v1"; url != want || hash != contentHash {
+	if want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v2"; url != want || hash != contentHash {
 		t.Errorf("ThumbFor on a cold image = (%q, %q), want (%q, %q)", url, hash, want, contentHash)
 	}
 	if len(fetch.work) != 1 || fetch.work[0].SourceURL != src || !fetch.work[0].OriginFetchedAt.IsZero() {

@@ -29,6 +29,8 @@ func seedWithWebP(t *testing.T, svc *Service, role Role, width, height int) Imag
 func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	svc, fs := newTestService(t)
 	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	recorder := &recordingRenderer{next: svc.renderer}
+	svc.renderer = recorder
 	job := NewAVIFJob(svc, fs, nil)
 
 	result, err := job.Run(context.Background())
@@ -37,6 +39,9 @@ func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	}
 	if result.Images != 1 || result.Renditions != len(RoleIcon.Widths()) {
 		t.Fatalf("Run = %+v, want one complete icon ladder", result)
+	}
+	if len(recorder.requests) != 1 || len(recorder.requests[0].Targets) != len(RoleIcon.Widths()) {
+		t.Fatalf("worker requests = %+v, want one request containing the complete icon ladder", recorder.requests)
 	}
 	rows, err := fs.ListDerivatives(context.Background(), rec.Hash)
 	if err != nil {
@@ -64,6 +69,19 @@ func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	if err != nil || second.Considered != 0 {
 		t.Errorf("idempotent second pass = %+v, %v", second, err)
 	}
+}
+
+type recordingRenderer struct {
+	mu       sync.Mutex
+	requests []rustgen.Request
+	next     Renderer
+}
+
+func (r *recordingRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
+	r.mu.Lock()
+	r.requests = append(r.requests, req)
+	r.mu.Unlock()
+	return r.next.Generate(ctx, req)
 }
 
 type failOnceRenderer struct {
@@ -112,5 +130,33 @@ func TestAVIFJobDoesNotRecordWorkerFailureAndContinues(t *testing.T) {
 	}
 	if !found {
 		t.Error("one worker failure stalled the following image")
+	}
+}
+
+func TestAVIFJobRemovesWholeLadderWhenStorePublicationFails(t *testing.T) {
+	svc, fs := newTestService(t)
+	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	fs.putDerivativesErr = errors.New("store unavailable")
+
+	result, err := NewAVIFJob(svc, fs, nil).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 1 || result.Images != 0 || result.Renditions != 0 {
+		t.Fatalf("Run = %+v, want one failed image and no published Renditions", result)
+	}
+	for _, row := range fs.derivatives[rec.Hash] {
+		if row.Format == FormatAVIF {
+			t.Fatalf("failed Store publication left an AVIF row: %+v", row)
+		}
+	}
+	for _, width := range rec.Role.Widths() {
+		path, pathErr := svc.blob.DerivativePath(rec.Hash, width, FormatAVIF)
+		if pathErr != nil {
+			t.Fatal(pathErr)
+		}
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Errorf("failed Store publication left w%d on disk: %v", width, statErr)
+		}
 	}
 }

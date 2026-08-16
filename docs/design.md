@@ -4981,11 +4981,13 @@ identical; the visible timeline does. WebP timestamps have millisecond resolutio
 delays are rounded on cumulative time (preventing per-frame drift); source zero-delay frames use a
 deterministic 10 ms viewer floor.
 
-Every transform uses a named recipe (`loomarr-rendition-v1` initially) fixing decoder, resize kernel,
-quality, effort, animation normalisation, thread limits, and encoder versions. The recipe is present
-in the derivative key, internal filename, and public URL query, so a future recipe creates a distinct
-immutable cache identity. Output SHA-256 remains recorded even when architecture-specific native
-encoding produces different but contract-equivalent bytes.
+Every transform uses a named recipe (`loomarr-rendition-v2` currently) fixing decoder, resize kernel,
+quality, effort, animation normalisation, thread limits, and encoder versions. `v2` supersedes the
+initial `v1` direct-from-source resize loop: static same-format ladders are stepped largest to
+smallest. The recipe is present in the derivative key, internal filename, and public URL query, so
+that intentional byte change creates a distinct immutable cache identity instead of mutating a
+year-cached `v1` URL. Output SHA-256 remains recorded even when architecture-specific native encoding
+produces different but contract-equivalent bytes.
 
 ### Required renderer protocol and limits
 
@@ -4997,7 +4999,10 @@ diagnostics. The request names a content-addressed source, its expected SHA-256,
 directory, explicit format/width/motion targets, and resource limits. Rust writes only complete safe
 relative files inside that staging directory and returns their metadata and SHA-256 values. Go
 validates the exact target set, containment, regular-file type, signatures, sizes, and hashes before
-atomic rename and Store commit. Rust never sees the Store or canonical publication paths.
+publication. Every missing AVIF ladder is one worker request. Go atomically renames each verified
+file, then commits the complete derivative-row set in one Store transaction; any file or Store
+failure removes every file promoted by that request, so a partial ladder is never servable. Rust
+never sees the Store or canonical publication paths.
 
 The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
 canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,

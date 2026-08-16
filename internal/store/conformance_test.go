@@ -112,6 +112,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ImageRefsAndOwnerLookup", func(t *testing.T) { testImageRefsAndOwnerLookup(t, newStore) })
 		t.Run("ImageOrphanDetection", func(t *testing.T) { testImageOrphanDetection(t, newStore) })
 		t.Run("ImageDerivatives", func(t *testing.T) { testImageDerivatives(t, newStore) })
+		t.Run("ImageDerivativeBatchAtomic", func(t *testing.T) { testImageDerivativeBatchAtomic(t, newStore) })
 		t.Run("ImagesMissingFormat", func(t *testing.T) { testImagesMissingFormat(t, newStore) })
 		t.Run("ImageFetchQueueAndExpirySweepAreDisjoint", func(t *testing.T) { testImageFetchQueueAndExpirySweepAreDisjoint(t, newStore) })
 		t.Run("ImageUnrecoverableSelection", func(t *testing.T) { testImageUnrecoverableSelection(t, newStore) })

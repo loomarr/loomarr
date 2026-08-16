@@ -60,16 +60,9 @@ func (j *AVIFJob) encodeLadder(ctx context.Context, rec Image) (int, error) {
 	if rec.Animated {
 		return 0, nil
 	}
-	written := 0
-	for _, width := range rec.Role.Widths() {
-		dst, err := j.svc.blob.DerivativePath(rec.Hash, width, FormatAVIF)
-		if err != nil {
-			return written, err
-		}
-		if _, err := j.svc.encodeRendition(ctx, rec, FormatAVIF, width, dst); err != nil {
-			return written, err
-		}
-		written++
+	widths := rec.Role.Widths()
+	if _, err := j.svc.encodeRenditions(ctx, rec, FormatAVIF, widths); err != nil {
+		return 0, err
 	}
-	return written, nil
+	return len(widths), nil
 }

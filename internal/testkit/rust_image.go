@@ -24,7 +24,7 @@ func RustImageRenderer(t testing.TB) *rustgen.Generator {
 		worker = override
 	}
 	gen, err := rustgen.Open(worker, rustgen.Contract{
-		Protocol: 1, Release: "dev", Recipe: "loomarr-rendition-v1",
+		Protocol: 1, Release: "dev", Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 	})
 	if err != nil {
