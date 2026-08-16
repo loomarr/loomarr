@@ -189,9 +189,9 @@ func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 	return []api.SettingEntry{
-		{Key: "library.url", Group: "connections.media_server", Kind: "url", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
-		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
-		{Key: "job.workers", Group: "advanced", Kind: "int", Value: "2", Provenance: "env", Doc: "x"},
+		{Key: "library.url", Group: "connections.media_server", Kind: "url", Apply: "live", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
+		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Apply: "live", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
+		{Key: "job.workers", Group: "advanced", Kind: "int", Apply: "live", Value: "2", Provenance: "env", Doc: "x"},
 	}
 }
 
@@ -554,6 +554,9 @@ func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cf
 			return cfg["playout.backend"]
 		}},
 		LiveConfig: func(k string) string { return cfg[k] },
+		LibraryConfigured: func() bool {
+			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+		},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -563,7 +566,10 @@ func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cf
 // Saving a connection enters the durable transition seam and independently wires the Tunarr
 // media source. Live TV itself must never be wired by a duplicate HTTP-layer algorithm.
 func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
-	configured := map[string]string{"tunarr.url": "http://tunarr:8000", "library.url": "http://emby:8096"}
+	configured := map[string]string{
+		"tunarr.url": "http://tunarr:8000", "library.flavor": "emby",
+		"library.url": "http://emby:8096", "library.token": "token",
+	}
 
 	t.Run("a connection save fires both wiring actions", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
@@ -606,7 +612,21 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
 		}
 		if source.calls != 0 {
-			t.Errorf("media source should wait for library.url: %d", source.calls)
+			t.Errorf("media source should wait for a complete library connection: %d", source.calls)
+		}
+	})
+
+	t.Run("an incomplete media server triple wires nothing", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		cfg := map[string]string{
+			"tunarr.url": "http://tunarr:8000", "library.flavor": "jellyfin",
+			"library.url": "http://jellyfin:8096",
+		}
+		srv := newAutoWireServer(t, live, source, cfg)
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"library.url":"http://jellyfin:8096"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("incomplete library connection wired: legacy-live=%d source=%d", live.calls, source.calls)
 		}
 	})
 

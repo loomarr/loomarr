@@ -52,6 +52,10 @@ import (
 // play this", not as a relative URL, since an empty base would produce a request to
 // ourselves.
 func (c *Client) StreamURL(itemID string) string {
+	c, err := c.operation()
+	if err != nil {
+		return ""
+	}
 	base := c.baseURL()
 	if base == "" || itemID == "" {
 		return ""

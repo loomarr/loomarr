@@ -126,7 +126,9 @@ var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched o
 type Syncer struct {
 	source FillerSource
 	store  Store
-	dir    string // FILLER_DIR (§15) — the drop-folder registered as a Tunarr local source
+	layout Layout
+	dir    string // resolved local traversal root for this application generation
+	watch  string // immutable arrival folder paired with dir for this application generation
 	log    *slog.Logger
 	now    func() time.Time
 	// enabled reports whether the drop-folder source is switched on (§10 V35). Read on every
@@ -134,10 +136,6 @@ type Syncer struct {
 	// operator switching the folder off expects the NEXT scheduled pass to stop, not a restart
 	// to be required. nil means always on, which keeps every existing construction unchanged.
 	enabled func() bool
-	// watch reports the configured `filler.watch_dir` (§10 V38c). Read live for the same reason
-	// as `enabled` — it hot-applies. nil (or an empty answer) falls back to the derived default
-	// under the clip folder, so a Syncer built without one still drains `<dir>/_watch`.
-	watch func() string
 	// scanSources lists the registered folders and libraries to drain (§10 V38c). nil ⇒ only the
 	// configured clip folder is scanned, which is exactly the pre-V38c behaviour — so every
 	// existing construction keeps working without opting in.
@@ -145,15 +143,6 @@ type Syncer struct {
 	// libraries copies clips out of a media-server library. nil ⇒ library rows do no work, which
 	// is the honest state for an install with no media server configured.
 	libraries *LibraryScanner
-}
-
-// watchDir resolves the watch folder for this pass.
-func (s *Syncer) watchDir() string {
-	configured := ""
-	if s.watch != nil {
-		configured = s.watch()
-	}
-	return WatchDir(s.dir, configured)
 }
 
 // drainScanSources reads every registered folder and library into the watch folder (§10 V38c),
@@ -180,7 +169,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 		}
 		return
 	}
-	watch := s.watchDir()
+	watch := s.watch
 	if watch == "" {
 		return
 	}
@@ -200,10 +189,23 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 			//
 			// The configured clip folder is skipped: it is where clips already live, and draining
 			// it into the watch folder would move the whole catalog back through intake.
-			if src.URI == "" || src.URI == s.dir {
+			if src.URI == "" {
 				continue
 			}
-			if res, err := TakeIn(src.URI, s.dir, false, s.logAttrs); err != nil {
+			layout := s.layout
+			if layout.ClipDir() == "" {
+				layout, err = NewLayout(s.dir, s.watch)
+				if err != nil {
+					s.warnSource("filler: could not validate a watched folder", src, err)
+					continue
+				}
+			}
+			sourceDir, err := layout.intakeSource(src.URI)
+			if err != nil {
+				s.warnSource("filler: skipped a watched folder that overlaps the clip library", src, err)
+				continue
+			}
+			if res, err := TakeIn(sourceDir, s.dir, false, s.logAttrs); err != nil {
 				s.warnSource("filler: could not drain a watched folder", src, err)
 			} else if s.log != nil && res.Taken > 0 {
 				s.log.Info("filler: filed clips from a watched folder",
@@ -248,13 +250,17 @@ func (s *Syncer) logAttrs(msg string, args ...any) {
 	}
 }
 
-// NewSyncer builds a catalog syncer. dir is the drop-folder path (FILLER_DIR, §15)
-// registered with Tunarr as a `local` media source.
-func NewSyncer(source FillerSource, store Store, dir string, now func() time.Time, log *slog.Logger) *Syncer {
+// NewSyncer builds a catalog syncer over one immutable storage layout. The clip root is
+// registered with Tunarr as a `local` media source and the paired watch folder drains into it.
+func NewSyncer(source FillerSource, store Store, layout Layout, now func() time.Time, log *slog.Logger) *Syncer {
 	if now == nil {
 		now = time.Now
 	}
-	return &Syncer{source: source, store: store, dir: dir, log: log, now: now}
+	return &Syncer{
+		source: source, store: store,
+		layout: layout, dir: layout.ClipDir(), watch: layout.WatchDir(),
+		log: log, now: now,
+	}
 }
 
 // WithEnabled gates the syncer on the drop-folder's on/off switch.
@@ -264,13 +270,6 @@ func NewSyncer(source FillerSource, store Store, dir string, now func() time.Tim
 // them honour is not a switch. A test asserts the disabled sync neither scans nor writes.
 func (s *Syncer) WithEnabled(enabled func() bool) *Syncer {
 	s.enabled = enabled
-	return s
-}
-
-// WithWatchDir supplies the configured watch folder (§10 V38c), read live so the setting
-// hot-applies. Without it the syncer drains the derived `<filler.dir>/_watch`.
-func (s *Syncer) WithWatchDir(watch func() string) *Syncer {
-	s.watch = watch
 	return s
 }
 
@@ -319,7 +318,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// it has nothing to do with discovering the files — Loomarr scans FILLER_DIR itself. An
 	// install with no Tunarr, or one whose Tunarr is momentarily down, must still get a full
 	// catalog; failing here would restore exactly the dependency §9.1 removed.
-	if err := s.source.EnsureLocalSource(ctx, s.dir); err != nil && s.log != nil {
+	if err := s.source.EnsureLocalSource(ctx, s.layout.ConfiguredClipDir()); err != nil && s.log != nil {
 		s.log.Warn("filler: could not register the drop-folder with Tunarr; "+
 			"scanning locally anyway (Tunarr-backed channels may lack filler until it returns)",
 			"dir", s.dir, "err", err)
@@ -337,10 +336,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Failures are logged, not returned: a watch folder that cannot be drained (a permissions
 	// problem, a full disk) must not take the catalog down with it. The clips already filed are
 	// still there, and the arrivals stay put for the next pass.
-	if taken, err := TakeIn(s.watchDir(), s.dir, false, s.logAttrs); err != nil {
+	if taken, err := TakeIn(s.watch, s.dir, false, s.logAttrs); err != nil {
 		if s.log != nil {
 			s.log.Warn("filler: could not drain the watch folder; scanning what is already filed",
-				"watch", s.watchDir(), "err", err)
+				"watch", s.watch, "err", err)
 		}
 	} else if s.log != nil && (taken.Taken > 0 || taken.Duplicates > 0) {
 		s.log.Info("filler: filed new clips from the watch folder",

@@ -34,7 +34,7 @@ type Emitter interface {
 type Reconciler struct {
 	store store.TitleStore
 	req   requester.Requester
-	lib   library.Library
+	lib   LibrarySource
 	emit  Emitter
 	log   *slog.Logger
 
@@ -45,6 +45,15 @@ type Reconciler struct {
 	now            func() time.Time
 }
 
+// LibraryLookup is the narrow media-library seam used by one reconcile pass.
+type LibraryLookup interface {
+	Lookup(ctx context.Context, providerKind library.ProviderKind, providerID string, mediaType library.MediaType) (itemID string, present bool, err error)
+}
+
+// LibrarySource binds one immutable media-library operation. It is invoked once
+// per Tick, before the claimed batch is reconciled.
+type LibrarySource func() LibraryLookup
+
 // Config parameterizes the reconciler (from §15).
 type Config struct {
 	RequestTTL     time.Duration
@@ -54,7 +63,13 @@ type Config struct {
 }
 
 // New builds a Reconciler. now defaults to time.Now.
-func New(st store.TitleStore, req requester.Requester, lib library.Library, emit Emitter, cfg Config, now func() time.Time, log *slog.Logger) *Reconciler {
+func New(st store.TitleStore, req requester.Requester, lib LibraryLookup, emit Emitter, cfg Config, now func() time.Time, log *slog.Logger) *Reconciler {
+	return NewDynamic(st, req, func() LibraryLookup { return lib }, emit, cfg, now, log)
+}
+
+// NewDynamic builds a Reconciler whose library source binds the complete live
+// connection once for every Tick. Static callers should use New.
+func NewDynamic(st store.TitleStore, req requester.Requester, lib LibrarySource, emit Emitter, cfg Config, now func() time.Time, log *slog.Logger) *Reconciler {
 	if now == nil {
 		now = time.Now
 	}
@@ -80,8 +95,12 @@ func (r *Reconciler) Tick(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if len(due) == 0 {
+		return 0, nil
+	}
+	lib := r.lib()
 	for _, rec := range due {
-		r.reconcileOne(ctx, rec, now)
+		r.reconcileOne(ctx, lib, rec, now)
 	}
 	return len(due), nil
 }
@@ -90,14 +109,14 @@ func (r *Reconciler) Tick(ctx context.Context) (int, error) {
 // deadline pushed forward on claim), so this MUST write a real new deadline for
 // still-in-flight titles, or the title would silently drop out of the due set
 // until the lease lapses.
-func (r *Reconciler) reconcileOne(ctx context.Context, rec provision.Record, now time.Time) {
+func (r *Reconciler) reconcileOne(ctx context.Context, lib LibraryLookup, rec provision.Record, now time.Time) {
 	switch rec.State {
 	case provision.Wanted:
 		r.retryWanted(ctx, rec, now)
 	case provision.Requested, provision.Downloading:
 		// Deadline first: the record's *original* deadline governs give-up. It
 		// was claimed because that deadline had passed, so give up now (§4).
-		r.giveUp(ctx, rec, now)
+		r.giveUp(ctx, lib, rec, now)
 	default:
 		// Terminal or unexpected — nothing to do (Apply would no-op anyway).
 	}
@@ -122,9 +141,9 @@ func (r *Reconciler) retryWanted(ctx context.Context, rec provision.Record, now 
 // declaring a title unavailable. If the item is actually present, confirm it
 // available instead; else past-deadline → unavailable + best-effort Cancel.
 // now is the wall clock (for UpdatedAt); due-ness is proven by the claim.
-func (r *Reconciler) giveUp(ctx context.Context, rec provision.Record, now time.Time) {
+func (r *Reconciler) giveUp(ctx context.Context, lib LibraryLookup, rec provision.Record, now time.Time) {
 	// Missed-webhook re-check: maybe it landed and we never got the Import hook.
-	if id, present, err := r.lookup(ctx, rec.Title); err == nil && present {
+	if id, present, err := lookup(ctx, lib, rec.Title); err == nil && present {
 		next, emitted := provision.Apply(rec, provision.Event{Kind: provision.LibraryConfirmed, LibraryID: id}, now)
 		r.persist(ctx, next, emitted)
 		return
@@ -146,7 +165,7 @@ func (r *Reconciler) giveUp(ctx context.Context, rec provision.Record, now time.
 	r.persist(ctx, next, emitted)
 }
 
-func (r *Reconciler) lookup(ctx context.Context, t provision.Title) (string, bool, error) {
+func lookup(ctx context.Context, lib LibraryLookup, t provision.Title) (string, bool, error) {
 	kind := library.TMDB
 	id := itoa(t.TMDBID)
 	mt := library.Movie
@@ -156,7 +175,7 @@ func (r *Reconciler) lookup(ctx context.Context, t provision.Title) (string, boo
 			kind, id = library.TVDB, itoa(t.TVDBID)
 		}
 	}
-	return r.lib.Lookup(ctx, kind, id, mt)
+	return lib.Lookup(ctx, kind, id, mt)
 }
 
 // persist writes the advanced record and emits any terminal domain events.

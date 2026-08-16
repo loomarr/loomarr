@@ -68,6 +68,10 @@ const ticksPerMs = 10_000
 // user and is shared across the Emby/Jellyfin flavors. (Caught by the live smoke:
 // the bare path 404'd → duration 0 → Tunarr rejected the lineup push.)
 func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, error) {
+	c, err := c.operation()
+	if err != nil {
+		return 0, err
+	}
 	q := url.Values{}
 	q.Set("Ids", itemID)
 	q.Set("Fields", "RunTimeTicks")
@@ -75,7 +79,7 @@ func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, erro
 	if err != nil {
 		return 0, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var resp fillerItemsResponse
 	if err := c.do(req, &resp); err != nil {
@@ -115,6 +119,10 @@ type virtualFolder struct {
 // libraries, which is exactly what a hand-made commercials library usually is. Filtering on it
 // would hide the libraries an operator is most likely to point at.
 func (c *Client) LibraryIDByName(ctx context.Context, name string) (string, error) {
+	c, err := c.operation()
+	if err != nil {
+		return "", err
+	}
 	want := strings.TrimSpace(name)
 	if want == "" {
 		return "", nil
@@ -123,7 +131,7 @@ func (c *Client) LibraryIDByName(ctx context.Context, name string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var folders []virtualFolder
 	if err := c.do(req, &folders); err != nil {
@@ -147,6 +155,10 @@ func (c *Client) LibraryIDByName(ctx context.Context, name string) (string, erro
 // Duration comes from RunTimeTicks. fillerLibraryID is the library's item id
 // (FILLER_LIBRARY, §15); the caller resolves a name→id if configured by name.
 func (c *Client) ListFillerClips(ctx context.Context, fillerLibraryID string) ([]FillerClip, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
 	q.Set("Recursive", "true")
 	q.Set("ParentId", fillerLibraryID)
@@ -158,7 +170,7 @@ func (c *Client) ListFillerClips(ctx context.Context, fillerLibraryID string) ([
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out fillerItemsResponse
 	if err := c.do(req, &out); err != nil {

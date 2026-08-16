@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -19,6 +20,7 @@ const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key">): Setting
   kind: "int",
   doc: "",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: true,
   provenance: "db",

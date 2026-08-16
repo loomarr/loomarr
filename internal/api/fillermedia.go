@@ -61,14 +61,10 @@ var mediaTypes = map[string]string{
 // any authenticated user, and these are the same commercials the household's channels play at
 // them. NOT public — unlike the channel icon, nothing machine-to-machine needs this.
 func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
-	// Read live rather than captured at wiring, so changing filler.dir in Settings applies to
-	// the next request (config-design §3 hot-apply) — the same treatment scan, sync and thumb
-	// give it. `liveConfig` is nil in unit tests that build a bare Server.
-	if s.liveConfig == nil {
-		http.NotFound(w, r)
-		return
-	}
-	dir := s.liveConfig("filler.dir")
+	// A clip path is meaningful only relative to the layout that catalogued it. The applied root
+	// is immutable for this server generation; a newly saved desired root takes effect when the
+	// generation restarts, together with scan, intake, artwork and playout.
+	dir := s.fillerLayout.ClipDir()
 	if dir == "" {
 		http.NotFound(w, r)
 		return
@@ -81,11 +77,8 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ⚠ Guarded even though a nil store is currently unreachable here: `liveConfig` is nil
-	// exactly when the store is (both are built only inside `if st != nil`), so the check above
-	// already 404s a store-less boot. That coupling is true by construction today and stated
-	// nowhere — every sibling handler guards the store directly, and relying on a second
-	// variable's nilness is how the next refactor turns a 404 into a panic.
+	// Guard explicitly: a layout and store normally arrive together, but tests and embeddings may
+	// construct a partial server. An absent catalog must never become a panic or a raw file share.
 	if s.store == nil {
 		http.NotFound(w, r)
 		return

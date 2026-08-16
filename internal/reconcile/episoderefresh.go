@@ -38,11 +38,17 @@ type EpisodeStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 
+// EpisodeResolver enumerates one show's episodes from a fixed library connection.
+// EpisodeResolverSource acquires that fixed resolver at an operation boundary, so one Run
+// cannot mix media-server URL, flavor, or token when settings rotate during its batch.
+type EpisodeResolver = func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error)
+type EpisodeResolverSource func() EpisodeResolver
+
 type EpisodeRefresh struct {
 	store EpisodeStore
-	// episodes enumerates a show from the library. Injected (the same resolver the scheduler
-	// uses) so this package needs no library client and tests need no live server.
-	episodes func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error)
+	// episodes acquires one fixed resolver for a complete Run. Injected so this package needs
+	// no library client and tests need no live server.
+	episodes EpisodeResolverSource
 	// maxAge is how stale a cached list may be before it is re-enumerated (`episodes.max_age`).
 	maxAge func() time.Duration
 	now    func() time.Time
@@ -54,7 +60,20 @@ type EpisodeRefresh struct {
 // refresh, and a job that fails every tick would fill the Tasks page with red for no reason.
 func NewEpisodeRefresh(
 	st EpisodeStore,
-	episodes func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error),
+	episodes EpisodeResolver,
+	maxAge func() time.Duration,
+	now func() time.Time,
+	log *slog.Logger,
+) *EpisodeRefresh {
+	return NewDynamicEpisodeRefresh(st, func() EpisodeResolver { return episodes }, maxAge, now, log)
+}
+
+// NewDynamicEpisodeRefresh builds a refresh job whose resolver is snapshotted once per Run.
+// The returned resolver may be nil while the media library is unconfigured; Run then remains
+// the same quiet no-op as the static constructor's nil resolver.
+func NewDynamicEpisodeRefresh(
+	st EpisodeStore,
+	episodes EpisodeResolverSource,
 	maxAge func() time.Duration,
 	now func() time.Time,
 	log *slog.Logger,
@@ -78,6 +97,10 @@ const refreshLimit = 50
 func (r *EpisodeRefresh) Run(ctx context.Context) (int, error) {
 	if r.episodes == nil {
 		return 0, nil // no library wired — nothing to refresh (see the constructor)
+	}
+	episodes := r.episodes()
+	if episodes == nil {
+		return 0, nil // library source is currently unconfigured
 	}
 
 	// Which shows are actually scheduled? Anything else is a row nobody reads.
@@ -107,7 +130,7 @@ func (r *EpisodeRefresh) Run(ctx context.Context) (int, error) {
 		if !wanted[se.LibraryID] {
 			continue // cached, but no channel schedules it — leave it to age out
 		}
-		eps, err := r.episodes(ctx, se.LibraryID)
+		eps, err := episodes(ctx, se.LibraryID)
 		if err != nil {
 			// Logged, not returned: one unreachable show must not abort the sweep. The row
 			// keeps its old contents and its old fetched_at, so the next run retries it.

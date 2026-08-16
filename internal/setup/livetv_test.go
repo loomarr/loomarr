@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
@@ -58,6 +59,33 @@ func TestConnect_IdempotentSecondCallNoOp(t *testing.T) {
 	}
 	if lib.TunerCount() != 1 || lib.ListingCount() != 1 {
 		t.Errorf("second connect created a duplicate: %d tuners, %d listings", lib.TunerCount(), lib.ListingCount())
+	}
+}
+
+func TestConnect_SnapshotsLibraryOnceAcrossCompoundOperation(t *testing.T) {
+	primary := testkit.NewLiveTV()
+	rotated := testkit.NewLiveTV()
+	rotated.AddTunerErr = errors.New("rotated server must not receive this operation")
+	var snapshots int
+	connector := setup.NewLiveTVConnector(func() library.LiveTV {
+		snapshots++
+		if snapshots == 1 {
+			return primary
+		}
+		return rotated
+	}, setup.TunarrURLsFrom("http://tunarr:8000"))
+
+	if _, err := connector.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 1 {
+		t.Fatalf("library snapshots = %d, want exactly 1 for Connect", snapshots)
+	}
+	if primary.TunerCount() != 1 || primary.ListingCount() != 1 {
+		t.Fatalf("primary registrations = %d/%d, want 1/1", primary.TunerCount(), primary.ListingCount())
+	}
+	if rotated.TunerCount() != 0 || rotated.ListingCount() != 0 {
+		t.Fatalf("rotated server was mutated: %d/%d", rotated.TunerCount(), rotated.ListingCount())
 	}
 }
 
