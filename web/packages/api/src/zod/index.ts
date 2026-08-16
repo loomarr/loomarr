@@ -24,6 +24,7 @@ export * from "../../generated/zod/jobs/jobs.zod";
 export * from "../../generated/zod/library/library.zod";
 export * from "../../generated/zod/ops/ops.zod";
 export * from "../../generated/zod/playout/playout.zod";
+export * from "../../generated/zod/proposal-jobs/proposal-jobs.zod";
 export * from "../../generated/zod/proposals/proposals.zod";
 export * from "../../generated/zod/search/search.zod";
 export * from "../../generated/zod/settings/settings.zod";
