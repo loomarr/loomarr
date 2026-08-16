@@ -113,6 +113,24 @@ func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
 	}
 }
 
+// The Image service's pixel boundary is the required Rust worker (§22). Keeping Go's image
+// codecs out of this package prevents a certification helper or a convenient local decode from
+// quietly becoming a second production implementation. Other domains can own measured, bounded
+// frame analysis independently; this gate is specifically the Image service boundary.
+func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	imageService := modulePath + "/internal/images"
+	pkg, ok := pkgs[imageService]
+	if !ok {
+		t.Fatalf("%s is not in the import graph", imageService)
+	}
+	for _, imported := range pkg.Imports {
+		if imported == "image" || strings.HasPrefix(imported, "image/") {
+			t.Errorf("%s imports %s — §22 assigns Image-service pixel work to the required Rust worker", imageService, imported)
+		}
+	}
+}
+
 // NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
 // ⚠ **There used to be one, for `internal/store`, and the reason it lasted was a mis-estimate
