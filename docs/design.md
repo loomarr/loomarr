@@ -1440,27 +1440,23 @@ contend with the active Channel's cold open and seek.
 
 The Web adapter keeps a bounded pair of hls.js controllers while the mounted Watch surface retains
 its one media element and decoder: one active controller and one fresh standby that has never owned
-a source URL. A same-element replacement consumes that standby. While the outgoing MediaSource is
-still `open`, the adapter uses hls.js's public cross-controller handoff to transfer it and its
-compatible SourceBuffers, then clears the old Channel-relative ranges. It stops the outgoing loader
-and pauses the media element before transferring those buffers; the Watch surface's held poster
-preserves the last decoded picture while the decoder gives up its lease on the old range. It parks
-the paused element at the half-open buffered range's end and waits for the element's `seeked`
-acknowledgement before removal when the element is earlier than its final decoded frame. A media
-clock can name that frame up to 50 ms before the half-open buffered end; once the clock accepts that
-end there is no later presentation timestamp to await, even if the engine leaves its nominal
-`seeking` flag set. Removal then proceeds. A render callback is not sufficient evidence that WebKit's decoder
-released the old position. The element stays at that edge until every removal reaches `updateend`;
-rewinding into the range being removed can hold WebKit's decoder on those bytes and turn a cached
-tune into a multi-second stall.
+a source URL. A same-element replacement consumes that standby. It stops the outgoing loader and
+pauses the media element; the Watch surface's held poster preserves the last decoded picture during
+the handoff. When an `open` MediaSource already presents its final decoded frame (within 50 ms of the
+half-open buffered end), the adapter uses hls.js's public cross-controller handoff to transfer its
+compatible SourceBuffers and clears the old Channel-relative ranges. The element stays at that edge
+until every removal reaches `updateend`; rewinding into the range being removed can hold WebKit's
+decoder on those bytes and turn a cached tune into a multi-second stall.
 
-An `ended` compact publication takes the other bounded branch: the source-scoped standby attaches a
-fresh MediaSource to the same element instead of waiting on `SourceBuffer.remove`. WebKit can retain
-the terminal decoded frame of an ended source for roughly two seconds even after pause, edge-seek,
-and a render turn; reusing that ended SourceBuffer therefore misses the tuner latency contract. This
-branch explicitly unloads and revokes the transferred source's blob URL before the standby attaches;
-hls.js deliberately leaves that URL owned by the receiver during a transfer, so discarding it without
-that release accumulates ended MediaSources and delays later WebKit source opens. It creates no second
+An earlier position in an `open` live publication, or an `ended` compact publication, takes the other
+bounded branch: the source-scoped standby attaches a fresh MediaSource to the same element instead
+of serializing replacement behind an edge seek or `SourceBuffer.remove`. WebKit cannot seek an open
+live MediaSource to its exact non-presentable end until playback naturally reaches that timestamp,
+and can retain the terminal decoded frame of an ended source for roughly two seconds even after
+pause and a render turn. Reusing either decoder-owned range therefore misses the tuner latency
+contract. This branch explicitly unloads and revokes the transferred source's blob URL before the
+standby attaches; hls.js deliberately leaves that URL owned by the receiver during a transfer, so
+discarding it without that release accumulates ended MediaSources and delays later WebKit source opens. It creates no second
 player or decoder, and the held poster still covers the single-element handoff. Closed sources and
 failed open-source clears use the same fresh branch. After confirming
 that the generation is still current, the adapter rewinds, attaches the cleared open handoff or the

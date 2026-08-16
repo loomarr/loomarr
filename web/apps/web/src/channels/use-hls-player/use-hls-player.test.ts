@@ -247,14 +247,12 @@ describe("useHlsPlayer", () => {
     let replacementLoadedMetadata!: () => void;
     let replacementLoadedData!: () => void;
     let replacementCanPlay!: () => void;
-    let finishOutgoingSeek!: () => void;
     const video = {
       ...videoEl(),
       addEventListener: vi.fn((event: string, callback: () => void) => {
         if (event === "loadedmetadata") replacementLoadedMetadata = callback;
         if (event === "loadeddata") replacementLoadedData = callback;
         if (event === "canplay") replacementCanPlay = callback;
-        if (event === "seeked") finishOutgoingSeek = callback;
       }),
       requestVideoFrameCallback: vi.fn(() => 1),
       cancelVideoFrameCallback: vi.fn(),
@@ -262,7 +260,7 @@ describe("useHlsPlayer", () => {
     const resetCurrentTime = vi.fn();
     Object.defineProperty(video, "currentTime", {
       configurable: true,
-      get: () => 0.5,
+      get: () => 0.96,
       set: resetCurrentTime,
     });
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
@@ -312,18 +310,9 @@ describe("useHlsPlayer", () => {
       result.current.attach(video);
     });
 
-    await waitFor(() => expect(finishOutgoingSeek).toBeTypeOf("function"));
-    expect(video.pause).toHaveBeenCalledOnce();
-    expect(vi.mocked(video.pause).mock.invocationCallOrder.at(-1)).toBeLessThan(
-      resetCurrentTime.mock.invocationCallOrder.at(-1) ?? 0,
-    );
-    expect(resetCurrentTime).toHaveBeenLastCalledWith(1);
-    expect(remove).not.toHaveBeenCalled();
-    // A render turn does not prove the media seek completed. Wait for WebKit's seeked event before
-    // removing the outgoing range, or remove can block until the old fragment's natural end even
-    // though every replacement byte is already cached.
-    act(() => finishOutgoingSeek());
     await waitFor(() => expect(remove).toHaveBeenCalledWith(0, 1));
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(resetCurrentTime).not.toHaveBeenCalled();
     expect(hls.instances).toHaveLength(2);
     expect(controller.destroy).not.toHaveBeenCalled();
     expect(video.play).not.toHaveBeenCalled();
@@ -401,6 +390,87 @@ describe("useHlsPlayer", () => {
     expect(replacementCanPlay).toBeTypeOf("function");
     replacementCanPlay();
     expect(video.play).toHaveBeenCalledOnce();
+  });
+
+  it("takes the fresh-MSE branch instead of waiting for a distant open-buffer edge", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockImplementation((id: string) =>
+      Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
+    );
+    let seekListenerInstalled = false;
+    const video = {
+      ...videoEl(),
+      addEventListener: vi.fn((event: string) => {
+        if (event === "seeked") seekListenerInstalled = true;
+      }),
+      requestVideoFrameCallback: vi.fn(() => 1),
+      cancelVideoFrameCallback: vi.fn(),
+    } as unknown as HTMLVideoElement;
+    video.src = "blob:http://localhost/open-source";
+    Object.defineProperty(video, "currentSrc", {
+      configurable: true,
+      get: () => video.src,
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => 0.5,
+      set: vi.fn(),
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
+      initialProps: { id: "ch-1" },
+    });
+
+    let release!: () => void;
+    act(() => {
+      release = result.current.attach(video);
+    });
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as {
+      loadSource: ReturnType<typeof vi.fn>;
+      transferMedia: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() =>
+      expect(controller.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-1/master.m3u8"),
+    );
+    const remove = vi.fn();
+    controller.transferMedia.mockReturnValue({
+      media: video,
+      mediaSource: { readyState: "open" },
+      tracks: {
+        video: {
+          buffer: {
+            updating: false,
+            buffered: { length: 1, start: () => 0, end: () => 4 },
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            remove,
+          },
+        },
+      },
+    });
+
+    act(() => release());
+    rerender({ id: "ch-2" });
+    act(() => {
+      result.current.attach(video);
+    });
+
+    await waitFor(() => expect(hls.instances).toHaveLength(2));
+    const replacement = hls.instances[1] as {
+      attachMedia: ReturnType<typeof vi.fn>;
+      loadSource: ReturnType<typeof vi.fn>;
+      startLoad: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() => expect(replacement.attachMedia).toHaveBeenCalledWith(video));
+    await waitFor(() =>
+      expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8"),
+    );
+    expect(replacement.startLoad).toHaveBeenCalledOnce();
+    expect(seekListenerInstalled).toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+    expect(video.load).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/open-source");
   });
 
   it("does not wait for a seek event when playback is already at the buffered edge", async () => {
@@ -564,13 +634,15 @@ describe("useHlsPlayer", () => {
     channelPlayUrl.mockImplementation((id: string) =>
       Promise.resolve({ relativeUrl: `/v1/playout/hls/${id}/master.m3u8` }),
     );
-    let finishOutgoingSeek!: () => void;
-    const video = {
-      ...videoEl(),
-      addEventListener: vi.fn((event: string, callback: () => void) => {
-        if (event === "seeked") finishOutgoingSeek = callback;
-      }),
-    } as unknown as HTMLVideoElement;
+    let mediaTime = 0.96;
+    const video = videoEl();
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => mediaTime,
+      set: (value: number) => {
+        mediaTime = value;
+      },
+    });
     const { result, rerender } = renderHook(({ id }) => useHlsPlayer(id), {
       initialProps: { id: "ch-1" },
     });
@@ -609,8 +681,6 @@ describe("useHlsPlayer", () => {
     act(() => {
       supersededRelease = result.current.attach(video);
     });
-    await waitFor(() => expect(finishOutgoingSeek).toBeTypeOf("function"));
-    act(() => finishOutgoingSeek());
     await waitFor(() => expect(finishRemoval).toBeTypeOf("function"));
     expect(hls.instances).toHaveLength(2);
 

@@ -62,10 +62,9 @@ const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["
   }
 };
 
-const releaseTransferredDecoder = async (
-  video: HTMLVideoElement,
+const transferredBufferedEdge = (
   transferred: NonNullable<ReturnType<Hls["transferMedia"]>>,
-) => {
+): number | undefined => {
   let edge: number | undefined;
   for (const track of Object.values(transferred.tracks)) {
     const buffered = track?.buffer?.buffered;
@@ -73,35 +72,7 @@ const releaseTransferredDecoder = async (
     const end = buffered.end(buffered.length - 1);
     edge = edge === undefined ? end : Math.max(edge, end);
   }
-  if (edge === undefined) return;
-
-  // SourceBuffer.remove can wait for WebKit's decoder to release the frame at currentTime. Park at
-  // the half-open range's end and wait for the MEDIA seek itself to complete. A render callback is
-  // not that acknowledgement: hosted WebKit can deliver rAF while the decoder still owns the old
-  // position, then block remove() for the rest of the four-second fragment. The held poster keeps
-  // the outgoing picture visible while no decoded byte is leased.
-  // currentTime identifies the currently presented frame, while TimeRanges.end() is the half-open
-  // boundary after that frame. All three engines can therefore report the final frame up to one
-  // frame before the range end; seeking to the non-presentable boundary then remains in `seeking`
-  // forever. Fifty milliseconds recognizes only that final-frame interval (20 fps or faster), not
-  // an earlier point in the outgoing segment where WebKit still owns a meaningful decoder lease.
-  const atEdge = () => video.currentTime + 0.05 >= edge;
-  if (atEdge()) return;
-  await new Promise<void>((resolve) => {
-    let complete = false;
-    const onSeeked = () => {
-      if (complete) return;
-      complete = true;
-      video.removeEventListener("seeked", onSeeked);
-      resolve();
-    };
-    video.addEventListener("seeked", onSeeked, { once: true });
-    video.currentTime = edge;
-    // Some engines clamp an exact half-open range end to the final decoded timestamp without
-    // ever completing their nominal seeking state. Once the media clock itself reaches that edge,
-    // the decoder is parked at the only representable boundary and no later `seeked` can add proof.
-    if (atEdge()) onSeeked();
-  });
+  return edge;
 };
 
 const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | undefined) => {
@@ -347,23 +318,29 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
 
-        // Preserve an OPEN MediaSource and its compatible SourceBuffers, but never their outgoing
-        // Channel-relative bytes. An ended compact publication is intentionally different: WebKit
-        // can hold SourceBuffer.remove on its terminal decoded frame for nearly two seconds even
-        // after pause/edge-seek. Consuming the already-constructed standby with a fresh MediaSource
-        // is faster and still preserves the one-element/one-decoder invariant. Only open sources
-        // take the in-place clear path; ended, closed, or failed clears take the bounded fresh path.
+        // Preserve an OPEN MediaSource only when its final decoded frame is already presented, but
+        // never preserve outgoing Channel-relative bytes. Seeking a live WebKit source to its exact
+        // half-open end can take the rest of the fragment, so an earlier position consumes the
+        // already-constructed standby with a fresh MediaSource instead. Ended and closed sources,
+        // plus failed clears, take that same bounded one-element/one-decoder branch.
         let discardTransfer = false;
         if (transferred?.mediaSource?.readyState === "open") {
-          try {
-            await releaseTransferredDecoder(video, transferred);
-            await clearTransferredBuffers(transferred);
-          } catch {
-            // A failed range removal cannot be reused safely. Attaching the element directly gives
-            // the replacement controller a fresh MediaSource; the transferred source loses its
-            // final reference when the element's blob URL is replaced.
+          const edge = transferredBufferedEdge(transferred);
+          // Fifty milliseconds recognizes only the final-frame interval (20 fps or faster), not a
+          // meaningful earlier position whose decoder lease would serialize the replacement.
+          if (edge !== undefined && video.currentTime + 0.05 < edge) {
             discardTransfer = true;
             transferred = null;
+          } else {
+            try {
+              await clearTransferredBuffers(transferred);
+            } catch {
+              // A failed range removal cannot be reused safely. Attaching the element directly gives
+              // the replacement controller a fresh MediaSource; the transferred source loses its
+              // final reference when the element's blob URL is replaced.
+              discardTransfer = true;
+              transferred = null;
+            }
           }
         } else {
           discardTransfer = Boolean(transferred);
