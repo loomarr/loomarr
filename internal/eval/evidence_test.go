@@ -5,11 +5,29 @@ package eval
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestEvalTemplatesDefaultArtifactPathIsRepoRoot(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("make", "-n", "eval-templates")
+	cmd.Dir = repoRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("dry-run eval-templates: %v\n%s", err, out)
+	}
+	want := filepath.Join(repoRoot, ".artifacts")
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("dry-run does not anchor the default artifact directory at repo root %q:\n%s", want, out)
+	}
+}
 
 func TestCertificationEvidenceIsStableAndContainsNoCredentials(t *testing.T) {
 	t.Setenv("LLM_PROVIDER", "openrouter")
