@@ -1,4 +1,7 @@
-import type { Intent, ProposalDTO, ProposalFailure, ProposalJobDTO } from "@loomarr/api";
+import type { Intent } from "@loomarr/api/models/intent";
+import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
+import type { ProposalFailure } from "@loomarr/api/models/proposalFailure";
+import type { ProposalJobDTO } from "@loomarr/api/models/proposalJobDTO";
 import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface ProposalJobTrackerOptions {
