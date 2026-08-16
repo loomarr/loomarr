@@ -117,6 +117,7 @@ type ImageStore interface {
 	RepointImageRefs(ctx context.Context, from, to string) error
 
 	PutImageDerivative(ctx context.Context, d ImageDerivative) error
+	PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error)
 	DeleteImageDerivatives(ctx context.Context, hash string) error
 	// DeleteImageDerivative removes one rendition's row. The GC's eviction unit: a derivative is
@@ -327,6 +328,36 @@ func (s *sqlStore) PutImageDerivative(ctx context.Context, d ImageDerivative) er
 		d.Animated, epoch(d.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("put derivative %s %s w%d: %w", d.ImageHash, d.Format, d.Width, err)
+	}
+	return nil
+}
+
+// PutImageDerivatives publishes one complete Rendition ladder transactionally. The worker manifest
+// is all-or-nothing, so persistence must not turn a valid manifest into a partially visible ladder.
+func (s *sqlStore) PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error {
+	if len(derivatives) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin derivative batch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	query := s.ph(
+		`INSERT INTO image_derivatives (image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (image_hash, recipe, format, width) DO UPDATE SET
+		     bytes = excluded.bytes, output_hash = excluded.output_hash, path = excluded.path,
+		     animated = excluded.animated, created_at = excluded.created_at`)
+	for _, d := range derivatives {
+		if _, err := tx.ExecContext(ctx, query,
+			d.ImageHash, derivativeRecipe(d.Recipe), d.Format, d.Width, d.Bytes, d.OutputHash, d.Path,
+			d.Animated, epoch(d.CreatedAt)); err != nil {
+			return fmt.Errorf("put derivative batch %s %s w%d: %w", d.ImageHash, d.Format, d.Width, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit derivative batch: %w", err)
 	}
 	return nil
 }

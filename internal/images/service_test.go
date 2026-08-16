@@ -20,10 +20,11 @@ import (
 // covered by the store conformance suite against BOTH dialects, so duplicating that here would
 // only add a second thing to keep in step.
 type fakeStore struct {
-	images      map[string]Image
-	refs        []Ref
-	derivatives map[string][]Derivative
-	touched     map[string]time.Time
+	images            map[string]Image
+	refs              []Ref
+	derivatives       map[string][]Derivative
+	touched           map[string]time.Time
+	putDerivativesErr error
 }
 
 func newFakeStore() *fakeStore {
@@ -79,6 +80,16 @@ func (f *fakeStore) PutRef(_ context.Context, ref Ref) error {
 
 func (f *fakeStore) PutDerivative(_ context.Context, d Derivative) error {
 	f.derivatives[d.ImageHash] = append(f.derivatives[d.ImageHash], d)
+	return nil
+}
+
+func (f *fakeStore) PutDerivatives(_ context.Context, derivatives []Derivative) error {
+	if f.putDerivativesErr != nil {
+		return f.putDerivativesErr
+	}
+	for _, d := range derivatives {
+		f.derivatives[d.ImageHash] = append(f.derivatives[d.ImageHash], d)
+	}
 	return nil
 }
 

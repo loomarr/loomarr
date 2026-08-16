@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const PROTOCOL: u32 = 1;
-pub const RECIPE: &str = "loomarr-rendition-v1";
+pub const RECIPE: &str = "loomarr-rendition-v2";
 const MAX_CONTROL_BYTES: u64 = 1 << 20;
 
 #[derive(Debug, Serialize)]
@@ -333,15 +333,44 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
         .map_err(|err| WorkerError::new("decode_failed", format!("decode source: {err}")))?;
     let rgba = decoded.to_rgba8();
     let (placeholder, dominant_hex) = image_metadata(rgba.as_raw(), width, height)?;
-    let mut outputs = Vec::with_capacity(request.targets.len());
-    let mut output_bytes = 0_u64;
+    let requested_order: Vec<String> = request
+        .targets
+        .iter()
+        .map(|target| target.id.clone())
+        .collect();
+    let mut targets = request.targets.clone();
+    for target in &targets {
+        validate_target(target)?;
+    }
+    targets.sort_by(|left, right| {
+        left.format
+            .cmp(&right.format)
+            .then_with(|| left.motion.cmp(&right.motion))
+            .then_with(|| right.width.cmp(&left.width))
+    });
 
-    for target in request.targets {
-        validate_target(&target)?;
+    let mut outputs = Vec::with_capacity(targets.len());
+    let mut output_bytes = 0_u64;
+    let mut previous: Option<(String, String, u32, u32, Vec<u8>)> = None;
+
+    for target in targets {
         let target_width = target.width.min(width);
         let target_height =
             ((u64::from(height) * u64::from(target_width)) / u64::from(width)).max(1) as u32;
-        let resized = resize_rgba(rgba.as_raw(), width, height, target_width, target_height)?;
+        let resized = match &previous {
+            Some((format, motion, previous_width, previous_height, pixels))
+                if format == &target.format && motion == &target.motion =>
+            {
+                resize_rgba(
+                    pixels,
+                    *previous_width,
+                    *previous_height,
+                    target_width,
+                    target_height,
+                )?
+            }
+            _ => resize_rgba(rgba.as_raw(), width, height, target_width, target_height)?,
+        };
         let (encoded, extension, output_mime) = match target.format.as_str() {
             "webp" => (
                 webp::Encoder::from_rgba(&resized, target_width, target_height)
@@ -384,7 +413,7 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
             target_id: target.id,
             relative_path: filename,
             recipe_id: RECIPE,
-            format: target.format,
+            format: target.format.clone(),
             mime: output_mime,
             requested_width: target.width,
             width: target_width,
@@ -393,7 +422,21 @@ fn generate(request: GenerateRequest) -> Result<GenerateResult, WorkerError> {
             sha256: hex_digest(&encoded),
             animated: false,
         });
+        previous = Some((
+            target.format,
+            target.motion,
+            target_width,
+            target_height,
+            resized,
+        ));
     }
+
+    outputs.sort_by_key(|output| {
+        requested_order
+            .iter()
+            .position(|target_id| target_id == &output.target_id)
+            .unwrap_or(usize::MAX)
+    });
 
     Ok(GenerateResult {
         protocol: PROTOCOL,
@@ -845,7 +888,7 @@ mod tests {
         let value = capabilities("test-release");
         assert_eq!(value.protocol, 1);
         assert_eq!(value.release, "test-release");
-        assert_eq!(value.recipe, "loomarr-rendition-v1");
+        assert_eq!(value.recipe, "loomarr-rendition-v2");
         assert_eq!(value.formats, ["avif", "jpeg", "webp"]);
         assert!(value.animation);
         assert!(value.self_test);

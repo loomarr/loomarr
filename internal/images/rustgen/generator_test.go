@@ -15,13 +15,13 @@ import (
 
 func TestOpenAcceptsMatchingRequiredWorker(t *testing.T) {
 	worker := testkit.Executable(t, "loomarr-image", `#!/bin/sh
-printf '%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["jpeg","webp"],"animation":true,"selfTest":true}'
+printf '%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["jpeg","webp"],"animation":true,"selfTest":true}'
 `)
 
 	gen, err := rustgen.Open(worker, rustgen.Contract{
 		Protocol:        1,
 		Release:         "test-release",
-		Recipe:          "loomarr-rendition-v1",
+		Recipe:          "loomarr-rendition-v2",
 		RequiredFormats: []string{"jpeg", "webp"},
 		Animation:       true,
 	})
@@ -38,18 +38,18 @@ func TestOpenRejectsEveryRequiredCapabilityMismatch(t *testing.T) {
 		name         string
 		capabilities string
 	}{
-		{"protocol", `{"protocol":2,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`},
-		{"release", `{"protocol":1,"release":"other","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`},
+		{"protocol", `{"protocol":2,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`},
+		{"release", `{"protocol":1,"release":"other","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`},
 		{"recipe", `{"protocol":1,"release":"test-release","recipe":"other","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`},
-		{"format", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["jpeg","webp"],"animation":true,"selfTest":true}`},
-		{"animation", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":false,"selfTest":true}`},
-		{"self test", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":true,"selfTest":false}`},
+		{"format", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["jpeg","webp"],"animation":true,"selfTest":true}`},
+		{"animation", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":false,"selfTest":true}`},
+		{"self test", `{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":false}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			worker := testkit.Executable(t, "loomarr-image", "#!/bin/sh\nprintf '%s\\n' '"+tt.capabilities+"'\n")
 			_, err := rustgen.Open(worker, rustgen.Contract{
-				Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v1",
+				Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v2",
 				RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 			})
 			if err == nil {
@@ -62,7 +62,7 @@ func TestOpenRejectsEveryRequiredCapabilityMismatch(t *testing.T) {
 func TestGenerateReturnsTypedWorkerRefusal(t *testing.T) {
 	worker := testkit.Executable(t, "loomarr-image", `#!/bin/sh
 if [ "$1" = capabilities ]; then
-  printf '%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}'
+  printf '%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}'
   exit 0
 fi
 cat >/dev/null
@@ -70,7 +70,7 @@ printf '%s\n' '{"protocol":1,"status":"error","requestId":"bad-source","error":{
 exit 1
 `)
 	gen, err := rustgen.Open(worker, rustgen.Contract{
-		Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v1",
+		Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
 	})
 	if err != nil {
@@ -89,17 +89,17 @@ func TestGenerateReturnsOnlyAVerifiedStagedManifest(t *testing.T) {
 	digest := fmt.Sprintf("%x", sha256.Sum256(bytes))
 	worker := testkit.Executable(t, "loomarr-image", fmt.Sprintf(`#!/bin/sh
 if [ "$1" = capabilities ]; then
-  printf '%%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v1","formats":["jpeg","webp"],"animation":true,"selfTest":true}'
+  printf '%%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["jpeg","webp"],"animation":true,"selfTest":true}'
   exit 0
 fi
 cat >/dev/null
 printf 'RIFF\004\000\000\000WEBP' > %q/webp-w2.webp
-	printf '%%s\n' '{"protocol":1,"status":"ok","requestId":"request-1","source":{"sha256":"%s","mime":"image/png","width":4,"height":2,"bytes":6,"animated":false,"frameCount":1,"durationMs":0,"loopCount":null,"placeholder":"AQID","dominantHex":"#112233"},"outputs":[{"targetId":"webp-w2","relativePath":"webp-w2.webp","recipeId":"loomarr-rendition-v1","format":"webp","mime":"image/webp","requestedWidth":2,"width":2,"height":1,"bytes":12,"sha256":"%s","animated":false}]}'
+	printf '%%s\n' '{"protocol":1,"status":"ok","requestId":"request-1","source":{"sha256":"%s","mime":"image/png","width":4,"height":2,"bytes":6,"animated":false,"frameCount":1,"durationMs":0,"loopCount":null,"placeholder":"AQID","dominantHex":"#112233"},"outputs":[{"targetId":"webp-w2","relativePath":"webp-w2.webp","recipeId":"loomarr-rendition-v2","format":"webp","mime":"image/webp","requestedWidth":2,"width":2,"height":1,"bytes":12,"sha256":"%s","animated":false}]}'
 `, staging, fmt.Sprintf("%x", sha256.Sum256([]byte("source"))), digest))
 	gen, err := rustgen.Open(worker, rustgen.Contract{
 		Protocol:        1,
 		Release:         "test-release",
-		Recipe:          "loomarr-rendition-v1",
+		Recipe:          "loomarr-rendition-v2",
 		RequiredFormats: []string{"jpeg", "webp"},
 		Animation:       true,
 	})

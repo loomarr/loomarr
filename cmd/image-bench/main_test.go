@@ -61,7 +61,7 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 		t.Fatalf("decode report: %v", err)
 	}
 	if report.SchemaVersion != 1 || report.Corpus != "synthetic-role-v1" ||
-		report.Strategy != "serial-per-rendition-v1" || len(report.Profiles) != 1 {
+		report.Strategy != "single-process-stepped-ladder-v2" || len(report.Profiles) != 1 {
 		t.Fatalf("report envelope = %+v", report)
 	}
 	profile := report.Profiles[0]
@@ -75,8 +75,8 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 		t.Errorf("widths = %v, want %v", got, want)
 	}
 	sample := profile.Samples[0]
-	if sample.Processes != 3 || sample.Renditions != 3 || len(sample.WorkerTimesMS) != 3 {
-		t.Errorf("sample counts = %+v, want one real worker process per Rendition", sample)
+	if sample.Processes != 1 || sample.Renditions != 3 || len(sample.WorkerTimesMS) != 1 {
+		t.Errorf("sample counts = %+v, want one real worker process for the complete ladder", sample)
 	}
 	if sample.OutputBytes <= 0 || sample.WallTimeMS <= 0 {
 		t.Errorf("sample measurements = %+v, want positive output and elapsed time", sample)
@@ -88,7 +88,7 @@ func TestRunMeasuresTheCurrentIconAVIFLadderThroughTheWorkerProtocol(t *testing.
 
 func runTestWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 	if len(args) > 0 && args[0] == "capabilities" {
-		_, _ = io.WriteString(stdout, `{"protocol":1,"release":"dev","recipe":"loomarr-rendition-v1","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`+"\n")
+		_, _ = io.WriteString(stdout, `{"protocol":1,"release":"dev","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"selfTest":true}`+"\n")
 		return 0
 	}
 	var request struct {
@@ -133,7 +133,7 @@ func runTestWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 			return 1
 		}
 		outputs = append(outputs, output{
-			TargetID: target.ID, RelativePath: name, RecipeID: "loomarr-rendition-v1",
+			TargetID: target.ID, RelativePath: name, RecipeID: "loomarr-rendition-v2",
 			Format: target.Format, MIME: "image/avif", SHA256: digest,
 			RequestedWidth: target.Width, Width: target.Width, Height: target.Width,
 			Bytes: int64(len(avif)), Animated: false,

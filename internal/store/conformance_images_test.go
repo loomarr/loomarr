@@ -287,6 +287,31 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testImageDerivativeBatchAtomic(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Unix(1_700_000_000, 0)
+	img := imageAt("eta-batch", at)
+	if err := s.PutImage(ctx, img); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.PutImageDerivatives(ctx, []ImageDerivative{
+		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v2", Format: "avif", Width: 185, Path: "valid", CreatedAt: at},
+		{ImageHash: strings.Repeat("f", 64), Recipe: "loomarr-rendition-v2", Format: "avif", Width: 500, Path: "missing-parent", CreatedAt: at},
+	})
+	if err == nil {
+		t.Fatal("PutImageDerivatives accepted a ladder with a missing parent")
+	}
+	rows, listErr := s.ListImageDerivatives(ctx, img.Hash)
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("failed batch committed %d rows; a ladder must publish all or nothing", len(rows))
+	}
+}
+
 // The AVIF job's work list: "has some rendition but not this format".
 //
 // ⚠ The has-some-derivative half is load-bearing. Without it the job would pick up images whose
