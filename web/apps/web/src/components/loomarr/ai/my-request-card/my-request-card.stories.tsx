@@ -1,9 +1,9 @@
-import type { ProposalDTO } from "@loomarr/api";
+import type { ProposalDTO, ProposalJobDTO } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { MyRequestCard } from "./my-request-card";
 
-const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
+const proposal = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
   ({
     id: "p1",
     jobId: "j1",
@@ -20,9 +20,17 @@ const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
     ...over,
   }) as ProposalDTO;
 
-// One submitted request, from the REQUESTER's side (V26 / `A2`). The four states below are the
-// four answers to "what happened to what I asked for?" — and the last two are the ones that
-// were previously invisible: the provenance was stored and rendered nowhere.
+const job = (over: Partial<ProposalJobDTO> = {}): ProposalJobDTO => ({
+  jobId: "j1",
+  status: "done",
+  intent: { description: "Saturday morning cartoons for the kids" },
+  attempts: 1,
+  createdAt: "2026-08-15T12:00:00Z",
+  updatedAt: "2026-08-15T12:00:12Z",
+  proposal: proposal(),
+  ...over,
+});
+
 const meta = {
   title: "AI/MyRequestCard",
   component: MyRequestCard,
@@ -31,30 +39,46 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Waiting: Story = { args: { proposal: base() } };
-
-const Approved: Story = { args: { proposal: base({ status: "approved", approvedBy: "boss" }) } };
-
-// Approved-with-changes is a DISTINCT outcome: the lineup someone receives is not the one they
-// asked for, and "Approved" alone would hide that.
+const Queued: Story = { args: { job: job({ status: "queued", attempts: 0, proposal: undefined }) } };
+const Running: Story = { args: { job: job({ status: "running", proposal: undefined }) } };
+const Failed: Story = {
+  args: {
+    job: job({
+      status: "failed",
+      proposal: undefined,
+      failure: {
+        code: "provider_unavailable",
+        message: "The AI provider is unavailable right now. Check the AI connection or try again later.",
+      },
+    }),
+  },
+};
+const WaitingForApproval: Story = { args: { job: job() } };
+const Approved: Story = {
+  args: { job: job({ proposal: proposal({ status: "approved", approvedBy: "boss" }) }) },
+};
 const ApprovedWithChanges: Story = {
   args: {
-    proposal: base({
-      status: "approved",
-      approvedBy: "boss",
-      modSummary: "dropped 2, added 1",
-      note: "swapped Gargoyles for Darkwing Duck — we already have that one",
+    job: job({
+      proposal: proposal({
+        status: "approved",
+        approvedBy: "boss",
+        modSummary: "dropped 2, added 1",
+        note: "swapped Gargoyles for Darkwing Duck — we already have that one",
+      }),
+    }),
+  },
+};
+const Denied: Story = {
+  args: {
+    job: job({
+      proposal: proposal({
+        status: "denied",
+        denyReason: "over the acquisition cap this week — ask again Monday",
+      }),
     }),
   },
 };
 
-// A denial without a reason teaches the requester nothing, so the reason is the point of the
-// card in this state.
-const Denied: Story = {
-  args: {
-    proposal: base({ status: "denied", denyReason: "over the acquisition cap this week — ask again Monday" }),
-  },
-};
-
 export default meta;
-export { Approved, ApprovedWithChanges, Denied, Waiting };
+export { Approved, ApprovedWithChanges, Denied, Failed, Queued, Running, WaitingForApproval };

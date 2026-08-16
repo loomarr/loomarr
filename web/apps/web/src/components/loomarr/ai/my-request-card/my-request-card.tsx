@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { MyRequestCardProps } from "./my-request-card.type";
 
-// MyRequestCard — one submitted request, from the requester's side (V26 / `A2`, §12).
+// MyRequestCard — one Proposal Job, from the requester's side (§7/§8).
 //
 // The defect this closes: a member could submit a proposal and then see NOTHING. The queue
 // page fanned `GET /v1/titles` across provisioning states, which is the *titles* half of a
@@ -16,21 +16,38 @@ import type { MyRequestCardProps } from "./my-request-card.type";
 // for?" — and especially the two cases where silence is worst: it came back CHANGED, or it was
 // declined.
 
-const STATUS: Record<string, { label: string; variant: "suggest" | "lock" | "onair" | "caution" }> = {
-  submitted: { label: "Waiting for approval", variant: "suggest" },
-  approved: { label: "Approved", variant: "lock" },
-  denied: { label: "Not approved", variant: "onair" },
+const PROPOSAL_STATUS: Record<string, { label: string; variant: "suggest" | "lock" | "onair" | "caution" }> =
+  {
+    submitted: { label: "Waiting for approval", variant: "suggest" },
+    approved: { label: "Approved", variant: "lock" },
+    denied: { label: "Not approved", variant: "onair" },
+  };
+
+const ACTIVE_STATUS = {
+  queued: { label: "Queued", variant: "signal" as const, detail: "Waiting to start." },
+  running: { label: "Generating", variant: "suggest" as const, detail: "Grounding titles…" },
 };
 
-const MyRequestCard = ({ proposal, className }: MyRequestCardProps) => {
-  const status = STATUS[proposal.status] ?? { label: proposal.status, variant: "caution" as const };
+const MyRequestCard = ({ job, className }: MyRequestCardProps) => {
+  const proposal = job.proposal;
+  const activeStatus =
+    job.status === "queued" || job.status === "running" ? ACTIVE_STATUS[job.status] : undefined;
+  const status =
+    activeStatus != null
+      ? activeStatus
+      : job.status === "failed"
+        ? { label: "Generation failed", variant: "onair" as const }
+        : (PROPOSAL_STATUS[proposal?.status ?? ""] ?? {
+            label: job.status,
+            variant: "caution" as const,
+          });
   // An edited approval is a distinct outcome from a plain one — "approved" alone would hide
   // that the lineup someone gets is not the lineup they asked for.
-  const changed = proposal.status === "approved" && Boolean(proposal.modSummary);
+  const changed = proposal?.status === "approved" && Boolean(proposal.modSummary);
 
-  const title = proposal.proposal?.intent?.description ?? "Suggested lineup";
-  const lineupCount = proposal.proposal?.lineup?.length ?? 0;
-  const acquireCount = proposal.proposal?.acquisitions?.length ?? 0;
+  const title = job.intent.description || "Suggested lineup";
+  const lineupCount = proposal?.proposal?.lineup?.length ?? 0;
+  const acquireCount = proposal?.proposal?.acquisitions?.length ?? 0;
 
   return (
     <Card className={cn("flex flex-col gap-2 p-4", className)}>
@@ -41,10 +58,18 @@ const MyRequestCard = ({ proposal, className }: MyRequestCardProps) => {
         </Badge>
       </div>
 
-      <p className="text-muted-foreground text-sm">
-        {`${lineupCount + acquireCount} titles`}
-        {acquireCount > 0 ? ` · ${acquireCount} to acquire` : ""}
-      </p>
+      {proposal ? (
+        <p className="text-muted-foreground text-sm">
+          {`${lineupCount + acquireCount} titles`}
+          {acquireCount > 0 ? ` · ${acquireCount} to acquire` : ""}
+        </p>
+      ) : (
+        <p className={cn("text-sm", job.status === "failed" ? "text-onair-300" : "text-muted-foreground")}>
+          {job.status === "failed"
+            ? (job.failure?.message ?? "Loomarr couldn't generate this channel. Try again.")
+            : (activeStatus?.detail ?? "No proposal was produced.")}
+        </p>
+      )}
 
       {/* CHANGED BY — the gate's phrase. `modSummary` is generated server-side ("dropped 2,
           added 1"), so it is a record of what happened rather than a claim someone typed;
@@ -62,12 +87,12 @@ const MyRequestCard = ({ proposal, className }: MyRequestCardProps) => {
       {/* The approver's own words, on any outcome that carries them. This is the half of the
           feature that is about people: a request that comes back altered without explanation
           reads as arbitrary. */}
-      {proposal.note && <p className="text-sm">{proposal.note}</p>}
+      {proposal?.note && <p className="text-sm">{proposal.note}</p>}
 
       {/* The denial line. A member who is told only "not approved" has learned nothing and will
           submit the same intent again — which is why V23 captured the reason and why it has to
           surface HERE, on the requester's side, not only in the admin queue. */}
-      {proposal.status === "denied" && (
+      {proposal?.status === "denied" && (
         <p className="text-onair-300 text-sm">
           {proposal.denyReason ? proposal.denyReason : "No reason was given."}
         </p>

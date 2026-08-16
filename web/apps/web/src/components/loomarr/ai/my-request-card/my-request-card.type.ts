@@ -1,7 +1,7 @@
-import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
+import type { ProposalJobDTO } from "@loomarr/api/models/proposalJobDTO";
 
 interface MyRequestCardProps {
-  proposal: ProposalDTO;
+  job: ProposalJobDTO;
   className?: string;
 }
 
