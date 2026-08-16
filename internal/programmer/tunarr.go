@@ -23,60 +23,69 @@ var now = time.Now
 // (Phase-0 finding: empty securitySchemes) and Loomarr talks to it machine-to-
 // machine, so there is no API key — just the base URL.
 type Tunarr struct {
-	// conn resolves the base URL per request (config-design §3 hot-apply): a Tunarr
-	// URL saved in Settings takes effect on the next push.
-	conn func() string
-	// transcodeConfigID references a real Tunarr transcode config (Phase-0
-	// finding 3: channel create requires a valid uuid; the instance ships a
-	// "Default"). EMPTY is the common case (§15: TUNARR_TRANSCODE_CONFIG_ID is an
-	// Advanced knob most operators never touch) and means "resolve the instance
-	// Default" — see transcodeID. A household admin should not have to hunt a uuid
-	// out of Tunarr to get a channel on air.
-	transcodeConfigID string
-	// resolvedTranscodeID caches the auto-resolved Default so the resolve query
-	// runs once, not per channel create.
-	transcodeMu         sync.Mutex
-	resolvedTranscodeID string
-	http                *http.Client
-	bulkHTTP            *http.Client     // longer timeout for the content-index bulk read only
-	resolver            *contentResolver // media-server item id → Tunarr program uuid (§6)
-	// filler-list attach policy (§10/§15): weight = relative draw when a channel has
-	// multiple lists; cooldownSeconds = min seconds before a clip repeats. Zero
-	// values fall back to sane defaults in attachFillerList.
-	fillerWeight   int
-	fillerCooldown int
+	// config resolves all hot-applied Tunarr settings together. Each exported
+	// operation snapshots it once so a multi-request operation cannot start on one
+	// Tunarr instance and finish on another after a concurrent settings change.
+	config func() Config
+	// resolvedTranscodeID caches the auto-resolved Default for one normalized
+	// Tunarr URL so switching instances cannot reuse an endpoint-owned id.
+	transcodeMu          sync.Mutex
+	resolvedTranscodeID  string
+	resolvedTranscodeURL string
+	http                 *http.Client
+	bulkHTTP             *http.Client     // longer timeout for the content-index bulk read only
+	resolver             *contentResolver // media-server item id → Tunarr program uuid (§6)
 }
 
-// WithFillerPolicy sets the filler-list attach knobs (FILLER_WEIGHT /
-// FILLER_COOLDOWN_SECONDS, §15). Returns the client for chaining.
-func (t *Tunarr) WithFillerPolicy(weight, cooldownSeconds int) *Tunarr {
-	t.fillerWeight = weight
-	t.fillerCooldown = cooldownSeconds
-	return t
+// Config is the complete set of live settings used by the Tunarr adapter. A
+// NewDynamic provider is read once at the start of every exported operation.
+type Config struct {
+	BaseURL               string
+	TranscodeConfigID     string
+	FillerWeight          int
+	FillerCooldownSeconds int
 }
 
-// New builds a Tunarr client. transcodeConfigID must be a real config id from
-// the target instance (§6 / Phase-0 finding 3).
+type operationConfigKey struct{}
+
+// operation snapshots live config once, or reuses the parent operation's
+// snapshot when one exported method delegates to another.
+func (t *Tunarr) operation(ctx context.Context) (context.Context, Config) {
+	if cfg, ok := ctx.Value(operationConfigKey{}).(Config); ok {
+		return ctx, cfg
+	}
+	cfg := t.config()
+	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	return context.WithValue(ctx, operationConfigKey{}, cfg), cfg
+}
+
+func (t *Tunarr) configFor(ctx context.Context) Config {
+	_, cfg := t.operation(ctx)
+	return cfg
+}
+
+// New builds a Tunarr client. A non-empty transcodeConfigID must be a real config
+// id from the target instance; empty auto-resolves its Default (§6 / Phase-0
+// finding 3).
 func New(baseURL, transcodeConfigID string) *Tunarr {
 	base := strings.TrimRight(baseURL, "/")
-	return NewDynamic(func() string { return base }, transcodeConfigID)
+	return NewDynamic(func() Config {
+		return Config{BaseURL: base, TranscodeConfigID: transcodeConfigID}
+	})
 }
 
-// NewDynamic builds a Tunarr client whose base URL resolves per request via conn
-// (config-design §3 hot-apply). The composition root passes a closure over the
-// settings snapshot.
-func NewDynamic(conn func() string, transcodeConfigID string) *Tunarr {
+// NewDynamic builds a Tunarr client whose settings resolve once per public
+// operation (config-design §3 hot-apply). The composition root passes a closure
+// over the settings snapshot.
+func NewDynamic(config func() Config) *Tunarr {
 	t := &Tunarr{
-		conn:              conn,
-		transcodeConfigID: transcodeConfigID,
-		http:              httpx.NewNamed("tunarr", httpx.TimeoutTunarr),
-		bulkHTTP:          httpx.NewNamed("tunarr-bulk", httpx.TimeoutTunarrBulk),
+		config:   config,
+		http:     httpx.NewNamed("tunarr", httpx.TimeoutTunarr),
+		bulkHTTP: httpx.NewNamed("tunarr-bulk", httpx.TimeoutTunarrBulk),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t
 }
-
-func (t *Tunarr) baseURL() string { return strings.TrimRight(t.conn(), "/") }
 
 // --- wire types (pinned to the Phase-0 fixtures, not remembered field names) ---
 
@@ -143,12 +152,13 @@ type transcodeConfig struct {
 // Returns an error when the instance reports no configs at all, so the setup check
 // can surface an actionable failure instead of letting channel creation die later.
 func (t *Tunarr) TranscodeConfigID(ctx context.Context) (string, error) {
-	if id := strings.TrimSpace(t.transcodeConfigID); id != "" {
+	ctx, cfg := t.operation(ctx)
+	if id := strings.TrimSpace(cfg.TranscodeConfigID); id != "" {
 		return id, nil
 	}
 	t.transcodeMu.Lock()
 	defer t.transcodeMu.Unlock()
-	if t.resolvedTranscodeID != "" {
+	if t.resolvedTranscodeURL == cfg.BaseURL && t.resolvedTranscodeID != "" {
 		return t.resolvedTranscodeID, nil
 	}
 	var configs []transcodeConfig
@@ -166,12 +176,14 @@ func (t *Tunarr) TranscodeConfigID(ctx context.Context) (string, error) {
 		}
 	}
 	t.resolvedTranscodeID = chosen
+	t.resolvedTranscodeURL = cfg.BaseURL
 	return chosen, nil
 }
 
 // EnsureChannel implements Programmer. On create it reads back the
 // server-assigned id (Phase-0 finding 1) and returns it.
 func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, error) {
+	ctx, _ = t.operation(ctx)
 	body := t.channelBody(spec)
 	// Resolve the transcode config once, here where we have a ctx (channelBody has
 	// none). A create with an empty id is the FINDING 5 dead-end: Tunarr 400s and the
@@ -236,6 +248,7 @@ func (t *Tunarr) channelBody(spec ChannelSpec) tunarrChannel {
 
 // GetChannel implements Programmer. A 404 → (zero, false, nil).
 func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel, bool, error) {
+	ctx, _ = t.operation(ctx)
 	var ch tunarrChannel
 	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch)
 	if err != nil {
@@ -266,6 +279,7 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 // already uses makes the create fail — and Tunarr reports that collision as `500` with an EMPTY
 // BODY, so the symptom was an opaque, permanent failure rather than "that number is taken".
 func (t *Tunarr) ListChannels(ctx context.Context) ([]ActualChannel, error) {
+	ctx, _ = t.operation(ctx)
 	var raw []tunarrChannel
 	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels", nil, &raw)
 	if err != nil {
@@ -286,6 +300,7 @@ func (t *Tunarr) ListChannels(ctx context.Context) ([]ActualChannel, error) {
 
 // DeleteChannel implements Programmer; a 404 is treated as already-gone (idempotent).
 func (t *Tunarr) DeleteChannel(ctx context.Context, tunarrID string) error {
+	ctx, _ = t.operation(ctx)
 	status, snippet, err := t.doStatus(ctx, t.http, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)
 	if err != nil {
 		return err
@@ -347,9 +362,9 @@ func (t *Tunarr) doStatus(ctx context.Context, client *http.Client, method, path
 	var req *http.Request
 	var err error
 	if reader != nil {
-		req, err = http.NewRequestWithContext(ctx, method, t.baseURL()+path, reader)
+		req, err = http.NewRequestWithContext(ctx, method, t.configFor(ctx).BaseURL+path, reader)
 	} else {
-		req, err = http.NewRequestWithContext(ctx, method, t.baseURL()+path, nil)
+		req, err = http.NewRequestWithContext(ctx, method, t.configFor(ctx).BaseURL+path, nil)
 	}
 	if err != nil {
 		return 0, "", err
