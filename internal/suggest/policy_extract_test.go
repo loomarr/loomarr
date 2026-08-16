@@ -136,6 +136,56 @@ func TestGroundPolicy_NoKidsSignalDropsProposedCeiling(t *testing.T) {
 	}
 }
 
+// A rating ceiling the OPERATOR names is a first-class constraint even when it is not a
+// kids/family cue. The canonical Action preset says "keep it PG-13"; dropping the model's
+// matching ceiling turns that explicit limit into an adult-default channel.
+func TestGroundPolicy_ExplicitRatingLimitKeepsProposedCeiling(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		intent  Intent
+		ceiling string
+	}{
+		{name: "movie rating in description", intent: Intent{Description: "high-energy action, keep it PG-13"}, ceiling: "PG-13"},
+		{name: "tv rating in refine", intent: Intent{Description: "action", RefineText: "nothing above TV-14"}, ceiling: "TV-14"},
+		{name: "short movie rating qualified", intent: Intent{Description: "classic adventures", Tone: "rated PG"}, ceiling: "PG"},
+		{name: "hyphen rated in must include", intent: Intent{Description: "horror", MustInclude: []string{"R-rated movies"}}, ceiling: "R"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := &pickPolicy{}
+			raw.Audience.Ceiling = tc.ceiling
+			p := groundPolicy(raw, nil, nil, tc.intent)
+			if p.Audience.Ceiling != schedule.NormalizeRating(tc.ceiling) {
+				t.Errorf("ceiling = %q, want explicit %q ceiling retained", p.Audience.Ceiling, tc.ceiling)
+			}
+		})
+	}
+}
+
+// An explicit ceiling is the user's boundary, not a model-inferred approximation. A grounded
+// harder pick must be left for refuseUnairable; it must never lift PG-13/TV-14 to R/TV-MA.
+func TestGroundPolicy_ExplicitRatingLimitIsNeverRaisedToAdmitPicks(t *testing.T) {
+	for _, ceiling := range []string{"PG-13", "TV-14"} {
+		raw := &pickPolicy{}
+		raw.Audience.Ceiling = ceiling
+		lineup := []ProposalItem{{Name: "Harder Pick", OfficialRating: "R"}}
+		p := groundPolicy(raw, lineup, nil, Intent{Description: "action movies, keep it " + ceiling})
+		if p.Audience.Ceiling != schedule.NormalizeRating(ceiling) {
+			t.Errorf("explicit %s ceiling raised to %q, want it unchanged", ceiling, p.Audience.Ceiling)
+		}
+	}
+}
+
+// Short rating tokens are not substring cues. Ordinary prose containing the letters G/PG/R
+// must not convert an unqualified adult channel into a rated channel.
+func TestGroundPolicy_OrdinaryProseDoesNotNameRatingLimit(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Audience.Ceiling = "PG-13"
+	p := groundPolicy(raw, nil, nil, Intent{Description: "gripping programming about great rescues"})
+	if p.Audience.Ceiling != "" {
+		t.Errorf("ceiling = %q, want unqualified prose to remain adult-default", p.Audience.Ceiling)
+	}
+}
+
 // With a kids/teen signal present, the proposed ceiling is KEPT and enforced — the guardrail
 // still works for the channels it's for. Tested across several signal phrasings.
 func TestGroundPolicy_KidsSignalKeepsCeiling(t *testing.T) {

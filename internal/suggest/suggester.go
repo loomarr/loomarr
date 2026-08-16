@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -455,22 +456,23 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	}
 	var p schedule.ChannelPolicy
 
-	// Audience ceiling (programming-design §4/§8): the ceiling is a KIDS/TEEN GUARDRAIL, not a
-	// general default. An unqualified channel is adult-default — "1980s Action Heroes" includes
-	// its R-rated films. So a model-proposed ceiling is kept ONLY when the intent actually
-	// signals kids/teens; with no such signal it is DROPPED (→ no ceiling, everything admitted),
-	// because a small model reflexively caps action/genre channels ("might be violent → TV-14")
-	// and that must not silently strip the R-rated content the channel is about. The prompt says
-	// "adult/no mention → omit," but the model isn't trusted to obey it — this is the enforcement.
-	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && intentSignalsKids(intent) {
+	// Audience ceiling (programming-design §4/§8): the ceiling is either an EXPLICIT operator
+	// limit or a KIDS/TEEN GUARDRAIL, never a general model default. An unqualified channel is
+	// adult-default — "1980s Action Heroes" includes its R-rated films. So a model-proposed
+	// ceiling is kept only when the intent names a rating limit or signals kids/teens; otherwise
+	// it is DROPPED (→ no ceiling, everything admitted). A small model's reflexive action cap
+	// ("might be violent → TV-14") must not silently strip the content the channel is about.
+	explicitRatingLimit := intentNamesRatingLimit(intent)
+	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && (explicitRatingLimit || intentSignalsKids(intent)) {
 		p.Audience.Ceiling = c
-		// A ceiling STRICTER than a title the model actually grounded would silently empty the
-		// channel: the fail-closed audience gate (§4) drops every over-ceiling pick. Raise the
-		// ceiling to admit the grounded picks — the operator asked for THESE titles — but BOUNDED
-		// by the kids line: on a kids/teen channel the raise never lifts above TV-PG (a stray
-		// harder pick is dropped, not admitted), so admitting-your-picks is never a safety hole.
-		if raised := ceilingAdmittingPicks(p.Audience.Ceiling, lineup); raised != "" {
-			p.Audience.Ceiling = raised
+		// An inferred kids ceiling stricter than the model's own grounded picks can silently
+		// empty a channel. Raise that inferred approximation just enough to admit kids-band
+		// picks, bounded by TV-PG. An EXPLICIT rating limit is different: it belongs to the
+		// operator and is never raised; over-ceiling picks are refused after grounding.
+		if !explicitRatingLimit {
+			if raised := ceilingAdmittingPicks(p.Audience.Ceiling, lineup); raised != "" {
+				p.Audience.Ceiling = raised
+			}
 		}
 	}
 	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
@@ -800,30 +802,46 @@ func ratingForRank(rank int) schedule.Rating {
 }
 
 // intentSignalsKids reports whether the channel intent asks for kids/teen-appropriate
-// content — the ONLY case in which a proposed audience ceiling is kept (§4/§8). It scans the
+// content — one of the two cases in which a proposed audience ceiling is kept (§4/§8), the
+// other being an explicitly named rating limit. It scans the
 // intent's free text (description/tone/era + must-include terms) for kids/family/teen cues:
-// "kids", "family", "cartoons", "all ages", "wholesome", named kids properties, an explicit
-// low rating token ("TV-Y", "rated G"), or a kids daypart ("saturday morning"). Deliberately
+// "kids", "family", "cartoons", "all ages", "wholesome", named kids properties, or a kids
+// daypart ("saturday morning"). Explicit rating tokens are handled separately below. Deliberately
 // broad on the SIGNAL side (a false positive just keeps a ceiling the operator can edit off)
 // and silent otherwise — no signal ⇒ adult-default, no ceiling. Case-insensitive substring
 // match; a word-boundary check keeps "family" from matching inside an unrelated word.
 func intentSignalsKids(intent Intent) bool {
-	hay := strings.ToLower(strings.Join([]string{
-		intent.Description, intent.Tone, intent.Era, intent.RefineText,
-		strings.Join(intent.MustInclude, " "),
-	}, " "))
+	hay := intentText(intent)
 	for _, cue := range kidsIntentCues {
 		if strings.Contains(hay, cue) {
 			return true
 		}
 	}
-	// Explicit low rating tokens the user might type ("rated G", "keep it TV-Y7").
-	for _, r := range []string{"tv-y", "tv-g", "rated g", "rated pg"} {
-		if strings.Contains(hay, r) {
-			return true
-		}
-	}
 	return false
+}
+
+// intentNamesRatingLimit reports whether the operator explicitly named a rating boundary.
+// Distinctive multi-character canonical tokens are accepted at word boundaries; the short film
+// tokens G/PG/R require limiting context ("rated PG", "R-rated", "keep it R") so ordinary
+// prose cannot accidentally pin a ceiling. This function authorizes retaining only an already
+// on-ladder model ceiling; NormalizeRating remains the grounding chokepoint.
+func intentNamesRatingLimit(intent Intent) bool {
+	hay := intentText(intent)
+	return distinctiveRatingToken.MatchString(hay) ||
+		qualifiedRatingPrefix.MatchString(hay) || qualifiedRatingSuffix.MatchString(hay)
+}
+
+var (
+	distinctiveRatingToken = regexp.MustCompile(`\b(?:tv-y7|tv-y|tv-g|tv-pg|tv-14|tv-ma|pg-13|nc-17)\b`)
+	qualifiedRatingPrefix  = regexp.MustCompile(`\b(?:keep(?:\s+it)?|cap(?:ped)?(?:\s+it)?|ceiling|max(?:imum)?|up\s+to|at\s+most|no\s+higher\s+than|nothing\s+(?:above|over)|not\s+(?:above|over)|rated|rating(?:\s+of)?)\s*(?:at|to|of|:)?\s*(?:g|pg|r)\b`)
+	qualifiedRatingSuffix  = regexp.MustCompile(`\b(?:g|pg|r)(?:\s*-\s*rated|\s+(?:or\s+(?:below|lower|less)|and\s+under|max(?:imum)?|ceiling))\b`)
+)
+
+func intentText(intent Intent) string {
+	return strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, intent.RefineText,
+		strings.Join(intent.MustInclude, " "),
+	}, " "))
 }
 
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.
@@ -891,7 +909,7 @@ RULES:
 - Prefer titles already in the library (inLibrary:true) for the lineup; propose missing ones as acquisitions.
 - SEASON WINDOW for a series: when the intent implies an ERA of a long-running show, set "seasonMin"/"seasonMax" on that series pick so ONLY those seasons air. Examples: "Simpsons Classics" or "classic Simpsons" -> the golden-age run, seasonMin:1, seasonMax:10; "early Seinfeld" -> seasonMin:1, seasonMax:4; "first three seasons of X" -> seasonMin:1, seasonMax:3; "late-era X" -> seasonMin only. Use it ONLY when the intent scopes an era of a SERIES; omit both for movies and for "all of a show". This narrows which episodes play; it does NOT change what gets acquired.
 - Also infer a "policy" describing HOW the channel should behave, from the intent. Only include a field you can justify from the intent; omit the rest.
-  - audience.ceiling: a KIDS/TEEN safety cap — set it ONLY when the intent explicitly asks for a young audience ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14"). For ANY channel that does not ask for kids/family/teen content, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
+  - audience.ceiling: set it when the intent explicitly names a rating limit ("keep it PG-13" -> "PG-13"), or infer it as a KIDS/TEEN safety cap ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14"). An explicitly named limit is fixed: do not raise it to admit harder picks. For ANY channel that neither names a rating limit nor asks for kids/family/teen content, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
   - era.from/era.to: year range if the intent names one ("90s" -> from 1990 to 1999).
   - genres.include/exclude: genre names implied by the intent.
   - ordering: "syndication" (rerun feel — different series INTERMIXED, like a rerun channel), "sequential" (strict order — one show start-to-finish), or "shuffle". RULE OF THUMB: if the lineup has MORE THAN ONE series, prefer "syndication" so the shows interleave instead of playing one series to the end before the next (a Star-Trek-style multi-show channel should feel like flipping between them, not a chronological box set). Use "sequential" only for a SINGLE show meant to play in episode order, or when the intent explicitly asks for chronological/marathon.

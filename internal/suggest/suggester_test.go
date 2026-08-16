@@ -529,3 +529,41 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 		t.Fatalf("nothing may be refused with no ceiling, got %+v", prop.Refused)
 	}
 }
+
+// The canonical Action preset names a PG-13 limit. It is an explicit operator constraint,
+// not the reflexive model ceiling that adult-default handling drops: PG-13 stays offered and
+// a known R-rated pick is shown as refused rather than silently admitted or discarded.
+func TestProposal_ExplicitPG13CeilingRefusesRRatedPick(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-1", Name: "Fast Rescue", Type: "Movie", Year: 1996, TMDBID: 5011, Genres: []string{"Action"}, OfficialRating: "PG-13"},
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-2", Name: "Hard Rescue", Type: "Movie", Year: 1997, TMDBID: 5012, Genres: []string{"Action"}, OfficialRating: "R"},
+	)
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action"}),
+		testkit.FinalResponse(`{"rationale":"action marathon","picks":[
+			{"mediaType":"movie","tmdbId":5011,"name":"Fast Rescue"},
+			{"mediaType":"movie","tmdbId":5012,"name":"Hard Rescue"}
+		],"policy":{"audience":{"ceiling":"PG-13"}}}`),
+	)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{
+		Description: "Back-to-back action movies, high energy, keep it PG-13",
+		Tone:        "high energy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Audience.Ceiling != "PG-13" {
+		t.Fatalf("ceiling = %q, want explicit PG-13 ceiling retained", prop.Policy.Audience.Ceiling)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 5011 {
+		t.Fatalf("lineup = %+v, want only the PG-13 pick", prop.Lineup)
+	}
+	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5012 || prop.Refused[0].Reason != "over_ceiling" {
+		t.Fatalf("refused = %+v, want the R-rated pick refused as over_ceiling", prop.Refused)
+	}
+}
