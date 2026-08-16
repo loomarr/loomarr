@@ -7,17 +7,51 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
 
+const STATIC_WIDTH: u32 = 640;
+const STATIC_HEIGHT: u32 = 360;
+
+fn static_png_fixture(label: &str) -> (PathBuf, PathBuf, String) {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "loomarr-image-{label}-{}-{unique}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("create fixture root");
+    let source = root.join("source.png");
+
+    let mut pixels = Vec::with_capacity((STATIC_WIDTH * STATIC_HEIGHT * 3) as usize);
+    for y in 0..STATIC_HEIGHT {
+        for x in 0..STATIC_WIDTH {
+            pixels.extend_from_slice(&[
+                (x % 256) as u8,
+                (y % 256) as u8,
+                ((x * 3 + y * 5) % 256) as u8,
+            ]);
+        }
+    }
+
+    let file = fs::File::create(&source).expect("create PNG fixture");
+    let mut encoder = png::Encoder::new(file, STATIC_WIDTH, STATIC_HEIGHT);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().expect("write PNG header");
+    writer.write_image_data(&pixels).expect("write PNG pixels");
+    drop(writer);
+
+    let source_hash = format!(
+        "{:x}",
+        Sha256::digest(fs::read(&source).expect("read PNG fixture"))
+    );
+    (root, source, source_hash)
+}
+
 #[test]
 fn static_png_generates_a_bounded_webp_rendition() {
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dash-before.png");
-    let staging = std::env::temp_dir().join(format!(
-        "loomarr-image-static-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after epoch")
-            .as_nanos()
-    ));
+    let (root, source, source_hash) = static_png_fixture("static");
+    let staging = root.join("staging");
     fs::create_dir(&staging).expect("create staging");
 
     let request = serde_json::json!({
@@ -25,7 +59,7 @@ fn static_png_generates_a_bounded_webp_rendition() {
         "requestId": "static-fixture",
         "source": {
             "path": source,
-            "expectedSha256": "352d4793825be40adcda0080c9d7926a260fabdb08b6e30784888b8c01da1da9"
+            "expectedSha256": source_hash
         },
         "stagingDir": staging,
         "targets": [
@@ -65,12 +99,12 @@ fn static_png_generates_a_bounded_webp_rendition() {
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).expect("result JSON");
     assert_eq!(result["status"], "ok");
     assert_eq!(result["source"]["mime"], "image/png");
-    assert_eq!(result["source"]["width"], 1969);
-    assert_eq!(result["source"]["height"], 1160);
+    assert_eq!(result["source"]["width"], STATIC_WIDTH);
+    assert_eq!(result["source"]["height"], STATIC_HEIGHT);
     assert_eq!(result["source"]["animated"], false);
     assert_eq!(result["outputs"][0]["targetId"], "webp-w320");
     assert_eq!(result["outputs"][0]["width"], 320);
-    assert_eq!(result["outputs"][0]["height"], 188);
+    assert_eq!(result["outputs"][0]["height"], 180);
     assert_eq!(result["outputs"][1]["targetId"], "jpeg-w320");
     assert_eq!(result["outputs"][2]["targetId"], "avif-w320");
 
@@ -81,7 +115,7 @@ fn static_png_generates_a_bounded_webp_rendition() {
     assert_eq!(&jpeg[..2], &[0xff, 0xd8]);
     let avif = fs::read(staging.join("avif-w320.avif")).expect("read AVIF rendition");
     assert_eq!(&avif[4..8], b"ftyp");
-    fs::remove_dir_all(&staging).expect("remove staging");
+    fs::remove_dir_all(&root).expect("remove fixture root");
 }
 
 #[test]
@@ -164,15 +198,7 @@ fn animated_gif_preserves_its_timeline_in_resized_webp() {
 
 #[test]
 fn static_ladder_steps_down_from_the_preceding_rung() {
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dash-before.png");
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "loomarr-image-stepped-{}-{unique}",
-        std::process::id()
-    ));
+    let (root, source, source_hash) = static_png_fixture("stepped");
     let ladder_staging = root.join("ladder");
     let direct_staging = root.join("direct");
     fs::create_dir_all(&ladder_staging).expect("create ladder staging");
@@ -183,8 +209,8 @@ fn static_ladder_steps_down_from_the_preceding_rung() {
             "protocol": 1,
             "requestId": "stepped-fixture",
             "source": {
-                "path": source,
-                "expectedSha256": "352d4793825be40adcda0080c9d7926a260fabdb08b6e30784888b8c01da1da9"
+                "path": &source,
+                "expectedSha256": &source_hash
             },
             "stagingDir": staging,
             "targets": targets,

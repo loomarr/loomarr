@@ -9,16 +9,16 @@ import (
 )
 
 // A season window the suggester put on a series pick ("classic Simpsons" → 1–10)
-// must carry through LineupEntries onto the LineupEntry the scheduler enforces —
+// must carry through lineupEntries onto the LineupEntry the scheduler enforces —
 // the last hop of the §8 season-scope path. A movie carries none.
-func TestLineupEntries_CarriesSeasonWindow(t *testing.T) {
+func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
 	p := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{
 			{MediaType: provision.Series, TVDBID: 71663, Name: "The Simpsons", SeasonMin: 1, SeasonMax: 10},
 			{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"},
 		},
 	}
-	entries, err := LineupEntries(p)
+	entries, err := lineupEntries(p)
 	if err != nil {
 		t.Fatal(err)
 	}
