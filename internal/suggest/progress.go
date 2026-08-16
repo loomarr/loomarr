@@ -4,7 +4,7 @@ import "context"
 
 // Phase names a stage of grounded generation (§8), surfaced to the UI as SSE
 // `suggestion` progress frames. A dropped frame is a latency bug, never a
-// correctness bug — GET /v1/proposals/{id} is the source of truth on reconnect.
+// correctness bug — GET /v1/proposal-jobs/{jobId} is the source of truth on reconnect.
 type Phase string
 
 const (
