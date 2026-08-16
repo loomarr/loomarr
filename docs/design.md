@@ -1623,6 +1623,24 @@ far it trails the Channel wall clock and offers one explicit **Go Live** action.
 that falls out of the horizon cannot be reconstructed: the transport returns to the safe live edge
 and says that the paused point expired. Tuning another Channel always joins that Channel live.
 
+The Web adapter exposes that contract through the generic player transport, not a second Channel
+player. Pause records both the exact media time and the viewer's Channel wall-clock time, then pauses
+the one mounted element without stopping its shared HLS session. Resume seeks that exact media time
+when it remains in the published seekable ranges and reports a `behind` mode whose lag advances from
+the stored wall clock. **Go Live** restarts loading at the HLS live edge and seeks to hls.js's live
+sync position (or the native seekable end). While paused, a ten-second manifest read keeps a
+native-HLS lease warm without creating media or a viewer-specific worker. The hls.js back buffer and
+latency correction are set beyond the fifteen-minute product horizon, so client defaults cannot
+silently discard a position the server still promises.
+
+These transport states belong in the playback bar: live is a compact status, while paused or behind
+live shows the increasing lag beside the **Go Live** action. Programme time and the mini-guide use
+the stored viewer wall clock, so their labels follow delayed playback rather than continuing to
+describe the live edge. The top bar remains Channel identity only. A Channel tune resets the
+transport to live; the bounded fresh-standby handoff above may join replacement playback after
+manifest, fragment, or `loadeddata`, but those callbacks must never resume a viewer who deliberately
+paused the active Channel.
+
 The history is shared media, never per-viewer encoding. Live HLS keeps one rolling fifteen-minute
 segment window on the existing remux keyed by `(Channel, EncodePlan)`, adds
 `EXT-X-PROGRAM-DATE-TIME`, and removes media older than that bound. Its refcount, grace lease, and
@@ -1648,7 +1666,9 @@ The V60 server gate proves: live ffmpeg arguments retain exactly the bounded sha
 programme date-time; a prepared manifest reaches the same wall-clock cutoff across multiple Airings
 without creating media; the resolver requests that lookbehind; the Watch timeline includes it; and
 the existing shared-remux identity remains `(Channel, EncodePlan)`. Web, Safari-native HLS, and later
-native-TV transports consume this one history through their platform player adapters.
+native-TV transports consume this one history through their platform player adapters. The Web gate
+proves exact pause-point resume, wall-clock lag, expiry fallback and notice, explicit Go Live, and
+that tuner replacement callbacks cannot override an intentional pause.
 
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
