@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -115,7 +116,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		// unreachable, which is upstream of us and typically transient — and writing an error
 		// document into the concat demuxer's stream would end the channel for every viewer
 		// rather than the one program we could not resolve.
-		if !s.serveCard(w, r, channelID, encPlan, s.playoutResolver.Profile(r.Context()), cardUnavailable) {
+		if !s.serveCard(w, r, channelID, encPlan, s.playoutResolver.Profile(r.Context()), cardUnavailable, offlineCardDuration) {
 			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
 		}
 		return
@@ -130,7 +131,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// time, so the loop paces itself — and the viewer sees "nothing scheduled" rather than a
 	// channel that fails to tune.
 	if !airing.Playable() || streamURL == "" {
-		if !s.serveCard(w, r, channelID, encPlan, profile, cardNothingScheduled) {
+		title, duration := cardNothingScheduled, offlineCardDuration
+		if airing.Kind == schedule.SlotFiller {
+			title = cardCommercialBreak
+			duration = boundedCardDuration(airing.Remaining)
+		}
+		if !s.serveCard(w, r, channelID, encPlan, profile, title, duration) {
 			// The card itself failed. This is the one honestly terminal case — there is no
 			// further fallback to reach for, so the channel does stop here.
 			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
@@ -219,8 +225,19 @@ const offlineCardDuration = 30 * time.Second
 // watching on a television, not into a log.
 const (
 	cardNothingScheduled = "Nothing scheduled"
+	cardCommercialBreak  = "We'll be right back"
 	cardUnavailable      = "Program unavailable"
 )
+
+// boundedCardDuration keeps a synthetic card from crossing the schedule boundary it stands in
+// for. The ordinary 30-second bound remains the retry cadence for an empty Channel or an upstream
+// failure; a scheduled break can be shorter when a viewer joins part-way through it.
+func boundedCardDuration(remaining time.Duration) time.Duration {
+	if remaining > 0 && remaining < offlineCardDuration {
+		return remaining
+	}
+	return offlineCardDuration
+}
 
 // serveCard renders the offline card and streams it, returning false only if even the card could
 // not be produced.
@@ -252,7 +269,7 @@ const (
 // costs the viewer a caption for a few seconds instead of the channel.
 func (s *Server) serveCard(
 	w http.ResponseWriter, r *http.Request, channelID string,
-	encPlan playout.EncodePlan, profile playout.Profile, title string,
+	encPlan playout.EncodePlan, profile playout.Profile, title string, duration time.Duration,
 ) bool {
 	// The font comes from the composition root, not playout.FindFont(), because the question is
 	// not "does this host have a font file?" but "can this ffmpeg BUILD draw one?" — a build
@@ -269,7 +286,7 @@ func (s *Server) serveCard(
 	card := func(enc playout.Encoder) []string {
 		p := profile
 		p.Encoder = enc
-		return playout.OfflineCardArgs(p, font, title, channelID, offlineCardDuration)
+		return playout.OfflineCardArgs(p, font, title, channelID, duration)
 	}
 	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
 		s.pipeChild(w, r, channelID, "offline card", c)
@@ -384,7 +401,7 @@ func (s *Server) cardOrFail(
 ) {
 	s.log.Warn("playout: program could not be produced — showing the card and continuing",
 		"channel", channelID, "program", what, "reason", reason)
-	if !s.serveCard(w, r, channelID, target, profile, cardUnavailable) {
+	if !s.serveCard(w, r, channelID, target, profile, cardUnavailable, offlineCardDuration) {
 		s.failProgram(w, r, channelID, what, reason)
 	}
 }

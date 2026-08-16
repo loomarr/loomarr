@@ -123,6 +123,13 @@ release-verify: ## verify release tag, OCI naming, and immutable publication pol
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
 
+.PHONY: backup-restore-verify backup-restore-drill
+backup-restore-verify: ## isolated SQLite backup, destructive replacement, restore, and state validation
+	$(GO) test -race ./internal/store -run '^TestSQLiteBackupRestoreDrill$$' -count=1
+
+backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres backup/restore drills
+	$(GO) test -race -tags=integration ./internal/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
+
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
@@ -558,6 +565,15 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
 	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
+
+.PHONY: tuner-e2e
+tuner-e2e: fe-build ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test --config=playwright.tuner.config.ts
+
+.PHONY: tuner-e2e-host
+tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installed browsers (§9.1)
+	cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts
 
 ## ---- Maintainer smoke (NOT CI) -------------------------------------------
 # §21's second half: the real-stack run. Deliberately NOT in CI and NOT part of `check` —

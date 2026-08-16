@@ -1,11 +1,15 @@
 package playout
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,22 +18,80 @@ import (
 	"github.com/mantonx/loomarr/internal/proctree"
 )
 
+// eagerAttacher models a warm live session whose initial burst arrives as the sink is attached.
+type eagerAttacher struct {
+	drained chan struct{}
+}
+
+func (a *eagerAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
+	if !sink.offer([]byte("initial session burst")) {
+		return nil, errors.New("sink rejected initial burst")
+	}
+	close(a.drained)
+	return func() { sink.close() }, nil
+}
+
+// burstAttacher models the larger-than-memory startup burst a warm session produces when its
+// readrate initial burst is released. It deliberately keeps the sink open after the burst so
+// the remux stays alive while the test inspects what reached ffmpeg's stdin.
+type burstAttacher struct {
+	chunks [][]byte
+	sent   chan struct{}
+}
+
+func (a *burstAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
+	for _, chunk := range a.chunks {
+		if !sink.offer(chunk) {
+			return nil, errors.New("sink rejected startup burst")
+		}
+	}
+	close(a.sent)
+	return func() { sink.close() }, nil
+}
+
+type recordingWriteCloser struct {
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	wakeup chan struct{}
+}
+
+func (w *recordingWriteCloser) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	select {
+	case w.wakeup <- struct{}{}:
+	default:
+	}
+	return n, err
+}
+
+func (w *recordingWriteCloser) Close() error { return nil }
+
+func (w *recordingWriteCloser) bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return bytes.Clone(w.buf.Bytes())
+}
+
 // fakeAttacher stands in for the session Manager, counting how many times Attach is called so a
 // test can assert the "N HLS viewers share ONE session" invariant.
 type fakeAttacher struct {
 	attaches atomic.Int32
 	detaches atomic.Int32
 	mu       sync.Mutex
-	chans    []chan []byte
+	sinks    []sessionSink
 }
 
-func (f *fakeAttacher) Attach(ctx context.Context, channelID string, target EncodePlan) (<-chan []byte, func(), error) {
+func (f *fakeAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sink sessionSink) (func(), error) {
 	f.attaches.Add(1)
-	ch := make(chan []byte)
 	f.mu.Lock()
-	f.chans = append(f.chans, ch)
+	f.sinks = append(f.sinks, sink)
 	f.mu.Unlock()
-	return ch, func() { f.detaches.Add(1) }, nil
+	return func() {
+		f.detaches.Add(1)
+		sink.close()
+	}, nil
 }
 
 // newTestHLSManager builds a manager whose ffmpeg spawn is faked: it writes a stub master
@@ -144,6 +206,48 @@ func TestHLSManager_HeaderOnlyPlaylistIsNotReady(t *testing.T) {
 	}
 }
 
+// A remux that has already exited cannot become ready. Waiting out the 45-second production
+// timeout hides the failure behind a long black screen and prevents the client from retrying.
+func TestHLSManager_StopsWaitingWhenRemuxExits(t *testing.T) {
+	att := &fakeAttacher{}
+	m, err := NewHLSManager(att, "ffmpeg", t.TempDir(), 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.readyTimeout = 2 * time.Second
+	m.spawn = func(ctx context.Context, _ string, _ string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
+		cmd := exec.CommandContext(ctx, "sh", "-c", "exit 7")
+		stdin, _ := cmd.StdinPipe()
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
+			return nil, err
+		}
+		return newHLSProcess(supervised, stdin, slog.New(slog.DiscardHandler)), nil
+	}
+	t.Cleanup(m.Stop)
+
+	before := time.Now()
+	_, detach, err := m.Playlist("ch1", PlanBaseline)
+	if detach != nil {
+		detach()
+	}
+	if err == nil {
+		t.Fatal("exited remux was reported ready")
+	}
+	if elapsed := time.Since(before); elapsed > 500*time.Millisecond {
+		t.Fatalf("waited %s after remux had already exited", elapsed)
+	}
+	if _, retryDetach, retryErr := m.Playlist("ch1", PlanBaseline); retryErr == nil {
+		if retryDetach != nil {
+			retryDetach()
+		}
+		t.Fatal("retry unexpectedly reported the exited remux ready")
+	}
+	if got := att.attaches.Load(); got != 2 {
+		t.Fatalf("retry made %d total session attaches, want 2 — it rejoined the dead remux", got)
+	}
+}
+
 // The core invariant: three browser viewers of one channel share ONE remux and therefore ONE
 // session Attach — three tabs cost one encoder, exactly like three TVs (§9.1).
 func TestHLSManager_ViewersShareOneRemux(t *testing.T) {
@@ -164,6 +268,196 @@ func TestHLSManager_ViewersShareOneRemux(t *testing.T) {
 	}
 	for _, d := range detaches {
 		d()
+	}
+}
+
+// A warm session can produce its first burst before the HLS ffmpeg child has finished spawning.
+// If HLS waits until after spawn to drain the session viewer, Manager's deliberately-small viewer
+// buffer fills and drops the remux. The browser then waits the full readiness timeout on a channel
+// whose parent is healthy — the intermittent cold black screen seen in the real runtime.
+func TestHLSManager_DrainsSessionWhileRemuxSpawns(t *testing.T) {
+	att := &eagerAttacher{drained: make(chan struct{})}
+	m, err := NewHLSManager(att, "ffmpeg", t.TempDir(), 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.readyTimeout = time.Second
+	m.spawn = func(ctx context.Context, _ string, dir string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
+		select {
+		case <-att.drained:
+		case <-time.After(200 * time.Millisecond):
+			return nil, errors.New("session was not drained while the remux spawned")
+		}
+		stub := []byte("#EXTM3U\n#EXTINF:4.0,\nseg-0.ts\n")
+		if err := os.WriteFile(filepath.Join(dir, hlsPlaylistName), stub, 0o644); err != nil {
+			return nil, err
+		}
+		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		stdin, _ := cmd.StdinPipe()
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
+			return nil, err
+		}
+		return newHLSProcess(supervised, stdin, nil), nil
+	}
+	t.Cleanup(m.Stop)
+
+	_, detach, err := m.Playlist("ch1", PlanBaseline)
+	if err != nil {
+		t.Fatalf("warm session burst was lost during HLS startup: %v", err)
+	}
+	detach()
+}
+
+// Draining early is not enough: the relay must preserve EVERY MPEG-TS byte in order while ffmpeg
+// starts. Dropping an arbitrary oldest chunk corrupts PAT/PMT or a reference frame; the real ffmpeg
+// then exits with decoder errors, and the client follows stale segment URLs into a 404/retry loop.
+func TestHLSManager_PreservesStartupBurstWhileRemuxSpawns(t *testing.T) {
+	const chunkCount = 320 // larger than the removed 256-chunk lossy relay
+	chunks := make([][]byte, 0, chunkCount)
+	var want bytes.Buffer
+	for i := range chunkCount {
+		chunk := []byte(fmt.Sprintf("chunk-%04d\n", i))
+		chunks = append(chunks, chunk)
+		_, _ = want.Write(chunk)
+	}
+
+	att := &burstAttacher{chunks: chunks, sent: make(chan struct{})}
+	m, err := NewHLSManager(att, "ffmpeg", t.TempDir(), 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.readyTimeout = time.Second
+	recorded := &recordingWriteCloser{wakeup: make(chan struct{}, 1)}
+	m.spawn = func(ctx context.Context, _ string, dir string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
+		select {
+		case <-att.sent:
+		case <-time.After(time.Second):
+			return nil, errors.New("session burst was not drained while the remux spawned")
+		}
+		stub := []byte("#EXTM3U\n#EXTINF:4.0,\nseg-0.ts\n")
+		if err := os.WriteFile(filepath.Join(dir, hlsPlaylistName), stub, 0o644); err != nil {
+			return nil, err
+		}
+		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
+			return nil, err
+		}
+		return newHLSProcess(supervised, recorded, nil), nil
+	}
+	t.Cleanup(m.Stop)
+
+	_, detach, err := m.Playlist("ch1", PlanBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+
+	deadline := time.Now().Add(time.Second)
+	for len(recorded.bytes()) < want.Len() && time.Now().Before(deadline) {
+		select {
+		case <-recorded.wakeup:
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	got := recorded.bytes()
+	if !bytes.Equal(got, want.Bytes()) {
+		t.Fatalf("ffmpeg received %d startup bytes, want %d byte-for-byte in order", len(got), want.Len())
+	}
+}
+
+func TestHLSRelay_FailsCleanlyAtItsMemoryBound(t *testing.T) {
+	relay := newHLSRelay()
+	relay.maxBytes = 4
+	if relay.offer([]byte("1234")) != true {
+		t.Fatal("relay rejected bytes within its bound")
+	}
+	if relay.offer([]byte("5")) {
+		t.Fatal("relay accepted bytes beyond its bound")
+	}
+	if _, err := relay.next(); err == nil || !strings.Contains(err.Error(), "startup queue exceeded") {
+		t.Fatalf("overflow next error = %v, want explicit bounded failure", err)
+	}
+}
+
+// A second manifest poll can arrive while the first request is still waiting for ffmpeg to write
+// the first segment. It shares the existing remux, but it is not allowed to skip that remux's
+// readiness gate and hand Origin a path that does not exist yet — that race is an immediate 502
+// during an otherwise healthy channel start.
+func TestHLSManager_JoinerWaitsForExistingRemuxToBecomeReady(t *testing.T) {
+	att := &fakeAttacher{}
+	m, err := NewHLSManager(att, "ffmpeg", t.TempDir(), 20*time.Millisecond, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.readyTimeout = 2 * time.Second
+	dirReady := make(chan string, 1)
+	m.spawn = func(ctx context.Context, _ string, dir string, _ EncodePlan, _ *slog.Logger) (*hlsProcess, error) {
+		cmd := exec.CommandContext(ctx, "sleep", "3600")
+		stdin, _ := cmd.StdinPipe()
+		supervised, err := proctree.Start(ctx, cmd)
+		if err != nil {
+			return nil, err
+		}
+		dirReady <- dir
+		return newHLSProcess(supervised, stdin, nil), nil
+	}
+	t.Cleanup(m.Stop)
+
+	type result struct {
+		detach func()
+		err    error
+	}
+	first := make(chan result, 1)
+	go func() {
+		_, detach, err := m.Playlist("ch1", PlanBaseline)
+		first <- result{detach: detach, err: err}
+	}()
+	dir := <-dirReady
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		m.mu.Lock()
+		started := len(m.remuxes) == 1
+		m.mu.Unlock()
+		if started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first request never published its starting remux")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	second := make(chan result, 1)
+	go func() {
+		_, detach, err := m.Playlist("ch1", PlanBaseline)
+		second <- result{detach: detach, err: err}
+	}()
+	select {
+	case got := <-second:
+		if got.detach != nil {
+			got.detach()
+		}
+		t.Fatal("joiner returned before the shared remux had a playable segment")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	stub := []byte("#EXTM3U\n#EXTINF:4.0,\nseg-0.ts\n")
+	if err := os.WriteFile(filepath.Join(dir, hlsPlaylistName), stub, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i, ch := range []chan result{first, second} {
+		select {
+		case got := <-ch:
+			if got.err != nil {
+				t.Fatalf("viewer %d: %v", i+1, got.err)
+			}
+			got.detach()
+		case <-time.After(time.Second):
+			t.Fatalf("viewer %d did not observe the ready playlist", i+1)
+		}
 	}
 }
 

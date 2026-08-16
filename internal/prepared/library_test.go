@@ -6,10 +6,71 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/prepared"
 )
+
+// Tune-time lookup must never wait for the readiness control plane. A publication is deliberately
+// invisible until its atomic rename; while that build is running Peek reports a clean miss so
+// Origin can use live fallback immediately. Blocking here creates an intermittent tune delay equal
+// to however much of the background encode remains.
+func TestLibraryPeekDoesNotWaitForAnInProgressPublication(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := baseline("source-being-prepared")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	published := make(chan error, 1)
+	go func() {
+		_, publishErr := lib.Publish(t.Context(), spec, func(_ context.Context, workspace string) (prepared.Output, error) {
+			close(started)
+			<-release
+			return writeOne("segment.m4s", "media")(context.Background(), workspace)
+		})
+		published <- publishErr
+	}()
+	<-started
+
+	peeked := make(chan struct {
+		ok  bool
+		err error
+	}, 1)
+	go func() {
+		_, ok, peekErr := lib.Peek(spec)
+		peeked <- struct {
+			ok  bool
+			err error
+		}{ok: ok, err: peekErr}
+	}()
+
+	select {
+	case result := <-peeked:
+		if result.err != nil || result.ok {
+			t.Fatalf("Peek during publication = (_, %v, %v), want immediate clean miss", result.ok, result.err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		unblock()
+		<-published
+		t.Fatal("Peek waited behind the background publication — tune would stall until encoding finished")
+	}
+
+	unblock()
+	if err := <-published; err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := lib.Peek(spec); err != nil || !ok {
+		t.Fatalf("Peek after publication = (_, %v, %v), want hit", ok, err)
+	}
+}
 
 func baseline(source string) prepared.Specification {
 	return prepared.Specification{

@@ -607,6 +607,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		)
 		playoutRes = &playoutResolver{
 			engine: channelEngine, lib: lib, now: time.Now,
+			detectContext: rootCtx,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 			// state and must not be able to change it.
 			titles: st,
