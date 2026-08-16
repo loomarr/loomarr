@@ -53,6 +53,22 @@ const stubProposalJobs = (jobs: ProposalJobDTO[]) => {
   return urls;
 };
 
+const stubProposalJobSequence = (responses: ProposalJobDTO[][]) => {
+  let reads = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      if (typeof url === "string" && url.includes("/v1/proposal-jobs")) {
+        const jobs = responses[Math.min(reads, responses.length - 1)] ?? [];
+        reads += 1;
+        return Promise.resolve(jsonResponse({ proposalJobs: jobs }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    }),
+  );
+  return () => reads;
+};
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("MyRequests", () => {
@@ -117,6 +133,23 @@ describe("MyRequests", () => {
     expect(screen.getByText("Waiting for approval")).toBeInTheDocument();
     expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText("Not approved")).toBeInTheDocument();
+  });
+
+  it("keeps polling a done job while its Proposal still awaits a decision", async () => {
+    const submitted = job({
+      status: "done",
+      proposal: proposal({ status: "submitted" }),
+    });
+    const approved = job({
+      status: "done",
+      proposal: proposal({ status: "approved" }),
+    });
+    const reads = stubProposalJobSequence([[submitted], [approved]]);
+    render(<MyRequests />);
+
+    expect(await screen.findByText("Waiting for approval")).toBeInTheDocument();
+    expect(await screen.findByText("Approved", {}, { timeout: 3_000 })).toBeInTheDocument();
+    expect(reads()).toBe(2);
   });
 
   // The tracked-titles table below is the page's real content; an "you have asked for nothing"

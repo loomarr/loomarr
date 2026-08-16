@@ -20,11 +20,19 @@ const MyRequests = () => {
     { mine: true },
     {
       query: {
-        // Poll only while work is active. The list stays truthful if an SSE frame is missed, while
-        // terminal history remains a single bounded read.
+        // Poll while execution is active OR its Proposal still awaits a decision. The latter
+        // catches zero-acquisition approvals/denials, which produce no title event to refresh us.
+        // Fully decided and failed history remains a single bounded read.
         refetchInterval: ({ state }) => {
           const jobs = unwrap(state.data, (body) => body.proposalJobs) ?? [];
-          return jobs.some((job) => job.status === "queued" || job.status === "running") ? 2_000 : false;
+          return jobs.some(
+            (job) =>
+              job.status === "queued" ||
+              job.status === "running" ||
+              (job.status === "done" && job.proposal?.status === "submitted"),
+          )
+            ? 2_000
+            : false;
         },
       },
     },
