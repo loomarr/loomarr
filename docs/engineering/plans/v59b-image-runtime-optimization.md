@@ -98,6 +98,16 @@ its large local compile cache out of ordinary image builds.
 - Extend the existing Image worker protocol when the capability belongs to the same crash/resource
   boundary; do not create a second Rust service merely to increase the Rust footprint.
 
+**Checkpoint 6 result:** no additional capability is justified. The production Image service has
+no Go pixel path; its Go codec imports came only from deterministic certification-corpus generation,
+which now lives with the non-shipping `cmd/image-cert` tool. A source architecture test prevents
+those imports from returning to `internal/images`. The only other production Go pixel consumer is
+the filler-era heuristic in `internal/mediatools`; it samples at most 1,024 pixels per keyframe in a
+background job, lies outside the measured Image-worker boundary, and has no evidence of meaningful
+duration, queue, RSS, byte, or failure cost. Moving it would expand the protocol on novelty rather
+than evidence. The next proposal must bring a production metrics capture and a same-corpus
+certification/benchmark reproduction; if it qualifies, it extends the existing worker.
+
 ## Required gates per optimization PR
 
 ```sh
