@@ -136,6 +136,56 @@ func TestSystemServices_OmitsUnconfiguredOptionalIntegrations(t *testing.T) {
 	}
 }
 
+type panelLiveTV struct{}
+
+func (panelLiveTV) Connect(context.Context) (bool, bool, error) { return false, false, nil }
+func (panelLiveTV) Reconnect(context.Context) (int, error)      { return 0, nil }
+func (panelLiveTV) Wired(context.Context) (bool, error)         { return false, nil }
+
+type panelTunarrConnector struct{}
+
+func (panelTunarrConnector) Connect(context.Context) (string, int, error) { return "", 0, nil }
+func (panelTunarrConnector) LibrariesReady(context.Context) (bool, error) { return false, nil }
+
+func TestSystemServices_OmitsUnconfiguredWiringAdapters(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		LiveTV:        panelLiveTV{},
+		TunarrConnect: panelTunarrConnector{},
+		LiveConfig:    func(string) string { return "" },
+	})
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
+	var view api.ServicesView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Rows) != 0 {
+		t.Errorf("unconfigured wiring adapters rendered as incidents: %+v", view.Rows)
+	}
+}
+
+func TestSystemServices_ReportsConfiguredWiringAdapters(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		LiveTV:        panelLiveTV{},
+		TunarrConnect: panelTunarrConnector{},
+		LiveConfig: func(key string) string {
+			return map[string]string{
+				"tunarr.url":  "http://tunarr.local",
+				"library.url": "http://media.local",
+			}[key]
+		},
+	})
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
+	var view api.ServicesView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Rows) != 2 || view.Rows[0].Name != "livetv" || view.Rows[1].Name != "tunarr_library" {
+		t.Errorf("configured wiring checks missing: %+v", view.Rows)
+	}
+}
+
 func TestSystemServices_ReportsConfiguredFixedTargetIntegration(t *testing.T) {
 	srv, _ := serverWithPanels(t, api.Options{
 		Settings: &fakeSettings{},

@@ -175,8 +175,10 @@ func (s *Server) dashboardServiceConfigured(name, target string) bool {
 	case "tmdb":
 		return s.configValue("tmdb.api_key") != ""
 	case "livetv", "tunarr_library":
-		// These checks are only appended when the corresponding runtime service exists.
-		return true
+		// The composition root wires these adapters even on a fresh internal-playout install.
+		// They become operational dependencies only after the operator configures both sides
+		// of the Tunarr/media-server bridge; before then they are setup work, not incidents.
+		return s.configValue("tunarr.url") != "" && s.configValue("library.url") != ""
 	default:
 		return false
 	}
