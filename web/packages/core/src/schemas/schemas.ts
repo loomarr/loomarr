@@ -19,9 +19,12 @@
 // all), and OpenAPI has nowhere to put a user-facing message. So every product rule below —
 // the trims, the lengths, the 0–200 cap, the password confirmation — is deliberately
 // hand-authored and must STAY that way. Do not "simplify" these into the generated schema.
-import { loginBody } from "@loomarr/api/zod/auth";
-import { submitProposalBody } from "@loomarr/api/zod/proposals";
-import { bootstrapBody } from "@loomarr/api/zod/setup";
+// ⚠ PascalCase because orval 8.24 renamed generated zod SCHEMA exports (`loginBody` →
+// `LoginBody`). Scalar constraint constants kept their camelCase (`changePasswordBodyNextMin`),
+// so the casing here is not a blanket rule — it tracks what the generator emits per symbol.
+import { LoginBody } from "@loomarr/api/zod/auth";
+import { SubmitProposalBody } from "@loomarr/api/zod/proposals";
+import { BootstrapBody } from "@loomarr/api/zod/setup";
 import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only
@@ -29,7 +32,7 @@ import { z } from "zod";
 //
 // ⚠ `.pick()` rather than using the wire schema directly: POST /v1/proposals also carries
 // `adjacent`, `currentLineup` and `refineText`, which belong to the refine flow, not this form.
-const intentShape = submitProposalBody.pick({
+const intentShape = SubmitProposalBody.pick({
   description: true,
   era: true,
   tone: true,
@@ -54,8 +57,7 @@ const intentSchema = intentShape.extend({
 // ⚠ `confirm` is FORM-ONLY and correctly absent from the wire — the server never receives it.
 // That is why the pattern is pick-then-extend rather than a straight derive: the wire decides
 // which of these names are real, and the form is free to add its own on top.
-const bootstrapSchema = bootstrapBody
-  .pick({ username: true, password: true })
+const bootstrapSchema = BootstrapBody.pick({ username: true, password: true })
   .extend({
     username: z.string().trim().min(1, "Pick a username."),
     password: z.string().min(8, "At least 8 characters."),
@@ -64,7 +66,7 @@ const bootstrapSchema = bootstrapBody
   .refine((v) => v.password === v.confirm, { message: "Passwords don't match.", path: ["confirm"] });
 
 // Sign-in (local or imported media-server credentials, §11).
-const loginSchema = loginBody.pick({ username: true, password: true }).extend({
+const loginSchema = LoginBody.pick({ username: true, password: true }).extend({
   username: z.string().trim().min(1, "Enter your username."),
   password: z.string().min(1, "Enter your password."),
 });

@@ -17,6 +17,9 @@
 export * from "../../generated/zod/auth/auth.zod";
 export * from "../../generated/zod/channels/channels.zod";
 export * from "../../generated/zod/dashboard/dashboard.zod";
+// `events` is new under orval 8.24 — the older generator emitted no zod module for this tag,
+// so this line has no counterpart on main. barrel.test.ts is what caught it.
+export * from "../../generated/zod/events/events.zod";
 export * from "../../generated/zod/filler/filler.zod";
 export * from "../../generated/zod/help/help.zod";
 export * from "../../generated/zod/images/images.zod";
