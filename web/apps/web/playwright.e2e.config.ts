@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { DESKTOP, DETERMINISM } from "./playwright.shared";
+import { DESKTOP, DETERMINISM, WORKERS } from "./playwright.shared";
 
 // Wizard flow suite + page-level snapshots — the Phase 13.3 gate (frontend-build-plan §5).
 // Distinct from the visual suite: that one snapshots isolated components out of
@@ -13,11 +13,11 @@ const PORT = 6008;
 export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/e2e",
-  // The tuner scenario owns a real same-origin HLS fixture and its own three-engine config.
-  // Keeping it out of this wizard-only suite prevents it from being discovered against the
-  // wizard route-mock server before the dedicated tuner gate runs.
-  testIgnore: "tuner-surf.spec.ts",
   fullyParallel: true,
+  // ⚠ This suite had NO worker cap at all, so a local run took Playwright's `cpus()/2` and
+  // booted a browser per worker against the real SPA — the heavier of the two suites on the
+  // machine that has to run it. Shared with the visual config so the two cannot diverge.
+  workers: WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },

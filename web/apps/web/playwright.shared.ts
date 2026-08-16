@@ -1,4 +1,22 @@
+import { cpus, freemem } from "node:os";
 import { devices } from "@playwright/test";
+
+// How many workers a LOCAL run may use. CI passes its own count and never calls this.
+//
+// ⚠ Bound by MEMORY, not cores, because memory is what actually runs out. Playwright's
+// default is `cpus()/2`, which reads as "leave half the machine for the person using it" —
+// true of CPU, false of RAM. Each worker is a full browser (~300-600MB with its renderers),
+// so on a 24-core desktop the default asks for 12 of them, ~4-7GB on top of whatever the
+// developer already has open. That is a swap-thrash hard-lock, and it gets WORSE on better
+// hardware: the same default is 6x more aggressive here than on the 4-core CI runner these
+// suites were tuned against.
+//
+// Ceiling of 4 because past that these suites are disk- and browser-startup-bound, not
+// core-bound; floor of 2 so a busy machine still runs them concurrently rather than serially.
+const localWorkers = () => Math.max(2, Math.min(4, Math.floor(freemem() / (1.5 * 1024 ** 3))));
+
+// CI gets the full core count (hermetic suites, a dedicated runner, nothing else resident).
+const WORKERS = process.env.CI ? cpus().length : localWorkers();
 
 // The determinism kit both Playwright suites share (frontend-design §5.2), in ONE place.
 //
@@ -37,4 +55,4 @@ const DETERMINISM = {
 const DESKTOP = { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } };
 const MOBILE = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } };
 
-export { DESKTOP, DETERMINISM, MOBILE };
+export { DESKTOP, DETERMINISM, MOBILE, WORKERS };
