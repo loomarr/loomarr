@@ -12,6 +12,72 @@ const p95 = (samples: number[]): number => {
   return ordered[Math.max(0, Math.ceil(ordered.length * 0.95) - 1)] ?? Number.POSITIVE_INFINITY;
 };
 
+const measureFreshMediaSourceBaseline = async (page: Page): Promise<number[]> => {
+  await page.goto("/__tuner/calibration");
+  return page.evaluate(async () => {
+    const getBytes = async (path: string) => new Uint8Array(await (await fetch(path)).arrayBuffer());
+    const [init, media] = await Promise.all([
+      getBytes("/v1/playout/hls/ch-002/init.mp4?sig=calibration"),
+      getBytes("/v1/playout/hls/ch-002/segment.m4s?sig=calibration"),
+    ]);
+    const once = (target: EventTarget, type: string) =>
+      new Promise<void>((resolve, reject) => {
+        const failed = () => reject(new Error(`calibration ${type} failed`));
+        target.addEventListener(type, () => resolve(), { once: true });
+        target.addEventListener("error", failed, { once: true });
+      });
+    const append = async (buffer: SourceBuffer, bytes: Uint8Array<ArrayBuffer>) => {
+      const updated = once(buffer, "updateend");
+      buffer.appendBuffer(bytes);
+      await updated;
+    };
+    const sample = async () => {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.style.width = "160px";
+      video.style.height = "90px";
+      document.body.append(video);
+      const source = new MediaSource();
+      const objectURL = URL.createObjectURL(source);
+      const started = performance.now();
+      try {
+        const opened = once(source, "sourceopen");
+        video.src = objectURL;
+        await opened;
+        const buffer = source.addSourceBuffer('video/mp4; codecs="avc1.64000a"');
+        await append(buffer, init);
+        await append(buffer, media);
+        const frame = new Promise<number>((resolve) =>
+          video.requestVideoFrameCallback(() => resolve(performance.now() - started)),
+        );
+        await video.play();
+        return await Promise.race([
+          frame,
+          new Promise<number>((_, reject) =>
+            window.setTimeout(() => reject(new Error("calibration frame timed out")), 5_000),
+          ),
+        ]);
+      } finally {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        URL.revokeObjectURL(objectURL);
+        video.remove();
+      }
+    };
+
+    // The controller gate below deliberately measures an already-running decoder: its first Watch
+    // Channel owns cold boot, then every surf sample replaces that source. Give this raw control
+    // the same contract before measuring fresh MediaSource replacement cost.
+    await sample();
+    await sample();
+    const samples: number[] = [];
+    for (let index = 0; index < 5; index++) samples.push(await sample());
+    return samples;
+  });
+};
+
 const installFrameClock = async (page: Page) => {
   await page.addInitScript(() => {
     // The 100-Channel scenario intentionally creates hundreds of API/HLS resource entries. Keep
@@ -106,14 +172,16 @@ const waitForTargetPlaying = async (page: Page, channel: string, since: number) 
           (event) => event.at >= since && event.channel === channel && event.type === "playing",
         ) ?? false,
       { channel, since },
-      { timeout: TARGET_PLAYING_TIMEOUT_MS },
+      // The strict join limit is asserted from browser timestamps below. This wait only lets the
+      // browser publish that evidence; using the 250ms product limit as a second Playwright polling
+      // timeout can fail after `playing` already happened when the driver itself is descheduled.
+      { timeout: 10_000 },
     );
   } catch (error) {
     const playback = await playbackSnapshot(page, channel, since);
-    throw new Error(
-      `${channel} did not join target playback within ${TARGET_PLAYING_TIMEOUT_MS}ms: ${JSON.stringify(playback)}`,
-      { cause: error },
-    );
+    throw new Error(`${channel} did not publish target playback evidence: ${JSON.stringify(playback)}`, {
+      cause: error,
+    });
   }
 
   const playback = await playbackSnapshot(page, channel, since);
@@ -153,11 +221,11 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
       }
     ).__loomarrDecodedFrames.length,
   }));
-  const started = await page.evaluate(() => performance.now());
   await page.evaluate((path) => {
     window.addEventListener(
       "keydown",
       () => {
+        (window as Window & { __loomarrTuneInputAt?: number }).__loomarrTuneInputAt = performance.now();
         window.history.pushState({}, "", path);
         window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
       },
@@ -165,6 +233,9 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
     );
   }, `/channels/${id}/watch`);
   await page.keyboard.press("x");
+  const started = await page.evaluate(
+    () => (window as Window & { __loomarrTuneInputAt?: number }).__loomarrTuneInputAt ?? performance.now(),
+  );
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
   try {
     await page.waitForFunction(
@@ -319,6 +390,13 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
+  const freshMediaSourceBaseline = await measureFreshMediaSourceBaseline(page);
+  expect(
+    p95(freshMediaSourceBaseline),
+    `raw MediaSource p95: ${p95(freshMediaSourceBaseline).toFixed(1)}ms; samples: ${freshMediaSourceBaseline
+      .map((sample) => sample.toFixed(1))
+      .join(", ")}`,
+  ).toBeLessThan(500);
 
   // Prove the engine can cold-start and decode the representative H.264 stream, but keep decoder
   // bootstrap out of the surf percentile. The real-runtime gate owns cold boot timing; this gate

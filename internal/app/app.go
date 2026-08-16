@@ -174,12 +174,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Settings subsystem (config-design §3): once the store is open, build the
 	// registry + resolution service (env pins validated → boot error), the
 	// generated secrets, and the redactor. Every subsystem below reads config
-	// through `set` (env > db > default, hot-applying) instead of raw cfg fields,
-	// and connection adapters take snapshot-backed closures so a saved URL/token
-	// takes effect on the next call with no restart. Without a store we can't
+	// through `set` (env > db > default) instead of raw cfg fields. Most values
+	// remain live; generation-scoped storage is frozen below, while connection
+	// adapters take per-operation snapshots so a saved URL/token takes effect on
+	// the next call. Without a store we can't
 	// resolve DB overrides, so fall back to env-only defaults via a store-less
 	// service is out of scope here — the app already isn't ready without a store.
 	var set resolved
+	var desiredSet resolved
+	var appliedRestartSettings map[string]string
+	var fillerLayout filler.Layout
 	var secrets *settings.Secrets
 	var secretRedactor *settings.Redactor
 	if st != nil {
@@ -188,6 +192,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			return nil, serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
 		}
 		set, secrets, secretRedactor, log = r, sec, red, slog2
+		desiredSet = set
+		set, appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
+		fillerLayout, serr = filler.NewLayout(set.str("filler.dir"), set.str("filler.watch_dir"))
+		if serr != nil {
+			return nil, fmt.Errorf("resolve filler storage layout: %w", serr)
+		}
+		canonicalFillerRestartBaseline(appliedRestartSettings, fillerLayout)
 		slog.SetDefault(log)
 	}
 	// One always-constructed dynamic TMDB adapter serves every TMDB-backed capability
@@ -552,9 +563,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//
 		// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
 		// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
-		//   1. MEASURED capacity — what Detect's encoder trial found this box sustains (playoutRes,
-		//      set async at adapter start). The source of truth for "how many encodes fit".
-		//   2. OPERATOR OVERRIDE — playout.max_channels, applied as a HARD CAP (min): an operator may
+		//   1. MEASURED capacity — what Detect's lazy encoder trial found this box sustains
+		//      (playoutRes.maxChannels). The source of truth for "how many encodes fit"; until the first
+		//      trial completes, EffectiveCapacity deliberately permits one conservative transcode.
+		//   2. OPERATOR SAFETY CAP — playout.max_channels, applied as a HARD CAP (min): an operator may
 		//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
 		//      proved. 0/unset ⇒ no cap, use the measurement.
 		//   3. VRAM SHADING — a resident LLM steals VRAM each hardware encode needs for its device
@@ -563,39 +575,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//      VRAM can no longer host (~1 hardware encode per few GiB held). Reactive to the model
 		//      loading/unloading, so headroom grows back when it evicts.
 		playoutBudget := func() int {
-			// Until the background capability probe publishes its result, admit one software
-			// transcode. Zero would turn the non-blocking probe into a different cold-start failure:
-			// the very first viewer would be rejected before Profile could start the probe.
-			measured := 1
-			if playoutRes != nil && playoutRes.detectReady.Load() {
-				// detectReady is the publication fence for maxChannels: never read the field while
-				// the background probe may still be writing it.
-				measured = playoutRes.maxChannels
+			measured := 0
+			if playoutRes != nil {
+				measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
 			}
-			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
-			// measured capacity is a conservative estimate that can under-count a capable GPU (the
-			// 3080-Ti-read-as-1 bug), so an operator who sets playout.max_channels is trusted to RAISE
-			// above it as well as lower it. Unset (0) ⇒ use the measurement, which is now warm-measured
-			// and clamped to a sane floor so it is a reasonable default on its own.
-			budget := measured
-			if override := set.intv("playout.max_channels"); override > 0 {
-				budget = override
-			}
-			// Shade by resident-LLM VRAM. ~4 GiB per hardware encode is a conservative device-context
-			// estimate; a resident 8B model (~6 GiB) thus costs ~1–2 slots, which matches the live
-			// black-screen incident. Never shade below 1 while any capacity exists — a resident model
-			// should degrade headroom, not take playout to zero.
+			residentGiB := 0.0
 			if residentVRAM != nil {
-				if gib, _ := residentVRAM(rootCtx); gib > 0 {
-					const gibPerEncode = 4.0
-					shaded := budget - int(gib/gibPerEncode)
-					if shaded < 1 && budget >= 1 {
-						shaded = 1
-					}
-					budget = shaded
-				}
+				residentGiB, _ = residentVRAM(rootCtx)
 			}
-			return budget
+			return playout.EffectiveCapacity(measured, set.intv("playout.max_channels"), residentGiB)
 		}
 		playoutMgr := playout.NewManager(
 			playoutSpawner(set.str("playout.ffmpeg_path"),
@@ -629,11 +617,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
-			capacity: func() int { return set.intv("playout.max_channels") },
-			// fillerDir is read live like every other setting; `pods` is assigned after the
-			// pod adapter is built further down (it needs the filler catalog, which is wired
-			// later) — see "playoutRes.pods" below.
-			fillerDir: func() string { return set.str("filler.dir") },
+			capacity: playoutBudget,
+			// fillerDir belongs to the immutable generation layout. Changing storage roots
+			// is applied only after the generation drains and rebuilds (§10); `pods` is
+			// assigned after the pod adapter is built further down.
+			fillerDir: fillerLayout.ClipDir(),
 			// The capability probe runs lazily on the first program that needs it, when
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
@@ -651,7 +639,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
 			probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
 			// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
-			// applies without a restart — the same hot-apply posture as fillerDir/audioLanguage.
+			// applies without a restart — the same hot-apply posture as audioLanguage.
 			pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
 			log:     log,
 			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
@@ -875,7 +863,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			playoutMgr.Stop()
 		}()
 		log.Info("internal playout registered",
-			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels", set.intv("playout.max_channels"))
+			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
 
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
@@ -963,7 +951,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if imageErr != nil {
 			return nil, imageErr
 		}
-		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
+		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, fillerLayout, set, activityRec, log)
 
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
@@ -1073,9 +1061,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// empty catalog. Without this, shipping a default would swap an honest "not
 		// configured" for a scan error on every fresh install: configured, and broken.
 		//
-		// Best-effort: a read-only or unwritable /data is the operator's to fix, and it
-		// must not stop the rest of the app booting. The scan then reports the real problem.
-		if dir := set.str("filler.dir"); dir != "" {
+		// Best-effort after Layout has proved the paths do not alias: a target that cannot be
+		// created is the operator's to fix, and scan reports it without pruning the catalog.
+		// Layout construction itself fails closed when filesystem identity cannot be inspected,
+		// because starting destructive intake on an unverifiable topology is unsafe.
+		if dir := fillerLayout.ClipDir(); dir != "" {
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
 					"dir", dir, "err", err)
@@ -1083,7 +1073,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
 			// default at boot so a fresh install is green before its first arrival; an explicitly
 			// configured, unusable watch path still fails visibly rather than being ignored.
-			watch := filler.WatchDir(dir, set.str("filler.watch_dir"))
+			watch := fillerLayout.WatchDir()
 			if err := os.MkdirAll(watch, 0o750); err != nil {
 				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
 					"dir", watch, "err", err)
@@ -1092,16 +1082,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
 		// captured — see buildSyncer for why, and for why a nil library scanner is a supported
 		// install rather than a degraded one.
-		syncer := buildSyncer(rootCtx, st, set, log, fillerProg)
+		syncer := buildSyncer(rootCtx, st, set, fillerLayout, log, fillerProg)
 
 		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
 		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
-		taggerProvider, tagger := buildTagger(st, set, log)
+		taggerProvider, tagger := buildTagger(st, set, fillerLayout, log)
 		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
 		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
 		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
-		fetcher := buildFetcher(set, log)
-		splitter := buildSplitter(st, set, log)
+		fetcher := buildFetcher(set, fillerLayout, log)
+		splitter := buildSplitter(st, set, fillerLayout, log)
 		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
 		// below. The pipeline needs the vision provider and the splitter, which are wired further
 		// down, while this adapter is needed further up — so one of the two has to be completed
@@ -1135,9 +1125,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
 		// shared heartbeat. Interval key: filler.sync_every.
 		jobReg.Add(fillerSyncJob(syncer))
-		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+		log.Info("filler catalog sync registered", "dir", fillerLayout.ClipDir(), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 
-		fillerPipeline := buildPipeline(st, set, log, emitter, splitter, taggerProvider)
+		fillerPipeline := buildPipeline(st, set, fillerLayout, log, emitter, splitter, taggerProvider)
 		jobReg.Add(fillerPipelineJob(fillerPipeline))
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
@@ -1148,7 +1138,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// `store.Store`. The clip dir is the same containment boundary
 		// the splitter uses; the window is read live so a change applies on the next run.
 		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
+			fillerSweepStoreAdapter{st}, fillerLayout.ClipDir(),
 			func() time.Duration { return set.dur("filler.split.review_window") },
 			time.Now, log)))
 
@@ -1162,7 +1152,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// made for backups on Postgres.
 		autoFetch := filler.NewFetcher(
 			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerAdapter, set.str("filler.dir"),
+			archiveDiscoverAdapter{}, fillerAdapter, fillerLayout.ClipDir(),
 			filler.FetchLimits{
 				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
@@ -1359,7 +1349,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
 			svc: set.svc, secrets: secrets, store: st, log: log,
-			tests: connectionTests(set, tmdbClient), refreshRedactor: refreshSecretRedactor,
+			tests: connectionTests(desiredSet, tmdbClient), refreshRedactor: refreshSecretRedactor,
 			readSecret: readGeneratedSecret,
 		}
 	}
@@ -1506,19 +1496,20 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		SSO:            ssoSvc,
 		Restart:        restartSvc,
 		Activity:       activityRec,
-		// The baseline for "has a boot-time setting changed?" is what THIS generation
-		// booted with, captured here rather than per call (config-design §3).
-		BootstrapDrift: bootstrapDrift(bootCfg),
-		Jobs:           jobsSvc,
-		Settings:       settingsSvc,
+		// The baseline for "has a restart-scoped setting changed?" is what THIS
+		// generation booted with, captured here rather than per call (config-design §3).
+		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		Jobs:         jobsSvc,
+		Settings:     settingsSvc,
 		BackendTransition: currentBackendTransition{
 			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
 		},
-		Guide:      guideSvc,
-		Provision:  provisionSvc,
-		Approver:   proposalApprover,
-		Binder:     chBinder,
-		LiveConfig: liveConfig,
+		Guide:        guideSvc,
+		Provision:    provisionSvc,
+		Approver:     proposalApprover,
+		Binder:       chBinder,
+		FillerLayout: fillerLayout,
+		LiveConfig:   liveConfig,
 		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
 			snapshot, err := checkpointSnapshot(ctx)
 			return api.BackendCheckpoint{

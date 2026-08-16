@@ -84,7 +84,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		capacity:       func() int { return 4 },
 		activeChannels: func() int { return 0 },
 		pods:           stubPods{pod: pod},
-		fillerDir:      func() string { return dir },
+		fillerDir:      dir,
 	}
 }
 

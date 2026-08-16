@@ -36,12 +36,12 @@ type RestartCost struct {
 	// a few seconds; Tunarr-backed channels do not (§9.1). Reported as a live count
 	// rather than a static warning because an install can have both at once.
 	StreamingChannels int `json:"streamingChannels" doc:"Channels Loomarr is streaming that will drop"`
-	// RestartRequired reports a boot-time setting whose saved value differs from the one
-	// this process is running (config-design §3).
-	RestartRequired bool `json:"restartRequired" doc:"A boot-time setting has changed and needs a restart to apply"`
-	// PendingKeys names the changed boot-time settings, so the UI can say WHICH one
+	// RestartRequired reports a restart-scoped setting whose saved value differs from the one
+	// this application generation is running (config-design §3).
+	RestartRequired bool `json:"restartRequired" doc:"A restart-scoped setting has changed and needs a restart to apply"`
+	// PendingKeys names the changed restart-scoped settings, so the UI can say WHICH one
 	// rather than "something changed".
-	PendingKeys []string `json:"pendingKeys,omitempty" doc:"Boot-time settings waiting on a restart, e.g. DATABASE_URL"`
+	PendingKeys []string `json:"pendingKeys,omitempty" doc:"Restart-scoped settings waiting on a restart, e.g. DATABASE_URL or filler.dir"`
 	// Available is false when this build has no restart loop behind it. The UI needs it
 	// to explain the absence rather than offer a button that cannot work.
 	Available bool `json:"available" doc:"Whether this process can restart itself"`
@@ -54,7 +54,7 @@ func (s *Server) registerSystemRestart(api huma.API) {
 		OperationID: "system-restart-cost", Method: http.MethodGet, Path: "/v1/system/restart",
 		Summary: "What a restart would cost right now",
 		Description: "Admin only. The live count of channels Loomarr is streaming (which drop for a few " +
-			"seconds; Tunarr-backed channels keep playing), plus any boot-time setting waiting on a " +
+			"seconds; Tunarr-backed channels keep playing), plus any restart-scoped setting waiting on a " +
 			"restart. Read-only — this does not restart anything.",
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemRestartCost)
@@ -98,8 +98,8 @@ func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRes
 	// ⚠ DERIVED, never a sticky flag. A boolean written when the operator saves is wrong
 	// the moment they change it back, and would nag about a restart no longer needed
 	// (config-design §3).
-	if s.bootstrapDrift != nil {
-		out.Body.PendingKeys = s.bootstrapDrift()
+	if s.restartDrift != nil {
+		out.Body.PendingKeys = s.restartDrift()
 		out.Body.RestartRequired = len(out.Body.PendingKeys) > 0
 	}
 	return out, nil

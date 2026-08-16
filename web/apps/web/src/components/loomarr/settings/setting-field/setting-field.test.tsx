@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api";
+import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -16,6 +17,7 @@ const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   kind: "url",
   doc: "Base URL of your Emby/Jellyfin server.",
   advanced: false,
+  apply: SettingEntryApply.live,
   secret: false,
   set: true,
   provenance: "db",

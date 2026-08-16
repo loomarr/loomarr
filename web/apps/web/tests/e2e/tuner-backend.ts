@@ -159,6 +159,15 @@ const startTunerServer = () => {
         activeManifestDelays.set(String(body.channelId), Number(body.delayMs));
         return sendJSON(response, {});
       }
+      if (path === "/__tuner/calibration") {
+        return send(
+          response,
+          200,
+          "text/html",
+          "<!doctype html><html><body><main>Media calibration</main></body></html>",
+          { "cache-control": "no-store" },
+        );
+      }
       if (path === "/v1/events") return send(response, 204, "text/plain", "");
 
       const master = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/master\.m3u8$/);

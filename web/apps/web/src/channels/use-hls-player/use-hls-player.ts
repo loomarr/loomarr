@@ -193,8 +193,8 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
     channelId,
     status: "idle",
   });
-  // A channel change is loading immediately, before VideoPlayer's passive attach effect runs. The
-  // previous source's "playing" state must never hide the new attempt's tuning presentation.
+  // A channel change is loading immediately, before VideoPlayer's source-binding layout effect
+  // runs. The previous source's "playing" state must never hide the new attempt's tuning presentation.
   const status = state.channelId === channelId ? state.status : "loading";
   const error = state.channelId === channelId ? state.error : undefined;
   // Each attachment gets a generation in addition to its AbortController. Abort stops the fetch;

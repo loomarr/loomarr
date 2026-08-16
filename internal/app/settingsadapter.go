@@ -300,11 +300,14 @@ func connectionTests(set resolved, tmdbClient *tmdb.Client) map[string]func(ctx 
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			if err := probeWritableDirectory(root); err != nil {
+			layout, err := filler.NewLayout(root, set.str("filler.watch_dir"))
+			if err != nil {
+				return false, "filler storage layout is unsafe: " + err.Error()
+			}
+			if err := probeWritableDirectory(layout.ClipDir()); err != nil {
 				return false, "clip library is not usable: " + err.Error()
 			}
-			watch := filler.WatchDir(root, set.str("filler.watch_dir"))
-			if err := probeWritableDirectory(watch); err != nil {
+			if err := probeWritableDirectory(layout.WatchDir()); err != nil {
 				return false, "drop folder is not usable: " + err.Error()
 			}
 			return true, ""
@@ -366,11 +369,16 @@ func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
 // toAPIEntry converts a settings.Entry to the API view, stringifying the typed
 // value for transport and flattening the setting's declaration fields.
 func toAPIEntry(e settings.Entry) api.SettingEntry {
+	apply := "live"
+	if e.Setting.Apply == settings.ApplyRestart {
+		apply = "restart"
+	}
 	out := api.SettingEntry{
 		Key:          e.Setting.Key,
 		Label:        e.Setting.Label,
 		Group:        string(e.Setting.Group),
 		Kind:         string(e.Setting.Kind),
+		Apply:        apply,
 		Presentation: string(e.Setting.Presentation),
 		Provenance:   string(e.Provenance),
 		Caution:      e.Caution,

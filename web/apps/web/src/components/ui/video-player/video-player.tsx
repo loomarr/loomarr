@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
@@ -101,9 +101,10 @@ const VideoPlayer = ({
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
 
-  // Custom source binding (hls.js). `attach(el)` runs on mount and its cleanup on unmount. Stays in
-  // the component because it wires the caller's `attach` onto the element the component owns.
-  useEffect(() => {
+  // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
+  // effects behind outgoing media work; the Tuner has already painted its acknowledgement before
+  // changing this source. Stays here because it wires `attach` onto the element this component owns.
+  useLayoutEffect(() => {
     if (!attach) return;
     const el = videoRef.current;
     if (!el) return;

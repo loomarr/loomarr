@@ -484,9 +484,9 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 	}
 }
 
-// At capacity must be a 503 with Retry-After, not a generic error. The operator's fix (raise
-// the cap, lower the tier) is only discoverable if we say which wall was hit, and Retry-After
-// is what makes a media server back off instead of hammering.
+// At capacity must be a 503 with Retry-After, not a generic error. The measured capacity is a
+// safety boundary, so the response may suggest waiting or lowering quality but must never claim
+// that raising a configured cap creates hardware headroom.
 func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{
 		sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
@@ -501,9 +501,12 @@ func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 		t.Error("no Retry-After — a media server would retry immediately and hammer")
 	}
 	body, _ := io.ReadAll(resp.Body)
-	// The message must name the fix, not just the failure.
-	if !strings.Contains(string(body), "channel limit") {
-		t.Errorf("the 503 body does not tell the operator how to fix it: %s", body)
+	detail := string(body)
+	if !strings.Contains(detail, "wait") || !strings.Contains(detail, "lower quality") {
+		t.Errorf("the 503 body does not give safe recovery choices: %s", body)
+	}
+	if strings.Contains(detail, "Raise") {
+		t.Errorf("the 503 body promises capacity can be raised past measurement: %s", body)
 	}
 }
 
