@@ -35,6 +35,21 @@ var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
 // roll a channel back to content the operator reviewed earlier.
 var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
 
+// ErrJobNotRunning reports a generation completion that lost the running -> done
+// compare-and-swap. The proposal insert shares that transaction, so this error
+// guarantees that no orphan proposal was persisted.
+var ErrJobNotRunning = errors.New("store: suggestion job is not running")
+
+// ErrJobNotTerminal reports a refine/recuration that raced another execution
+// or targeted a job that is still queued/running. Active executions are never
+// overwritten in place.
+var ErrJobNotTerminal = errors.New("store: suggestion job is not terminal")
+
+// ErrJobOwnershipMismatch reports a result whose proposal requester differs
+// from the requester persisted on its job. It prevents a worker/store wiring
+// mistake from moving generated content across user audit lifecycles.
+var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
+
 // ErrChannelConflict reports that a channel write lost a uniqueness race (normally
 // number or non-empty intent binding). Approval transactions have rolled back
 // completely when returning it, so their caller may safely reload and replan.
@@ -115,15 +130,35 @@ type SeriesEpisodeStore interface {
 type JobStore interface {
 	CreateJob(ctx context.Context, j Job) error
 	GetJob(ctx context.Context, id string) (Job, error)
+	// GetProposalJob returns one consistent execution snapshot. An older
+	// proposal is hidden while a reused refine job is queued/running/failed;
+	// only a done job exposes its newest proposal in any decision state.
+	GetProposalJob(ctx context.Context, id string) (ProposalJob, error)
 	UpdateJob(ctx context.Context, j Job) error
 	// ClaimDueJobs atomically claims up to limit queued jobs whose deadline is
-	// at/before now, for the worker pool (§8). Leases each (deadline → now+lease)
-	// so two workers/replicas never run one job twice — SQLite guarded UPDATE,
-	// Postgres FOR UPDATE SKIP LOCKED (§18).
+	// at/before now, for the worker pool (§8). The claim also moves each job to
+	// running and leases it (deadline → now+lease), so execution cannot race a
+	// separate queued → running write. SQLite uses a guarded UPDATE; Postgres uses
+	// FOR UPDATE SKIP LOCKED (§18).
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error)
 	// FindJobByIntentHash returns a recent job with the same intent hash (§8
 	// proposal cache), or ErrNotFound. `since` bounds the cache TTL.
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error)
+	// CommitSuggestionSuccess atomically inserts the generated proposal and moves
+	// its existing job from running to done. A lost transition rolls both back.
+	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p Proposal, updatedAt time.Time) error
+	// CommitSuggestionFailure moves a running job to failed without rewriting
+	// stale intent or ownership fields. A lost transition leaves the newer
+	// lifecycle untouched.
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause string, updatedAt time.Time) error
+	// RequeueSuggestionJob replaces the intent only when the caller's observed
+	// terminal execution is still current. Attempts are preserved; the next claim
+	// increments them to create a new execution token.
+	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
+	// CloneSuggestionSuccess materializes cached proposal CONTENT into a fresh,
+	// caller-owned done job and submitted proposal. It never reuses the source
+	// request's identity, requester, or decision state.
+	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job Job, proposalID string) (Proposal, error)
 	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
 	// In-flight jobs (queued/running) are never removed by age.
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)

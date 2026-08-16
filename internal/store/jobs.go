@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -24,6 +25,14 @@ type Job struct {
 	Attempts    int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// ProposalJob is the consistent read projection for one generation execution.
+// Proposal is nil until the current execution is done; it may then be submitted,
+// approved, or denied independently from the job lifecycle.
+type ProposalJob struct {
+	Job      Job
+	Proposal *Proposal
 }
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
@@ -74,6 +83,59 @@ func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
 }
 
+func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, error) {
+	row := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
+		        j.deadline, j.attempts, j.created_at, j.updated_at,
+		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
+		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
+		   FROM jobs j
+		   LEFT JOIN proposals p
+		     ON j.status = 'done'
+		    AND p.created_by = j.created_by
+		    AND p.id = (
+		        SELECT p2.id FROM proposals p2
+		         WHERE p2.job_id = j.id AND p2.created_by = j.created_by
+		         ORDER BY p2.created_at DESC, p2.id DESC
+		         LIMIT 1
+		    )
+		  WHERE j.id = ?`), id)
+
+	var (
+		out                                   ProposalJob
+		deadline, jobCreatedAt, jobUpdatedAt  int64
+		pID, pJobID, pStatus, pCreatedBy      sql.NullString
+		pApprovedBy, pDenyReason, pModSummary sql.NullString
+		pNote, pJSON                          sql.NullString
+		pApprovedAt, pCreatedAt, pUpdatedAt   sql.NullInt64
+	)
+	err := row.Scan(
+		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
+		&out.Job.CreatedBy, &out.Job.LastError, &deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt,
+		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
+		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ProposalJob{}, ErrNotFound
+	}
+	if err != nil {
+		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
+	}
+	out.Job.Deadline = fromEpoch(deadline)
+	out.Job.CreatedAt = fromEpoch(jobCreatedAt)
+	out.Job.UpdatedAt = fromEpoch(jobUpdatedAt)
+	if pID.Valid {
+		out.Proposal = &Proposal{
+			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: pCreatedBy.String,
+			ApprovedBy: pApprovedBy.String, DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
+			Note: pNote.String, ProposalJSON: pJSON.String,
+			ApprovedAt: fromEpoch(pApprovedAt.Int64), CreatedAt: fromEpoch(pCreatedAt.Int64),
+			UpdatedAt: fromEpoch(pUpdatedAt.Int64),
+		}
+	}
+	return out, nil
+}
+
 func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
@@ -86,7 +148,8 @@ func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 	return nil
 }
 
-// ClaimDueJobs leases due queued jobs (§8/§18). Placeholders: 1=leaseUntil, 2=now, 3=limit.
+// ClaimDueJobs atomically starts and leases due queued jobs (§8/§18).
+// Placeholders: 1=leaseUntil, 2=now, 3=limit.
 func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx, s.jobClaimSQL, epoch(now.Add(lease)), epoch(now), limit)
 	if err != nil {

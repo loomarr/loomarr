@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -34,7 +35,7 @@ func idGen() func() string {
 	return func() string { return "id-" + strconv.FormatInt(atomic.AddInt64(&n, 1), 10) }
 }
 
-func buildService(t *testing.T, st store.Store, llmMock *testkit.LLM) *suggest.Service {
+func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) *suggest.Service {
 	ms := testkit.NewMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
@@ -45,9 +46,8 @@ func buildService(t *testing.T, st store.Store, llmMock *testkit.LLM) *suggest.S
 		idGen(), time.Now, testkit.Logger())
 }
 
-// Submit caches by intent hash — but ONLY a SUCCESSFUL (done) prior job (§8).
-// A duplicate intent within TTL reuses a completed job; a still-running or failed
-// job does not (so the operator can retry a failed intent).
+// Submit caches generated CONTENT from a successful job, never its request
+// identity, owner, or decision state. Pending/failed jobs do not cache.
 func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
@@ -66,18 +66,40 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 		t.Error("a not-yet-completed job must not be a cache hit")
 	}
 
-	// Mark job id1 done → NOW an identical intent reuses it.
+	// Mark job id1 done with an already-approved proposal. A later identical
+	// request may reuse the payload, but must get a fresh caller-owned lifecycle.
 	j, _ := st.GetJob(ctx, id1)
 	j.Status = "done"
 	if err := st.UpdateJob(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateProposal(ctx, store.Proposal{
+		ID: "source-proposal", JobID: id1, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
+		ProposalJSON: `{"lineup":[{"name":"Speed"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	id3, err := svc.Submit(ctx, intent, "carol")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id3 != id1 {
-		t.Errorf("identical intent should reuse the DONE job: %s vs %s", id3, id1)
+	if id3 == id1 {
+		t.Fatal("a cache hit must create a fresh job id")
+	}
+	clonedJob, err := st.GetJob(ctx, id3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clonedJob.Status != "done" || clonedJob.CreatedBy != "carol" {
+		t.Fatalf("cached job lifecycle = %+v", clonedJob)
+	}
+	carols, err := st.ListProposalsByCreator(ctx, "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(carols) != 1 || carols[0].JobID != id3 || carols[0].Status != "submitted" ||
+		carols[0].ApprovedBy != "" || carols[0].ProposalJSON != `{"lineup":[{"name":"Speed"}]}` {
+		t.Fatalf("cached proposal lifecycle = %+v", carols)
 	}
 
 	// A different intent gets a fresh job regardless.
@@ -193,8 +215,9 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
 	sug := suggest.New(slow, cat, tm, 10)
+	terminal := newDoneEmitter()
 	svc := suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: 200 * time.Millisecond, CacheTTL: time.Hour},
-		idGen(), time.Now, testkit.Logger())
+		idGen(), time.Now, testkit.Logger()).WithProgressEmitter(terminal)
 
 	hungID, _ := svc.Submit(context.Background(), suggest.Intent{Description: "hangs"}, "alice")
 
@@ -202,14 +225,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	defer cancel()
 	go svc.Run(ctx)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		j, _ := st.GetJob(context.Background(), hungID)
-		if j.Status == "failed" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	waitForFailedEvent(t, terminal)
 	j, _ := st.GetJob(context.Background(), hungID)
 	if j.Status != "failed" {
 		t.Fatalf("hung job should fail on timeout, got status=%s", j.Status)
@@ -219,6 +235,142 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	}
 	if j.FailureCode != suggest.FailureCodeGenerationFailed {
 		t.Errorf("timeout failure code = %q, want bounded generic code", j.FailureCode)
+	}
+}
+
+type lifecycleErrorStore struct {
+	store.Store
+	successErr    error
+	failureErr    error
+	successCalled chan struct{}
+	failureCalled chan struct{}
+}
+
+func newLifecycleErrorStore(st store.Store) *lifecycleErrorStore {
+	return &lifecycleErrorStore{
+		Store: st, successCalled: make(chan struct{}, 1), failureCalled: make(chan struct{}, 1),
+	}
+}
+
+func (s *lifecycleErrorStore) CommitSuggestionSuccess(
+	ctx context.Context,
+	jobID string,
+	expectedAttempt int,
+	p store.Proposal,
+	updatedAt time.Time,
+) error {
+	select {
+	case s.successCalled <- struct{}{}:
+	default:
+	}
+	if s.successErr != nil {
+		return s.successErr
+	}
+	return s.Store.CommitSuggestionSuccess(ctx, jobID, expectedAttempt, p, updatedAt)
+}
+
+func (s *lifecycleErrorStore) CommitSuggestionFailure(
+	ctx context.Context,
+	jobID string,
+	expectedAttempt int,
+	cause string,
+	updatedAt time.Time,
+) error {
+	select {
+	case s.failureCalled <- struct{}{}:
+	default:
+	}
+	if s.failureErr != nil {
+		return s.failureErr
+	}
+	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, updatedAt)
+}
+
+func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
+	ctx := context.Background()
+	base := newStore(t)
+	st := newLifecycleErrorStore(base)
+	st.failureErr = errors.New("write unavailable")
+	llmMock := testkit.NewLLM()
+	svc := buildService(t, st, llmMock)
+	terminal := newDoneEmitter()
+	svc.WithProgressEmitter(terminal)
+	now := time.Now()
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "bad-intent", Kind: "suggest", Status: "queued", IntentJSON: "{", IntentHash: "bad",
+		CreatedBy: "alice", Deadline: now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	select {
+	case <-st.failureCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker never attempted to persist the failure")
+	}
+	job, err := base.GetJob(ctx, "bad-intent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "running" || job.Attempts != 1 {
+		t.Fatalf("undurable failure changed authoritative state: %+v", job)
+	}
+	select {
+	case <-terminal.failed:
+		t.Fatal("worker emitted failed without a durable failed transition")
+	default:
+	}
+	if llmMock.Calls != 0 {
+		t.Fatalf("malformed intent reached the model %d times", llmMock.Calls)
+	}
+}
+
+func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
+	ctx := context.Background()
+	base := newStore(t)
+	st := newLifecycleErrorStore(base)
+	st.successErr = store.ErrJobNotRunning
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	svc := buildService(t, st, llmMock)
+	terminal := newDoneEmitter()
+	svc.WithProgressEmitter(terminal)
+	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	select {
+	case <-st.successCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker never attempted to persist success")
+	}
+	select {
+	case <-st.failureCalled:
+		t.Fatal("lost success CAS was incorrectly routed through failure persistence")
+	default:
+	}
+	select {
+	case <-terminal.done:
+		t.Fatal("worker emitted done without a durable success transition")
+	case <-terminal.failed:
+		t.Fatal("worker emitted failed for a stale execution")
+	default:
+	}
+	job, err := base.GetJob(ctx, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "running" || job.Attempts != 1 {
+		t.Fatalf("stale success changed authoritative state: %+v", job)
 	}
 }
 
@@ -336,6 +488,49 @@ type recordingCurator struct {
 	err      error
 }
 
+type doneEmitter struct {
+	done   chan struct{}
+	failed chan struct{}
+}
+
+func newDoneEmitter() *doneEmitter {
+	return &doneEmitter{done: make(chan struct{}, 1), failed: make(chan struct{}, 1)}
+}
+
+func (e *doneEmitter) SuggestionPhase(_ string, phase string, _ int) {
+	var target chan struct{}
+	switch phase {
+	case "done":
+		target = e.done
+	case "failed":
+		target = e.failed
+	}
+	if target != nil {
+		select {
+		case target <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func waitForFailedEvent(t *testing.T, e *doneEmitter) {
+	t.Helper()
+	select {
+	case <-e.failed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for durable failed event")
+	}
+}
+
+func waitForDoneEvent(t *testing.T, e *doneEmitter) {
+	t.Helper()
+	select {
+	case <-e.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for durable done event")
+	}
+}
+
 func (c *recordingCurator) Consider(context.Context, store.Proposal) (suggest.Decision, error) {
 	c.calls++
 	return c.decision, c.err
@@ -361,8 +556,11 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	channels := &testkit.ApprovalChannels{}
 	approver := suggest.NewApprover(st, channels, time.Now)
 	curator := &recordingCurator{decision: suggest.Decision{Approved: true}}
+	done := newDoneEmitter()
 	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
-		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).WithAutoCurate(curator)
+		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithAutoCurate(curator).
+		WithProgressEmitter(done)
 
 	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
 	if err != nil {
@@ -373,14 +571,9 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	defer cancel()
 	go svc.Run(runCtx)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		j, _ := st.GetJob(ctx, jobID)
-		if j.Status == "done" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// The durable job may become done just before the optional approval decision,
+	// but the terminal event is emitted only after that synchronous attempt settles.
+	waitForDoneEvent(t, done)
 	j, _ := st.GetJob(ctx, jobID)
 	if j.Status != "done" {
 		t.Fatalf("job did not complete: status=%s err=%s", j.Status, j.LastError)
@@ -440,8 +633,11 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	channels := &testkit.ApprovalChannels{}
 	approver := suggest.NewApprover(st, channels, time.Now)
 	curator := &recordingCurator{decision: suggest.Decision{Reason: "below auto-curate quality bar"}}
+	done := newDoneEmitter()
 	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
-		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).WithAutoCurate(curator)
+		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithAutoCurate(curator).
+		WithProgressEmitter(done)
 	if _, err := svc.Recurate(ctx, "job-recurate", suggest.Intent{
 		Description: "sci-fi", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:603"}},
 	}); err != nil {
@@ -451,14 +647,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go svc.Run(runCtx)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		j, _ := st.GetJob(ctx, "job-recurate")
-		if j.Status == "done" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	waitForDoneEvent(t, done)
 	if curator.calls != 1 {
 		t.Fatalf("auto-curate calls = %d, want 1", curator.calls)
 	}
