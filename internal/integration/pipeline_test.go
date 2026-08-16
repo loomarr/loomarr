@@ -205,6 +205,51 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 	return "", suggest.Proposal{}
 }
 
+// submitAndApprove drives the real asynchronous proposal and approval HTTP
+// interfaces, returning the channel materialized by the approval gate.
+func (r *rig) submitAndApprove(t *testing.T, description string) string {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{"description": description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := r.do(t, http.MethodPost, "/v1/proposals", string(body))
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		t.Fatalf("submit → %d, want 200", resp.StatusCode)
+	}
+	var submitted struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&submitted); err != nil {
+		_ = resp.Body.Close()
+		t.Fatalf("decode submit response: %v", err)
+	}
+	_ = resp.Body.Close()
+	if submitted.JobID == "" {
+		t.Fatal("submit returned no jobId")
+	}
+
+	proposalID, _ := r.awaitProposal(t, submitted.JobID)
+	resp = r.do(t, http.MethodPost, "/v1/proposals/"+proposalID+"/approve", "")
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	var approved struct {
+		ChannelID string `json:"channelId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&approved); err != nil {
+		_ = resp.Body.Close()
+		t.Fatalf("decode approve response: %v", err)
+	}
+	_ = resp.Body.Close()
+	if approved.ChannelID == "" {
+		t.Fatal("approve returned no channel id")
+	}
+	return approved.ChannelID
+}
+
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync
 // would (identity = Tunarr program uuid) — 90s, general/kids audience.
 func seedFillerClips(t *testing.T, st store.Store) {
@@ -458,5 +503,73 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	if airing["lib-1"] || airing["lib-2"] {
 		t.Fatalf("a TV-Y7 title survived a TV-Y ceiling — the §4 enforcer did not run on the "+
 			"tightened policy, got %v", airing)
+	}
+}
+
+// TestPipeline_NoFiller_EndToEnd proves that filler is an enhancement, not a
+// prerequisite for creating a playable channel. The empty catalog is the natural
+// fresh-install state: approval must still materialize and reconcile the channel,
+// with real programs back-to-back and no empty commercial gaps or filler-list
+// writes. The seeded-filler journey above remains the positive control.
+func TestPipeline_NoFiller_EndToEnd(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"mystery"}, LibraryItemID: "lib-mystery-1", Name: "The Quiet Key", Type: "Movie", Year: 1986, TMDBID: 6101, Genres: []string{"Mystery"}, OfficialRating: "PG", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"mystery"}, LibraryItemID: "lib-mystery-2", Name: "Manor at Dusk", Type: "Movie", Year: 1989, TMDBID: 6102, Genres: []string{"Mystery"}, OfficialRating: "PG", RunTimeTicks: hourTicks},
+	)
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "mystery"}),
+		testkit.FinalResponse(`{
+			"rationale":"A quiet mystery double feature",
+			"picks":[
+				{"mediaType":"movie","tmdbId":6101,"name":"The Quiet Key"},
+				{"mediaType":"movie","tmdbId":6102,"name":"Manor at Dusk"}
+			],
+			"policy":{"era":{"from":1980,"to":1989},"genres":{"include":["Mystery"]},"ordering":"syndication"}
+		}`),
+	)
+
+	r := newRig(t, ms, llmMock) // deliberately do not seed filler
+	channelID := r.submitAndApprove(t, "cozy 80s mystery movies")
+
+	ch, err := r.store.GetChannel(context.Background(), channelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineup, err := r.tun.GetLineup(context.Background(), ch.TunarrID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lineup) != 2 {
+		t.Fatalf("empty-filler channel should have 2 program slots, got %d: %+v", len(lineup), lineup)
+	}
+	wantPrograms := map[string]bool{"lib-mystery-1": true, "lib-mystery-2": true}
+	for _, slot := range lineup {
+		if slot.Kind != schedule.SlotProgram {
+			t.Fatalf("empty filler catalog inserted a non-program slot: %+v", slot)
+		}
+		delete(wantPrograms, slot.LibraryItemID)
+	}
+	if len(wantPrograms) != 0 {
+		t.Fatalf("approved programs missing from empty-filler channel: %v", wantPrograms)
+	}
+	if got := r.tun.FillerListFor(ch.TunarrID); len(got) != 0 {
+		t.Fatalf("empty filler catalog attached a filler list: %v", got)
+	}
+	if r.tun.FillerWrites != 0 {
+		t.Fatalf("empty filler catalog caused %d filler-list writes, want 0", r.tun.FillerWrites)
+	}
+
+	pushesBefore, fillerBefore := r.tun.Pushes, r.tun.FillerWrites
+	resp := r.do(t, http.MethodPost, "/v1/channels/"+channelID+"/reconcile", "")
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second reconcile → %d, want 200", resp.StatusCode)
+	}
+	if r.tun.Pushes != pushesBefore {
+		t.Errorf("second reconcile re-pushed the program-only lineup: %d → %d", pushesBefore, r.tun.Pushes)
+	}
+	if r.tun.FillerWrites != fillerBefore {
+		t.Errorf("second reconcile wrote filler for an empty catalog: %d → %d", fillerBefore, r.tun.FillerWrites)
 	}
 }
