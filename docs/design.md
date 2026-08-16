@@ -1461,7 +1461,11 @@ remain generation-scoped recovery for later platform load resets. WebKit may exp
 attributed frame callback immediately before it dispatches `playing`; the controller gate therefore
 keeps first-frame latency at that callback and separately requires the same target to enter an
 unpaused `playing` state within 250 ms, with no retry. In particular, the metadata join occurs after
-WebKit's queued source reset and before its target is ready to play.
+WebKit's queued source reset and before its target is ready to play. The browser fixture first proves
+one genuinely ended publication can hand off, then serves replacement publications with the same
+open, no-`ENDLIST` manifest contract PreparedOrigin emits; declaring every live replacement as VOD
+would force hls.js to end each MediaSource immediately after append and certify a transport Loomarr
+does not serve.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
 destroyed and a new unused standby is constructed off the measured tune path. A superseding intent
 before that frame retires the detached controller before creating its one-source replacement, so no

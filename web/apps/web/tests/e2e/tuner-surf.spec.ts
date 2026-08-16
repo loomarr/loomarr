@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { adjacentWarmMarkName } from "../../src/channels/tuner-timing";
-import { channelId, installTunerBackend } from "./tuner-backend";
+import { channelId, installTunerBackend, tunerManifest } from "./tuner-backend";
 
 test.setTimeout(120_000);
 
@@ -314,6 +314,9 @@ const playbackSnapshot = async (page: Page, channel: string, since: number) =>
   );
 
 test("100-channel tuner meets surf latency and latest-request-wins gates", async ({ page }) => {
+  expect(tunerManifest("ended", 1)).toContain("#EXT-X-ENDLIST");
+  expect(tunerManifest("live", 4)).not.toContain("#EXT-X-ENDLIST");
+  expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
 

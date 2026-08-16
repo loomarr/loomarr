@@ -7,9 +7,11 @@ import type { Page } from "@playwright/test";
 const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
 
 // Moving 160x90 H.264 CMAF keeps decoded frames observable. Channel 1 uses a one-second VOD so
-// initial playback reaches ended and certifies reuse of an ended MediaSource. Replacement Channels
-// use one genuine four-second segment, long enough to distinguish playing from a decoded-but-paused
-// frame while the warmer and active player share the same newest asset, as they do at a live edge.
+// initial playback reaches ended and certifies disposal of an ended MediaSource. Replacement
+// Channels use one genuine four-second segment in an OPEN live manifest, matching PreparedOrigin's
+// deliberate no-ENDLIST contract. That is long enough to distinguish playing from a
+// decoded-but-paused frame while the warmer and active player share the same newest asset, as they
+// do at a live edge.
 // Keeping bytes inline leaves the origin deterministic while browsers exercise hls.js, MSE, and
 // decoding. Both fragments use the shared init above and this source, changing only -hls_time 1/4:
 //
@@ -30,12 +32,11 @@ const manifest = (sig: string, duration: 1 | 4) => `#EXTM3U
 #EXT-X-VERSION:7
 #EXT-X-TARGETDURATION:${duration}
 #EXT-X-MEDIA-SEQUENCE:0
-#EXT-X-PLAYLIST-TYPE:VOD
-#EXT-X-INDEPENDENT-SEGMENTS
+${duration === 1 ? "#EXT-X-PLAYLIST-TYPE:VOD\n" : ""}#EXT-X-INDEPENDENT-SEGMENTS
 #EXT-X-MAP:URI="init.mp4?sig=${sig}"
 #EXTINF:${duration}.000000,
 segment.m4s?sig=${sig}
-#EXT-X-ENDLIST
+${duration === 1 ? "#EXT-X-ENDLIST\n" : ""}
 `;
 
 const channelId = (number: number) => `ch-${String(number).padStart(3, "0")}`;
@@ -249,4 +250,4 @@ const startTunerServer = () => {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) startTunerServer();
 
 export type { TunerBackend };
-export { channelId, installTunerBackend };
+export { channelId, installTunerBackend, manifest as tunerManifest };
