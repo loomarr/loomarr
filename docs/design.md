@@ -224,7 +224,7 @@ flowchart TD
 - **`mediatools`** · 2 importers · → `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`metrics`** · 6 importers · → `images`, `provision`
-  Loomarr's Prometheus surface (design §7 /metrics, §18).
+  Loomarr's Prometheus surface (design §7 /metrics, §17).
 
 **Layer 4**
 
@@ -1746,9 +1746,10 @@ a correctness constraint the compiler cannot enforce:
   one. The same applies to the mux, the store handle, and the scheduler.
 - **Global registries are the loud failure.** `prometheus.MustRegister`, `http.HandleFunc` on
   `DefaultServeMux`, `expvar.Publish` and `sql.Register` all panic on a second registration.
-  Loomarr uses **none** of them except Prometheus, and `metrics.RegisterStoreCollector` already
-  tolerates `AlreadyRegisteredError` — written for "a second boot in one test process", which is
-  precisely a restart iteration.
+  Loomarr uses **none** of them except Prometheus. The store collector is registered once for the
+  process and atomically rebound to each generation's live store; merely tolerating
+  `AlreadyRegisteredError` would leave later scrapes querying the previous generation's closed
+  handle.
 - ⚠ **`sync.Once` is the quiet failure**, and the one to watch: a package-level `Once` guarding a
   resource makes iteration 2 inherit iteration 1's closed handle, with no panic and no log line.
   Every `sync.Once` in this repo is closure-local or a struct field, so it rebuilds with its

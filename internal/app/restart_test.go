@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +79,24 @@ func buildServeShutdown(t *testing.T, generation int) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("generation %d: /v1/healthz → %d, want 200", generation, resp.StatusCode)
+	}
+
+	metricsResp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("generation %d: scrape metrics: %v", generation, err)
+	}
+	body, readErr := io.ReadAll(metricsResp.Body)
+	_ = metricsResp.Body.Close()
+	if readErr != nil {
+		t.Fatalf("generation %d: read metrics: %v", generation, readErr)
+	}
+	if metricsResp.StatusCode != http.StatusOK {
+		t.Fatalf("generation %d: /metrics → %d, want 200", generation, metricsResp.StatusCode)
+	}
+	for _, family := range []string{"loomarr_titles", "loomarr_jobs", "loomarr_active_sessions"} {
+		if !strings.Contains(string(body), family) {
+			t.Errorf("generation %d: /metrics missing %s; collector retained an old store", generation, family)
+		}
 	}
 	srv.Close()
 
