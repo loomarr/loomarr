@@ -120,7 +120,11 @@ const webKitRequiresFreshMSEHandoff = (): boolean => {
   return /AppleWebKit/i.test(agent) && !/(?:Chromium|Chrome|CriOS|Edg)/i.test(agent);
 };
 
-const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | undefined) => {
+const discardTransferredMedia = (
+  video: HTMLVideoElement,
+  objectURL: string | undefined,
+  resetBeforeReplacement = true,
+) => {
   // transferMedia deliberately leaves the MediaSource object URL on the element so another hls.js
   // controller can adopt it. The fresh-MSE branch does not adopt that transfer. Replacing src
   // without first revoking the abandoned URL leaves WebKit retaining each ended MediaSource and its
@@ -136,7 +140,11 @@ const discardTransferredMedia = (video: HTMLVideoElement, objectURL: string | un
     source.remove();
     detached = true;
   }
-  if (detached) video.load();
+  // WebKit may synchronously spend more than a second processing an empty load. Skip that
+  // intermediate state when the fresh controller below immediately replaces the source; assigning
+  // its MediaSource performs the required element load. A superseded generation still resets here
+  // because no replacement follows to release the detached decoder.
+  if (detached && resetBeforeReplacement) video.load();
   if (objectURL?.startsWith("blob:")) URL.revokeObjectURL(objectURL);
 };
 
@@ -432,7 +440,7 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         }
         let sourceLoaded = false;
         if (discardTransfer) {
-          discardTransferredMedia(video, transferredObjectURL);
+          discardTransferredMedia(video, transferredObjectURL, !discardTransferForWebKit);
           // A fresh controller has no SourceBuffers to adopt, so manifest parsing can overlap its
           // MediaSource attachment safely. autoStartLoad remains false: init/media bytes still wait
           // for attachment and the generation-scoped start below.

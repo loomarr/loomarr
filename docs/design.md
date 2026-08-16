@@ -957,7 +957,7 @@ The grounding rules (above) are untouched — provider/model selection changes *
 - `scores` — **deterministic** post-scoring (theme fit, runtime/era balance, availability ratio) layered on the LLM output so ranking isn't pure vibes (à la SmarTunarr's multi-criterion scoring; keep criteria configurable). **Theme fit measures the intent's terms against each item's genres + overview** (not the title string — a "90s action" intent rarely appears in a *title*, so title-substring scoring is near-useless); it stays deterministic (same inputs → same score). `Candidate`/`ProposalItem` therefore carry `genres` + `overview` (populated from TMDB and the media server; §7.2 output contract, in the OpenAPI spec).
 
 ### Human-in-the-loop (non-negotiable default)
-Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant **hard-gated by the pending-acquisition cap** (§11): a proposal auto-approves only while its requester stays within quota, and otherwise falls back to the admin queue rather than being denied. `approved_by` records `auto` for that path, so the audit distinguishes a machine decision from a human one.
+Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant **hard-gated by the pending-acquisition cap** (§11): a proposal auto-approves only while its requester stays within quota, and otherwise falls back to the admin queue rather than being denied. `approved_by` records `auto` for that path, so the audit distinguishes a machine decision from a human one. Every approval for one requester — manual or automatic — enters the same **store-owned, requester-scoped ordering**, but only automatic approval evaluates and may be rejected by the unattended-spend cap. SQLite uses an in-process keyed semaphore (SQLite remains single-instance). Postgres takes a transaction-scoped database advisory lock, performs the quota reads through that transaction's read view, and commits the approval on the same transaction and connection; a lost session therefore rolls back the guarded work instead of releasing its ordering while another pooled connection can still commit. Waiting approvals use only their own transaction connection, so the holder never needs a second pooled connection to finish. Ordering ends with the durable commit or rollback, before best-effort post-commit channel reconciliation. Any ordering or quota-read failure leaves the proposal `submitted`; a manual admin approval remains exempt from quota rejection because the admin *is* the approval gate.
 
 ### Execution model
 Generation is a **job**, persisted in the store (§5) and executed by the in-process worker pool (§14; `JOB_WORKERS` default 2, per-job `JOB_TIMEOUT` default 10m — so one hung LLM call can never starve the queue) — on Postgres replicas, jobs are claimed via the same `SKIP LOCKED` pattern as titles. Proposals are persisted too, each recording `created_by` (powers My proposals, §12): the approval queue (`GET /v1/proposals?status=submitted`) and pending approvals must survive restarts. Generation progress streams over the shared `/v1/events` SSE bus (§7) as `suggestion` frames — payload `{jobId, phase, round}` where phase advances `searching` (the model is calling the catalog tool) → `reasoning` (the model is composing the grounded lineup) → `scoring` (deterministic post-scoring) → `done`/`failed`; on reconnect, `GET /v1/proposals/{id}` is the source of truth (dropped progress events are a latency bug, never a correctness bug).
@@ -1452,17 +1452,19 @@ removal reaches `updateend`; rewinding into the range being removed can hold Web
 those bytes and turn a cached tune into a multi-second stall.
 
 An open-source seek that misses that bound, an `ended` compact publication, or any WebKit handoff
-takes the other bounded branch: the source-scoped standby attaches a fresh MediaSource to the same element instead
-of serializing replacement behind the outgoing fragment remainder. WebKit can retain the terminal
+takes the other bounded branch: the source-scoped standby attaches a fresh MediaSource to the same
+element instead of serializing replacement behind the outgoing fragment remainder. WebKit can retain the terminal
 decoded frame of an ended source for roughly two seconds even after pause and a render turn, and an
 open-source seek can block WebKit's event loop so its JavaScript timeout cannot honestly enforce the
 100 ms bound. Reusing either unreleased decoder range therefore misses the tuner latency contract.
 The WebKit branch preserves the element's playing intent rather than pausing before its immediate
-detach. Every fresh branch explicitly
-unloads and revokes the transferred source's blob URL before the
+detach. It removes and revokes the outgoing blob URL but does not call `load()` on the empty element:
+WebKit can process that intermediate reset synchronously for more than a second, and the immediately
+attached fresh MediaSource performs the required load itself. A superseded generation with no
+replacement still performs the explicit empty reset. Every fresh branch releases the transferred source's blob URL before the
 standby attaches; hls.js deliberately leaves that URL owned by the receiver during a transfer, so
-discarding it without that release accumulates ended MediaSources and delays later WebKit source opens. It creates no second
-player or decoder, and the held poster still covers the single-element handoff. Closed sources and
+discarding it without that release accumulates ended MediaSources and delays later WebKit source opens.
+It creates no second player or decoder, and the held poster still covers the single-element handoff. Closed sources and
 failed open-source clears use the same fresh branch. Committing the target route may retire its
 transient tune-attempt object after the first frame; the adapter retains that attempt for the same
 Channel so this bookkeeping transition cannot tear down and reattach the live source. After

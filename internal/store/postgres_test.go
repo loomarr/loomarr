@@ -93,4 +93,30 @@ func TestPostgresConformance(t *testing.T) {
 	}
 
 	RunConformance(t, newStore)
+
+	t.Run("ApprovalQuotaAcrossIndependentPools", func(t *testing.T) {
+		primary, err := Open(context.Background(), dsn, true)
+		if err != nil {
+			t.Fatalf("open primary postgres store: %v", err)
+		}
+		secondary, err := openPostgres(context.Background(), dsn)
+		if err != nil {
+			_ = primary.Close()
+			t.Fatalf("open independent postgres pool: %v", err)
+		}
+		// One connection per independent pool makes the old starvation shape
+		// impossible to hide: the holder must finish guard + commit on its existing
+		// transaction connection while the contender waits on its own.
+		primary.(*sqlStore).db.SetMaxOpenConns(1)
+		secondary.db.SetMaxOpenConns(1)
+		t.Cleanup(func() {
+			_ = secondary.Close()
+			pg := primary.(*sqlStore)
+			_, _ = pg.db.ExecContext(context.Background(), "DROP SCHEMA public CASCADE")
+			_, _ = pg.db.ExecContext(context.Background(), "CREATE SCHEMA public")
+			_ = primary.Close()
+		})
+
+		testProposalAutoApprovalQuotaAcrossStores(t, primary, secondary)
+	})
 }

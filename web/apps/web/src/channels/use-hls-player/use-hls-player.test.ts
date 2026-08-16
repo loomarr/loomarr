@@ -580,7 +580,7 @@ describe("useHlsPlayer", () => {
     expect(video.pause).not.toHaveBeenCalled();
     expect(seekListenerInstalled).toBe(false);
     expect(remove).not.toHaveBeenCalled();
-    expect(video.load).toHaveBeenCalledOnce();
+    expect(video.load).not.toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/webkit-open-source");
   });
 
