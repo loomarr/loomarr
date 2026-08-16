@@ -321,29 +321,32 @@ describe("useHlsPlayer", () => {
     // shares and reference-counts its worker across source-scoped controllers; the bounded
     // active/standby pool must preserve that production invariant while disabling auto-load.
     expect(replacement.config.enableWorker).toBe(true);
-    expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8");
+    expect(replacement.loadSource).not.toHaveBeenCalled();
     expect(replacement.startLoad).not.toHaveBeenCalled();
-    const manifestParsed = replacement.on.mock.calls
-      .filter((call: unknown[]) => call[0] === "manifestParsed")
-      .at(-1)?.[1] as (() => void) | undefined;
-    expect(manifestParsed).toBeTypeOf("function");
-    manifestParsed?.();
     expect(video.play).not.toHaveBeenCalled();
 
     act(() => finishRemoval());
     await waitFor(() => expect(resetCurrentTime).toHaveBeenCalledWith(0));
     await waitFor(() => expect(replacement.attachMedia).toHaveBeenLastCalledWith(transferred));
     await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalledOnce());
-    await waitFor(() => expect(replacement.startLoad).toHaveBeenCalledOnce());
-    expect(replacement.loadSource.mock.invocationCallOrder.at(-1)).toBeLessThan(
-      replacement.attachMedia.mock.invocationCallOrder.at(-1) ?? 0,
+    await waitFor(() =>
+      expect(replacement.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8"),
     );
+    await waitFor(() => expect(replacement.startLoad).toHaveBeenCalledOnce());
     expect(replacement.attachMedia.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      replacement.loadSource.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+    expect(replacement.loadSource.mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
     );
     expect(vi.mocked(video.requestVideoFrameCallback).mock.invocationCallOrder.at(-1)).toBeLessThan(
       replacement.startLoad.mock.invocationCallOrder.at(-1) ?? 0,
     );
+    const manifestParsed = replacement.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "manifestParsed")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(manifestParsed).toBeTypeOf("function");
+    manifestParsed?.();
     await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
 
     vi.mocked(video.play).mockClear();
@@ -415,7 +418,7 @@ describe("useHlsPlayer", () => {
       loadSource: ReturnType<typeof vi.fn>;
       startLoad: ReturnType<typeof vi.fn>;
     };
-    expect(superseded.loadSource).toHaveBeenCalledWith("/v1/playout/hls/ch-2/master.m3u8");
+    expect(superseded.loadSource).not.toHaveBeenCalled();
     expect(superseded.attachMedia).not.toHaveBeenCalled();
     expect(superseded.startLoad).not.toHaveBeenCalled();
     rerender({ id: "ch-3" });

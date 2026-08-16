@@ -64,8 +64,8 @@ const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["
 
 const createHlsController = (HlsController: typeof Hls): Hls =>
   new HlsController({
-    // Manifest parsing is safe before attachment on a fresh source-scoped controller, but fragment
-    // loading is not. The handoff below performs the one explicit start only after attach.
+    // A source-scoped controller stays empty until its transferred MediaSource is attached. The
+    // handoff below then loads the source and performs one explicit media start.
     autoStartLoad: false,
     capLevelToPlayerSize: true,
     // Baseline HLS is MPEG-TS. Keep its transmux off the UI thread; hls.js shares and reference-
@@ -251,7 +251,6 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
-        hls.loadSource(url);
 
         // Preserve the reusable MediaSource AND its compatible SourceBuffers, but never their
         // outgoing Channel-relative bytes. transferMedia() is hls.js's public cross-controller
@@ -302,6 +301,10 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
         // observer exists and leave certification (and the tuning overlay) waiting for a later one.
         armFirstFrameWatch();
         replacementAttached = true;
+        // hls.js transfer is an attach-before-source transaction. Parsing a source on a detached
+        // controller can fetch its init segment before the transferred SourceBuffers are adopted;
+        // WebKit can then strand that controller without ever requesting the media fragment.
+        hls.loadSource(url);
         hls.startLoad();
         if (manifestParsed) playReplacement();
         return () => {
