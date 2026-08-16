@@ -1,5 +1,7 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
@@ -54,6 +56,10 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
   });
 
   const proposal = run.proposal;
+  const fillerPool = unwrap(
+    fillerApi.useFillerPool({ query: { enabled: proposal != null } }).data,
+    (body) => body,
+  );
 
   return (
     <section className={cn("flex flex-col gap-4 rounded-lg border border-border p-4", className)}>
@@ -90,6 +96,13 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
+          {fillerPool && (
+            <p className="text-muted-foreground text-sm" role="status">
+              {fillerPool.eligible > 0
+                ? "Commercial filler is available and will be tuned after creation."
+                : "No break-ready filler yet. This channel will play programs back-to-back, and you can add filler later."}
+            </p>
+          )}
           {(approve.error ?? deny.error) != null && (
             <p className="text-onair-300 text-sm">
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}

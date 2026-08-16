@@ -1,6 +1,7 @@
 import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
+  getFillerPoolMockHandler,
   getListProposalsMockHandler,
   getMeMockHandler,
   getSubmitProposalMockHandler,
@@ -54,13 +55,26 @@ const PROPOSAL: ProposalDTO = {
 // member-gate test below asserts NO approve call fires — an assertion whose whole value depends on
 // naming the right endpoint.
 const stubSuggest = (
-  opts: { proposals?: ProposalDTO[]; me?: MeBody; approveBody?: ApproveOutputBody } = {},
+  opts: {
+    proposals?: ProposalDTO[];
+    me?: MeBody;
+    approveBody?: ApproveOutputBody;
+    fillerEligible?: number;
+  } = {},
 ) => {
   const approvals: string[] = [];
   const submissions: unknown[] = [];
+  const fillerEligible = opts.fillerEligible ?? 0;
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
+    getFillerPoolMockHandler({
+      channels: [],
+      clips: fillerEligible,
+      commercials: fillerEligible,
+      eligible: fillerEligible,
+      untagged: 0,
+    }),
     // Approve — returns the created channel's id (what the panel navigates to).
     getApproveProposalMockHandler(({ params }) => {
       approvals.push(String(params.id));
@@ -152,6 +166,36 @@ describe("ChannelSuggestPanel", () => {
 
     // The reused ProposalReview renders the lineup — no navigation away from the panel.
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
+  });
+
+  it("keeps approval available when no filler is ready and explains back-to-back playout", async () => {
+    const user = userEvent.setup();
+    stubSuggest({ proposals: [PROPOSAL], fillerEligible: 0 });
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    expect(
+      await screen.findByText(
+        "No break-ready filler yet. This channel will play programs back-to-back, and you can add filler later.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve/i })).toBeEnabled();
+  });
+
+  it("reports ready commercial filler without blocking approval", async () => {
+    const user = userEvent.setup();
+    stubSuggest({ proposals: [PROPOSAL], fillerEligible: 12 });
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    expect(
+      await screen.findByText("Commercial filler is available and will be tuned after creation."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve/i })).toBeEnabled();
   });
 
   it("approving hands the new channel id to onCreated (the list navigates to it)", async () => {
