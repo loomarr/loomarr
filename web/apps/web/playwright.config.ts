@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { DESKTOP, DETERMINISM, MOBILE, WORKERS } from "./playwright.shared";
+import { DESKTOP, DETERMINISM, MOBILE, VISUAL_WORKERS } from "./playwright.shared";
 
 // Visual + a11y suite (frontend-design §5) over the OFFLINE storybook-static build —
 // Chromatic rejected. Deterministic by construction via the shared kit in
@@ -26,7 +26,7 @@ export default defineConfig({
   // ⚠ Local runs are no longer left on Playwright's default. "Half the machine" is a CPU
   // statement, and the resource these suites exhaust is MEMORY — on a 24-core desktop the
   // default asked for 12 browsers and swap-thrashed the box into a hard restart. See WORKERS.
-  workers: WORKERS,
+  workers: VISUAL_WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },

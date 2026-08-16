@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { DESKTOP, DETERMINISM, WORKERS } from "./playwright.shared";
+import { DESKTOP, DETERMINISM, E2E_WORKERS } from "./playwright.shared";
 
 // Wizard flow suite + page-level snapshots — the Phase 13.3 gate (frontend-build-plan §5).
 // Distinct from the visual suite: that one snapshots isolated components out of
@@ -14,10 +14,12 @@ export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/e2e",
   fullyParallel: true,
-  // ⚠ This suite had NO worker cap at all, so a local run took Playwright's `cpus()/2` and
-  // booted a browser per worker against the real SPA — the heavier of the two suites on the
-  // machine that has to run it. Shared with the visual config so the two cannot diverge.
-  workers: WORKERS,
+  // ⚠ LOCAL ONLY — `E2E_WORKERS` is undefined under CI, which leaves Playwright's own default
+  // in place. This suite had no worker cap at all, so a local run took `cpus()/2` and booted a
+  // browser per worker against the real SPA, the heavier of the two suites. Capping locally is
+  // safe; RAISING it in CI is not, because tuner-surf measures latency against a threshold and
+  // extra parallel browsers change the thing under test. See playwright.shared.
+  workers: E2E_WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
