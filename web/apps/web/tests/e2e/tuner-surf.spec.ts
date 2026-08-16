@@ -177,7 +177,10 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
       ) ?? false,
     { channel: id, since: started },
   );
-  expect(joined, `${id} decoded target media without joining playback`).toBe(true);
+  const unjoined = joined ? undefined : await playbackSnapshot(page, id, started);
+  expect(joined, `${id} decoded target media without joining playback: ${JSON.stringify(unjoined)}`).toBe(
+    true,
+  );
   const trace = await page.evaluate((since) => {
     const resources = performance
       .getEntriesByType("resource")
