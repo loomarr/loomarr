@@ -5,13 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The taxonomy store (§10 V45a): the `taxa` graph (operator-editable) and the denormalised
-// `clip_tags` rows. The graph is source of truth; clip_tags is a derived cache the reindex rebuilds.
+// `clip_tags` rows. The graph is source of truth; graph and per-clip writes own their derived rows.
 
 // StoreTaxon is the persisted form of a taxonomy.Taxon. Synonyms/aliases are JSON arrays in the row.
 type StoreTaxon struct {
@@ -19,10 +20,44 @@ type StoreTaxon struct {
 	UpdatedAt time.Time
 }
 
+// TaxonomyEdit is one semantic graph mutation. Create distinguishes an accidental duplicate from
+// an edit; Delete addresses Slug and ignores Taxon. Update keeps Taxon.Slug immutable.
+type TaxonomyEdit struct {
+	Create bool
+	Delete bool
+	Slug   string
+	Taxon  taxonomy.Taxon
+}
+
+type TaxonUsage struct {
+	Asserted int
+	Matched  int
+	// Stored includes direct assignments on held, removed, and composite records too. Those clips
+	// are outside playable coverage but still preserve library knowledge and block deletion.
+	Stored int
+}
+
+type TaxonomyUsage struct {
+	TotalClips  int
+	TaggedClips int
+	ByTaxon     map[string]TaxonUsage
+	// ByAxis counts playable clips with at least one direct assertion on each independent axis.
+	// It cannot be derived by summing taxa because one clip may assert several nodes on an axis.
+	ByAxis map[taxonomy.Axis]int
+}
+
 // ListTaxa returns the whole taxonomy graph, ordered by axis then slug (the stable order the served
 // vocabulary and any diff rely on).
 func (s *sqlStore) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT slug, label, parent, axis, synonyms, aliases FROM taxa ORDER BY axis, slug`)
+	return listTaxaFrom(ctx, s.db)
+}
+
+type taxonomyQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func listTaxaFrom(ctx context.Context, q taxonomyQueryer) ([]taxonomy.Taxon, error) {
+	rows, err := q.QueryContext(ctx, `SELECT slug, label, parent, axis, synonyms, aliases FROM taxa ORDER BY axis, slug`)
 	if err != nil {
 		return nil, fmt.Errorf("list taxa: %w", err)
 	}
@@ -41,13 +76,24 @@ func (s *sqlStore) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
 	return out, rows.Err()
 }
 
-// UpsertTaxon writes (or updates) a taxon — the operator-edit path (§10 V45a). ⚠ It does NOT reindex:
-// changing the graph means a clip's rollups may now differ, so the caller runs the reindex job after
-// a graph edit. Keeping the two separate lets a bulk edit reindex once at the end rather than per row.
-func (s *sqlStore) UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
+// upsertTaxon is the boot-seed primitive. Operator edits go through ApplyTaxonomyEdit so validation,
+// graph mutation, closure and rollups share one transaction.
+func (s *sqlStore) upsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
+	return s.upsertTaxonExec(ctx, s.db, t, at)
+}
+
+type taxonomyExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *sqlStore) upsertTaxonTx(ctx context.Context, tx *sql.Tx, t taxonomy.Taxon, at time.Time) error {
+	return s.upsertTaxonExec(ctx, tx, t, at)
+}
+
+func (s *sqlStore) upsertTaxonExec(ctx context.Context, exec taxonomyExecer, t taxonomy.Taxon, at time.Time) error {
 	syn, _ := json.Marshal(nonNil(t.Synonyms))
 	ali, _ := json.Marshal(nonNil(t.RetiredAliases))
-	_, err := s.db.ExecContext(ctx, s.ph(
+	_, err := exec.ExecContext(ctx, s.ph(
 		`INSERT INTO taxa (slug, label, parent, axis, synonyms, aliases, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(slug) DO UPDATE SET
@@ -60,43 +106,97 @@ func (s *sqlStore) UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Ti
 	return nil
 }
 
-// DeleteTaxon removes a taxon, REPARENTING its children to the deleted node's parent (§10 V45a).
-// Returns ErrNotFound if the slug does not exist.
-//
-// ⚠ **Reparenting, not orphaning, is the intentional "remove a middle category" behaviour.** Deleting
-// `ale-family` (between `lager` and `beer`) promotes `lager`'s parent to `beer`, so the lineage
-// survives minus the removed level. WITHOUT this, a child kept its dead parent slug, and the rollup
-// derivation then emitted that deleted slug as a phantom ancestor curation could never match — the
-// bug the reindex conformance surfaced. (Forest.Ancestors ALSO now stops at a dangling parent, so a
-// child orphaned by any OTHER path — a typo'd Upsert parent, a partial import — is safe too; this
-// makes the common case preserve lineage rather than merely not-corrupt it.)
-//
-// ⚠ The caller must reindex afterward: reparenting changes surviving clips' rollups, and a clip
-// tagged with the DELETED leaf itself loses that leaf. Both recompute in the next reindex.
-func (s *sqlStore) DeleteTaxon(ctx context.Context, slug string) error {
+// ApplyTaxonomyEdit is the taxonomy's deep write interface: one semantic change enters, and either
+// the graph plus both derived caches commit together or nothing changes. Postgres takes a
+// transaction-scoped advisory lock because its default READ COMMITTED transaction would otherwise
+// let two graph editors validate different snapshots and interleave their closure replacements.
+func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error {
+	edit.Slug = strings.TrimSpace(edit.Slug)
+	edit.Taxon = taxonomy.Canonicalize(edit.Taxon)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("delete taxon %s: begin: %w", slug, err)
+		return fmt.Errorf("edit taxonomy: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Find the deleted node's parent first — children inherit it.
-	var parent string
-	err = tx.QueryRowContext(ctx, s.ph(`SELECT parent FROM taxa WHERE slug = ?`), slug).Scan(&parent)
-	if err == sql.ErrNoRows {
-		return ErrNotFound
+	if s.dialect == DialectPostgres {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
+			return fmt.Errorf("edit taxonomy: lock: %w", err)
+		}
 	}
+	existing, err := listTaxaFrom(ctx, tx)
 	if err != nil {
-		return fmt.Errorf("delete taxon %s: lookup: %w", slug, err)
+		return err
 	}
 
-	// Promote children to the grandparent. If the deleted node was a root (parent ""), its children
-	// become roots — the correct degenerate case (a top-level category removed).
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE taxa SET parent = ? WHERE parent = ?`), parent, slug); err != nil {
-		return fmt.Errorf("delete taxon %s: reparent children: %w", slug, err)
+	idx := -1
+	slug := edit.Taxon.Slug
+	if edit.Delete {
+		slug = edit.Slug
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM taxa WHERE slug = ?`), slug); err != nil {
-		return fmt.Errorf("delete taxon %s: %w", slug, err)
+	for i, t := range existing {
+		if t.Slug == slug {
+			idx = i
+			break
+		}
+	}
+	if edit.Create && idx >= 0 {
+		return fmt.Errorf("%w: taxon %q already exists", ErrTaxonConflict, slug)
+	}
+	if !edit.Create && idx < 0 {
+		return ErrNotFound
+	}
+
+	prospective := append([]taxonomy.Taxon(nil), existing...)
+	if edit.Delete {
+		var direct int
+		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clip_tags WHERE taxon = ? AND leaf = ?`), slug, true).Scan(&direct); err != nil {
+			return fmt.Errorf("delete taxon %s: count assertions: %w", slug, err)
+		}
+		if direct > 0 {
+			return fmt.Errorf("%w: taxon %q is directly asserted on %d clips; retag them first", ErrTaxonConflict, slug, direct)
+		}
+		parent := prospective[idx].Parent
+		prospective = append(prospective[:idx], prospective[idx+1:]...)
+		for i := range prospective {
+			if prospective[i].Parent == slug {
+				prospective[i].Parent = parent
+			}
+		}
+	} else if edit.Create {
+		prospective = append(prospective, edit.Taxon)
+	} else {
+		edit.Taxon.Slug = slug
+		prospective[idx] = edit.Taxon
+	}
+	if err := taxonomy.Validate(prospective); err != nil {
+		return err
+	}
+
+	if edit.Delete {
+		parent := existing[idx].Parent
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE taxa SET parent = ?, updated_at = ? WHERE parent = ?`), parent, epoch(at), slug); err != nil {
+			return fmt.Errorf("delete taxon %s: reparent children: %w", slug, err)
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE taxon = ?`), slug); err != nil {
+			return fmt.Errorf("delete taxon %s: clear derived rows: %w", slug, err)
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM taxa WHERE slug = ?`), slug); err != nil {
+			return fmt.Errorf("delete taxon %s: %w", slug, err)
+		}
+	} else if err := s.upsertTaxonTx(ctx, tx, edit.Taxon, at); err != nil {
+		return err
+	}
+
+	forest := taxonomy.New(prospective)
+	if err := s.rebuildClosureTx(ctx, tx, forest); err != nil {
+		return err
+	}
+	if err := s.rebuildRollupsTx(ctx, tx); err != nil {
+		return err
+	}
+	if err := s.rebuildCategoryShadowsTx(ctx, tx, ""); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -113,51 +213,78 @@ func (s *sqlStore) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at t
 		return nil // already seeded or operator-edited — never clobber
 	}
 	for _, t := range seed {
-		if err := s.UpsertTaxon(ctx, t, at); err != nil {
+		if err := s.upsertTaxon(ctx, t, at); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// SetClipTags REPLACES a clip's tags with the denormalised rollup expansion of the given LEAF slugs
-// (§10 V45a). Each leaf is expanded through `forest` to its ancestors; the full set (leaf-flagged) is
-// written, replacing whatever the clip had. This is the single writer of `clip_tags` for a clip.
-//
-// ⚠ A full replace, not a merge — re-tagging a clip must not accumulate stale leaves, and rollups must
-// always reflect the CURRENT graph (an ancestor that was remapped away should vanish). The reindex
-// job calls this per clip to rebuild rollups after a graph edit, re-deriving from the same leaves.
-func (s *sqlStore) SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error {
-	// Expand leaves → the full leaf+rollup set, de-duplicated (two leaves can share an ancestor:
-	// beer and spirits both roll up to alcohol/drinks — the ancestor is stored once, as a rollup).
-	rowByTaxon := map[string]bool{} // taxon → isLeaf (leaf wins if a slug is both a leaf and a rollup)
-	for _, leaf := range leaves {
-		for _, r := range forest.WithRollups(leaf) {
-			if r.Leaf {
-				rowByTaxon[r.Slug] = true
-			} else if _, ok := rowByTaxon[r.Slug]; !ok {
-				rowByTaxon[r.Slug] = false
-			}
-		}
-	}
-
+// SetClipTags is the per-clip taxonomy transaction. It replaces asserted leaves, expands them
+// through the CURRENT closure, and refreshes the compatibility category shadow before commit.
+// Postgres takes a shared taxonomy lock so an operator graph edit cannot commit between those
+// writes; importantly, the caller supplies no forest snapshot that can become stale while waiting.
+func (s *sqlStore) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("set clip tags: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if s.dialect == DialectPostgres {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
+			return fmt.Errorf("set clip tags: lock: %w", err)
+		}
+	}
+	if err := s.setClipTagsTx(ctx, tx, clipHash, leaves); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// setClipTagsTx is the transactional taxonomy projection primitive shared by direct clip edits and
+// semantic classifier writes. The caller owns the transaction and the shared taxonomy lock.
+func (s *sqlStore) setClipTagsTx(ctx context.Context, tx *sql.Tx, clipHash string, leaves []string) error {
+	var clipExists int
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips WHERE hash = ?`), clipHash).Scan(&clipExists); err != nil {
+		return fmt.Errorf("set clip tags: find clip: %w", err)
+	}
+	if clipExists == 0 {
+		return ErrNotFound
+	}
+	uniqueLeaves := make([]string, 0, len(leaves))
+	seenLeaves := make(map[string]bool, len(leaves))
+	for _, leaf := range leaves {
+		if seenLeaves[leaf] {
+			continue
+		}
+		seenLeaves[leaf] = true
+		var exists int
+		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM taxa WHERE slug = ?`), leaf).Scan(&exists); err != nil {
+			return fmt.Errorf("set clip tags: validate %s: %w", leaf, err)
+		}
+		if exists == 0 {
+			return fmt.Errorf("%w: taxon %q no longer exists", ErrTaxonConflict, leaf)
+		}
+		uniqueLeaves = append(uniqueLeaves, leaf)
+	}
 	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE clip_hash = ?`), clipHash); err != nil {
 		return fmt.Errorf("set clip tags: clear: %w", err)
 	}
-	for taxon, leaf := range rowByTaxon {
+	for _, leaf := range uniqueLeaves {
 		if _, err := tx.ExecContext(ctx, s.ph(
 			`INSERT INTO clip_tags (clip_hash, taxon, leaf) VALUES (?, ?, ?)`),
-			clipHash, taxon, leaf); err != nil {
-			return fmt.Errorf("set clip tags: insert %s: %w", taxon, err)
+			clipHash, leaf, true); err != nil {
+			return fmt.Errorf("set clip tags: insert %s: %w", leaf, err)
 		}
 	}
-	return tx.Commit()
+	if err := s.rebuildClipRollupsTx(ctx, tx, clipHash); err != nil {
+		return err
+	}
+	if err := s.rebuildCategoryShadowsTx(ctx, tx, clipHash); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetClipTags returns a clip's tags. `leavesOnly` restricts to the asserted leaves (what to re-derive
@@ -186,42 +313,39 @@ func (s *sqlStore) GetClipTags(ctx context.Context, clipHash string, leavesOnly 
 	return out, rows.Err()
 }
 
-// ListClipHashesLeaves returns every clip that has at least one LEAF tag, with its leaves — the
-// reindex job's work list (it re-derives rollups for each from the current graph). Ordered by hash so
-// a paginated reindex is stable.
-func (s *sqlStore) ListClipHashesLeaves(ctx context.Context) (map[string][]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT clip_hash, taxon FROM clip_tags WHERE leaf = ? ORDER BY clip_hash`), true)
-	if err != nil {
-		return nil, fmt.Errorf("list clip leaves: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	out := map[string][]string{}
-	for rows.Next() {
-		var hash, taxon string
-		if err := rows.Scan(&hash, &taxon); err != nil {
-			return nil, err
-		}
-		out[hash] = append(out[hash], taxon)
-	}
-	return out, rows.Err()
-}
-
-// RebuildClosure recomputes the `taxa_closure` table from the given forest (§10 V45a) — one row per
-// (ancestor, descendant) pair in the graph's transitive closure, INCLUDING the self-pair. This is the
-// ONLY writer of taxa_closure, and it runs whenever the GRAPH edits (rare), NOT per clip: the graph
-// walk (taxonomy.Forest.Ancestors) stays a Go concern and produces a handful of rows, so the hot
-// rollup rebuild is a plain SQL join with no recursion.
+// rebuildTaxonomyDerived is the boot/upgrade backstop for all projections owned by the taxonomy.
+// Live graph changes use ApplyTaxonomyEdit; boot uses the same exclusive Postgres lock so replicas
+// cannot interleave full replacements. A single transaction keeps closure, rollups, and category on
+// one generation while healing data written before graph edits became atomic.
 //
 // ⚠ A full replace inside one transaction. The closure is a pure function of the graph, so a partial
 // rebuild would leave a clip's rollups deriving from a half-updated closure — worse than the old one.
 // Delete-all + re-insert is safe because it is a few hundred rows (~55 taxa) and it is atomic.
-func (s *sqlStore) RebuildClosure(ctx context.Context, forest *taxonomy.Forest, at time.Time) error {
+func (s *sqlStore) rebuildTaxonomyDerived(ctx context.Context, forest *taxonomy.Forest) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("rebuild closure: begin: %w", err)
+		return fmt.Errorf("rebuild taxonomy: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if s.dialect == DialectPostgres {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
+			return fmt.Errorf("rebuild taxonomy: lock: %w", err)
+		}
+	}
+	if err := s.rebuildClosureTx(ctx, tx, forest); err != nil {
+		return err
+	}
+	if err := s.rebuildRollupsTx(ctx, tx); err != nil {
+		return err
+	}
+	if err := s.rebuildCategoryShadowsTx(ctx, tx, ""); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *sqlStore) rebuildClosureTx(ctx context.Context, tx *sql.Tx, forest *taxonomy.Forest) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM taxa_closure`); err != nil {
 		return fmt.Errorf("rebuild closure: clear: %w", err)
 	}
@@ -237,7 +361,7 @@ func (s *sqlStore) RebuildClosure(ctx context.Context, forest *taxonomy.Forest, 
 			}
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // insertClosure writes one (ancestor, descendant) pair.
@@ -250,31 +374,9 @@ func (s *sqlStore) insertClosure(ctx context.Context, tx *sql.Tx, ancestor, desc
 	return nil
 }
 
-// RebuildRollups recomputes the ROLLUP rows of clip_tags for every clip in ONE set-based statement
-// (§10 V45a) — the reindex the doc calls for, expressed as a bulk join rather than an app-side loop
-// that would N+1 once the catalog balloons past the auto-fetch throttle.
-//
-// It preserves each clip's asserted LEAF rows (the operator/tagger's assertions — those change only
-// via SetClipTags) and re-derives every ROLLUP from the current closure:
-//
-//	DELETE the rollups (leaf = false);
-//	INSERT, for each surviving leaf row, every ancestor from taxa_closure that is NOT the leaf itself.
-//
-// ⚠ Dialect-neutral by construction. Every inserted row is a ROLLUP, so `leaf` is a constant boolean
-// FALSE literal — Postgres rejects an integer `0` into a BOOLEAN column (error 42804; see migration
-// 00029's note), while SQLite accepts the FALSE keyword (a 1/0 alias since 3.23, which modernc tracks),
-// so the FALSE literal is the one form both dialects take. The leaf rows are never deleted, so they are
-// not re-inserted here.
-//
-// ⚠ RebuildClosure must have run against the current graph FIRST — this reads taxa_closure, so a stale
-// closure yields stale rollups. The graph-edit path calls them in order (closure, then rollups).
-func (s *sqlStore) RebuildRollups(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("rebuild rollups: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
+// rebuildRollupsTx recomputes every derived row in the graph-edit transaction. It is deliberately
+// private: callers must not rebuild closure and rollups as two independently visible generations.
+func (s *sqlStore) rebuildRollupsTx(ctx context.Context, tx *sql.Tx) error {
 	// Drop every derived rollup; the asserted leaves stay.
 	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE leaf = ?`), false); err != nil {
 		return fmt.Errorf("rebuild rollups: clear: %w", err)
@@ -294,7 +396,130 @@ func (s *sqlStore) RebuildRollups(ctx context.Context) error {
 		 ON CONFLICT (clip_hash, taxon) DO NOTHING`), true); err != nil {
 		return fmt.Errorf("rebuild rollups: insert: %w", err)
 	}
-	return tx.Commit()
+	return nil
+}
+
+func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`INSERT INTO clip_tags (clip_hash, taxon, leaf)
+		 SELECT DISTINCT l.clip_hash, c.ancestor, FALSE
+		 FROM clip_tags l
+		 JOIN taxa_closure c ON c.descendant = l.taxon
+		 WHERE l.clip_hash = ? AND l.leaf = ? AND c.ancestor <> c.descendant
+		 ON CONFLICT (clip_hash, taxon) DO NOTHING`), clipHash, true); err != nil {
+		return fmt.Errorf("rebuild clip rollups: insert: %w", err)
+	}
+	return nil
+}
+
+// rebuildCategoryShadowsTx keeps the compatibility `clips.category` field a pure function of the
+// live taxonomy. Moving an asserted node off the product axis, or changing relative graph depth,
+// can change PrimaryProductLeaf without touching the clip's assertions. Leaving the shadow behind
+// would make legacy pod matching disagree with the taxonomy browser after an otherwise-atomic edit.
+//
+// One correlated UPDATE is deliberately used on both dialects. taxa_closure includes each node's
+// self-pair, so its row count is the node's stable depth measure; ties use slug order exactly like
+// taxonomy.Forest.PrimaryProductLeaf.
+func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
+	query := `UPDATE clips SET category = COALESCE((
+		SELECT ct.taxon
+		FROM clip_tags ct
+		JOIN taxa t ON t.slug = ct.taxon
+		WHERE ct.clip_hash = clips.hash AND ct.leaf = TRUE AND t.axis = 'product'
+		ORDER BY (SELECT COUNT(*) FROM taxa_closure tc WHERE tc.descendant = ct.taxon) DESC,
+			ct.taxon ASC
+		LIMIT 1
+	), '')`
+	var args []any
+	if clipHash != "" {
+		query += ` WHERE hash = ?`
+		args = append(args, clipHash)
+	}
+	_, err := tx.ExecContext(ctx, s.ph(query), args...)
+	if err != nil {
+		return fmt.Errorf("rebuild taxonomy category shadows: %w", err)
+	}
+	return nil
+}
+
+// TaxonomyUsage accounts for the PLAYABLE catalog (the zero ClipFilter population): held,
+// tombstoned and composite containers are excluded. Per-taxon Matched counts include descendants
+// through denormalised rollups; Asserted counts only rows authored by a classifier/operator.
+func (s *sqlStore) TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error) {
+	out := TaxonomyUsage{ByTaxon: map[string]TaxonUsage{}, ByAxis: map[taxonomy.Axis]int{}}
+	active := `c.removed_at = 0 AND c.held = FALSE AND c.is_composite = FALSE`
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clips c WHERE `+active).Scan(&out.TotalClips); err != nil {
+		return out, fmt.Errorf("taxonomy usage total: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT ct.clip_hash)
+		FROM clip_tags ct JOIN clips c ON c.hash = ct.clip_hash
+		WHERE ct.leaf = TRUE AND `+active).Scan(&out.TaggedClips); err != nil {
+		return out, fmt.Errorf("taxonomy usage tagged: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT ct.taxon,
+		COUNT(DISTINCT CASE WHEN ct.leaf = TRUE THEN ct.clip_hash END),
+		COUNT(DISTINCT ct.clip_hash)
+		FROM clip_tags ct JOIN clips c ON c.hash = ct.clip_hash
+		WHERE `+active+` GROUP BY ct.taxon ORDER BY ct.taxon`)
+	if err != nil {
+		return out, fmt.Errorf("taxonomy usage by taxon: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var slug string
+		var usage TaxonUsage
+		if err := rows.Scan(&slug, &usage.Asserted, &usage.Matched); err != nil {
+			return out, err
+		}
+		out.ByTaxon[slug] = usage
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if err := rows.Close(); err != nil {
+		return out, err
+	}
+	axisRows, err := s.db.QueryContext(ctx, `SELECT t.axis, COUNT(DISTINCT ct.clip_hash)
+		FROM clip_tags ct
+		JOIN taxa t ON t.slug = ct.taxon
+		JOIN clips c ON c.hash = ct.clip_hash
+		WHERE ct.leaf = TRUE AND `+active+`
+		GROUP BY t.axis ORDER BY t.axis`)
+	if err != nil {
+		return out, fmt.Errorf("taxonomy usage by axis: %w", err)
+	}
+	defer func() { _ = axisRows.Close() }()
+	for axisRows.Next() {
+		var axis taxonomy.Axis
+		var count int
+		if err := axisRows.Scan(&axis, &count); err != nil {
+			return out, err
+		}
+		out.ByAxis[axis] = count
+	}
+	if err := axisRows.Err(); err != nil {
+		return out, err
+	}
+	if err := axisRows.Close(); err != nil {
+		return out, err
+	}
+	stored, err := s.db.QueryContext(ctx, `SELECT taxon, COUNT(DISTINCT clip_hash)
+		FROM clip_tags WHERE leaf = TRUE GROUP BY taxon ORDER BY taxon`)
+	if err != nil {
+		return out, fmt.Errorf("taxonomy stored assertions: %w", err)
+	}
+	defer func() { _ = stored.Close() }()
+	for stored.Next() {
+		var slug string
+		var count int
+		if err := stored.Scan(&slug, &count); err != nil {
+			return out, err
+		}
+		usage := out.ByTaxon[slug]
+		usage.Stored = count
+		out.ByTaxon[slug] = usage
+	}
+	return out, stored.Err()
 }
 
 // nonNil returns a non-nil slice so json.Marshal emits `[]` not `null` — keeps the stored JSON stable.

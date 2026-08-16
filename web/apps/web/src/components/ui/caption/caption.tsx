@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { CaptionProps } from "./caption.type";
 
 // Caption — mono metadata that rides alongside content (§2.2, §5.1c).

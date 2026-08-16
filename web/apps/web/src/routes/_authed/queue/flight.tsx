@@ -1,10 +1,16 @@
-import { type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
+import * as titlesApi from "@loomarr/api/endpoints/titles";
+import type { TitleDTO } from "@loomarr/api/models/titleDTO";
+import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
-import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
-import { Button } from "@/components/ui";
-import { MyRequests, stageOf } from "@/queue";
+import { StateBadge } from "@/components/loomarr/channels/state-badge";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { stageOf } from "@/queue/journey";
+import { MyRequests } from "@/queue/my-requests";
 
 // In flight — every title still being provisioned (or that has landed), grouped into the
 // three journey stages. See `route.tsx` for why this fan-out is fetched here again rather

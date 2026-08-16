@@ -95,9 +95,8 @@ func TestFileFillerClips_AsSuggestedConfirmsEachClipsOwnEra(t *testing.T) {
 		if c.SuggestedEra != 0 {
 			t.Errorf("%s still carries suggestedEra %d after confirmation", path, c.SuggestedEra)
 		}
-		// ⚠ The other two tags survive. UpdateClipTags writes all three columns, so a confirm
-		// that sent only the era would blank audience and category — the defect V35's review
-		// caught on `onConfirmEra`, one layer down.
+		// ⚠ The other classification facts survive. Taxonomy and category are owned by their own
+		// transaction, so confirming an era cannot overwrite them.
 		if c.Audience == "" || c.Category == "" {
 			t.Errorf("%s lost its other tags: audience=%q category=%q", path, c.Audience, c.Category)
 		}
@@ -142,7 +141,7 @@ func TestFileFillerClips_AsSuggestedResolvesByPathNotIdentity(t *testing.T) {
 	if c.SuggestedEra != 0 {
 		t.Errorf("still carries suggestedEra %d after confirmation", c.SuggestedEra)
 	}
-	// The other two tags survive: UpdateClipTags writes all three columns.
+	// The other classification facts and taxonomy shadow survive confirmation.
 	if c.Audience == "" || c.Category == "" {
 		t.Errorf("lost its other tags: audience=%q category=%q", c.Audience, c.Category)
 	}

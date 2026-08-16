@@ -1,8 +1,9 @@
 // Package store is Loomarr's persistence abstraction (design §5): one Store
 // interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres
-// via pgx's database/sql shim). Dialect differences live only in migrations and
-// the ClaimDue* methods; everything else is shared code and one conformance
-// suite runs against both backends (AGENTS.md: never fork the assertions).
+// via pgx's database/sql shim). Dialect differences stay inside this package:
+// migrations, ClaimDue* methods, workflow locks, and Postgres commit invalidations.
+// Domain persistence remains shared code, and one conformance suite runs against
+// both backends (AGENTS.md: never fork the assertions).
 package store
 
 import (
@@ -17,6 +18,32 @@ import (
 
 // ErrNotFound is returned by Get* methods when no row matches.
 var ErrNotFound = errors.New("store: not found")
+
+// ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
+// slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
+// never retry the same write blindly.
+var ErrTaxonConflict = errors.New("store: taxonomy conflict")
+
+// ErrProposalNotSubmitted reports a terminal proposal decision that lost the
+// submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
+// the proposal exists, but another decision already won.
+var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
+
+// ErrProposalSuperseded reports an approval candidate whose job already has an
+// approved proposal created at the same time or later. Same-second ties fail closed:
+// proposal timestamps are stored at second resolution, so guessing an order could
+// roll a channel back to content the operator reviewed earlier.
+var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
+
+// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
+// number or non-empty intent binding). Approval transactions have rolled back
+// completely when returning it, so their caller may safely reload and replan.
+var ErrChannelConflict = errors.New("store: channel conflict")
+
+// ErrChannelStale reports that a channel mutation was planned from an older
+// revision than the row now holds. The row still exists; callers may reload and
+// either reapply their domain merge or surface a conflict to the operator.
+var ErrChannelStale = errors.New("store: stale channel revision")
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
@@ -44,12 +71,19 @@ type ChannelStore interface {
 	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
 	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
-	UpsertChannel(ctx context.Context, ch Channel) error
+	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
+	// at revision 1; a positive revision replaces the row only when it still
+	// matches, then returns the saved channel with its incremented revision.
+	SaveChannel(ctx context.Context, ch Channel) (Channel, error)
+	// AttachTunarrChannel records the server-assigned id and the number actually used
+	// without replacing a concurrently edited channel snapshot. Both old values are
+	// compared; the targeted write advances and returns the row revision.
+	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
-	// a targeted write used after the lineup is bound, so it never races the binder's row write.
-	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
+	// a targeted revision-checked write used after the lineup is bound.
+	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
-	DeleteChannel(ctx context.Context, id string) error
+	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
 	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
 	// content, not by channel id — see ImageStore.
@@ -73,7 +107,7 @@ type SeriesEpisodeStore interface {
 	GetSeriesEpisodes(ctx context.Context, libraryID string) (SeriesEpisodes, error)
 	UpsertSeriesEpisodes(ctx context.Context, se SeriesEpisodes) error
 	// ListStaleSeriesEpisodes returns shows fetched before `before`, oldest first, for the
-	// series-episode-refresh job (§18.1).
+	// channel-maintenance job (§18.1).
 	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
 }
 
@@ -95,11 +129,37 @@ type JobStore interface {
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 }
 
+// ProposalApprovalReader is the transaction-bound read view available to an
+// unattended approval guard. Reads and the eventual approval commit use the same
+// transaction/connection, so losing a Postgres session loses both ordering and work.
+type ProposalApprovalReader interface {
+	GetUser(ctx context.Context, id string) (User, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
+// ProposalApprovalGuard runs after requester ordering is acquired and before any
+// approval mutation. Any error rolls the transaction back and leaves the proposal
+// submitted; callers may use a private sentinel for a safe policy decline.
+type ProposalApprovalGuard func(context.Context, ProposalApprovalReader) error
+
 // ProposalStore is the suggester proposal surface (§8).
 type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
-	UpdateProposal(ctx context.Context, p Proposal) error
+	// CommitProposalApproval atomically wins the submitted -> approved decision,
+	// inserts title records that do not already exist, and creates or patches the
+	// intent-bound channel. Existing title lifecycle state is never overwritten.
+	// The returned count is newly inserted wanted titles.
+	CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error)
+	// CommitProposalApprovalGuarded runs guard and the same durable commit under
+	// requester ordering. SQLite uses its single-process keyed semaphore; Postgres
+	// takes a transaction-scoped advisory lock and runs guard + commit on that same
+	// transaction/connection. Manual CommitProposalApproval enters the same ordering
+	// but has no guard, so deliberate admin spending is never quota-rejected.
+	CommitProposalApprovalGuarded(ctx context.Context, commit ProposalApproval, guard ProposalApprovalGuard) (int, error)
+	// CommitProposalDenial atomically wins the submitted -> denied decision.
+	CommitProposalDenial(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
 	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
 	// one job in one status. Newest wins because a refine produces a newer approved proposal
@@ -150,6 +210,9 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
+	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
+	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -184,6 +247,9 @@ type ClipStore interface {
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// ReplaceSplitChildren makes one completed re-split generation airable and tombstones older
+	// children of the same composite. It never deletes files and preserves channel-pinned clips.
+	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
 	// SetClipLanguage records the detected language (§10 V40).
 	//
 	// ⚠ The ONLY writer of that column, like the tombstone above: UpsertClip omits it, which is
@@ -199,18 +265,19 @@ type ClipStore interface {
 	// ever catalogued while `TagSuggestion.Score` computed a value the tagger then discarded. The
 	// value must be `Score`'s output, never the model's own self-assessment.
 	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
-	// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44) — path-keyed,
-	// writes `brand` and nothing else. It SHARES the `brand` column with SetClipVisionTags (text
+	// SetClipBrand records a GROUNDED advertiser found by the text tagger or confirmed by an operator
+	// (§10 V44) — path-keyed,
+	// writes `brand` and nothing else. It SHARES the `brand` column with ApplyClipVision (text
 	// grounds a brand in the filename/sidecar/transcript, vision grounds one in the on-screen text);
 	// UpsertClip omits `brand` from DO UPDATE so a re-sync cannot blank either. The caller has
 	// already applied the grounding rule, so this writes what it is given.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
-	// SetClipVisionTags records a vision pass — the on-screen text it read, a grounded brand, and
-	// (when the frame supported them) an era/category (§10 V44). The ONLY writer of `visible_text`
+	// ApplyClipVision records a vision pass — the on-screen text it read, a grounded brand/era, and
+	// its asserted taxonomy tags (§10 V44/V55). The ONLY writer of `visible_text`
 	// and `vision_tagged`; `brand` it shares with SetClipBrand above. UpsertClip omits them so a
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
-	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
 	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
@@ -225,26 +292,19 @@ type ClipStore interface {
 	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
 	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
-	// UpsertTaxon / DeleteTaxon are the operator-edit path; the caller reindexes after a graph edit.
-	UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error
-	DeleteTaxon(ctx context.Context, slug string) error
+	// ApplyTaxonomyEdit is the ONE operator-edit path. It validates the prospective graph and commits
+	// the row edit, closure rebuild, and catalog rollup rebuild atomically. Callers never choreograph
+	// those derived writes themselves.
+	ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
-	// SetClipTags REPLACES one clip's tags with the rollup expansion of the given leaves (the per-clip
-	// re-tag path — the tagger writing a single clip). GetClipTags reads them (leavesOnly = the asserted
-	// set, else full). ⚠ It must produce the SAME rows RebuildRollups would for the same leaves; the
-	// conformance suite pins the two writers as equivalent.
-	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from
+	// the store's current graph in the same transaction. Callers never supply a graph snapshot.
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
-	// ListClipHashesLeaves returns every clip's asserted leaves — a work list for a per-clip job (the
-	// future re-embed sibling). The bulk rollup reindex does NOT use it: it is a set-based SQL rebuild.
-	ListClipHashesLeaves(ctx context.Context) (map[string][]string, error)
-	// RebuildClosure recomputes taxa_closure from the forest — the ONLY writer of the closure, run when
-	// the GRAPH edits (rare). The graph walk stays in Go; the closure makes the rollup rebuild plain SQL.
-	RebuildClosure(ctx context.Context, forest *taxonomy.Forest, at time.Time) error
-	// RebuildRollups recomputes EVERY clip's rollup rows from the closure in one set-based statement —
-	// the reindex (§10 V45a). Preserves asserted leaves; call after RebuildClosure on a graph edit.
-	RebuildRollups(ctx context.Context) error
+	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus
+	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
+	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
@@ -252,13 +312,13 @@ type ClipStore interface {
 	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
 	// and is cleared whenever a person decides.
 	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
-	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
-	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
+	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
+	// editor (§10) and AI job. Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
 	// it in the same write, and a write with neither leaves it alone. Returns
 	// ErrNotFound if absent.
-	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
-	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
+	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipClassification because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
 	// scanned as a commercial being the likely case).
@@ -272,6 +332,11 @@ type ClipStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+	// ListClipFingerprints/UpsertClipFingerprint own the persisted derived cache used by
+	// compilation de-duplication (§10). Reads batch the catalog by exact algorithm; corrupt rows
+	// are omitted with an error so valid siblings remain reusable and the bad row is recomputed.
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 }
 
 // SplitProposalStore is the persisted split-proposal surface (§10, V34) —
@@ -286,9 +351,9 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposalSegments replaces an EXISTING proposal's segments; ErrNotFound if the
-	// row is gone. Never inserts — see the implementation for why that matters (§10 V54).
-	UpdateSplitProposalSegments(ctx context.Context, id string, segs []filler.SplitSegment) error
+	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
+	// Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
 	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
@@ -393,7 +458,7 @@ type ActivityStore interface {
 	RecordActivity(ctx context.Context, a Activity) error
 	// ListActivity returns the newest feed rows first, capped at limit.
 	ListActivity(ctx context.Context, limit int) ([]Activity, error)
-	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
+	// PurgeActivity deletes feed rows older than `before` (§18.1 housekeeping). The feed
 	// is the one append-only table here, so it is the one that needs a purge.
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 }
@@ -402,10 +467,20 @@ type ActivityStore interface {
 type SettingStore interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
+	// WithSettingLock serializes one system-owned settings workflow. SQLite is a
+	// single-process backend, so its lock is local; Postgres holds a session-level
+	// advisory lock so replicas cannot overlap the protected external effects.
+	// The callback must be idempotent because a process can still stop after an
+	// external effect and before its durable checkpoint is written.
+	WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) error
 	// ListSettings returns every persisted override with its audit metadata
 	// (config-design §3). The settings service loads this into its snapshot; the
 	// API surfaces updatedBy/updatedAt per field.
 	ListSettings(ctx context.Context) ([]SettingRow, error)
+	// ApplySettingBatch commits one settings PATCH's valid upserts and deletes in
+	// one transaction. Readers therefore observe either the complete old settings
+	// generation or the complete new one (config-design §8).
+	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
 	// This is the audited write path; SetSetting stays the un-audited system path

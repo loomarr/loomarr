@@ -4,24 +4,33 @@ Get a channel playing in about ten minutes.
 
 ## Before you start
 
-You need **Emby or Jellyfin** running and reachable. That's the only connection the wizard
-insists on.
+You need **Emby or Jellyfin** running and reachable. The wizard lets an instance start with only
+that connection, but making the first channel from a sentence also requires **TMDB** and an
+**LLM**. They are prerequisites for this quickstart, not optional polish.
+
+Have these ready:
+
+- **TMDB API key** — [get one here](https://www.themoviedb.org/settings/api).
+- **An LLM** — local Ollama or any OpenAI-compatible provider.
 
 Add these when you're ready — the wizard shows what each one unlocks:
 
-- **TMDB API key** — [get one here](https://www.themoviedb.org/settings/api). Needed to suggest.
-- **An LLM** — local Ollama or any OpenAI-compatible provider. Also needed to suggest.
 - **Seerr**, or Sonarr and Radarr — to download what you're missing.
 - **A filler folder** — for commercials between programmes.
 - **Tunarr** — only if you want it to stream your channels instead of Loomarr.
 
 ## 1. Start it
 
+Until `v0.1.0-beta.1` appears in GitHub Releases, this command documents the release candidate; no
+beta artifact is available to pull yet.
+
 ```bash
-docker compose -f docker/compose.yaml --profile sqlite up -d
+cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
+LOOMARR_VERSION=0.1.0-beta.1 docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-Use `--profile postgres` for Postgres, and add `--profile ai` to run a local Ollama alongside it.
+For Postgres, add `-f docker/compose.postgres.yaml --profile postgres`. Add `--profile ai` to
+either database command to run a local Ollama alongside it.
 
 > Inside Docker, `localhost` means the container. Reach other services by name
 > (`http://emby:8096`) or your host's LAN IP.
@@ -31,7 +40,8 @@ Use `--profile postgres` for Postgres, and add `--profile ai` to run a local Oll
 
 ## 2. Run the wizard
 
-Open `http://<host>:8080`. A fresh install goes straight to setup:
+Open the `SERVER_PUBLIC_URL` you set. Traefik listens on host port 8080 by default and routes to
+Loomarr's private port 8080. A fresh install goes straight to setup:
 
 1. **Admin** — create the account that owns this instance.
 2. **Playout** — who streams your channels: **Loomarr** (default) or **Tunarr**. This changes

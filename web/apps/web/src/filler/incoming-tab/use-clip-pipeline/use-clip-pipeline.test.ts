@@ -20,7 +20,7 @@ import { useClipPipeline } from "./use-clip-pipeline";
 // ⚠ The listener is mocked rather than provided. `useLoomarrEventListener` outside its provider
 // is a deliberate no-op, so a test that rendered the real one would exercise nothing and pass.
 const mocks = vi.hoisted(() => ({ handlers: undefined as EventHandlers | undefined }));
-vi.mock("@/events", () => ({
+vi.mock("@/events/events-provider", () => ({
   useLoomarrEventListener: (h: EventHandlers) => {
     mocks.handlers = h;
   },
@@ -61,9 +61,14 @@ const frame = (over: Partial<FillerClipEvent> = {}): FillerClipEvent => ({
 
 const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
   clips,
+  clipsTotal: clips.length,
+  decisionsTotal: clips.filter((clip) => clip.needsDecision).length,
   reels: [],
+  reelsTotal: 0,
   rejected: [],
+  rejectedTotal: 0,
   recentlyFiled: [],
+  recentlyFiledTotal: 0,
   stageOrder: ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"],
   total: 0,
 });

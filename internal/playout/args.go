@@ -426,12 +426,10 @@ func (p Profile) audioEncodeArgsNormalised(targetLUFS string) []string {
 func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
-		// Progress as machine-readable key=value on a DEDICATED fd — never stdout (which
-		// carries the MPEG-TS) and never stderr scraping (viewra parsed 4096-byte reads
-		// for "frame=" and a chunked read can split a token across the boundary,
-		// prior-art viewra §4). The fd comes from progressFD so this and the supervisor
-		// that wires it cannot drift apart; they did, and the symptom was ffmpeg failing
-		// at startup with "Bad file descriptor".
+		// Progress as line-framed machine-readable key=value — never stdout, which carries
+		// the MPEG-TS. Unix gives it dedicated fd 3; Windows demultiplexes exact protocol
+		// lines from stderr because Go does not support ExtraFiles there. The platform value
+		// and wiring live at one seam so they cannot drift into "Bad file descriptor" again.
 		"-progress", progressPipeArg(), "-nostats",
 	}
 	// Video: a plain colour field, paced to realtime, looping forever.

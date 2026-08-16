@@ -2,7 +2,9 @@ import type { MeBody } from "@loomarr/api";
 import {
   getConfirmFillerSplitMockHandler,
   getGetFillerSplitMockHandler,
+  getListFillerMockHandler,
   getMeMockHandler,
+  getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -58,11 +60,33 @@ const PROPOSAL = {
 const stubSplit = (me: MeBody = ADMIN) => {
   let fetchedProposal = false;
   const confirms: unknown[] = [];
+  const composite = {
+    hash: PROPOSAL.clipHash,
+    name: "Classic Toy Commercial Compilation 1989",
+    kind: "commercial" as const,
+    durationMs: 61_000,
+    playCount: 0,
+    playsCounted: true,
+    aiTagged: false,
+    tagged: false,
+    suggestedEra: 0,
+    isComposite: true,
+  };
   server.use(
     getMeMockHandler({ ...me }),
+    getSettingsListMockHandler({ settings: [], features: {} }),
     getGetFillerSplitMockHandler(() => {
       fetchedProposal = true;
       return PROPOSAL;
+    }),
+    getListFillerMockHandler(({ request }) => {
+      const params = new URL(request.url).searchParams;
+      // Match the real catalog boundary: composites are non-airable and invisible unless the
+      // caller explicitly opts in. A permissive stub would let the page regress to a query that
+      // works in tests and resolves no parent in production.
+      const resolvesComposite =
+        params.get("includeComposites") === "true" && params.getAll("hashes").includes(PROPOSAL.clipHash);
+      return { clips: resolvesComposite ? [composite] : [], total: resolvesComposite ? 1 : 0 };
     }),
     getConfirmFillerSplitMockHandler(async ({ request }) => {
       confirms.push(await request.json());
@@ -104,7 +128,8 @@ describe("SplitReviewPage", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: /segment 1: first ad/i })).toBeInTheDocument();
-    expect(screen.getByText("comp-hash")).toBeInTheDocument();
+    expect(screen.getByText("Classic Toy Commercial Compilation 1989")).toBeInTheDocument();
+    expect(screen.queryByText("comp-hash")).not.toBeInTheDocument();
   });
 
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {

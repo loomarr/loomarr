@@ -1,4 +1,4 @@
-import type { PoolDTO } from "@loomarr/api";
+import type { PoolDTO } from "@loomarr/api/models/poolDTO";
 
 interface PoolHealthProps {
   // The server's answer, verbatim. ⚠ Typed as the generated DTO rather than re-declared, for

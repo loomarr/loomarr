@@ -31,20 +31,26 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
 | `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
-| `make agent-worktree` |  | create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in) |
-| `make bootstrap` |  | install frontend dependencies, run codegen, and prepare isolated local directories |
+| `make agent-worktree` |  | create + bootstrap a ready-to-use sibling worktree (TOPIC=branch) |
+| `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
+| `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
+| `make release-verify` |  | verify release tag, OCI naming, and immutable publication policy |
 
 ## The default gate
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | fmt + shellcheck + vet (incl. tagged) + tag-list guard + lint + harness + unit tests (the default gate) <br>*runs:* `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `test` |
+| `make check` | ✅ | Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
+| `make rust-check` |  | format, lint, and test the required Rust image worker |
+| `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make vet` |  | go vet |
-| `make vet-tags` |  | go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS) |
+| `make vet-tags` |  | go vet over custom-tagged sources; platform constraints use their cross-compile gate |
+| `make windows-compile` |  | cross-compile every Go package and test for Windows (does not execute them) |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` |  | unit tests only (never touch the network — §19) |
@@ -56,10 +62,15 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make build` |  | build the loomarr binary (static, cgo-free — §16) |
+| `make build` |  | build the cgo-free Go server and required Rust image worker <br>*runs:* `rust-build` |
+| `make rust-build` |  | build the required Rust image worker |
+| `make image-cert` | ✅ | certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path <br>*runs:* `rust-build` |
+| `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
+| `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
-| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on any Go change |
+| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
+| `make rust-dev-build` |  | build the required Rust worker for local development |
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
 | `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 
@@ -67,7 +78,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make test-pg` | ✅ | store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker) |
+| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` |
 
 ## OpenAPI (Phase 8)
 
@@ -138,7 +149,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

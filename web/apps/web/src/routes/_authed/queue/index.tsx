@@ -1,6 +1,6 @@
-import { proposalsApi } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { meQueryOptions } from "@/auth";
+import { meQueryOptions } from "@/auth/me-query";
 
 // /queue opens on whichever tab has work: an admin with pending proposals lands on Approval,
 // since that is the one queue state that blocks somebody else. Everyone else lands on In

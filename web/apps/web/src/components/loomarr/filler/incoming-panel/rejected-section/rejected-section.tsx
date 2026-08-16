@@ -1,6 +1,8 @@
-import type { IncomingRejectDTO } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
-import { Badge, Button, Caption } from "@/components/ui";
+import type { IncomingRejectDTO } from "@loomarr/api/models/incomingRejectDTO";
+import { pluralize } from "@loomarr/core/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
 
 // The audit half of REFUSAL (§10 V51b/V51e) — the sibling of "filed without asking".
 //
@@ -23,10 +25,12 @@ import { Badge, Button, Caption } from "@/components/ui";
 // ⚠ The fallback is the raw code, never "Unknown reason". A code this build has no copy for comes
 // from a newer backend, and `sliver` tells an operator — and a bug report — something.
 const REASON: Record<string, string> = {
+  black_content: "the picture is almost entirely black",
   duplicate: "Loomarr already has this one",
   language: "the speech is in another language",
   no_audio: "it has no sound",
   no_video: "it has no picture",
+  silent_content: "the audio track is almost entirely silent",
   sliver: "it's a fragment, too short to be an advert",
   too_short: "it's shorter than the floor",
   unidentified: "nothing in it said what it was",

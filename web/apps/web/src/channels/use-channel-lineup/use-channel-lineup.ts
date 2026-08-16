@@ -1,5 +1,7 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import { channelsApi, type LineupEntryDTO, toProblem } from "@loomarr/api";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,7 +38,7 @@ const fingerprint = (entries: LineupEntryDTO[]): string => entries.map((e) => e.
 // commit ROLLS BACK to the pre-optimistic snapshot rather than leaving the UI showing
 // something the server refused (e.g. a 422 on a duplicate key that slipped past the
 // client-side check) — the toast explains why, the list explains what's actually true.
-const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): ChannelLineup => {
+const useChannelLineup = (channelId: string, current: LineupEntryDTO[], revision: number): ChannelLineup => {
   const queryClient = useQueryClient();
   const [entries, setEntries] = useState(current);
   // The fingerprint `entries` was last synced FROM — i.e. of the `current` this hook
@@ -57,7 +59,13 @@ const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): Channel
         void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
         toast.success("Saved");
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't save that change"),
+      onError: (e) => {
+        // A stale revision means the optimistic list was based on an older definition. Refresh
+        // immediately as well as rolling back so the operator sees what won the race before
+        // deciding whether to repeat the whole-list replacement.
+        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
+        toast.error(toProblem(e).title ?? "Couldn't save that change");
+      },
     },
   });
 
@@ -69,7 +77,10 @@ const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): Channel
   const commit = (next: LineupEntryDTO[]) => {
     const rollback = entries;
     setEntries(next);
-    update.mutate({ id: channelId, data: { lineup: next } }, { onError: () => setEntries(rollback) });
+    update.mutate(
+      { id: channelId, data: { revision, lineup: next } },
+      { onError: () => setEntries(rollback) },
+    );
   };
 
   return {

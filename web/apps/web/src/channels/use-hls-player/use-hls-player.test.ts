@@ -13,15 +13,17 @@ const { channelPlayUrl, unwrap } = vi.hoisted(() => ({
   channelPlayUrl: vi.fn(),
   unwrap: vi.fn((res: unknown) => res),
 }));
-vi.mock("@loomarr/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@loomarr/api")>();
+vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@loomarr/api/endpoints/channels")>();
   return {
     ...actual,
-    channelsApi: { ...actual.channelsApi, channelPlayUrl },
-    unwrap,
-    toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
+    channelPlayUrl,
   };
 });
+vi.mock("@loomarr/api/unwrap", () => ({ unwrap }));
+vi.mock("@loomarr/api/mutator", () => ({
+  toProblem: (e: unknown) => ({ detail: (e as Error)?.message, title: "Problem" }),
+}));
 
 // hls.js reports unsupported so bind() takes the non-MSE path — the test drives a <video> whose
 // canPlayType also returns "" (no native HLS), landing on the deterministic error branch instead of
@@ -36,6 +38,8 @@ const videoEl = (canPlay = "") =>
   ({
     canPlayType: () => canPlay,
     play: vi.fn().mockResolvedValue(undefined),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     removeAttribute: vi.fn(),
     load: vi.fn(),
   }) as unknown as HTMLVideoElement;
@@ -68,7 +72,27 @@ describe("useHlsPlayer", () => {
         video10bit: expect.any(Boolean),
       }),
       { quality: expect.stringMatching(/^(auto|720|480)$/) },
+      { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it("reuses an adjacent warmer's exact signed URL without minting again", async () => {
+    const video = videoEl("application/vnd.apple.mpegurl");
+    const { result } = renderHook(() =>
+      useHlsPlayer("ch-2", {
+        id: 2,
+        adjacent: true,
+        warmed: true,
+        playURL: "/v1/playout/hls/ch-2/master.m3u8?sig=warmed",
+      }),
+    );
+
+    act(() => {
+      result.current.attach(video);
+    });
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    expect(channelPlayUrl).not.toHaveBeenCalled();
+    expect(video.src).toContain("sig=warmed");
   });
 
   it("surfaces an error when the mint returns no URL", async () => {
@@ -112,6 +136,29 @@ describe("useHlsPlayer", () => {
     expect(result.current.error).toMatch(/can't play live channels/i);
   });
 
+  it("keeps the tuning overlay up until the replacement produces a decoded frame", async () => {
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/master.m3u8" });
+    let firstFrame!: () => void;
+    const video = {
+      ...videoEl("application/vnd.apple.mpegurl"),
+      requestVideoFrameCallback: vi.fn((callback: () => void) => {
+        firstFrame = callback;
+        return 1;
+      }),
+      cancelVideoFrameCallback: vi.fn(),
+    } as unknown as HTMLVideoElement;
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => {
+      result.current.attach(video);
+    });
+    await waitFor(() => expect(channelPlayUrl).toHaveBeenCalledOnce());
+    expect(result.current.status).toBe("loading");
+
+    act(() => firstFrame());
+    expect(result.current.status).toBe("playing");
+  });
+
   it("ignores a mint that resolves after teardown (no state update)", async () => {
     let resolve!: (v: unknown) => void;
     channelPlayUrl.mockReturnValue(new Promise((r) => (resolve = r)));
@@ -129,5 +176,29 @@ describe("useHlsPlayer", () => {
 
     // The late resolution was cancelled, so status never advanced to playing/error from it.
     expect(result.current.status).toBe("loading");
+  });
+
+  it("aborts the superseded mint and lets only the latest attachment continue", async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    channelPlayUrl.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    let firstCleanup!: () => void;
+    act(() => {
+      firstCleanup = result.current.attach(videoEl());
+    });
+    const firstSignal = channelPlayUrl.mock.calls[0]?.[3]?.signal as AbortSignal;
+    act(() => firstCleanup());
+    act(() => {
+      result.current.attach(videoEl());
+    });
+
+    expect(firstSignal.aborted).toBe(true);
+    await act(async () => {
+      pending[0]?.({ relativeUrl: "/superseded.m3u8" });
+      pending[1]?.({});
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.error).toMatch(/couldn't get a stream/i);
   });
 });

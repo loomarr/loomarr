@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +80,24 @@ func buildServeShutdown(t *testing.T, generation int) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("generation %d: /v1/healthz → %d, want 200", generation, resp.StatusCode)
 	}
+
+	metricsResp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("generation %d: scrape metrics: %v", generation, err)
+	}
+	body, readErr := io.ReadAll(metricsResp.Body)
+	_ = metricsResp.Body.Close()
+	if readErr != nil {
+		t.Fatalf("generation %d: read metrics: %v", generation, readErr)
+	}
+	if metricsResp.StatusCode != http.StatusOK {
+		t.Fatalf("generation %d: /metrics → %d, want 200", generation, metricsResp.StatusCode)
+	}
+	for _, family := range []string{"loomarr_titles", "loomarr_jobs", "loomarr_active_sessions"} {
+		if !strings.Contains(string(body), family) {
+			t.Errorf("generation %d: /metrics missing %s; collector retained an old store", generation, family)
+		}
+	}
 	srv.Close()
 
 	// Teardown in runOnce's order: cancel background work, then release the store.
@@ -106,14 +126,14 @@ func settle() {
 
 // The RestartRequired flag is DERIVED from running-vs-resolved bootstrap values, so it
 // cannot nag about a restart the operator already undid (config-design §3).
-func TestBootstrapDrift(t *testing.T) {
+func TestRestartDrift(t *testing.T) {
 	t.Run("no drift when the running config matches the environment", func(t *testing.T) {
 		t.Setenv("DATABASE_URL", "sqlite:///data/a.db")
 		running, err := config.Load()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := bootstrapDrift(running)(); len(got) != 0 {
+		if got := restartDrift(running, nil, nil)(); len(got) != 0 {
 			t.Errorf("drift = %v, want none — nothing changed", got)
 		}
 	})
@@ -127,7 +147,7 @@ func TestBootstrapDrift(t *testing.T) {
 		// The operator saves a new database target; this process is still on the old one.
 		t.Setenv("DATABASE_URL", "postgres://u:p@h:5432/loomarr")
 
-		got := bootstrapDrift(running)()
+		got := restartDrift(running, nil, nil)()
 		if len(got) != 1 || got[0] != "DATABASE_URL" {
 			t.Errorf("drift = %v, want [DATABASE_URL] — the UI must name WHICH setting", got)
 		}
@@ -139,7 +159,7 @@ func TestBootstrapDrift(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		drift := bootstrapDrift(running)
+		drift := restartDrift(running, nil, nil)
 
 		t.Setenv("DATABASE_URL", "postgres://u:p@h:5432/loomarr")
 		if len(drift()) == 0 {
@@ -156,8 +176,44 @@ func TestBootstrapDrift(t *testing.T) {
 	t.Run("a nil baseline reports no drift", func(t *testing.T) {
 		// Safe direction: a false "restart required" points the operator at an action
 		// that cannot help.
-		if got := bootstrapDrift(nil)(); got != nil {
+		if got := restartDrift(nil, nil, nil)(); got != nil {
 			t.Errorf("drift = %v with no baseline, want nil", got)
+		}
+	})
+
+	t.Run("combines bootstrap and generation drift deterministically", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "sqlite:///data/a.db")
+		running, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("DATABASE_URL", "postgres://u:p@h:5432/loomarr")
+		desired := map[string]string{
+			"filler.dir":       "/clips/new",
+			"filler.watch_dir": "/watch/new",
+		}
+		drift := restartDrift(running, map[string]string{
+			"filler.watch_dir": "/watch/old",
+			"filler.dir":       "/clips/old",
+		}, func(key string) string { return desired[key] })
+
+		got := drift()
+		want := []string{"DATABASE_URL", "filler.dir", "filler.watch_dir"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("drift = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("generation drift clears when desired values are reverted", func(t *testing.T) {
+		desired := map[string]string{"filler.dir": "/clips/new"}
+		drift := restartDrift(nil, map[string]string{"filler.dir": "/clips/old"},
+			func(key string) string { return desired[key] })
+		if got := drift(); len(got) != 1 || got[0] != "filler.dir" {
+			t.Fatalf("drift = %v, want [filler.dir]", got)
+		}
+		desired["filler.dir"] = "/clips/old"
+		if got := drift(); len(got) != 0 {
+			t.Errorf("drift after revert = %v, want none", got)
 		}
 	})
 }

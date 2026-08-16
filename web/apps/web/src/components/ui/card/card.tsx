@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 
 // shadcn/ui Card (new-york), restyled via tokens (§3, Layer 1). Elevation is
 // borders-first in dark UIs (§2.3): surface fill + a static-700 hairline.

@@ -1,5 +1,36 @@
 # V54 — Filler refresh 2
 
+**Status: complete.** Phase A shipped in #247/#248; the remaining product work shipped across
+#347/#348 (split boundary and confirmation), #350 (settings honesty), #352 (source hierarchy,
+split preview, catalog, accessibility and docs), #354 (hosted/OpenRouter model selection), #356
+(automated intake, break handling and persisted fingerprints), and #359 (intake reliability,
+hold reasons, counts and composite visibility). The final certification PR #364 closes two upgrade and
+provider-routing seams found only by exercising the completed system: stale holds on legacy
+confirmed composites, and filler paths bypassing a hosted provider's namespaced credential.
+
+### Final certification — 2026-08-15
+
+An isolated SQLite runtime was started from a clean worktree and driven through the real Tasks and
+Filler UI with this deterministic corpus:
+
+| Fixture | Expected decision | Observed |
+| --- | --- | --- |
+| healthy commercial + byte-identical copy | ingest once, discard duplicate | 7 files taken, 1 duplicate discarded; one human-titled clip filed |
+| clip below the minimum duration | reject at the scan boundary | rejected before cataloguing |
+| video-only clip | reject at the scan boundary | rejected before cataloguing |
+| 24s black-screen clip | reject with measured reason | `black_content`; 99% black |
+| 24s silent-audio clip | reject with measured reason | `silent_content`; 100% silent |
+| compilation made from duplicate catalog content | resolve without approval | proposal exhausted by deterministic duplicate handling; terminal, non-airable composite |
+| varied compilation | preserve uncertainty for review | one review item with four proposed clips |
+
+The Incoming page contained no 32–64 character hexadecimal display names; it showed the source
+filenames and the measured rejection reasons. After a process restart, the proposal and all
+terminal decisions were unchanged, the catalog fingerprint cache retained its row, and another
+pipeline pass reported no work (`repaired=0`, `advanced=0`, `deferred=0`). Provider routing is
+certified at the HTTP boundary with local deterministic servers for text/tagging, inherited vision,
+hosted timed transcription, and the setup check. No OpenRouter credential was available in the
+isolated environment, so this run intentionally did not make a paid live inference call.
+
 **Original worktree:** `../loomarr-v54-filler`, branch `v54-filler-refresh`, based on
 `origin/main` `2283dfaa`. Re-verify that historical setup before resuming. The generated API client
 is gitignored, so `make bootstrap` is load-bearing in a new worktree.

@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 
 // Sonarr's sticky save bar (config-design §5). Explicit per-page saving, chosen over

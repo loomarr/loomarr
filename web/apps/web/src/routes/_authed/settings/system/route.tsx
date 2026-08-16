@@ -1,5 +1,5 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { cn } from "@/lib";
+import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { NavTabs } from "@/components/ui/nav-tabs";
 
 // Settings → System (config-design §5, V9) — "the machine", as distinct from "the product".
 //
@@ -13,32 +13,32 @@ import { cn } from "@/lib";
 // §12 used to defer the Dashboard nav entry until V16 built it.
 const SUB_PAGES = [
   { to: "/settings/system/tasks", label: "Tasks" },
+  { to: "/settings/system/playback", label: "Playback" },
   { to: "/settings/system/database", label: "Database" },
   { to: "/settings/system/backup", label: "Backup" },
+  { to: "/settings/system/storage", label: "Storage" },
   { to: "/settings/system/about", label: "About" },
 ] as const;
 
-const SystemLayout = () => (
-  <div className="flex h-full flex-col">
-    <nav aria-label="System settings" className="flex gap-1 overflow-x-auto border-border border-b px-6 py-2">
-      {SUB_PAGES.map((p) => (
-        <Link
-          key={p.to}
-          to={p.to}
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-accent hover:text-foreground",
-            "data-[status=active]:bg-signal-tint-15 data-[status=active]:font-medium data-[status=active]:text-signal",
-          )}
-        >
-          {p.label}
-        </Link>
-      ))}
-    </nav>
-    <div className="min-w-0 flex-1 overflow-hidden">
-      <Outlet />
+const SystemLayout = () => {
+  const { pathname } = useLocation();
+  const activeId = SUB_PAGES.find((page) => pathname.startsWith(page.to))?.to ?? SUB_PAGES[0].to;
+
+  return (
+    <div className="flex h-full flex-col">
+      <NavTabs
+        label="System settings"
+        linkComponent={Link}
+        className="bg-background px-6 pt-2"
+        tabs={SUB_PAGES.map((page) => ({ id: page.to, label: page.label, to: page.to }))}
+        activeId={activeId}
+      />
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <Outlet />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Route = createFileRoute("/_authed/settings/system")({
   component: SystemLayout,

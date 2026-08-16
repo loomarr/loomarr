@@ -8,9 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -74,8 +77,9 @@ func run() error {
 	log := newLogger(bootCfg.LogLevel)
 	slog.SetDefault(log)
 
+	databaseMigration := &databaseMigrationState{bootstrapDir: config.ConventionalDataDir}
 	for generation := 1; ; generation++ {
-		restart, err := runOnce(log, generation)
+		restart, err := runOnce(log, generation, databaseMigration)
 		if err != nil {
 			return err
 		}
@@ -87,12 +91,13 @@ func run() error {
 }
 
 // runOnce is one generation: build everything, serve, tear it all down. It returns true
-// when the operator asked for a restart, so run() can build the next generation.
+// when the operator asked for a restart, so run() can build the next generation. A
+// failed database migration records the concise error the next generation exposes.
 //
 // The returned bool and error are deliberately separate: "the operator restarted us" is
 // not a failure, and collapsing it into an error would make a normal action look like one
 // in the logs.
-func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
+func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrationState) (restart bool, err error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return false, err
@@ -109,16 +114,34 @@ func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
 	if cfg.DatabaseURL != "" {
 		st, err = store.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)
 		if err != nil {
+			if databaseMigration.fallbackSQLiteURL != "" {
+				if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("open first PostgreSQL generation: %w", err)); restoreErr != nil {
+					return false, restoreErr
+				}
+				return true, nil
+			}
 			return false, err // downgrade guard / bad scheme / unreachable DB fail fast
 		}
 		// Closed on EVERY exit from this generation, including a restart — the next
 		// generation opens its own handle, and a leaked one would hold the SQLite file
 		// (and, on a migration, the database it just moved off).
-		defer func() { _ = st.Close() }()
 		log.Info("store opened", "auto_migrate", cfg.AutoMigrate)
 	} else {
 		log.Warn("no DATABASE_URL set — running without a store (not ready)")
 	}
+	if databaseMigration.fallbackSQLiteURL != "" && store.DialectOf(st) != store.DialectPostgres {
+		databaseMigration.lastError = "database migration verified, but bootstrap did not select PostgreSQL; still running on SQLite"
+		databaseMigration.fallbackSQLiteURL = ""
+	}
+	closeStore := func() error {
+		if st == nil {
+			return nil
+		}
+		closing := st
+		st = nil
+		return closing.Close()
+	}
+	defer func() { _ = closeStore() }()
 
 	// Background work (reconciler, sweeps, worker pools) runs under rootCtx;
 	// shutdown cancels it alongside the HTTP drain.
@@ -137,30 +160,30 @@ func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
 		log.Warn("LOOMARR_PPROF is set — /debug/pprof/* is exposed UNAUTHENTICATED. Development only; never leave this on.")
 	}
 
-	// restartCh carries the operator's restart request from the API handler back here.
-	// Buffered so POST /v1/system/restart can respond and return WITHOUT waiting for this
-	// loop to read it — a client that never gets a reply cannot tell "restarting" from
-	// "crashed" (§7).
-	restartCh := make(chan struct{}, 1)
+	// One channel serializes every operator-owned generation transition. Keeping restart
+	// and migration on separate channels would let two simultaneous clicks both be
+	// accepted while select arbitrarily discarded one. Buffered so the winning handler
+	// can respond before this loop begins its drain (§7).
+	lifecycle := newLifecycleRequester()
 
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
 	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{
-		DevLogin: cfg.DevLogin,
-		Pprof:    cfg.Pprof,
-		Restart: func() {
-			// Non-blocking: a second click while the first restart is draining is a
-			// no-op, not a queued second restart.
-			select {
-			case restartCh <- struct{}{}:
-			default:
-			}
-		},
+		DevLogin:               cfg.DevLogin,
+		Pprof:                  cfg.Pprof,
+		Restart:                lifecycle.RequestRestart,
+		DatabaseMigration:      lifecycle.RequestMigration,
+		DatabaseMigrationError: databaseMigration.lastError,
 	})
 	if err != nil {
+		if databaseMigration.fallbackSQLiteURL != "" {
+			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("build first PostgreSQL generation: %w", err)); restoreErr != nil {
+				return false, restoreErr
+			}
+			return true, nil
+		}
 		return false, err
 	}
-
 	// A FRESH server per generation. http.Server is single-use by design — Shutdown sets
 	// `inShutdown` and never clears it, so a reused one would refuse to serve (§9.2).
 	srv := &http.Server{
@@ -169,10 +192,28 @@ func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	// Run the server; surface a listen error via this channel.
+	// Acquire the listener synchronously. For the first PostgreSQL generation this is the
+	// final cutover check: a bind failure must restore SQLite rather than clear fallback
+	// before ListenAndServe reports the error asynchronously.
+	listener, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		if databaseMigration.fallbackSQLiteURL != "" {
+			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("listen for first PostgreSQL generation: %w", err)); restoreErr != nil {
+				return false, restoreErr
+			}
+			return true, nil
+		}
+		return false, err
+	}
+	defer func() { _ = listener.Close() }()
+	// A fully built generation with an acquired listener is the cutover's final commit.
+	// Future, unrelated runtime failures must not roll back a live PostgreSQL install.
+	databaseMigration.fallbackSQLiteURL = ""
+
+	// Run the server; surface an accept error via this channel.
 	serverErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
 	}()
@@ -181,12 +222,18 @@ func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var databaseMigrationDSN string
 	select {
 	case err := <-serverErr:
 		return false, err
-	case <-restartCh:
-		log.Info("restart requested")
+	case request := <-lifecycle.requests:
 		restart = true
+		databaseMigrationDSN = request.databaseMigrationDSN
+		if databaseMigrationDSN == "" {
+			log.Info("restart requested")
+		} else {
+			log.Info("database migration requested")
+		}
 	case <-ctx.Done():
 		log.Info("shutdown signal received")
 	}
@@ -196,28 +243,177 @@ func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
 	// swallow the Ctrl-C an operator uses on the new one.
 	stop()
 
-	// Signal background work to stop alongside the HTTP drain (§7). On a restart this is
-	// what tears down playout sessions: ffmpeg is spawned under rootCtx with Setpgid, so
-	// cancelling kills each process GROUP rather than orphaning the children (§9.1).
-	cancelRoot()
-
 	// Graceful drain.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
+	// contexts are independent, so the accepted migration response can still finish.
+	cancelRoot()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up
 		// because a client held a connection open is the outage this feature prevents.
+		if databaseMigrationDSN != "" {
+			msg := conciseDatabaseMigrationError(fmt.Errorf("drain SQLite generation: %w", err))
+			log.Error("database migration could not start; restarting on SQLite", "err", msg)
+			databaseMigration.lastError = msg
+			return true, nil
+		}
 		if !restart {
 			return false, err
 		}
 		log.Warn("drain did not finish cleanly before restart", "err", err)
 	}
+	if databaseMigrationDSN != "" {
+		if err := performDatabaseCutover(
+			context.Background(),
+			closeStore,
+			func(ctx context.Context) error {
+				return migrateDatabase(ctx, cfg.DatabaseURL, databaseMigrationDSN)
+			},
+		); err != nil {
+			msg := conciseDatabaseMigrationError(err)
+			log.Error("database migration failed; restarting on SQLite", "err", msg)
+			databaseMigration.lastError = msg
+			return true, nil
+		}
+		databaseMigration.lastError = ""
+		databaseMigration.fallbackSQLiteURL = cfg.DatabaseURL
+		log.Info("database migration verified; restarting on Postgres")
+		return true, nil
+	}
 	if restart {
+		databaseMigration.lastError = ""
 		return true, nil
 	}
 	log.Info("loomarr stopped cleanly")
 	return false, nil
+}
+
+type databaseMigrationState struct {
+	lastError         string
+	fallbackSQLiteURL string
+	bootstrapDir      string
+}
+
+func (s *databaseMigrationState) restoreSQLite(cause error) error {
+	if err := config.UpdateBootstrapFile(s.bootstrapDir, map[string]string{
+		"DATABASE_URL": s.fallbackSQLiteURL,
+	}); err != nil {
+		return fmt.Errorf("%v; restore SQLite bootstrap: %w", cause, err)
+	}
+	s.lastError = conciseDatabaseMigrationError(cause)
+	s.fallbackSQLiteURL = ""
+	return nil
+}
+
+// performDatabaseCutover is the offline safety boundary. The live store must close
+// successfully before a structurally read-only source is reopened for the bounded copy.
+func performDatabaseCutover(
+	parent context.Context,
+	closeLive func() error,
+	migrate func(context.Context) error,
+) error {
+	if err := closeLive(); err != nil {
+		return fmt.Errorf("close SQLite generation: %w", err)
+	}
+	return runDatabaseMigrationWithTimeout(parent, databaseMigrationTimeout, migrate)
+}
+
+var errLifecycleTransitionAlreadyRequested = errors.New("a restart or database migration is already requested")
+
+var errDatabaseURLPinned = errors.New("DATABASE_URL is pinned by the environment")
+
+const databaseMigrationTimeout = 30 * time.Minute
+
+type lifecycleRequest struct {
+	databaseMigrationDSN string
+}
+
+// lifecycleRequester is a generation-long admission gate, not merely a channel buffer.
+// Receiving the winning request must not free capacity for a handler already in flight
+// to enqueue another transition that this generation will silently discard.
+type lifecycleRequester struct {
+	mu       sync.Mutex
+	claimed  bool
+	requests chan lifecycleRequest
+}
+
+func newLifecycleRequester() *lifecycleRequester {
+	return &lifecycleRequester{requests: make(chan lifecycleRequest, 1)}
+}
+
+func (l *lifecycleRequester) RequestRestart() {
+	_ = l.request(lifecycleRequest{})
+}
+
+func (l *lifecycleRequester) RequestMigration(dsn string) error {
+	return l.request(lifecycleRequest{databaseMigrationDSN: dsn})
+}
+
+func (l *lifecycleRequester) request(req lifecycleRequest) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.claimed {
+		return errLifecycleTransitionAlreadyRequested
+	}
+	l.claimed = true
+	l.requests <- req
+	return nil
+}
+
+// migrateDatabase delegates the structurally read-only source copy and verification to
+// store, and only then commits the new bootstrap URL.
+func migrateDatabase(ctx context.Context, sourceURL, targetURL string) error {
+	// The handler checked this before enqueueing, but authority can change while the
+	// response drains. Re-check at the process-owned commit point before touching either DB.
+	if config.PinnedByEnv("DATABASE_URL") {
+		return errDatabaseURLPinned
+	}
+	return migrateThenPersistDatabaseURL(
+		func() error {
+			_, err := store.MigrateToPostgres(ctx, sourceURL, targetURL, nil)
+			return err
+		},
+		func() error {
+			return config.UpdateBootstrapFile(
+				config.ConventionalDataDir,
+				map[string]string{"DATABASE_URL": targetURL},
+			)
+		},
+	)
+}
+
+func runDatabaseMigrationWithTimeout(
+	parent context.Context,
+	timeout time.Duration,
+	migrate func(context.Context) error,
+) error {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	return migrate(ctx)
+}
+
+// migrateThenPersistDatabaseURL is the commit point: a failed copy or parity check
+// must never change which database the next generation opens.
+func migrateThenPersistDatabaseURL(migrate, persist func() error) error {
+	if err := migrate(); err != nil {
+		return fmt.Errorf("copy and verify database: %w", err)
+	}
+	if err := persist(); err != nil {
+		return fmt.Errorf("persist DATABASE_URL: %w", err)
+	}
+	return nil
+}
+
+func conciseDatabaseMigrationError(err error) string {
+	const maxLen = 240
+	msg := strings.Join(strings.Fields(err.Error()), " ")
+	runes := []rune(msg)
+	if len(runes) > maxLen {
+		msg = string(runes[:maxLen-1]) + "…"
+	}
+	return msg
 }
 
 // newLogger builds a JSON slog logger at the configured level (§14, §17).

@@ -13,13 +13,19 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { LineupEntryDTO, LineupEntryDTOState, SearchCandidate } from "@loomarr/api";
-import { searchApi, unwrap } from "@loomarr/api";
+import * as searchApi from "@loomarr/api/endpoints/search";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
+import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
+import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
+import { unwrap } from "@loomarr/api/unwrap";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useState } from "react";
-import { useChannelLineup } from "@/channels";
-import { Badge, Button, Caption, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { cn } from "@/lib";
+import { useChannelLineup } from "@/channels/use-channel-lineup";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
 import type { ChannelLineupEditorProps } from "./channel-lineup-editor.type";
 
@@ -181,12 +187,16 @@ const SortableLineupRow = ({
 // reported as "why do I still see the same old movies".
 type LineupSort = "order" | "newest" | "year";
 
-const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
+const ChannelLineupEditor = ({ channelId, revision, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
 
-  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
+  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(
+    channelId,
+    lineup,
+    revision,
+  );
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },

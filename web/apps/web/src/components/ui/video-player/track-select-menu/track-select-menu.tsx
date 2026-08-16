@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { useHoldControls } from "../internal/hold-controls-context";
 import type { TrackSelectMenuProps } from "./track-select-menu.type";
 

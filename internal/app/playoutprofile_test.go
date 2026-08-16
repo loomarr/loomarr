@@ -2,11 +2,95 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+type staticChannelReader struct{ channel store.Channel }
+
+func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel, error) {
+	return s.channel, nil
+}
+
+func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
+	lastPlayoutResolver = nil
+	t.Setenv("API_TOKEN", "capacity-test-token")
+
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/capacity.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	for key, value := range map[string]string{
+		"playout.backend":      "internal",
+		"playout.encoder":      "libx264",
+		"playout.max_channels": "9",
+	} {
+		if err := st.SetSetting(context.Background(), key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := lastPlayoutResolver
+	if r == nil {
+		t.Fatal("BuildHandler wired no playout resolver")
+	}
+	// Detection is lazy; install the result a real encoder trial would publish without running
+	// ffmpeg in a unit test. The configured 9 is deliberately above the measured 3.
+	r.maxChannels.Store(3)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/sessions", nil)
+	req.Header.Set("Authorization", "Bearer capacity-test-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/playout/sessions = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var telemetry api.PlayoutTelemetry
+	if err := json.NewDecoder(rec.Body).Decode(&telemetry); err != nil {
+		t.Fatal(err)
+	}
+	if telemetry.Capacity != 3 {
+		t.Errorf("admission capacity = %d, want measured capacity 3", telemetry.Capacity)
+	}
+
+	// Three committed transcodes on a measured-three box take Balanced's safe bottom rung.
+	// If Profile reads the configured 9 instead, it incorrectly selects the top 5000 kbit/s rung.
+	r.activeChannels = func() int { return 3 }
+	if got := r.Profile(context.Background()).VideoBitrate; got != 1800 {
+		t.Errorf("full-box profile bitrate = %d, want bottom-rung 1800", got)
+	}
+}
+
+func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
+	r := &playoutResolver{
+		audioLanguage: func() string { return "eng" },
+		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
+			return []playout.AudioTrack{{Language: "eng"}, {Language: "jpn"}}, nil
+		},
+		channels: staticChannelReader{channel: store.Channel{Policy: schedule.ChannelPolicy{
+			OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{AudioLanguage: "jpn"}},
+		}}},
+	}
+
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "movie.mkv"); got != 1 {
+		t.Fatalf("AudioTrackFor = %d, want channel override track 1", got)
+	}
+}
 
 // ⚠ **THE QUALITY LADDER'S DEPENDENCIES ARE CALLED UNGUARDED.**
 //

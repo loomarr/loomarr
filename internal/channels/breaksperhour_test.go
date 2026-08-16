@@ -2,10 +2,16 @@ package channels_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
+
+func durationPtr(d time.Duration) *schedule.Duration {
+	v := schedule.Duration(d)
+	return &v
+}
 
 func ptr(n int) *int { return &n }
 
@@ -51,5 +57,27 @@ func TestBreaksPerHourFor_NegativeIsNone(t *testing.T) {
 	pol := schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{BreaksPerHour: ptr(-3)}}
 	if got := channels.BreaksPerHourFor(pol, true, 4); got != 0 {
 		t.Errorf("breaks/hour = %d, want 0 for a negative override", got)
+	}
+}
+
+func TestBreakDurationFor(t *testing.T) {
+	const global = 4 * time.Minute
+	for _, tc := range []struct {
+		name   string
+		policy *schedule.Duration
+		global time.Duration
+		want   time.Duration
+	}{
+		{"unset inherits global", nil, global, global},
+		{"channel override wins", durationPtr(90 * time.Second), global, 90 * time.Second},
+		{"invalid channel value falls back safely", durationPtr(0), global, 5 * time.Minute},
+		{"invalid global falls back safely", nil, 0, 5 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pol := schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{BreakDuration: tc.policy}}
+			if got := channels.BreakDurationFor(pol, tc.global); got != tc.want {
+				t.Errorf("break duration = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }

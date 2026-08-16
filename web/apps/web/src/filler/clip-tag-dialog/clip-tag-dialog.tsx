@@ -1,17 +1,13 @@
-import { type ClipDTO, fillerApi } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
 import { useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import {
-  Button,
-  Card,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
 
 // The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).
@@ -22,6 +18,26 @@ const AXIS_LABEL: Record<(typeof AXES)[number], string> = {
   format: "Format",
   seasonal: "Seasonal",
   "audience-cue": "Audience cue",
+};
+
+const flattenAxis = (taxa: TaxonDTO[], axis: string): Array<{ taxon: TaxonDTO; depth: number }> => {
+  const nodes = taxa.filter((taxon) => taxon.axis === axis);
+  const slugs = new Set(nodes.map((taxon) => taxon.slug));
+  const children = new Map<string, TaxonDTO[]>();
+  for (const taxon of nodes) {
+    const parent = taxon.parent && slugs.has(taxon.parent) ? taxon.parent : "";
+    children.set(parent, [...(children.get(parent) ?? []), taxon]);
+  }
+  for (const rows of children.values()) rows.sort((a, b) => a.label.localeCompare(b.label));
+  const out: Array<{ taxon: TaxonDTO; depth: number }> = [];
+  const visit = (parent: string, depth: number) => {
+    for (const taxon of children.get(parent) ?? []) {
+      out.push({ taxon, depth });
+      visit(taxon.slug, depth + 1);
+    }
+  };
+  visit("", 0);
+  return out;
 };
 
 // ClipTagDialog — hand-correct one clip's match tags (§10). Tags are what let the
@@ -37,9 +53,13 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
   // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
   // the select's own domain rather than the DTO's — "" is a real option here.
   const [audience, setAudience] = useState<string>(clip?.audience ?? "");
+  const [brand, setBrand] = useState(clip?.brand ?? "");
   // Tags are the operator's chosen taxonomy leaves (§10 V45a) — a SET, not one category. Seeded from
   // the clip's asserted tags; `category` is derived server-side from these, never sent.
-  const [tags, setTags] = useState<string[]>(clip?.tags ?? []);
+  // Never seed this editor from `tags`: that is the full match set, including inherited parents.
+  // Writing it back would promote every derived rollup to a direct assertion, so later graph edits
+  // could no longer distinguish what the operator chose from what the hierarchy implied.
+  const [tags, setTags] = useState<string[]>(clip?.assertedTags ?? []);
 
   // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
   // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
@@ -59,6 +79,7 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
         audience: audience as ClipDTO["audience"],
+        brand: brand.trim(),
         // The tag SET; the server grounds each and derives the category shadow.
         tags,
       },
@@ -134,6 +155,19 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label htmlFor="tag-brand">Brand</Label>
+            <Input
+              id="tag-brand"
+              maxLength={120}
+              placeholder="Advertiser or sponsor"
+              value={brand}
+              onChange={(event) => setBrand(event.target.value)}
+            />
+            <p className="mt-1 text-muted-foreground text-xs">
+              Separate from topic tags; clear it if no brand is grounded.
+            </p>
+          </div>
         </div>
 
         {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
@@ -142,12 +176,16 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             server-side, so it is not edited here. */}
         <fieldset className="flex flex-col gap-3">
           <legend className="font-medium text-sm">Tags</legend>
+          <p className="text-muted-foreground text-xs">
+            Choose the most specific tags you know. Parent tags match every descendant and may be selected
+            when a broad description is genuinely all you know.
+          </p>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
             <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
           ) : (
             AXES.map((axis) => {
-              const inAxis = vocabTaxa.filter((t) => t.axis === axis);
+              const inAxis = flattenAxis(vocabTaxa, axis);
               if (inAxis.length === 0) return null;
               return (
                 <div key={axis} className="flex flex-col gap-1.5">
@@ -155,13 +193,14 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
                     {AXIS_LABEL[axis]}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {inAxis.map((t) => {
+                    {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);
                       return (
                         <button
                           key={t.slug}
                           type="button"
                           aria-pressed={on}
+                          title={t.parent ? `${t.label}, under ${t.parent}` : `${t.label}, top level`}
                           onClick={() => toggleTag(t.slug)}
                           className={
                             on
@@ -169,7 +208,7 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
                               : "rounded-full border border-border px-2.5 py-0.5 text-muted-foreground text-xs hover:border-primary/50"
                           }
                         >
-                          {t.label}
+                          {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}
                         </button>
                       );
                     })}

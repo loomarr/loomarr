@@ -6,7 +6,8 @@
   "description": "Loomarr web app — Vite + React 18 + Tailwind v4 + shadcn (Test Card).",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && pnpm bundle:check",
+    "bundle:check": "node ../../../scripts/check-fe-bundle.mjs",
     "preview": "vite preview",
     "generate:routes": "tsr generate",
     "typecheck": "tsc --noEmit",

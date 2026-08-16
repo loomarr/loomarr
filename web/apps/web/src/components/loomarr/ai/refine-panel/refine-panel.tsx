@@ -1,11 +1,15 @@
-import { proposalsApi, toProblem } from "@loomarr/api";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import { toProblem } from "@loomarr/api/mutator";
 import { ChevronDown, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, GenerationProgress, RefineReview } from "@/components/loomarr";
-import { Button } from "@/components/ui";
-import { cn } from "@/lib";
-import { useChannelRefine, useElapsed } from "@/suggest";
+import { RefineReview } from "@/components/loomarr/ai/refine-review";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useChannelRefine } from "@/suggest/use-channel-refine";
+import { useElapsed } from "@/suggest/use-elapsed";
 import type { RefinePanelProps } from "./refine-panel.type";
 
 type PanelState = "idle" | "open" | "running" | "landed";

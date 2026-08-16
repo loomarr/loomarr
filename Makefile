@@ -9,6 +9,8 @@
 # build on drift. Describe a target once, in its `## ` comment, and let the page follow.
 
 GO      ?= go
+CARGO   ?= cargo
+RUST_FUZZ_TOOLCHAIN ?= nightly-2026-08-14
 PKG     := ./...
 BIN_DIR := bin
 
@@ -44,21 +46,27 @@ GO_SHARD ?=
 # `go vet` typechecks test files, which is why vet is the load-bearing half. `make fmt` was
 # never blind here — it globs with `find`, not the build system.
 #
-# ⚠ These tags are NOT run as tests by the gate. They guard work needing real ffmpeg
+# ⚠ The CUSTOM tags are NOT run as tests by the gate. They guard work needing real ffmpeg
 # (`ffmpeg`), a real LLM (`eval`) or Docker (`integration`); `make check` stays hermetic
 # (§19). The gate is only that they still COMPILE — which is free: measured 0.4s warm, and
 # 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
 # selection actually changed.
 #
+# Platform constraints are guarded by the same inventory but compiled through their real
+# GOOS adapter — passing `-tags windows` on Linux does NOT select `_windows.go` files and would
+# falsely exclude `!windows` files. `windows-compile` is therefore the platform half of this gate.
+#
 # ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
 # here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
-TAGS      := ffmpeg eval integration
+CUSTOM_TAGS   := ffmpeg eval integration
+PLATFORM_TAGS := windows
+TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS)
 SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh))
 comma     := ,
 space     := $(subst ,, )
-TAGS_CSV  := $(subst $(space),$(comma),$(TAGS))
+TAGS_CSV  := $(subst $(space),$(comma),$(CUSTOM_TAGS))
 
 .DEFAULT_GOAL := help
 
@@ -94,10 +102,10 @@ agent-baseline: ## run make check once per clean commit/toolchain and share the 
 agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
-agent-worktree: ## create + bootstrap a sibling worktree (TOPIC=branch; COPY_ENV=1 is explicit opt-in)
+agent-worktree: ## create + bootstrap a ready-to-use sibling worktree (TOPIC=branch)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" ./scripts/agent.sh worktree "$(TOPIC)"
 
-bootstrap: ## install frontend dependencies, run codegen, and prepare isolated local directories
+bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
 
 doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artifacts
@@ -106,10 +114,35 @@ doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artif
 agent-harness-test: ## regression-test worktree isolation and shared-output claims
 	@./scripts/agent-harness-test.sh
 
+.PHONY: compose-verify
+compose-verify: ## verify Traefik, database wiring, and pinned release images
+	@./scripts/check-compose.sh
+
+.PHONY: release-verify
+release-verify: ## verify release tag, OCI naming, and immutable publication policy
+	@./scripts/check-release-tag.sh --self-test
+	@./scripts/check-release-image-absence.sh --self-test
+
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## fmt + shellcheck + vet (incl. tagged) + tag-list guard + lint + harness + unit tests (the default gate)
+check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate)
+
+.PHONY: rust-check rust-audit rust-fuzz
+rust-check: ## format, lint, and test the required Rust image worker
+	$(CARGO) fmt --all -- --check
+	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
+	$(CARGO) test --workspace --all-features --locked
+
+rust-audit: ## check Rust advisories, licences, and dependency sources (needs cargo-deny)
+	$(CARGO) deny check advisories licenses sources
+	$(CARGO) deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
+
+rust-fuzz: ## fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz)
+	@seconds="$${FUZZ_SECONDS:-60}"; \
+	  cd rust/loomarr-image; \
+	  $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run protocol_decoder -- -max_total_time="$$seconds" -max_len=1048576
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -125,8 +158,12 @@ vet: ## go vet
 	$(GO) vet $(PKG)
 
 .PHONY: vet-tags
-vet-tags: ## go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS)
-	$(GO) vet -tags '$(TAGS)' $(PKG)
+vet-tags: ## go vet over custom-tagged sources; platform constraints use their cross-compile gate
+	$(GO) vet -tags '$(CUSTOM_TAGS)' $(PKG)
+
+.PHONY: windows-compile
+windows-compile: ## cross-compile every Go package and test for Windows (does not execute them)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) test -exec=true ./...
 
 .PHONY: tags-verify
 # Runs BEFORE vet-tags in `check`: it is ~0.1s and it validates the very list vet-tags consumes,
@@ -186,9 +223,44 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build
-build: ## build the loomarr binary (static, cgo-free — §16)
-	CGO_ENABLED=0 $(GO) build -o $(BIN_DIR)/loomarr ./cmd/loomarr
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench
+build: rust-build ## build the cgo-free Go server and required Rust image worker
+	release="$${LOOMARR_RELEASE:-dev}"; \
+	  CGO_ENABLED=0 $(GO) build \
+	    -ldflags="-X github.com/mantonx/loomarr/internal/buildinfo.version=$$release" \
+	    -o $(BIN_DIR)/loomarr ./cmd/loomarr; \
+	  $(BIN_DIR)/loomarr-image capabilities --protocol 1 --self-test | grep -q "\"release\":\"$$release\""
+
+rust-build: ## build the required Rust image worker
+	LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(CARGO) build --release --locked -p loomarr-image
+	install -d $(BIN_DIR)
+	install -m 0755 target/release/loomarr-image $(BIN_DIR)/loomarr-image
+
+image-cert: rust-build ## certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_CERT_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-certification.json}"; \
+	  if [ -n "$${IMAGE_CERT_CORPUS:-}" ]; then \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report" --corpus "$$IMAGE_CERT_CORPUS"; \
+	  else \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report"; \
+	  fi
+
+image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_BENCH_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-benchmark.json}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-bench \
+	    --worker "$(BIN_DIR)/loomarr-image" --report "$$report" \
+	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}" \
+	    --workers "$${IMAGE_BENCH_WORKERS:-1}" \
+	    --avif-threads "$${IMAGE_BENCH_AVIF_THREADS:-1}"
+
+image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report_dir="$${IMAGE_BENCH_REPORT_DIR:-$$LOOMARR_ARTIFACT_DIR/image-parallelism}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" GO="$(GO)" \
+	    ./scripts/image-parallelism-bench.sh "$(BIN_DIR)/loomarr-image" "$$report_dir"
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
@@ -208,7 +280,7 @@ test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
 
 .PHONY: dev-be
-dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go change
+dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
 	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
 	@# is how this box spent a session serving a stale binary.
@@ -219,7 +291,7 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_PREPARED_DIR:-.agent-data/prepared}"; \
 	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
 	  sh scripts/dev-be-guard.sh; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
@@ -232,6 +304,10 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
 	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
 	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
+
+.PHONY: rust-dev-build
+rust-dev-build: ## build the required Rust worker for local development
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
 	@eval "$$(./scripts/dev-env.sh export)"; \
@@ -247,7 +323,7 @@ dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its back
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
 .PHONY: test-pg
-test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker)
+test-pg: rust-dev-build ## all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker)
 # ⚠ The `-run TestPostgresConformance` filter this used to carry meant every OTHER integration test
 # in the package compiled and never ran — including TestMigrateSQLiteToPostgres, which its own file
 # header calls "the V11 gate", plus TestMigrateCoversEveryTable and the three TestPreflight* tests.
@@ -258,7 +334,7 @@ test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (tes
 # This is the third variant of "green that proves nothing" this repo has hit — after a pipe masking
 # an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
 # compiling, and EXECUTING are three separate facts.
-	$(GO) test -race -tags=integration ./internal/store/
+	$(GO) test -race -tags=integration ./internal/store/ ./internal/backendtransition/ ./internal/app/
 
 ## ---- OpenAPI (Phase 8) ---------------------------------------------------
 
@@ -370,7 +446,7 @@ fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
 
 .PHONY: fe-lint
 fe-lint: ## Biome lint + format check (web/)
-	cd $(WEB) && pnpm biome check
+	cd $(WEB) && pnpm lint
 
 .PHONY: fe-lint-fix
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
@@ -396,7 +472,7 @@ FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck \
+	cd $(WEB) && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck \
 	  && pnpm --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook

@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -73,7 +75,7 @@ type channelReader interface {
 // targeted column write — the resolver samples + probes the lineup, but has no other business
 // mutating a channel row (the binder owns the lineup, loomarr-one-lineup-writer).
 type codecWriter interface {
-	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
+	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 }
 
 type playoutResolver struct {
@@ -109,9 +111,10 @@ type playoutResolver struct {
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
 	// one-assembler rule. Nil ⇒ breaks fall back to the offline card.
 	pods api.PodPreviewer
-	// fillerDir resolves a clip's relative id to a file on disk. A func so a settings change
-	// applies without a restart, like the other live reads above.
-	fillerDir func() string
+	// fillerDir resolves a clip's relative id to a file on disk. It is immutable for the
+	// generation: catalog paths, scan and playout must never interpret one row under different
+	// roots while a saved layout change is waiting on restart.
+	fillerDir string
 
 	// pathMap resolves the parsed `library.path_map` (§15, V47) live, so a mapping edit applies
 	// without a restart. Empty ⇒ no mapping ⇒ ResolveInput uses the media server's HTTP stream.
@@ -157,7 +160,7 @@ type playoutResolver struct {
 	// would add ~20s to every boot for a value most installs never override.
 	detectOnce  sync.Once
 	detected    playout.Encoder
-	maxChannels int
+	maxChannels atomic.Int64
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -256,13 +259,42 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 //
 // If r.codecs is wired the measured codec is persisted; the measured value is returned either way.
 func (r *playoutResolver) ComputeChannelCodec(ctx context.Context, channelID string) (string, error) {
-	codec := r.measureChannelCodec(ctx, channelID)
-	if r.codecs != nil {
-		if err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, codec); err != nil {
+	if r.codecs == nil {
+		return r.measureChannelCodec(ctx, channelID), nil
+	}
+	if r.channels == nil {
+		return store.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
+	}
+
+	// Measuring spans cycle construction, library resolution, and several probes. A lineup can
+	// change during that window, so the derived codec is only valid when the channel revision is
+	// unchanged on both sides of the measurement. The targeted write uses that same revision and
+	// advances it, preventing either a stale probe or a full-row writer from overwriting the other.
+	const maxCodecWriteAttempts = 4
+	codec := store.BroadcastCodecH264
+	for attempt := 0; attempt < maxCodecWriteAttempts; attempt++ {
+		before, err := r.channels.GetChannel(ctx, channelID)
+		if err != nil {
+			return codec, fmt.Errorf("read channel %s before codec measurement: %w", channelID, err)
+		}
+		codec = r.measureChannelCodec(ctx, channelID)
+		after, err := r.channels.GetChannel(ctx, channelID)
+		if err != nil {
+			return codec, fmt.Errorf("read channel %s after codec measurement: %w", channelID, err)
+		}
+		if before.Revision != after.Revision {
+			continue
+		}
+		if _, err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, after.Revision, codec); err == nil {
+			return codec, nil
+		} else if !errors.Is(err, store.ErrChannelStale) {
 			return codec, fmt.Errorf("persist broadcast codec for %s: %w", channelID, err)
 		}
+		if err := ctx.Err(); err != nil {
+			return codec, err
+		}
 	}
-	return codec, nil
+	return codec, fmt.Errorf("persist broadcast codec for %s: channel kept changing", channelID)
 }
 
 // ChannelCodec reads the channel's STORED broadcast codec (§9.1 V50) — the hot-path read the play
@@ -318,6 +350,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 	if r.pathMap != nil {
 		pm = r.pathMap()
 	}
+	lib := r.lib.Snapshot()
 
 	var codecs []string
 	probed := 0
@@ -330,7 +363,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := r.lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
+		src := lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
 		if src.URL == "" {
 			continue
 		}
@@ -640,7 +673,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 func (r *playoutResolver) airingFiller(
 	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
-	if r.pods == nil || r.fillerDir == nil {
+	if r.pods == nil || r.fillerDir == "" {
 		// Filler unconfigured: the break becomes the offline card rather than an error. A
 		// channel with no commercials should still play.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
@@ -675,7 +708,7 @@ func (r *playoutResolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir(), e.Path, "")
+			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
 				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 			}
@@ -746,11 +779,19 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the concat demuxer asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-func (r *playoutResolver) AudioTrackFor(ctx context.Context, streamURL string) int {
+func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamURL string) int {
 	if r.audioLanguage == nil || r.probeAudio == nil || streamURL == "" {
 		return 0
 	}
 	prefer := r.audioLanguage()
+	// A channel override wins over the instance default. Failure to reload the channel is
+	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
+	// to the global preference is better than taking the programme off air for an optional track.
+	if r.channels != nil && channelID != "" {
+		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
+			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
+		}
+	}
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
 		// entirely rather than paying for an answer that cannot change the outcome.
@@ -863,7 +904,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		}
 		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
 		r.detected = cap.Chosen
-		r.maxChannels = cap.MaxChannels
+		r.maxChannels.Store(int64(cap.MaxChannels))
 		if r.log != nil {
 			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
 			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
@@ -892,7 +933,7 @@ func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
 	if r.detectedEncoder(ctx) == playout.EncoderSoftware {
 		return 0
 	}
-	return r.maxChannels
+	return int(r.maxChannels.Load())
 }
 
 // playoutEpoch anchors a channel's cycle on the wall clock.

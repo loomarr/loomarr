@@ -4,55 +4,19 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"image"
 	"os"
-	"strconv"
-	"strings"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/images/rustgen"
 )
 
-// fakeAVIF returns an encoder that writes plausible bytes and records what it was asked for.
-//
-// ⚠ The real encoder forks ffmpeg, so a test that used it would be testing libaom rather than this
-// job. What the job actually owns is which rungs it asks for, how it records what came back, and
-// what it does when the encoder lies — all of which this can drive and none of which needs AV1.
-func fakeAVIF(calls *[]encodeCall, body []byte) AVIFEncoder {
-	return func(_ context.Context, img image.Image, dst string) error {
-		*calls = append(*calls, encodeCall{width: img.Bounds().Dx(), dst: dst})
-		if err := os.MkdirAll(dirOf(dst), 0o750); err != nil {
-			return err
-		}
-		return os.WriteFile(dst, body, 0o600)
-	}
-}
-
-// encodeCall pairs the image handed to the encoder with the path it was told to write.
-//
-// ⚠ Recording BOTH is the point. The job resizes the whole ladder in one pass and then walks the
-// resulting map to write each rung, so the failure available here is a mismatched pairing — a
-// 780px image written to `…_w154.avif`. Every rung would exist, every row would look right, and
-// the srcset would hand a browser five copies of the same size under five different names.
-type encodeCall struct {
-	width int
-	dst   string
-}
-
-func dirOf(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' {
-			return p[:i]
-		}
-	}
-	return "."
-}
-
-// seedWithWebP ingests an image and produces one WebP rendition, which is what puts it on the
-// AVIF job's work list ("has a rendition, but not this format").
-func seedWithWebP(t *testing.T, svc *Service, role Role) Image {
+func seedWithWebP(t *testing.T, svc *Service, role Role, width, height int) Image {
 	t.Helper()
 	ctx := context.Background()
-	rec, err := svc.Ingest(ctx, bytes.NewReader(pngBytes(t, testImage(900, 1350))), IngestRequest{
+	rec, err := svc.Ingest(ctx, bytes.NewReader(pngBytes(t, testImage(width, height))), IngestRequest{
 		Role: role, Origin: OriginUpload,
 	})
 	if err != nil {
@@ -64,173 +28,214 @@ func seedWithWebP(t *testing.T, svc *Service, role Role) Image {
 	return rec
 }
 
-func TestAVIFJobEncodesTheWholeLadderAndRecordsWhatIsOnDisk(t *testing.T) {
+func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	svc, fs := newTestService(t)
-	var calls []encodeCall
-	job := NewAVIFJob(svc, fs, fakeAVIF(&calls, []byte("avif-bytes")), nil)
-	ctx := context.Background()
+	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	recorder := &recordingRenderer{next: svc.renderer}
+	svc.renderer = recorder
+	job := NewAVIFJob(svc, fs, nil)
 
-	rec := seedWithWebP(t, svc, RolePoster)
-
-	res, err := job.Run(ctx)
+	result, err := job.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	widths := RolePoster.Widths()
-	if res.Images != 1 || res.Renditions != len(widths) {
-		t.Fatalf("Run = %+v, want one image and %d renditions (the whole poster ladder)", res, len(widths))
+	if result.Images != 1 || result.Renditions != len(RoleIcon.Widths()) {
+		t.Fatalf("Run = %+v, want one complete icon ladder", result)
 	}
-
-	// ⚠ Each rung's IMAGE must match the width its FILENAME claims. Nothing else in the pipeline
-	// checks this: a mispaired ladder produces every expected file and every expected row, and the
-	// only symptom is that a browser picking `w780` from the srcset gets 154 pixels stretched over
-	// a tile. The paths are content-addressed, so the mistake would also be cached as immutable.
-	for _, c := range calls {
-		if !strings.Contains(c.dst, "_w"+strconv.Itoa(c.width)+".avif") {
-			t.Errorf("a %dpx image was written to %s — the rung and its filename disagree", c.width, c.dst)
-		}
+	if len(recorder.requests) != 1 || len(recorder.requests[0].Targets) != len(RoleIcon.Widths()) {
+		t.Fatalf("worker requests = %+v, want one request containing the complete icon ladder", recorder.requests)
 	}
-	if len(calls) != len(widths) {
-		t.Errorf("the encoder ran %d times for a %d-rung ladder", len(calls), len(widths))
-	}
-
-	got, err := fs.ListDerivatives(ctx, rec.Hash)
+	rows, err := fs.ListDerivatives(context.Background(), rec.Hash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var avifRows int
-	for _, d := range got {
-		if d.Format != FormatAVIF {
+	var avif int
+	for _, row := range rows {
+		if row.Format != FormatAVIF {
 			continue
 		}
-		avifRows++
-		if d.Bytes != int64(len("avif-bytes")) {
-			t.Errorf("derivative w%d records %d bytes, want the size measured from disk", d.Width, d.Bytes)
+		avif++
+		if row.Recipe != renditionRecipe || row.OutputHash == "" || row.Animated {
+			t.Errorf("AVIF provenance = %+v", row)
+		}
+		data, readErr := os.ReadFile(row.Path)
+		if readErr != nil || len(data) < 12 || string(data[4:8]) != "ftyp" {
+			t.Errorf("AVIF w%d is not a real ISOBMFF image: %v", row.Width, readErr)
 		}
 	}
-	if avifRows != len(widths) {
-		t.Errorf("%d AVIF rows recorded, want %d", avifRows, len(widths))
+	if avif != len(RoleIcon.Widths()) {
+		t.Errorf("AVIF rows = %d, want %d", avif, len(RoleIcon.Widths()))
 	}
 
-	// Idempotent: a second pass finds nothing to do, because the work list is now empty.
-	calls = nil
-	if res, err = job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if res.Considered != 0 || len(calls) != 0 {
-		t.Errorf("a second pass re-encoded %d rungs — the job would fork ffmpeg over the whole "+
-			"catalog on every tick", len(calls))
+	second, err := job.Run(context.Background())
+	if err != nil || second.Considered != 0 {
+		t.Errorf("idempotent second pass = %+v, %v", second, err)
 	}
 }
 
-// ffmpeg can exit 0 having written nothing. A zero-byte derivative recorded as present renders as
-// a BROKEN image, which is strictly worse than an absent one — absent has a designed fallback.
-func TestAVIFJobDoesNotRecordAnEncoderThatWroteNothing(t *testing.T) {
+type recordingRenderer struct {
+	mu       sync.Mutex
+	requests []rustgen.Request
+	next     Renderer
+}
+
+type blockingAVIFRenderer struct {
+	next    Renderer
+	started chan struct{}
+}
+
+func (r *blockingAVIFRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
+	for _, target := range req.Targets {
+		if target.Format == string(FormatAVIF) {
+			r.started <- struct{}{}
+			<-ctx.Done()
+			return rustgen.Manifest{}, ctx.Err()
+		}
+	}
+	return r.next.Generate(ctx, req)
+}
+
+func (r *recordingRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
+	r.mu.Lock()
+	r.requests = append(r.requests, req)
+	r.mu.Unlock()
+	return r.next.Generate(ctx, req)
+}
+
+type failOnceRenderer struct {
+	mu       sync.Mutex
+	failures int
+	next     Renderer
+}
+
+func (r *failOnceRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
+	r.mu.Lock()
+	if r.failures > 0 {
+		r.failures--
+		r.mu.Unlock()
+		return rustgen.Manifest{}, errors.New("worker failed")
+	}
+	r.mu.Unlock()
+	return r.next.Generate(ctx, req)
+}
+
+func TestAVIFJobDoesNotRecordWorkerFailureAndContinues(t *testing.T) {
 	svc, fs := newTestService(t)
-	empty := func(_ context.Context, _ image.Image, dst string) error {
-		if err := os.MkdirAll(dirOf(dst), 0o750); err != nil {
-			return err
-		}
-		return os.WriteFile(dst, nil, 0o600) // exit 0, zero bytes
+	first := seedWithWebP(t, svc, RoleIcon, 32, 32)
+	second := seedWithWebP(t, svc, RoleIcon, 48, 48)
+	failed, succeeded := first, second
+	if second.Hash < first.Hash {
+		failed, succeeded = second, first
 	}
-	job := NewAVIFJob(svc, fs, empty, nil)
-	ctx := context.Background()
+	real := svc.renderer
+	svc.renderer = &failOnceRenderer{failures: 1, next: real}
 
-	rec := seedWithWebP(t, svc, RoleIcon)
-	if _, err := job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	got, _ := fs.ListDerivatives(ctx, rec.Hash)
-	for _, d := range got {
-		if d.Format == FormatAVIF {
-			t.Fatalf("recorded a zero-byte AVIF rendition at w%d — it would be served as a broken image", d.Width)
-		}
-	}
-}
-
-// `images.formats` is the operator's CPU switch, and it must be read per run.
-func TestAVIFJobHonoursTheFormatsSetting(t *testing.T) {
-	fs := newFakeStore()
-	formats := []Format{FormatWebP, FormatJPEG} // avif dropped
-	svc := New(Config{
-		Dir:            t.TempDir(),
-		MaxUploadBytes: func() int64 { return 2 << 20 },
-		Formats:        func() []Format { return formats },
-	}, fs, func() time.Time { return fixedNow })
-
-	var calls []encodeCall
-	job := NewAVIFJob(svc, fs, fakeAVIF(&calls, []byte("x")), nil)
-	ctx := context.Background()
-	seedWithWebP(t, svc, RolePoster)
-
-	if _, err := job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) != 0 {
-		t.Fatalf("images.formats excludes avif and the job still encoded %d rungs", len(calls))
-	}
-
-	// Turned back on, the SAME job instance starts working — hot-apply, not restart.
-	formats = append(formats, FormatAVIF)
-	if _, err := job.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(calls) == 0 {
-		t.Error("re-enabling avif needed a restart — the setting is captured at construction")
-	}
-}
-
-// A build whose ffmpeg carries no AV1 encoder must degrade to "no AVIF", not to a failing job.
-func TestAVIFJobWithNoEncoderIsANoOp(t *testing.T) {
-	svc, fs := newTestService(t)
-	job := NewAVIFJob(svc, fs, nil, nil)
-	seedWithWebP(t, svc, RolePoster)
-
-	res, err := job.Run(context.Background())
+	result, err := NewAVIFJob(svc, fs, nil).Run(context.Background())
 	if err != nil {
-		t.Fatalf("a build with no AV1 encoder failed the job instead of skipping it: %v", err)
+		t.Fatal(err)
 	}
-	if res.Renditions != 0 {
-		t.Errorf("Run = %+v, want nothing produced", res)
+	if result.Failed != 1 || result.Images != 1 {
+		t.Errorf("Run = %+v, want one failed image and one completed image", result)
+	}
+	for _, row := range fs.derivatives[failed.Hash] {
+		if row.Format == FormatAVIF {
+			t.Fatalf("failed worker recorded phantom AVIF: %+v", row)
+		}
+	}
+	found := false
+	for _, row := range fs.derivatives[succeeded.Hash] {
+		found = found || row.Format == FormatAVIF
+	}
+	if !found {
+		t.Error("one worker failure stalled the following image")
 	}
 }
 
-// One unreadable original must not stall the batch behind it — the work list is ordered, so the
-// same image would be first again on every subsequent pass.
-func TestAVIFJobKeepsGoingPastAFailure(t *testing.T) {
+func TestAVIFJobRemovesWholeLadderWhenStorePublicationFails(t *testing.T) {
 	svc, fs := newTestService(t)
-	var seen int
-	flaky := func(_ context.Context, _ image.Image, dst string) error {
-		seen++
-		if seen == 1 {
-			return errors.New("encoder blew up")
-		}
-		if err := os.MkdirAll(dirOf(dst), 0o750); err != nil {
-			return err
-		}
-		return os.WriteFile(dst, []byte("ok"), 0o600)
-	}
-	job := NewAVIFJob(svc, fs, flaky, nil)
-	ctx := context.Background()
+	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	fs.putDerivativesErr = errors.New("store unavailable")
 
-	// Two images on the work list: distinct bytes, so distinct hashes.
-	for _, dim := range [][2]int{{800, 1200}, {640, 960}} {
-		rec, err := svc.Ingest(ctx, bytes.NewReader(pngBytes(t, testImage(dim[0], dim[1]))),
-			IngestRequest{Role: RolePoster, Origin: OriginUpload})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := svc.Rendition(ctx, rec.Hash, FormatWebP, 154); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	res, err := job.Run(ctx)
+	result, err := NewAVIFJob(svc, fs, nil).Run(context.Background())
 	if err != nil {
-		t.Fatalf("one failing image failed the whole pass: %v", err)
+		t.Fatal(err)
 	}
-	if res.Failed != 1 || res.Images != 1 {
-		t.Errorf("Run = %+v, want one failure and one image still encoded", res)
+	if result.Failed != 1 || result.Images != 0 || result.Renditions != 0 {
+		t.Fatalf("Run = %+v, want one failed image and no published Renditions", result)
 	}
+	for _, row := range fs.derivatives[rec.Hash] {
+		if row.Format == FormatAVIF {
+			t.Fatalf("failed Store publication left an AVIF row: %+v", row)
+		}
+	}
+	for _, width := range rec.Role.Widths() {
+		path, pathErr := svc.blob.DerivativePath(rec.Hash, width, FormatAVIF)
+		if pathErr != nil {
+			t.Fatal(pathErr)
+		}
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Errorf("failed Store publication left w%d on disk: %v", width, statErr)
+		}
+	}
+}
+
+func TestAVIFDrainKeepsLazyRenditionCapacityAvailable(t *testing.T) {
+	svc, fs := newTestService(t)
+	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	svc.capacity = newWorkerCapacity(2)
+	blocking := &blockingAVIFRenderer{next: svc.renderer, started: make(chan struct{}, 2)}
+	svc.renderer = blocking
+
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	defer cancelFirst()
+	defer cancelSecond()
+	firstDone := make(chan struct{})
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = NewAVIFJob(svc, fs, nil).Run(firstCtx)
+	}()
+	select {
+	case <-blocking.started:
+	case <-time.After(time.Second):
+		t.Fatal("first AVIF process did not start")
+	}
+	go func() {
+		defer close(secondDone)
+		_, _ = NewAVIFJob(svc, fs, nil).Run(secondCtx)
+	}()
+
+	waitCtx, cancelWait := context.WithTimeout(context.Background(), time.Second)
+	defer cancelWait()
+	for {
+		svc.capacity.mu.Lock()
+		waiting := svc.capacity.backgroundWaiters
+		svc.capacity.mu.Unlock()
+		if waiting == 1 {
+			break
+		}
+		select {
+		case <-waitCtx.Done():
+			t.Fatal("second AVIF process did not queue")
+		default:
+			runtime.Gosched()
+		}
+	}
+
+	renderCtx, cancelRender := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelRender()
+	if _, err := svc.Rendition(renderCtx, rec.Hash, FormatJPEG, RoleIcon.Widths()[0]); err != nil {
+		t.Fatalf("lazy JPEG behind saturated AVIF work: %v", err)
+	}
+	select {
+	case <-blocking.started:
+		t.Fatal("a second background process consumed the reserved interactive slot")
+	default:
+	}
+
+	cancelSecond()
+	cancelFirst()
+	<-secondDone
+	<-firstDone
 }

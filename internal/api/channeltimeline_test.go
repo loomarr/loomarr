@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -21,17 +23,33 @@ import (
 // programmes (and skips breaks).
 // ⚠ It returns an IMAGE-SERVICE URL, not a TMDB one — the resolver stopped emitting third-party
 // URLs in V52 phase 7 (§22), and a fake still handing one back would let a regression through.
-type fakeTimelineThumbs struct{ asked []string }
+type fakeTimelineThumbs struct {
+	mu    sync.Mutex
+	asked []string
+	hash  string
+}
 
 func (f *fakeTimelineThumbs) ThumbFor(_ context.Context, key string, _, _ int) (string, string) {
+	f.mu.Lock()
 	f.asked = append(f.asked, key)
+	f.mu.Unlock()
 	if key == "" {
 		return "", ""
 	}
-	return "http://loomarr.local:8080/v1/images/" + key + "/w300.jpg", ""
+	return "/v1/images/" + key + "/w300.jpg", f.hash
+}
+
+func (f *fakeTimelineThumbs) askedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.asked)
 }
 
 func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, store.Store) {
+	return newTimelineServerWithImages(t, g, thumbs, nil)
+}
+
+func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, store.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/timeline.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -42,10 +60,39 @@ func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThum
 		Log:            slog.New(slog.DiscardHandler),
 		PlayoutGuide:   g,
 		TimelineThumbs: thumbs,
+		Images:         imageService,
 		LiveConfig:     func(k string) string { return cfg[k] },
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st
+}
+
+// Watch consumes the same image-service record as Guide and Filler. Pinning the public timeline
+// response here prevents the player from quietly regressing to the legacy URL-only projection.
+func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
+	now := time.Now()
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"ch1": {{
+			Kind: schedule.SlotProgram, Key: "movie:tmdb:89", Title: "Indiana Jones",
+			Start: now, Stop: now.Add(2 * time.Hour),
+		}},
+	}}
+	imageService := newFakeImageService()
+	imageService.records["watch-art"] = images.Image{
+		Hash: "watch-art", Role: images.RoleBackdrop, Width: 640, Height: 360,
+		Visibility: images.VisibilityMember,
+	}
+	srv, st := newTimelineServerWithImages(t, g, &fakeTimelineThumbs{hash: "watch-art"}, imageService)
+	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+
+	airings := getTimeline(t, srv, "ch1")
+	if len(airings) != 1 {
+		t.Fatalf("got %d airings, want 1", len(airings))
+	}
+	got := airings[0].ThumbImage
+	if got == nil || got.Hash != "watch-art" || got.Src != "/v1/images/watch-art/w780.jpg" || got.SrcSetWebP == "" {
+		t.Fatalf("watch image = %+v, want the complete image-service record", got)
+	}
 }
 
 // getTimeline fetches + decodes the timeline airings for a channel.
@@ -116,8 +163,8 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 	if first.ThumbURL == "" {
 		t.Error("a programme block should carry a resolved preview image")
 	}
-	if len(thumbs.asked) != 2 {
-		t.Errorf("thumb resolver asked %d times, want 2 (one per programme, not the break)", len(thumbs.asked))
+	if got := thumbs.askedCount(); got != 2 {
+		t.Errorf("thumb resolver asked %d times, want 2 (one per programme, not the break)", got)
 	}
 }
 

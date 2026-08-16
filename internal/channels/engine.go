@@ -1,12 +1,11 @@
 // Package channels is the channel reconcile engine (design §9/§18): the conductor
-// that turns a store.Channel's approved lineup + live availability into an
-// actual, filled Tunarr channel and keeps it that way. It owns the per-channel
-// mutex (§18), pulls *desired* from the pure schedule domain, diffs it against
-// the Programmer adapter's *actual*, and applies the minimal Tunarr calls
-// (desired-vs-actual, idempotent). The periodic sweep (Runner) re-derives every
-// channel from the store so availability events are a latency optimization,
-// never load-bearing (§9) — the sweep is what makes backfill crash-safe and
-// multi-replica correct.
+// that turns a store.Channel's approved lineup + live availability into durable
+// desired state for whichever playout backend owns it. Tunarr-backed channels then
+// project that state through Programmer with a minimal desired-vs-actual diff;
+// internal-playout channels stop at the durable local result. The periodic sweep
+// (Runner) re-derives every channel from the store so availability events are a
+// latency optimization, never load-bearing (§9) — the sweep is what makes backfill
+// crash-safe and multi-replica correct.
 package channels
 
 import (
@@ -41,15 +40,11 @@ type Availability interface {
 	schedule.Availability
 }
 
-// PodFiller assembles a channel's matched filler-clip pool (§10). Implemented by
-// the filler package (a catalog-backed pod assembler); nil = flex-only (no pods).
-// Called during reconcile after the channel exists: it returns the Tunarr program
-// uuids of the matched clips, which the engine hands to the Programmer to build +
-// attach the channel's Tunarr filler-list. Tunarr then plays those clips into the
-// flex gaps the scheduler leaves between programs (§9 break interleave) — so this
-// is a per-channel POOL, not a per-gap sequence. Seed-deterministic so the pool
-// reproduces across reconciles (§10/§19), which is what makes the filler-list
-// attach idempotent.
+// PodFiller answers the two backend-specific views of a channel's matched filler
+// pool (§10). Implemented by the filler package; nil = flex-only (no pods).
+// Internal playout needs only HasPool because it resolves local clip paths per gap.
+// Tunarr projection additionally needs BuildFillerList's program uuids to attach a
+// remote filler-list. Both are seed-deterministic (§10/§19).
 type PodFiller interface {
 	// BuildFillerList returns the Tunarr program uuids of the matched clip pool for a
 	// channel, given a deterministic seed and the channel's per-channel filler
@@ -69,9 +64,10 @@ type PodFiller interface {
 	HasPool(ctx context.Context, channelID string, seed int64, sel filler.Selection) bool
 }
 
-// Engine reconciles channels against Tunarr. One per process; the per-channel
-// mutex map serializes reconciles of the *same* channel (§18) while allowing
-// different channels to reconcile concurrently.
+// Engine reconciles every channel's local desired state and, only when that channel's
+// effective backend is Tunarr, projects it through Programmer. One per process; the
+// per-channel mutex map serializes reconciles of the *same* channel (§18) while
+// allowing different channels to reconcile concurrently.
 type Engine struct {
 	store store.Store
 	prog  programmer.Programmer
@@ -102,11 +98,13 @@ type Engine struct {
 	acts ActivityRecorder
 	log  *slog.Logger
 
-	policy        schedule.PendingPolicy
-	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
-	breaksPerHour int           // §10 commercial-break density applied per channel
-	defaultWindow time.Duration // §6.5 global rolling-window horizon (sched.window_hours)
-	now           func() time.Time
+	policy            schedule.PendingPolicy
+	reconcileTTLFor   func() time.Duration                  // live minimum delay before the next sweep eligibility
+	breaksPerHourFor  func() int                            // live §10 commercial-break default
+	breakDurationFor  func() time.Duration                  // live §10 commercial-break length default
+	defaultWindowFor  func() time.Duration                  // live §6.5 rolling-window default
+	playoutBackendFor func(context.Context) (string, error) // durable §9.1 transition target
+	now               func() time.Time
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex // per-channel-id mutex (§18)
@@ -120,13 +118,23 @@ type Config struct {
 	// sweep (CHANNEL_RECONCILE_EVERY-aligned). The Runner ticks at that cadence;
 	// this is the per-row lease horizon so ClaimDueChannels re-offers the channel.
 	ReconcileTTL time.Duration
+	// ResolveReconcileTTL reads a live settings value when provided. Tests and callers with
+	// immutable configuration can leave it nil and use ReconcileTTL.
+	ResolveReconcileTTL func() time.Duration
 	// BreaksPerHour is the commercial-break density (§10, FILLER_BREAKS_PER_HOUR)
 	// applied to every channel at reconcile time. 0 = no breaks.
-	BreaksPerHour int
+	BreaksPerHour        int
+	ResolveBreaksPerHour func() int
+	BreakDuration        time.Duration
+	ResolveBreakDuration func() time.Duration
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) — how far ahead each channel materializes before it rolls forward.
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
-	DefaultWindow time.Duration
+	DefaultWindow        time.Duration
+	ResolveDefaultWindow func() time.Duration
+	// ResolvePlayoutBackendContext reads the durable transition checkpoint once per reconcile
+	// attempt so Postgres replicas observe Prepared. Nil fails closed through the empty backend.
+	ResolvePlayoutBackendContext func(context.Context) (string, error)
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -138,21 +146,38 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 	if cfg.ReconcileTTL <= 0 {
 		cfg.ReconcileTTL = 10 * time.Minute
 	}
+	if cfg.ResolveReconcileTTL == nil {
+		cfg.ResolveReconcileTTL = func() time.Duration { return cfg.ReconcileTTL }
+	}
+	if cfg.ResolveBreaksPerHour == nil {
+		cfg.ResolveBreaksPerHour = func() int { return cfg.BreaksPerHour }
+	}
+	if cfg.ResolveBreakDuration == nil {
+		cfg.ResolveBreakDuration = func() time.Duration { return cfg.BreakDuration }
+	}
+	if cfg.ResolveDefaultWindow == nil {
+		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
+	}
+	if cfg.ResolvePlayoutBackendContext == nil {
+		cfg.ResolvePlayoutBackendContext = func(context.Context) (string, error) { return "", nil }
+	}
 	if now == nil {
 		now = time.Now
 	}
 	return &Engine{
-		store:         st,
-		prog:          prog,
-		avail:         avail,
-		guide:         guide,
-		log:           log,
-		policy:        cfg.Policy,
-		reconcileTTL:  cfg.ReconcileTTL,
-		breaksPerHour: cfg.BreaksPerHour,
-		defaultWindow: cfg.DefaultWindow,
-		now:           now,
-		locks:         map[string]*sync.Mutex{},
+		store:             st,
+		prog:              prog,
+		avail:             avail,
+		guide:             guide,
+		log:               log,
+		policy:            cfg.Policy,
+		reconcileTTLFor:   cfg.ResolveReconcileTTL,
+		breaksPerHourFor:  cfg.ResolveBreaksPerHour,
+		breakDurationFor:  cfg.ResolveBreakDuration,
+		defaultWindowFor:  cfg.ResolveDefaultWindow,
+		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
+		now:               now,
+		locks:             map[string]*sync.Mutex{},
 	}
 }
 
@@ -532,7 +557,7 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	// channel spent 1ms.
 	//
 	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by series-episode-refresh (§18.1)
+	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
 	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
 	//	                      behaving exactly like today rather than emptying channels
 	now := s.clock()

@@ -1,4 +1,4 @@
-import type { BackupList } from "@loomarr/api";
+import type { BackupList } from "@loomarr/api/models/backupList";
 
 interface BackupPanelProps {
   /** The server's whole view: the files on disk plus the policy in force. */

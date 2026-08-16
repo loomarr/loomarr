@@ -1,29 +1,25 @@
-import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
+import { SlidersHorizontal, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/auth";
-import {
-  ColorBars,
-  EmptyState,
-  ErrorState,
-  GuideDetailCard,
-  GuideGrid,
-  TvStatic,
-} from "@/components/loomarr";
-import {
-  Button,
-  Caption,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui";
-import { useLoomarrEventListener } from "@/events";
-import { cn } from "@/lib";
-import { ChannelSuggestPanel } from "@/suggest";
+import { useAuth } from "@/auth/use-auth";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GuideDetailCard } from "@/components/loomarr/guide/guide-detail-card";
+import { GuideGrid } from "@/components/loomarr/guide/guide-grid";
+import { ColorBars } from "@/components/loomarr/shell/color-bars";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { TvStatic } from "@/components/loomarr/shell/tv-static";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLoomarrEventListener } from "@/events/events-provider";
+import { cn } from "@/lib/utils";
+import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
@@ -54,12 +50,13 @@ import type { GuidePageProps } from "./guide-page.type";
 const ZOOM_STOPS = [0.75, 1, 1.5, 2, 3, 4] as const;
 const DEFAULT_ZOOM_INDEX = 1;
 
-// How far a window may span. The mock's 2H/4H/6H, plus a whole day for planning.
+// How far a window may span. Kept as compact chips because this is the everyday view choice;
+// the longer phrase remains in each chip's accessible name.
 const WINDOW_CHOICES = [
-  { value: "120", label: "2 hours" },
-  { value: "240", label: "4 hours" },
-  { value: "360", label: "6 hours" },
-  { value: "720", label: "12 hours" },
+  { value: "120", label: "2h", description: "2 hours" },
+  { value: "240", label: "4h", description: "4 hours" },
+  { value: "360", label: "6h", description: "6 hours" },
+  { value: "720", label: "12h", description: "12 hours" },
 ] as const;
 
 // How far back the day picker offers. Matches the server's `guide.retention_hours` default —
@@ -78,15 +75,6 @@ const NOW_TICK_MS = 30_000;
 // The hours the START picker offers. Every third hour is enough to land anywhere in the day
 // in one click; a 24-entry list is a scroll, not a choice.
 const START_HOURS = [0, 3, 6, 7, 8, 9, 12, 15, 18, 20, 21, 22] as const;
-
-// Geometry the detail card is positioned against. These mirror GuideGrid's own rail/row/header
-// sizes at zoom 1 — the card only needs to land in the right neighbourhood, so tracking zoom
-// exactly is not worth threading the value through for a hover readout.
-const RAIL_PX = 220;
-const ROW_PX = 56;
-const GRID_HEADER_PX = 30;
-// Past this row a downward card would open below the fold, so it flips upward instead.
-const FLIP_AFTER_ROW = 2;
 
 const hourLabel = (h: number) => {
   const suffix = h < 12 ? "AM" : "PM";
@@ -112,12 +100,9 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   const [zoomIndex, setZoomIndex] = useState<number>(DEFAULT_ZOOM_INDEX);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [inspected, setInspected] = useState<GuideAiring | null>(null);
-  // Where the inspected block sits, so the detail card opens beside it. Kept when `inspected`
-  // clears so the card fades from where it was rather than jumping to a default first.
-  const [anchor, setAnchor] = useState<{ leftPct: number; rowIndex: number }>({
-    leftPct: 0,
-    rowIndex: 0,
-  });
+  // The real inspected block, not an estimated row/percentage. The floating positioner reads
+  // its current viewport geometry, follows Guide scrolling and resolves edge collisions.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [dayOffset, setDayOffset] = useState<number>(0);
   const [windowMinutes, setWindowMinutes] = useState<number>(DEFAULT_WINDOW_MINUTES);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
@@ -126,6 +111,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
   const [startHour, setStartHour] = useState<number | null>(null);
+  // Precise start and zoom are useful planning tools, but not the questions most people ask on
+  // every visit. Keep them in one secondary row and announce when a hidden non-default remains
+  // active, so progressive disclosure never turns into invisible state.
+  const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
+  const hasCustomView = startHour !== null || zoomIndex !== DEFAULT_ZOOM_INDEX;
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. `adding` toggles it open.
@@ -218,15 +208,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
     // underneath a grid that had room.
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
-      <div className="flex flex-wrap items-start justify-between gap-4 border-border border-b px-7 py-4.5">
-        <div>
-          <h1 className="font-semibold text-xl">Channels</h1>
-          <p className="mt-0.75 text-muted-foreground text-sm">
-            Every channel Loomarr manages, and what's on right now.
-          </p>
-        </div>
-
-        {/* THE origination door (§12) — for both roles, since `/suggest` folded in here and
+      <PageHeader
+        title="Channels"
+        description="Every channel Loomarr manages, and what's on right now."
+        actions={
+          /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
             this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
             the create path IS describe→approve, inlined.
 
@@ -242,18 +228,19 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
             ⚠ …but NOT while the panel is open. Once `adding` is true this button is the
             "Close", and an empty guide is exactly when the operator is most likely to have
             opened it: hiding it there would leave the panel with no way out. So the door
-            reappears the moment it becomes the exit. */}
-        {(!isEmpty || adding) && (
-          <Button
-            variant={adding ? "outline" : "suggest"}
-            onClick={() => (adding ? closePanel() : setAdding(true))}
-            aria-expanded={adding}
-          >
-            {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
-            {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
-          </Button>
-        )}
-      </div>
+            reappears the moment it becomes the exit. */
+          (!isEmpty || adding) && (
+            <Button
+              variant={adding ? "outline" : "suggest"}
+              onClick={() => (adding ? closePanel() : setAdding(true))}
+              aria-expanded={adding}
+            >
+              {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
+              {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+            </Button>
+          )
+        }
+      />
 
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
       {adding && (
@@ -262,169 +249,197 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
         </div>
       )}
 
-      {/* Row 2 — the guide toolbar: WHEN you are looking at (day, timezone, hour stepper,
-          start hour) on the left, HOW MUCH you see (zoom, span) on the right. Separate from
-          the title row because these re-frame the grid rather than acting on channels. */}
+      {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
+          much time is on screen. Precise planning controls live in the secondary View row. */}
       {channels.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
-          <div className="flex items-center gap-1.75">
-            <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
-              <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {dayChoices.map((d) => (
-                  <SelectItem key={d} value={String(d)} className="font-mono text-xs">
-                    {dayLabel(d, mountedAt)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <>
+          <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
+            <div className="flex items-center gap-1.75">
+              <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
+                <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dayChoices.map((d) => (
+                    <SelectItem key={d} value={String(d)} className="font-mono text-xs">
+                      {dayLabel(d, mountedAt)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
-                future one is a plan. The chip says which, and doubles as the way back. */}
-            {dayOffset !== 0 && (
-              <button
-                type="button"
-                onClick={() => setDayOffset(0)}
-                className={cn(
-                  "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
-                  dayOffset < 0 ? "text-static-400" : "text-tune",
-                )}
+              {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
+                  future one is a plan. The chip says which, and doubles as the way back. */}
+              {dayOffset !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDayOffset(0)}
+                  className={cn(
+                    "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
+                    dayOffset < 0 ? "text-static-400" : "text-tune",
+                  )}
+                >
+                  {dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today
+                </button>
+              )}
+            </div>
+
+            {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
+                window without changing the day. */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-6.5"
+                aria-label="Back an hour"
+                onClick={() => setHourShift((h) => h - 1)}
               >
-                {dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today
-              </button>
-            )}
-          </div>
+                ‹
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-signal")}
+                onClick={() => {
+                  setHourShift(0);
+                  setDayOffset(0);
+                  setStartHour(null);
+                }}
+              >
+                NOW
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-6.5"
+                aria-label="Forward an hour"
+                onClick={() => setHourShift((h) => h + 1)}
+              >
+                ›
+              </Button>
+            </div>
 
-          {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
-              window without changing the day. */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Back an hour"
-              onClick={() => setHourShift((h) => h - 1)}
-            >
-              ‹
-            </Button>
+            {/* Span stays in the primary row: it changes the question the guide answers, and
+                four compact choices are faster to scan than a select. */}
+            <div className="flex items-center gap-1.75 sm:ml-auto">
+              <Caption shout className="tracking-[0.06em]">
+                Span
+              </Caption>
+              <div className="flex gap-1">
+                {WINDOW_CHOICES.map((w) => {
+                  const active = windowMinutes === Number(w.value);
+                  return (
+                    <button
+                      key={w.value}
+                      type="button"
+                      onClick={() => setWindowMinutes(Number(w.value))}
+                      aria-label={`Show ${w.description}`}
+                      aria-pressed={active}
+                      className={cn(
+                        "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
+                        active
+                          ? "border-signal bg-signal-tint-15 text-signal"
+                          : "border-border text-static-400 hover:border-static-400",
+                      )}
+                    >
+                      {w.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <Button
               variant="outline"
               size="sm"
-              className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-signal")}
-              onClick={() => {
-                setHourShift(0);
-                setDayOffset(0);
-                setStartHour(null);
-              }}
+              className={cn("h-6.5", (viewOptionsOpen || hasCustomView) && "text-signal")}
+              aria-label={hasCustomView ? "View options, custom" : "View options"}
+              aria-expanded={viewOptionsOpen}
+              aria-controls="guide-view-options"
+              onClick={() => setViewOptionsOpen((open) => !open)}
             >
-              NOW
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Forward an hour"
-              onClick={() => setHourShift((h) => h + 1)}
-            >
-              ›
-            </Button>
-          </div>
-
-          {/* Start hour — plan against a specific part of the day ("what airs at 7am?")
-              without stepping there an hour at a time. */}
-          <div className="flex items-center gap-1.75">
-            {/* tracking-[0.06em] overrides `shout`'s tracking-wide (0.025em): these toolbar
-                labels sit tighter to their controls and were tuned wider than the default. */}
-            <Caption shout className="tracking-[0.06em]">
-              Start
-            </Caption>
-            <Select
-              value={startHour === null ? "auto" : String(startHour)}
-              onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
-            >
-              <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Start hour">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto" className="font-mono text-xs">
-                  Now
-                </SelectItem>
-                {START_HOURS.map((h) => (
-                  <SelectItem key={h} value={String(h)} className="font-mono text-xs">
-                    {hourLabel(h)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="ml-auto flex items-center gap-1 border-border border-r pr-3">
-            {/* Magnifier icons, not − / +: a bare minus reads as "remove" and a plus as "add"
-                (they are the add/remove glyphs everywhere else in the app), while a magnifying
-                glass says MAGNIFY without a label — which is what these now actually do. */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Zoom out"
-              disabled={zoomIndex === 0}
-              onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
-            >
-              <ZoomOut className="size-3.5" aria-hidden />
-            </Button>
-            {/* The percentage is the mock's, and it earns its place: without it the two
-                buttons give no sense of where you are in the range. Clicking it returns to
-                100% — the one stop where the whole window fits, and the way back from a deep
-                zoom without repeatedly clicking out. */}
-            <button
-              type="button"
-              onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
-              aria-label="Reset zoom to 100%"
-              className={cn(
-                "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
-                zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
+              {hasCustomView ? (
+                <span className="size-2 rounded-full bg-signal" aria-hidden />
+              ) : (
+                <SlidersHorizontal className="size-3.5" aria-hidden />
               )}
-            >
-              {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
-            </button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-6.5"
-              aria-label="Zoom in"
-              disabled={zoomIndex === ZOOM_STOPS.length - 1}
-              onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
-            >
-              <ZoomIn className="size-3.5" aria-hidden />
+              View
             </Button>
           </div>
 
-          {/* Span as CHIPS, not a select: three choices, one click each, and the active one
-              is visible without opening anything. */}
-          <div className="flex gap-1">
-            {WINDOW_CHOICES.map((w) => {
-              const active = windowMinutes === Number(w.value);
-              return (
-                <button
-                  key={w.value}
-                  type="button"
-                  onClick={() => setWindowMinutes(Number(w.value))}
-                  aria-pressed={active}
-                  className={cn(
-                    "cursor-pointer rounded-md border px-2.75 py-1 font-mono text-xs transition-colors",
-                    active
-                      ? "border-signal bg-signal-tint-15 text-signal"
-                      : "border-border text-static-400 hover:border-static-400",
-                  )}
+          {viewOptionsOpen && (
+            <div
+              id="guide-view-options"
+              className="flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-border/60 border-b bg-card/40 px-7 py-2.5 sm:justify-end"
+            >
+              {/* Pin the window to a specific part of the chosen day without stepping there
+                  one hour at a time. */}
+              <div className="flex items-center gap-1.75">
+                <Caption shout className="tracking-[0.06em]">
+                  Start at
+                </Caption>
+                <Select
+                  value={startHour === null ? "auto" : String(startHour)}
+                  onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
                 >
-                  {w.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                  <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Start hour">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto" className="font-mono text-xs">
+                      Now
+                    </SelectItem>
+                    {START_HOURS.map((h) => (
+                      <SelectItem key={h} value={String(h)} className="font-mono text-xs">
+                        {hourLabel(h)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1.75">
+                <Caption shout className="tracking-[0.06em]">
+                  Zoom
+                </Caption>
+                <div className="flex items-center gap-1">
+                  {/* Magnifier icons distinguish view scaling from add/remove actions. */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-6.5"
+                    aria-label="Zoom out"
+                    disabled={zoomIndex === 0}
+                    onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
+                  >
+                    <ZoomOut className="size-3.5" aria-hidden />
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
+                    aria-label="Reset zoom to 100%"
+                    className={cn(
+                      "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
+                      zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
+                    )}
+                  >
+                    {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-6.5"
+                    aria-label="Zoom in"
+                    disabled={zoomIndex === ZOOM_STOPS.length - 1}
+                    onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
+                  >
+                    <ZoomIn className="size-3.5" aria-hidden />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {isEmpty ? (
@@ -508,31 +523,29 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
               <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
             )}
           />
-          {/* The card opens BESIDE the block being inspected, not in a fixed corner — a card
-              pinned bottom-right for a block on the far left makes the reader look away from
-              what they are pointing at. Both axes are edge-aware:
-                · x — clamped so the card never runs off the right edge (the mock's 0.72 cap),
-                      and offset past the rail so it never covers the channel it describes.
-                · y — opens BELOW its row normally, but flips ABOVE once the row is far enough
-                      down that a downward card would fall out of the viewport.
-              pointer-events-none throughout: this is a readout, and it sits over the very
-              blocks you are moving the pointer across. */}
-          {inspected && (
-            <div
-              className="pointer-events-none absolute z-40"
-              style={{
-                left: `calc(${RAIL_PX}px + (100% - ${RAIL_PX}px) * ${Math.min(0.72, Math.max(0, anchor.leftPct / 100))})`,
-                // Flipping upward anchors the card's BOTTOM to the top of its own row, so it
-                // rises just far enough to clear the block. Anchoring to the container's
-                // bottom instead would make a card for the last row cover every row above it.
-                ...(anchor.rowIndex >= FLIP_AFTER_ROW
-                  ? { bottom: `calc(100% - ${GRID_HEADER_PX + anchor.rowIndex * ROW_PX - 4}px)` }
-                  : { top: GRID_HEADER_PX + (anchor.rowIndex + 1) * ROW_PX + 4 }),
-              }}
-            >
-              <GuideDetailCard airing={inspected} />
-            </div>
-          )}
+          {/* A portal keeps the readout clear of the Guide's overflow container. The actual
+              block is its anchor, and Base UI flips then shifts the card against the browser
+              viewport — no row-number threshold can account for virtualization, browser
+              height, or the different heights of programme and filler cards. */}
+          <TooltipPrimitive.Root open={inspected !== null && anchor !== null}>
+            <TooltipPrimitive.Portal>
+              <TooltipPrimitive.Positioner
+                anchor={anchor}
+                side="bottom"
+                align="start"
+                sideOffset={4}
+                positionMethod="fixed"
+                collisionBoundary={document.documentElement}
+                collisionPadding={8}
+                data-testid="guide-detail-positioner"
+                className="pointer-events-none z-40"
+              >
+                <TooltipPrimitive.Popup className="pointer-events-none">
+                  <GuideDetailCard airing={inspected} />
+                </TooltipPrimitive.Popup>
+              </TooltipPrimitive.Positioner>
+            </TooltipPrimitive.Portal>
+          </TooltipPrimitive.Root>
         </div>
       )}
     </div>

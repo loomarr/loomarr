@@ -18,6 +18,18 @@ type Interval struct {
 	EndMs   int64 `json:"endMs"`
 }
 
+// MediaQuality is the measured content inside a playable container. A file can carry valid audio
+// and video streams while every video frame is black, the audio samples are silent, or one damaged
+// frame is repeated for most of the runtime; ffprobe's stream-presence gate cannot see any of
+// those. Intervals are normalised, non-overlapping and clamped to DurationMs before this value is
+// returned or persisted.
+type MediaQuality struct {
+	DurationMs int64      `json:"durationMs"`
+	Black      []Interval `json:"black,omitempty"`
+	Silence    []Interval `json:"silence,omitempty"`
+	Freeze     []Interval `json:"freeze,omitempty"`
+}
+
 // Chapter is one embedded chapter from ffprobe (triage, §10 V34).
 type Chapter struct {
 	StartMs int64
@@ -61,6 +73,10 @@ type Probed struct {
 	// Costs nothing extra to fill: the probe already asks for `codec_type` per stream so it can
 	// find the VIDEO height, and this reads the same answer.
 	Silent bool
+	// NoVideo reports that ffprobe returned no video stream at all. It is explicit rather than
+	// inferred from Height == 0: injected/older probers may know duration without dimensions, and
+	// the zero value must remain permissive for the same compatibility reason as Silent above.
+	NoVideo bool
 }
 
 // Prober reads a media file's duration and dimensions. Satisfied by FFprobe; injected so the

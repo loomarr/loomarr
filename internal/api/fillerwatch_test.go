@@ -2,13 +2,62 @@ package api_test
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+// The member-visible health projection describes the generation doing the work, not a saved
+// layout that is waiting on restart. Otherwise a pending clear could report zero sources while
+// this process is still scanning and playing from the applied root.
+func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/watch-applied.db")
+	t.Cleanup(func() { _ = st.Close() })
+	clearSeededSources(t, st)
+	if err := st.UpsertFillerSource(t.Context(),
+		store.NewFillerSource("folder", "folder", "", "Drop folder", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := filler.NewLayout("/data/filler", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := "/data/filler"
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:        st,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		FillerLayout: layout,
+		LiveConfig: func(key string) string {
+			if key == "filler.dir" {
+				return desired
+			}
+			return ""
+		},
+	})
+
+	desired = "" // persisted desired clear; the current generation still has one applied source
+	req := httptest.NewRequest(http.MethodGet, "/v1/filler/watch", nil)
+	req.Header.Set("Authorization", "Bearer "+memberToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("watch → %d, want 200", rec.Code)
+	}
+	var body watchBody
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.SourcesTotal != 1 || body.SourcesOn != 1 {
+		t.Errorf("sources = %d of %d after desired clear, want applied 1 of 1 until restart", body.SourcesOn, body.SourcesTotal)
+	}
+}
 
 // GET /v1/filler/watch — the Filler header's live status (§10 V38c).
 //
@@ -24,6 +73,30 @@ type watchBody struct {
 	Clips        int    `json:"clips"`
 	Held         int    `json:"held"`
 	LastScanAt   string `json:"lastScanAt"`
+	AutoFetch    *struct {
+		Enabled      bool
+		StoppedBy    string
+		CatalogClips int
+		MaxCatalog   int
+		DiskBytes    int64
+		MaxDiskBytes int64
+	} `json:"autoFetch"`
+}
+
+func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchStatus = filler.FetchStatus{
+		Enabled: true, StoppedBy: "catalog",
+		CatalogClips: 2000, MaxCatalog: 2000, DiskBytes: 3 << 30, MaxDiskBytes: 20 << 30,
+	}
+
+	body, code := getWatch(t, srv.URL, memberToken)
+	if code != http.StatusOK {
+		t.Fatalf("watch → %d, want 200", code)
+	}
+	if body.AutoFetch == nil || body.AutoFetch.StoppedBy != "catalog" || body.AutoFetch.CatalogClips != 2000 || body.AutoFetch.MaxCatalog != 2000 {
+		t.Fatalf("autoFetch = %+v, want live catalog ceiling 2000/2000", body.AutoFetch)
+	}
 }
 
 // seedHeldClip is a clip that ARRIVED but has not been filed — the state auto-fetch leaves

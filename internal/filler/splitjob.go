@@ -39,28 +39,30 @@ var ErrProposalGone = errors.New("filler: the split proposal was resolved while 
 type SplitStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
 	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 	UpsertClip(ctx context.Context, c StoreClip) error
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
+	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
+	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
+	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// SetClipsHeld files the fully resolved composite parent so the catalog can render it as the
+	// non-airable container for its children. A partially resolved proposal remains held.
+	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
 	// grounds the answer against it.
-	//
-	// ⚠ The split job still does NOT call SetClipTags, but the REASON it could not has gone.
-	// This said "a segment clip has no content hash at confirm time (it gets one from the intake
-	// pipeline when its cut file is hashed)" — which described the bug, not a constraint: segments
-	// were written with an empty hash and only acquired one if a later sync happened to re-file
-	// them. V51a hashes each cut before it is upserted, so a segment has its identity here and
-	// tag rows would resolve. Persisting them is deliberately left to the tag stage rather than
-	// added alongside a bug fix; until then the segment's grounded Tags ride the proposal for the
-	// reviewer and the TAG JOB writes them, as before.
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
+	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposalSegments writes grounding back onto an existing proposal without
+	// UpdateSplitProposal writes grounding and partial-confirm state onto an existing proposal without
 	// re-detecting. Must NOT insert — a write landing after Confirm would resurrect the proposal.
-	UpdateSplitProposalSegments(ctx context.Context, id string, segs []SplitSegment) error
+	UpdateSplitProposal(ctx context.Context, p SplitProposal) error
 }
 
 // Splitter runs compilation splitting. provider may be nil: rescue and
@@ -104,14 +106,14 @@ func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []
 		return SplitProposal{}, err
 	}
 	current.Segments = mergeGrounding(current.Segments, grounded)
-	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, current.Segments); err != nil {
+	if err := sp.store.UpdateSplitProposal(ctx, current); err != nil {
 		return SplitProposal{}, err
 	}
 	return current, nil
 }
 
-// mergeGrounding copies the grounding fields from `from` onto the segments of `onto` that still
-// describe the SAME span.
+// mergeGrounding copies the grounding and review-decision fields from `from` onto the segments of
+// `onto` that still describe the SAME span.
 //
 // ⚠ Matched on the span, not the index. Today nothing can reorder a proposal between the read and
 // the write (there is no PATCH route), so this is belt-and-braces — but it is the invariant that
@@ -133,9 +135,15 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 		if g.Category != "" {
 			out[i].Category = g.Category
 		}
+		if len(g.Tags) > 0 {
+			out[i].Tags = unionLeaves(out[i].Tags, g.Tags)
+		}
 		if g.Era > 0 {
 			out[i].Era = g.Era
 		}
+		// Unlike learned tags, an empty reason is meaningful: a later pass may have supplied the
+		// evidence that clears an earlier hold. Always copy it so stale explanations cannot survive.
+		out[i].HoldReason = g.HoldReason
 	}
 	return out
 }
@@ -152,6 +160,10 @@ func (sp *Splitter) floor() segmentFloor {
 	return newSegmentFloor(sp.minClipDuration())
 }
 
+// boundaryScanChunkMs is an implementation budget rather than another operator setting. A
+// ten-minute span keeps each decode bounded while making multi-hour recordings resumable.
+const boundaryScanChunkMs int64 = 10 * 60 * 1000
+
 // Propose detects cuts in one compilation clip and persists the resulting
 // proposal (§10). The catalog is untouched.
 // ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`. The
@@ -159,33 +171,111 @@ func (sp *Splitter) floor() segmentFloor {
 // naming is the exact class that shipped the V41 tagger bug (a path handed to a hash-keyed
 // call, failing silently). The API passes `clipID`; so does the scheduled runner.
 func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposal, error) {
-	clip, found, err := sp.store.GetClip(ctx, clipHash)
+	var p *SplitProposal
+	pending, err := sp.store.ListSplitProposals(ctx)
 	if err != nil {
 		return nil, err
 	}
+	for i := range pending {
+		if pending[i].ClipHash == clipHash && !pending[i].Ready() {
+			p = &pending[i]
+			break
+		}
+	}
+	for {
+		var done bool
+		p, done, err = sp.advanceProposal(ctx, clipHash, p)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return p, nil
+		}
+	}
+}
+
+// advanceProposal performs one durable unit of work. The scheduled pipeline invokes one unit per
+// pass; the explicit operator path loops under its longer request context.
+func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *SplitProposal) (*SplitProposal, bool, error) {
+	clip, found, err := sp.store.GetClip(ctx, clipHash)
+	if err != nil {
+		return p, false, err
+	}
 	if !found {
-		return nil, fmt.Errorf("clip %s not found", clipHash)
+		return p, false, fmt.Errorf("clip %s not found", clipHash)
 	}
 	if clip.DurationMs <= 0 {
-		return nil, fmt.Errorf("clip %s has no probed duration — sync the catalog first", clipHash)
+		return p, false, fmt.Errorf("clip %s has no probed duration — sync the catalog first", clipHash)
 	}
-	// ⚠ The LOCATION comes from the row, not from the argument. The argument is an identity
-	// (a hash); joining it onto the drop dir would build a path that does not exist. They were
-	// the same string before V38c, which is why one variable used to serve both.
 	file := filepath.Join(sp.dropDir, clip.Path)
-
-	// ⚠ Resolved ONCE for the whole call, then threaded as a value — see `Splitter.floor`.
 	floor := sp.floor()
 
-	// 1. Triage → coarse split. Chapters split for free; a chapter read failure
-	// is not fatal (the common case is NO chapters anyway — 6 of 8 measured).
-	segs, dropped := sp.triage(ctx, file, clip.DurationMs, floor)
-	if len(segs) == 0 {
-		// ⚠ Quotes the COMPOSED floor and names the setting. At the 10s default this is now a
-		// reachable outcome for a real recording (a reel of nothing but short bumpers), not just
-		// for a broken file, so the message has to say which number refused it.
-		return nil, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
+	if p == nil {
+		p = &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Detection: &SplitDetectionProgress{}}
+		chapters, chapterErr := sp.tools.Chapters(ctx, file)
+		if chapterErr != nil && sp.log != nil {
+			sp.log.Warn("chapter triage failed, falling back to coarse split", "file", file, "err", chapterErr)
+		}
+		if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
+			p.Detection.ScannedThroughMs = clip.DurationMs
+			p.Detection.Chapters = true
+			p.Detection.CoarseSegments = segs
+			p.Dropped = dropped
+			if err := sp.saveProposal(ctx, *p); err != nil {
+				return p, false, err
+			}
+			return p, false, nil
+		}
+	} else {
+		if p.ClipHash != clipHash {
+			return p, false, fmt.Errorf("split proposal %s belongs to %s, not %s", p.ID, p.ClipHash, clipHash)
+		}
+		if p.Ready() {
+			return p, true, nil
+		}
 	}
+
+	if len(p.Detection.CoarseSegments) == 0 {
+		start := max(p.Detection.ScannedThroughMs, 0)
+		if start < clip.DurationMs {
+			end := min(start+boundaryScanChunkMs, clip.DurationMs)
+			black, silence, detectErr := sp.tools.Boundaries(ctx, file, start, end)
+			if detectErr != nil {
+				if ctx.Err() != nil {
+					return p, false, detectErr
+				}
+				if sp.log != nil {
+					sp.log.Warn("boundary detection failed, falling back to transcript rescue of the whole file",
+						"file", file, "startMs", start, "endMs", end, "err", detectErr)
+				}
+				p.Detection.ScannedThroughMs = clip.DurationMs
+				p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(clip.DurationMs, nil, floor)
+			} else {
+				p.Detection.Black = append(p.Detection.Black, black...)
+				p.Detection.Silence = append(p.Detection.Silence, silence...)
+				p.Detection.ScannedThroughMs = end
+			}
+		}
+		if p.Detection.ScannedThroughMs >= clip.DurationMs && len(p.Detection.CoarseSegments) == 0 {
+			gaps := sourcedGaps(p.Detection.Black, p.Detection.Silence)
+			p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(clip.DurationMs, gaps, floor)
+			if len(p.Detection.CoarseSegments) == 0 {
+				return p, false, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
+			}
+		}
+		if err := sp.saveProposal(ctx, *p); err != nil {
+			return p, false, err
+		}
+		return p, false, nil
+	}
+
+	// Coarse segments crossed the durable JSON checkpoint before this pass. Their private source
+	// bitmasks are intentionally not part of SplitSegment's API shape, so derive them again from
+	// the detection facts that ARE persisted before the confidence ladder reads them. Without this
+	// restore every resumed boundary scored 0 and even black+silence agreement could never clear
+	// the default auto-split threshold.
+	restoreCoarseBoundarySources(p.Detection, clip.DurationMs)
+	segs := append([]SplitSegment(nil), p.Detection.CoarseSegments...)
 
 	// 2. Names for the unnamed (chapters bring their own).
 	base := strings.TrimSuffix(clip.Name, filepath.Ext(clip.Name))
@@ -242,45 +332,68 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
 	// that lookup never matched and no split could ever be committed. The file location Confirm
 	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
-	p := &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Segments: segs, Dropped: dropped}
-	if dropped.Count > 0 && sp.log != nil {
+	p.Segments = segs
+	p.Detection = nil
+	if p.Dropped.Count > 0 && sp.log != nil {
 		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is
 		// logged because it costs recording time the operator can otherwise only infer from
 		// arithmetic (§10 V45).
 		sp.log.Info("split: fragments under the clip floor discarded",
-			"clip", clipHash, "dropped", dropped.Count, "droppedMs", dropped.Ms,
+			"clip", clipHash, "dropped", p.Dropped.Count, "droppedMs", p.Dropped.Ms,
 			"floorMs", floor.ms(), "segments", len(segs))
 	}
 	if err := sp.store.UpsertSplitProposal(ctx, *p); err != nil {
-		return nil, err
+		return p, false, err
 	}
-	return p, nil
+	return p, true, nil
 }
 
-// triage runs chapters-first, then the black/silence coarse split.
-func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64, floor segmentFloor) ([]SplitSegment, dropTally) {
-	chapters, err := sp.tools.Chapters(ctx, file)
-	if err != nil && sp.log != nil {
-		sp.log.Warn("chapter triage failed, falling back to coarse split", "file", file, "err", err)
+// restoreCoarseBoundarySources rebuilds the private scoring inputs after a checkpoint round trip.
+// Black/silence intervals are the authoritative detector facts; chapter segments are the only
+// coarse segments with names before the resume pass, and a nameless whole-reel fallback has only
+// the two reel edges. Deriving instead of serialising the bitmask keeps implementation evidence
+// out of the operator-facing SplitSegment schema while making restarts lossless.
+func restoreCoarseBoundarySources(progress *SplitDetectionProgress, durationMs int64) {
+	if progress == nil || len(progress.CoarseSegments) == 0 {
+		return
 	}
-	if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
-		return segs, dropped
-	}
-	blacks, silences, err := sp.tools.BlackSilence(ctx, file)
-	if err != nil {
-		if sp.log != nil {
-			sp.log.Warn("black/silence detection failed, treating the file as one segment", "file", file, "err", err)
+
+	cuts := boundaryCuts(sourcedGaps(progress.Black, progress.Silence), durationMs)
+	if len(cuts) == 0 {
+		chapterAuthored := progress.Chapters || len(progress.CoarseSegments) > 1
+		for i := range progress.CoarseSegments {
+			if strings.TrimSpace(progress.CoarseSegments[i].Name) != "" {
+				chapterAuthored = true
+				break
+			}
 		}
-		// A detector failure is not "no boundaries": the whole file is one segment,
-		// which (being a compilation) is over-long and goes to rescue — or comes
-		// back Unsplittable. Guessing cuts would be worse.
-		return segmentsFromBoundaries(durationMs, nil, floor)
+		for i := range progress.CoarseSegments {
+			if chapterAuthored {
+				progress.CoarseSegments[i].startSrc = srcChapter
+				progress.CoarseSegments[i].endSrc = srcChapter
+				continue
+			}
+			if progress.CoarseSegments[i].StartMs == 0 {
+				progress.CoarseSegments[i].startSrc = srcReelEdge
+			}
+			if progress.CoarseSegments[i].EndMs == durationMs {
+				progress.CoarseSegments[i].endSrc = srcReelEdge
+			}
+		}
+		return
 	}
-	// ⚠ **This is where the evidence used to die.** It was `append(blacks, silences...)` — one
-	// expression, and from there nothing downstream could tell a boundary BOTH detectors agreed on
-	// from one only a single detector saw. Corroboration is the strongest signal detection
-	// produces (9 of 12 fades on the measured reel), so tagging each gap with its origin is what
-	// gives the confidence ladder anything to read (§10 V34).
+
+	sources := map[int64]boundarySource{0: srcReelEdge, durationMs: srcReelEdge}
+	for _, cut := range cuts {
+		sources[cut.Ms] |= cut.Src
+	}
+	for i := range progress.CoarseSegments {
+		progress.CoarseSegments[i].startSrc = sources[progress.CoarseSegments[i].StartMs]
+		progress.CoarseSegments[i].endSrc = sources[progress.CoarseSegments[i].EndMs]
+	}
+}
+
+func sourcedGaps(blacks, silences []Interval) []detectedGap {
 	gaps := make([]detectedGap, 0, len(blacks)+len(silences))
 	for _, b := range blacks {
 		gaps = append(gaps, detectedGap{Interval: b, Src: srcBlack})
@@ -288,7 +401,41 @@ func (sp *Splitter) triage(ctx context.Context, file string, durationMs int64, f
 	for _, s := range silences {
 		gaps = append(gaps, detectedGap{Interval: s, Src: srcSilence})
 	}
-	return segmentsFromBoundaries(durationMs, gaps, floor)
+	return gaps
+}
+
+func (sp *Splitter) saveProposal(ctx context.Context, p SplitProposal) error {
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return sp.store.UpsertSplitProposal(saveCtx, p)
+}
+
+func (sp *Splitter) resolveEmpty(ctx context.Context, proposalID string) error {
+	p, err := sp.store.GetSplitProposal(ctx, proposalID)
+	if err != nil {
+		return err
+	}
+	if len(p.Segments) != 0 {
+		return fmt.Errorf("%w: refusing to resolve non-empty proposal %s as discarded", ErrSplitValidation, proposalID)
+	}
+	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipHash)
+	}
+	now := sp.now().UTC()
+	if err := sp.store.SetClipComposite(ctx, p.ClipHash, true, now); err != nil {
+		return err
+	}
+	// Deterministically discarding every candidate is also a terminal resolution. The parent is
+	// still the useful catalog record of the reel, so expose it as a non-airable composite instead
+	// of leaving it hidden behind a hold for a proposal that no longer exists.
+	if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
+		return err
+	}
+	return sp.store.DeleteSplitProposal(ctx, proposalID)
 }
 
 // rescue replaces over-long segments with their transcript-derived sub-segments
@@ -382,15 +529,19 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 		hashes []uint64
 	}
 	var candidates []hashed
+	cached, cacheErr := sp.store.ListClipFingerprints(ctx, dHashAlgorithm)
+	if cacheErr != nil && sp.log != nil {
+		sp.log.Warn("catalog fingerprint cache read failed; missing entries will be recomputed", "err", cacheErr)
+	}
 	for _, c := range catalog {
 		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
-		frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
-		if err != nil {
+		hashes, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
+		if !ok {
 			continue
 		}
-		candidates = append(candidates, hashed{path: c.Path, hashes: dHashFrames(frames)})
+		candidates = append(candidates, hashed{path: c.Path, hashes: hashes})
 	}
 	if len(candidates) == 0 {
 		return
@@ -410,10 +561,32 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 	}
 }
 
-// Confirm writes the operator's reviewed cut list to the catalog (§10): each
-// kept segment is cut with stream copy into the drop-folder and becomes a clip
-// row; the compilation's file AND row are removed — its identity is a path that
-// now means twenty clips, not one. The proposal is consumed.
+// catalogFingerprint makes whole-catalog dedup incremental. Content hash plus algorithm version
+// is the cache key, so a hit is exact; failures always degrade to recomputation or no verdict.
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached []uint64) ([]uint64, bool) {
+	if len(cached) > 0 {
+		return cached, true
+	}
+	frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
+	if err != nil {
+		return nil, false
+	}
+	hashes := dHashFrames(frames)
+	if len(hashes) == 0 {
+		return nil, false
+	}
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, dHashAlgorithm, hashes); err != nil && sp.log != nil {
+		sp.log.Warn("catalog fingerprint cache write failed", "clip", c.Hash, "err", err)
+	}
+	return hashes, true
+}
+
+// Confirm writes the operator's reviewed cut list to the catalog (§10): each kept segment is cut
+// with stream copy into the clip folder and becomes a child row. The compilation remains as a
+// non-airable composite for lineage and future re-splitting; the proposal is consumed. On a
+// re-split, final confirmation tombstones the superseded child generation without deleting bytes.
 //
 // The segments arrive operator-edited and are re-validated: inside the clip,
 // start<end, non-overlapping. Anything else is an error, not a best effort —
@@ -443,6 +616,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err != nil {
 		return nil, err
 	}
+	if !p.Ready() {
+		return nil, fmt.Errorf("%w: proposal %s is still detecting boundaries", ErrSplitValidation, proposalID)
+	}
 	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
 		return nil, err
@@ -455,6 +631,20 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	if err := validateConfirmedSegments(segments, clip.DurationMs, sp.floor()); err != nil {
 		return nil, err
+	}
+	// A re-split must not make its new generation air beside the old one while a partial proposal
+	// is still unresolved. New hashes are inserted tombstoned below and atomically restored only
+	// when the proposal is fully consumed. Exact reused hashes are already active and harmless.
+	replacing := false
+	if catalog, listErr := sp.store.ListClips(ctx); listErr != nil {
+		return nil, listErr
+	} else {
+		for _, existing := range catalog {
+			if existing.ParentHash == clip.Hash {
+				replacing = true
+				break
+			}
+		}
 	}
 
 	// ⚠ The LOCATION comes from the row, not from the proposal — the same rule (and the same
@@ -540,6 +730,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// re-split when detection improves, and broadcast-context inheritance. `clip.Hash` is the
 		// composite's identity (the parent is kept, below, not deleted).
 		nc.ParentHash = clip.Hash
+		if replacing {
+			// A catalog tombstone is stronger than Held here: the pipeline can process and auto-file
+			// held clips before the proposal is finished. Removed clips cannot air or advance, and
+			// ReplaceSplitChildren restores this generation atomically at final confirmation.
+			nc.RemovedAt = now
+		}
 		// Persist the transcript the rescue step already produced (§10 V44). Pre-V44 this was
 		// computed to find ad boundaries and then thrown away; it is the richest metadata signal a
 		// split segment has — a segment with no source description still SAYS its brand — so it
@@ -558,6 +754,22 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != "" || len(c.seg.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
+		}
+		// Persist grounded proposal tags now that the cut has a stable content hash. Union with an
+		// identical existing clip so deduplication never lets AI erase operator-authored knowledge.
+		segmentTags := append([]string(nil), c.seg.Tags...)
+		if len(segmentTags) == 0 && c.seg.Category != "" {
+			// Upgrade compatibility for proposals stored before the wire carried the tag set.
+			segmentTags = append(segmentTags, c.seg.Category)
+		}
+		if len(segmentTags) > 0 {
+			existing, err := sp.store.GetClipTags(ctx, c.hash, true)
+			if err != nil {
+				return nil, err
+			}
+			if err := sp.store.SetClipTags(ctx, c.hash, unionLeaves(existing, segmentTags)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// ⚠ V45 KEEPS the parent, marking it a composite — it does NOT delete the row or the file (the
@@ -579,7 +791,19 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// segments merged — so nothing in it need match what was stored. The gate is saying "cut these,
 	// keep the rest for a human". Diffing the stored segments against the confirmed ones would read
 	// the operator's edits as leftovers and resurrect a reel they had just finished.
+	currentGeneration := appendUniqueStrings(p.Spawned, spawned...)
 	if len(hold) == 0 {
+		if _, err := sp.store.ReplaceSplitChildren(ctx, clip.Hash, currentGeneration, now); err != nil {
+			return nil, err
+		}
+		// The review disposition held the parent out of every catalog read. Once the proposal is
+		// fully consumed, file that parent so it can appear as the lineage container around the
+		// generated clips. It remains non-airable because SetClipComposite above is the catalog's
+		// independent airability chokepoint. Keep partial proposals held: their replacement
+		// generation is not committed yet and Incoming still owns the decision.
+		if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
+			return nil, err
+		}
 		if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
 			return nil, err
 		}
@@ -592,7 +816,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	for i := range remaining {
 		remaining[i].Index = i
 	}
-	if err := sp.store.UpdateSplitProposalSegments(ctx, proposalID, remaining); err != nil {
+	p.Segments = remaining
+	p.Spawned = currentGeneration
+	if err := sp.store.UpdateSplitProposal(ctx, p); err != nil {
 		// ⚠ Already gone means the operator confirmed or rejected the whole reel while this pass
 		// was cutting. The cuts we just made are real and enrolled; there is simply no proposal
 		// left to shrink, which is the other path having finished the job.
@@ -602,6 +828,25 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, err
 	}
 	return spawned, nil
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	out := append([]string(nil), existing...)
+	seen := make(map[string]struct{}, len(out)+len(values))
+	for _, value := range out {
+		seen[value] = struct{}{}
+	}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 // validateConfirmedSegments enforces the invariants the write path needs:

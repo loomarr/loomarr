@@ -15,12 +15,32 @@ import (
 
 var (
 	// [blackdetect @ 0x…] black_start:1.28 black_end:2.52 black_duration:1.24
-	blackRe = regexp.MustCompile(`black_start:(\d+(?:\.\d+)?) black_end:(\d+(?:\.\d+)?)`)
+	blackRe = regexp.MustCompile(`black_start:(-?\d+(?:\.\d+)?) black_end:(-?\d+(?:\.\d+)?)`)
 	// [silencedetect @ 0x…] silence_start: 3.36
-	silenceStartRe = regexp.MustCompile(`silence_start: (\d+(?:\.\d+)?)`)
+	silenceStartRe = regexp.MustCompile(`silence_start: (-?\d+(?:\.\d+)?)`)
 	// [silencedetect @ 0x…] silence_end: 5.84 | silence_duration: 2.48
-	silenceEndRe = regexp.MustCompile(`silence_end: (\d+(?:\.\d+)?)`)
+	silenceEndRe = regexp.MustCompile(`silence_end: (-?\d+(?:\.\d+)?)`)
+	// [freezedetect @ 0x…] freeze_start: 4.2
+	freezeStartRe = regexp.MustCompile(`freeze_start: (-?\d+(?:\.\d+)?)`)
+	// [freezedetect @ 0x…] freeze_end: 15.8 | freeze_duration: 11.6
+	freezeEndRe = regexp.MustCompile(`freeze_end: (-?\d+(?:\.\d+)?)`)
 )
+
+// boundaryGaps normalises detector output inside one seeked span and maps it back onto the file's
+// absolute timeline. Closing an EOF silence at the span end is essential for chunking: the next
+// span starts inside the same silence and boundaryCuts then unions the two touching intervals.
+func boundaryGaps(stderr string, startMs, endMs int64) ([]Interval, []Interval) {
+	spanMs := endMs - startMs
+	black := normaliseIntervals(parseBlackdetect(stderr), spanMs)
+	silence := normaliseIntervals(parseSilencedetect(stderr), spanMs)
+	for _, gaps := range [][]Interval{black, silence} {
+		for i := range gaps {
+			gaps[i].StartMs += startMs
+			gaps[i].EndMs += startMs
+		}
+	}
+	return black, silence
+}
 
 // parseBlackdetect extracts the black intervals ffmpeg reports on stderr. An
 // advert break in a compilation is usually a fade to black between spots; at
@@ -52,6 +72,31 @@ func parseSilencedetect(stderr string) []Interval {
 			continue
 		}
 		if m := silenceEndRe.FindStringSubmatch(line); m != nil && open >= 0 {
+			if e, err := strconv.ParseFloat(m[1], 64); err == nil && int64(e*1000) > open {
+				out = append(out, Interval{StartMs: open, EndMs: int64(e * 1000)})
+			}
+			open = -1
+		}
+	}
+	if open >= 0 {
+		out = append(out, Interval{StartMs: open, EndMs: open})
+	}
+	return out
+}
+
+// parseFreezedetect pairs freeze_start with freeze_end. Like silencedetect, ffmpeg may leave a
+// span open when it reaches EOF; the quality normaliser closes it at the probed duration.
+func parseFreezedetect(stderr string) []Interval {
+	var out []Interval
+	var open int64 = -1
+	for _, line := range strings.Split(stderr, "\n") {
+		if m := freezeStartRe.FindStringSubmatch(line); m != nil {
+			if s, err := strconv.ParseFloat(m[1], 64); err == nil {
+				open = int64(s * 1000)
+			}
+			continue
+		}
+		if m := freezeEndRe.FindStringSubmatch(line); m != nil && open >= 0 {
 			if e, err := strconv.ParseFloat(m[1], 64); err == nil && int64(e*1000) > open {
 				out = append(out, Interval{StartMs: open, EndMs: int64(e * 1000)})
 			}

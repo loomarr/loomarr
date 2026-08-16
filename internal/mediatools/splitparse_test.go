@@ -1,6 +1,9 @@
 package mediatools
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 const sampleFFmpegStderr = `Input #0, matroska,webm, from 'comp.mp4':
   Duration: 00:01:29.50, start: 0.000000, bitrate: 1200 kb/s
@@ -9,6 +12,10 @@ const sampleFFmpegStderr = `Input #0, matroska,webm, from 'comp.mp4':
 [silencedetect @ 0xabc] silence_start: 3.36
 [silencedetect @ 0xabc] silence_end: 5.84 | silence_duration: 2.48
 [silencedetect @ 0xabc] silence_start: 87.1
+[freezedetect @ 0xdef] freeze_start: 10.5
+[freezedetect @ 0xdef] freeze_duration: 12.25
+[freezedetect @ 0xdef] freeze_end: 22.75
+[freezedetect @ 0xdef] freeze_start: 80.0
 `
 
 func TestParseBlackdetect(t *testing.T) {
@@ -33,6 +40,31 @@ func TestParseSilencedetect_PairsStartsAndEnds(t *testing.T) {
 	// duration clamp downstream — dropping it would miss the final boundary.
 	if got[1].StartMs != 87100 || got[1].EndMs != got[1].StartMs {
 		t.Errorf("unclosed tail = %+v", got[1])
+	}
+}
+
+func TestBoundaryGaps_OffsetsAChunkAndClosesTrailingSilence(t *testing.T) {
+	stderr := "black_start:1 black_end:2 black_duration:1\n" +
+		"silence_start: 8\n"
+	black, silence := boundaryGaps(stderr, 600_000, 610_000)
+	if want := []Interval{{StartMs: 601_000, EndMs: 602_000}}; !reflect.DeepEqual(black, want) {
+		t.Fatalf("black = %+v, want %+v", black, want)
+	}
+	if want := []Interval{{StartMs: 608_000, EndMs: 610_000}}; !reflect.DeepEqual(silence, want) {
+		t.Fatalf("silence = %+v, want %+v", silence, want)
+	}
+}
+
+func TestParseFreezedetect_PairsStartsAndEnds(t *testing.T) {
+	got := parseFreezedetect(sampleFFmpegStderr)
+	if len(got) != 2 {
+		t.Fatalf("freeze intervals = %+v, want a pair + an unclosed tail", got)
+	}
+	if got[0] != (Interval{StartMs: 10500, EndMs: 22750}) {
+		t.Errorf("paired freeze = %+v", got[0])
+	}
+	if got[1] != (Interval{StartMs: 80000, EndMs: 80000}) {
+		t.Errorf("unclosed freeze tail = %+v", got[1])
 	}
 }
 

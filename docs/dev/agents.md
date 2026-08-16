@@ -17,7 +17,7 @@ make agent-verify BASE=origin/main
 make agent-stop
 ```
 
-`agent-baseline` caches a successful `make check` by clean commit, Go toolchain, operating system, and
+`agent-baseline` caches a successful `make check` by clean commit, Go and Rust toolchains, operating system, and
 architecture. Worktrees at the same commit wait for one proof and reuse it. Dirty trees always run the
 gate and never populate the cache.
 
@@ -52,12 +52,17 @@ make agent-worktree TOPIC=fix/example
 ```
 
 The command creates a sibling worktree, runs `pnpm install --frozen-lockfile`, runs codegen, and creates
-the ignored `.agent-data/` and `.artifacts/` directories. `BOOTSTRAP_SKIP_FE=1` is available for a
-known Go-only task.
+the ignored `.agent-data/` and `.artifacts/` directories. It also prepares the isolated database with
+a `developer` admin and completed setup, then enables automatic dev login. Opening the worktree's Vite
+URL therefore lands directly in the app. Both provisioning and login reuse the production domain
+paths; no shipped server gains a bootstrap shortcut. Set `AGENT_DEV_IDENTITY=0` when the task is the
+first-run wizard itself. `BOOTSTRAP_SKIP_FE=1` is available for a known Go-only task.
 
 The harness does not copy `.env` by default. `COPY_ENV=1` is an explicit opt-in for integration work;
 the copy is mode `0600`. Even then, secondary worktrees override the local SQLite path and runtime
 ports after sourcing `.env`, preventing two agents from sharing a database or listener accidentally.
+The automatic developer exists only in that isolated database; the primary database and its
+authentication policy are never changed.
 
 ## Runtime isolation
 
@@ -80,7 +85,7 @@ left untouched. CI exercises this ownership contract on both Linux (`/proc`) and
 
 ## Doctor and cleanup
 
-`make doctor` verifies the required toolchain and reports worktrees, per-worktree addresses, the Go
+`make doctor` verifies the required Go/Rust/frontend toolchain and reports worktrees, per-worktree addresses, the Go
 cache size, smoke-artifact size, a secondary worktree parked on `main`, and image artifacts placed in
 the repository root. It never deletes anything.
 

@@ -8,6 +8,7 @@
 package httpx
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"time"
@@ -41,15 +42,7 @@ const (
 // whole-request budget (connect + headers + body), which is what we want for a
 // homelab service that may hang rather than refuse.
 func New(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			// Conservative pooled defaults; a homelab has few upstreams.
-			MaxIdleConns:        20,
-			MaxIdleConnsPerHost: 4,
-			IdleConnTimeout:     90 * time.Second,
-		},
-	}
+	return newClient(timeout, newTransport(), nil)
 }
 
 // NewNamed is New plus outbound metrics: the returned client's transport is
@@ -58,9 +51,7 @@ func New(timeout time.Duration) *http.Client {
 // name: "tunarr", "library", "llm", …); health probes stay on plain New to keep
 // the metric to the operational RPC path.
 func NewNamed(target string, timeout time.Duration) *http.Client {
-	c := New(timeout)
-	c.Transport = metrics.InstrumentTransport(target, c.Transport)
-	return c
+	return newNamedClient(target, timeout, newTransport())
 }
 
 // NewStreaming returns an *http.Client for long streaming reads — an Ollama model
@@ -71,15 +62,62 @@ func NewNamed(target string, timeout time.Duration) *http.Client {
 // are still bounded, so a dead host fails fast rather than hanging forever. Use
 // New (not this) for request/response RPCs — this is for streams only (§8.1 pull).
 func NewStreaming() *http.Client {
+	return newStreamingClient(&http.Transport{
+		DialContext:           (&net.Dialer{Timeout: dialBudget}).DialContext,
+		TLSHandshakeTimeout:   dialBudget,
+		ResponseHeaderTimeout: 30 * time.Second,
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   4,
+		IdleConnTimeout:       90 * time.Second,
+	})
+}
+
+func newTransport() http.RoundTripper {
+	return &http.Transport{
+		// Conservative pooled defaults; a homelab has few upstreams.
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
+	}
+}
+
+func newClient(
+	timeout time.Duration,
+	next http.RoundTripper,
+	onRetry func(metrics.OutboundRetryReason),
+) *http.Client {
+	return &http.Client{
+		Timeout:       timeout,
+		Transport:     newRetryTransport(next, onRetry),
+		CheckRedirect: getOnlyRedirects,
+	}
+}
+
+func newNamedClient(target string, timeout time.Duration, next http.RoundTripper) *http.Client {
+	c := newClient(timeout, next, func(reason metrics.OutboundRetryReason) {
+		metrics.OutboundRetried(target, reason)
+	})
+	// Instrumentation stays outside the retry transport: latency, request count,
+	// status, and inbound fan-out describe one logical request. The retry counter
+	// above accounts separately for each additional attempt.
+	c.Transport = metrics.InstrumentTransport(target, c.Transport)
+	return c
+}
+
+func newStreamingClient(next http.RoundTripper) *http.Client {
 	return &http.Client{
 		// No whole-request Timeout on purpose — ctx cancels the stream.
-		Transport: &http.Transport{
-			DialContext:           (&net.Dialer{Timeout: dialBudget}).DialContext,
-			TLSHandshakeTimeout:   dialBudget,
-			ResponseHeaderTimeout: 30 * time.Second,
-			MaxIdleConns:          20,
-			MaxIdleConnsPerHost:   4,
-			IdleConnTimeout:       90 * time.Second,
-		},
+		Transport:     newRetryTransport(next, nil),
+		CheckRedirect: getOnlyRedirects,
 	}
+}
+
+func getOnlyRedirects(_ *http.Request, via []*http.Request) error {
+	if len(via) > 0 && via[0].Method != http.MethodGet {
+		return http.ErrUseLastResponse
+	}
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return nil
 }

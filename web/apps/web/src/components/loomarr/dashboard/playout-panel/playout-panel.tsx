@@ -1,8 +1,13 @@
-import type { ChannelHealth, PlayoutGPU } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
+import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
+import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
+import type { PreparedReadiness } from "@loomarr/api/models/preparedReadiness";
+import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { Info } from "lucide-react";
-import { Badge, Card, PanelRow, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { PanelRow } from "@/components/ui/panel-row";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
 // PlayoutPanel — the dashboard's single live-playout picture (§12, §9.1 V47, GET /v1/playout/status).
@@ -74,6 +79,67 @@ const GpuRow = ({ gpu }: { gpu: PlayoutGPU }) => {
   );
 };
 
+const PreparedRow = ({ prepared }: { prepared?: PreparedReadiness }) => {
+  if (!prepared?.available) {
+    return (
+      <div className="border-border border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-medium text-sm">Prepared playback unavailable</p>
+          <Badge variant="caution">Live fallback only</Badge>
+        </div>
+        <p className="mt-1 text-muted-foreground text-xs">
+          {prepared?.unavailableReason ?? "The readiness planner is not wired."}
+        </p>
+      </div>
+    );
+  }
+
+  if (!prepared.lastRunAt) {
+    return (
+      <div className="border-border border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-medium text-sm">Prepared playback</p>
+          {prepared.running && <Badge variant="neutral">Warming</Badge>}
+        </div>
+        <p className="mt-1 text-muted-foreground text-xs">
+          {prepared.running ? "The first readiness pass is running…" : "Readiness pass hasn’t run yet."}
+        </p>
+      </div>
+    );
+  }
+
+  const allReady = prepared.readyChannels === prepared.channels;
+  return (
+    <div className="border-border border-b px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">
+            Prepared playback
+          </p>
+          <p className="mt-0.5 font-medium text-sm">
+            {prepared.channels === 0
+              ? "No scheduled channels in this window"
+              : `${prepared.readyChannels} of ${prepared.channels} channels ready`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {prepared.running && <Badge variant="neutral">Pass running</Badge>}
+          <Badge variant={allReady ? "lock" : "caution"}>{allReady ? "Ready" : "Warming"}</Badge>
+        </div>
+      </div>
+      <p className="mt-1.5 text-muted-foreground text-xs">
+        {pluralize(prepared.missingBindings, "scheduled binding")} unprepared ·{" "}
+        {pluralize(prepared.queuedPublications, "publication")} warming
+      </p>
+      <p className="mt-1 text-muted-foreground text-xs">
+        {formatBytes(prepared.remainingBytes)} of {formatBytes(prepared.budgetBytes)} used ·{" "}
+        {formatBytes(prepared.protectedBytes)} protected · updated {formatRelative(prepared.lastRunAt)}
+      </p>
+      {prepared.lastError && <p className="mt-1 text-caution text-xs">Last pass: {prepared.lastError}</p>}
+    </div>
+  );
+};
+
 const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   const slow = channel.speed > 0 && channel.speed < 1;
   return (
@@ -103,7 +169,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
           </Tooltip>
         </div>
         <p className="mt-0.5 truncate text-muted-foreground text-xs">
-          {`${channel.target} · ${channel.mode} · ${pluralize(channel.viewers, "viewer")}`}
+          {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
         </p>
       </PanelRow.Main>
 
@@ -137,13 +203,16 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   );
 };
 
-const PlayoutPanel = ({ status, loading, className }: PlayoutPanelProps) => {
+const PlayoutPanel = ({ status, loading, title = "Playout", className }: PlayoutPanelProps) => {
   const channels = status?.channels ?? [];
 
   return (
-    <Card className={cn("flex flex-col overflow-hidden p-0", className)}>
+    <Card className={cn("flex shrink-0 flex-col overflow-hidden p-0", className)}>
       <div className="flex items-center justify-between gap-3 border-border border-b px-4 py-3">
-        <h2 className="font-semibold text-base">Playout</h2>
+        <h2 className="font-semibold text-base">{title}</h2>
+        {!loading && status != null && (
+          <Badge variant="neutral">{status.running ? "Loomarr" : "Tunarr"}</Badge>
+        )}
       </div>
 
       {loading && <p className="px-4 py-6 text-muted-foreground text-sm">Reading playout status…</p>}
@@ -158,8 +227,12 @@ const PlayoutPanel = ({ status, loading, className }: PlayoutPanelProps) => {
 
       {!loading && status?.running && <GpuRow gpu={status.gpu} />}
 
+      {!loading && status?.running && <PreparedRow prepared={status.prepared} />}
+
       {!loading && status?.running && channels.length === 0 && (
-        <p className="px-4 py-6 text-muted-foreground text-sm">Nothing is being watched right now.</p>
+        <p className="px-4 py-6 text-muted-foreground text-sm">
+          No live fallback encoders are active. Prepared viewers do not create a row here.
+        </p>
       )}
 
       {status?.running && channels.length > 0 && (

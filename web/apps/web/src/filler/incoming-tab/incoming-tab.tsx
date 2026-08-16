@@ -1,7 +1,10 @@
-import { fillerApi, toProblem, unwrap } from "@loomarr/api";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ErrorState, IncomingPanel } from "@/components/loomarr";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { IncomingPanel } from "@/components/loomarr/filler/incoming-panel";
 import { TunePanel } from "../tune-panel";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { IncomingTabProps } from "./incoming-tab.type";
@@ -34,6 +37,11 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const recentlyFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
   const rejected = unwrap(incomingQuery.data, (b) => b.rejected) ?? [];
   const stageOrder = unwrap(incomingQuery.data, (b) => b.stageOrder) ?? [];
+  const clipsTotal = unwrap(incomingQuery.data, (b) => b.clipsTotal) ?? clips.length;
+  const decisionsTotal = unwrap(incomingQuery.data, (b) => b.decisionsTotal) ?? 0;
+  const reelsTotal = unwrap(incomingQuery.data, (b) => b.reelsTotal) ?? reels.length;
+  const rejectedTotal = unwrap(incomingQuery.data, (b) => b.rejectedTotal) ?? rejected.length;
+  const recentlyFiledTotal = unwrap(incomingQuery.data, (b) => b.recentlyFiledTotal) ?? recentlyFiled.length;
 
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on
@@ -67,27 +75,42 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't remove those clips"),
     },
   });
+  const rewind = fillerApi.useRewindFillerClip({
+    mutation: {
+      onSettled: settle,
+      onSuccess: () => {
+        toast.success("Clip queued again", { description: "Completed upstream work was preserved." });
+        invalidateLifecycle();
+      },
+      onError: (error) => toast.error(toProblem(error).title ?? "Couldn't retry that clip"),
+    },
+  });
   // ⚠ The era-confirm PATCH mutation that used to live here is GONE, not merely unused (§10 V54).
   // "Looks right" files through `fileClips` with `asSuggested`, so the single-clip tag route has no
   // caller on this tab — and a mutation left wired to nothing is how a later reader concludes there
   // are two ways to confirm an era and picks the one that no longer files. The route still exists
   // and is still the Catalog's tag dialog's writer; what is deleted is this tab's second path to it.
-  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending;
+  const busy = removeClips.isPending || fileClips.isPending || holdClips.isPending || rewind.isPending;
 
   return (
-    <div id="panel-incoming" role="tabpanel" aria-labelledby="tab-incoming" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {incomingQuery.error != null && (
         <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
       )}
       {/* ⚠ ABOVE the queue, matching the mock: the policy is the context the rows below are
           read in. Its counts come from this tab's query rather than a second one — the panel
           reports on the queue it sits over. */}
-      <TunePanel filed={recentlyFiled.length} needsYou={clips.filter((c) => c.needsDecision).length} />
+      <TunePanel filed={recentlyFiledTotal} needsYou={decisionsTotal} />
       <IncomingPanel
         clips={clips}
+        clipsTotal={clipsTotal}
+        decisionsTotal={decisionsTotal}
         reels={reels}
+        reelsTotal={reelsTotal}
         recentlyFiled={recentlyFiled}
+        recentlyFiledTotal={recentlyFiledTotal}
         rejected={rejected}
+        rejectedTotal={rejectedTotal}
         stageOrder={stageOrder}
         // ⚠ Restore rides the EXISTING bulk route with `restore: true`, not a second endpoint.
         // The V51 plan sketched `POST /v1/filler/clips/{hash}/restore`; V51b deliberately did not
@@ -120,6 +143,14 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         // is shared with the Catalog tab, whose rows are keyed that way — and handing it a path
         // meant the lookup matched nothing and no dialog ever opened.
         onEditTags={(ask) => onEditTags(ask.hash)}
+        onReclassify={(ask) => {
+          setBusyClip(ask.path);
+          rewind.mutate({ data: { hash: ask.hash, from: "tag" as never } });
+        }}
+        onRetryStage={(clip, stage) => {
+          setBusyClip(clip.path);
+          rewind.mutate({ data: { hash: clip.hash, from: stage as never } });
+        }}
         // "Don't use it" removes the clip from the CATALOG. The file stays where the operator
         // put it — the server's action is a tombstone, never a delete.
         onDismiss={(ask) => {

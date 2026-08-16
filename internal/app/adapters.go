@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -30,19 +31,52 @@ func (t recurateThresholds) MinScorePct(context.Context) int {
 }
 func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
 
-// liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface
-// (Connect returns a struct there, a tuple here). Thin, wiring-only.
-type liveTVAdapter struct{ c *setup.LiveTVConnector }
+// liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
+// resolver matters on Postgres: another replica can advance the checkpoint without changing this
+// process's controller Runtime, so request-path status must read DurableView instead.
+type liveTVAdapter struct {
+	c    *setup.LiveTVConnector
+	urls func(context.Context) (setup.LiveTVURLs, error)
+}
 
-func (a liveTVAdapter) Connect(ctx context.Context) (bool, bool, error) {
-	res, err := a.c.Connect(ctx)
-	return res.TunerAdded, res.ListingAdded, err
+func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
+	if a.c == nil || a.urls == nil {
+		return false, nil
+	}
+	urls, err := a.urls(ctx)
+	if err != nil {
+		return false, err
+	}
+	return a.c.WiredTarget(ctx, urls)
 }
-func (a liveTVAdapter) Reconnect(ctx context.Context) (int, error) {
-	res, err := a.c.Reconnect(ctx)
-	return res.TunerRemoved, err
+
+// transportTunerRescanner refreshes the tuner catalog selected by the durable
+// transport checkpoint. This differs intentionally from LiveTVConnector's ordinary
+// applied-configuration resolver during preparation: internal transport opens before
+// it becomes the applied UI backend, and pause/detach must disappear from that prepared
+// M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
+type transportTunerRescanner struct {
+	c    *setup.LiveTVConnector
+	urls func(context.Context) (setup.LiveTVURLs, error)
 }
-func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) { return a.c.Wired(ctx) }
+
+func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {
+	if r.c == nil || r.urls == nil {
+		return nil
+	}
+	urls, err := r.urls(ctx)
+	if err != nil {
+		return err
+	}
+	return r.c.RescanTarget(ctx, urls)
+}
+
+func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
+	if r.c == nil {
+		return nil
+	}
+	return r.c.PokeGuideRefresh(ctx)
+}
 
 // jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
 // api.JobView (so the api package doesn't import scheduler) and the unknown-job error to the
@@ -57,11 +91,37 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	out := make([]api.JobView, 0, len(st))
 	for _, j := range st {
 		out = append(out, api.JobView{
-			Name: j.Name, Title: j.Title, Description: j.Description,
+			Name: j.Name, Group: string(j.Group), Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
 			NextRun: j.NextRun, Running: j.Running, Paused: j.Paused,
 			DisabledReason: j.DisabledReason, Overdue: j.Overdue,
+		})
+	}
+	return out, nil
+}
+
+func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
+	history, err := a.s.History(ctx, name)
+	if err == scheduler.ErrUnknownJob {
+		return api.JobHistoryView{}, api.ErrJobNotFound
+	}
+	if err != nil {
+		return api.JobHistoryView{}, err
+	}
+	out := api.JobHistoryView{
+		WindowStart: history.WindowStart, RunCount: history.RunCount,
+		FailureCount: history.FailureCount, AverageDurationMs: history.AverageDurationMs,
+		Truncated: history.Truncated, Recent: make([]api.JobExecutionView, 0, len(history.Recent)),
+	}
+	for _, run := range history.Recent {
+		trigger := "scheduled"
+		if run.Manual {
+			trigger = "manual"
+		}
+		out.Recent = append(out.Recent, api.JobExecutionView{
+			StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, DurationMs: run.DurationMs,
+			Result: run.Result, Error: run.Error, Trigger: trigger,
 		})
 	}
 	return out, nil
@@ -229,9 +289,10 @@ type libraryBoxSets struct {
 	lib *library.Client
 	ttl time.Duration
 
-	mu      sync.Mutex
-	index   map[provision.Key][]string
-	fetched time.Time
+	mu         sync.Mutex
+	index      map[provision.Key][]string
+	fetched    time.Time
+	generation library.ConnectionGeneration
 }
 
 func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
@@ -247,16 +308,21 @@ func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]stri
 func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.index != nil && time.Since(a.fetched) < a.ttl {
-		return a.index, nil
+	lib := a.lib.Snapshot()
+	generation, err := lib.Connection().Generation()
+	if err != nil {
+		return nil, err
 	}
-	colls, err := a.lib.Collections(ctx)
+	if index, ok := a.cachedIndex(generation, time.Now()); ok {
+		return index, nil
+	}
+	colls, err := lib.Collections(ctx)
 	if err != nil {
 		return nil, err
 	}
 	idx := make(map[provision.Key][]string)
 	for _, c := range colls {
-		members, err := a.lib.CollectionMembers(ctx, c.ID)
+		members, err := lib.CollectionMembers(ctx, c.ID)
 		if err != nil {
 			// One unreadable collection must not discard the whole index — the rest is still
 			// true, and a missing membership only ever admits a title (§2.2 fail-open).
@@ -268,8 +334,17 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			}
 		}
 	}
-	a.index, a.fetched = idx, time.Now()
+	a.index, a.fetched, a.generation = idx, time.Now(), generation
 	return idx, nil
+}
+
+func (a *libraryBoxSets) cachedIndex(
+	generation library.ConnectionGeneration, now time.Time,
+) (map[provision.Key][]string, bool) {
+	if a.index == nil || a.generation != generation || now.Sub(a.fetched) >= a.ttl {
+		return nil, false
+	}
+	return a.index, true
 }
 
 // libraryCollections adapts library.Client to api.CollectionService: the read-only list
@@ -305,6 +380,13 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 		return 0, false, nil // only a tmdb-keyed movie has a resolvable collection
 	}
 	cid, err := a.tmdb.CollectionID(ctx, mt, id)
+	if errors.Is(err, tmdb.ErrAPIKeyRequired) {
+		// The adapter is deliberately wired before TMDB is configured. An absent or
+		// freshly cleared key means franchise metadata is unavailable, not that the
+		// channel reconcile failed. Returning ok=false leaves the entry unresolved so
+		// a later configured reconcile can heal it.
+		return 0, false, nil
+	}
 	if err != nil {
 		return 0, false, err
 	}
@@ -313,8 +395,9 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 
 // timelineThumbResolver adapts *tmdb.Client to api.TimelineThumbResolver — the Watch player's
 // schedule strip asks it for a preview image per programme block (§9.1 V47). A series episode gets
-// its OWN still (per-episode), a movie its poster. The image always comes from TMDB, but the KEY may
-// be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges TVDB→TMDB via /find first.
+// its OWN still (per-episode), a movie its landscape backdrop. The image always comes from TMDB,
+// but the KEY may be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges
+// TVDB→TMDB via /find first.
 // Every failure is swallowed to "" so a missing image never fails the strip.
 //
 // ⚠ Since V52 phase 7 the URL it returns is OURS, not TMDB's: the still is adopted into the image
@@ -323,12 +406,25 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 type timelineThumbResolver struct {
 	tmdb   *tmdb.Client
 	images *images.Service
+	fetch  timelineImageFetcher
+}
+
+// Kept as the narrow capability the resolver needs so the cold-image behavior is testable without
+// a network. *images.Fetcher is the production implementation shared with the scheduled job.
+type timelineImageFetcher interface {
+	FetchNow(ctx context.Context, work []images.Image, budget time.Duration) map[string]images.Image
 }
 
 // timelineThumbWidth is the rung the strip's `src` points at. The blocks are small — a strip of
 // preview chips, not hero art — so this is the bottom of the 16:9 ladder; `thumbImage` carries the
 // full srcset for a client that wants a denser rendition.
 const timelineThumbWidth = 300
+
+// A cold programme image is interactive data, not background decoration: the first Guide/Watch
+// response must either carry real bytes or omit it cleanly. This is a ceiling for one source image, and
+// the Guide already resolves channel rows concurrently; a slow TMDB cannot hold the request open
+// without bound.
+const timelineThumbFetchBudget = 3 * time.Second
 
 func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season, episode int) (string, string) {
 	mt, provider, id, ok := provision.ParseKey(provision.Key(key))
@@ -348,8 +444,9 @@ func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season,
 	case mt == provision.Series: // provider == "tmdb"
 		src, err = a.tmdb.EpisodeStillURL(ctx, id, season, episode)
 	case provider == "tmdb": // a movie
-		src, err = a.tmdb.PosterURL(ctx, mt, id)
-		role = images.RolePoster // ⚠ a movie's image is its 2:3 poster, so a different ladder
+		// A backdrop is the movie equivalent of an episode still: landscape art for the same
+		// 16:9 preview frame. A portrait poster made movie cards narrow or forced a crop.
+		src, err = a.tmdb.BackdropURL(ctx, mt, id)
 	default:
 		return "", "" // a tvdb-keyed movie is not a shape we produce
 	}
@@ -369,15 +466,25 @@ func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season,
 	if err != nil {
 		return "", ""
 	}
-	// ⚠ **Adopted but not yet fetched ⇒ no URL.** The row is keyed on a hash of the source URL
-	// until the bytes land, and the fetch then re-keys it and deletes that row — so a URL built
-	// from a placeholder hash would 404 within the minute. The strip renders its fallback and the
-	// every-minute job fills it in. Deliberately NOT a synchronous fetch: a timeline block is a
-	// passive render, and putting TMDB's latency on it is exactly what Adopt refuses to do.
+	// ⚠ **Adopted but not yet fetched ⇒ warm it now, then use the RETURNED row.** FetchNow re-keys
+	// the URL-placeholder hash to the content hash, so continuing to use `rec` would mint a URL
+	// that 404s as soon as the fetch finishes. A failed/over-budget warm-up emits no image, never a
+	// gray placeholder; the scheduled job remains the retry path.
 	if rec.OriginFetchedAt.IsZero() {
-		return "", ""
+		if a.fetch == nil {
+			return "", ""
+		}
+		warm := a.fetch.FetchNow(ctx, []images.Image{rec}, timelineThumbFetchBudget)
+		var ok bool
+		rec, ok = warm[src]
+		if !ok {
+			return "", ""
+		}
 	}
-	return a.images.URLFor(rec.Hash, timelineThumbWidth, images.FormatJPEG), rec.Hash
+	// This URL is consumed only by Loomarr's in-app Watch timeline. Keep it on the page's own
+	// origin; server.public_url is the machine-client address and may be unreachable from the
+	// viewer even while the app itself is open.
+	return a.images.PathFor(rec.Hash, timelineThumbWidth, images.FormatJPEG), rec.Hash
 }
 
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
@@ -405,16 +512,6 @@ func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tm
 		OfficialRating: d.OfficialRating,
 		Genres:         d.Genres,
 	}, true, nil
-}
-
-// noopValidator is the acquisition validator when TMDB isn't configured: it can't
-// re-check existence, so it treats every id as existing. The grounding guarantee
-// (the id was surfaced by the catalog tool) still holds; only the belt-and-
-// suspenders TMDB exists-check is skipped. Configure TMDB_API_KEY to enable it.
-type noopValidator struct{}
-
-func (noopValidator) Exists(context.Context, provision.MediaType, int) (bool, error) {
-	return true, nil
 }
 
 // --- filler bridging adapters (§10) ---

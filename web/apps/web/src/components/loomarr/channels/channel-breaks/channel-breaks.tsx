@@ -1,6 +1,7 @@
-import { channelsApi, unwrap } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
-import { cn } from "@/lib";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
+import { cn } from "@/lib/utils";
 import { PodTimeline } from "../../filler/pod-timeline";
 import type { ChannelBreaksProps } from "./channel-breaks.type";
 

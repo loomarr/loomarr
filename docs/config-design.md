@@ -15,7 +15,11 @@ Loomarr's model is the *arr convention with one addition:
 | **Seerr** | Wizard-driven; settings persisted by the app | Onboarding *is* configuration: wizard steps are settings forms with live tests |
 | **Loomarr** | Both of the above, **plus deterministic env pinning** | GitOps users pin any key via env; it wins and locks the field with provenance |
 
-**The classification rule (so future keys self-classify):** a setting is **bootstrap** iff it is needed *before the database opens* or describes *process topology* — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything else is app-managed and env-pinnable.
+**The storage-tier rule (so future keys self-classify):** a setting is **bootstrap** iff it is
+needed before the database opens or shapes the process envelope that must exist before the app
+graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything
+else is app-managed and env-pinnable. That answers **where a value is stored**, not **when a saved
+value is safe to apply**: app-managed settings still classify into the runtime lifecycles in §3.
 
 **The bootstrap FILE tier (revised — V5).** Bootstrap keys were env-**only**, because the registry lives in the database they are needed to open. That reasoning is unchanged; what it did not anticipate is the wizard needing to **write** one. The Database step (§13) asks "SQLite or PostgreSQL?" and must persist the answer — it cannot write into the database it is choosing, and it cannot set an env var that survives a restart. A file beside the database is the only writable store that exists before the database does. So:
 
@@ -25,14 +29,22 @@ Loomarr's model is the *arr convention with one addition:
 - **Env still wins.** A GitOps pin is never overridden by something the wizard wrote; the wizard reports the key as pinned instead, the same contract the registry's `pinned` provenance already gives the Settings UI.
 - **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
-- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
+- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
 
-**The per-channel tier (added with `programming-design.md`):** programming heuristics introduce settings that vary *per channel* — the ChannelPolicy (scope, audience ceiling, separation windows, ordering, seasonal mode). These are **not registry settings**: a policy instance is channel *data*, stored on the channel row, edited in proposal review / the channel editor, and never env-addressable. What the registry holds is their **global defaults**. Full precedence, per key:
+**The per-channel tier (added with `programming-design.md`):** a policy instance is channel
+*data*, stored on the channel row, edited in proposal review / the channel editor, and never
+env-addressable. Some policy fields also have an env-pinnable registry fallback today: the rolling
+schedule horizon, filler break frequency, playout backend, and auto-curation limits. Their full
+precedence is:
 
-`channel policy > registry default (env-pinnable per the normal rule) > built-in`
+`channel policy > registry default > built-in`
 
-The test for which tier a new knob belongs to: *would two channels sensibly want different values?* Yes → policy field with a registry default. No → plain registry setting.
+Other programming fields — including ordering, separation, and seasonality — currently resolve
+directly from channel policy to their built-in behavior. They must not be presented as Settings
+defaults until a consumed registry tier exists. The test for a future knob remains: *would two
+channels sensibly want different values?* Yes → policy field, with a registry default only when the
+product needs fleet-wide control. No → plain registry setting.
 
 **Self-updating channels (`programming-design.md` §8.2) follow this tier exactly.** A channel opts into scheduled re-curation via a per-channel `policy.autoCurate` field (rides `policy_json`, no schema change — like `rules`/`filler`/`window` before it), and the two thresholds it's bounded by have the classic split: the global defaults `recurate.min_score_pct` (the quality bar a net-new title must clear) and `recurate.max_titles` (the growth cap) are **registry settings** (env-pinnable, hot-applied per call), while `policy.autoCurate` may carry a per-channel **override** of either. `job.recurate.schedule` is a plain global `KindCron` job knob (all channels re-curate on one clock). The registry values are read live inside the re-curation grant, so raising the fleet-wide bar takes effect on the next run with no restart.
 
@@ -135,24 +147,101 @@ exactly the old contract.
 
 **Secrets via files:** every secret env var also accepts the Docker-secrets idiom — `LIBRARY_TOKEN_FILE=/run/secrets/emby` loads the value from the file (trailing newline stripped). `<VAR>` and `<VAR>_FILE` both set → boot error (ambiguous).
 
-**Hot-apply (no restart to reconfigure):**
-- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for Postgres replicas, on a ~30s read-through interval (main doc §17).
-- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches URL/token from the snapshot at call time — saving a new Emby token means the *next* lookup uses it.
+**Runtime application has three lifecycles; “app-managed” does not mean “hot-applied”:**
+
+1. **Per-operation snapshot.** Connections and other multi-request adapters resolve all coupled
+   values once before an operation begins. A save affects the next operation, never the middle of
+   the current one.
+2. **Per-run policy.** Job intervals, limits, and selection policy resolve when the next tick, pass,
+   reconcile, or pod begins. They change what future work decides without rebuilding the module
+   that performs it.
+3. **Generation-scoped topology/resource.** A filesystem root or similar resource that gives
+   durable relative data its meaning is resolved once while `BuildHandler` constructs a generation.
+   Saving a replacement persists the **desired** value immediately, but every module continues to
+   use the generation's immutable **applied** value until Loomarr restarts in place. This is not a
+   failed hot-apply: it is the safety boundary that prevents one catalog row from being interpreted
+   under two roots while requests and jobs overlap.
+
+The concrete rules are:
+
+- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for
+  Postgres replicas, by one generation-owned reader every 30 seconds (main doc §5). Each tick uses
+  one full-table read that returns values and environment-override ownership together, then
+  publishes both under one lock; a failed read keeps the prior complete generation and retries on
+  the next tick. Cancelling the application generation stops the reader. SQLite starts no reader
+  and incurs no polling queries because it remains single-process by contract.
+- **One PATCH is one durable commit.** Validation, env-pin refusal, and result reporting remain
+  per key: invalid and pinned edits are reported and excluded, while every valid upsert or clear in
+  the request commits in one store transaction with its own canonical value and shared audit
+  timestamp/author. The in-memory snapshot reloads only after that commit. This is load-bearing for
+  coupled settings such as `{library.flavor, library.url, library.token}`: a Postgres replica that
+  refreshes during another replica's save sees the complete old tuple or the complete new tuple,
+  never durable intermediate rows assembled from both generations.
+- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches one
+  complete connection from the snapshot at call time. Every media-library operation resolves
+  `library.flavor`, `library.url`, and `library.token` together with `ResolveMany`, then carries that
+  immutable `{flavor, url, token}` through all of its requests. Saving a Jellyfin flavor, URL, and
+  token therefore enables the *next* lookup; rotating the token or changing flavor affects the next
+  operation; and an operation already in flight never mixes a credential with another server or
+  auth scheme. An incomplete triple is unconfigured and makes no outbound request. The library and
+  other optional adapters remain constructed while configuration is empty, so saving, rotating, or
+  clearing settings takes effect without rebuilding `BuildHandler`. In particular, every Tunarr
+  Programmer operation snapshots its URL, transcode override, and filler attach policy together; a
+  settings save affects the next operation, never the middle of the current one. Endpoint-derived
+  caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr
+  cannot reuse a transcode id or content index learned from the previous instance. Saving or
+  clearing `tmdb.api_key` likewise enables or disables TMDB search, channel icon suggestions, and
+  suggestion grounding on the next operation without a restart. `/v1/search?scope=all`
+  independently considers the complete live media-library connection and TMDB key, so either
+  configured corpus remains useful on its own.
 - **Intervals re-read per tick:** tickers ask the snapshot each cycle; changing `CHANNEL_RECONCILE_EVERY` takes effect next tick.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
-- `RestartRequired` exists as a flag for honesty and applies only to the bootstrap set. **Revised (V5): the UI now edits exactly one of them** — the wizard's Database step writes `DATABASE_URL` to the bootstrap file (above). That is precisely why the flag stops being decorative: the step that writes it is also the step that must say a restart is coming.
+- **`filler.dir` and `filler.watch_dir` are one generation-scoped storage layout.** The clip root is
+  the interpretation base for every catalog path; the watch folder drains into it. Applying either
+  one independently would let a saved watch path move files into the old root, or let playout serve
+  the new root while the pipeline still writes the old one. One immutable pair is handed to scan,
+  intake, fetch, split, pipeline, artwork adoption, media serving, source/watch status, and internal
+  playout. The settings Test probes the desired pair before restart; operational routes report and
+  use the applied pair.
+- **The configured clip spelling and Loomarr's traversal spelling have distinct roles.** Loomarr
+  may resolve symlinks and filesystem aliases for safe local traversal, but it registers the
+  operator-configured shared-volume path with Tunarr. A path that Loomarr can resolve is not
+  necessarily present under the same spelling in Tunarr's mount namespace.
+- `RestartRequired` is honest for both bootstrap drift and generation-scoped app-setting drift.
+  **Revised (V5): the UI edits one bootstrap key** — the wizard's Database step writes
+  `DATABASE_URL` to the bootstrap file (above). **Revised again here:** app-managed storage topology
+  can also be saved in the registry while waiting on the same restart control. Storage tier and
+  runtime lifecycle are orthogonal.
 
   **Revised again (V13): the flag is now computed, and there is a restart control to act on it.**
   It was a hardcoded `true` on the database switchover response — the only place that could set
   it — which made it a property of *one endpoint* rather than of the instance. It is now derived
-  by comparing each bootstrap key's **running** value against its **resolved** value, so
-  `GET /v1/system/restart` can name the specific key: *"You changed a boot-time setting
-  (`DATABASE_URL`). Loomarr is still running the old value until it restarts."*
+  by comparing each restart-scoped key's **running/applied** value against its **resolved/desired**
+  value, so
+  `GET /v1/system/restart` can name the specific key: *"You changed `filler.dir`. Loomarr is still
+  running the old value until it restarts."*
   ⚠ **Derived, never a sticky boolean someone remembers to set.** A flag written at the moment of
   an edit is wrong the moment the operator edits it back, and would nag about a restart that is
   no longer needed. Comparing running-vs-resolved cannot drift, because it re-reads the same
-  resolution the app itself uses.
+  resolution the app itself uses. Reverting `filler.dir` or `filler.watch_dir` to the applied value
+  likewise removes it from the pending list; no sticky “restart needed” bit is written.
   The restart mechanism (in-process rebuild, no supervisor, no re-exec) is `design.md` §9.2.
+
+**A storage-layout save is not a data migration.** Loomarr never copies, moves, or deletes the old
+clip library merely because either path was edited. The operator makes the target directory and its
+mount available, moves or copies media deliberately when that is the intent, tests the desired
+layout, then restarts. The next generation reconciles the catalog against the selected root. A
+missing target may be created by the generation; a later create/scan failure degrades filler
+visibly and must not turn into a successful empty scan that prunes the last known catalog. An
+existing ancestor that cannot be inspected far enough to rule out a watch/clip alias fails the
+new generation before any filler consumer starts. That stricter fail-closed case is deliberate:
+continuing with an unverifiable topology could let duplicate intake delete the catalog itself.
+
+**Replica consequence.** Restart state is per running process even though the desired registry
+value is shared. A Postgres deployment must give every Loomarr replica the same filesystem mounts
+and roll every replica before the layout is considered applied fleet-wide. The in-app restart
+endpoint restarts the replica that handled it; a database lock cannot make an unmounted host path
+appear on another machine. SQLite remains one replica by contract.
 
 **Audit:** the settings table carries `updated_at` + `updated_by` (nullable — env/migration writes have none). The UI shows "changed by Matt · 2d ago" per field; same spirit as `approved_by`.
 
@@ -164,16 +253,19 @@ exactly the old contract.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
-- `SESSION_SECRET` has nothing to paste anywhere — **never displayed**; the only affordance is Regenerate.
 - Integration secrets you *entered* (Emby token, Seerr key, TMDB, LLM key) — masked after save (`set · …a1b2` preview), replace-only. The API returns `{set: true, preview, provenance}` — never the value. (The §8.1 hosted `llm.api_key.<provider>` keys follow this exact rule: stored, previewed, never echoed by any GET.)
+
+Authentication sessions have no generated signing secret. A session token is an opaque random
+credential stored only as a SHA-256 hash in the database; cookie authentication resolves that hash
+and the owning user on every request. Session revocation therefore happens through the session row
+or user-disable workflow, never by rotating unrelated application configuration.
 
 **Regeneration side-effects (typed-confirmation dialogs, effects stated up front):**
 
 | Secret | Immediate effect | UX contract |
 | --- | --- | --- |
-| `SESSION_SECRET` | **All sessions revoked — including yours** | Confirm → regen → redirect to login. `API_TOKEN` remains as break-glass, so you cannot lock yourself out. |
 | `API_TOKEN` | Old token dead instantly | Show the new token once prominently; remind that machine clients/scripts must update. |
-| `PLAYOUT_TOKEN` | Every media-server tuner stops — the M3U and XMLTV URLs carry the old token | Show the new `/playout/tuner.m3u?token=…` URL; the media server's tuner entry has to be updated to match, or Live TV goes empty. |
+| `PLAYOUT_TOKEN` | Existing device and signed URLs stop authorizing; the durable Live TV workflow republishes the tuner/listing pair with the new token | Show the new `/playout/tuner.m3u?token=…` URL for manual consumers; automatic wiring is repaired through the backend-transition coordinator. |
 
 **Redaction is systemic, not per-callsite:** the settings service exposes a `Redactor` (the current set of secret values) wired into the `slog` handler — a secret value appearing in any log line is replaced before write. Secrets are excluded from `/v1/setup/status`, from validation error strings (validators must never echo the value), and from RFC 7807 bodies. There is a test that greps captured logs for a known secret and demands zero hits.
 
@@ -186,10 +278,10 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | Page | Contents | Live tests |
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
-| **AI** | Provider (ollama/openai) · URL · model · key · auto-approve + quota · **in-app model picker** (probe + catalog + hot-swap, main doc §8.1) | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
-| **Defaults** | What a NEW channel inherits, and how filler behaves: default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) · filler drop-folder path (a Tunarr `local` source, *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths | drop-folder readable + Tunarr local-source check |
-| **System** | The machine, not the product. Sub-tabs: **Tasks** (the §18.1 job console — schedule, last/next run, Run now) · **Playout** (encoder, tier, `max_channels`, ffmpeg paths) · **Database** (backend + the migration stepper, V11) · **Backup** (download + retention, V12) · **About** (version, schema, `GET /v1/system/version`, V12) | per sub-tab where testable |
-| **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
+| **AI** | Model roles: lineup provider, filler vision/language models, suggestion safety limit, and auto-curation limits. The in-app model picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. Its hosted cards explain the recommended default before a key exists and refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
+| **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
+| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
+| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
 | **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
 ⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
@@ -222,6 +314,18 @@ here. **The lookup half still governs presentation:** keys are monospace and ver
 humanized, because someone arrives holding a literal `job.workers` from a compose file and a row
 reading "Job workers" does not match the string they are carrying.
 
+The exception is an **action-owned value** whose safe write is more than a registry PATCH.
+`llm.model` stays searchable and shows its resolved value, but its action deep-links to the AI
+picker instead of rendering free text: selection also verifies tool capability, preserves the
+branded hosted provider, and hot-swaps the client. Letting the raw table bypass those effects
+would make the escape hatch a second, less-safe implementation of the same product decision.
+
+V55 closes the loophole that made this escape hatch the only home of ordinary settings. Every
+non-advanced key has an owning workflow page; the raw table links to that page, carries the same
+help and environment-takeover affordance as the full field, and exposes the explicit **Clear
+override** operation. Editing remains available for genuine advanced keys and for operators who
+arrive with a literal key, but the table is never the sole UI for a product decision.
+
 Two consequences worth stating, because both are easy to "fix" wrongly later:
 
 - **Three provenance chips, not the mock's four.** The mock adds `generated`, but generated
@@ -234,16 +338,72 @@ Two consequences worth stating, because both are easy to "fix" wrongly later:
   rated *serious*: a sighted mouse user gets a tooltip, a screen-reader user gets an unnamed text
   box. The visible label already exists on the row — it just has to be associated, not duplicated.
 
-**Enum labels are registry-owned.** An enum setting's options are `[]EnumOption{Value, Label}` in the registry — the stored/validated `Value` (`"openai"`, `"emby"`) *plus* its display `Label` (`"OpenAI"`, `"Emby"`). The label is a fact the registry owns and ships to the UI (`enumOptions` on the API entry), so a dropdown never re-derives (and drifts from) proper-noun casing on the client. Adding an option means adding its label in the one place that owns the value.
+**Display semantics are registry-owned.** A setting carries its human label and presentation
+(`plain`, `duration`, `bytes`, `cron`, `path`, `language`) beside its validation kind. Validation
+still decides what may be stored; presentation decides how the same value is explained and edited.
+This keeps `720h` as the stable wire/storage value while every UI says “30 days”, and keeps a byte
+ceiling from appearing as an unexplained integer. Enum options remain
+`[]EnumOption{Value, Label}` for the same reason. The UI may fall back to humanizing an unknown key
+only in the raw escape hatch; workflow forms never derive product copy from identifiers.
 
-**Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). This is the contract-level way to make a field context-aware: e.g. `llm.url` and `llm.api_key` carry `{"llm.provider": {"openai"}}`, so picking **Ollama** (local, no key, model chosen in the picker) hides both, and **OpenAI-compatible** reveals them. The UI evaluates it against the live edits (an unsaved provider switch re-reveals dependents immediately); a hidden field's value is untouched (secrets stay replace-only).
+**Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). `llm.api_key` is hosted-only, while `llm.url` applies to both providers: it is the Ollama host for local AI and the OpenAI-compatible base URL for hosted AI. Hiding the local URL would make a non-default Ollama host impossible to configure. The UI evaluates conditions against live edits; a hidden field's value is untouched.
 
-**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
+**Unavailable fields stay legible.** A workflow may disable a setting whose prerequisite cannot
+currently run, but it must render the reason beside that same control. This is distinct from an
+environment pin: provenance says who owns a value; unavailability says whether the app can act on
+it. The saved desired value is retained so fixing the prerequisite activates the operator's prior
+choice instead of resetting it. The disabled control and its reason remain programmatically
+associated for assistive technology.
+
+### V55 surface audit decisions
+
+- Retired declared-but-unconsumed promises: `season.precision`, `playout.transport`,
+  `suggest.auto_approve`, `sched.backfill`, `ingest.max_concurrent`, <!-- retired-ok -->
+  `filler.starter_collection`, `reconcile.every`, and `event.webhook_url`. Reintroducing one <!-- retired-ok -->
+  requires its consumer in the same change.
+- Retired the remaining declared-but-unconsumed promises: the `sched.*` policy defaults and
+  `seasonal.mode`, the global `playout.subtitles` default, and `user.sync_every`. Per-channel <!-- retired-ok -->
+  programming policy remains the place to set ordering, separation, and seasonal behaviour;
+  subtitle burn-in is not exposed until the encoder actually honours it; user import remains an
+  explicit admin action until there is a scheduled consumer. A control that merely round-trips
+  through the registry is not implemented.
+- Image formats, remote concurrency, and the remote-artwork retention ceiling are implementation
+  policy, not operator preference. AVIF/WebP/JPEG compatibility, the provider concurrency cap, and
+  the six-month compliance ceiling are fixed by the image module. Operators control storage,
+  outbound fetching, upload size, and derivative cache budget.
+
+**Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · unavailable reason where applicable · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, unavailable reason, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
+
+**One curated home, with progressive disclosure.** `All settings` remains the searchable escape
+hatch, but every key has only one task-shaped editor elsewhere. A control does not appear on both
+an operational workflow and a generic Settings page: the workflow owns it when its effect is best
+understood beside the affected work (for example, auto-filing beside Incoming clips), while service
+and model configuration stays in Settings. Workflow pages group controls by the question they answer,
+show ordinary choices first, and put tuning limits, executable paths, and pipeline budgets behind the
+group's Advanced disclosure. A safe default is not a reason to make its tuning knob part of the
+everyday path. Group headings carry a one-line explanation when the distinction would otherwise be
+unclear.
+
+Playback applies that rule to the encoder specifically: automatic selection is the ordinary path,
+so the free-form `playout.encoder` override is Advanced alongside executable and storage paths. The
+page leads with the read-only live status because it answers who is actually streaming, which GPU or
+software path is active, and whether any fallback encoders are consuming capacity before the
+operator changes a preference. Tunarr-backed channels keep their encoding profile in Connections →
+Tunarr; Playback explains that ownership instead of presenting Loomarr's internal controls as if they
+reconfigured Tunarr.
+
+Connections applies the same rule to service-owned identifiers. Loomarr automatically chooses
+Tunarr's Default transcode profile and the first Sonarr/Radarr profile and root folder when their
+fields are blank. Their free-form identifiers are therefore labelled as **overrides** and remain
+behind the connection block's Advanced disclosure; the ordinary path asks only how to reach the
+service. Security likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
+and is the safe ordinary path; changing the transport policy is deployment troubleshooting, not a
+routine sign-in preference.
 
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
 buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
 navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
-Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → hot-apply → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation).
+Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → apply by §3 lifecycle → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation). A generation-scoped save is still successful: the field shows the desired value and the derived restart notice explains why the applied value has not moved yet.
 
 **The save bar spans TABS, not just a page (V9).** Dirty state survives switching between
 Connections, AI, Defaults and so on: an operator who edits a connection, checks a default, and
@@ -265,9 +425,14 @@ do not "stage" regenerating a secret, and a Save button next to *Run now* would 
 Everything else on every page goes through the bar. A fifth exception should be argued for
 against this list, not added quietly.
 
-**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). **Broken blocks open, healthy ones collapse**, so the page opens focused on what needs attention — and a fully set-up install shows a page of quiet collapsed blocks with nothing to worry about.
+This applies to contextual workflow editors too. Filler's Incoming-page auto-filing panel is the
+curated home for its enable switch, confidence threshold, and destructive on-file loudness option,
+but those values are staged inside the panel and committed with an explicit **Save auto-filing**
+action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
-**Wiring is an effect of saving, not a manual action.** Registering Tunarr as a tuner/guide source in the media server (`livetv`) and pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from the saved connection values* — there is no decision to make and re-running is a no-op. So a Connections save runs them server-side automatically (`settingsPatch` → both connectors, best-effort and non-fatal: a wiring failure never fails the save and surfaces on the relevant connection's own status). The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the Tunarr connection (the Connections step) already auto-wires the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the Tunarr connection's own verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
+**Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
+
+**Wiring is an effect of saving, not a manual action.** Registering the durably applied internal-or-Tunarr tuner/guide pair in the media server (`livetv`) and, on the Tunarr path, pointing Tunarr at the library (`tunarr_library`) are *idempotent and fully derived from saved connection values* — there is no decision to make and re-running is a no-op. Relevant saves run publication through the durable backend-transition coordinator; a later effect failure never rolls back the saved setting and surfaces on the relevant connection's own status. The page therefore has **no wiring buttons and no separate checklist** — both would be scaffolding a set-up operator shouldn't have to see. **This holds in the wizard too: there is no standalone "Live TV" / "TV guide" wizard step.** Saving the selected backend's connection settings already publishes the guide, so a dedicated step would only re-run the same no-op and add a redundant click — the `livetv` outcome instead surfaces on the media-server verdict. The `webhook` handshake *does* remain a first-run wizard step, because it is genuinely interactive (a paste-and-listen flow that can't be derived from a saved value), not a resting Connections concern. Settings remains the troubleshooting console (main doc §13) because each block is re-testable in place and every failure links to its fix.
 
 ---
 
@@ -275,13 +440,13 @@ against this list, not added quietly.
 
 No parallel form system. Each wizard step renders the relevant **settings group's form** (essentials only — `Advanced` keys hidden), pre-resolved (env-pinned fields render locked), with the group's live test inline. **Configure → validate → save → advance.** The wizard writes through the exact same PATCH path as Settings.
 
-- **Step → group mapping:** claim (auth, pre-settings) → **playout choice** (`playout.backend`; see below) *(picking Tunarr reveals Connections/Tunarr + its media-source check* **on that same step**, *because "who plays my channels" and "where is it" are one decision;* **saving auto-wires Live TV into the guide** — no separate step*)* → Connections/media-server → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; drop-folder path + optional starter ingest targets) → guided first channel.
+- **Step → group mapping:** claim (auth, pre-settings) → **playout choice** (`playout.backend`; see below) *(picking internal reveals `server.public_url`* **on that same step** *and requires a persisted absolute address the media server can reach; picking Tunarr instead reveals Connections/Tunarr + its media-source check there, because "who plays my channels" and "where is it" are one decision;* **saving auto-wires Live TV into the guide** — no separate step*)* → Connections/media-server → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; drop-folder path + optional starter ingest targets) → guided first channel.
 - ⚠ **The step list is DERIVED from `playout.backend`, not constant** (design §13). Internal playout is the default since §9.1, but the wizard hardcoded `tunarr` as a blocking check and gave it a wiring step, so the default path demanded a second server it would never use and refused to continue without it. The blocking set is now `media_server` alone on the internal path, `media_server` + `tunarr` on the Tunarr path; the Tunarr form and the "give Tunarr your library" step exist **only** on the Tunarr path. Removed steps are **hidden, not marked satisfied** — a rail entry reading "not needed" still advertises work that is not part of this install.
 - **Being configured elsewhere does not stop a check blocking.** Tunarr's form lives on the Playout step, but on the Tunarr path its check still gates the Connections step. Where a setting is *edited* and where its failure is *reported* are separate questions, and conflating them would either hide a real blocker or move the whole checklist.
 - **A blocking check is a property of the chosen path, so nothing that cannot be satisfied can block.** This is the same rule the skippable steps encode, applied one level up: an internal install can never turn `tunarr` green, and a gate on a check the operator cannot satisfy is a dead end the wizard's Back/Continue offers no way around.
 - **Skippable steps are neutral, not red:** checklist states are `pass | fail | skipped | pinned`. Skipping AI doesn't shame you with a red X — it shows a neutral "not configured" that links back here.
 - **First-run detection:** the `setup.completed` registry key (bool, `SETUP_COMPLETED`, Advanced — dotted to match every other key); until set, `/` routes to the wizard. The wizard's final step sets it through the ordinary `PATCH /v1/settings` path, so it is a setting like any other. "Re-run setup" lives in Settings forever.
-- **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is **the media server alone** — Loomarr plays the channels itself (§9.1). Choosing Tunarr adds it to that path. Seerr adds acquisitions; AI adds suggestions.
+- **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is **the media server plus Loomarr's reachable address** — Loomarr plays the channels itself (§9.1), and `server.public_url` tells that media server where to fetch the streams. The address is required only on this path, stays locked when `SERVER_PUBLIC_URL` pins it, and is never guessed from request headers. Choosing Tunarr replaces that address requirement with Tunarr. Seerr adds acquisitions; AI adds suggestions.
 
 ---
 
@@ -299,18 +464,65 @@ No parallel form system. Each wizard step renders the relevant **settings group'
 
 The rule that survives: **one function computes the set, and every consumer reads it.** The checklist, the tab states, and the API gating never re-derive availability — only the *inputs* differ, never the seam.
 
-**Policy defaults are settings; policy effects are data.** Changing a registry default (e.g. the episode no-repeat window) hot-applies like any setting — but it only affects channels that *don't override* that key. The channel editor shows per-field provenance mirroring the settings UI: `channel override | default | built-in`.
+**Policy effects are channel data; only consumed fallbacks are Settings defaults.** The rolling
+schedule horizon and filler break frequency resolve as `channel choice > registry default >
+built-in` and are read again when a channel is rebuilt. Ordering, separation, and seasonality
+currently resolve as `channel policy > built-in`; no registry value is shown for them. The channel
+editor must describe the active ladder in user language rather than implying a Settings tier that
+does not exist.
 
 ---
 
 ## 8. API contract (extends main doc §7)
 
-- `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
-- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
-- `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
+- `GET /v1/settings` → grouped entries: `{key, group, kind, apply: live | restart, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
+- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; persistence is immediate and runtime application follows the key's §3 lifecycle. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
+- `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Runtime application follows the same lifecycle as PATCH.
+- **Backend hot-apply is a durable mutate → prepare → publish → retire transition, not merely an
+  immediate callback.** PATCH, clear, environment takeover/hand-back, and `PLAYOUT_TOKEN` rotation
+  enter one coordinator before their durable mutation. The coordinator holds the same workflow lock
+  across that mutation and every follow-on phase. Guide/now-next and in-app routing continue to read
+  the durable `applied` backend while
+  active inherited channels are prepared for the target; ordinary reconcile reads non-empty
+  `prepared` first (then `applied`) so concurrent maintenance cannot undo partially converged target
+  state. Explicitly pinned, paused, and detached channels do not join that fleet barrier. The target
+  is checkpointed in `prepared` before convergence starts, and every retry re-runs the idempotent
+  fleet barrier, so cancellation, failure, or restart cannot mistake the checkpoint for proof of
+  completed convergence. Preparing internal playout durably
+  opens its token-authenticated M3U/XMLTV/direct transport before the media server refreshes the new
+  tuner/listing pair, but does not switch ordinary UI routes early. Only after target refresh and
+  cutover succeed is `applied` advanced; stale Loomarr-owned registrations retire last. A failure
+  before publication preserves the old routes and registration, while a retirement failure leaves
+  the new backend applied and retries cleanup. The system checkpoint survives restart, and both a
+  later relevant settings write and channel maintenance resume it (including URL-only repair when
+  the backend name did not change). A URL-only repair replays the inherited-channel fleet barrier
+  before publisher preparation and refresh; failure or restart retries that ordering instead of
+  exposing a newly configured publisher ahead of its channels. Desired is re-read inside the
+  coordinator's serialization boundary, so an older maintenance retry cannot publish after a newer
+  save. On Postgres that boundary is a store-owned, database-scoped advisory lock held across the relevant setting write,
+  checkpoint load, every external publisher phase, and checkpoint save; separate replicas therefore
+  cannot insert a newer desired write midway through an older publication. Only after acquiring it
+  does a replica refresh both setting values and provenance, then mutate and resolve desired. The
+  refresh precedes even a mutation that becomes a no-op: whether a PATCH is environment-pinned, or
+  whether an env-override handoff made it writable, must be decided from the durable snapshot rather
+  than stale process memory. A queued process therefore cannot reject or reverse a newer ownership
+  handoff when its work finally runs. SQLite uses the same interface with
+  its single-process mutex, consistent with SQLite's one-replica contract. Failure to acquire the
+  workflow lock means the mutation did not run and the write request returns unavailable. Once the
+  durable checkpoint is initialized, each reconcile attempt and routing request reads it once rather
+  than trusting the controller's process-local mirror; this makes `prepared` transport and `applied`
+  routing visible immediately on every Postgres replica. These reads are lock-free and fail closed.
+  A committed mutation remains successful when a later transition phase fails; the transition stays
+  pending for maintenance retry.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
-- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
-- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
+- `GET /v1/settings/secrets/{name}` → reveal a generated token's value (`{value}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
+- `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects. Rotating
+  `PLAYOUT_TOKEN` invokes the same durable publication repair because internal tuner/guide URLs
+  embed it; the publisher reads the durable token inside the workflow lock, and Postgres request
+  authorization reads that same row so every replica admits the new device URL and rejects the old
+  one immediately. A repair failure leaves the rotation successful and the transition pending.
+  `API_TOKEN` bearer authorization uses the same replica-coherent read (SQLite remains cache-only);
+  rotating `API_TOKEN` has no Live TV consequence.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.
 
@@ -332,6 +544,11 @@ The rule that survives: **one function computes the set, and every consumer read
 - **Resolution matrix** per Kind: env beats db beats default; invalid **env fails boot** with the var named; invalid **db self-heals** to default + warning surfaced.
 - **Pin lifecycle:** set env → locked + `pinned` on PATCH; unset env + reboot → unlocked, provenance `db`.
 - **Hot-apply:** change library URL via PATCH → next `Lookup` hits the new host (mock); interval change takes effect next tick; an §8.1 model `select` hot-swaps the live suggester provider without restart.
+- **Generation-scoped layout:** build on clip/watch layout A, save layout B, and prove settings show
+  desired B while scan, intake, pipeline, media serving, artwork adoption and playout all stay on
+  applied A; restart into a fresh generation and prove every consumer moves to B together. Saving
+  both paths in one PATCH must never combine old root with new watch. Reverting both before restart
+  clears derived drift. A failed target scan must preserve the last known catalog.
 - **Secrets:** generation idempotent across restarts; `<VAR>_FILE` loads (and `<VAR>`+`_FILE` together fails boot); regen side-effects (sessions die incl. caller's; handshake check goes red until fresh `Test`); the **log-grep redaction test** (a known secret never appears in captured logs, error bodies, or setup/status).
 - **Feature gating:** AI keys absent → Suggest returns the 409 problem and the computed feature set says so; add the keys → gate opens without restart.
 - **`make config-docs` drift check** green.
@@ -340,8 +557,9 @@ The rule that survives: **one function computes the set, and every consumer read
 
 ## 11. Build integration
 
-- **Phase 1 (built as a cross-phase retrofit, 2026-07-15):** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target. The settings table gains its `updated_at`/`updated_by` audit columns (§3) via **forward-only migration `00008`** (an `ALTER TABLE settings ADD COLUMN …`, the second real ALTER after `00007`'s `policy_json`; the bare `(key,value)` KV from `00001` never drops). Registry defaults become the middle tier of the ChannelPolicy precedence (`channel policy > registry default > built-in`) that `programming-design.md` §9 recorded as deferred — the `SCHED_*`/`SEASONAL_MODE` policy-default keys (main doc §15) now resolve through the registry instead of Go constants.
+- **Phase 1 (built as a cross-phase retrofit, 2026-07-15):** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target. The settings table gains its `updated_at`/`updated_by` audit columns (§3) via **forward-only migration `00008`** (an `ALTER TABLE settings ADD COLUMN …`, the second real ALTER after `00007`'s `policy_json`; the bare `(key,value)` KV from `00001` never drops). The proposed registry middle tier for ChannelPolicy was later retired in V55 because no production scheduling path consumed it; channel policy now resolves directly to the scheduler's documented built-ins.
 - **Phase 8:** the §8 API surface.
-- **Phase 9:** generated secrets + regeneration side-effects (auth interplay).
+- **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
+

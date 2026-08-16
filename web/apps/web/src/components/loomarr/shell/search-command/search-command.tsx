@@ -1,7 +1,8 @@
 import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Badge, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 
 // SearchCommand — the ⌘K palette (§3, §7.2) over library/TMDB/clips + channels + help.

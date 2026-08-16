@@ -1,16 +1,16 @@
 import { Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui";
-import { cn, useCopied } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { useCopied } from "@/lib/use-copied";
+import { cn } from "@/lib/utils";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 
-// Generated secrets (config-design §4), on Sonarr's model: values you must paste
-// elsewhere are viewable on demand; the one with nothing to paste never is.
+// Generated credentials (config-design §4), on Sonarr's model: values an operator must
+// paste elsewhere are viewable on demand.
 //
 // Regeneration states its consequence BEFORE the click and requires a second confirm.
-// That is not ceremony: rotating API_TOKEN breaks every script/automation using it, and
-// rotating SESSION_SECRET signs everyone out including the person clicking. An operator
-// should learn that from the button, not from the aftermath.
+// That is not ceremony: rotating API_TOKEN or PLAYOUT_TOKEN breaks every consumer using
+// it. An operator should learn that from the button, not from the aftermath.
 const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, className }: SecretsPanelProps) => {
   const [confirming, setConfirming] = useState<SecretName | undefined>();
   const { copied, copy } = useCopied<SecretName>();
@@ -28,28 +28,26 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
               <p className="text-muted-foreground text-sm">{secret.purpose}</p>
             </div>
 
-            {secret.displayable && (
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-md border border-input bg-static-800 px-3 py-1.5 font-mono text-sm">
-                  {value ?? "••••••••••••••••"}
-                </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onReveal(secret.name)}
-                  disabled={busy === secret.name}
-                >
-                  {value ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-                  {value ? "Hide" : "Reveal"}
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md border border-input bg-static-800 px-3 py-1.5 font-mono text-sm">
+                {value ?? "••••••••••••••••"}
+              </code>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onReveal(secret.name)}
+                disabled={busy === secret.name}
+              >
+                {value ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                {value ? "Hide" : "Reveal"}
+              </Button>
+              {value && (
+                <Button variant="outline" size="sm" onClick={() => copy(value, secret.name)}>
+                  <Copy className="size-4" aria-hidden />
+                  {copied === secret.name ? "Copied" : "Copy"}
                 </Button>
-                {value && (
-                  <Button variant="outline" size="sm" onClick={() => copy(value, secret.name)}>
-                    <Copy className="size-4" aria-hidden />
-                    {copied === secret.name ? "Copied" : "Copy"}
-                  </Button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             {isConfirming ? (
               <div className="flex flex-col gap-2 rounded-md border border-onair-tint-30 bg-onair-tint-8 p-3">

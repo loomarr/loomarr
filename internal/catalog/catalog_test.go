@@ -8,6 +8,7 @@ import (
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/mantonx/loomarr/internal/testkit/catalogfixture"
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
@@ -239,6 +240,45 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	for _, c := range got {
 		if c.TMDBID == 100 && c.InLibrary { // Speed, not in the owned set
 			t.Error("un-owned discovered title should stay not-in-library")
+		}
+	}
+}
+
+func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{Name: "One", MediaType: provision.Movie, TMDBID: 101},
+		{Name: "Two", MediaType: provision.Movie, TMDBID: 202},
+	}}
+	primary := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+		101: {LibraryItemID: "item-101"},
+		202: {LibraryItemID: "item-202"},
+	}}
+	rotated := &catalogfixture.Presence{}
+	snapshots := 0
+	c := catalog.New(nil, corpus).WithPresenceSource(func() catalog.LibraryPresence {
+		snapshots++
+		if snapshots == 1 {
+			return primary
+		}
+		return rotated
+	})
+
+	got, err := c.Discover(context.Background(), provision.Movie, nil, 0, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 1 {
+		t.Fatalf("presence snapshots = %d, want one for the backfill batch", snapshots)
+	}
+	if calls := primary.Calls(); len(calls) != 2 {
+		t.Fatalf("primary presence calls = %v, want both candidates", calls)
+	}
+	if calls := rotated.Calls(); len(calls) != 0 {
+		t.Fatalf("rotated presence adapter received in-flight calls: %v", calls)
+	}
+	for _, candidate := range got {
+		if !candidate.InLibrary {
+			t.Fatalf("candidate %d was not backfilled from the bound adapter", candidate.TMDBID)
 		}
 	}
 }

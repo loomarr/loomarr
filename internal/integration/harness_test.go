@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
-	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // harness drives the REAL composition root (app.BuildHandler) end to end, faking
@@ -39,9 +39,11 @@ type harness struct {
 }
 
 type harnessConfig struct {
-	llm         *testkit.LLM
-	seerr       bool
-	connections bool // false ⇒ fresh install: seed NO connection settings
+	llm           *testkit.LLM
+	seerr         bool
+	connections   bool // false ⇒ fresh install: seed NO connection settings
+	fillerStorage bool // true ⇒ seed only the local filler layout, not external connections
+	tunarrPlayout bool // true ⇒ explicitly select Tunarr instead of the internal default
 }
 
 type harnessOpt func(*harnessConfig)
@@ -52,9 +54,19 @@ func withLLM(l *testkit.LLM) harnessOpt { return func(c *harnessConfig) { c.llm 
 // withSeerr seeds seerr.url so the Acquisition feature is on.
 func withSeerr() harnessOpt { return func(c *harnessConfig) { c.seerr = true } }
 
+// withTunarrPlayout selects Tunarr for journeys whose observable contract is the remote
+// projection. The product default is internal, so a fixture must opt in rather than inheriting
+// an old assumption that configuring tunarr.url also selected it for playout.
+func withTunarrPlayout() harnessOpt { return func(c *harnessConfig) { c.tunarrPlayout = true } }
+
 // withoutConnections builds a store-only "fresh install" (the FE's initial state):
-// no library/tunarr/llm/... configured, so every feature route is unconfigured.
+// no library/tunarr/llm/... external connection is configured.
 func withoutConnections() harnessOpt { return func(c *harnessConfig) { c.connections = false } }
+
+// withFillerStorage gives a fresh-install harness a writable, generation-applied filler layout.
+// It deliberately does not configure any external connection; lifecycle tests can then prove the
+// always-wired library source is dormant until a complete media-server triple is saved live.
+func withFillerStorage() harnessOpt { return func(c *harnessConfig) { c.fillerStorage = true } }
 
 func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	t.Helper()
@@ -99,16 +111,18 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	}
 
 	if cfg.connections {
-		h.seedConnections()
+		h.seedConnections(cfg)
+	} else if cfg.fillerStorage {
+		h.seedFillerStorage()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
 	handler, err := app.BuildHandler(ctx, st, testkit.Logger(), app.Overrides{
-		Programmer: h.tun,
-		LLM:        h.llm,
-		TMDB:       tmdb.NewWithBase(h.tmdb.URL, "test-key"),
+		Programmer:  h.tun,
+		LLM:         h.llm,
+		TMDBBaseURL: h.tmdb.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +136,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 // testkit doubles — the same table bootSettings reads (§3). Large runner intervals
 // keep periodic ticks from racing the assertions; the suggester worker pool is a
 // queue consumer, not a ticker, so it stays live.
-func (h *harness) seedConnections() {
+func (h *harness) seedConnections(cfg harnessConfig) {
 	set := func(k, v string) {
 		if err := h.store.SetSetting(context.Background(), k, v); err != nil {
 			h.t.Fatal(err)
@@ -135,9 +149,11 @@ func (h *harness) seedConnections() {
 	set("llm.provider", "ollama")
 	set("llm.url", h.ollama.URL)
 	set("llm.model", "qwen3:8b")
-	set("tunarr.url", h.tunarrStub.URL) // gate only; real pushes hit the injected tun
+	set("tunarr.url", h.tunarrStub.URL) // reachability/setup only; real pushes hit the injected tun
+	if cfg.tunarrPlayout {
+		set("playout.backend", "tunarr")
+	}
 	set("filler.dir", h.t.TempDir())
-	set("reconcile.every", "9999h")
 	set("channel.reconcile_every", "9999h")
 	set("filler.sync_every", "9999h")
 	if h.seerr != nil {
@@ -146,17 +162,31 @@ func (h *harness) seedConnections() {
 	}
 }
 
+func (h *harness) seedFillerStorage() {
+	root := h.t.TempDir()
+	for key, value := range map[string]string{
+		"filler.dir":        filepath.Join(root, "clips"),
+		"filler.watch_dir":  filepath.Join(root, "incoming"),
+		"filler.sync_every": "9999h",
+	} {
+		if err := h.store.SetSetting(context.Background(), key, value); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+}
+
 // clearLoomarrEnv unsets every Loomarr env var for the test (restoring after), so a
 // sourced .env in the dev shell can't override the seeded db settings.
 func clearLoomarrEnv(t *testing.T) {
 	keys := []string{
-		"LIBRARY_FLAVOR", "LIBRARY_URL", "LIBRARY_TOKEN", "SEASON_PRECISION",
+		"LIBRARY_FLAVOR", "LIBRARY_URL", "LIBRARY_TOKEN",
 		"SEERR_URL", "SEERR_API_KEY", "SONARR_URL", "SONARR_API_KEY", "RADARR_URL", "RADARR_API_KEY",
 		"TUNARR_URL", "TUNARR_TRANSCODE_CONFIG_ID",
+		"PLAYOUT_BACKEND",
 		"LLM_PROVIDER", "LLM_URL", "LLM_MODEL", "LLM_API_KEY", "TMDB_API_KEY",
-		"FILLER_DIR", "FILLER_AI_TAGGING", "SESSION_SECRET", "API_TOKEN",
-		"RECONCILE_EVERY", "CHANNEL_RECONCILE_EVERY", "FILLER_SYNC_EVERY",
-		"JOB_WORKERS", "SUGGEST_MAX_ACQUISITIONS", "SUGGEST_AUTO_APPROVE",
+		"FILLER_DIR", "FILLER_AI_TAGGING", "API_TOKEN",
+		"CHANNEL_RECONCILE_EVERY", "FILLER_SYNC_EVERY",
+		"JOB_WORKERS", "SUGGEST_MAX_ACQUISITIONS",
 	}
 	for _, k := range keys {
 		if old, ok := os.LookupEnv(k); ok {

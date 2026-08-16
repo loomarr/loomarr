@@ -3,6 +3,7 @@ package api_test
 import (
 	"bufio"
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -175,6 +176,35 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 			t.Fatalf("no `event: %s` line arrived — a payload type missing from eventTypeMap "+
 				"streams unnamed, which is exactly this failure", tc.want)
 		})
+	}
+}
+
+func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {
+	bus := newFakeBus()
+	shutdown := make(chan struct{})
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Events: bus, Shutdown: shutdown,
+	}))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+memberToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(io.Discard, resp.Body)
+		done <- err
+	}()
+	close(shutdown)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSE stream stayed open after generation shutdown")
 	}
 }
 

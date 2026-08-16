@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/images"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // An in-memory images.FetchStore for the adapter tests in this package.
@@ -89,6 +91,15 @@ func (m *memImageStore) PutDerivative(_ context.Context, d images.Derivative) er
 	return nil
 }
 
+func (m *memImageStore) PutDerivatives(_ context.Context, derivatives []images.Derivative) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range derivatives {
+		m.derivs[d.ImageHash] = append(m.derivs[d.ImageHash], d)
+	}
+	return nil
+}
+
 func (m *memImageStore) ListDerivatives(_ context.Context, hash string) ([]images.Derivative, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -150,9 +161,10 @@ func (m *memImageStore) DeleteImage(_ context.Context, hash string) error {
 // newTestImageService builds a real *images.Service over the in-memory store, writing blobs into a
 // temp dir. `base` is the public URL the service builds rendition URLs from, so a test can assert
 // the exact string a client receives.
-func newTestImageService(dir, base string, st images.Store) *images.Service {
+func newTestImageService(t testing.TB, dir, base string, st images.Store) *images.Service {
+	t.Helper()
 	return images.New(images.Config{
 		Dir:           dir,
 		PublicBaseURL: func() string { return base },
-	}, st, nil)
+	}, st, testkit.RustImageRenderer(t), nil)
 }

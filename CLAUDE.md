@@ -12,6 +12,8 @@ Claude Code conveniences are optional adapters:
   `.worktreeinclude`, or implicit secret copying.
 - `.claude/skills/` points to the canonical `.agents/skills/` bodies.
 - `.claude/commands/` contains thin adapters to the canonical `.agents/workflows/` instructions.
+- Frontend packages are deep modules — see [`web/packages/README.md`](web/packages/README.md) before
+  adding one or importing from one.
 
 No project rule belongs only in this file. Add shared rules to `AGENTS.md` and shared workflows to
 `.agents/workflows/`.

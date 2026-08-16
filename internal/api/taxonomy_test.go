@@ -68,9 +68,20 @@ func TestTaxonomy_CreateReindexesRollups(t *testing.T) {
 
 	// A clip tagged `energy-drink` before the taxon exists cannot be tagged — so create it first.
 	resp := do(t, srv, http.MethodPost, "/v1/taxonomy", adminToken,
-		`{"slug":"energy-drink","label":"Energy drink","axis":"product","parent":"drinks"}`)
+		`{"slug":"energy-drink","label":"  Energy drink  ","axis":"product","parent":" drinks ","synonyms":[" fizzy-energy-test "]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin create taxon → %d, want 200", resp.StatusCode)
+	}
+	var created struct {
+		Label    string   `json:"label"`
+		Parent   string   `json:"parent"`
+		Synonyms []string `json:"synonyms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Label != "Energy drink" || created.Parent != "drinks" || len(created.Synonyms) != 1 || created.Synonyms[0] != "fizzy-energy-test" {
+		t.Fatalf("create response = %+v, want the canonical form that was persisted", created)
 	}
 
 	// Seed a real clip and tag it `energy-drink` via the clip PATCH — grounding must now accept it.
@@ -96,6 +107,70 @@ func TestTaxonomy_CreateRejectsUnknownParent(t *testing.T) {
 		`{"slug":"widget","label":"Widget","axis":"product","parent":"does-not-exist"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("create with unknown parent → %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestTaxonomy_EditRejectsCycleAndCrossAxisParent(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	for name, tc := range map[string][2]string{
+		"cycle":      {"/v1/taxonomy/drinks", `{"label":"Drinks","axis":"product","parent":"beer"}`},
+		"cross-axis": {"/v1/taxonomy/beer", `{"label":"Beer","axis":"product","parent":"promo"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp := do(t, srv, http.MethodPut, tc[0], adminToken, tc[1])
+			if resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Errorf("invalid graph edit → %d, want 422", resp.StatusCode)
+			}
+		})
+	}
+}
+
+func TestTaxonomy_ListReportsWholeCatalogUsageAndProtectsAssertedDelete(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
+	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
+		t.Fatalf("tag beer → %d", p.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/taxonomy", memberToken, "")
+	var body struct {
+		TotalClips, TaggedClips, UnclassifiedClips int
+		Taxa                                       []struct {
+			Slug                                     string
+			AssertedClips, MatchedClips, StoredClips int
+		}
+		AxisCoverage []struct {
+			Axis                       string
+			TaggedClips, UntaggedClips int
+		}
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.TotalClips != 1 || body.TaggedClips != 1 || body.UnclassifiedClips != 0 {
+		t.Fatalf("coverage = total %d/tagged %d/unclassified %d, want 1/1/0", body.TotalClips, body.TaggedClips, body.UnclassifiedClips)
+	}
+	counts := map[string][2]int{}
+	for _, tx := range body.Taxa {
+		counts[tx.Slug] = [2]int{tx.AssertedClips, tx.MatchedClips}
+	}
+	axes := map[string][2]int{}
+	for _, coverage := range body.AxisCoverage {
+		axes[coverage.Axis] = [2]int{coverage.TaggedClips, coverage.UntaggedClips}
+	}
+	if axes["product"] != [2]int{1, 0} || axes["format"] != [2]int{0, 1} {
+		t.Errorf("axis coverage product=%v format=%v, want product 1/0 and format 0/1", axes["product"], axes["format"])
+	}
+	if counts["beer"] != [2]int{1, 1} || counts["drinks"] != [2]int{0, 1} {
+		t.Errorf("usage beer=%v drinks=%v, want direct-vs-rollup accounting", counts["beer"], counts["drinks"])
+	}
+	for _, tx := range body.Taxa {
+		if tx.Slug == "beer" && tx.StoredClips != 1 {
+			t.Errorf("beer stored clips = %d, want 1", tx.StoredClips)
+		}
+	}
+
+	del := do(t, srv, http.MethodDelete, "/v1/taxonomy/beer", adminToken, "")
+	if del.StatusCode != http.StatusConflict {
+		t.Errorf("delete directly asserted taxon → %d, want 409", del.StatusCode)
 	}
 }
 
@@ -148,6 +223,15 @@ func TestTaxonomy_DeleteMissingIs404(t *testing.T) {
 	resp := do(t, srv, http.MethodDelete, "/v1/taxonomy/no-such-taxon", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("delete missing taxon → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestTaxonomy_UpdateMissingIs404(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodPut, "/v1/taxonomy/no-such-taxon", adminToken,
+		`{"label":"Missing","axis":"product"}`)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("update missing taxon → %d, want 404", resp.StatusCode)
 	}
 }
 

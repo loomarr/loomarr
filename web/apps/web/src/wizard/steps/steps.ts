@@ -1,5 +1,5 @@
-import type { SetupCheck } from "@loomarr/api";
-import type { WizardStep, WizardStepStatus } from "@/components/loomarr";
+import type { SetupCheck } from "@loomarr/api/models/setupCheck";
+import type { WizardStep, WizardStepStatus } from "@/components/loomarr/setup/wizard-shell";
 
 // PlayoutBackend is who actually streams a channel (design §9.1). `internal` is the default:
 // Loomarr encodes and serves the stream itself, and the media server picks it up as Live TV.
@@ -84,6 +84,9 @@ interface StepContext {
   checks: SetupCheck[];
   isAuthenticated: boolean;
   backend?: PlayoutBackend;
+  // The persisted, registry-normalized machine-client address. Internal playout cannot
+  // publish a tuner until the media server has an absolute Loomarr URL to fetch from.
+  publicURL?: string;
 }
 
 const backendOf = (ctx: StepContext): PlayoutBackend => ctx.backend ?? PLAYOUT_INTERNAL;
@@ -93,10 +96,13 @@ const backendOf = (ctx: StepContext): PlayoutBackend => ctx.backend ?? PLAYOUT_I
 // or finishing setup from another browser — lands the operator in the right place.
 const isStepDone = (id: string, ctx: StepContext): boolean => {
   if (id === "bootstrap") return ctx.isAuthenticated;
-  // The playout choice is answered the moment a backend is resolved: the registry always
-  // holds one (internal by default), so this step is about CONFIRMING rather than supplying
-  // a value. Gating it on "not the default" would block the operator who wants the default.
-  if (id === "playout") return ctx.isAuthenticated;
+  // The registry always resolves a backend (internal by default), but that alone is not a
+  // complete internal-playout answer: the media server also needs Loomarr's machine-reachable
+  // address. Tunarr owns its own stream URLs, so that path needs no server.public_url here.
+  if (id === "playout") {
+    if (!ctx.isAuthenticated) return false;
+    return backendOf(ctx) === PLAYOUT_TUNARR || (ctx.publicURL?.trim() ?? "") !== "";
+  }
   if (id === "checklist") return requiredChecks(backendOf(ctx)).every((name) => checkOk(ctx.checks, name));
   const wiring = WIRING_CHECK_BY_STEP[id];
   return wiring ? checkOk(ctx.checks, wiring) : false;

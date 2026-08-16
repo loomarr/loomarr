@@ -1,9 +1,10 @@
-import type { DatabaseCheck, DatabaseStatus } from "@loomarr/api";
+import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
+import type { DatabaseStatus } from "@loomarr/api/models/databaseStatus";
 
-// The six stages, in order (§18, V11 — and the v2 mock's `order` array). `idle` is not a
-// stage: it is the state before the operator has started, where the stepper is collapsed
-// to its opening pitch.
-type MigrationStep = "connect" | "preflight" | "backup" | "migrate" | "verify" | "restart";
+// The browser owns only the decisions before the process-level operation and the
+// reconnect wait after it. Copy, verification, switchover and restart are one atomic
+// backend operation, not client-controlled stages.
+type MigrationStep = "connect" | "preflight" | "backup" | "reconnect";
 
 interface DatabaseMigrationProps {
   status: DatabaseStatus;
@@ -21,18 +22,15 @@ interface DatabaseMigrationProps {
   onPreflight: () => void;
   onBackup: () => void;
   onMigrate: () => void;
-  onSwitchover: () => void;
 
   /** Which action is in flight, so exactly one control shows a pending state. */
-  pending?: "preflight" | "backup" | "migrate" | "switchover" | null;
+  pending?: "preflight" | "backup" | "migrate" | null;
   /** A failure from the last action, rendered in the stage that produced it. */
   error?: string | null;
 
   /**
-   * True when DATABASE_URL is pinned by the environment. The migration is then a
-   * copy-only operation: Loomarr can move the data but cannot record the switch, because
-   * an env pin always wins at boot (the server refuses the switchover for the same
-   * reason). The mock models this as `dbPinned` and collapses the stepper.
+   * True when DATABASE_URL is pinned by the environment. Atomic migration is unavailable:
+   * a copy-only operation would leave two databases able to diverge.
    */
   envPinned?: boolean;
   className?: string;

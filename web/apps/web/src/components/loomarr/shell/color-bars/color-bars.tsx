@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ColorBarsProps, ColorBarsSize } from "./color-bars.type";
 
 // ColorBars — the SMPTE test-card strip that is the whole design's namesake (§1). Seven

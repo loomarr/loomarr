@@ -75,10 +75,16 @@ const stubDraft = (opts: { previewStatus?: number } = {}) => {
   return { previews, saves };
 };
 
-const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
+const policy = (
+  filler?: ChannelPolicy["filler"],
+  breaksPerHour?: number,
+  breakDuration?: string,
+): ChannelPolicy => ({
   ordering: "shuffle",
   scope: { era: { from: 1990, to: 1999 } },
   ...(filler ? { filler } : {}),
+  ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
+  ...(breakDuration !== undefined ? { breakDuration } : {}),
 });
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
@@ -104,16 +110,69 @@ describe("canonicalize", () => {
 describe("useChannelFillerDraft", () => {
   it("seeds the draft from policy.filler", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
       wrapper: makeWrapper(),
     });
     expect(result.current.draft.audience).toBe("kids");
     expect(result.current.isDirty).toBe(false);
   });
 
+  it("seeds the three-state break frequency and includes it in dirty/discard", () => {
+    stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 3), 1), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.breaksPerHour).toBe(3);
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => result.current.setBreaksPerHour(0));
+    expect(result.current.isDirty).toBe(true);
+    act(() => result.current.discard());
+    expect(result.current.breaksPerHour).toBe(3);
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  it("does not reassemble the clip preview when only break frequency changes", async () => {
+    const { previews } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(1));
+
+    act(() => result.current.setBreaksPerHour(0));
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    expect(previews).toHaveLength(1);
+  });
+
+  it("reassembles when break length changes and includes it in apply/discard", async () => {
+    const { previews, saves } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4, "5m"), 1), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(1));
+
+    act(() => result.current.setBreakDuration("90s"));
+    expect(result.current.isDirty).toBe(true);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews).toHaveLength(2));
+    expect(previews.at(-1)).toMatchObject({ breakDuration: "90s" });
+
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toMatchObject({ policy: { breakDuration: "90s" } });
+
+    act(() => result.current.discard());
+    expect(result.current.breakDuration).toBe("5m");
+    expect(result.current.isDirty).toBe(false);
+  });
+
   it("fires a debounced preview POST with the canonical draft, and renders its result", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
 
     // Edit the draft; the POST must NOT fire until the debounce elapses.
     act(() => result.current.setDraft({ audience: "kids", categories: ["toys"] }));
@@ -129,7 +188,9 @@ describe("useChannelFillerDraft", () => {
 
   it("coalesces a burst of edits into a single preview POST", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => result.current.setDraft({ audience: "kids" }));
     act(() => result.current.setDraft({ audience: "family" }));
@@ -146,7 +207,7 @@ describe("useChannelFillerDraft", () => {
 
   it("flips isDirty when the draft diverges and back when it matches saved", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
       wrapper: makeWrapper(),
     });
     expect(result.current.isDirty).toBe(false);
@@ -158,7 +219,7 @@ describe("useChannelFillerDraft", () => {
 
   it("apply PATCHes the draft MERGED onto the rest of the saved policy", async () => {
     const { saves } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "family", pinned: ["p9"] }));
@@ -172,9 +233,26 @@ describe("useChannelFillerDraft", () => {
     expect(saves[0]).toMatchObject({ policy: { ordering: "shuffle", scope: { era: { from: 1990 } } } });
   });
 
+  it("apply can disable breaks or clear an override back to inherited", async () => {
+    const { saves } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4), 1), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.setBreaksPerHour(0));
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toMatchObject({ policy: { breaksPerHour: 0 } });
+
+    act(() => result.current.setBreaksPerHour(undefined));
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves).toHaveLength(2));
+    expect((saves[1] as { policy: Record<string, unknown> }).policy).not.toHaveProperty("breaksPerHour");
+  });
+
   it("discard resets the draft to saved", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "late_night" }));
@@ -186,7 +264,9 @@ describe("useChannelFillerDraft", () => {
 
   it("surfaces a preview failure instead of an empty timeline", async () => {
     stubDraft({ previewStatus: 422 });
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
     act(() => result.current.setDraft({ audience: "kids" }));
     await act(async () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS);

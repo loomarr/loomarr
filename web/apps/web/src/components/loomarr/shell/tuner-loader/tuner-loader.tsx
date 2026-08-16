@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { TvStatic } from "../tv-static";
 import type { TunerLoaderProps } from "./tuner-loader.type";
 

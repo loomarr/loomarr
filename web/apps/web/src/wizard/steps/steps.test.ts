@@ -59,8 +59,13 @@ describe("wizard step derivation", () => {
 
   it("resumes at the first incomplete required step", () => {
     expect(firstIncompleteStep({ checks: [], isAuthenticated: false })).toBe("bootstrap");
-    expect(firstIncompleteStep({ checks: [], isAuthenticated: true })).toBe("checklist");
-    expect(firstIncompleteStep({ checks: green, isAuthenticated: true })).toBe("channel");
+    expect(firstIncompleteStep({ checks: [], isAuthenticated: true })).toBe("playout");
+    expect(firstIncompleteStep({ checks: [], isAuthenticated: true, publicURL: "http://loomarr:8080" })).toBe(
+      "checklist",
+    );
+    expect(
+      firstIncompleteStep({ checks: green, isAuthenticated: true, publicURL: "http://loomarr:8080" }),
+    ).toBe("channel");
   });
 
   it("never blocks on an optional step when resuming", () => {
@@ -76,6 +81,19 @@ describe("wizard step derivation", () => {
 // server they would never use, and could not continue until they did.
 describe("the playout choice reshapes the wizard", () => {
   const ids = (backend: "internal" | "tunarr") => wizardSteps(backend).map((s) => s.id);
+
+  it("requires Loomarr's reachable address only when internal playout owns the stream", () => {
+    const base = { checks: [], isAuthenticated: true };
+    expect(isStepDone("playout", { ...base, backend: PLAYOUT_INTERNAL, publicURL: "" })).toBe(false);
+    expect(
+      isStepDone("playout", {
+        ...base,
+        backend: PLAYOUT_INTERNAL,
+        publicURL: "http://loomarr:8080",
+      }),
+    ).toBe(true);
+    expect(isStepDone("playout", { ...base, backend: PLAYOUT_TUNARR, publicURL: "" })).toBe(true);
+  });
 
   it("drops Tunarr's wiring step on the internal path and keeps it on the Tunarr path", () => {
     expect(ids(PLAYOUT_INTERNAL)).not.toContain("library");
@@ -127,6 +145,7 @@ describe("the playout choice reshapes the wizard", () => {
       checks: [check("media_server", true)],
       isAuthenticated: true,
       backend: PLAYOUT_INTERNAL,
+      publicURL: "http://loomarr:8080",
       currentId: "checklist",
     });
     expect(statuses.library).toBeUndefined();
@@ -135,7 +154,12 @@ describe("the playout choice reshapes the wizard", () => {
 
   // An internal install resumes past Connections to Users/channel, never to a Tunarr step.
   it("resumes past Connections on the internal path once the media server is green", () => {
-    const ctx = { checks: [check("media_server", true)], isAuthenticated: true, backend: PLAYOUT_INTERNAL };
+    const ctx = {
+      checks: [check("media_server", true)],
+      isAuthenticated: true,
+      backend: PLAYOUT_INTERNAL,
+      publicURL: "http://loomarr:8080",
+    };
     expect(firstIncompleteStep(ctx)).toBe("channel");
   });
 
@@ -167,7 +191,7 @@ describe("the playout choice reshapes the wizard", () => {
 // `?step=` / `?conn=` deep links (§13). The URL is a REQUEST; server truth still decides.
 describe("wizard deep links", () => {
   const fresh = { checks: [], isAuthenticated: false }; // nothing done — frontier is bootstrap
-  const wired = { checks: green, isAuthenticated: true }; // everything done — frontier is channel
+  const wired = { checks: green, isAuthenticated: true, publicURL: "http://loomarr:8080" }; // everything done — frontier is channel
 
   it("falls back to the resume point when no step is requested", () => {
     expect(resolveStep(undefined, fresh)).toBe("bootstrap");
@@ -181,7 +205,9 @@ describe("wizard deep links", () => {
   it("clamps a link that points past what the server says is done", () => {
     expect(resolveStep("users", fresh)).toBe("bootstrap");
     expect(resolveStep("channel", fresh)).toBe("bootstrap");
-    expect(resolveStep("library", { checks: [], isAuthenticated: true })).toBe("checklist");
+    expect(
+      resolveStep("library", { checks: [], isAuthenticated: true, publicURL: "http://loomarr:8080" }),
+    ).toBe("checklist");
   });
 
   // The support case: "open your Connections step" on an install that is already further on.

@@ -4,7 +4,7 @@ Two processes, each with live reload. Run them in separate terminals; the harnes
 worktree-specific ports and prints both URLs.
 
 ```bash
-make dev-be    # backend, rebuilds on any Go change
+make dev-be    # backend, rebuilds the Go server and required Rust image worker
 make dev-fe    # Vite HMR, proxying this worktree's backend
 ```
 
@@ -14,7 +14,7 @@ make dev-fe    # Vite HMR, proxying this worktree's backend
 graph LR
   B["<b>Your browser</b><br/>frontend URL"]
   V["<b>Vite dev server</b><br/><i>your working copy</i>"]
-  A["<b>Air</b><br/><i>rebuilds on .go change</i>"]
+  A["<b>Air</b><br/><i>rebuilds Go + Rust together</i>"]
   E["embedded SPA<br/><i>from last</i> <code>make fe</code>"]
 
   B --> V
@@ -50,7 +50,7 @@ curl -s "localhost:$LOOMARR_DEV_PORT/v1/system/version"
 That reports the commit the running binary was built from.
 
 `make dev-be` prevents this. It refuses to start a second instance, and a watchdog detects "Air
-alive but not rebuilding" by comparing the binary's mtime against the newest `.go` file.
+alive but not rebuilding" by comparing the binary's mtime against the newest watched Go/Rust input.
 `DEV_BE_REPLACE=1` replaces a running instance; `DEV_BE_NO_WATCHDOG=1` skips the watchdog.
 
 Process ownership includes the worktree cwd. Replacement never kills another worktree's Air or

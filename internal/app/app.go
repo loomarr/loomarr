@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,7 +18,9 @@ import (
 	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/backendtransition"
 	"github.com/mantonx/loomarr/internal/binder"
+	"github.com/mantonx/loomarr/internal/buildinfo"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/config"
@@ -26,8 +29,10 @@ import (
 	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
@@ -44,12 +49,12 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(tunarr.url)
+	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
 	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
-	// TMDB overrides the grounding/validation client. tmdb.New uses a fixed base
-	// (api.themoviedb.org), so unlike library/seerr it isn't settings-routable to a
-	// test double; tests pass tmdb.NewWithBase(double.URL, key) here to stay offline.
-	TMDB *tmdb.Client // nil ⇒ tmdb.New(tmdb.api_key)
+	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
+	// service double. The credential still comes from live settings; accepting a
+	// prebuilt client here used to freeze its key at boot and bypass composition.
+	TMDBBaseURL string // empty ⇒ https://api.themoviedb.org/3
 	// DevLogin mounts POST /v1/auth/dev-login (§11). run() sets it from
 	// LOOMARR_DEV_LOGIN; it rides Overrides so the §19 negative tests can build a
 	// handler BOTH ways through the real composition root, rather than asserting
@@ -67,19 +72,16 @@ type Overrides struct {
 	// only main owns the generation loop. It must NOT block: the handler calls it while
 	// responding, and the drain it triggers cannot begin until that response is written.
 	Restart func()
-}
-
-// flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
-// The feature services are always-constructed (so a saved connection enables their
-// routes live, §8.1) and the library adapter fixes its flavor at construction — so
-// an unconfigured install defaults to Emby's auth shape. CHANGING the flavor (e.g.
-// to Jellyfin) still needs a restart; url/token/etc. hot-apply. (Follow-up: make
-// the library flavor a live closure to drop that last caveat.)
-func flavorOrDefault(set resolved) library.Flavor {
-	if f, err := library.ParseFlavor(set.str("library.flavor")); err == nil {
-		return f
-	}
-	return library.Emby
+	// DatabaseMigration asks the process-owned generation loop to drain the current
+	// handler and perform a SQLite→Postgres migration after every old-generation
+	// writer has stopped. nil keeps the database service fail-closed in embedded tests.
+	DatabaseMigration func(string) error
+	// DatabaseMigrationError carries a failed attempt into the replacement SQLite
+	// generation, where the database status endpoint can explain why it stayed put.
+	DatabaseMigrationError string
+	// ImageWorkerExecutable selects the required Rust image worker in tests and embedded builds.
+	// Empty resolves LOOMARR_IMAGE_WORKER, then the sibling/local/PATH-installed release binary.
+	ImageWorkerExecutable string
 }
 
 // BuildHandler wires every subsystem from the already-open store + logger and
@@ -96,9 +98,8 @@ func flavorOrDefault(set resolved) library.Flavor {
 // fields on a mutable carrier. That WIDENS their scope rather than narrowing it, and trades
 // compile-time use-before-assignment errors for runtime nils.
 //
-// ⚠ **It said "~630 lines and stays that way". Measured 2026-08-10 it is 1,457** — 94 branches,
-// 15 separate `if st != nil` blocks, and the same library.NewDynamic client built 5 times
-// because the sections cannot see each other's locals. "A composition root is allowed to be
+// ⚠ **It said "~630 lines and stays that way". Measured 2026-08-10 it is 1,457** — 94 branches
+// and 15 separate `if st != nil` blocks. "A composition root is allowed to be
 // long; it is not allowed to be unnavigable" was the right test and it now fails: the section
 // map below makes it possible to FIND a heading, not to hold the whole.
 //
@@ -136,6 +137,25 @@ func flavorOrDefault(set resolved) library.Flavor {
 // the package's own tests. Never read by production code — see the note at its assignment.
 var lastPlayoutResolver *playoutResolver
 
+const replicaSettingsRefreshInterval = 30 * time.Second
+
+// startReplicaSettingsRefresh owns the one periodic settings reader for a Postgres
+// application generation. SQLite is single-process by contract and returns without
+// starting a goroutine or issuing any additional store reads.
+func startReplicaSettingsRefresh(
+	ctx context.Context,
+	dialect store.Dialect,
+	svc *settings.Service,
+	interval time.Duration,
+	after func(),
+) bool {
+	if dialect != store.DialectPostgres || svc == nil {
+		return false
+	}
+	go svc.RefreshEvery(ctx, interval, after)
+	return true
+}
+
 func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov Overrides) (http.Handler, error) {
 	// Readiness is true only once the store is connected + migrated (§17).
 	ready := func() (bool, string) {
@@ -159,20 +179,61 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Settings subsystem (config-design §3): once the store is open, build the
 	// registry + resolution service (env pins validated → boot error), the
 	// generated secrets, and the redactor. Every subsystem below reads config
-	// through `set` (env > db > default, hot-applying) instead of raw cfg fields,
-	// and connection adapters take snapshot-backed closures so a saved URL/token
-	// takes effect on the next call with no restart. Without a store we can't
+	// through `set` (env > db > default) instead of raw cfg fields. Most values
+	// remain live; generation-scoped storage is frozen below, while connection
+	// adapters take complete per-operation snapshots so a saved flavor/URL/token takes effect on
+	// the next call. Without a store we can't
 	// resolve DB overrides, so fall back to env-only defaults via a store-less
 	// service is out of scope here — the app already isn't ready without a store.
 	var set resolved
+	var desiredSet resolved
+	var appliedRestartSettings map[string]string
+	var fillerLayout filler.Layout
 	var secrets *settings.Secrets
+	var secretRedactor *settings.Redactor
 	if st != nil {
-		r, sec, _, slog2, serr := bootSettings(context.Background(), st, log)
+		r, sec, red, slog2, serr := bootSettings(context.Background(), st, log)
 		if serr != nil {
 			return nil, serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
 		}
-		set, secrets, log = r, sec, slog2
+		set, secrets, secretRedactor, log = r, sec, red, slog2
+		desiredSet = set
+		set, appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
+		fillerLayout, serr = filler.NewLayout(set.str("filler.dir"), set.str("filler.watch_dir"))
+		if serr != nil {
+			return nil, fmt.Errorf("resolve filler storage layout: %w", serr)
+		}
+		canonicalFillerRestartBaseline(appliedRestartSettings, fillerLayout)
 		slog.SetDefault(log)
+	}
+	// One always-wired media-library adapter serves every capability in this generation.
+	// Its connection source resolves the complete live {flavor,url,token} triple once per
+	// operation, so an empty install can be configured, rotated, or cleared without rebuilding
+	// this handler.
+	var libraryClient *library.Client
+	if st != nil {
+		libraryClient = library.NewDynamic(set.libraryConn(), instanceDeviceID(rootCtx, st))
+	}
+	// One always-constructed dynamic TMDB adapter serves every TMDB-backed capability
+	// and the setup probe. Its credential resolves once per operation, so configure,
+	// rotate, and clear all take effect without rebuilding the handler. Tests may move
+	// only the external origin; they exercise this same production adapter and setting.
+	var tmdbClient *tmdb.Client
+	if st != nil {
+		key := func() string { return set.str("tmdb.api_key") }
+		if ov.TMDBBaseURL != "" {
+			tmdbClient = tmdb.NewDynamicWithBase(ov.TMDBBaseURL, key)
+		} else {
+			tmdbClient = tmdb.NewDynamic(key)
+		}
+	}
+	refreshSecretRedactor := func() {
+		if secretRedactor != nil && set.svc != nil && secrets != nil {
+			secretRedactor.Set(collectSecrets(settings.NewRegistry(), set.svc, secrets))
+		}
+	}
+	readGeneratedSecret := func(ctx context.Context, secret settings.GeneratedSecret) (string, error) {
+		return currentGeneratedSecret(ctx, store.DialectOf(st), secrets, secret, refreshSecretRedactor)
 	}
 
 	// The event bus (§7 SSE) and the domain-event emitter (§4 inv. 2) are built up
@@ -194,6 +255,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// this registry as each subsystem is wired below; the scheduler is built + started once
 	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
 	jobReg := scheduler.NewRegistry()
+	var episodeRefresh *reconcile.EpisodeRefresh
 
 	// Dashboard activity feed (§12, V32). One recorder, passed to every subsystem that
 	// records a line — nil-safe, so a store-less boot records nothing rather than needing a
@@ -206,29 +268,27 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
 	// constructed given a store so acquisitions process the moment a requester is
 	// configured — no restart (§8.1). Its dynamic seerr/library connections are empty
-	// until configured; with nothing `wanted` it's a no-op. Session cleanup is its own
-	// scheduler job now (was the janitor piggybacking the reconcile ticker).
+	// until configured; with nothing `wanted` it's a no-op. Session cleanup is part of
+	// daily housekeeping rather than piggybacking the reconcile ticker.
 	if st != nil {
-		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
+		lib := libraryClient
 		req := set.requesterFor() // Seerr or direct Sonarr/Radarr, per requester.provider (§6)
-		rec := reconcile.New(st, req, lib, emitter, reconcile.Config{
+		rec := reconcile.NewDynamic(st, req, func() reconcile.LibraryLookup {
+			return lib.Snapshot()
+		}, emitter, reconcile.Config{
 			RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
 		}, time.Now, log)
 		// The reconcile tick is now a scheduler job (§18.1) — same Tick logic, driven by the
 		// shared heartbeat on a cron schedule instead of its own ticker.
 		jobReg.Add(rec.Job())
-		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
-		// ticker via the janitor).
 		// Retention for the accumulating tables (§5, §18.1). The purge POLICY — what may be
 		// deleted, in what order, after how long — lives in internal/retention; the store owns
 		// only the SQL. Windows are read live, so a settings change applies on the next run.
-		jobReg.AddAll(retention.New(st, retention.Windows{
+		jobReg.Add(retention.New(st, retention.Windows{
 			Proposals: func() time.Duration { return set.dur("proposals.retention") },
 			Jobs:      func() time.Duration { return set.dur("jobs.retention") },
 			Activity:  func() time.Duration { return set.dur("activity.retention") },
-		}, time.Now, log).Jobs())
-
-		jobReg.Add(auth.NewSessionSweeper(st).Job(time.Now))
+		}, time.Now, log).Job())
 
 		// Poll-based availability (§4, §18.1): the PRIMARY path a requested title reaches
 		// `available`. The scan lists what the media server recently added and confirms any
@@ -244,10 +304,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// that job only correlates in-flight acquisitions and returns early when there are
 		// none, so it would never revisit an already-available show — the exact set this
 		// refreshes. Bounded to the shows channel lineups actually reference.
-		epRefresh := reconcile.NewEpisodeRefresh(st, episodeResolver(lib), func() time.Duration {
+		episodeRefresh = reconcile.NewDynamicEpisodeRefresh(st, func() reconcile.EpisodeResolver {
+			return episodeResolver(lib.Snapshot())
+		}, func() time.Duration {
 			return set.dur("episodes.max_age")
 		}, time.Now, log)
-		jobReg.Add(epRefresh.Job())
 
 		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
 		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
@@ -257,12 +318,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads",
-				"Asks Sonarr and Radarr how your in-progress downloads are doing, so the queue shows real progress and stalled grabs are visible."))
+			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
+				"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
 		} else if seerr := set.seerrRequester(); seerr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status",
-				"Asks Seerr which requested titles are still being fetched. Seerr reports a coarse status rather than a percentage."))
+			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
+				"Updates requested titles from the coarse acquisition states reported by Seerr."))
 		}
 	}
 
@@ -271,17 +332,73 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
+	var tunerRescanner api.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector
+	var channelEngine *channels.Engine
+	var liveTVConnector *setup.LiveTVConnector
+	var backendController *backendtransition.Controller
+	var backendView backendtransition.CheckpointView
+	// A replica may enter the transition lock after another replica saved a newer
+	// target or changed who owns it. Refreshing the settings snapshot inside that lock
+	// makes durable values and provenance, rather than whichever process happened to
+	// enqueue first, authoritative.
+	refreshBackendSettings := func(ctx context.Context) error {
+		if set.svc != nil {
+			if err := set.svc.Refresh(ctx); err != nil {
+				return fmt.Errorf("refresh settings before backend transition: %w", err)
+			}
+		}
+		return nil
+	}
+	desiredBackend := func(context.Context) (string, error) {
+		return set.str("playout.backend"), nil
+	}
+	resolveDesiredBackend := func(ctx context.Context) (string, error) {
+		if err := refreshBackendSettings(ctx); err != nil {
+			return "", err
+		}
+		return desiredBackend(ctx)
+	}
+	checkpointSnapshot := func(ctx context.Context) (backendtransition.Snapshot, error) {
+		if backendView == nil {
+			return backendtransition.Snapshot{}, fmt.Errorf("backend transition checkpoint is unavailable")
+		}
+		return backendView.Snapshot(ctx)
+	}
+	appliedBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		return snapshot.Applied, err
+	}
+	reconcileBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		return snapshot.ReconcileBackend(), err
+	}
+	transportBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		if snapshot.PublishedInternal {
+			return backendtransition.BackendInternal, nil
+		}
+		return snapshot.Applied, nil
+	}
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
-	var playoutSessions api.PlayoutSessions
+	var playoutObserver api.PlayoutObserver
+	// Prepared readiness is observed through the planner itself; the API only snapshots it.
+	var preparedObserver api.PreparedObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
-	var playoutHLS api.PlayoutHLS
+	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
 	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
 	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
 	var hwEncodeSlots func(context.Context) int
+	// One host-wide pool arbitrates the measured hardware slots between live playout and prepared
+	// media. It is created beside the resolver that owns capability detection, then handed to both
+	// consumers; neither may maintain a private GPU counter.
+	var encodePool *media.EncodePool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -300,22 +417,51 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// binder is assembled. Nil until assigned, which numbering treats as "Loomarr's store only".
 	var chanNumbers binder.NumberSource
 	if st != nil {
-		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
-		// Live TV points at whichever backend actually STREAMS (§9.1). `playout.backend`
-		// defaults to `internal`, and wiring Tunarr's URLs unconditionally pointed the media
-		// server at a backend that was not serving those channels — the channels appear in the
-		// guide and refuse to play. Resolved per call so a backend switch applies without a
-		// restart; the playout secret is read the same lazy way it is on the spawn path.
-		connector := setup.NewLiveTVConnector(lib, func() setup.TunarrURLs {
-			tok := ""
-			if secrets != nil {
-				tok = secrets.Value(settings.SecretPlayout)
-			}
-			return setup.LiveTVURLsFor(
-				set.str("playout.backend"), set.str("tunarr.url"), set.str("server.public_url"), tok)
-		})
-		liveTVSvc = liveTVAdapter{connector}
+		lib := libraryClient
+		prog := programmer.NewDynamic(set.tunarrConfig())
+		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
+		// The connector's fixed fallback is empty so accidentally using a compatibility helper
+		// fails closed instead of publishing a process-local target.
+		liveTVConnector = setup.NewLiveTVConnector(
+			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{})
+		liveTVSvc = liveTVAdapter{
+			c: liveTVConnector,
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+				if set.svc != nil {
+					if err := set.svc.Refresh(ctx); err != nil {
+						return setup.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
+					}
+				}
+				backend, err := appliedBackendContext(ctx)
+				if err != nil {
+					return setup.LiveTVURLs{}, err
+				}
+				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+				if err != nil {
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
+				}
+				return setup.LiveTVURLsFor(
+					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
+				), nil
+			},
+		}
+		transportFreshness := transportTunerRescanner{
+			c: liveTVConnector,
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+				backend, err := transportBackendContext(ctx)
+				if err != nil {
+					return setup.LiveTVURLs{}, err
+				}
+				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+				if err != nil {
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
+				}
+				return setup.LiveTVURLsFor(
+					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
+				), nil
+			},
+		}
+		tunerRescanner = transportFreshness
 
 		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):
 		// uses the concrete Tunarr client's media-source methods (prog), or the injected
@@ -326,14 +472,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				msProg = msp
 			}
 		}
-		tunarrConnectSvc = setup.NewMediaSourceConnector(lib, msProg, func() (string, string, string) {
-			u, tk := set.libraryConn()()
-			fl := set.str("library.flavor")
-			if fl == "" {
-				fl = "emby"
-			}
-			return fl, u, tk
-		})
+		tunarrConnectSvc = setup.NewMediaSourceConnector(
+			func() setup.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
@@ -355,41 +495,52 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// numbering that consulted the real client while the reconcile used the double would
 		// disagree about which numbers exist. Both must read the same Tunarr.
 		chanNumbers = tunarrNumbers{pusher}
-		engine := channels.New(st, pusher, avail, connector, channels.Config{
+		channelEngine = channels.New(st, pusher, avail, transportFreshness, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
-			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
+			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
-			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
-			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density
-			DefaultWindow: set.dur("sched.window_hours"),      // §6.5 rolling-window horizon
+			Policy:               schedule.PodFill,
+			ReconcileTTL:         set.dur("channel.reconcile_every"),
+			BreaksPerHour:        set.intv("filler.breaks_per_hour"),
+			BreakDuration:        set.dur("filler.break_duration"),
+			DefaultWindow:        set.dur("sched.window_hours"),
+			ResolveReconcileTTL:  func() time.Duration { return set.dur("channel.reconcile_every") },
+			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
+			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
+			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			// Backend selection is durable and per-channel-aware inside the engine: this closure
+			// supplies the durable in-progress target when one exists, otherwise the applied
+			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
+			// This keeps ordinary reconcile aligned with the fleet barrier during a transition.
+			ResolvePlayoutBackendContext: reconcileBackendContext,
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		engine.WithRatings(libraryRatings{lib: lib})
+		channelEngine.WithRatings(libraryRatings{lib: lib})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		engine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
-		engine.WithNotifier(emitter)
+		channelEngine.WithNotifier(emitter)
 		// A reconcile that has to MOVE a channel because Tunarr already occupies its number is an
 		// operator-facing fact that must outlive a log line (§9 V54) — the number is what a viewer
 		// tunes to, and the log that recorded the original strand had already scrolled away by the
 		// time anyone asked what happened.
 		if activityRec != nil {
-			engine.WithActivity(activityRec)
+			channelEngine.WithActivity(activityRec)
 		}
-		channelSvc = engine
+		channelSvc = channelEngine
 
 		// Now that the scheduler engine exists, give the emitter its backfill
 		// handler: provisioning availability events (webhook + reconciler) fan to
 		// OnAvailability, so an acquisition that lands `available` reconciles the
 		// channels referencing it immediately — instead of waiting up to a full
 		// sweep interval. (#10: the emitter was nil before this wire.)
-		emitter.setEngine(engine)
+		emitter.setEngine(channelEngine)
 
 		// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
 		// where BOTH halves already exist — the engine that answers "what airs when" and the
@@ -412,7 +563,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			if secrets == nil {
 				return ""
 			}
-			return secrets.Value(settings.SecretPlayout)
+			token, err := readGeneratedSecret(context.Background(), settings.SecretPlayout)
+			if err != nil {
+				return "" // fail child URL generation closed while durable auth is unavailable.
+			}
+			return token
 		}
 		// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
 		// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
@@ -420,9 +575,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//
 		// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
 		// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
-		//   1. MEASURED capacity — what Detect's encoder trial found this box sustains (playoutRes,
-		//      set async at adapter start). The source of truth for "how many encodes fit".
-		//   2. OPERATOR OVERRIDE — playout.max_channels, applied as a HARD CAP (min): an operator may
+		//   1. MEASURED capacity — what Detect's lazy encoder trial found this box sustains
+		//      (playoutRes.maxChannels). The source of truth for "how many encodes fit"; until the first
+		//      trial completes, EffectiveCapacity deliberately permits one conservative transcode.
+		//   2. OPERATOR SAFETY CAP — playout.max_channels, applied as a HARD CAP (min): an operator may
 		//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
 		//      proved. 0/unset ⇒ no cap, use the measurement.
 		//   3. VRAM SHADING — a resident LLM steals VRAM each hardware encode needs for its device
@@ -433,32 +589,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		playoutBudget := func() int {
 			measured := 0
 			if playoutRes != nil {
-				measured = playoutRes.maxChannels // set async by Detect at adapter start; stable after
+				measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
 			}
-			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
-			// measured capacity is a conservative estimate that can under-count a capable GPU (the
-			// 3080-Ti-read-as-1 bug), so an operator who sets playout.max_channels is trusted to RAISE
-			// above it as well as lower it. Unset (0) ⇒ use the measurement, which is now warm-measured
-			// and clamped to a sane floor so it is a reasonable default on its own.
-			budget := measured
-			if override := set.intv("playout.max_channels"); override > 0 {
-				budget = override
-			}
-			// Shade by resident-LLM VRAM. ~4 GiB per hardware encode is a conservative device-context
-			// estimate; a resident 8B model (~6 GiB) thus costs ~1–2 slots, which matches the live
-			// black-screen incident. Never shade below 1 while any capacity exists — a resident model
-			// should degrade headroom, not take playout to zero.
+			residentGiB := 0.0
 			if residentVRAM != nil {
-				if gib, _ := residentVRAM(rootCtx); gib > 0 {
-					const gibPerEncode = 4.0
-					shaded := budget - int(gib/gibPerEncode)
-					if shaded < 1 && budget >= 1 {
-						shaded = 1
-					}
-					budget = shaded
-				}
+				residentGiB, _ = residentVRAM(rootCtx)
 			}
-			return budget
+			return playout.EffectiveCapacity(measured, set.intv("playout.max_channels"), residentGiB)
 		}
 		playoutMgr := playout.NewManager(
 			playoutSpawner(set.str("playout.ffmpeg_path"),
@@ -469,7 +606,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log,
 		)
 		playoutRes = &playoutResolver{
-			engine: engine, lib: lib, now: time.Now,
+			engine: channelEngine, lib: lib, now: time.Now,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 			// state and must not be able to change it.
 			titles: st,
@@ -491,11 +628,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
-			capacity: func() int { return set.intv("playout.max_channels") },
-			// fillerDir is read live like every other setting; `pods` is assigned after the
-			// pod adapter is built further down (it needs the filler catalog, which is wired
-			// later) — see "playoutRes.pods" below.
-			fillerDir: func() string { return set.str("filler.dir") },
+			capacity: playoutBudget,
+			// fillerDir belongs to the immutable generation layout. Changing storage roots
+			// is applied only after the generation drains and rebuilds (§10); `pods` is
+			// assigned after the pod adapter is built further down.
+			fillerDir: fillerLayout.ClipDir(),
 			// The capability probe runs lazily on the first program that needs it, when
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
@@ -513,7 +650,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
 			probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
 			// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
-			// applies without a restart — the same hot-apply posture as fillerDir/audioLanguage.
+			// applies without a restart — the same hot-apply posture as audioLanguage.
 			pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
 			log:     log,
 			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
@@ -541,13 +678,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
 			})
 		})
-		playoutSessions = playoutMgr
+		playoutObserver = playoutMgr
 
 		// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
 		// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
 		// failure to create its scratch root is not fatal — the media-server streams work without
 		// it — so log and leave the /playout/hls routes reporting "not running" rather than
 		// refusing to boot.
+		var liveHLS *playout.HLSManager
 		if hlsMgr, herr := playout.NewHLSManager(
 			playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
 			playout.DefaultGrace, log,
@@ -555,7 +693,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
 				"err", herr)
 		} else {
-			playoutHLS = hlsMgr
+			liveHLS = hlsMgr
 			go func() {
 				<-rootCtx.Done()
 				hlsMgr.Stop()
@@ -600,6 +738,125 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Info("playout: hardware encode admission", "hw_slots", n)
 			return n
 		}
+		encodePool = media.NewEncodePool(func() int {
+			if playout.Encoder(set.str("playout.encoder")) == playout.EncoderSoftware {
+				return 0 // an explicit software choice must not start hardware preparation.
+			}
+			return hwEncodeSlots(rootCtx)
+		})
+
+		// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
+		// fallback. Construction may fail on an unwritable volume without taking live TV down; the
+		// task remains visible with the exact reason instead of silently disappearing.
+		var preparedOrigin *playout.PreparedOrigin
+		preparedLibrary, preparedErr := prepared.NewLibrary(set.str("playout.prepared_dir"))
+		if preparedErr != nil {
+			reason := "the prepared media directory is unavailable: " + preparedErr.Error()
+			log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Pool: encodePool, Now: time.Now, Log: log, UnavailableReason: reason,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, reason))
+		} else {
+			readiness, readinessErr := prepared.OpenReadiness(preparedLibrary)
+			if readinessErr != nil {
+				log.Warn("playout: prepared readiness index unavailable — live fallback remains active", "err", readinessErr)
+			}
+			packager := prepared.NewFFmpegPackager(
+				set.str("playout.ffmpeg_path"),
+				func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
+					encoder := playout.Encoder(set.str("playout.encoder"))
+					if encoder == "" {
+						encoder = playoutRes.detectedEncoder(rootCtx)
+					}
+					return playout.PreparedVideoArgs(encoder, contract)
+				},
+			)
+			preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+				Library: preparedLibrary, Packager: packager, Readiness: readiness,
+			})
+			preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
+				Channels: st, Timeline: playoutRes, Inputs: lib, Lookup: preparer,
+				Now: time.Now, Readiness: readiness,
+				PathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+				Policy: func() string {
+					return preparedSourcePolicy(
+						set.str("playout.quality_tier"),
+						set.str("playout.audio_language"),
+						set.str("library.path_map"),
+					)
+				},
+				GlobalBackendContext:    appliedBackendContext,
+				TransportBackendContext: transportBackendContext,
+				Rendition: func() prepared.RenditionContract {
+					return playout.CanonicalPreparedRendition(
+						playout.TierFor(set.str("playout.quality_tier")),
+					)
+				},
+			})
+			planner := prepared.NewPlanner(prepared.PlannerDependencies{
+				Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
+				Retainer: preparedLibrary,
+				BudgetBytes: func() int64 {
+					return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
+				},
+				Now: time.Now, Log: log,
+			})
+			preparedObserver = planner
+			jobReg.Add(preparedPlayoutJob(planner, ""))
+			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
+		}
+		var lifecycleGate *playoutAdmissionGate
+		// Every transport hop uses one durable eligibility decision, including SQLite's raw
+		// playlist/program chain. Postgres additionally closes the process-wide listener gate
+		// whenever notification continuity cannot be proved.
+		backendView = backendtransition.NewDurableView(st)
+		durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
+			return durableInternalTransportPlayable(ctx, st, backendView, channelID)
+		}
+		if store.DialectOf(st) == store.DialectPostgres {
+			lifecycleGate = &playoutAdmissionGate{}
+		}
+		origin := playout.NewOrigin(playout.OriginDependencies{
+			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+			Available: func() bool {
+				return lifecycleGate == nil || lifecycleGate.Available()
+			},
+			Eligible: durablePlayoutEligibility,
+		})
+		playoutSvc = origin
+
+		// The durable backend checkpoint is initialized synchronously before any request can
+		// observe its runtime gates. Initialize performs store I/O only; fleet and media-server
+		// work is retried by settings writes and channel maintenance.
+		backendURLs := func(ctx context.Context, target string) (setup.LiveTVURLs, error) {
+			tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+			if err != nil {
+				return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
+			}
+			return setup.LiveTVURLsFor(
+				target, set.str("tunarr.url"), set.str("server.public_url"), tok,
+			), nil
+		}
+		builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
+			store: st, fleet: channelEngine,
+			publisher: &backendPublisher{connector: liveTVConnector, urls: backendURLs},
+			cutover:   inheritedInternalCutover{channels: st, playout: playoutSvc},
+			desired:   resolveDesiredBackend,
+		})
+		if err != nil {
+			return nil, err
+		}
+		backendController = builtBackendController
+		if lifecycleGate != nil {
+			lifecycle := &postgresPlayoutLifecycle{
+				store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
+			}
+			if err := lifecycle.Start(rootCtx); err != nil {
+				return nil, fmt.Errorf("start postgres playout lifecycle: %w", err)
+			}
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -617,28 +874,31 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			playoutMgr.Stop()
 		}()
 		log.Info("internal playout registered",
-			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels", set.intv("playout.max_channels"))
+			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
 
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
 		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
 		// lease/batch are still constructed; only its standalone loop is gone.
-		chSweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(chSweep.Job())
+		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
+		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
+			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
+		}))
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
-	// The channel binder (§7): the ONE "materialize an approved proposal onto a
-	// channel" implementation, shared by the manual-approve HTTP handler and the
-	// suggest worker's auto-approve path (§8/§11) — closes the gap where a
-	// per-user auto-approved refine enqueued acquisitions but never rebound its
-	// channel. Needs only the store, so it's constructed whenever one is open;
+	// The channel binder (§7) owns the approval coordinator's read-only channel plan
+	// and post-commit runtime consequences. The coordinator below is the ONE public
+	// approval operation shared by HTTP and automatic paths; callers cannot split
+	// acquisition persistence from local channel materialization. The binder needs
+	// only the store, so it's constructed whenever one is open;
 	// channelSvc (if the scheduler/Tunarr block above wired it) satisfies
 	// binder.Reconciler directly — same Reconcile(ctx, channelID) signature. If
 	// channels isn't configured, channelSvc is a nil interface and the binder's
 	// nil-guard just skips the immediate reconcile push (same best-effort
 	// behavior createChannel/approveProposal always had).
 	var chBinder *binder.Binder
+	var proposalApprover *suggest.Approver
 	if st != nil {
 		var rec binder.Reconciler
 		if channelSvc != nil {
@@ -667,12 +927,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if chanNumbers != nil {
 			chBinder = chBinder.WithChannelNumbers(chanNumbers)
 		}
+		// One deep gate owns proposal edits, acquisition records, and the intent-bound
+		// channel commit. HTTP, per-user auto-approval, and auto-curate all receive this
+		// same instance, so composition cannot accidentally split local materialization.
+		proposalApprover = suggest.NewApprover(st, chBinder, time.Now)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
-	// the LLM provider, the grounded suggester, and the worker pool. Wired when a
-	// store, the library, and the LLM are configured. The catalog + search share
-	// one impl (§7.2).
+	// the LLM provider, the grounded suggester, and the worker pool. A store owns
+	// these long-lived services; their dynamic adapters and feature gates decide
+	// which configured capabilities each operation may use. The catalog + search
+	// share one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
 	var collectionsSvc api.CollectionService
@@ -686,62 +951,49 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// SSRF allowlist and the concurrency cap are enforced identically whoever asks.
 	var imageFetcher *images.Fetcher
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
-	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
-	// timeline handles by rendering the strip with no images.
+	// It remains wired while the key is empty so a later settings save hot-applies; the resolver
+	// degrades an unconfigured lookup to the timeline's supported image-less rendering.
 	var timelineThumbs api.TimelineThumbResolver
 	if st != nil {
 		// The image service (§22, V52). First in this block deliberately: it depends on nothing
 		// else here, and the jobs registered later need it.
-		imageSvc = newImageService(st, set)
-		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
+		var imageErr error
+		imageSvc, imageErr = newImageService(st, set, ov.ImageWorkerExecutable, buildinfo.Get().Version)
+		if imageErr != nil {
+			return nil, imageErr
+		}
+		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, fillerLayout, set, activityRec, log)
 
-		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		var tmdbClient *tmdb.Client
-		if k := set.str("tmdb.api_key"); k != "" {
-			tmdbClient = tmdb.New(k)
-		}
-		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
-			tmdbClient = ov.TMDB
-		}
-		// The Watch timeline's preview images (§9.1 V47) — a series episode's still or a movie's
-		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
-		// renders with no images, which is a supported (image-less) rendering.
-		if tmdbClient != nil {
-			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc}
-		}
+		lib := libraryClient
+		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
+		// from the provisioning key. The shared fetcher warms cold interactive artwork before the
+		// response returns; while the credential is empty the resolver's supported soft-failure
+		// leaves the surfaces on their image-less rendering.
+		timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
-		// Only when TMDB is configured; the engine was created in the earlier st-block, so
-		// reach it through channelSvc (the same type-assert the pods wiring uses).
-		if tmdbClient != nil {
-			if engine, ok := channelSvc.(*channels.Engine); ok {
-				engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
-			}
+		// The resolver stays wired while unconfigured and reports the enrichment unresolved,
+		// allowing a later reconcile to heal it after the key is saved. The engine was created
+		// in the earlier st-block, so reach it through channelSvc.
+		if engine, ok := channelSvc.(*channels.Engine); ok {
+			engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 		}
-		// catalog.New accepts nil corpora; a nil *tmdb.Client would be a non-nil
-		// interface, so pass the concrete nil only when configured.
-		var tmdbSearcher catalog.TMDBSearcher
-		var validator suggest.Validator
-		if tmdbClient != nil {
-			tmdbSearcher = tmdbClient
-			validator = tmdbClient
-		} else {
-			validator = noopValidator{} // no TMDB: acquisitions can't be re-validated, so treat as exists
-		}
-		// clip corpus wired in Phase 12. WithPresence lets discovery mark titles the
-		// library already owns as in-library (a lineup pick, not an acquisition).
-		cat := catalog.New(lib, tmdbSearcher).WithPresence(libraryPresence{lib})
+		// The catalog and validator share the same dynamic adapter. An empty credential
+		// is an honest unconfigured error, never permission to skip validation.
+		// clip corpus wired in Phase 12. The presence source binds one library snapshot
+		// for every discovery batch, then marks owned titles as lineup picks rather than acquisitions.
+		cat := catalog.New(lib, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+			return libraryPresence{lib: lib.Snapshot()}
+		})
 		searchSvc = searchAdapter{cat}
 		// The scope.collections picker (§2.2). Gated on the library alone — unlike search it
 		// needs no TMDB, because a collection is the operator's own shelf and never a TMDB
 		// lookup. Shares this block's library client.
 		collectionsSvc = libraryCollections{lib: lib}
 
-		// Channel icon suggestions (§icon P2): gated on TMDB, same as search/suggest above —
-		// posters are TMDB-only, so no TMDB key means no suggestions, and the route 501s.
-		if tmdbClient != nil {
-			iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
-		}
+		// Channel icon suggestions (§icon P2): the service remains wired for hot apply;
+		// the API's live setting gate returns 501 while the TMDB key is empty.
+		iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the
 		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
@@ -755,14 +1007,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.LLM != nil {
 			provider = ov.LLM
 		}
-		sug := suggest.New(provider, cat, validator, set.intv("suggest.max_acquisitions"))
+		sug := suggest.New(provider, cat, tmdbClient, set.intv("suggest.max_acquisitions"))
 		// Enrich a not-yet-owned acquisition's rating from TMDB (§389), so an audience
-		// ceiling doesn't drop it before it can even show as a pending slot. Only when
-		// TMDB is configured; sparse coverage is fine (the reconciler heals from the
-		// library once it lands).
-		if tmdbClient != nil {
-			sug.WithRatings(tmdbClient)
-		}
+		// ceiling doesn't drop it before it can even show as a pending slot. Suggestions
+		// are live-gated on TMDB configuration; sparse rating coverage is fine (the
+		// reconciler heals from the library once the title lands).
+		sug.WithRatings(tmdbClient)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
@@ -772,22 +1022,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// effect without a restart, like every other setting (config-design §3).
 		svc = svc.WithAutoApprove(suggest.NewAutoApprover(
 			st,
+			proposalApprover,
 			func(context.Context) int { return set.intv("suggest.max_acquisitions") },
-			time.Now,
 			log,
 		))
-		// Same *binder.Binder the API's approve handler uses (wired into api.Options
-		// below) — so an auto-approved proposal ALSO rebinds its channel, closing the
-		// gap where auto-approve enqueued acquisitions but left the channel stale.
-		svc = svc.WithChannelBinder(chBinder)
 
 		// Self-updating channels (§8.2): the channel-scoped auto-curate grant + the
 		// scheduled re-curation job. The Curator approves a re-curation proposal because
 		// its CHANNEL opted in (schedule.AutoCurate), bounded by the quality bar + title
-		// cap (global settings, per-channel overridable) — through the SAME suggest.Approve
+		// cap (global settings, per-channel overridable) — through the SAME suggest.Approver
 		// gate, audit "auto-curate". The Runner (registered below) triggers the refresh
 		// refine that produces the proposal the Curator considers.
-		curator := recurate.NewCurator(st, recurateThresholds{set}, time.Now, log)
+		curator := recurate.NewCurator(st, proposalApprover, recurateThresholds{set}, log)
 		svc = svc.WithAutoCurate(curator)
 		// The §8.3 adjacency corpus rides the SAME catalog the suggester grounds against,
 		// so an adjacency candidate is the same shape (and gets the same in-library
@@ -799,7 +1045,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
-		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb", tmdbClient != nil)
+		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb_configured", set.str("tmdb.api_key") != "")
 	}
 
 	// Filler & commercials (§10, Phase 12). Loomarr scans and probes the drop-folder
@@ -814,7 +1060,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var fillerSvc api.FillerService
 	var podPreview api.PodPreviewer
 	if st != nil {
-		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		fillerProg := programmer.NewDynamic(set.tunarrConfig())
 		// The catalog comes from OUR OWN scan of FILLER_DIR (§9.1), with Tunarr consulted only
 		// to annotate each clip with its program uuid for Tunarr-backed filler-lists. That
 		// ordering is the fix: previously Tunarr's scan DEFINED the catalog, so an install
@@ -828,27 +1074,37 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// empty catalog. Without this, shipping a default would swap an honest "not
 		// configured" for a scan error on every fresh install: configured, and broken.
 		//
-		// Best-effort: a read-only or unwritable /data is the operator's to fix, and it
-		// must not stop the rest of the app booting. The scan then reports the real problem.
-		if dir := set.str("filler.dir"); dir != "" {
+		// Best-effort after Layout has proved the paths do not alias: a target that cannot be
+		// created is the operator's to fix, and scan reports it without pruning the catalog.
+		// Layout construction itself fails closed when filesystem identity cannot be inspected,
+		// because starting destructive intake on an unverifiable topology is unsafe.
+		if dir := fillerLayout.ClipDir(); dir != "" {
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
 					"dir", dir, "err", err)
 			}
+			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
+			// default at boot so a fresh install is green before its first arrival; an explicitly
+			// configured, unusable watch path still fails visibly rather than being ignored.
+			watch := fillerLayout.WatchDir()
+			if err := os.MkdirAll(watch, 0o750); err != nil {
+				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
+					"dir", watch, "err", err)
+			}
 		}
 		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
-		// captured — see buildSyncer for why, and for why a nil library scanner is a supported
-		// install rather than a degraded one.
-		syncer := buildSyncer(rootCtx, st, set, log, fillerProg)
+		// captured — see buildSyncer for why. Its always-wired library scanner treats an empty
+		// connection as an optional source and begins using a saved connection on the next scan.
+		syncer := buildSyncer(st, set, fillerLayout, log, fillerProg, libraryClient)
 
 		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
 		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
-		taggerProvider, tagger := buildTagger(st, set, log)
+		taggerProvider, tagger := buildTagger(st, set, fillerLayout, log)
 		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
 		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
 		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
-		fetcher := buildFetcher(set, log)
-		splitter := buildSplitter(st, set, log)
+		fetcher := buildFetcher(set, fillerLayout, log)
+		splitter := buildSplitter(st, set, fillerLayout, log)
 		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
 		// below. The pipeline needs the vision provider and the splitter, which are wired further
 		// down, while this adapter is needed further up — so one of the two has to be completed
@@ -882,31 +1138,22 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
 		// shared heartbeat. Interval key: filler.sync_every.
 		jobReg.Add(fillerSyncJob(syncer))
-		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+		log.Info("filler catalog sync registered", "dir", fillerLayout.ClipDir(), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 
-		fillerPipeline := buildPipeline(st, set, log, emitter, splitter, taggerProvider)
+		fillerPipeline := buildPipeline(st, set, fillerLayout, log, emitter, splitter, taggerProvider)
 		jobReg.Add(fillerPipelineJob(fillerPipeline))
 		// The operator-triggered paths now reach the same machinery as the cron driver — see the
 		// note on `fillerAdapter` above for why this lands here rather than at construction.
 		fillerAdapter.pipeline = fillerPipeline
-		fillerSvc = fillerAdapter
 
 		// The split-review sweep (§10 V54): reels whose leftover cuts nobody reviewed expire, and
 		// their recordings are reclaimed. ⚠ No adapter — `SweepStore` is a pure SUBSET of
-		// `store.Store`, like the reindex job below. The clip dir is the same containment boundary
+		// `store.Store`. The clip dir is the same containment boundary
 		// the splitter uses; the window is read live so a change applies on the next run.
 		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-			fillerSweepStoreAdapter{st}, set.str("filler.dir"),
+			fillerSweepStoreAdapter{st}, fillerLayout.ClipDir(),
 			func() time.Duration { return set.dur("filler.split.review_window") },
 			time.Now, log)))
-
-		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
-		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
-		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a
-		// path-vs-hash mismatch. Off unless `filler.reindex.enabled`, read live inside Run, so the row
-		// stays visible on the Tasks page even when idle.
-		jobReg.Add(fillerReindexJob(filler.NewReindexJob(
-			st, func() bool { return set.boolv("filler.reindex.enabled") }, time.Now, log)))
 
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
@@ -918,13 +1165,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// made for backups on Postgres.
 		autoFetch := filler.NewFetcher(
 			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerSvc, set.str("filler.dir"),
+			archiveDiscoverAdapter{}, fillerAdapter, fillerLayout.ClipDir(),
 			filler.FetchLimits{
 				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
 				MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 			}, log,
 		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+		fillerAdapter.autoFetch = autoFetch
+		fillerSvc = fillerAdapter
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
 
@@ -1000,26 +1249,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var passwordSvc api.PasswordService
 	if st != nil {
 		// Auth wires on the STORE alone (§11 rework): identity is Loomarr-owned, so
-		// bootstrap + local login work with zero media-server config. The library
-		// (media-server verifier + user lister) is optional — nil ⇒ import is
-		// unavailable and only local users can sign in.
-		var lib *library.Client
-		if set.str("library.flavor") != "" {
-			flavor, _ := library.ParseFlavor(set.str("library.flavor"))
-			lib = library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
-		}
+		// bootstrap + local login work with zero media-server config. The media-server
+		// verifier and user lister stay present while unconfigured; the dynamic client
+		// fails closed until the complete live triple exists.
+		lib := libraryClient
 		mgr := auth.NewManager(st, set.dur("session.ttl"), time.Now)
 		limiter := auth.NewRateLimiter(0.2, 5) // ~5 attempts, refill 1/5s (§11)
-		// NewLoginService takes the Authenticator interface; a nil *library.Client
-		// would be a non-nil interface, so pass nil explicitly when unconfigured.
-		if lib != nil {
-			loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
-			userSync = auth.NewUserSync(lib, st, time.Now)
-			provisionSvc = auth.NewProvisioner(st, lib, newID, time.Now)
-		} else {
-			loginSvc = auth.NewLoginService(nil, st, mgr, limiter, time.Now)
-			provisionSvc = auth.NewProvisioner(st, nil, newID, time.Now)
-		}
+		loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
+		userSync = auth.NewUserSync(lib, st, time.Now)
+		provisionSvc = auth.NewProvisioner(st, lib, newID, time.Now)
 		// SSO: the third credential path (§11, D-F, V8). Config is read PER CALL so a saved
 		// change applies without a restart (config-design §3).
 		//
@@ -1047,7 +1285,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// unconditionally alongside the store, not inside the `lib != nil` branch.
 		passwordSvc = auth.NewPasswordService(st, newID, time.Now)
 		sessMgr = mgr
-		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
+		authorizer = api.NewSessionAuthorizerCurrent(mgr, func(ctx context.Context) (string, error) {
+			return readGeneratedSecret(ctx, settings.SecretAPI)
+		})
 	}
 
 	// The playout device token (§11). A FUNC, not a captured value, so a REGENERATED token
@@ -1058,8 +1298,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// serving streams unauthenticated because a secret could not be minted would silently
 	// remove the only auth those routes have.
 	var playoutSecret func() string
+	var playoutSecretCurrent func(context.Context) (string, error)
 	if secrets != nil {
 		playoutSecret = func() string { return secrets.Value(settings.SecretPlayout) }
+		playoutSecretCurrent = func(ctx context.Context) (string, error) {
+			return readGeneratedSecret(ctx, settings.SecretPlayout)
+		}
 	}
 
 	// The settings API surface (config-design §8): wired when the store (hence the
@@ -1072,17 +1316,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// reports a DIFFERENT programme than the grid and the XMLTV the television reads — measured
 	// ~30 minutes apart on the dev install. See nowNextRouter.
 	//
-	// The Tunarr half still reads the LIVE connection through the settings snapshot, so saving a
-	// new Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
+	// The Tunarr half still reads LIVE config at the start of each operation, so saving a new
+	// Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
 	if st != nil {
-		var tunarrGuide api.GuideReader
-		if set.str("tunarr.url") != "" {
-			tunarrGuide = guideAdapter{
-				tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
-				window: 2 * time.Hour,
-			}
+		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
+		// Its config resolves per operation, so adding tunarr.url later hot-applies; while
+		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
+		var tunarrGuide tunarrGuideReader = guideAdapter{
+			tunarr: programmer.NewDynamic(set.tunarrConfig()),
+			window: 2 * time.Hour,
 		}
 		// playoutRes is nil when internal playout is not wired; the router then has no reader
 		// for internal channels and gives them no entry — never a fallback to Tunarr's guide,
@@ -1096,23 +1340,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			internal: internalGuide,
 			channels: st,
 			// The same nil-means-inherit precedence playoutChannels uses (§15): a channel's own
-			// policy.playout.backend wins, else the global. Resolved live so a backend switch
-			// applies to the next render.
-			internalFor: func(ch store.Channel) bool {
-				return schedule.PlaysInternally(ch.Policy, set.str("playout.backend"))
-			},
-			window: 2 * time.Hour,
+			// policy.playout.backend wins, else the durable applied global. A prepared target
+			// cannot leak into the next render before publication.
+			appliedBackend: appliedBackendContext,
+			window:         2 * time.Hour,
 		}
 	}
 
 	var settingsSvc api.SettingsService
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
-			svc:     set.svc,
-			secrets: secrets,
-			store:   st,
-			log:     log,
-			tests:   connectionTests(set),
+			svc: set.svc, secrets: secrets, store: st, log: log,
+			tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshSecretRedactor,
+			readSecret: readGeneratedSecret,
 		}
 	}
 
@@ -1120,8 +1360,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// config (config-design §3 hot-apply): a saved connection enables the route with
 	// no restart (§8.1). Only when the settings service exists (a store is open).
 	var liveConfig func(key string) string
+	var libraryConfigured func() bool
 	if st != nil {
 		liveConfig = set.str
+		libraryConfigured = set.libraryConfigured
 	}
 
 	// Build + start the job scheduler once every subsystem has registered its jobs (§18.1).
@@ -1176,14 +1418,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobsSvc = jobsAdapter{s: sched}
 	}
 
-	// Database migration stepper (§18, V11). Wired only for a SQLite install: the
-	// service reports CanMigrate=false on Postgres, but there is no reason to hold the
-	// state machine at all there. backup.dir is read at call time so a hot-applied
-	// change takes effect without a restart.
+	// Database migration stepper (§18, V11). Keep the status service on Postgres so the
+	// browser polling across an atomic cutover can observe the new backend. Mutations
+	// fail closed there, while backup.dir remains hot-applied for SQLite.
 	var databaseSvc api.DatabaseService
-	if st != nil && store.DialectOf(st) == store.DialectSQLite {
-		databaseSvc = newDatabaseService(st, filepath.Dir(store.SQLitePath(st)),
-			func() string { return set.str("backup.dir") }, eventBus)
+	if st != nil {
+		dataDir := ""
+		if store.DialectOf(st) == store.DialectSQLite {
+			dataDir = filepath.Dir(store.SQLitePath(st))
+		}
+		databaseSvc = newDatabaseService(st, dataDir,
+			func() string { return set.str("backup.dir") }, eventBus).
+			WithMigrationRequest(ov.DatabaseMigration).
+			WithLastError(ov.DatabaseMigrationError)
 	}
 
 	// residentLLMVRAMFn — the TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is
@@ -1221,59 +1468,76 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		residentVRAM = residentLLMVRAMFn
 	}
 
-	return api.Router(log, api.Options{
-		Store:         st,
-		Auth:          authorizer,
-		Log:           log,
-		BackupSQLite:  backup,
-		Ready:         ready,
-		Login:         loginSvc,
-		Sessions:      sessMgr,
-		Passwords:     passwordSvc,
-		UserSync:      userSync,
-		CookieSecure:  set.str("cookie.secure"),
-		DevLogin:      ov.DevLogin,
-		Pprof:         ov.Pprof,
-		Channels:      channelSvc,
-		LiveTV:        liveTVSvc,
-		TunarrConnect: tunarrConnectSvc,
-		Suggest:       suggestSvc,
-		Search:        searchSvc,
-		Collections:   collectionsSvc,
-		Icons:         iconSvc,
-		Images:        imageService(imageSvc),
-		Events:        eventBus,
-		Filler:        fillerSvc,
-		Pods:          podPreview,
-		SystemLLM:     systemLLM,
-		Database:      databaseSvc,
-		Backups:       backupsSvc,
-		SSO:           ssoSvc,
-		Restart:       restartSvc,
-		Activity:      activityRec,
-		// The baseline for "has a boot-time setting changed?" is what THIS generation
-		// booted with, captured here rather than per call (config-design §3).
-		BootstrapDrift: bootstrapDrift(bootCfg),
-		Jobs:           jobsSvc,
-		Settings:       settingsSvc,
-		Guide:          guideSvc,
-		Provision:      provisionSvc,
-		Binder:         chBinder,
-		LiveConfig:     liveConfig,
-		LiveConfigInt:  set.intv,
+	handler := api.Router(log, api.Options{
+		Store:          st,
+		Auth:           authorizer,
+		Log:            log,
+		BackupSQLite:   backup,
+		Ready:          ready,
+		Login:          loginSvc,
+		Sessions:       sessMgr,
+		Passwords:      passwordSvc,
+		UserSync:       userSync,
+		CookieSecure:   set.str("cookie.secure"),
+		DevLogin:       ov.DevLogin,
+		Pprof:          ov.Pprof,
+		Channels:       channelSvc,
+		LiveTV:         liveTVSvc,
+		TunerRescanner: tunerRescanner,
+		TunarrConnect:  tunarrConnectSvc,
+		Suggest:        suggestSvc,
+		Search:         searchSvc,
+		Collections:    collectionsSvc,
+		Icons:          iconSvc,
+		Images:         imageService(imageSvc),
+		Events:         eventBus,
+		Shutdown:       rootCtx.Done(),
+		Filler:         fillerSvc,
+		Pods:           podPreview,
+		SystemLLM:      systemLLM,
+		Database:       databaseSvc,
+		Backups:        backupsSvc,
+		SSO:            ssoSvc,
+		Restart:        restartSvc,
+		Activity:       activityRec,
+		// The baseline for "has a restart-scoped setting changed?" is what THIS
+		// generation booted with, captured here rather than per call (config-design §3).
+		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		Jobs:         jobsSvc,
+		Settings:     settingsSvc,
+		BackendTransition: currentBackendTransition{
+			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
+		},
+		Guide:             guideSvc,
+		Provision:         provisionSvc,
+		Approver:          proposalApprover,
+		Binder:            chBinder,
+		FillerLayout:      fillerLayout,
+		LiveConfig:        liveConfig,
+		LibraryConfigured: libraryConfigured,
+		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
+			snapshot, err := checkpointSnapshot(ctx)
+			return api.BackendCheckpoint{
+				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
+				PublishedInternal: snapshot.PublishedInternal,
+			}, err
+		},
+		LiveConfigInt: set.intv,
 		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
 		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
 		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutSessions: playoutSessions,
+		PlayoutObserver:  playoutObserver,
+		PreparedObserver: preparedObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
-		PlayoutHLS:      playoutHLS,
+		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:   playoutGuideSvc,
-		TimelineThumbs: timelineThumbs,
-		PlayoutSecret:  playoutSecret,
+		PlayoutGuide:         playoutGuideSvc,
+		TimelineThumbs:       timelineThumbs,
+		PlayoutSecret:        playoutSecret,
+		PlayoutSecretCurrent: playoutSecretCurrent,
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.
@@ -1304,11 +1568,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLMVRAMFn,
-		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
-		// the gate that routes an over-capacity channel to software up front instead of stalling on a
-		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
-		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
-		HWEncodeSlots: hwEncodeSlots,
+		// The same pool is consumed by live playout here and by the prepared-media planner. Live work
+		// has foreground priority; preparation is cancellable and cannot consume the final slot.
+		EncodePool: encodePool,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {
@@ -1317,5 +1579,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// dashboard's encoder speed measured rather than invented (V16).
 			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress)
 		},
-	}), nil
+	})
+	// SQLite is single-process by contract, so its settings snapshot changes only
+	// through this process's writes and needs no polling reads. Postgres permits
+	// ordinary replicas; one cancellable refresher per application generation keeps
+	// their complete runtime snapshot within the documented ~30-second bound.
+	startReplicaSettingsRefresh(rootCtx, store.DialectOf(st), set.svc,
+		replicaSettingsRefreshInterval, refreshSecretRedactor)
+	return handler, nil
 }

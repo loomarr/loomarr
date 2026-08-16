@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -122,6 +123,32 @@ func TestRender_IsDeterministic(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		if got := render(pkgs); got != first {
 			t.Fatalf("render is not deterministic (run %d differed)", i+2)
+		}
+	}
+}
+
+func TestAssignLayers_IsDeterministicForCollapsedCycles(t *testing.T) {
+	orders := [][]string{{"app", "metrics", "provision"}, {"provision", "app", "metrics"}, {"metrics", "provision", "app"}}
+	var want map[string]int
+	for _, order := range orders {
+		packages := map[string]*Package{}
+		for _, name := range order {
+			imports := map[string][]string{
+				"app": {"metrics"}, "metrics": {"provision"}, "provision": {"app"},
+			}[name]
+			packages[name] = &Package{Name: name, Imports: imports}
+		}
+		assignLayers(packages)
+		got := map[string]int{}
+		for name, pkg := range packages {
+			got[name] = pkg.Layer
+		}
+		if want == nil {
+			want = got
+			continue
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("layers depend on map insertion order: got %v, want %v", got, want)
 		}
 	}
 }

@@ -24,7 +24,7 @@ func visionSet(t *testing.T, rows map[string]string) resolved {
 	if err != nil {
 		t.Fatalf("settings.New: %v", err)
 	}
-	return resolved{svc}
+	return resolved{svc: svc}
 }
 
 // Unset vision provider ⇒ byte-identical to the pre-V54a behaviour. Every existing install must
@@ -45,6 +45,22 @@ func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
 	}
 	if v.own {
 		t.Error("own = true, but no vision provider was named")
+	}
+}
+
+func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) {
+	v := visionEndpoint(visionSet(t, map[string]string{
+		"llm.provider":           "openai",
+		"llm.hosted_provider":    "openrouter",
+		"llm.url":                "https://openrouter.ai/api/v1",
+		"llm.model":              "openai/gpt-4o-mini",
+		"llm.api_key.openrouter": "provider-secret",
+	}))
+	if v.key != "provider-secret" {
+		t.Errorf("key = %q, want the selected provider's namespaced key", v.key)
+	}
+	if v.provider != "openai" {
+		t.Errorf("wire provider = %q, want openai-compatible", v.provider)
 	}
 }
 

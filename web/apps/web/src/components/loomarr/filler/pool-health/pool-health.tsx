@@ -1,7 +1,8 @@
-import type { PoolChannelDTO } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
-import { Button, Caption } from "@/components/ui";
-import { cn } from "@/lib";
+import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
+import { pluralize } from "@loomarr/core/format";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
 // PoolHealth — catalog-wide filler health, above every tab on the Filler page (V35).

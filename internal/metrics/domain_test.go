@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -17,6 +19,26 @@ type fakeCounts struct {
 	jobs     map[string]int
 	sessions int
 	err      error
+}
+
+type trackingCounts struct {
+	fakeCounts
+	calls atomic.Int64
+}
+
+func (f *trackingCounts) CountTitlesByState(ctx context.Context) (map[provision.State]int, error) {
+	f.calls.Add(1)
+	return f.fakeCounts.CountTitlesByState(ctx)
+}
+
+func (f *trackingCounts) CountJobsByStatus(ctx context.Context) (map[string]int, error) {
+	f.calls.Add(1)
+	return f.fakeCounts.CountJobsByStatus(ctx)
+}
+
+func (f *trackingCounts) CountActiveSessions(ctx context.Context, now time.Time) (int, error) {
+	f.calls.Add(1)
+	return f.fakeCounts.CountActiveSessions(ctx, now)
 }
 
 func (f fakeCounts) CountTitlesByState(context.Context) (map[provision.State]int, error) {
@@ -68,6 +90,41 @@ func TestStoreCollectorScrapeError(t *testing.T) {
 		func() time.Time { return time.Unix(0, 0).UTC() })
 	if n := testutil.CollectAndCount(c); n != 0 {
 		t.Errorf("on store error the collector emitted %d metrics, want 0", n)
+	}
+}
+
+// A process restart rebuilds the app around a new store while Prometheus keeps
+// its process-global registry. The registered collector must follow the current
+// generation rather than retaining the closed store from the first one.
+func TestRegisterStoreCollectorRebindsExistingCollector(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	old := &trackingCounts{fakeCounts: fakeCounts{err: errors.New("closed old store")}}
+	current := &trackingCounts{fakeCounts: fakeCounts{
+		titles:   map[provision.State]int{},
+		jobs:     map[string]int{},
+		sessions: 7,
+	}}
+
+	if err := registerStoreCollector(reg, old, func() time.Time { return time.Unix(1, 0) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerStoreCollector(reg, current, func() time.Time { return time.Unix(2, 0) }); err != nil {
+		t.Fatal(err)
+	}
+
+	want := `
+# HELP loomarr_active_sessions Unexpired sessions right now.
+# TYPE loomarr_active_sessions gauge
+loomarr_active_sessions 7
+`
+	if err := testutil.GatherAndCompare(reg, strings.NewReader(want), "loomarr_active_sessions"); err != nil {
+		t.Error(err)
+	}
+	if got := old.calls.Load(); got != 0 {
+		t.Errorf("closed generation queried %d times after rebind, want 0", got)
+	}
+	if got := current.calls.Load(); got != 3 {
+		t.Errorf("current generation queried %d times, want 3", got)
 	}
 }
 

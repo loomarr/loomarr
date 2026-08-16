@@ -1,7 +1,11 @@
-import { pluralize } from "@loomarr/core";
+import { pluralize } from "@loomarr/core/format";
 import { useState } from "react";
-import { Badge, Button, Caption, Card, Input } from "@/components/ui";
-import { cn } from "@/lib";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
 
 // PullCard — a proposed filler acquisition awaiting a human (V35).

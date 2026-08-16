@@ -7,6 +7,7 @@ import { ChannelAdvanced } from "./-channel-advanced";
 // A minimal channel — only the fields ChannelAdvanced reads. `applied` is reconcile-owned
 // (§9), so the tests assert it survives a playout edit untouched.
 const CHANNEL: ChannelDTO = {
+  revision: 1,
   id: "ch1",
   name: "Saturday Cartoons",
   number: 42,
@@ -38,8 +39,8 @@ describe("ChannelAdvanced — playout backend", () => {
   // "" is the inherit sentinel (a nil *PlayoutPolicy and an empty Backend mean the same thing
   // in Go). Radix forbids an empty-string item value, so "inherit" is the UI sentinel that must
   // lower back to "" — otherwise the channel would pin itself to whatever the default happened
-  // to be at that moment, and §9.1's "changing the default affects new channels only" promise
-  // would quietly stop holding for it.
+  // to be at that moment. Lowering it back to "" keeps the channel following later changes to
+  // the fleet-wide default.
   it("lowers the inherit sentinel back to an empty string", async () => {
     const onPolicyChange = vi.fn();
     render(

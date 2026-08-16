@@ -45,7 +45,7 @@ type PlayoutResolver interface {
 	// honouring the operator's preferred language (§9.1). Best-effort: 0 (the file's first
 	// track) whenever the preference cannot be resolved, so a probe failure costs the language
 	// and never the programme.
-	AudioTrackFor(ctx context.Context, streamURL string) int
+	AudioTrackFor(ctx context.Context, channelID, streamURL string) int
 	// Tracks probes the audio + subtitle tracks of the channel's CURRENTLY-AIRING program, for
 	// the Watch surface's pickers (§9.1, V46). The options a viewer sees are what the airing file
 	// actually carries — not a hardcoded list and not an app setting. Best-effort: empty tracks
@@ -87,6 +87,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
+	if !ok {
+		return
+	}
+	defer admission.Release()
+	r = r.WithContext(admission.Context)
 
 	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
 	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner
@@ -97,6 +103,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	encPlan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
 
 	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
+	if r.Context().Err() != nil {
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -132,7 +141,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// Which audio track, honouring the operator's language preference (§9.1). Resolved here
 	// rather than inside ProgramArgs because it needs a probe of the source, and the args
 	// builder is deliberately a pure function.
-	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), streamURL)
+	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), channelID, streamURL)
 
 	// Loudness normalisation, FILLER ONLY (§10 V40).
 	//
@@ -304,8 +313,8 @@ func (s *Server) streamProgram(
 	// does no encoding); a box with no hardware encoder reports zero slots and always lands here on
 	// software. The reactive evict-and-retry below stays only as a safety net for a slot-holder whose
 	// hardware encode still fails.
-	if wantsHardware && s.hwEncodeGate != nil {
-		if release, ok := s.hwEncodeGate.tryAcquire(); ok {
+	if wantsHardware && s.encodePool != nil {
+		if release, ok := s.encodePool.AcquireForeground(r.Context()); ok {
 			defer release()
 		} else {
 			s.log.Info("playout: GPU encode slots full — using software for this program",
@@ -399,6 +408,9 @@ type liveChild struct {
 func (s *Server) startChild(
 	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, args []string,
 ) *liveChild {
+	if ctx.Err() != nil {
+		return nil
+	}
 	// The child dies with the request. cancel is handed to the caller (pipeChild) which owns the
 	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
 	// orphan before the next ladder step.
@@ -406,10 +418,10 @@ func (s *Server) startChild(
 
 	enc2 := enc // capture for the progress closure
 	onProgress := func(p playout.Progress) {
-		if s.playoutSessions != nil {
+		if s.playoutObserver != nil {
 			// `transcoding` corrects the session's admission cost to reality (§9.1 V49): a `-c copy`
 			// program frees its transcode slot, a re-encode claims one.
-			s.playoutSessions.ReportProgram(channelID, target, enc2, transcoding, p)
+			s.playoutObserver.ReportProgram(channelID, target, enc2, transcoding, p)
 		}
 	}
 	proc, err := s.playoutEncoder(cctx, args, onProgress)

@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SecretsSettings, SettingsPage, useSettingsEntries } from "@/settings";
+import { SecretsSettings } from "@/settings/secrets-settings";
+import { SettingsPage } from "@/settings/settings-page";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // ⚠ States what SSO does NOT do, because the v2 mock drew two controls that D-F cut:
 // "Create people on first sign-in" and "Admin group". They are ABSENT rather than disabled —
@@ -22,11 +24,20 @@ const SsoNote = () => (
 const SecuritySettings = () => (
   <SettingsPage
     title="Security"
-    description="Sessions, cookies, and how often Loomarr re-syncs media-server accounts."
+    description="Control sign-in sessions and optional single sign-on. Deployment-specific cookie policy stays under Advanced."
     entries={useSettingsEntries()}
     blocks={[
-      { group: "users_security", title: "Sessions and sync" },
-      { group: "sso", title: "Single sign-on" },
+      {
+        group: "users_security",
+        title: "Sign-in sessions",
+        description:
+          "Choose how long sign-ins last. Loomarr's automatic secure-cookie policy is the recommended default.",
+      },
+      {
+        group: "sso",
+        title: "Single sign-on",
+        description: "Optional. Let existing Loomarr people prove their identity with your provider.",
+      },
     ]}
     footer={
       <>

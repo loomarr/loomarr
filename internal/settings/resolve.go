@@ -20,6 +20,43 @@ func (s *Service) Resolve(key string) Resolved {
 	return s.resolve(set, hasDB, dbRaw, unlocked)
 }
 
+// ResolveMany returns several settings from one in-memory snapshot. It is the
+// batch form for an adapter operation whose configuration must not mix values
+// across a concurrent hot-apply. Unknown keys panic for the same reason Resolve
+// does: callers name registry keys in code, so an unknown name is a programmer
+// error rather than an operator condition.
+func (s *Service) ResolveMany(keys ...string) map[string]Resolved {
+	type input struct {
+		set      Setting
+		dbRaw    string
+		hasDB    bool
+		unlocked bool
+	}
+
+	inputs := make([]input, len(keys))
+	for i, key := range keys {
+		set, ok := s.reg.Get(key)
+		if !ok {
+			panic("settings: ResolveMany on undeclared key " + key)
+		}
+		inputs[i].set = set
+	}
+
+	s.mu.RLock()
+	for i, key := range keys {
+		inputs[i].dbRaw, inputs[i].hasDB = s.db[key]
+		inputs[i].unlocked = s.unlocked[key]
+	}
+	s.mu.RUnlock()
+
+	resolved := make(map[string]Resolved, len(keys))
+	for i, key := range keys {
+		in := inputs[i]
+		resolved[key] = s.resolve(in.set, in.hasDB, in.dbRaw, in.unlocked)
+	}
+	return resolved
+}
+
 // resolve implements config-design §3's asymmetric resolution for one setting.
 //
 // Precedence is env > db > default. The asymmetry is in how a BAD value at each

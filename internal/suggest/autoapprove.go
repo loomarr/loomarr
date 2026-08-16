@@ -2,8 +2,8 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -18,9 +18,11 @@ const AutoApprovedBy = "auto"
 // trail separates "a user's auto-approve grant" from "the channel's auto-curate loop".
 const AutoCuratedBy = "auto-curate"
 
-// GrantStore reads the requester's grant + cap.
-type GrantStore interface {
-	GetUser(ctx context.Context, id string) (store.User, error)
+// guardedApprovalStore is the transaction-bound seam for one requester's
+// unattended-spend decision. The store supplies quota reads from the same
+// transaction/connection that performs the durable approval commit.
+type guardedApprovalStore interface {
+	CommitProposalApprovalGuarded(context.Context, store.ProposalApproval, store.ProposalApprovalGuard) (int, error)
 }
 
 // AutoApprover decides whether a freshly-produced proposal may skip the admin queue.
@@ -32,29 +34,24 @@ type GrantStore interface {
 // the request, and denying would lose work a human might well approve.
 type AutoApprover struct {
 	store    autoStore
+	approver *Approver
 	defaults func(ctx context.Context) int // suggest.max_acquisitions
-	now      func() time.Time
 	log      *slog.Logger
 }
 
 type autoStore interface {
-	ApproveStore
-	QuotaStore
-	GrantStore
+	guardedApprovalStore
 }
 
 // NewAutoApprover wires the grant. `defaultLimit` supplies suggest.max_acquisitions,
 // read per call so a settings change takes effect without a restart (config-design §3).
 func NewAutoApprover(
 	st autoStore,
+	approver *Approver,
 	defaultLimit func(ctx context.Context) int,
-	now func() time.Time,
 	log *slog.Logger,
 ) *AutoApprover {
-	if now == nil {
-		now = time.Now
-	}
-	return &AutoApprover{store: st, defaults: defaultLimit, now: now, log: log}
+	return &AutoApprover{store: st, approver: approver, defaults: defaultLimit, log: log}
 }
 
 // Decision records what the grant did, for the caller to log and for tests to assert on.
@@ -71,45 +68,80 @@ func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (Decision
 	if a == nil || p.CreatedBy == "" {
 		return Decision{Reason: "no requester"}, nil
 	}
-
-	user, err := a.store.GetUser(ctx, p.CreatedBy)
-	if err != nil {
-		// An unreadable user is not a reason to auto-approve. Fail CLOSED: the proposal
-		// waits for an admin, which is the safe direction for a gate that spends money.
-		return Decision{Reason: "requester unavailable"}, nil
-	}
-	if !user.AutoApprove {
-		return Decision{Reason: "no auto-approve grant"}, nil
-	}
-	if user.Disabled {
-		return Decision{Reason: "requester is disabled"}, nil
+	if a.approver == nil {
+		return Decision{Reason: "approval unavailable"}, errors.New("auto-approve: approval gate is not configured")
 	}
 
-	limit := user.Quota
-	if limit <= 0 && a.defaults != nil {
-		limit = a.defaults(ctx) // §11: 0 ⇒ the suggest.max_acquisitions default
-	}
+	decision := Decision{}
+	guardRan := false
+	guard := func(guardCtx context.Context, view store.ProposalApprovalReader) error {
+		guardRan = true
+		user, err := view.GetUser(guardCtx, p.CreatedBy)
+		if err != nil {
+			// An unreadable user is not a reason to auto-approve. Fail CLOSED: the proposal
+			// waits for an admin, which is the safe direction for a gate that spends money.
+			decision.Reason = "requester unavailable"
+			return errAutoApprovalDeclined
+		}
+		if !user.AutoApprove {
+			decision.Reason = "no auto-approve grant"
+			return errAutoApprovalDeclined
+		}
+		if user.Disabled {
+			decision.Reason = "requester is disabled"
+			return errAutoApprovalDeclined
+		}
 
-	usage, err := PendingFor(ctx, a.store, p.CreatedBy, limit)
-	if err != nil {
-		return Decision{Reason: "quota unavailable"}, err
-	}
-	// Only NEW acquisitions count: a title someone else already caused costs this user
-	// nothing, and charging for it would make the cap depend on unrelated activity.
-	wanted, err := NewAcquisitions(ctx, a.store, p)
-	if err != nil {
-		return Decision{Reason: "proposal unreadable"}, err
-	}
-	if usage.Exceeded(wanted) {
-		return Decision{Reason: "over the pending-acquisition cap"}, nil
+		limit := user.Quota
+		if limit <= 0 && a.defaults != nil {
+			limit = a.defaults(guardCtx) // §11: 0 ⇒ the suggest.max_acquisitions default
+		}
+
+		usage, err := PendingFor(guardCtx, view, p.CreatedBy, limit)
+		if err != nil {
+			decision.Reason = "quota unavailable"
+			return err
+		}
+		// Only NEW acquisitions count: a title someone else already caused costs this user
+		// nothing, and charging for it would make the cap depend on unrelated activity.
+		wanted, err := NewAcquisitions(guardCtx, view, p)
+		if err != nil {
+			decision.Reason = "proposal unreadable"
+			return err
+		}
+		if usage.Exceeded(wanted) {
+			decision.Reason = "over the pending-acquisition cap"
+			return errAutoApprovalDeclined
+		}
+		return nil
 	}
 
 	// nil edit: an auto-approval takes the proposal exactly as the model produced it. There is
 	// no approver to make a judgement, which is the point of the grant — and it runs the SAME
-	// Approve as the manual path, so the two cannot drift on what approving means (§8).
-	enqueued, err := Approve(ctx, a.store, p, nil, AutoApprovedBy, a.now)
-	if err != nil {
-		return Decision{Reason: "approval failed"}, err
+	// durable approval planner as the manual path (§8). Only the commit adapter differs: it adds
+	// the transaction-bound quota guard.
+	result, err := a.approver.approveDurably(ctx, p, nil, AutoApprovedBy,
+		func(commitCtx context.Context, commit store.ProposalApproval) (int, error) {
+			return a.store.CommitProposalApprovalGuarded(commitCtx, commit, guard)
+		})
+	if errors.Is(err, errAutoApprovalDeclined) {
+		return decision, nil
 	}
-	return Decision{Approved: true, Enqueued: enqueued}, nil
+	if err != nil {
+		if decision.Reason == "" {
+			if guardRan {
+				decision.Reason = "approval failed"
+			} else {
+				decision.Reason = "quota unavailable"
+			}
+		}
+		return decision, err
+	}
+
+	decision.Approved = true
+	decision.Enqueued = result.Enqueued
+	a.approver.afterApprovalCommitted(ctx, result.ChannelID)
+	return decision, nil
 }
+
+var errAutoApprovalDeclined = errors.New("auto-approval safely declined")

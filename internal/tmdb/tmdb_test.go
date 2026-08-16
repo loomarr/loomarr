@@ -129,6 +129,33 @@ func TestEpisodeStillURL(t *testing.T) {
 	}
 }
 
+// Movie previews share the episode still's landscape shape. A backdrop is the movie-level
+// equivalent; using poster_path here would make the film a narrow 2:3 sliver in the same card.
+func TestBackdropURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/movie/603":
+			_, _ = w.Write([]byte(`{"backdrop_path":"/matrix-wide.jpg","poster_path":"/matrix-poster.jpg"}`))
+		case "/movie/604":
+			_, _ = w.Write([]byte(`{"backdrop_path":""}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := tmdb.NewWithBase(srv.URL, "key")
+
+	if u, err := c.BackdropURL(context.Background(), provision.Movie, 603); err != nil || u != "https://image.tmdb.org/t/p/original/matrix-wide.jpg" {
+		t.Errorf("BackdropURL(movie,603) = %q,%v want landscape image url,nil", u, err)
+	}
+	if u, err := c.BackdropURL(context.Background(), provision.Movie, 604); err != nil || u != "" {
+		t.Errorf("BackdropURL(movie,604) = %q,%v want empty,nil", u, err)
+	}
+	if u, err := c.BackdropURL(context.Background(), provision.Movie, 0); err != nil || u != "" {
+		t.Errorf("BackdropURL(movie,0) = %q,%v want empty,nil", u, err)
+	}
+}
+
 // ContentRating pulls the US rating from /content_ratings (tv) or /release_dates
 // (movie) — the source for an acquisition's rating before it's in the library (§389).
 // Sparse coverage is normal, so a title with none returns "" and no error.

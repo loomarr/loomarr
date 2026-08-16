@@ -5,14 +5,16 @@ All notable changes to Loomarr are documented here. The format follows
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches
 its first tagged release.
 
-A release is cut by pushing a `vX.Y.Z` tag; the release workflow then publishes a
-multi-arch `ghcr.io/mantonx/loomarr` image. **No tag has been cut yet**, so nothing
-is published and the compose file builds from source.
+A release is cut from a successful `main` build by pushing a SemVer `vX.Y.Z` tag; the release
+workflow then publishes a signed multi-arch `ghcr.io/mantonx/loomarr` image. **No tag has been cut
+yet.** The first beta candidate and its remaining blockers are tracked in
+[`docs/engineering/plans/first-beta-readiness.md`](docs/engineering/plans/first-beta-readiness.md).
 
 ## [Unreleased]
 
-Pre-1.0. The core is feature-complete and the automated Definition of Done is green;
-`PROGRESS.md` carries phase status. Highlights of what exists today:
+Pre-1.0. Substantial product and infrastructure exist, but the first-beta ship contract is not yet
+green. `PROGRESS.md` carries phase status; the highlights below describe implemented capability,
+not a release-readiness claim.
 
 ### Added
 

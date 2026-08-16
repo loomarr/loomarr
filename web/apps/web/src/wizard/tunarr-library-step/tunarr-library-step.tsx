@@ -1,4 +1,4 @@
-import { setupApi } from "@loomarr/api";
+import * as setupApi from "@loomarr/api/endpoints/setup";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConnectStep } from "../connect-step";
 import type { TunarrLibraryStepProps } from "./tunarr-library-step.type";

@@ -2,8 +2,8 @@ package playout
 
 import (
 	"context"
+	"errors"
 	"os"
-	"os/exec"
 	"sync"
 	"testing"
 	"time"
@@ -52,7 +52,7 @@ func newFakeSpawnerByKey(t *testing.T) (Spawner, func(string, EncodePlan) *fakeE
 			fe.once.Do(func() { _ = pw.Close(); close(fe.stopped) })
 		}()
 
-		return &Process{Stdout: pr, cmd: &exec.Cmd{}}, nil
+		return &Process{Stdout: pr}, nil
 	}
 	get := func(channelID string, target EncodePlan) *fakeEncoder {
 		mu.Lock()
@@ -186,6 +186,87 @@ func TestAttach_SimultaneousViewersDoNotStartTwoEncoders(t *testing.T) {
 	if n := started(); n != 1 {
 		t.Errorf("started %d encoders for %d simultaneous viewers, want 1 — the "+
 			"find-or-create is not atomic", n, viewers)
+	}
+}
+
+func TestManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T) {
+	spawn, encoder := newFakeSpawnerByKey(t)
+	m := testManager(t, spawn, 4, time.Minute)
+
+	baseline, _, err := m.Attach(context.Background(), "ch1", PlanBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hevc, _, err := m.Attach(context.Background(), "ch1", PlanHEVC10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, err := m.Attach(context.Background(), "ch2", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m.StopChannel("ch1")
+
+	for name, stream := range map[string]<-chan []byte{"baseline": baseline, "hevc": hevc} {
+		select {
+		case _, ok := <-stream:
+			if ok {
+				t.Fatalf("%s viewer remained connected after StopChannel", name)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s viewer was not disconnected", name)
+		}
+	}
+	for _, plan := range []EncodePlan{PlanBaseline, PlanHEVC10} {
+		select {
+		case <-encoder("ch1", plan).stopped:
+		case <-time.After(time.Second):
+			t.Fatalf("%s encoder was not stopped", plan)
+		}
+	}
+	if got := m.ActiveCount(); got != 1 {
+		t.Fatalf("ActiveCount after channel stop = %d, want only ch2", got)
+	}
+	select {
+	case _, ok := <-other:
+		if !ok {
+			t.Fatal("stopping ch1 disconnected ch2")
+		}
+	default:
+	}
+}
+
+func TestManager_StopChannelDuringSpawnRetiresLateProcess(t *testing.T) {
+	inner, encoder := newFakeSpawnerByKey(t)
+	spawned := make(chan struct{})
+	release := make(chan struct{})
+	spawn := func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error) {
+		close(spawned)
+		<-release
+		return inner(ctx, channelID, plan)
+	}
+	m := testManager(t, spawn, 4, time.Minute)
+
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := m.Attach(context.Background(), "ch1", PlanBaseline)
+		result <- err
+	}()
+	<-spawned
+	m.StopChannel("ch1")
+	close(release)
+
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Attach racing StopChannel error = %v, want context.Canceled", err)
+	}
+	select {
+	case <-encoder("ch1", PlanBaseline).stopped:
+	case <-time.After(time.Second):
+		t.Fatal("encoder that completed after StopChannel was not retired")
+	}
+	if got := m.ActiveCount(); got != 0 {
+		t.Fatalf("ActiveCount = %d after raced stop, want 0", got)
 	}
 }
 

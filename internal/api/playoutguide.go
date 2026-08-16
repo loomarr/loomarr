@@ -60,7 +60,7 @@ func (s *Server) guideHandler(w http.ResponseWriter, r *http.Request) {
 	channels, err := s.playoutChannels(r.Context())
 	if err != nil {
 		s.log.Warn("playout: guide channel list failed", "err", err)
-		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't build the guide",
+		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't build the guide",
 			"Something went wrong reading your channels.")
 		return
 	}

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import { channelHealth, channelOnAir } from "./channel-health";
 
 const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
+  revision: 1,
   id: "ch-1",
   name: "Saturday Cartoons",
   number: 42,
+  inAppPlayable: true,
   status: "live",
   strategy: "shuffle",
   programCount: 10,

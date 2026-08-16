@@ -24,7 +24,7 @@ import (
 // fetchBatch bounds one pass's work list.
 //
 // ⚠ A constant rather than a setting. §15 owns configuration and the operator-facing knob already
-// exists in a better form: `images.remote_max_concurrency` decides how hard a pass hits upstream,
+// exists in a better form: the image module's fixed concurrency cap decides how hard a pass hits upstream,
 // while this only decides how much of the backlog one tick takes. Making both configurable would
 // give an operator two dials that interact and no way to reason about either.
 const fetchBatch = 64
@@ -75,9 +75,8 @@ type Fetcher struct {
 	// enabled is `images.remote_fetch_enabled`, read per run so turning it off takes effect on the
 	// next tick rather than the next restart.
 	enabled func() bool
-	// concurrency is `images.remote_max_concurrency`. ⚠ TMDB caps a client at 20 simultaneous
-	// connections per IP (§22); the declared default sits well below it, and this is read live so
-	// an operator throttling a saturated link does not have to restart.
+	// concurrency is supplied by the application policy. TMDB caps a client at 20 simultaneous
+	// connections per IP (§22), so the application keeps this safely below that ceiling.
 	concurrency func() int
 	// allowHosts is the SSRF allowlist — see checkURL. Derived at wiring from what the install is
 	// actually configured to talk to, never operator free-text.
@@ -275,16 +274,14 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 		return fetchOutcome{err: err}
 	}
 
-	// ⚠ Decode before anything touches disk, exactly as Ingest does: it is the format allowlist
-	// and the only proof the bytes are an image rather than something merely served with an image
-	// content type. An upstream that returns an HTML error page with a 200 gets rejected here.
-	decoded, mime, err := Decode(data)
+	hash := HashBytes(data)
+	manifest, cleanup, err := f.svc.inspect(ctx, data, hash)
 	if err != nil {
 		return fetchOutcome{err: err}
 	}
+	defer cleanup()
 
-	hash := HashBytes(data)
-	dst, err := f.svc.blob.OriginalPath(hash, extForMIME(mime))
+	dst, err := f.svc.blob.OriginalPath(hash, extForMIME(manifest.Source.MIME))
 	if err != nil {
 		return fetchOutcome{err: err}
 	}
@@ -295,14 +292,17 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	}
 
 	now := f.svc.now()
-	bounds := decoded.Bounds()
 	rec := img // carries origin, source URL, visibility, role, meta and created_at forward
 	rec.Hash = hash
-	rec.MIME = mime
-	rec.Width, rec.Height = bounds.Dx(), bounds.Dy()
+	rec.MIME = manifest.Source.MIME
+	rec.Width, rec.Height = manifest.Source.Width, manifest.Source.Height
 	rec.Bytes = int64(len(data))
-	rec.Placeholder = Placeholder(decoded)
-	rec.DominantHex = DominantHex(decoded)
+	rec.Animated = manifest.Source.Animated
+	rec.FrameCount = manifest.Source.FrameCount
+	rec.DurationMS = manifest.Source.DurationMS
+	rec.LoopCount = manifest.Source.LoopCount
+	rec.Placeholder = manifest.Source.Placeholder
+	rec.DominantHex = manifest.Source.DominantHex
 	rec.OriginFetchedAt = now
 	rec.UpdatedAt = now
 	rec.LastUsedAt = now

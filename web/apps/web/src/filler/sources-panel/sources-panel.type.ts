@@ -1,4 +1,4 @@
-import type { FillerSourceDTO } from "@loomarr/api";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 
 interface SourcesPanelProps {
   // ⚠ `sourcesQuery` itself stays in filler-page: the page header reads the same list, and a

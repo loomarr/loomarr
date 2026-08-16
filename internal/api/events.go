@@ -245,6 +245,8 @@ func (s *Server) streamEvents(ctx context.Context, _ *struct{}, send sse.Sender)
 		select {
 		case <-ctx.Done():
 			return // client disconnected
+		case <-s.shutdown:
+			return // generation drain; the browser reconnects to the next one
 		case ev, ok := <-ch:
 			if !ok {
 				return // bus closed

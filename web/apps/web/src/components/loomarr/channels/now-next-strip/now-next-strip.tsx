@@ -1,4 +1,4 @@
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { NowNextStripProps } from "./now-next-strip.type";
 
 // NowNextStrip — the "Now: X · Next: Y" line for a channel (§3). Times + titles

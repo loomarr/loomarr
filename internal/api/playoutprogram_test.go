@@ -19,6 +19,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // fakeResolver answers "what's on" without a store or a media server.
@@ -41,12 +42,26 @@ type fakeResolver struct {
 	profile      playout.Profile
 	calls        int
 	mu           sync.Mutex
+	// airingEntered/airingRelease form a deterministic barrier for lifecycle races. When both
+	// are set, AiringNow announces that resolution began and waits until either the request is
+	// cancelled or the test releases it.
+	airingEntered chan struct{}
+	airingRelease <-chan struct{}
 }
 
-func (f *fakeResolver) AiringNow(_ context.Context, _ string) (playout.Airing, string, error) {
+func (f *fakeResolver) AiringNow(ctx context.Context, _ string) (playout.Airing, string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
+	entered, release := f.airingEntered, f.airingRelease
+	f.mu.Unlock()
+	if entered != nil && release != nil {
+		close(entered)
+		select {
+		case <-ctx.Done():
+			return playout.Airing{}, "", ctx.Err()
+		case <-release:
+		}
+	}
 	return f.airing, f.url, f.err
 }
 
@@ -59,7 +74,7 @@ func (f *fakeResolver) Profile(context.Context) playout.Profile {
 
 // AudioTrackFor returns whatever the test set, defaulting to the file's first track — the same
 // answer the real resolver gives when no language preference is configured.
-func (f *fakeResolver) AudioTrackFor(context.Context, string) int { return f.audioTrack }
+func (f *fakeResolver) AudioTrackFor(context.Context, string, string) int { return f.audioTrack }
 
 // Tracks returns whatever the test set (empty by default) — the Watch pickers' media-derived
 // options. These tests exercise the program/stream path, not the pickers, so empty is the right
@@ -132,8 +147,9 @@ func (f *fakeEncoder) args() []string {
 type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
+	playout  api.Playout
 	noToken  bool
-	sessions api.PlayoutSessions
+	sessions api.PlayoutObserver
 	// config overlays LiveConfig, for tests about a setting the handler reads live —
 	// `filler.target_lufs` (§10 V40) is the first.
 	config map[string]string
@@ -154,13 +170,17 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	for k, v := range o.config {
 		cfg[k] = v
 	}
+	if o.playout == nil {
+		o.playout = &testkit.Playout{}
+	}
 	opts := api.Options{
 		Store:           st,
 		Auth:            api.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
-		PlayoutSessions: o.sessions,
+		PlayoutObserver: o.sessions,
+		Playout:         o.playout,
 		LiveConfig:      func(k string) string { return cfg[k] },
 		ReclaimVRAM:     o.reclaimVRAM,
 	}
@@ -170,6 +190,84 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		admission api.Playout
+		status    int
+	}{
+		{
+			name:      "channel outside transport catalog",
+			admission: &testkit.Playout{AdmissionErr: playout.ErrIneligible},
+			status:    http.StatusNotFound,
+		},
+		{
+			name: "listener gate closed",
+			admission: playout.NewOrigin(playout.OriginDependencies{
+				Available: func() bool { return false },
+			}),
+			status: http.StatusServiceUnavailable,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}
+			encoder := &fakeEncoder{output: "must-not-run"}
+			srv := newProgramServer(t, programOpts{
+				resolver: resolver,
+				encoder:  encoder.start,
+				playout:  tc.admission,
+			})
+
+			resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+			if resp.StatusCode != tc.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
+			}
+			if got := resolver.callCount(); got != 0 {
+				t.Fatalf("resolver calls = %d, want 0", got)
+			}
+			if got := encoder.args(); got != nil {
+				t.Fatalf("encoder started with %v", got)
+			}
+		})
+	}
+}
+
+func TestPlayoutProgramAdmissionCannotEscapeConcurrentStopAll(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	resolver := &fakeResolver{
+		airing: playableAiring(0, time.Hour), url: "http://emby/v/1",
+		airingEntered: entered, airingRelease: release,
+	}
+	encoder := &fakeEncoder{failErr: errors.New("must not start")}
+	origin := playout.NewOrigin(playout.OriginDependencies{
+		Eligible:     func(context.Context, string) (bool, error) { return true, nil },
+		LiveSessions: &playout.Manager{},
+		LiveHLS:      &playout.HLSManager{},
+	})
+	srv := newProgramServer(t, programOpts{
+		resolver: resolver,
+		encoder:  encoder.start,
+		playout:  origin,
+	})
+
+	done := make(chan *http.Response, 1)
+	go func() {
+		resp, _ := srv.Client().Get(srv.URL + "/v1/playout/program/ch1?token=" + playoutToken)
+		done <- resp
+	}()
+	<-entered
+	origin.StopAll()
+	close(release)
+	resp := <-done
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if got := encoder.args(); got != nil {
+		t.Fatalf("encoder started after StopAll with %v", got)
+	}
 }
 
 func playableAiring(offset, remaining time.Duration) playout.Airing {
@@ -471,6 +569,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	srv := httptest.NewServer(api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: logger,
 		PlayoutSecret:   func() string { return playoutToken },
+		Playout:         &testkit.Playout{},
 		PlayoutResolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
 		// An "encoder" that exits immediately without writing anything — exactly what a
 		// hardware encoder does when its device is missing.

@@ -1,4 +1,4 @@
-import type { ClipDTO } from "@loomarr/api";
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 
 // The clip data is the orval-generated ClipDTO (§12) — no hand-written mirror.
 // ClipCardProps is web-specific (handlers, className).
@@ -17,7 +17,7 @@ interface ClipCardProps {
   // Admin-only at the call site; absent renders the chips as plain, non-interactive badges.
   //
   // ⚠ The caller is responsible for sending the clip's OTHER tags with the change: the BE's
-  // UpdateClipTags overwrites era and audience together, so a patch carrying only
+  // UpdateClipClassification overwrites era and audience together, so a patch carrying only
   // the cycled field wipes the rest. FillerPage's `retag` is the one place that assembles it.
   // `category` is GONE (§10 V45a) — it is a DERIVED shadow of the taxonomy tags, not directly
   // cycled; tag edits go through the tag dialog, which serves the real vocabulary.

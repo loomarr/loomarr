@@ -97,6 +97,14 @@ describe("IncomingPanel", () => {
     expect(screen.getByText("from archive")).toBeInTheDocument();
   });
 
+  it("reports the full queue while rendering only the bounded page", () => {
+    renderAsks(<IncomingPanel clips={[d(guessed)]} clipsTotal={137} decisionsTotal={120} reels={[]} />);
+
+    expect(screen.getByText("120 clips need a decision")).toBeInTheDocument();
+    expect(screen.getByText("17 more clips still being prepared, further down.")).toBeInTheDocument();
+    expect(screen.getByText("Showing the first 1 of 137 incoming clips.")).toBeInTheDocument();
+  });
+
   it("passes the whole clip to the handlers, not just its path", async () => {
     const onConfirmEra = vi.fn();
     renderAsks(<IncomingPanel clips={[d(guessed)]} reels={[]} onConfirmEra={onConfirmEra} />);

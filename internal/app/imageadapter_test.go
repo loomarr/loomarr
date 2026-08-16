@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -90,6 +91,10 @@ func imageServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	t.Setenv("API_TOKEN", "test-app-token")
 	t.Setenv("IMAGES_DIR", t.TempDir())
+	// Deliberately unreachable from a browser. Machine clients need this configured absolute
+	// address, but an ImageDTO is consumed by the in-app browser and must stay on the page's own
+	// origin. If the DTO leaks this value, its ThumbHash paints while every real rendition fails.
+	t.Setenv("SERVER_PUBLIC_URL", "http://machine-client-only.invalid:8080")
 
 	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/img.db", true)
 	if err != nil {
@@ -137,6 +142,12 @@ func TestImageRoutesAreWired(t *testing.T) {
 	if uploaded.Placeholder == "" {
 		t.Error("upload returned an empty placeholder; the ThumbHash is what renders before the image loads")
 	}
+	if !strings.HasPrefix(uploaded.Src, "/v1/images/") {
+		t.Errorf("upload src = %q, want a same-origin image path; server.public_url is for machine clients, not the in-app browser", uploaded.Src)
+	}
+	if strings.Contains(uploaded.SrcSetWebP, "machine-client-only.invalid") {
+		t.Errorf("upload srcSetWebp = %q, want same-origin candidates; an off-origin public URL strands every browser image behind its ThumbHash", uploaded.SrcSetWebP)
+	}
 
 	// --- read the record ------------------------------------------------------------------
 	rec := getJSON[imageDTO](t, srv, "/v1/images/"+uploaded.Hash)
@@ -165,6 +176,26 @@ func TestImageRoutesAreWired(t *testing.T) {
 	defer func() { _ = avifResp.Body.Close() }()
 	if avifResp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET a cold avif rendition → %d, want 404 (it is job-produced, and absent is normal)", avifResp.StatusCode)
+	}
+
+	// --- observe the real worker boundary --------------------------------------------------
+	metricsResp := get(t, srv, "/metrics")
+	defer func() { _ = metricsResp.Body.Close() }()
+	metricsBody, err := io.ReadAll(metricsResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metricsText := string(metricsBody)
+	for _, want := range []string{
+		`loomarr_image_worker_operations_total{kind="inspect",result="success"}`,
+		`loomarr_image_worker_operations_total{kind="render",result="success"}`,
+		`loomarr_image_worker_queue_wait_seconds_count{class="interactive"}`,
+		`loomarr_image_worker_peak_rss_bytes_count{kind="inspect"}`,
+		`loomarr_image_worker_in_flight 0`,
+	} {
+		if !strings.Contains(metricsText, want) {
+			t.Errorf("/metrics missing %q; image worker telemetry is not wired through the composition root", want)
+		}
 	}
 }
 

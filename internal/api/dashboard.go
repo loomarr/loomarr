@@ -27,9 +27,9 @@ import (
 type PlayoutTelemetry struct {
 	// Sessions is one row per channel currently encoding, sorted by channel id.
 	Sessions []playout.SessionStat `json:"sessions"`
-	// Active and Capacity are the "2 / 4" load line. Capacity is `playout.max_channels`, the
-	// admission bound — the point at which a new viewer is refused rather than someone else's
-	// channel being evicted (§9.1).
+	// Active and Capacity are the "2 / 4" load line. Capacity is the effective measured admission
+	// bound after any operator safety cap and VRAM shading — the point at which a new viewer is
+	// refused rather than someone else's channel being evicted (§9.1).
 	Active   int `json:"active"`
 	Capacity int `json:"capacity"`
 	// Running reports whether internal playout is wired at all. False on a Tunarr-only
@@ -68,13 +68,13 @@ func (s *Server) getPlayoutTelemetry(ctx context.Context, _ *struct{}) (*playout
 // playoutTelemetry builds the snapshot. Shared by the GET and the SSE publisher so the two can
 // never disagree about what a session looks like.
 func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
-	if s.playoutSessions == nil {
+	if s.playoutObserver == nil {
 		// Not wired: a Tunarr-only install, or playout disabled. `Running:false` with an empty
 		// list, so the panel can say "Tunarr streams these channels" instead of rendering an
 		// empty table that looks like every channel just died.
 		return PlayoutTelemetry{Sessions: []playout.SessionStat{}}
 	}
-	stats := s.playoutSessions.Stats(now)
+	stats := s.playoutObserver.Stats(now)
 	if stats == nil {
 		// A non-nil empty slice: `null` and `[]` are different things to a client, and the
 		// difference here is "no data" versus "no streams", which the panel renders differently.
@@ -83,7 +83,7 @@ func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
 	return PlayoutTelemetry{
 		Sessions: stats,
 		Active:   len(stats),
-		Capacity: s.playoutSessions.Capacity(),
+		Capacity: s.playoutObserver.Capacity(),
 		Running:  true,
 	}
 }

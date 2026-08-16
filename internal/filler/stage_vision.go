@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mantonx/loomarr/internal/mediatools"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/mediatools"
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
@@ -32,10 +32,10 @@ import (
 type VisionClipStore interface {
 	// ListTaxa is the vocabulary the vision tier grounds its category against (§10 V45a).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
-	// SetClipVisionTags records what the pass GROUNDED and stamps vision_tagged. ⚠ Called for every
+	// ApplyClipVision records what the pass GROUNDED and stamps vision_tagged. ⚠ Called for every
 	// clip looked at, INCLUDING one that grounded nothing: the stamp is what says "vision already
-	// read this".
-	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	// read this". Facts and taxonomy projections commit as one semantic write.
+	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
 }
 
 // VisionStage reads a clip's frames.
@@ -86,7 +86,7 @@ func (s *VisionStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 	// ⚠ Loaded per clip rather than cached on the stage, and the vision BUDGET is what makes that
 	// affordable: at most `MaxVision` clips reach this rung in a pass. The alternative — a forest
-	// cached for the process — goes stale the moment a taxonomy edit runs `filler-reindex`, and a
+	// cached for the process — goes stale the moment an operator edits the taxonomy, and a
 	// category silently failing to resolve is far more expensive to diagnose than a small query.
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	}
 	reportProgress(ctx, StageVision, NoMeasurement)
 
-	resp, err := s.provider.AskAboutImages(ctx, visionPrompt, frames)
+	resp, err := s.provider.AskAboutImages(ctx, visionPrompt(forest), frames)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("vision model for %s: %w", c.Path, err)
 	}
@@ -128,7 +128,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	}
 
 	if s.store != nil && c.Path != "" {
-		if err := s.store.SetClipVisionTags(ctx, c.Path, v.Brand, v.VisibleText, v.Era, suggestedEra, v.Category, s.now().UTC()); err != nil {
+		if err := s.store.ApplyClipVision(ctx, c.Hash, c.Path, v.Brand, v.VisibleText, v.Era, suggestedEra, v.Tags, s.now().UTC()); err != nil {
 			return StageResult{}, err
 		}
 	}
@@ -143,14 +143,20 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	if v.Era > 0 {
 		updated.Era = v.Era
 	}
-	if v.Category != "" {
-		updated.Category = v.Category
+	if len(v.Tags) > 0 {
+		updated.AssertedTags = unionLeaves(c.AssertedTags, v.Tags)
+		updated.Tags = append([]string(nil), c.Tags...)
+		for _, leaf := range v.Tags {
+			updated.Tags = unionLeaves(updated.Tags, []string{leaf})
+			updated.Tags = unionLeaves(updated.Tags, forest.Ancestors(leaf))
+		}
+		updated.Category = forest.PrimaryProductLeaf(updated.AssertedTags)
 	}
 	if v.Era == 0 && suggestedEra > 0 && updated.SuggestedEra == 0 {
 		updated.SuggestedEra = suggestedEra
 	}
 
-	if v.Brand == "" && v.Era == 0 && v.Category == "" {
+	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
 		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "nothing on the frames could be grounded"}, nil
@@ -164,10 +170,11 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 // inline multimodal request is sized for.
 const VisionKeyframes = 3
 
-// visionTags is a grounded vision classification for one clip — the fields SetClipVisionTags
+// visionTags is a grounded vision classification for one clip — the fields ApplyClipVision
 // writes.
 type visionTags struct {
 	Brand       string
+	Tags        []string
 	Category    string
 	Era         int
 	VisibleText string
@@ -178,10 +185,67 @@ type visionOutput struct {
 	// VisibleText is the on-screen text the model says it can literally SEE — a logo, a product
 	// name, a year burned into the frame. It is BOTH persisted (the auditable record of what
 	// vision read) AND the grounding signal every other field here is checked against.
-	VisibleText string `json:"visibleText"`
-	Brand       string `json:"brand"`
-	Category    string `json:"category"`
-	Era         int    `json:"era"`
+	VisibleText string   `json:"visibleText"`
+	Brand       string   `json:"brand"`
+	Tags        []string `json:"tags"`
+	// Category accepts the retired one-value answer shape so an older configured model response
+	// degrades safely during upgrade. New prompts request Tags and all values still resolve through
+	// the live forest.
+	Category string `json:"category"`
+	Era      int    `json:"era"`
+}
+
+// UnmarshalJSON salvages independently valid fields from a model answer. Vision models
+// occasionally use a numeric sentinel for one optional string field (measured live:
+// `category: 0`); the default decoder rejected the whole object and discarded valid visible text
+// beside it. Dropping only the malformed field is the safe direction because groundVisionTags
+// still applies every evidence and taxonomy constraint afterwards.
+func (v *visionOutput) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		return fmt.Errorf("vision output must be a JSON object")
+	}
+	v.VisibleText = decodeVisionString(fields["visibleText"])
+	v.Brand = decodeVisionString(fields["brand"])
+	v.Tags = decodeVisionStrings(fields["tags"])
+	v.Category = decodeVisionString(fields["category"])
+	v.Era = decodeVisionInt(fields["era"])
+	return nil
+}
+
+func decodeVisionStrings(raw json.RawMessage) []string {
+	var values []string
+	if len(raw) == 0 || json.Unmarshal(raw, &values) != nil {
+		return nil
+	}
+	return values
+}
+
+func decodeVisionString(raw json.RawMessage) string {
+	var value string
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return value
+}
+
+func decodeVisionInt(raw json.RawMessage) int {
+	var value int
+	if len(raw) == 0 {
+		return 0
+	}
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0
+	}
+	value, _ = strconv.Atoi(strings.TrimSpace(text))
+	return value
 }
 
 // groundVisionTags is the grounding pass for the vision tier — validateTags, but the signal a tag
@@ -215,7 +279,7 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	if out.Era >= 1930 && out.Era <= 2035 && strings.Contains(v.VisibleText, strconv.Itoa(out.Era)) {
 		v.Era = out.Era
 	}
-	// CATEGORY — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
+	// TAGS — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
 	//
 	// ⚠ **It used to require the word on the frame, and V54b removed that.** The condition was
 	// `strings.Contains(haystack, strings.ToLower(raw))`, applying the brand/era rule to a field
@@ -233,10 +297,17 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	//
 	// ⚠ The TAXONOMY is what keeps this grounded rather than open: an unresolvable category is
 	// still dropped, so the vocabulary is the constraint. Resolution still maps `burgers`→`fast_food`.
-	if raw := strings.TrimSpace(out.Category); raw != "" && forest != nil {
-		if slug, ok := forest.Resolve(raw); ok {
-			v.Category = slug
+	if forest != nil {
+		rawTags := append([]string(nil), out.Tags...)
+		if out.Category != "" {
+			rawTags = append(rawTags, out.Category)
 		}
+		for _, raw := range rawTags {
+			if slug, ok := forest.Resolve(raw); ok {
+				v.Tags = unionLeaves(v.Tags, []string{slug})
+			}
+		}
+		v.Category = forest.PrimaryProductLeaf(v.Tags)
 	}
 	return v
 }
@@ -245,8 +316,17 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 // tells it the grounding rule in the same words the text tagger's prompt uses. The model returning
 // a value it did not read is not an error we can prevent at the prompt — it is why groundVisionTags
 // exists — but asking for the honest answer costs nothing and reduces the drop rate.
-const visionPrompt = `You are shown a few still frames from a short TV filler clip (a commercial/bumper/PSA).
+func visionPrompt(forest *taxonomy.Forest) string {
+	vocab := "(no taxonomy vocabulary is configured)"
+	if forest != nil {
+		vocab = forest.Vocab()
+	}
+	return fmt.Sprintf(`You are shown a few still frames from a short TV filler clip (a commercial/bumper/PSA).
 First read any TEXT visible in the frames — a logo, a product name, a slogan, a year.
 Return ONLY this JSON, no prose:
-{"visibleText":"<the on-screen text you can read, verbatim; empty if none>","brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"category":"toys|cereal|cars|tech|fast_food|movie_trailer|candy|games|psa|ident|bumper|general"}
-Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise; pick category from the list only, and only when the visible text supports it.`
+{"visibleText":"<the on-screen text you can read, verbatim; empty if none>","brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"tags":["<zero or more taxonomy slugs>"]}
+Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise; choose tags only from the live vocabulary below. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice.
+
+Live taxonomy vocabulary:
+%s`, vocab)
+}

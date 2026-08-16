@@ -122,13 +122,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       return json(route, { ok: true });
     }
 
-    // --- the webhook panel's secret (revealed, never rotated — §4) ---------------
+    // --- operator-facing generated credentials (§4) ------------------------------
     if (path.startsWith("/v1/settings/secrets/")) {
-      const name = path.split("/").pop() ?? "";
-      return json(
-        route,
-        name === "session_secret" ? { displayable: false } : { value: "s3cr3t", displayable: true },
-      );
+      return json(route, { value: "s3cr3t" });
     }
 
     // --- users --------------------------------------------------------------------
@@ -222,6 +218,22 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           connEntry("tunarr.url", "connections.tunarr", "Tunarr base URL."),
           connEntry("seerr.url", "connections.requester", "Seerr base URL."),
           connEntry("tmdb.api_key", "connections.tmdb", "TMDB API key."),
+          {
+            // Internal playout cannot publish a tuner until the media server has a
+            // machine-reachable Loomarr address. Keep this empty on the first visit so
+            // the e2e snapshot proves the default path shows the required field and does
+            // not silently treat the backend default as a complete answer.
+            key: "server.public_url",
+            label: "Loomarr address",
+            group: "playout",
+            kind: "url",
+            doc: "Loomarr's address as the media server can reach it.",
+            advanced: false,
+            secret: false,
+            set: Boolean(state.edits["server.public_url"]),
+            provenance: "db",
+            value: state.edits["server.public_url"] ?? "",
+          },
           {
             // Who plays the channels (§9.1). Reads back whatever the wizard last PATCHed, so
             // picking Tunarr in the walk genuinely reshapes the remaining steps rather than

@@ -1,8 +1,14 @@
-import { settingsApi, setupApi, unwrap } from "@loomarr/api";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { Button } from "@/components/ui/button";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
 
@@ -12,8 +18,8 @@ import type { SettingsPageProps } from "./settings-page.type";
 //
 // A block that declares a `check` is a CONNECTION: it renders as a self-diagnosing
 // ConnectionBlock (the wizard's shell) — a status dot + inline Test verdict + Fix link,
-// collapsed when healthy and open when broken, so the page opens focused on what needs
-// attention. A block with no check (the AI/Channels/… field groups) stays a flat titled
+// collapsed by default with the first failure open, so the page starts with one thing to fix.
+// A block with no check (the AI/Channels/… field groups) stays a flat titled
 // section: there's no health state to triage, so collapsing it would only hide fields.
 //
 // Only CHANGED keys are sent, for the same reason the wizard does it: a stored secret
@@ -28,8 +34,8 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   const { edits, setEdit, resetEdits } = useSettingsEdits();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
-  // Which connection blocks are expanded. Seeded once from the checklist (broken open,
-  // healthy collapsed); after that the operator drives it by clicking headers.
+  // Which connection blocks are expanded. Seeded once from the checklist (first failure open,
+  // everything else collapsed); after that the operator drives it by clicking headers.
   const [openBlocks, setOpenBlocks] = useState<Record<string, boolean> | undefined>();
 
   const patch = settingsApi.useSettingsPatch({
@@ -39,6 +45,9 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
+          // Saving provider/base/key must refresh the hosted catalog. Otherwise the
+          // picker keeps its pre-save "add a key" snapshot until a full reload.
+          queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
         ]);
         resetEdits(); // saved values are the new baseline
       },
@@ -70,15 +79,25 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   const results = patch.data?.status === 200 ? (patch.data.data.results ?? []) : undefined;
   const byGroup = (group: string) => entries.filter((e) => e.group === group);
+  const entriesFor = (block: SettingsPageProps["blocks"][number]) => {
+    const grouped = byGroup(block.group);
+    if (!block.keys) return grouped;
+    const byKey = new Map(grouped.map((entry) => [entry.key, entry]));
+    return block.keys.flatMap((key) => {
+      const entry = byKey.get(key);
+      return entry ? [entry] : [];
+    });
+  };
 
   // The live value of a key, honoring an unsaved edit over the resolved value — the same
   // rule SettingsFields uses. Shared with the footer render prop so a consequence panel
   // (the AI model picker) reacts to an unsaved provider switch immediately.
   const liveValue = (key: string): string => edits[key] ?? entries.find((e) => e.key === key)?.value ?? "";
 
-  // Seed the open-set once the checklist first arrives: open the blocks whose check is
-  // failing/unknown, collapse the passing ones. If nothing is broken, open the first block
-  // so a fully-healthy page still shows one expanded connection rather than all-collapsed.
+  // Seed the open-set once the checklist first arrives: open only the first failing/unknown
+  // block. Every other failure stays explicit in its collapsed header; expanding them all made
+  // a fresh install a wall of fields rather than a triage flow. If nothing is broken, open the
+  // first block so a fully-healthy page still shows one editable connection.
   // Guarded by `openBlocks === undefined` so it runs exactly once — after that the operator
   // owns which blocks are open, and a later refetch never yanks a block shut under them.
   const checksReady = hasChecks && checks.length > 0;
@@ -89,13 +108,22 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
     const broken = connectionBlocks.filter((b) => !standingFor(b.check)?.ok);
     const initial: Record<string, boolean> = {};
     for (const b of connectionBlocks) initial[b.group] = false;
-    if (broken.length > 0) for (const b of broken) initial[b.group] = true;
+    if (broken[0]) initial[broken[0].group] = true;
     else if (connectionBlocks[0]) initial[connectionBlocks[0].group] = true;
     setOpenBlocks(initial);
   }, [checksReady]);
 
+  // Connection forms are an accordion: moving to another service closes the previous one. This
+  // keeps the page focused even after the initial triage seed instead of letting the wall of fields
+  // accumulate again through ordinary exploration. Clicking the open header still closes it.
   const toggleBlock = (group: string) =>
-    setOpenBlocks((p) => ({ ...(p ?? {}), [group]: !(p?.[group] ?? false) }));
+    setOpenBlocks((previous) => {
+      const next = Object.fromEntries(
+        blocks.filter((block) => block.check).map((block) => [block.group, false]),
+      );
+      next[group] = !(previous?.[group] ?? false);
+      return next;
+    });
 
   // Test checks PERSISTED settings (/v1/setup/test takes only a check name and evaluates
   // what's saved) — so unsaved edits would be tested against the OLD stored values. Typing a
@@ -122,76 +150,77 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">{title}</h1>
-        {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
-      </header>
+      <PageHeader title={title} description={description} />
 
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
         {children}
 
-        {/* Connection blocks (those with a check) stack tightly as self-diagnosing cards;
-            plain field groups keep their airy titled-section spacing. */}
-        {blocks.some((b) => b.check) && (
-          <div className="flex flex-col gap-3">
-            {blocks
-              .filter((b) => b.check && byGroup(b.group).length > 0)
-              .map((block) => {
-                const blockEntries = byGroup(block.group);
-                // A just-run Test wins; otherwise fall back to the checklist's standing
-                // verdict, so a block reports its health without a click (like the wizard).
-                const live = block.check ? testResult[block.check] : undefined;
-                const standing = standingFor(block.check);
-                const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
-                return (
-                  <ConnectionBlock
-                    key={block.group}
-                    title={block.title}
-                    {...(block.footer ? { footer: block.footer } : {})}
-                    verdict={verdict}
-                    docHref={standing?.docHref}
-                    open={openBlocks?.[block.group] ?? false}
-                    onToggle={() => toggleBlock(block.group)}
-                    action={
-                      <Button
-                        variant="outline"
-                        onClick={() => test(block.check as string)}
-                        disabled={testing !== undefined}
-                      >
-                        {testing === block.check ? "Testing…" : "Test connection"}
-                      </Button>
-                    }
-                  >
-                    <SettingsFields
-                      entries={blockEntries}
-                      values={edits}
-                      onChange={setEdit}
-                      results={results}
-                      onEnvOverride={onEnvOverride}
-                    />
-                  </ConnectionBlock>
-                );
-              })}
-          </div>
-        )}
-
-        {/* Plain field groups (no check) — a flat titled section each. */}
-        {blocks
-          .filter((b) => !b.check && byGroup(b.group).length > 0)
-          .map((block) => (
-            <section key={block.group} className="flex flex-col gap-4">
-              <h2 className="font-semibold text-lg">{block.title}</h2>
+        {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
+            checked block before every ordinary one, which put the 45-field Filler operation
+            panel above Scheduling even though Defaults declared Scheduling first. */}
+        {blocks.map((block) => {
+          const blockEntries = entriesFor(block);
+          if (blockEntries.length === 0) return null;
+          if (block.check) {
+            // A just-run Test wins; otherwise fall back to the checklist's standing
+            // verdict, so a block reports its health without a click (like the wizard).
+            const live = testResult[block.check];
+            const standing = standingFor(block.check);
+            const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            return (
+              <div key={block.title} className="flex flex-col gap-3">
+                <ConnectionBlock
+                  title={block.title}
+                  optional={block.optional}
+                  {...(block.footer ? { footer: block.footer } : {})}
+                  verdict={verdict}
+                  docHref={standing?.docHref}
+                  open={openBlocks?.[block.group] ?? false}
+                  onToggle={() => toggleBlock(block.group)}
+                  action={
+                    <Button
+                      variant="outline"
+                      onClick={() => test(block.check as string)}
+                      disabled={testing !== undefined}
+                    >
+                      {testing === block.check ? "Testing…" : "Test connection"}
+                    </Button>
+                  }
+                >
+                  {block.description && (
+                    <p className="text-muted-foreground text-sm leading-relaxed">{block.description}</p>
+                  )}
+                  <SettingsFields
+                    entries={blockEntries}
+                    values={edits}
+                    onChange={setEdit}
+                    results={results}
+                    onEnvOverride={onEnvOverride}
+                    disabledReasons={block.disabledReasons}
+                  />
+                </ConnectionBlock>
+              </div>
+            );
+          }
+          return (
+            <section key={block.title} className="flex flex-col gap-4">
+              <div>
+                <h2 className="font-semibold text-lg">{block.title}</h2>
+                {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
+              </div>
               <SettingsFields
-                entries={byGroup(block.group)}
+                entries={blockEntries}
                 values={edits}
                 onChange={setEdit}
                 results={results}
                 onEnvOverride={onEnvOverride}
+                disabledReasons={block.disabledReasons}
               />
             </section>
-          ))}
+          );
+        })}
 
-        {typeof footer === "function" ? footer({ liveValue }) : footer}
+        {typeof footer === "function" ? footer({ liveValue, setEdit }) : footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>

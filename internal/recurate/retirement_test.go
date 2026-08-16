@@ -4,14 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
-	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 func lineupEntry(tmdbID int, title string) schedule.LineupEntry {
@@ -48,19 +45,13 @@ func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []sc
 	for _, k := range airing {
 		ch.Desired = append(ch.Desired, schedule.Slot{Kind: schedule.SlotProgram, Key: k, DurationMs: 1000})
 	}
-	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// retiredOf reads the keys the turnstile decided to rotate out, from the PROPOSAL it rewrote.
-//
-// ⚠ The proposal, not the channel. `recurate` decides retirements; the BINDER applies them,
-// because a channel's lineup has exactly one writer (§8.2a). These assertions read the channel
-// until V41, when `recurate` still trimmed `ch.Lineup` itself and raced the binder's additive
-// union. The property under test is unchanged — "the weakest retirable title is rotated out" —
-// only the place it becomes observable moved. `binder`'s own tests prove the other half: that a
-// recorded retirement actually leaves the lineup.
+// retiredOf reads the durable audit of what the turnstile decided to rotate out. Final channel
+// assertions below remain the load-bearing behavior check; this verifies the proposal explains it.
 func retiredOf(t *testing.T, st store.Store, proposalID string) map[provision.Key]bool {
 	t.Helper()
 	p, err := st.GetProposal(context.Background(), proposalID)
@@ -105,7 +96,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "Much Better Fit", 0.95),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 2}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -118,11 +109,18 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if !retired[provision.Key("movie:tmdb:200")] {
 		t.Error("the weakest retirable title should have been retired")
 	}
-	// ⚠ THE safety property, and it must be asserted as "not retired" rather than "still in the
-	// lineup": the lineup is the binder's to write now, so a channel read here would pass for
-	// the trivial reason that nothing has touched it yet.
 	if retired[provision.Key("movie:tmdb:100")] {
 		t.Error("the AIRING title must never be retired")
+	}
+	lineup := lineupOf(t, st, "ch1")
+	if lineup[provision.Key("movie:tmdb:200")] {
+		t.Error("retired title still exists in the committed channel lineup")
+	}
+	if !lineup[provision.Key("movie:tmdb:100")] {
+		t.Error("airing title disappeared from the committed channel lineup")
+	}
+	if !lineup[provision.Key("movie:tmdb:300")] {
+		t.Error("admitted replacement is missing from the committed channel lineup")
 	}
 }
 
@@ -139,7 +137,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "Much Better Fit", 0.99),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 1}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 1})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -163,7 +161,7 @@ func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "New Title", 0.95),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 10}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
 
 	if _, err := cur.Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -187,7 +185,7 @@ func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "Better", 0.99), acqItem(400, "Also Better", 0.98),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 2}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -216,7 +214,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "Ties The Bench", 0),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 0, maxTitles: 2}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 0, maxTitles: 2})
 
 	if _, err := cur.Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -243,7 +241,7 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(400, "Fresh Pick", 0.95),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 4}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -278,7 +276,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "New", 0.95),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 10}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
 
 	if _, err := cur.Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -303,7 +301,7 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(400, "New", 0.95),
 	})
-	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 4}, time.Now, testkit.Logger())
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
 
 	d, err := cur.Consider(context.Background(), p)
 	if err != nil {
@@ -312,7 +310,13 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 	if d.Enqueued != 1 {
 		t.Fatalf("enqueued = %d, want 1 (a free slot exists; rotation must not block the add)", d.Enqueued)
 	}
-	if len(lineupOf(t, st, "ch1")) != 3 {
-		t.Error("nothing airing should have been retired")
+	lineup := lineupOf(t, st, "ch1")
+	if len(lineup) != 4 {
+		t.Fatalf("lineup = %d titles, want the three protected titles plus the newcomer", len(lineup))
+	}
+	for _, key := range []provision.Key{"movie:tmdb:100", "movie:tmdb:200", "movie:tmdb:300"} {
+		if !lineup[key] {
+			t.Errorf("airing title %s was retired", key)
+		}
 	}
 }

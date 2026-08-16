@@ -16,7 +16,7 @@ import (
 // on SQLite there is ONE worker slot (`MaxWorkers: 1`, because the store holds `MaxOpenConns(1)`),
 // so a job now permitted to run for 30 minutes holds it for 30 minutes. Measured live 2026-08-12:
 // a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other job was starved for the whole
-// span — `channel-sweep`, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z,
+// span — channel maintenance, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z,
 // `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not
 // execute until the worker freed.
 //
@@ -46,7 +46,7 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 	// which job occupied which slot.
 	reg := scheduler.NewRegistry().
 		Add(scheduler.Job{
-			Name: "hog", Title: "Hog", Description: "a long media job.",
+			Name: "hog", Group: scheduler.GroupSystem, Title: "Hog", Description: "a long media job.",
 			DefaultCron: "0 0 5 1 1 *",
 			Timeout:     scheduler.LongJobTimeout,
 			Run: func(ctx context.Context) error {
@@ -59,7 +59,7 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 			},
 		}).
 		Add(scheduler.Job{
-			Name: "cheap", Title: "Cheap", Description: "a cheap sweep.",
+			Name: "cheap", Group: scheduler.GroupSystem, Title: "Cheap", Description: "a cheap sweep.",
 			DefaultCron: "0 0 5 1 1 *",
 			// No Timeout: River's default, and therefore the `default` queue.
 			Run: func(context.Context) error { fired <- struct{}{}; return nil },

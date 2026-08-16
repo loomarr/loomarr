@@ -6,12 +6,13 @@ package taxonomy
 // ⚠ **Slugs are a stable contract.** They are what the tagger emits, what `clip_tags` references, and
 // what a curation rule names. Renaming one is a breaking change — add a RetiredAlias instead so old
 // tags still resolve. Adding a taxon is safe; removing one an operator may have tagged clips under is
-// not (the reindex would orphan those rows), so the seed only grows.
+// not (a removal could orphan those rows), so the seed only grows.
 //
 // ⚠ The original flat categories appear here as PRODUCT LEAVES or FORMAT taxa so a clip tagged under
 // the old model still resolves: `toys`, `cars`, `tech`, `fast_food`, `cereal`, `candy` are product
-// leaves; `psa`, `movie_trailer`, `ident`, `bumper` are formats; `games` a product; `general` is
-// deliberately NOT a taxon (it meant "untagged", which is now the empty tag set).
+// leaves; `psa`, `ident`, and `bumper` are formats; `movie_trailer` lives under the `movies`
+// product/topic branch; `games` is a product; `general` is deliberately NOT a taxon (it meant
+// "untagged", which is now the empty tag set).
 
 // SeedForest returns the default taxonomy. Build it into a *Forest with New.
 func SeedForest() []Taxon {

@@ -79,7 +79,7 @@ func (b *blobStore) OriginalPath(hash, ext string) (string, error) {
 	return filepath.Join(b.dir, "orig", a, c, hash+ext), nil
 }
 
-// DerivativePath is where one rendition lives. The width and format are in the FILENAME rather
+// DerivativePath is where one rendition lives. The recipe, width and format are in the FILENAME rather
 // than in nested directories so a single stat answers "does this rendition exist", and so the
 // whole set for one image is adjacent on disk and in a directory listing.
 func (b *blobStore) DerivativePath(hash string, width int, f Format) (string, error) {
@@ -87,7 +87,7 @@ func (b *blobStore) DerivativePath(hash string, width int, f Format) (string, er
 		return "", ErrBadHash
 	}
 	a, c := shard(hash)
-	name := fmt.Sprintf("%s_w%d.%s", hash, width, f.Ext())
+	name := fmt.Sprintf("%s_%s_w%d.%s", hash, renditionRecipe, width, f.Ext())
 	return filepath.Join(b.dir, "drv", a, c, name), nil
 }
 
@@ -125,6 +125,21 @@ func (b *blobStore) Write(path string, data []byte) error {
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("images: rename into place %s: %w", path, err)
+	}
+	return nil
+}
+
+// Promote atomically publishes one worker-verified staging file. Staging lives under images.dir,
+// so rename is same-filesystem and readers can never observe a partial rendition.
+func (b *blobStore) Promote(staged, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+		return fmt.Errorf("images: mkdir %s: %w", filepath.Dir(dst), err)
+	}
+	if err := os.Chmod(staged, 0o640); err != nil {
+		return fmt.Errorf("images: chmod staged rendition: %w", err)
+	}
+	if err := os.Rename(staged, dst); err != nil {
+		return fmt.Errorf("images: publish rendition %s: %w", dst, err)
 	}
 	return nil
 }
@@ -207,7 +222,7 @@ func (b *blobStore) RemoveAllFor(hash string) error {
 	// The shard directory is shared with other images, so this filters by name rather than
 	// removing the directory — deleting the shard would take unrelated images with it.
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), hash+"_w") {
+		if strings.HasPrefix(e.Name(), hash+"_") {
 			if err := b.Remove(filepath.Join(dir, e.Name())); err != nil {
 				return err
 			}

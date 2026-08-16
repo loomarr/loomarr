@@ -22,8 +22,8 @@ func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 		// A folder walk that hashes every file it finds, so it scales with the catalog rather
 		// than with what changed — minutes on a large drop folder, well past River's 1m default.
 		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-sync", Title: "Sync filler catalog",
-		Description: "Re-reads your filler folder so new commercials and bumpers become available to the ad breaks between programmes.",
+		Name:    "filler-sync", Group: scheduler.GroupFiller, Title: "Sync the filler catalogue",
+		Description: "Scans configured folders and libraries so new filler becomes available for channel breaks.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
 	}
@@ -44,8 +44,8 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.
 		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-fetch", Title: "Fetch new filler clips",
-		Description: "Checks the sources you've added for new commercials and downloads them. Everything fetched waits under Filler → Incoming until it's checked.",
+		Name:    "filler-fetch", Group: scheduler.GroupFiller, Title: "Fetch new filler",
+		Description: "Downloads new clips from configured sources into Filler Incoming for review.",
 		DefaultCron: "0 0 */6 * * *", ScheduleKey: "job.filler_fetch.schedule",
 		Run: func(ctx context.Context) error { _, err := f.Run(ctx); return err },
 	}
@@ -79,28 +79,10 @@ func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 		// `scheduler.LongJobTimeout`, which is the lease horizon: a job may run right up to the
 		// point its claim would expire, and no further.
 		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-pipeline", Title: "Prepare new filler clips",
-		Description: "Takes each new clip through the same steps in order — measuring it, re-encoding it, cutting up long recordings, listening to it, and working out what it advertises — so it's ready to air. Watch a clip move under Filler → Incoming.",
+		Name:    "filler-pipeline", Group: scheduler.GroupFiller, Title: "Prepare new filler",
+		Description: "Measures, converts, splits, transcribes, and classifies incoming clips so they are ready to air.",
 		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
 		Run: func(ctx context.Context) error { _, err := p.RunOnce(ctx); return err },
-	}
-}
-
-// fillerReindexJob declares the taxonomy reindex (§10 V45a) — recomputing every clip's rolled-up tags
-// from the current tag graph.
-//
-// ⚠ A lifecycle sibling of the media jobs above (its own Tasks-page row, off by default, read live
-// inside Run) but NOT an expensive one: its body is two bulk SQL statements (rebuild the closure, then
-// the rollups), no whisper/vision/ffmpeg, no per-clip loop. It exists because clip rollups are a
-// DERIVED cache of (clips × graph) that goes stale when an operator edits the graph — this is the job
-// that re-converges them. Its own row, like its siblings, so an operator can see it ran and connect a
-// tag change to it.
-func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
-	return scheduler.Job{
-		Name: "filler-reindex", Title: "Update clip tags to match the vocabulary",
-		Description: "Recomputes every clip's rolled-up tags so they match the current tag categories. Runs after you edit the tag vocabulary yourself.",
-		DefaultCron: "0 5 * * * *", ScheduleKey: "job.filler_reindex.schedule",
-		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }
 
@@ -117,8 +99,8 @@ func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
 // on a reel that is one hour past its expiry.
 func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-split-sweep", Title: "Give up on unreviewed cuts",
-		Description: "Drops split suggestions you haven't reviewed within the window you set, and deletes the original recordings they came from to reclaim space. Only recordings that already produced clips are removed, and the clips themselves are never touched.",
+		Name: "filler-split-sweep", Group: scheduler.GroupFiller, Title: "Expire split suggestions",
+		Description: "Removes expired split proposals and their source recordings while retaining produced clips.",
 		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
 		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
 	}

@@ -1,9 +1,13 @@
-import { helpApi, unwrap } from "@loomarr/api";
+import * as helpApi from "@loomarr/api/endpoints/help";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ErrorState } from "@/components/loomarr";
-import { Card, Input, Label } from "@/components/ui";
-import { useDocumentTitle } from "@/lib";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { DocView } from "../doc-view";
 import { docMatches } from "../search-docs";
 
@@ -45,13 +49,10 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-semibold text-xl">Help</h1>
-        <p className="mt-1 text-muted-foreground text-sm">Ships with Loomarr. No internet needed.</p>
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
-      <div className="flex flex-col gap-6 md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card className="flex flex-col gap-3 p-3">
             <div>

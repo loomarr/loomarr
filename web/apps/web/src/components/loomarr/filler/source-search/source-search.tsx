@@ -1,9 +1,12 @@
-import type { DiscoveredClip, DiscoveredClipStats } from "@loomarr/api";
-import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core";
+import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
+import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
+import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
 import { Check, Search } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Button, Caption, Input } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui/button";
+import { Caption } from "@/components/ui/caption";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
 
 // SourceSearch — the Sources tab's per-source search expander (§10, V35).

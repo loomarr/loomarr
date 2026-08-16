@@ -10,8 +10,8 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { BrandLockup } from "../../shell";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
@@ -73,19 +73,28 @@ const AppShell = ({
   // invisible on short pages and breaks anything that needs a real viewport: the Guide's
   // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
   <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden bg-background text-foreground">
-    <nav aria-label="Primary" className="flex w-56 flex-col gap-1 border-border border-r bg-card px-3 py-4">
-      <div className="mb-4 px-2">
-        <BrandLockup variant="compact" />
+    <nav
+      aria-label="Primary"
+      className="flex w-14 flex-col gap-1 border-border border-r bg-card px-1 py-4 md:w-56 md:px-3"
+    >
+      <div className="mb-4 px-2 text-center md:text-left">
+        <span className="font-semibold md:hidden" aria-hidden>
+          L
+        </span>
+        <div className="hidden md:block">
+          <BrandLockup variant="compact" />
+        </div>
       </div>
 
       <button
         type="button"
         onClick={onOpenCommand}
-        className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
+        aria-label="Open global search"
+        className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-2 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent md:justify-start md:px-3"
       >
         <Search className="size-4" aria-hidden />
-        <span>Search…</span>
-        <kbd className="ml-auto font-mono text-static-400 text-xs">⌘K</kbd>
+        <span className="sr-only md:not-sr-only">Search…</span>
+        <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">⌘K</kbd>
       </button>
 
       {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
@@ -95,26 +104,26 @@ const AppShell = ({
         <Link
           key={to}
           to={to}
-          className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
+          className="flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
         >
           <Icon className="size-4" aria-hidden />
-          {label}
+          <span className="sr-only md:not-sr-only">{label}</span>
         </Link>
       ))}
 
-      <div className="mt-auto flex items-center gap-2 border-border border-t px-2 pt-3 text-sm">
+      <div className="mt-auto flex flex-col items-center gap-2 border-border border-t px-1 pt-3 text-sm md:flex-row md:px-2">
         {/* The footer identity is the way into Your account (§11) — where the mock puts
             it, and where someone looks for "my settings" rather than the app's. Not a
             NAV item: it isn't a section of the app, it's you. */}
         <Link
           to="/account"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent"
+          className="flex min-w-0 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent md:flex-1"
           aria-label="Your account"
         >
           <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
             {userName.slice(0, 2).toUpperCase()}
           </div>
-          <span className="truncate text-muted-foreground">{userName}</span>
+          <span className="sr-only truncate text-muted-foreground md:not-sr-only">{userName}</span>
         </Link>
         {onLogout && (
           <Tooltip>

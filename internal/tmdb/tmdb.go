@@ -12,6 +12,7 @@ package tmdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -28,22 +29,70 @@ import (
 // never lands in a URL/log (§6 anti-leak discipline, applied to TMDB too).
 type Client struct {
 	baseURL string
-	apiKey  string
+	apiKey  func() string
 	http    *http.Client
+}
+
+// ErrAPIKeyRequired reports that an operation could not start because TMDB is
+// not configured. It is returned before any request is built or sent.
+var ErrAPIKeyRequired = errors.New("tmdb api key is required")
+
+type operationAPIKey struct {
+	value string
 }
 
 // New builds a TMDB client. baseURL defaults to the public API host.
 func New(apiKey string) *Client {
-	return &Client{
-		baseURL: "https://api.themoviedb.org/3",
-		apiKey:  apiKey,
-		http:    httpx.NewNamed("tmdb", httpx.TimeoutTMDB),
-	}
+	return NewDynamic(func() string { return apiKey })
 }
 
 // NewWithBase is for tests: point at a mock TMDB server.
 func NewWithBase(baseURL, apiKey string) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: httpx.NewNamed("tmdb", httpx.TimeoutTMDB)}
+	return NewDynamicWithBase(baseURL, func() string { return apiKey })
+}
+
+// NewDynamic builds a TMDB client whose API key is resolved once at the start
+// of every exported operation. A settings change therefore applies to the next
+// operation without allowing one multi-request operation to mix credentials.
+func NewDynamic(apiKey func() string) *Client {
+	return NewDynamicWithBase("https://api.themoviedb.org/3", apiKey)
+}
+
+// NewDynamicWithBase is NewDynamic with an alternate endpoint for tests and
+// development overrides. The base URL is fixed for the client's lifetime; only
+// the credential is live configuration.
+func NewDynamicWithBase(baseURL string, apiKey func() string) *Client {
+	return newDynamicWithHTTP(baseURL, apiKey, httpx.NewNamed("tmdb", httpx.TimeoutTMDB))
+}
+
+// newDynamicWithHTTP is the adapter's in-process transport seam. Production
+// constructors keep ownership of policy-bearing httpx clients; unit tests can
+// exercise the same TMDB interface with a no-network RoundTripper.
+func newDynamicWithHTTP(baseURL string, apiKey func() string, httpClient *http.Client) *Client {
+	if apiKey == nil {
+		apiKey = func() string { return "" }
+	}
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		apiKey:  apiKey,
+		http:    httpClient,
+	}
+}
+
+// operation snapshots the live credential once, or reuses the snapshot when
+// an exported operation delegates to another exported operation.
+func (c *Client) operation(ctx context.Context) (context.Context, error) {
+	if snapshot, ok := ctx.Value(operationAPIKey{}).(operationAPIKey); ok {
+		if snapshot.value == "" {
+			return ctx, ErrAPIKeyRequired
+		}
+		return ctx, nil
+	}
+	key := strings.TrimSpace(c.apiKey())
+	if key == "" {
+		return ctx, ErrAPIKeyRequired
+	}
+	return context.WithValue(ctx, operationAPIKey{}, operationAPIKey{value: key}), nil
 }
 
 // multiResult is one /search/multi row. media_type distinguishes movie/tv/person;
@@ -72,6 +121,10 @@ type multiResponse struct {
 // results are dropped. in_library is false here — the catalog sets it by merging
 // with library results.
 func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.Candidate, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
 	q.Set("query", term)
 	q.Set("include_adult", "false")
@@ -132,6 +185,10 @@ type discoverResponse struct {
 // Candidates (real ids + genres/overview). Movies + series unless a media type is
 // pinned via mt ("" = both). sort_by=popularity.desc so the strongest fits lead.
 func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]catalog.Candidate, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ids := genreIDsFor(genres)
 	var out []catalog.Candidate
 	if mt == "" || mt == provision.Movie {
@@ -168,6 +225,10 @@ func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []
 // A title with no neighbours (obscure, or newly added to TMDB) returns an empty
 // slice, not an error — one unproductive seed must not fail a whole adjacency walk.
 func (c *Client) Recommendations(ctx context.Context, mt provision.MediaType, tmdbID, limit int) ([]catalog.Candidate, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return nil, err
+	}
 	path := "/movie/"
 	if mt == provision.Series {
 		path = "/tv/"
@@ -238,6 +299,10 @@ func genreIDsFor(names []string) []int {
 // /tv/{id}; a 200 means the id is real. A 404 means the LLM proposed a
 // non-existent id — the acquisition must be dropped, never actioned.
 func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int) (bool, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return false, err
+	}
 	if tmdbID <= 0 {
 		return false, nil
 	}
@@ -267,6 +332,10 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 // no title base, which a title heuristic can't do. Fetched at reconcile-heal time and
 // stamped onto the lineup entry (like the rating heal), so the pure scheduler stays I/O-free.
 func (c *Client) CollectionID(ctx context.Context, mt provision.MediaType, tmdbID int) (int, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return 0, err
+	}
 	if tmdbID <= 0 || mt == provision.Series {
 		return 0, nil
 	}
@@ -292,6 +361,10 @@ func (c *Client) CollectionID(ctx context.Context, mt provision.MediaType, tmdbI
 // (dead air, §9). Returns "" (no error) when TMDB has no US rating — sparse coverage
 // is normal, so an empty answer is a legitimate result, not a failure.
 func (c *Client) ContentRating(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
 	if tmdbID <= 0 {
 		return "", nil
 	}
@@ -364,6 +437,10 @@ const imageBase = "https://image.tmdb.org/t/p/original"
 // say "Tunarr fetches this URL directly, so no proxying is needed" — true until V52 phase 7,
 // when the image service became what Tunarr and the operator's browser both fetch from.
 func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
 	if tmdbID <= 0 {
 		return "", nil
 	}
@@ -383,11 +460,46 @@ func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID i
 	return "", nil
 }
 
+// BackdropURL returns a title's landscape artwork, or "" when TMDB has none. Backdrops are the
+// movie-level counterpart to episode stills: both are 16:9 and therefore share one preview shape
+// in the Guide and Watch timeline. PosterURL remains separate because portrait artwork is still
+// the right source for channel icons and title tiles.
+//
+// As with PosterURL, the caller adopts this original-size URL into Loomarr's image service; it is
+// never handed to an operator's browser.
+func (c *Client) BackdropURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
+	if tmdbID <= 0 {
+		return "", nil
+	}
+	path := "/movie/" + strconv.Itoa(tmdbID)
+	if mt == provision.Series {
+		path = "/tv/" + strconv.Itoa(tmdbID)
+	}
+	var body struct {
+		BackdropPath string `json:"backdrop_path"`
+	}
+	if err := c.get(ctx, path, &body); err != nil {
+		return "", err
+	}
+	if p := strings.TrimSpace(body.BackdropPath); p != "" {
+		return imageBase + p, nil // backdrop_path already has a leading "/"
+	}
+	return "", nil
+}
+
 // PosterURLByTVDB resolves a TVDB series id to a TMDB poster via the /find bridge
 // (/find/{tvdb_id}?external_source=tvdb_id → the matching tv result's poster_path). Our
 // series are often TVDB-keyed (Seerr's canonical id for series), but posters live on TMDB;
 // this is the one-hop bridge. Returns "" (no error) when no match / no poster.
 func (c *Client) PosterURLByTVDB(ctx context.Context, tvdbID int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
 	if tvdbID <= 0 {
 		return "", nil
 	}
@@ -413,6 +525,10 @@ func (c *Client) PosterURLByTVDB(ctx context.Context, tvdbID int) (string, error
 // live-TV timeline needs this to show an episode thumbnail for them. Best-effort throughout: no TVDB
 // match, no TMDB id, or no still all return "" + nil, never a hard failure.
 func (c *Client) EpisodeStillURLByTVDB(ctx context.Context, tvdbID, season, episode int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
 	if tvdbID <= 0 {
 		return "", nil
 	}
@@ -437,6 +553,10 @@ func (c *Client) EpisodeStillURLByTVDB(ctx context.Context, tvdbID, season, epis
 // PosterURL: a not-found episode or an image-less one is "" + nil error, never a hard failure — the
 // caller renders a fallback. Used by the live-TV timeline to show a per-episode thumbnail on hover.
 func (c *Client) EpisodeStillURL(ctx context.Context, tmdbID, season, episode int) (string, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return "", err
+	}
 	if tmdbID <= 0 {
 		return "", nil
 	}
@@ -477,9 +597,11 @@ func (c *Client) getStatus(ctx context.Context, path string, out any) (int, erro
 		return 0, err
 	}
 	// Bearer auth (v4 token style) keeps the key out of the URL (§6 anti-leak).
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	snapshot, ok := ctx.Value(operationAPIKey{}).(operationAPIKey)
+	if !ok || snapshot.value == "" {
+		return 0, ErrAPIKeyRequired
 	}
+	req.Header.Set("Authorization", "Bearer "+snapshot.value)
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {

@@ -1,4 +1,5 @@
-import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 
 // A row from the channel's current lineup (ChannelDTO.lineup / LineupEntryDTO) — only
 // the fields the diff needs. `key` is the provisioning key ("movie:tmdb:603",

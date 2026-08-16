@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,10 +20,45 @@ import (
 // PATH and hid two shipped bugs for two phases (§10 V51a); a double that indexes differently from
 // the thing it stands in for cannot see key confusion by construction.
 type pipeMemStore struct {
-	clips   map[string]filler.StoreClip
-	rows    map[string]filler.ClipPipeline
-	removed []string
+	clips     map[string]filler.StoreClip
+	rows      map[string]filler.ClipPipeline
+	proposals []filler.SplitProposal
+	removed   []string
+	held      []string
+	holdErr   error
 }
+
+func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
+	if m.holdErr != nil {
+		return 0, m.holdErr
+	}
+	n := 0
+	for _, p := range paths {
+		for hash, c := range m.clips {
+			if c.Path == p {
+				c.Held = held
+				m.clips[hash] = c
+				n++
+			}
+		}
+	}
+	m.held = append(m.held, paths...)
+	return n, nil
+}
+
+func (m *pipeMemStore) SetClipLanguage(context.Context, string, string, time.Time) error {
+	return nil
+}
+func (m *pipeMemStore) SetClipTranscript(context.Context, string, string, time.Time) error {
+	return nil
+}
+func (m *pipeMemStore) ClearClipVisionTags(context.Context, string, time.Time) error {
+	return nil
+}
+func (m *pipeMemStore) ListSplitProposals(context.Context) ([]filler.SplitProposal, error) {
+	return append([]filler.SplitProposal(nil), m.proposals...), nil
+}
+func (m *pipeMemStore) DeleteSplitProposal(context.Context, string) error { return nil }
 
 func newPipeMemStore() *pipeMemStore {
 	return &pipeMemStore{clips: map[string]filler.StoreClip{}, rows: map[string]filler.ClipPipeline{}}
@@ -206,6 +243,238 @@ func TestPipeline_WalksEveryStageAndFiles(t *testing.T) {
 		if s.runs != 1 {
 			t.Errorf("stage %s ran %d times, want 1", id, s.runs)
 		}
+	}
+}
+
+func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "stuck")
+	row := st.rows["stuck"]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Attempts = 3
+	row.Disposition = filler.DispositionReview
+	for _, id := range filler.StageOrder {
+		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
+	}
+	st.rows["stuck"] = row
+
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(context.Background(), "stuck", filler.StageTag, false); err != nil {
+		t.Fatal(err)
+	}
+	got := st.rows["stuck"]
+	if got.Stage != filler.StageTag || got.Status != filler.StatusQueued || got.Attempts != 0 || got.Disposition != filler.DispositionRunning {
+		t.Fatalf("rewound row = %+v, want tag/queued/running with fresh attempts", got)
+	}
+	if !got.ForceRun {
+		t.Fatal("rewind did not persist the explicit rerun instruction")
+	}
+	if len(got.Stages) != filler.StageIndex(filler.StageTag) {
+		t.Fatalf("kept %d stages, want only %d stages before tag", len(got.Stages), filler.StageIndex(filler.StageTag))
+	}
+}
+
+func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "already-tagged")
+	row := st.rows["already-tagged"]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Disposition = filler.DispositionReview
+	st.rows["already-tagged"] = row
+
+	tag := stage(filler.StageTag)
+	tag.applies = false
+	tag.note = "already fully tagged"
+	p := newPipe(st, []filler.Stage{tag}, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(context.Background(), "already-tagged", filler.StageTag, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if tag.runs != 1 {
+		t.Fatalf("tag runs = %d, want 1 after an explicit rewind", tag.runs)
+	}
+	if st.rows["already-tagged"].ForceRun {
+		t.Fatal("forced rerun marker survived the requested stage")
+	}
+}
+
+func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "encoded")
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	before := st.rows["encoded"]
+	if err := p.Rewind(context.Background(), "encoded", filler.StageTranscode, false); !errors.Is(err, filler.ErrTranscodeNeedsForce) {
+		t.Fatalf("rewind transcode = %v, want ErrTranscodeNeedsForce", err)
+	}
+	if got := st.rows["encoded"]; got.Stage != before.Stage || got.Status != before.Status {
+		t.Errorf("refused rewind mutated row: before=%+v after=%+v", before, got)
+	}
+}
+
+func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudget(t *testing.T) {
+	dir := t.TempDir()
+	st := newPipeMemStore()
+	hash := "legacy-quality"
+	path := "aa/bb/legacy.mp4"
+	full := filepath.Join(dir, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("mezzanine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteSidecarTags(full, filler.SidecarTags{
+		Mezzanine: "h264-crf20-aac192",
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: path, Name: "Legacy advert"}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
+		Disposition: filler.DispositionFiled,
+		Stages:      []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone}},
+	}
+	transcode := stage(filler.StageTranscode)
+	transcode.cost = filler.CostTranscode
+	p := newPipe(st, []filler.Stage{transcode}, filler.Budget{
+		MaxTranscodes: func() int { return 0 },
+	}).WithRewind(st, dir)
+
+	res, err := p.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := st.rows[hash]
+	if res.Requeued != 1 || row.Stage != filler.StageTranscode || row.Disposition != filler.DispositionRunning {
+		t.Fatalf("result/row = %+v / %+v, want queued quality backfill", res, row)
+	}
+	if transcode.runs != 0 {
+		t.Error("quality backfill ignored the transcode budget")
+	}
+}
+
+func TestPipeline_RepairsFiledCompositeHeldByOlderConfirm(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "legacy-confirmed-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/legacy-confirmed.mp4", Name: "Legacy confirmed reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionFiled,
+	}
+
+	res, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Repaired != 1 {
+		t.Fatalf("pipeline reported %d repaired composites, want 1", res.Repaired)
+	}
+	if got := st.clips[hash]; got.Held {
+		t.Fatalf("filed composite remains held after compatibility pass: %+v", got)
+	}
+}
+
+func TestPipeline_DoesNotFileCompositeWithSplitProposalStillWaiting(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "partly-confirmed-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/partly-confirmed.mp4", Name: "Partly confirmed reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionFiled,
+	}
+	st.proposals = []filler.SplitProposal{{
+		ID: "proposal-with-leftovers", ClipHash: hash,
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+	}}
+
+	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.clips[hash]; !got.Held {
+		t.Fatalf("composite with a pending split proposal was filed: %+v", got)
+	}
+}
+
+func TestPipeline_DoesNotFileCompositeStillWaitingForDecision(t *testing.T) {
+	st := newPipeMemStore()
+	const hash = "review-reel"
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "reels/review.mp4", Name: "Review reel",
+		IsComposite: true, Held: true,
+	}})
+	st.rows[hash] = filler.ClipPipeline{
+		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
+		Disposition: filler.DispositionReview,
+	}
+
+	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.clips[hash]; !got.Held {
+		t.Fatalf("composite still waiting for a decision was filed: %+v", got)
+	}
+}
+
+func TestPipeline_ReviewHoldsAPreviouslyFiledClipOutOfRotation(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "quality-review")
+	row := st.rows["quality-review"]
+	row.Stage = filler.StageTranscode
+	st.rows["quality-review"] = row
+	quality := stage(filler.StageTranscode)
+	quality.result = filler.StageResult{
+		Verdict: filler.VerdictReview,
+		Note:    "The picture is unchanged for 12.0s; this may be intentional.",
+	}
+
+	if _, err := newPipe(st, []filler.Stage{quality}, filler.DefaultBudget()).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	clip := st.clips["quality-review"]
+	if !clip.Held || len(st.held) != 1 {
+		t.Fatalf("reviewed clip remained airable: clip=%+v held writes=%v", clip, st.held)
+	}
+}
+
+func TestPipeline_ReviewIsRetriedWhenTheAirabilityHoldFails(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "quality-review-retry")
+	row := st.rows["quality-review-retry"]
+	row.Stage = filler.StageTranscode
+	st.rows["quality-review-retry"] = row
+	quality := stage(filler.StageTranscode)
+	quality.result = filler.StageResult{Verdict: filler.VerdictReview, Note: "picture unchanged"}
+	pipe := newPipe(st, []filler.Stage{quality}, filler.DefaultBudget())
+
+	st.holdErr = errors.New("store unavailable")
+	res, err := pipe.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Failed != 1 || st.rows["quality-review-retry"].Disposition != filler.DispositionRunning {
+		t.Fatalf("failed hold became terminal: result=%+v row=%+v", res, st.rows["quality-review-retry"])
+	}
+
+	st.holdErr = nil
+	res, err = pipe.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Completed != 1 || st.rows["quality-review-retry"].Disposition != filler.DispositionReview {
+		t.Fatalf("review did not recover: result=%+v row=%+v", res, st.rows["quality-review-retry"])
+	}
+	if !st.clips["quality-review-retry"].Held || quality.runs != 2 {
+		t.Fatalf("hold was not retried: clip=%+v runs=%d", st.clips["quality-review-retry"], quality.runs)
 	}
 }
 
@@ -445,6 +714,28 @@ func TestPipeline_ADeadlineDefersInsteadOfBurningAnAttempt(t *testing.T) {
 	}
 }
 
+func TestPipeline_AStageCanYieldAPersistedBatchWithoutFailing(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	stages[filler.StageProbe].err = filler.ErrDeferred
+
+	err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(context.Background(), "c1")
+	if !errors.Is(err, filler.ErrDeferred) {
+		t.Fatalf("Advance = %v, want ErrDeferred", err)
+	}
+	row := st.rows["c1"]
+	if row.Stage != filler.StageProbe || row.Status != filler.StatusQueued {
+		t.Fatalf("yielded row = %q/%q, want probe/queued", row.Stage, row.Status)
+	}
+	if row.Attempts != 0 {
+		t.Errorf("attempts = %d, want 0 — a completed batch is progress, not a failure", row.Attempts)
+	}
+	if !row.NextRun.After(row.UpdatedAt) {
+		t.Error("a yielded batch did not give the rest of the queue a turn")
+	}
+}
+
 // …and the run summary says DEFERRED, not failed. A reel too slow for one pass produced an
 // identical WARN every two minutes forever, and the count blamed the clip for the budget.
 func TestPipeline_ADeferralIsNotCountedAsAFailure(t *testing.T) {
@@ -518,6 +809,32 @@ func TestPipeline_SpawnedClipsAreEnrolledFromTheStart(t *testing.T) {
 	}
 	if seg.Stage != filler.StageProbe || seg.Disposition != filler.DispositionRunning {
 		t.Errorf("spawned segment = %q/%q, want probe/running", seg.Stage, seg.Disposition)
+	}
+}
+
+// A byte-changing stage returns the replacement identity after atomically re-keying storage.
+// The runner must follow it: persisting the old hash recreates an orphan pipeline row, and the
+// next pass rejects it as a clip that vanished.
+func TestPipeline_FollowsAStageIdentityReplacement(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "old-hash")
+	stages := allStages()
+	replacement := st.clips["old-hash"]
+	replacement.Hash = "new-hash"
+	replacement.Path = "aa/bb/new-hash.mp4"
+	stages[filler.StageTranscode].result = filler.StageResult{
+		Clip: replacement, Verdict: filler.VerdictContinue,
+	}
+
+	if err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(context.Background(), "old-hash"); err != nil {
+		t.Fatal(err)
+	}
+	row, ok := st.rows["new-hash"]
+	if !ok {
+		t.Fatal("pipeline persisted the transformed clip under its old content identity")
+	}
+	if row.ClipHash != "new-hash" || row.Disposition != filler.DispositionFiled {
+		t.Errorf("replacement pipeline row = %+v", row)
 	}
 }
 

@@ -24,12 +24,10 @@ func (s *Server) registerUsers(api huma.API) {
 		Summary: "Update a user's role/quota/disabled (admin)", Tags: []string{"users"},
 	}, RoleAdmin), s.patchUser)
 
-	if s.userSync != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
-			OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
-			Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
-		}, RoleAdmin), s.syncUsers)
-	}
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
+		Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
+	}, RoleAdmin), s.syncUsers)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-user-sessions", Method: http.MethodGet, Path: "/v1/users/{id}/sessions",
@@ -49,6 +47,10 @@ type syncOutput struct {
 }
 
 func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error) {
+	if s.userSync == nil || s.libraryUnconfigured() {
+		return nil, errNotImplemented("Media server not connected",
+			"Connect a media server in Settings to sync imported users.")
+	}
 	n, err := s.userSync.Sync(ctx)
 	if err != nil {
 		return nil, err

@@ -13,8 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/proctree"
 )
 
 // Direct-play HLS for internal playout (§9.1 Watch, V46).
@@ -300,8 +301,28 @@ func (m *HLSManager) remove(key remuxKey) {
 	m.mu.Unlock()
 }
 
-// Stop tears down every remux and removes the temp root. Called on shutdown.
-func (m *HLSManager) Stop() {
+// StopChannel tears down every live HLS remux for channelID, across every codec plan. Removing
+// the entries before teardown makes follow-up asset requests fail closed immediately; teardown
+// then cancels ffmpeg and releases each remux's underlying MPEG-TS session reference.
+func (m *HLSManager) StopChannel(channelID string) {
+	m.mu.Lock()
+	remuxes := make([]*hlsRemux, 0, 2)
+	for key, r := range m.remuxes {
+		if key.channel == channelID {
+			remuxes = append(remuxes, r)
+			delete(m.remuxes, key)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, r := range remuxes {
+		r.teardown()
+	}
+}
+
+// StopAll tears down every live remux but leaves the scratch root reusable. It is the fail-closed
+// lifecycle path while a Postgres replica re-establishes its durable invalidation listener.
+func (m *HLSManager) StopAll() {
 	m.mu.Lock()
 	remuxes := make([]*hlsRemux, 0, len(m.remuxes))
 	for _, r := range m.remuxes {
@@ -313,6 +334,11 @@ func (m *HLSManager) Stop() {
 	for _, r := range remuxes {
 		r.teardown()
 	}
+}
+
+// Stop tears down every remux and removes the temp root. Called on shutdown.
+func (m *HLSManager) Stop() {
+	m.StopAll()
 	_ = os.RemoveAll(m.root)
 }
 
@@ -541,16 +567,16 @@ func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
 // segments to disk, so unlike playout.Process it exposes stdin rather than stdout. Kept here
 // rather than generalizing Process, whose whole contract is "Stdout is the caller's to read".
 type hlsProcess struct {
-	cmd   *exec.Cmd
 	stdin io.WriteCloser
 	log   *slog.Logger
+	proc  *proctree.Supervisor
 
 	mu      sync.Mutex
 	lastErr string
 }
 
 func (p *hlsProcess) closeStdin() error { return p.stdin.Close() }
-func (p *hlsProcess) wait() error       { return p.cmd.Wait() }
+func (p *hlsProcess) wait() error       { return p.proc.Wait() }
 
 // LastError returns ffmpeg's most recent stderr line — the actionable reason a remux produced no
 // stream ("Device creation failed", a filter parse error). Retained like Process.LastError does,
@@ -583,12 +609,11 @@ func (p *hlsProcess) readStderr(r io.Reader) {
 }
 
 // startHLSFFmpeg launches the DIRECT-PLAY repackager: one ffmpeg reading the shared MPEG-TS on
-// stdin and stream-COPYING it into a live HLS playlist (hlsArgs). In its own process group so
-// teardown signals the whole tree, exactly like Process.
+// stdin and stream-COPYING it into a live HLS playlist (hlsArgs). Under the same platform
+// process-tree owner as Process, so cancellation cannot orphan a helper.
 func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
 	args := hlsArgs(dir, plan)
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // args built here, never user text
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd := exec.Command(bin, args...) //nolint:gosec // args built here, never user text
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -599,11 +624,13 @@ func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *
 		return nil, fmt.Errorf("hls: stderr pipe: %w", err)
 	}
 
-	p := &hlsProcess{cmd: cmd, stdin: stdin, log: log}
-	if err := cmd.Start(); err != nil {
+	p := &hlsProcess{stdin: stdin, log: log}
+	supervised, err := proctree.Start(ctx, cmd)
+	if err != nil {
 		_ = stdin.Close()
 		return nil, fmt.Errorf("hls: start ffmpeg: %w", err)
 	}
+	p.proc = supervised
 	go p.readStderr(stderr)
 	return p, nil
 }

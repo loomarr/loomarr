@@ -1,13 +1,11 @@
-import {
-  type FillerIncomingOutputBody,
-  fillerApi,
-  type IncomingClipDTO,
-  type IncomingPipelineDTO,
-  isOk,
-} from "@loomarr/api";
-import type { FillerClipEvent } from "@loomarr/core";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerIncomingOutputBody } from "@loomarr/api/models/fillerIncomingOutputBody";
+import type { IncomingClipDTO } from "@loomarr/api/models/incomingClipDTO";
+import type { IncomingPipelineDTO } from "@loomarr/api/models/incomingPipelineDTO";
+import { isOk } from "@loomarr/api/unwrap";
+import type { FillerClipEvent } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLoomarrEventListener } from "@/events";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 // useClipPipeline keeps the Incoming tab's pipeline rows current from the `filler_clip` SSE
 // frame (§10 V51b), without a refetch per rung.

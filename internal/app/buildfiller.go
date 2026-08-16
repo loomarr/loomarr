@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -39,22 +37,18 @@ import (
 // the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, *filler.Tagger) {
-	if !set.boolv("filler.ai_tagging") || set.str("llm.url") == "" {
+func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) (llm.Provider, *filler.Tagger) {
+	if !set.boolv("filler.ai_tagging") {
+		return nil, nil
+	}
+	provider := activeFillerProvider(set)
+	if provider == nil {
 		return nil, nil
 	}
 
-	provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-
-	// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars ingest writes
-	// beside each clip (§10). An unset FILLER_DIR yields a nil FS and tagging falls back to
-	// filenames — the same result as a drop-folder clip that never had a sidecar.
-	var drop fs.FS
-	if dir := set.str("filler.dir"); dir != "" {
-		drop = os.DirFS(dir)
-	}
-
-	tagger := filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log).
+	// The generation's clip-root FS lets tagging read the info-JSON sidecars ingest writes beside
+	// each clip (§10). A zero layout yields nil and tagging falls back to filenames.
+	tagger := filler.NewTagger(fillerTagStoreAdapter{st}, provider, layout.FS(), time.Now, log).
 		// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the threshold
 		// is filed without a human. Closures, not captured values, so a changed threshold
 		// applies on the next run rather than the next restart.
@@ -73,20 +67,18 @@ func buildTagger(st store.Store, set resolved, log *slog.Logger) (llm.Provider, 
 
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
 //
-// ⚠ Every switch here is read LIVE rather than captured, because these settings hot-apply
-// (config-design §3): an operator who turns the drop-folder off expects the next scheduled pass
-// to stop, not a restart to be required. `Dir`, `MinDuration`, `WithEnabled` and `WithWatchDir`
-// are all closures for that reason.
+// ⚠ Policy remains live, while the storage layout is immutable for this application generation.
+// The source switch and minimum duration therefore remain closures, but scan and intake share the
+// one captured root/watch pair so a settings write cannot move files between generations.
 //
-// ⚠ The library scanner is nil when no media server is configured, and that is a SUPPORTED
-// install rather than a degraded one: folder rows still drain and library rows simply do no
-// work. Wiring a non-nil scanner over an absent media server would turn an optional service back
-// into a precondition — the dependency §9.1 removed.
-func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slog.Logger,
-	fillerProg *programmer.Tunarr) *filler.Syncer {
+// ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
+// install rather than a degraded one: its adapter maps the explicit unconfigured result to an
+// empty optional source, so folder rows still drain and a saved connection enables the next scan.
+func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
+	fillerProg *programmer.Tunarr, lib *library.Client) *filler.Syncer {
 	src := filler.DirSource{
-		Dir:   func() string { return set.str("filler.dir") },
-		Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		Layout: layout,
+		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
 		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
 		// points that setting at a custom build (the whole reason it exists — see the
@@ -102,24 +94,25 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slo
 		// counts failures into a logger nobody wired is the same silence with extra steps.
 		Log: log.Warn,
 	}
-	if set.str("tunarr.url") != "" {
-		src.Tunarr = fillerSourceAdapter{fillerProg}
+	// Keep the adapter present across the process lifetime, but resolve availability per
+	// call. An install may start internal-only and add Tunarr later; boot-gating this field
+	// left every clip without a Tunarr program uuid until restart. The adapter itself no-ops
+	// while the URL is empty, so local-only scans stay quiet and fully supported.
+	src.Tunarr = fillerSourceAdapter{
+		prog:       fillerProg,
+		configured: func() bool { return set.str("tunarr.url") != "" },
 	}
 
-	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
-		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
-		// An empty value resolves to `<filler.dir>/_watch`, so the watch folder is configured on
-		// every install whether or not the operator has ever set it.
-		WithWatchDir(func() string { return set.str("filler.watch_dir") })
+	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
+		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") })
 
-	var libScanner *filler.LibraryScanner
-	if set.str("library.url") != "" {
-		libScanner = filler.NewLibraryScanner(
-			fillerLibraryAdapter{library.NewDynamic(
-				flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))},
-			func(msg string, args ...any) { log.Warn(msg, args...) },
-		)
-	}
+	// Keep the library scanner wired while the connection is empty. The adapter treats the
+	// library module's explicit unconfigured result as an empty optional source, then starts
+	// using a newly saved connection on the next scan without rebuilding the syncer.
+	libScanner := filler.NewLibraryScanner(
+		fillerLibraryAdapter{lib},
+		func(msg string, args ...any) { log.Warn(msg, args...) },
+	)
 	return syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 }
 
@@ -137,7 +130,7 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slo
 // ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
+func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger) *clipfetch.Ingestor {
 	ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
 	if ffPath == "" {
@@ -153,7 +146,7 @@ func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
 		ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), set.str("filler.dir"), log)
+	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), layout.WatchDir(), log)
 }
 
 // buildSplitter constructs the compilation splitter (§10, V34). Nil without a drop-folder — clip
@@ -166,26 +159,56 @@ func buildFetcher(set resolved, log *slog.Logger) *clipfetch.Ingestor {
 //
 // The LLM provider wires whenever one is configured — splitting's rescue and classification are
 // operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
-func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Splitter {
-	dir := set.str("filler.dir")
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger) *filler.Splitter {
+	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
 	}
 
-	var splitProvider llm.Provider
-	if set.str("llm.url") != "" {
-		splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-	}
+	splitProvider := activeFillerProvider(set)
 
+	tools := buildFillerMediaTools(set)
+
+	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
+	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
+		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+}
+
+// activeFillerProvider resolves the same branded provider selection as the AI surface. OpenRouter
+// credentials live under llm.api_key.openrouter rather than the legacy base key; every filler text
+// path must therefore build from Selection instead of reconstructing the wire from registry rows.
+func activeFillerProvider(set resolved) llm.Provider {
+	sel := resolveSelection(set)
+	if sel.URL == "" {
+		return nil
+	}
+	return buildProviderFor(sel)
+}
+
+// buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
+// MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
+// to the next span without restarting, matching the rest of the filler settings contract.
+func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 	ffmpegPath := set.str("playout.ffmpeg_path")
 	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
-
-	// ⚠ The SAME `filler.min_duration` closure the probe stage and the auto-confirm gate read.
-	// Passed live so it hot-applies, and composed with `MinSegmentMs` inside the splitter — one
-	// number, enforced at detection and again at the scan boundary, never two numbers (§10 V34).
-	return filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir,
-		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+	hosted := &mediatools.HostedTranscriber{
+		FFmpegPath: ffmpegPath,
+		Client: func() mediatools.AudioTranscriptionClient {
+			sel := resolveSelection(set)
+			if sel.URL == "" {
+				return nil
+			}
+			return hostedSTTAdapter{llm.NewOpenAI(sel.URL, set.str("filler.transcribe.model"), sel.APIKey)}
+		},
+		Model: func() string { return set.str("filler.transcribe.model") },
+	}
+	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
+		if set.str("filler.transcribe.provider") != "hosted" {
+			return nil
+		}
+		return hosted
+	})
 }
 
 // buildPipeline constructs the ingest pipeline: one driver over eight rungs (§10 V51b).
@@ -207,7 +230,7 @@ func buildSplitter(st store.Store, set resolved, log *slog.Logger) *filler.Split
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
@@ -226,7 +249,8 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		//
 		// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
 		// That is the honest state for an install that selected `hosted` without configuring
-		// a key: inert, not broken, and not silently deleting things.
+		// a service URL: inert, not broken, and not silently deleting things. A key is not a
+		// universal prerequisite because a Custom OpenAI-compatible endpoint may be keyless.
 		// ⚠ **CLOSURES, not resolved values.** The first cut called `set.str(...)` here and
 		// baked the URL, model and key into a client at boot — so changing `llm.model` in
 		// Settings did nothing, the detector kept calling whatever was configured at startup,
@@ -237,13 +261,7 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 		// Everything else in this feature reads live; the one setting that decides whether the
 		// backend can work at all must too.
 		langDetect = filler.NewHostedLanguage(
-			func() filler.AudioAsker {
-				url := set.str("llm.url")
-				if url == "" {
-					return nil // not configured ⇒ the gate keeps every clip
-				}
-				return audioAskerAdapter{llm.NewOpenAI(url, set.str("llm.model"), set.str("llm.api_key"))}
-			},
+			func() filler.AudioAsker { return hostedLanguageAsker(set) },
 			func() string { return set.str("llm.model") },
 			set.str("playout.ffmpeg_path"), "")
 	} else {
@@ -257,17 +275,11 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	}
 	// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
 	// they run on files already on disk regardless of whether yt-dlp is present).
-	fillerTools := mediatools.NewFFmpegTools(
-		set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
-		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+	fillerTools := buildFillerMediaTools(set)
 
-	// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
-	// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
-	// MORE work, never wrongly skips).
-	var fillerDrop fs.FS
-	if dir := set.str("filler.dir"); dir != "" {
-		fillerDrop = os.DirFS(dir)
-	}
+	// The generation's clip-root FS reads the info-JSON sidecars ingest writes beside each clip.
+	// nil ⇒ every clip reads as thin-sourced and filename-only tagged.
+	fillerDrop := layout.FS()
 
 	// Vision: keyframes → a multimodal model, resolved LIVE (§10 V54a).
 	//
@@ -300,12 +312,12 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	// ("vision tagging is off", "no language backend is configured"). Registering all of them
 	// and letting `Applies` answer is what makes the ladder explain an install rather than
 	// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
-	clipDir := set.str("filler.dir")
+	clipDir := layout.ClipDir()
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
 			func() int64 { return set.dur("filler.min_duration").Milliseconds() },
-			fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
+			func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
 		filler.NewTranscodeStage(
 			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 			clipDir, mediatools.DefaultMezzanine(),
@@ -400,6 +412,19 @@ func buildPipeline(st store.Store, set resolved, log *slog.Logger, emitter *even
 	return fillerPipeline
 }
 
+// hostedLanguageAsker resolves the canonical active selection on every call. Hosted credentials
+// are stored per provider (llm.api_key.openrouter, llm.api_key.custom, …), so reading the legacy
+// base key here made the main picker work while the filler language request was sent without the
+// selected provider's key. Custom OpenAI-compatible endpoints may legitimately need no key; URL,
+// not credential presence, is therefore the availability boundary.
+func hostedLanguageAsker(set resolved) filler.AudioAsker {
+	sel := resolveSelection(set)
+	if sel.URL == "" {
+		return nil // not configured ⇒ the gate keeps every clip
+	}
+	return audioAskerAdapter{llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)}
+}
+
 // buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a
 // break, shared by the §12 preview endpoint, the reconciler and internal playout (§10).
 //
@@ -424,7 +449,8 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 	// resolves per call and says so. This is that contract, honoured by the pod path too.
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, func() filler.Policy {
 		return filler.Policy{
-			PodMax: set.intv("filler.pod_max"),
+			PodMax:          set.intv("filler.pod_max"),
+			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor
 			// existed — see the warning on Policy.MinQualityHeight.
 			MinQualityHeight: set.intv("filler.min_quality"),
@@ -463,16 +489,23 @@ type visionWiring struct {
 // host they just named, `localhost` included. A local Ollama needs none, so the common case sends
 // nothing.
 func visionEndpoint(set resolved) visionWiring {
+	sel := resolveSelection(set)
+	wireProvider := sel.Provider
+	if wireProvider != "" && wireProvider != "ollama" {
+		// OpenRouter and Custom are Loomarr's provider identities; both speak the
+		// OpenAI-compatible wire used by the vision client.
+		wireProvider = "openai"
+	}
 	v := visionWiring{
-		provider: set.str("llm.provider"),
-		url:      set.str("llm.url"),
-		key:      set.str("llm.api_key"),
+		provider: wireProvider,
+		url:      sel.URL,
+		key:      sel.APIKey,
 		model:    set.str("filler.vision.model"),
 	}
 	// Empty ⇒ reuse the main model, for an install whose model already sees images. Same
 	// separation `filler.language_model` makes for the audio gate.
 	if v.model == "" {
-		v.model = set.str("llm.model")
+		v.model = sel.Model
 	}
 	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
 	// resolves to "" and means the same thing — inherit, not "no provider".

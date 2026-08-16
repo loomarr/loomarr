@@ -201,6 +201,34 @@ func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
 	}
 }
 
+func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"live":     {nowProgramme("On Air", 0, 60)},
+		"paused":   {nowProgramme("Paused", 0, 60)},
+		"detached": {nowProgramme("Detached", 0, 60)},
+		"empty":    {nowProgramme("Empty", 0, 60)},
+	}}
+	srv, st := newGuideServer(t, g)
+	seedChannel(t, st, "live", "Live Channel", 1, "internal")
+	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
+	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
+	seedChannel(t, st, "empty", "Empty Channel", 4, "internal")
+	setChannelStatus(t, st, "paused", schedule.StatusPaused)
+	setChannelStatus(t, st, "detached", schedule.StatusDetached)
+	setChannelStatus(t, st, "empty", schedule.StatusEmpty)
+
+	body, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
+	got := string(body)
+	if !strings.Contains(got, `id="live"`) || !strings.Contains(got, "On Air") {
+		t.Fatalf("live internal channel or listing is missing:\n%s", got)
+	}
+	for _, id := range []string{"paused", "detached", "empty"} {
+		if strings.Contains(got, `id="`+id+`"`) {
+			t.Errorf("channel %q was advertised in XMLTV:\n%s", id, got)
+		}
+	}
+}
+
 // ONE channel failing must not blank the whole guide. A media server re-fetches the document
 // wholesale, so an error return would empty every channel's listings because one had a problem.
 func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {

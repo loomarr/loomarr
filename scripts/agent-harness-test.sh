@@ -13,6 +13,22 @@ step() {
 	echo "agent-harness-test: $*"
 }
 
+wait_for_repo_pid() {
+	expected_pid="$1"
+	comm="$2"
+	root="$3"
+	got=
+	attempt=0
+	while [ "$attempt" -lt 40 ]; do
+		got="$(repo_pids_by_comm "$comm" "$root")"
+		[ "$got" = "$expected_pid" ] && return 0
+		attempt=$((attempt + 1))
+		sleep 0.05
+	done
+	echo "agent-harness-test: process ownership for $root = [$got], want [$expected_pid]" >&2
+	return 1
+}
+
 step 'environment isolation'
 git -C "$TMP" init -q
 git -C "$TMP" config user.email test@example.invalid
@@ -28,6 +44,16 @@ printf '%s\n' "$primary" | grep -q 'http://localhost:5173'
 
 secondary="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$secondary" | grep -q 'database override.*\.agent-data/loomarr.db'
+printf '%s\n' "$secondary" | grep -q 'prepared override.*\.agent-data/prepared'
+secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"
+if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"; then
+	echo 'agent-harness-test: primary worktree enabled automatic dev login' >&2
+	exit 1
+fi
+grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
+grep -q 'LOOMARR_DEV_LOGIN=.*LOOMARR_AGENT_DEV_LOGIN' "$SCRIPT_DIR/../.air.toml"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
 	echo 'agent-harness-test: secondary worktree reused the primary backend port' >&2
 	exit 1
@@ -35,6 +61,28 @@ fi
 
 overridden="$(LOOMARR_REPO_ROOT="$TMP-wt" LOOMARR_DEV_PORT=23456 "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
+
+step 'secondary dev identity'
+mkdir -p "$TMP/fake-bin"
+# shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "$*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/go"
+# shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo $*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/cargo"
+chmod +x "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
+bootstrap_log="$TMP/bootstrap-runs"
+PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 \
+	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
+grep -q 'cargo build --locked -p loomarr-image' "$bootstrap_log"
+grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"
+: > "$bootstrap_log"
+PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 AGENT_DEV_IDENTITY=0 \
+	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
+grep -q 'cargo build --locked -p loomarr-image' "$bootstrap_log"
+if grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"; then
+	echo 'agent-harness-test: disabled dev identity still ran dev-bootstrap' >&2
+	exit 1
+fi
+rm -f "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
 
 step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null
@@ -71,7 +119,6 @@ fi
 
 # One clean-commit baseline is shared through the common Git directory.
 step 'shared baseline cache'
-mkdir -p "$TMP/fake-bin"
 # shellcheck disable=SC2016 # BASELINE_LOG must expand when the generated fixture executes.
 printf '%s\n' '#!/usr/bin/env sh' 'echo run >> "$BASELINE_LOG"' > "$TMP/fake-bin/make"
 chmod +x "$TMP/fake-bin/make"
@@ -84,15 +131,19 @@ PATH="$TMP/fake-bin:$PATH" BASELINE_LOG="$baseline_log" LOOMARR_REPO_ROOT="$TMP-
 
 # Process ownership is the worktree cwd, not the globally shared process name.
 step 'process ownership'
+mkdir "$TMP-gone"
+cp "$(command -v sleep)" "$TMP-gone/loomarr-dev"
+( cd "$TMP-gone" && exec ./loomarr-dev 30 ) & stale_pid=$!; pids="$pids $stale_pid"
+sleep 0.05
+rm -rf "$TMP-gone"
 cp "$(command -v sleep)" "$TMP/loomarr-dev"
 cp "$(command -v sleep)" "$TMP-wt/loomarr-dev"
 ( cd "$TMP" && exec ./loomarr-dev 30 ) & first_pid=$!; pids="$pids $first_pid"
 ( cd "$TMP-wt" && exec ./loomarr-dev 30 ) & second_pid=$!; pids="$pids $second_pid"
-sleep 0.1
 # shellcheck disable=SC1091 # SCRIPT_DIR is resolved at runtime.
 . "$SCRIPT_DIR/dev-processes.sh"
-[ "$(repo_pids_by_comm loomarr-dev "$TMP")" = "$first_pid" ]
-[ "$(repo_pids_by_comm loomarr-dev "$TMP-wt")" = "$second_pid" ]
+wait_for_repo_pid "$first_pid" loomarr-dev "$TMP"
+wait_for_repo_pid "$second_pid" loomarr-dev "$TMP-wt"
 
 # Worktree creation is product-neutral and does not copy credentials by default.
 step 'worktree creation'

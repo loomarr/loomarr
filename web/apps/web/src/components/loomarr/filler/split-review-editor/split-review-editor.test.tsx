@@ -78,6 +78,33 @@ describe("SplitReviewEditor", () => {
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
+  it("explains the automatic hold and shows the boundary evidence", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Needs classification",
+              holdReason: "a segment could not be classified",
+              boundaryConfidence: 90,
+              startEvidence: "reel edge",
+              endEvidence: "black + silence",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("region", { name: /segment 1: needs classification/i });
+    expect(within(row).getByText(/needs review: a segment could not be classified/i)).toBeInTheDocument();
+    expect(within(row).getByText(/cut confidence 90%/i)).toBeInTheDocument();
+    expect(within(row).getByText(/start: reel edge/i)).toBeInTheDocument();
+    expect(within(row).getByText(/end: black \+ silence/i)).toBeInTheDocument();
+  });
+
   it("confirms the edited cut list — names and mm:ss times parsed back to ms", () => {
     const { onConfirm } = renderEditor();
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });
@@ -140,6 +167,19 @@ describe("SplitReviewEditor", () => {
     expect(within(first).getByText(/invalid span/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /confirm cuts/i })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("warns when an edited cut is below the resolved catalog floor", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{ ...proposal, segments: [seg({ endMs: 8_000, name: "Short legacy cut" })] }}
+        minClipDurationMs={10_000}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(/8s.*below the 10s catalog minimum/i);
   });
 
   it("Back leaves without confirming", () => {

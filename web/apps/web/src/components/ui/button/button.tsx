@@ -1,7 +1,7 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva } from "class-variance-authority";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import type { ButtonProps } from "./button.type";
 
 // shadcn/ui Button (new-york), restyled via the Test Card tokens only — never fork

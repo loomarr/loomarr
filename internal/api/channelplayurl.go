@@ -101,6 +101,10 @@ type playURLOutput struct {
 }
 
 func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURLOutput, error) {
+	checkpoint, err := s.checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -112,11 +116,20 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	// A channel that Loomarr does not stream itself has no in-app HLS to serve — that stream
 	// lives in Tunarr, reached through the media server, not here. Say so rather than mint a
 	// URL whose segments would 404, so the UI can point the viewer at the right client.
-	if !s.playsInternally(ch) {
+	if !inAppPlayableAt(ch, checkpoint) {
 		return nil, errConflict(
 			"This channel isn't streamed by Loomarr",
 			"Tunarr streams this channel — watch it in your media server. In-app playback is available "+
 				"only for channels Loomarr plays out itself (Settings → Playout).")
+	}
+	// Signed URLs use the device token as their HMAC key. Refresh it at this
+	// authenticated request boundary so a Postgres replica cannot mint a capability
+	// with the key another replica just rotated away.
+	playoutToken, err := s.currentPlayoutToken(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusServiceUnavailable,
+			"Playout state unavailable",
+			"Loomarr couldn't read the current playout credential. Try again in a moment.", err)
 	}
 
 	exp := time.Now().Add(playURLTTL)
@@ -127,7 +140,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	// resolves to PlanBaseline — h264/aac, the black-frame-safe default; an HEVC channel serves native
 	// fMP4 only to an HEVC-capable client. The plan is baked into the signed URL as an unsigned `?plan=`.
 	plan := in.Body.servedPlan(ch.BroadcastCodec)
-	rel := s.playoutHLSPathURL(ch.ID, quality, plan, exp)
+	rel := s.playoutHLSPathURLWithKey(playoutToken, ch.ID, quality, plan, exp)
 	if rel == "" {
 		// The RELATIVE URL fails only when the signature can't be minted (no playout token) —
 		// which means playout is genuinely unconfigured. The web player can use the relative URL
@@ -140,7 +153,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	out := &playURLOutput{}
 	// Absolute may be empty (public_url unset) — that only strands NATIVE clients, and the message
 	// for them is different (set the public address), so it is not an error for the web player.
-	out.Body.URL = s.playoutHLSURL(ch.ID, quality, plan, exp)
+	out.Body.URL = s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, plan, exp)
 	out.Body.RelativeURL = rel
 	out.Body.ExpiresAt = exp
 	return out, nil

@@ -1,6 +1,7 @@
-import { formatClipDuration } from "@loomarr/core";
-import { Image } from "@/components/ui";
-import { cn } from "@/lib";
+import { formatClipDuration } from "@loomarr/core/format";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Image } from "@/components/ui/image";
+import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 
@@ -29,8 +30,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
     )}
   >
     {onToggleSelect ? (
-      <input
-        type="checkbox"
+      <Checkbox
         checked={Boolean(selected)}
         onChange={onToggleSelect}
         className="size-4 accent-signal"
@@ -58,9 +58,16 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
         the row instead of ellipsising — and the NAME is the one column that must never be the
         thing that gets squeezed out. Caught by reading the baseline image, not by a test:
         every assertion still passed while the name was being crushed. */}
-    <span className="min-w-0 truncate text-sm" title={clip.name}>
-      {clip.name}
-    </span>
+    <div className="min-w-0">
+      <p className="truncate text-sm" title={clip.name}>
+        {clip.name}
+      </p>
+      {clip.brand ? (
+        <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
+          {clip.brand}
+        </p>
+      ) : null}
+    </div>
 
     <span className="hidden font-mono text-static-400 text-xs md:inline">{KIND_LABEL[clip.kind]}</span>
     <span className="hidden font-mono text-static-400 text-xs tabular-nums md:inline">

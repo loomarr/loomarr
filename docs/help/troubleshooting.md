@@ -90,9 +90,9 @@ from your existing library.
 
 Appears once you've configured a drop-folder.
 
-- **No clips found** — the folder has to be readable *by Loomarr's container*. Run a sync after
-  adding files. On the Tunarr backend it also has to be the folder Tunarr scans as a `local`
-  source.
+- **No clips found** — the folder has to be readable *by Loomarr's container*. Loomarr scans it
+  automatically; on the Tunarr backend it also exposes the same folder as a `local` source for
+  playout.
 - **Clips exist but channels play no commercials** — check the channel's pod preview. If it shows
   only bumpers, your commercials are missing the tags used for matching.
 - **"Ingest unavailable"** — yt-dlp and ffmpeg ship in the Loomarr image, so this means the

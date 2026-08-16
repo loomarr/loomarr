@@ -44,7 +44,7 @@ type RewindStore interface {
 	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
 	// ClearClipVisionTags removes the `vision_tagged` stamp and the text it read.
 	//
-	// ⚠ A separate narrow method rather than widening `SetClipVisionTags`, whose doc pins it as
+	// ⚠ A separate narrow method rather than widening `ApplyClipVision`, whose doc pins it as
 	// the ONLY writer of visible_text/vision_tagged and which writes what it is GIVEN. Passing it
 	// empty strings would work by accident today and break the first time it learns to gap-fill.
 	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
@@ -72,10 +72,11 @@ func (p *Pipeline) WithRewind(store RewindStore, clipDir string) *Pipeline {
 // confirmed eras — the very things a person went to the trouble of getting right. A re-tag simply
 // runs the classifier again and merges.
 //
-// ⚠ A rewind on a composite does NOT touch its confirmed segments. They are independent clips with
-// their own ladders; a re-split proposes a new cut list beside them and the operator resolves the
-// overlap. Deleting them would destroy tagged, possibly hand-corrected adverts to re-derive them
-// from a detector that has no idea a human was involved.
+// ⚠ A rewind on a composite does NOT touch its confirmed segments. They remain the active
+// generation while the replacement proposal is incomplete. Final confirmation atomically
+// tombstones superseded children, preserving their files and metadata for restore; exact reused
+// hashes and channel-pinned clips survive. Touching them here would replace a complete reel with
+// an unfinished one and destroy the recovery boundary.
 func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force bool) error {
 	idx := StageIndex(from)
 	if idx < 0 {
@@ -119,6 +120,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	}
 	row.Stages = kept
 	row.Stage, row.Status, row.Attempts, row.Progress = from, StatusQueued, 0, 0
+	row.ForceRun = true
 	row.Disposition = DispositionRunning
 	// ⚠ The reject is cleared as well. A rewound clip is no longer refused — leaving the reason
 	// behind would show a clip that is visibly running AND visibly rejected, and the Incoming tab
