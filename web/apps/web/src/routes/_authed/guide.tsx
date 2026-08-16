@@ -14,13 +14,14 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 interface GuideSearch {
   intent?: string;
   preset?: string;
+  jobId?: string;
 }
 
 const GuideScreen = () => {
-  const { intent, preset } = Route.useSearch();
+  const { intent, preset, jobId } = Route.useSearch();
   const template = CHANNEL_TEMPLATES.find((candidate) => candidate.id === preset);
   const initialIntent = template?.intent ?? (intent ? { description: intent } : undefined);
-  return <GuidePage initialIntent={initialIntent} />;
+  return <GuidePage initialIntent={initialIntent} activeJobId={jobId} />;
 };
 
 const Route = createFileRoute("/_authed/guide")({
@@ -28,6 +29,7 @@ const Route = createFileRoute("/_authed/guide")({
   validateSearch: (search: Record<string, unknown>): GuideSearch => ({
     intent: typeof search.intent === "string" ? search.intent : undefined,
     preset: typeof search.preset === "string" ? search.preset : undefined,
+    jobId: typeof search.jobId === "string" && search.jobId.trim() !== "" ? search.jobId : undefined,
   }),
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole

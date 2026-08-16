@@ -1,4 +1,4 @@
-import type { ApproveOutputBody, ListProposalsOutputBody, RefineChannelOutputBody } from "@loomarr/api";
+import type { ApproveOutputBody, ProposalJobDTO, RefineChannelOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LoomarrEventsProvider } from "@/events";
@@ -52,24 +52,28 @@ const withStubbedRefine = (): Decorator => (Story) => {
       );
     }
     return Promise.resolve(
-      jsonResponse<ListProposalsOutputBody>({
-        proposals: [
-          {
-            id: "p1",
-            jobId: "job-1",
-            status: "submitted",
-            proposal: {
-              intent: { description: "add more Schwarzenegger" },
-              lineup: [
-                { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
-                { name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true },
-              ],
-              acquisitions: [],
-              alternates: [],
-              scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
-            },
+      jsonResponse<ProposalJobDTO>({
+        jobId: "job-1",
+        status: "done",
+        intent: { description: "add more Schwarzenegger" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        proposal: {
+          id: "p1",
+          jobId: "job-1",
+          status: "submitted",
+          proposal: {
+            intent: { description: "add more Schwarzenegger" },
+            lineup: [
+              { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
+              { name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true },
+            ],
+            acquisitions: [],
+            alternates: [],
+            scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
           },
-        ],
+        },
       }),
     );
   }) as typeof fetch;
@@ -86,11 +90,26 @@ const withStubbedRefine = (): Decorator => (Story) => {
 // the tree is wrapped in the events provider with a dispatchable EventSource so play()
 // can fire the `failed` frame that drives the panel's inline error.
 const withFailingRefine = (): Decorator => (Story) => {
+  let reads = 0;
   window.fetch = ((url: string) => {
     if (typeof url === "string" && url.includes("/refine")) {
       return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
     }
-    return Promise.resolve(jsonResponse<ListProposalsOutputBody>({ proposals: [] }));
+    reads++;
+    const failed = reads > 1;
+    return Promise.resolve(
+      jsonResponse<ProposalJobDTO>({
+        jobId: "job-1",
+        status: failed ? "failed" : "running",
+        intent: { description: "add more Schwarzenegger", refineText: "add more Schwarzenegger" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        failure: failed
+          ? { code: "generation_failed", message: "Refine couldn't complete. Try again." }
+          : undefined,
+      }),
+    );
   }) as typeof fetch;
   (window as unknown as { EventSource: unknown }).EventSource = StoryEventSource;
 

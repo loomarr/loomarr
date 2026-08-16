@@ -2,7 +2,9 @@ import type { MeBody, TitleDTO } from "@loomarr/api";
 import {
   getChannelGuideMockHandler,
   getEnqueueTitleMockHandler,
+  getGetProposalJobMockHandler,
   getListChannelsMockHandler,
+  getListProposalJobsMockHandler,
   getListTitlesMockHandler,
   getMeMockHandler,
   getSettingsListMockHandler,
@@ -114,6 +116,7 @@ const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
     getMeMockHandler(who),
     getChannelGuideMockHandler(opts.empty ? { ...GUIDE, channels: [] } : GUIDE),
     getListChannelsMockHandler({ channels: opts.empty ? [] : CHANNELS }),
+    getListProposalJobsMockHandler({ proposalJobs: [] }),
     titlesRequireState(),
     getListTitlesMockHandler(({ request }) => {
       const state = new URL(request.url).searchParams.get("state");
@@ -144,11 +147,12 @@ const renderAt = (path: string) => {
   // Returns the render RESULT so a test can scope its queries to its own tree. `screen`
   // searches the shared document.body, and a query that reaches a neighbouring test's markup
   // clicks a detached button, which silently does nothing.
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return Object.assign(view, { router });
 };
 
 describe("Guide", () => {
@@ -309,8 +313,16 @@ describe("Guide", () => {
         submissions.push(await request.json());
         return { jobId: "job-saturday" };
       }),
+      getGetProposalJobMockHandler({
+        jobId: "job-saturday",
+        status: "running",
+        intent: saturday?.intent ?? { description: "Saturday cartoons" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:00:00Z",
+      }),
     );
-    renderAt("/guide?preset=saturday-cartoons");
+    const view = renderAt("/guide?preset=saturday-cartoons");
 
     expect(await screen.findByLabelText("Channel intent")).toHaveValue(saturday?.intent.description);
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
@@ -324,6 +336,93 @@ describe("Guide", () => {
           tone: "playful",
         },
       ]);
+    await expect.poll(() => view.router.state.location.search).toMatchObject({ jobId: "job-saturday" });
+  });
+
+  it("restores a failed request from the active Proposal Job in route search", async () => {
+    stubGuide();
+    server.use(
+      getGetProposalJobMockHandler({
+        jobId: "job-reload",
+        status: "failed",
+        intent: { description: "Saturday cartoons", era: "1990s", tone: "playful" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        failure: { code: "provider_unavailable", message: "The AI provider is unavailable right now." },
+      }),
+    );
+
+    renderAt("/guide?jobId=job-reload");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The AI provider is unavailable right now.");
+    expect(alert).toHaveFocus();
+    expect(screen.getByRole("link", { name: "Open AI settings" })).toBeInTheDocument();
+  });
+
+  it("restores a completed request and its review from the active Proposal Job in route search", async () => {
+    stubGuide();
+    server.use(
+      getGetProposalJobMockHandler({
+        jobId: "job-done",
+        status: "done",
+        intent: { description: "Saturday cartoons", era: "1990s", tone: "playful" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        proposal: {
+          id: "proposal-done",
+          jobId: "job-done",
+          status: "submitted",
+          proposal: {
+            intent: { description: "Saturday cartoons", era: "1990s", tone: "playful" },
+            lineup: [
+              {
+                name: "Recess",
+                year: 1997,
+                mediaType: "tv",
+                tmdbId: 3483,
+                inLibrary: true,
+              },
+            ],
+            acquisitions: [],
+            alternates: [],
+            scores: { themeFit: 0.95, availabilityRatio: 1, eraBalance: 1, overall: 0.97 },
+          },
+        },
+      }),
+    );
+
+    renderAt("/guide?jobId=job-done");
+
+    expect(await screen.findByText("Recess")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
+  });
+
+  it("edits an ungrounded restored request without losing its complete Intent", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    server.use(
+      getGetProposalJobMockHandler({
+        jobId: "job-edit",
+        status: "failed",
+        intent: { description: "Saturday cartoons", era: "1990s", tone: "playful" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        failure: { code: "no_grounded_titles", message: "No grounded titles matched." },
+      }),
+    );
+    const view = renderAt("/guide?jobId=job-edit");
+
+    await user.click(await screen.findByRole("button", { name: "Edit description" }));
+
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("Saturday cartoons");
+    expect(view.router.state.location.search).toEqual({});
+    await user.click(screen.getByRole("button", { name: "Add constraints" }));
+    expect(screen.getByLabelText("Era")).toHaveValue("1990s");
+    expect(screen.getByLabelText("Tone")).toHaveValue("playful");
   });
 });
 

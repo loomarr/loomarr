@@ -1,5 +1,5 @@
 import type { Proposal, ProposalDTO } from "@loomarr/api";
-import { getListProposalsMockHandler, getRefineChannelMockHandler } from "@loomarr/api/msw";
+import { getGetProposalJobMockHandler, getRefineChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
@@ -23,33 +23,40 @@ const proposal: Proposal = {
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
 };
 
-// Two real endpoints: `POST /v1/channels/{id}/refine` starts the run, `GET /v1/proposals` is the
-// approval-queue read the hook watches for its jobId.
+// Two real endpoints: `POST /v1/channels/{id}/refine` starts the run and the authoritative
+// `GET /v1/proposal-jobs/{jobId}` restores its lifecycle and optional Proposal.
 //
 // ⚠ The stub this replaced dispatched on METHOD ALONE — `if (init?.method === "POST")` — and its
 // own comment said it did so "without pinning to exact URL strings". That was the honest
 // description of a real weakness: any POST anywhere satisfied the refine branch, and every other
 // request in the app fell into the proposals branch. Route-bound handlers remove the choice.
 //
-// ⚠ THE DEFERRAL IS PRESERVED, and it is load-bearing rather than incidental. The list response is
-// an externally-resolvable promise so a test can observe the run's "in flight" state before letting
-// the list answer. MSW supports this directly — a resolver may return a promise — so the mechanism
-// survives the migration intact. This hook's list query has no refetchInterval (same as
-// useSuggestionRun, which it mirrors: neither polls on a timer), so it resolves once per enable and
-// there is nothing to race by resolving eagerly.
+// The job response is externally resolvable so a test can observe the run's in-flight state
+// before authoritative recovery lands the Proposal.
 const stubRefine = () => {
-  let resolveProposals: ((rows: ProposalDTO[]) => void) | undefined;
-  const proposalsRequested = new Promise<ProposalDTO[]>((resolve) => {
-    resolveProposals = resolve;
+  let resolveJob: ((rows: ProposalDTO[]) => void) | undefined;
+  const jobRequested = new Promise<ProposalDTO[]>((resolve) => {
+    resolveJob = resolve;
   });
 
   server.use(
     getRefineChannelMockHandler({ jobId: "job-1" }),
-    getListProposalsMockHandler(async () => ({ proposals: await proposalsRequested })),
+    getGetProposalJobMockHandler(async () => {
+      const rows = await jobRequested;
+      return {
+        jobId: "job-1",
+        status: rows.length > 0 ? "done" : "running",
+        intent: proposal.intent,
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:00:00Z",
+        proposal: rows.find((candidate) => candidate.jobId === "job-1"),
+      };
+    }),
   );
 
-  // Lets the list query settle with the given rows, once a test wants it to.
-  return { landProposals: (rows: ProposalDTO[]) => resolveProposals?.(rows) };
+  // Lets the job query settle with the given Proposal, once a test wants it to.
+  return { landProposals: (rows: ProposalDTO[]) => resolveJob?.(rows) };
 };
 
 // ⚠ Hand-written: the failure is a STATUS (422), and this spec declares errors with `default:`
@@ -81,7 +88,7 @@ describe("useChannelRefine", () => {
 
     act(() => result.current.start("ch-1", "add more Schwarzenegger"));
 
-    // The list request is in flight (deliberately unresolved) — jobId is set, no
+    // The job request is in flight (deliberately unresolved) — jobId is set, no
     // proposal yet, so the run reads as running.
     await waitFor(() => expect(result.current.isRunning).toBe(true));
     expect(result.current.proposal).toBeUndefined();
@@ -123,5 +130,29 @@ describe("useChannelRefine", () => {
     act(() => result.current.start("ch-1", ""));
 
     await waitFor(() => expect(result.current.error).toBeDefined());
+  });
+
+  it("retries a durable failure through Refine and tracks the fresh job", async () => {
+    let starts = 0;
+    server.use(
+      getRefineChannelMockHandler(() => ({ jobId: starts++ === 0 ? "job-1" : "job-2" })),
+      getGetProposalJobMockHandler(({ params }) => ({
+        jobId: String(params.jobId),
+        status: params.jobId === "job-1" ? "failed" : "running",
+        intent: { ...proposal.intent, refineText: "add more action" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:00:00Z",
+        failure:
+          params.jobId === "job-1" ? { code: "generation_failed", message: "Refine failed." } : undefined,
+      })),
+    );
+    const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
+
+    act(() => result.current.start("ch-1", "add more action"));
+    await waitFor(() => expect(result.current.failure).toBeDefined());
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.jobId).toBe("job-2"));
+    expect(starts).toBe(2);
   });
 });

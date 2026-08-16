@@ -76,6 +76,7 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
       onTitle: (e) => {
         invalidateByPrefix(qc, "/v1/titles");
         invalidateByPrefix(qc, "/v1/proposals");
+        invalidateByPrefix(qc, "/v1/proposal-jobs");
         extraRef.current?.onTitle?.(e);
       },
       onChannel: (e) => {
@@ -84,6 +85,7 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
       },
       onSuggestion: (e) => {
         invalidateByPrefix(qc, "/v1/proposals");
+        invalidateByPrefix(qc, "/v1/proposal-jobs");
         extraRef.current?.onSuggestion?.(e);
       },
       onLlmPull: (e) => {

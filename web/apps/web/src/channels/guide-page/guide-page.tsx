@@ -93,7 +93,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ initialIntent }: GuidePageProps) => {
+const GuidePage = ({ initialIntent, activeJobId }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -123,7 +123,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
-  const [adding, setAdding] = useState(() => Boolean(initialIntent));
+  const [adding, setAdding] = useState(() => Boolean(initialIntent || activeJobId));
+
+  const setActiveJobId = (jobId: string | undefined) => {
+    void navigate({ to: "/guide", search: jobId ? { jobId } : {}, replace: true });
+  };
 
   // Closing also CLEARS the preset or legacy intent search. Leaving it would make a refresh
   // silently re-open the panel with an Intent the operator already dismissed — and right after
@@ -131,7 +135,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // dismissal out of history: closing a panel is not a place you navigate back to.
   const closePanel = () => {
     setAdding(false);
-    if (initialIntent) void navigate({ to: "/guide", search: {}, replace: true });
+    if (initialIntent || activeJobId) void navigate({ to: "/guide", search: {}, replace: true });
   };
 
   // The inline panel approved a proposal, which created the channel — drop the operator on
@@ -245,7 +249,12 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
       {adding && (
         <div className="border-border border-b bg-card px-7 py-4.5">
-          <ChannelSuggestPanel initialIntent={initialIntent} onCreated={onCreated} />
+          <ChannelSuggestPanel
+            initialIntent={initialIntent}
+            jobId={activeJobId}
+            onJobIdChange={setActiveJobId}
+            onCreated={onCreated}
+          />
         </div>
       )}
 

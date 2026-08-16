@@ -1,8 +1,10 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -10,6 +12,7 @@ import { GenerationProgress } from "@/components/loomarr/feedback/generation-pro
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
+import { ProposalJobFailure } from "../proposal-job-failure";
 import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
@@ -27,16 +30,33 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
 // live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
 // another" resets back to the form.
-const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSuggestPanelProps) => {
+const ChannelSuggestPanel = ({
+  onCreated,
+  initialIntent,
+  jobId,
+  onJobIdChange,
+  className,
+}: ChannelSuggestPanelProps) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const run = useSuggestionRun();
+  const run = useSuggestionRun({ jobId, onJobIdChange });
+  const [draftIntent, setDraftIntent] = useState(initialIntent);
   const elapsed = useElapsed(run.isRunning);
+
+  const invalidateProposalJobs = () => {
+    void queryClient.invalidateQueries({ queryKey: proposalJobsApi.getListProposalJobsQueryKey() });
+    if (run.jobId) {
+      void queryClient.invalidateQueries({
+        queryKey: proposalJobsApi.getGetProposalJobQueryKey(run.jobId),
+      });
+    }
+  };
 
   const approve = proposalsApi.useApproveProposal({
     mutation: {
       onSuccess: (res) => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
+        invalidateProposalJobs();
         // Approval atomically created (or patched) the local channel and returned its required
         // id — navigate there so the operator lands on the channel it just committed.
         if (res.status === 200) {
@@ -50,6 +70,7 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
     mutation: {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
+        invalidateProposalJobs();
         run.reset();
       },
     },
@@ -72,8 +93,8 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
       </div>
 
       {/* Idle — the describe form (with optional constraints). */}
-      {!run.isRunning && !proposal && (
-        <IntentForm initialIntent={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
+      {!run.isRunning && !proposal && !run.failure && (
+        <IntentForm initialIntent={draftIntent} onSubmit={run.start} submitting={run.isRunning} />
       )}
 
       {run.error != null && <ErrorState error={run.error} />}
@@ -83,7 +104,24 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
           "reasoning" is the honest default. It used to fall back to "searching", which
           announced a library search that had not started and could not be the slow part. */}
       {run.isRunning && (
-        <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
+        <div role="status" aria-live="polite" aria-busy="true">
+          <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
+        </div>
+      )}
+
+      {!run.isRunning && run.failure && (
+        <ProposalJobFailure
+          failure={run.failure}
+          onRetry={run.retry}
+          onEdit={
+            run.failure.code === "no_grounded_titles"
+              ? () => {
+                  setDraftIntent(run.intent);
+                  run.reset();
+                }
+              : undefined
+          }
+        />
       )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}

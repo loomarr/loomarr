@@ -1,6 +1,6 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { ChevronDown, Loader2, Sparkles, TriangleAlert } from "lucide-react";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ProposalJobFailure } from "@/suggest/proposal-job-failure";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
 import { useElapsed } from "@/suggest/use-elapsed";
 import type { RefinePanelProps } from "./refine-panel.type";
@@ -60,17 +61,17 @@ const RefinePanel = ({
 
   // The run landed a proposal — move from the progress stepper to the diff, once.
   if (state === "running" && refine.proposal) setState("landed");
-  // The run FAILED with no proposal (the model errored/timed out mid-generation — a
-  // `failed` SSE phase, distinct from a mutation error). Drop back to the form so the
+  // The authoritative job read says the run failed with no proposal (distinct from a
+  // mutation error). Drop back to the form so the
   // typed change is preserved and a retry is one click away — a recoverable stop, not a
   // dead end (the seamless principle: fix it in place).
-  if (state === "running" && !refine.proposal && refine.phase === "failed") setState("open");
+  if (state === "running" && !refine.isRunning && !refine.proposal && refine.failure) setState("open");
 
   const landed = state === "landed" ? refine.proposal : undefined;
   // Show the generation-failed notice on the form whenever the last run ended in `failed`
   // and nothing was applied. (`refine.error` below covers the separate case where the
   // refine REQUEST itself failed before any job started.)
-  const generationFailed = state === "open" && refine.phase === "failed" && !refine.proposal;
+  const generationFailed = state === "open" ? refine.failure : undefined;
 
   return (
     <section className={cn("flex flex-col gap-3 rounded-lg border border-suggest-tint-15 p-4", className)}>
@@ -97,12 +98,13 @@ const RefinePanel = ({
       {state === "open" && (
         <div className="flex flex-col gap-3">
           {generationFailed && (
-            <p className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>
-                Refine couldn't complete. The model didn't return a lineup. Try again or rephrase your change.
-              </span>
-            </p>
+            <ProposalJobFailure
+              failure={generationFailed}
+              onRetry={() => {
+                setState("running");
+                refine.retry();
+              }}
+            />
           )}
           <textarea
             value={change}
@@ -132,7 +134,7 @@ const RefinePanel = ({
       )}
 
       {state === "running" && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" role="status" aria-live="polite" aria-busy="true">
           {refine.phase ? (
             <GenerationProgress phase={refine.phase} round={refine.round} elapsedSeconds={elapsed} />
           ) : (

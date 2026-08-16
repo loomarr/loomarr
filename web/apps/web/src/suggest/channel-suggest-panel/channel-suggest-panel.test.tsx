@@ -1,8 +1,10 @@
 import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
+import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import {
   getApproveProposalMockHandler,
+  getDenyProposalMockHandler,
   getFillerPoolMockHandler,
-  getListProposalsMockHandler,
+  getGetProposalJobMockHandler,
   getMeMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
@@ -15,12 +17,12 @@ import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
+import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
 // The panel reuses the whole Suggest flow (useSuggestionRun → GenerationProgress →
 // ProposalReview), so its test mirrors suggest-workspace's harness: an admin auth/me, a POST
-// /v1/proposals that returns a jobId, a /v1/proposals list that yields a submitted proposal
-// matched on that jobId, and a stubbed EventSource (jsdom has none — the phases ride SSE, the
-// proposal rides the list). The panel needs a router (it navigates on approve) + a query
+// /v1/proposals that returns a jobId, then authoritative /v1/proposal-jobs/{jobId} recovery.
+// The panel needs a router (it navigates on approve) + a query
 // client + the events provider is absent in isolation (the listener is then a no-op, exactly
 // as suggest-workspace notes).
 // ⚠ `local` is REQUIRED on MeBody and this fixture omitted it.
@@ -63,6 +65,7 @@ const stubSuggest = (
   } = {},
 ) => {
   const approvals: string[] = [];
+  const denials: string[] = [];
   const submissions: unknown[] = [];
   const fillerEligible = opts.fillerEligible ?? 0;
 
@@ -82,29 +85,48 @@ const stubSuggest = (
         opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" },
       );
     }),
+    getDenyProposalMockHandler(({ params }) => {
+      denials.push(String(params.id));
+      return { status: "denied" };
+    }),
     getSubmitProposalMockHandler(async ({ request }) => {
       submissions.push(await request.json());
       return { jobId: "job-1" };
     }),
-    getListProposalsMockHandler({ proposals: opts.proposals ?? [] }),
+    getGetProposalJobMockHandler(() => {
+      const proposal = opts.proposals?.find((candidate) => candidate.jobId === "job-1");
+      return {
+        jobId: "job-1",
+        status: proposal ? "done" : "running",
+        intent: PROPOSAL.proposal.intent,
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:00:00Z",
+        proposal,
+      };
+    }),
   );
 
-  return { approvals, submissions };
+  return { approvals, denials, submissions };
 };
 
-const renderPanel = (onCreated: (id: string) => void) => {
+const renderPanel = (
+  onCreated: (id: string) => void,
+  props: Pick<ChannelSuggestPanelProps, "jobId" | "onJobIdChange"> = {},
+) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const view = render(
     <RouterHarness
       content={
         <QueryClientProvider client={client}>
-          <ChannelSuggestPanel onCreated={onCreated} />
+          <ChannelSuggestPanel onCreated={onCreated} {...props} />
         </QueryClientProvider>
       }
     />,
   );
+  return { ...view, client };
 };
 
 describe("ChannelSuggestPanel", () => {
@@ -170,6 +192,35 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
   });
 
+  it("retries a failed restored job as a fresh job with the complete Intent", async () => {
+    const user = userEvent.setup();
+    const submissions: unknown[] = [];
+    const onJobIdChange = vi.fn();
+    stubSuggest();
+    server.use(
+      getGetProposalJobMockHandler({
+        jobId: "job-old",
+        status: "failed",
+        intent: { description: "Saturday cartoons", era: "1990s", tone: "playful" },
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:01:00Z",
+        failure: { code: "timed_out", message: "Channel generation took too long." },
+      }),
+      getSubmitProposalMockHandler(async ({ request }) => {
+        submissions.push(await request.json());
+        return { jobId: "job-fresh" };
+      }),
+    );
+    renderPanel(() => {}, { jobId: "job-old", onJobIdChange });
+
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => {
+      expect(submissions).toEqual([{ description: "Saturday cartoons", era: "1990s", tone: "playful" }]);
+      expect(onJobIdChange).toHaveBeenCalledWith("job-fresh");
+    });
+  });
+
   it("keeps approval available when no filler is ready and explains back-to-back playout", async () => {
     const user = userEvent.setup();
     stubSuggest({ proposals: [PROPOSAL], fillerEligible: 0 });
@@ -207,13 +258,40 @@ describe("ChannelSuggestPanel", () => {
       approveBody: { channelId: "ch_new123", enqueued: 0, status: "approved" },
     });
     const onCreated = vi.fn();
-    renderPanel(onCreated);
+    const { client } = renderPanel(onCreated);
+    const invalidate = vi.spyOn(client, "invalidateQueries");
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
     await user.click(await screen.findByRole("button", { name: /approve/i }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ch_new123"));
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: proposalJobsApi.getListProposalJobsQueryKey(),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: proposalJobsApi.getGetProposalJobQueryKey("job-1"),
+    });
+  });
+
+  it("refreshes Proposal Job list and detail state after denying", async () => {
+    const user = userEvent.setup();
+    const { denials } = stubSuggest({ proposals: [PROPOSAL] });
+    const { client } = renderPanel(() => {});
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("button", { name: "Deny" }));
+    await user.click(screen.getByRole("button", { name: "Deny" }));
+
+    await waitFor(() => expect(denials).toEqual(["p-1"]));
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: proposalJobsApi.getListProposalJobsQueryKey(),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: proposalJobsApi.getGetProposalJobQueryKey("job-1"),
+    });
   });
 
   it("shows one locked creation action while approval is in flight", async () => {

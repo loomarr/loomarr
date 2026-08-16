@@ -8,6 +8,9 @@ type ChannelSuggestPanelProps = {
   // Seeds the describe form with either a resolved preset or a legacy free-text Intent. It is
   // a STARTING POINT, not a controlled value — the operator edits it before generation.
   initialIntent?: Intent;
+  // Controlled by Guide search so a reload restores this exact execution.
+  jobId?: string;
+  onJobIdChange?: (jobId: string | undefined) => void;
   className?: string;
 };
 

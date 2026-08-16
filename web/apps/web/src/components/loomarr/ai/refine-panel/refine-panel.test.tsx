@@ -1,7 +1,7 @@
 import type { Proposal, ProposalDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
-  getListProposalsMockHandler,
+  getGetProposalJobMockHandler,
   getRefineChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -59,19 +59,42 @@ const proposal: Proposal = {
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
 };
 
-// Dispatches by method+path: POST .../refine starts the run, GET /v1/proposals is the
-// approval-queue poll that lands the proposal, POST .../approve applies it.
+// Dispatches by method+path: POST .../refine starts the run, GET /v1/proposal-jobs/{jobId}
+// is authoritative recovery, and POST .../approve applies the landed Proposal.
 // ⚠ Three route-bound handlers replacing three substring branches, and the last one was the
 // dangerous shape: an unconditional `{ proposals }` for EVERY unmatched request, at any path.
 // `url.includes("/approve")` was also true of `POST /v1/proposals/approve` (the BULK route), which
 // is a different endpoint from the per-proposal one this panel calls.
-const stubRefine = (opts: { proposals: ProposalDTO[] }) =>
+const stubRefine = (opts: { proposals: ProposalDTO[]; failure?: boolean }) => {
+  let reads = 0;
+  const starts: string[] = [];
   server.use(
-    getRefineChannelMockHandler({ jobId: "job-1" }),
+    getRefineChannelMockHandler(({ params }) => {
+      starts.push(String(params.id));
+      return { jobId: "job-1" };
+    }),
     // ⚠ `status` is REQUIRED on ApproveOutputBody and no stub ever sent it.
     getApproveProposalMockHandler({ channelId: "ch-1", enqueued: 0, status: "approved" }),
-    getListProposalsMockHandler({ proposals: opts.proposals }),
+    getGetProposalJobMockHandler(() => {
+      reads++;
+      const landed = opts.proposals.find((candidate) => candidate.jobId === "job-1");
+      const failed = opts.failure === true && reads > 1;
+      return {
+        jobId: "job-1",
+        status: failed ? "failed" : landed ? "done" : "running",
+        intent: proposal.intent,
+        attempts: 1,
+        createdAt: "2026-08-15T12:00:00Z",
+        updatedAt: "2026-08-15T12:00:00Z",
+        proposal: landed,
+        failure: failed
+          ? { code: "generation_failed", message: "Refine couldn't complete. Try again." }
+          : undefined,
+      };
+    }),
   );
+  return { starts };
+};
 
 // ⚠ `unstubAllGlobals`, not `restoreAllMocks`: the last test installs MockEventSource with
 // `vi.stubGlobal`, and restoreAllMocks does not undo a stubbed global — it would leak into the
@@ -150,14 +173,14 @@ describe("RefinePanel", () => {
     expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
   });
 
-  // A generation FAILURE (the model errored/timed out mid-run — a `failed` SSE phase,
-  // never a proposal) must not dead-end the panel: it drops back to the form with an
+  // A generation failure (durably failed with no Proposal) must not dead-end the panel:
+  // it drops back to the form with an
   // inline notice and the typed change preserved, so retry is one click away. This is the
   // "inline error + keep the text" behaviour, not a toast-and-collapse.
   it("surfaces a generation failure inline and keeps the typed change", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
     // The queue never lands a proposal for this job — a failed run produces none.
-    stubRefine({ proposals: [] });
+    const { starts } = stubRefine({ proposals: [], failure: true });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeEventfulWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
@@ -171,7 +194,9 @@ describe("RefinePanel", () => {
     expect(await screen.findByText(/couldn't complete/i)).toBeInTheDocument();
     expect(screen.getByLabelText("What to change")).toHaveValue("add more Schwarzenegger");
     expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
-    // And the retry affordance is right there.
-    expect(screen.getByRole("button", { name: /^refine$/i })).toBeEnabled();
+    // And the retry affordance is right there and starts a fresh request rather than
+    // merely repainting the stale failure.
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(starts).toHaveLength(2));
   });
 });
