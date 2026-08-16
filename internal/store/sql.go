@@ -43,6 +43,10 @@ type sqlStore struct {
 	// explicitly single-instance, so the process is the complete lock domain.
 	// Postgres does not use this mutex; it takes a database-wide advisory lock.
 	settingLock sync.Mutex
+	// approvalLocks is the SQLite implementation of requester-scoped proposal
+	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
+	// Entries are bounded by the household user count (§1) and live with the store.
+	approvalLocks sync.Map
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -171,7 +175,7 @@ const settingLockNamespace = "loomarr:setting-workflow:"
 // callback runs while one dedicated *sql.Conn remains checked out. Ordinary
 // store calls inside fn may use any pooled connection: every cooperating replica
 // is excluded by the advisory lock key, not by a SQL transaction.
-func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) (retErr error) {
+func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) error {
 	if key == "" {
 		return fmt.Errorf("setting lock key is empty")
 	}
@@ -190,27 +194,38 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 		}
 		return fn(ctx)
 	}
+	return s.withPostgresAdvisoryLock(ctx, "setting lock", settingLockNamespace, key, fn)
+}
+
+// withPostgresAdvisoryLock holds one session-scoped advisory lock while fn uses
+// ordinary pooled Store calls. It is the settings transition lock; proposal
+// approvals use their own transaction-bound ordering in approval.go.
+func (s *sqlStore) withPostgresAdvisoryLock(
+	ctx context.Context,
+	label, namespace, key string,
+	fn func(context.Context) error,
+) (retErr error) {
 	if s.dialect != DialectPostgres {
-		return fmt.Errorf("setting lock: unsupported store dialect %q", s.dialect)
+		return fmt.Errorf("%s: unsupported store dialect %q", label, s.dialect)
 	}
 
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("setting lock %q: reserve postgres connection: %w", key, err)
+		return fmt.Errorf("%s %q: reserve postgres connection: %w", label, key, err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: close postgres connection: %w", key, err))
+			retErr = errors.Join(retErr, fmt.Errorf("%s %q: close postgres connection: %w", label, key, err))
 		}
 	}()
 
-	lockName := settingLockNamespace + key
+	lockName := namespace + key
 	const lockSQL = `SELECT pg_advisory_lock(hashtextextended(current_database() || ':' || $1, 0))`
 	if _, err := conn.ExecContext(ctx, lockSQL, lockName); err != nil {
 		// Cancellation can race with the server granting the lock. Discarding the
 		// session is the only safe answer when acquisition was not acknowledged.
 		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		return fmt.Errorf("setting lock %q: acquire postgres advisory lock: %w", key, err)
+		return fmt.Errorf("%s %q: acquire postgres advisory lock: %w", label, key, err)
 	}
 
 	// Unlock with an independent bounded context. The operation's context may have
@@ -232,7 +247,7 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 		// Returning driver.ErrBadConn from Raw tells database/sql not to reuse the
 		// underlying session; Postgres releases session locks when it disconnects.
 		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: release postgres advisory lock: %w", key, unlockErr))
+		retErr = errors.Join(retErr, fmt.Errorf("%s %q: release postgres advisory lock: %w", label, key, unlockErr))
 	}()
 
 	return fn(ctx)

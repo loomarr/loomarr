@@ -28,6 +28,25 @@ type encodedApprovalTitle struct {
 // CommitProposalApproval is the approval gate's persistence boundary. The proposal
 // compare-and-swap and every insert-only title write commit together or not at all.
 func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error) {
+	return s.commitProposalApproval(ctx, commit, nil)
+}
+
+func (s *sqlStore) CommitProposalApprovalGuarded(
+	ctx context.Context,
+	commit ProposalApproval,
+	guard ProposalApprovalGuard,
+) (int, error) {
+	if guard == nil {
+		return 0, fmt.Errorf("approve proposal %s: guard is nil", commit.Proposal.ID)
+	}
+	return s.commitProposalApproval(ctx, commit, guard)
+}
+
+func (s *sqlStore) commitProposalApproval(
+	ctx context.Context,
+	commit ProposalApproval,
+	guard ProposalApprovalGuard,
+) (int, error) {
 	if commit.Proposal.Status != "approved" {
 		return 0, fmt.Errorf("approve proposal %s: terminal status is %q", commit.Proposal.ID, commit.Proposal.Status)
 	}
@@ -56,11 +75,39 @@ func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalAp
 	}
 	sort.Slice(encoded, func(i, j int) bool { return encoded[i].record.Key < encoded[j].record.Key })
 
+	orderKey := approvalOrderKey(commit.Proposal)
+	if s.dialect == DialectSQLite {
+		release, err := s.acquireSQLiteApprovalOrder(ctx, orderKey)
+		if err != nil {
+			return 0, err
+		}
+		defer release()
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("approve proposal %s: begin: %w", commit.Proposal.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	switch s.dialect {
+	case DialectSQLite:
+		// The process semaphore above is the complete lock domain: SQLite is
+		// explicitly single-instance.
+	case DialectPostgres:
+		const lockSQL = `SELECT pg_advisory_xact_lock(hashtextextended(current_database() || ':' || $1, 0))`
+		if _, err := tx.ExecContext(ctx, lockSQL, "loomarr:proposal-approval:"+orderKey); err != nil {
+			return 0, fmt.Errorf("approve proposal %s: acquire requester ordering: %w", commit.Proposal.ID, err)
+		}
+	default:
+		return 0, fmt.Errorf("approve proposal %s: unsupported store dialect %q", commit.Proposal.ID, s.dialect)
+	}
+
+	if guard != nil {
+		if err := guard(ctx, proposalApprovalTxReader{s: s, tx: tx}); err != nil {
+			return 0, fmt.Errorf("approve proposal %s: guard: %w", commit.Proposal.ID, err)
+		}
+	}
 
 	p := commit.Proposal
 	result, err := tx.ExecContext(ctx, s.ph(
@@ -137,6 +184,61 @@ func (s *sqlStore) CommitProposalApproval(ctx context.Context, commit ProposalAp
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
+}
+
+func approvalOrderKey(p Proposal) string {
+	if p.CreatedBy != "" {
+		return "requester:" + p.CreatedBy
+	}
+	// A proposal without a requester cannot use the per-user auto-approve grant,
+	// but its manual decision still receives stable ordering for retries.
+	return "proposal:" + p.ID
+}
+
+func (s *sqlStore) acquireSQLiteApprovalOrder(ctx context.Context, key string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	candidate := make(chan struct{}, 1)
+	candidate <- struct{}{}
+	actual, _ := s.approvalLocks.LoadOrStore(key, candidate)
+	lock := actual.(chan struct{})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-lock:
+	}
+	return func() { lock <- struct{}{} }, nil
+}
+
+// proposalApprovalTxReader is the guard's transaction-bound adapter. It exposes
+// exactly the three reads quota accounting needs; no caller can escape to the pool
+// while assuming the transaction-scoped Postgres ordering still fences its view.
+type proposalApprovalTxReader struct {
+	s  *sqlStore
+	tx *sql.Tx
+}
+
+func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
+	return scanUser(r.tx.QueryRowContext(ctx, r.s.ph(
+		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		 FROM users WHERE id = ?`), id))
+}
+
+func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
+	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanProposals(rows)
+}
+
+func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
+	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(
+		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
+		        progress, eta_text, download_status
+		 FROM titles WHERE key = ?`), string(key)))
 }
 
 // isConstraintViolation recognizes the portable driver contracts without coupling the
