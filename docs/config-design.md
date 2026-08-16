@@ -164,8 +164,36 @@ exactly the old contract.
 
 The concrete rules are:
 
-- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for Postgres replicas, on a ~30s read-through interval (main doc §17).
-- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches URL/token from the snapshot at call time — saving a new Emby token means the *next* lookup uses it. An adapter operation that spans several requests takes one immutable snapshot before the first request. In particular, every Tunarr Programmer operation snapshots its URL, transcode override, and filler attach policy together; a settings save affects the next operation, never the middle of the current one. Endpoint-derived caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr cannot reuse a transcode id or content index learned from the previous instance. Optional adapters remain constructed while their credentials are empty: saving or clearing `tmdb.api_key` enables or disables TMDB search, channel icon suggestions, and suggestion grounding on the next operation without a restart. `/v1/search?scope=all` independently considers the live media-library URL and TMDB key, so either configured corpus remains useful on its own.
+- The settings service holds an in-memory snapshot (RWMutex) refreshed on local write and, for
+  Postgres replicas, by one generation-owned reader every 30 seconds (main doc §5). Each tick uses
+  one full-table read that returns values and environment-override ownership together, then
+  publishes both under one lock; a failed read keeps the prior complete generation and retries on
+  the next tick. Cancelling the application generation stops the reader. SQLite starts no reader
+  and incurs no polling queries because it remains single-process by contract.
+- **One PATCH is one durable commit.** Validation, env-pin refusal, and result reporting remain
+  per key: invalid and pinned edits are reported and excluded, while every valid upsert or clear in
+  the request commits in one store transaction with its own canonical value and shared audit
+  timestamp/author. The in-memory snapshot reloads only after that commit. This is load-bearing for
+  coupled settings such as `{library.flavor, library.url, library.token}`: a Postgres replica that
+  refreshes during another replica's save sees the complete old tuple or the complete new tuple,
+  never durable intermediate rows assembled from both generations.
+- **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches one
+  complete connection from the snapshot at call time. Every media-library operation resolves
+  `library.flavor`, `library.url`, and `library.token` together with `ResolveMany`, then carries that
+  immutable `{flavor, url, token}` through all of its requests. Saving a Jellyfin flavor, URL, and
+  token therefore enables the *next* lookup; rotating the token or changing flavor affects the next
+  operation; and an operation already in flight never mixes a credential with another server or
+  auth scheme. An incomplete triple is unconfigured and makes no outbound request. The library and
+  other optional adapters remain constructed while configuration is empty, so saving, rotating, or
+  clearing settings takes effect without rebuilding `BuildHandler`. In particular, every Tunarr
+  Programmer operation snapshots its URL, transcode override, and filler attach policy together; a
+  settings save affects the next operation, never the middle of the current one. Endpoint-derived
+  caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr
+  cannot reuse a transcode id or content index learned from the previous instance. Saving or
+  clearing `tmdb.api_key` likewise enables or disables TMDB search, channel icon suggestions, and
+  suggestion grounding on the next operation without a restart. `/v1/search?scope=all`
+  independently considers the complete live media-library connection and TMDB key, so either
+  configured corpus remains useful on its own.
 - **Intervals re-read per tick:** tickers ask the snapshot each cycle; changing `CHANNEL_RECONCILE_EVERY` takes effect next tick.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
 - **`filler.dir` and `filler.watch_dir` are one generation-scoped storage layout.** The clip root is
@@ -534,3 +562,4 @@ does not exist.
 - **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
+

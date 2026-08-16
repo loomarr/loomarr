@@ -60,7 +60,7 @@ type importCandidatesOutput struct {
 // importCandidates gives the UI something real to pick from. Without it, importing
 // would require knowing raw media-server user ids (§11 read side).
 func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCandidatesOutput, error) {
-	if s.provision == nil {
+	if s.provision == nil || s.libraryUnconfigured() {
 		return nil, errNotImplemented("Media server not connected", "Connect a media server in Settings to import its users.")
 	}
 	found, err := s.provision.Candidates(ctx)
@@ -166,6 +166,10 @@ type importUsersOutput struct {
 
 // importUsers allowlists media-server users (§11). Admin-only.
 func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*importUsersOutput, error) {
+	if s.provision == nil || s.libraryUnconfigured() {
+		return nil, errNotImplemented("Media server not connected",
+			"Connect a media server in Settings to import its users.")
+	}
 	n, err := s.provision.Import(ctx, in.Body.IDs, in.Body.MakeAdmin)
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusBadGateway, "Import failed",

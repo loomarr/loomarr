@@ -368,6 +368,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 	if r.pathMap != nil {
 		pm = r.pathMap()
 	}
+	lib := r.lib.Snapshot()
 
 	var codecs []string
 	probed := 0
@@ -380,7 +381,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := r.lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
+		src := lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
 		if src.URL == "" {
 			continue
 		}

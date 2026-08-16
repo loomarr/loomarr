@@ -63,6 +63,10 @@ type episodesResponse struct {
 // slot needs duration > 0 (Tunarr rejects ≤ 0), so a runtime-less episode can't
 // be scheduled.
 func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
@@ -75,7 +79,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out episodesResponse
 	if err := c.do(req, &out); err != nil {

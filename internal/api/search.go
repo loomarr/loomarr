@@ -79,11 +79,10 @@ func normalizeSearchScope(scope string) string {
 // established unit-test convention: an explicitly wired fake is usable.
 func (s *Server) configuredSearchScope(requested string) (string, bool) {
 	scope := normalizeSearchScope(requested)
-	if s.liveConfig == nil {
-		return scope, true
-	}
-	libraryConfigured := strings.TrimSpace(s.liveConfig("library.url")) != ""
-	tmdbConfigured := strings.TrimSpace(s.liveConfig("tmdb.api_key")) != ""
+	libraryConfigured := !s.libraryUnconfigured()
+	// A nil liveConfig is the established unit-test convention: an explicitly wired
+	// adapter is usable. Production always supplies it, so the current key gates TMDB.
+	tmdbConfigured := s.liveConfig == nil || strings.TrimSpace(s.liveConfig("tmdb.api_key")) != ""
 	switch scope {
 	case "library":
 		return scope, libraryConfigured

@@ -65,6 +65,52 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("upsert did not overwrite audit: %+v", r)
 		}
 	}
+
+	// A settings PATCH is one durable commit, including a mix of upserts and clears.
+	// The same suite pins this contract for SQLite and Postgres.
+	batchAt := time.Unix(1_700_000_200, 0).UTC()
+	if err := s.ApplySettingBatch(ctx, SettingBatch{
+		Upserts: []SettingMutation{
+			{Key: "library.flavor", Value: "emby"},
+			{Key: "library.url", Value: "http://batch:8096"},
+			{Key: "library.token", Value: "batch-token"},
+		},
+		Deletes:   []string{"llm.model"},
+		UpdatedAt: batchAt,
+		UpdatedBy: "grace",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = s.ListSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = map[string]SettingRow{}
+	for _, r := range rows {
+		got[r.Key] = r
+	}
+	for _, key := range []string{"library.flavor", "library.url", "library.token"} {
+		if r := got[key]; r.UpdatedBy != "grace" || !r.UpdatedAt.Equal(batchAt) {
+			t.Errorf("batch audit for %s: %+v want grace/%v", key, r, batchAt)
+		}
+	}
+	if got["library.url"].Value != "http://batch:8096" {
+		t.Errorf("batch url = %q, want http://batch:8096", got["library.url"].Value)
+	}
+	if _, ok := got["llm.model"]; ok {
+		t.Error("batch delete left llm.model present")
+	}
+
+	// Ambiguous batches fail before opening a transaction or changing any row.
+	if err := s.ApplySettingBatch(ctx, SettingBatch{
+		Upserts: []SettingMutation{{Key: "library.url", Value: "http://must-not-save:8096"}},
+		Deletes: []string{"library.url"},
+	}); err == nil {
+		t.Fatal("duplicate setting key in batch succeeded")
+	}
+	if v, err := s.GetSetting(ctx, "library.url"); err != nil || v != "http://batch:8096" {
+		t.Errorf("rejected batch mutated url: %q %v", v, err)
+	}
 	// --- the env-override claim (config-design §3.1), one suite both backends ---
 	//
 	// ⚠ The bug this guards: env_override must NOT be in UpsertSetting's DO UPDATE list.

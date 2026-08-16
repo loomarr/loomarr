@@ -120,13 +120,17 @@ func (c *Client) liveTVConfig(ctx context.Context, into any) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, into)
 }
 
 // TunerRegistered enumerates tuner hosts and reports whether one already targets
 // the Tunarr M3U (§6 enumerate-first idempotency).
 func (c *Client) TunerRegistered(ctx context.Context, tunarrM3U string) (bool, error) {
+	c, err := c.operation()
+	if err != nil {
+		return false, err
+	}
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return false, err
@@ -142,6 +146,10 @@ func (c *Client) TunerRegistered(ctx context.Context, tunarrM3U string) (bool, e
 // ListingRegistered enumerates listing providers and reports whether one already
 // targets the Tunarr XMLTV guide.
 func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (bool, error) {
+	c, err := c.operation()
+	if err != nil {
+		return false, err
+	}
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return false, err
@@ -164,6 +172,10 @@ func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (boo
 // preserve fields we don't model — Id, DeviceId, etc.) so the media server treats
 // it as an update of the same host rather than a new registration.
 func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	var cfg liveTVConfigRaw
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return err
@@ -174,7 +186,7 @@ func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
 			if err != nil {
 				return err
 			}
-			c.flavor.applyTokenAuth(post, c.token(), c.deviceID)
+			c.flavor().applyTokenAuth(post, c.token(), c.deviceID)
 			return c.do(post, nil)
 		}
 	}
@@ -184,6 +196,10 @@ func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
 // AddTuner registers Tunarr as an m3u tuner host (§6 — M3U preferred over
 // HDHomeRun emulation).
 func (c *Client) AddTuner(ctx context.Context, tunarrM3U string) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	// FriendlyName is part of the pinned accepted payload — Emby 4.10 404s the add
 	// without it. The pinned capture used the lowercase "loomarr"
 	// (fixtures/livetv/tuner_add_request.json).
@@ -192,18 +208,22 @@ func (c *Client) AddTuner(ctx context.Context, tunarrM3U string) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
 // AddListingProvider registers Tunarr's XMLTV guide as an xmltv listing provider.
 func (c *Client) AddListingProvider(ctx context.Context, tunarrXMLTV string) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	body := listingProvider{Type: "xmltv", Path: tunarrXMLTV}
 	req, err := c.newJSONRequest(ctx, http.MethodPost, "/LiveTv/ListingProviders", body)
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
@@ -212,6 +232,10 @@ func (c *Client) AddListingProvider(ctx context.Context, tunarrXMLTV string) err
 // FriendlyName=="loomarr" (what AddTuner stamps), so a hand-added tuner is never
 // returned even if it points at an old Tunarr (§6/§9).
 func (c *Client) StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]string, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return nil, err
@@ -229,6 +253,10 @@ func (c *Client) StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]s
 // regardless of URL — for a forced re-wire (remove + re-add at the same URL) that
 // makes the media server re-read the M3U and drop a stale channel→stream binding.
 func (c *Client) LoomarrTuners(ctx context.Context) ([]string, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return nil, err
@@ -246,6 +274,10 @@ func (c *Client) LoomarrTuners(ctx context.Context) ([]string, error) {
 // Loomarr-managed guide URL other than the desired one — EITHER backend's shape (§9.1),
 // so retargeting between Tunarr and internal playout cleans up the one it replaces.
 func (c *Client) StaleLoomarrListings(ctx context.Context, desiredXMLTV string) ([]string, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return nil, err
@@ -291,11 +323,19 @@ func isLoomarrManagedGuidePath(path string) bool {
 // takes ?Id= as a query param and returns 204 (Phase-0 capture). Idempotent: a
 // 404 (already gone) is not an error.
 func (c *Client) RemoveTuner(ctx context.Context, id string) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	return c.deleteLiveTV(ctx, "/LiveTv/TunerHosts", id)
 }
 
 // RemoveListingProvider deletes a listing provider by id (idempotent).
 func (c *Client) RemoveListingProvider(ctx context.Context, id string) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	return c.deleteLiveTV(ctx, "/LiveTv/ListingProviders", id)
 }
 
@@ -306,7 +346,7 @@ func (c *Client) deleteLiveTV(ctx context.Context, path, id string) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	return c.doTolerate404(req)
 }
 
@@ -332,6 +372,10 @@ type scheduledTask struct {
 // resolves the per-install task id by the stable Key "RefreshGuide" (Phase-10
 // finding 4), then POSTs /ScheduledTasks/Running/<id>.
 func (c *Client) RefreshGuide(ctx context.Context) error {
+	c, err := c.operation()
+	if err != nil {
+		return err
+	}
 	id, err := c.guideRefreshTaskID(ctx)
 	if err != nil {
 		return err
@@ -340,7 +384,7 @@ func (c *Client) RefreshGuide(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
@@ -351,7 +395,7 @@ func (c *Client) guideRefreshTaskID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 	var tasks []scheduledTask
 	if err := c.do(req, &tasks); err != nil {
 		return "", err

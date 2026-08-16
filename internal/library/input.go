@@ -104,6 +104,10 @@ type itemPathResponse struct {
 // caller treats "no path" as "cannot direct-play, use the stream URL", the same degradation as an
 // unmapped path.
 func (c *Client) ItemPath(ctx context.Context, itemID string) (string, error) {
+	c, err := c.operation()
+	if err != nil {
+		return "", err
+	}
 	if itemID == "" {
 		return "", nil
 	}
@@ -116,7 +120,7 @@ func (c *Client) ItemPath(ctx context.Context, itemID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out itemPathResponse
 	if err := c.do(req, &out); err != nil {
@@ -137,6 +141,7 @@ func (c *Client) ItemPath(ctx context.Context, itemID string) (string, error) {
 // to the stream URL, never an error — a channel must never go dark because a path could not be
 // mapped.
 func (c *Client) ResolveInput(ctx context.Context, itemID string, pathMap PathMap, statFn func(string) bool) InputSource {
+	c = c.Snapshot()
 	stream := c.StreamURL(itemID)
 	if len(pathMap) == 0 {
 		return InputSource{URL: stream, Kind: InputHTTP} // no mapping configured → stream

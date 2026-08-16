@@ -2,21 +2,32 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 )
 
 // memPersister is an in-memory Persister backed by a map the tests can inspect.
-type memPersister struct{ m map[string]string }
+type memPersister struct {
+	m          map[string]string
+	applyCalls int
+	lastBatch  PersistenceBatch
+	err        error
+}
 
 func newMemPersister() *memPersister { return &memPersister{m: map[string]string{}} }
 
-func (p *memPersister) Upsert(_ context.Context, k, v, _ string, _ time.Time) error {
-	p.m[k] = v
-	return nil
-}
-func (p *memPersister) Delete(_ context.Context, k string) error {
-	delete(p.m, k)
+func (p *memPersister) Apply(_ context.Context, batch PersistenceBatch) error {
+	p.applyCalls++
+	p.lastBatch = batch
+	if p.err != nil {
+		return p.err
+	}
+	for _, row := range batch.Upserts {
+		p.m[row.Key] = row.Value
+	}
+	for _, key := range batch.Deletes {
+		delete(p.m, key)
+	}
 	return nil
 }
 
@@ -89,6 +100,63 @@ func TestPatch_PersistsCanonicalValue(t *testing.T) {
 	}
 	if p.m["library.token"] != "a1b2c3d4e5f6g7h8" {
 		t.Errorf("stored token = %q, want surrounding whitespace trimmed in the STORE", p.m["library.token"])
+	}
+}
+
+func TestPatch_ValidSubsetPersistsInOneBatch(t *testing.T) {
+	s, p := patchService(t, nil)
+	p.m["playout.backend"] = "local"
+	s.SetDB(map[string]string{"playout.backend": "local"})
+
+	res, err := s.Patch(context.Background(), p, map[string]string{
+		"library.flavor":  "emby",
+		"library.url":     "http://emby:8096/",
+		"library.token":   "  a1b2c3d4e5f6g7h8  ",
+		"playout.backend": "",
+		"job.workers":     "not-a-number",
+	}, "matt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.applyCalls != 1 {
+		t.Fatalf("Apply calls = %d, want one durable commit", p.applyCalls)
+	}
+	if len(p.lastBatch.Upserts) != 3 || len(p.lastBatch.Deletes) != 1 {
+		t.Fatalf("batch = %+v, want three upserts and one delete", p.lastBatch)
+	}
+	if p.lastBatch.UpdatedBy != "matt" || p.lastBatch.UpdatedAt.IsZero() {
+		t.Errorf("batch audit = %q/%v, want matt/non-zero", p.lastBatch.UpdatedBy, p.lastBatch.UpdatedAt)
+	}
+	if statusFor(res, "job.workers") != PatchInvalid {
+		t.Errorf("invalid edit entered results as %s", statusFor(res, "job.workers"))
+	}
+	if _, ok := p.m["job.workers"]; ok {
+		t.Error("invalid edit must not enter the durable batch")
+	}
+}
+
+func TestPatch_BatchFailureLeavesSnapshotAndPersisterUnchanged(t *testing.T) {
+	s, p := patchService(t, nil)
+	p.m["library.flavor"] = "emby"
+	p.m["library.url"] = "http://old:8096"
+	s.SetDB(map[string]string{
+		"library.flavor": "emby",
+		"library.url":    "http://old:8096",
+	})
+	p.err = errors.New("commit failed")
+
+	res, err := s.Patch(context.Background(), p, map[string]string{
+		"library.flavor": "plex",
+		"library.url":    "http://new:32400",
+	}, "matt")
+	if err == nil || res != nil {
+		t.Fatalf("Patch = (%+v, %v), want nil results and commit error", res, err)
+	}
+	if p.m["library.flavor"] != "emby" || p.m["library.url"] != "http://old:8096" {
+		t.Fatalf("failed batch mutated persister: %+v", p.m)
+	}
+	if got := s.String("library.url"); got != "http://old:8096" {
+		t.Fatalf("failed batch reloaded snapshot to %q", got)
 	}
 }
 
@@ -231,4 +299,13 @@ func containsStr(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func statusFor(results []PatchResult, key string) PatchStatus {
+	for _, result := range results {
+		if result.Key == key {
+			return result.Status
+		}
+	}
+	return ""
 }

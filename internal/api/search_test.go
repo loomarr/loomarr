@@ -26,6 +26,9 @@ func newConfiguredSearchHandler(
 		LiveConfig: func(key string) string {
 			return cfg[key]
 		},
+		LibraryConfigured: func() bool {
+			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+		},
 	})
 	return handler, search
 }
@@ -46,12 +49,13 @@ func TestSearchScopesFollowLiveConfiguration(t *testing.T) {
 		wantCode  int
 		wantScope string
 	}{
-		{name: "library configured", path: "/v1/search?q=matrix&scope=library", cfg: map[string]string{"library.url": "http://library"}, wantCode: http.StatusOK, wantScope: "library"},
+		{name: "library configured", path: "/v1/search?q=matrix&scope=library", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
 		{name: "library missing", path: "/v1/search?q=matrix&scope=library", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusNotImplemented},
 		{name: "tmdb configured", path: "/v1/search?q=matrix&scope=tmdb", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
-		{name: "tmdb missing", path: "/v1/search?q=matrix&scope=tmdb", cfg: map[string]string{"library.url": "http://library"}, wantCode: http.StatusNotImplemented},
-		{name: "all with both", path: "/v1/search?q=matrix&scope=all", cfg: map[string]string{"library.url": "http://library", "tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "all"},
-		{name: "all narrows to library", path: "/v1/search?q=matrix&scope=all", cfg: map[string]string{"library.url": "http://library"}, wantCode: http.StatusOK, wantScope: "library"},
+		{name: "tmdb missing", path: "/v1/search?q=matrix&scope=tmdb", cfg: libraryConfig(), wantCode: http.StatusNotImplemented},
+		{name: "all with both", path: "/v1/search?q=matrix&scope=all", cfg: libraryConfig("tmdb.api_key", "key"), wantCode: http.StatusOK, wantScope: "all"},
+		{name: "all narrows to library", path: "/v1/search?q=matrix&scope=all", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
+		{name: "library triple incomplete", path: "/v1/search?q=matrix&scope=library", cfg: map[string]string{"library.flavor": "jellyfin", "library.url": "http://library"}, wantCode: http.StatusNotImplemented},
 		{name: "default narrows to tmdb", path: "/v1/search?q=matrix", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
 		{name: "neither configured", path: "/v1/search?q=matrix", cfg: map[string]string{}, wantCode: http.StatusNotImplemented},
 	}
@@ -77,6 +81,16 @@ func TestSearchScopesFollowLiveConfiguration(t *testing.T) {
 	}
 }
 
+func libraryConfig(extra ...string) map[string]string {
+	cfg := map[string]string{
+		"library.flavor": "jellyfin", "library.url": "http://library", "library.token": "token",
+	}
+	for i := 0; i+1 < len(extra); i += 2 {
+		cfg[extra[i]] = extra[i+1]
+	}
+	return cfg
+}
+
 func TestSearchConfigurationHotApplies(t *testing.T) {
 	cfg := map[string]string{}
 	handler, search := newConfiguredSearchHandler(t, cfg)
@@ -93,7 +107,9 @@ func TestSearchConfigurationHotApplies(t *testing.T) {
 	}
 
 	delete(cfg, "tmdb.api_key")
-	cfg["library.url"] = "http://library"
+	for key, value := range libraryConfig() {
+		cfg[key] = value
+	}
 	resp = searchRequest(handler, "/v1/search?q=matrix")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("search after switching to library = %d, want 200", resp.Code)

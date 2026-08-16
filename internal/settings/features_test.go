@@ -110,22 +110,45 @@ func TestFeatureSet_Available(t *testing.T) {
 	}
 }
 
-// UserSync gates a CONDITIONALLY REGISTERED route: with no media server,
-// POST /v1/users/sync does not exist at runtime, yet it IS in the committed spec
-// (generated in schema-only mode, where every route registers). The generated client
-// therefore offers a call that 404s unless the UI checks this flag first — which is the
-// bug this feature exists to close.
-//
-// The condition must mirror app.go's wiring EXACTLY (`library.flavor` set). If someone
-// rewires app.go to a different key, this test still passes while the flag silently lies,
-// so the assertion is pinned to the key name deliberately: change one, this comment
-// sends you to the other.
+// UserSync is live-gated on one complete media-server connection. The route and adapter stay
+// present while empty, so configuration can enable the next operation without a handler rebuild.
 func TestFeatures_UserSyncTracksMediaServerWiring(t *testing.T) {
-	if featureService(t, nil).Features().UserSync {
-		t.Error("no media server configured → user sync must be off (the route is not registered)")
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{name: "empty"},
+		{name: "flavor only", values: map[string]string{"library.flavor": "emby"}},
+		{name: "missing token", values: map[string]string{
+			"library.flavor": "jellyfin", "library.url": "http://jellyfin:8096",
+		}},
+		{name: "missing flavor", values: map[string]string{
+			"library.url": "http://jellyfin:8096", "library.token": "token",
+		}},
+		{name: "unsupported flavor", values: map[string]string{
+			"library.flavor": "plex", "library.url": "http://plex:32400", "library.token": "token",
+		}},
+		{name: "invalid URL", values: map[string]string{
+			"library.flavor": "emby", "library.url": "http://[", "library.token": "token",
+		}},
+		{name: "unsupported URL scheme", values: map[string]string{
+			"library.flavor": "emby", "library.url": "ftp://emby:8096", "library.token": "token",
+		}},
+		{name: "blank token", values: map[string]string{
+			"library.flavor": "emby", "library.url": "http://emby:8096", "library.token": "   ",
+		}},
+		{name: "complete", values: map[string]string{
+			"library.flavor": "jellyfin", "library.url": "http://jellyfin:8096", "library.token": "token",
+		}, want: true},
 	}
-	if !featureService(t, map[string]string{"library.flavor": "emby"}).Features().UserSync {
-		t.Error("library.flavor set → user sync must be on; app.go registers the route on this exact key")
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := featureService(t, test.values).Features().UserSync; got != test.want {
+				t.Fatalf("UserSync = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
