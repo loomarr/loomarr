@@ -212,7 +212,7 @@ func TestGetProposalJobReturnsNewestProposalInAnyDecisionState(t *testing.T) {
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-decided", aliceToken, "")
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		t.Fatalf("done job -> %d, want 200", resp.StatusCode)
 	}
 	got := decodeProposalJob(t, resp)
@@ -269,7 +269,7 @@ func TestGetProposalJobRunningHasNoTerminalArtifacts(t *testing.T) {
 	})
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-running", aliceToken, "")
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		t.Fatalf("running job -> %d, want 200", resp.StatusCode)
 	}
 	got := decodeProposalJob(t, resp)
@@ -319,7 +319,7 @@ func TestGetProposalJobMapsFailureCodeWithoutLeakingDiagnostic(t *testing.T) {
 
 		resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/"+id, aliceToken, "")
 		if resp.StatusCode != http.StatusOK {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			t.Fatalf("failure %q -> %d, want 200", tc.storedCode, resp.StatusCode)
 		}
 		raw, err := io.ReadAll(resp.Body)
@@ -372,7 +372,7 @@ func TestListProposalJobsScopesAndFiltersAuthoritativeHistory(t *testing.T) {
 	assertIDs := func(t *testing.T, path, token string, want ...string) {
 		t.Helper()
 		resp := do(t, srv, http.MethodGet, path, token, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET %s -> %d, want 200", path, resp.StatusCode)
 		}
@@ -398,7 +398,7 @@ func TestListProposalJobsScopesAndFiltersAuthoritativeHistory(t *testing.T) {
 	t.Run("member lifecycle filter", func(t *testing.T) {
 		resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs?mine=true&status=done", aliceToken, "")
 		if resp.StatusCode != http.StatusOK {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			t.Fatalf("member done history -> %d", resp.StatusCode)
 		}
 		var body proposalJobsResponse
