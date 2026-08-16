@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// envLookup is the process env accessor the secrets lifecycle uses to honor an
-// env-pinned SESSION_SECRET/API_TOKEN (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
+// envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
+// tokens (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
 // never existed as a generated secret, and the arm webhook it named was deleted.
 var envLookup = os.LookupEnv
 
@@ -22,6 +23,43 @@ var envLookup = os.LookupEnv
 // getters are returned as closures so adapters read them PER CALL (hot-apply).
 type resolved struct {
 	svc *settings.Service
+}
+
+type generatedSecretValues interface {
+	Value(settings.GeneratedSecret) string
+	Current(context.Context, settings.GeneratedSecret) (string, error)
+}
+
+// currentGeneratedSecret keeps SQLite's single-process request path cache-only,
+// while Postgres re-reads the shared durable value at security/publication
+// boundaries so a rotation handled by another replica is visible immediately.
+// onChange refreshes systemic redaction only when the durable read actually
+// advances this process's cache.
+func currentGeneratedSecret(
+	ctx context.Context,
+	dialect store.Dialect,
+	secrets generatedSecretValues,
+	secret settings.GeneratedSecret,
+	onChange func(),
+) (string, error) {
+	if secrets == nil {
+		return "", fmt.Errorf("read %s: generated secrets are unavailable", secret)
+	}
+	before := secrets.Value(secret)
+	if dialect != store.DialectPostgres {
+		if before == "" {
+			return "", fmt.Errorf("read %s: generated secret is empty", secret)
+		}
+		return before, nil
+	}
+	current, err := secrets.Current(ctx, secret)
+	if err != nil {
+		return "", err
+	}
+	if current != before && onChange != nil {
+		onChange()
+	}
+	return current, nil
 }
 
 // Every getter tolerates a nil service, because "no store ⇒ no settings service" is a

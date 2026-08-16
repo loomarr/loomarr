@@ -43,6 +43,10 @@ type Server struct {
 	// Phase 10 is configured.
 	channels ChannelService
 	livetv   LiveTVService
+	// tunerRescanner refreshes the media server's channel list after a lifecycle write removes an
+	// internal channel without running reconcile (pause/detach). It is separate from setup wiring:
+	// one is a per-operation freshness poke, the other owns tuner registration.
+	tunerRescanner TunerRescanner
 	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
 	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
 	tunarrConnect TunarrConnector
@@ -102,6 +106,11 @@ type Server struct {
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
+	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
+	// workflow for playout backend and URL changes. It serializes that entire workflow
+	// across replicas; failures after mutation remain non-fatal follow-on failures.
+	backendTransition BackendTransitioner
+	backendCheckpoint func(context.Context) (BackendCheckpoint, error)
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
@@ -118,7 +127,6 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
-
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready ReadyFunc
@@ -135,7 +143,7 @@ type Server struct {
 	// the declared default. The keys read here answer "why is my catalog empty", so an
 	// unanswerable read must not render the drop-folder as switched off.
 	liveConfigBoolOn func(key string) bool
-	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
+	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
 	playoutObserver PlayoutObserver
@@ -146,6 +154,10 @@ type Server struct {
 	// an operator action the UI offers, and a cached value would keep authorizing the old
 	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
 	playoutSecret func() string
+	// playoutSecretCurrent is the durable Postgres-replica read. Production prefers it at
+	// request security boundaries so a rotation handled by another process invalidates the
+	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
+	playoutSecretCurrent func(context.Context) (string, error)
 	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
 	// sequencing layer the concat demuxer re-opens per program. nil ⇒ the route 501s.
 	playoutResolver PlayoutResolver
@@ -231,15 +243,24 @@ type SettingsService interface {
 	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
-	// RegenerateSecret rotates a generated secret and returns the new value if it
-	// is displayable (config-design §4); displayable=false ⇒ value withheld.
-	RegenerateSecret(ctx context.Context, name string) (value string, displayable bool, err error)
-	// RevealSecret returns a generated secret's CURRENT value if it is displayable
-	// (config-design §4's eye-toggle). Reading must never rotate — the §13 webhook
-	// panel shows the URL an operator already pasted into Sonarr/Radarr.
-	RevealSecret(ctx context.Context, name string) (value string, displayable bool, err error)
+	// RegenerateSecret rotates a generated API or playout token and returns the new
+	// value (config-design §4).
+	RegenerateSecret(ctx context.Context, name string) (value string, err error)
+	// RevealSecret returns a generated API or playout token's CURRENT value
+	// (config-design §4's eye-toggle). Reading must never rotate.
+	RevealSecret(ctx context.Context, name string) (value string, err error)
 	// Test runs one named connection check (config-design §8, powers Test buttons).
 	Test(ctx context.Context, check string) (ok bool, hint string)
+}
+
+// BackendTransitioner is the one deep settings consequence for playout publication. The
+// implementation holds its cross-replica lock while invoking mutation and all publication phases.
+// mutation returns whether it durably changed a transition input; false skips transition repair.
+type BackendTransitioner interface {
+	ApplyMutation(ctx context.Context, mutation func(context.Context) bool) error
+	// Reconnect force-repairs the durably applied tuner/listing target under the same
+	// cross-replica serialization boundary as ordinary backend publication.
+	Reconnect(ctx context.Context) (tunersReset int, err error)
 }
 
 // SettingEntry is the API view of one setting (config-design §8). For a secret,
@@ -476,18 +497,18 @@ type PodPreviewer interface {
 	Pool(ctx context.Context) (filler.PoolReport, error)
 }
 
-// GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
-// owns playout). Abstracted so the API needn't import the programmer client, and so a
-// unit test can drive the page without a Tunarr. nil ⇒ now/next reads empty.
+// GuideReader answers "what is airing now" from whichever backend streams each channel.
+// Keys and arguments are always Loomarr channel ids; an adapter that reads a remote backend
+// owns the translation to that backend's id. nil ⇒ now/next reads empty.
 type GuideReader interface {
-	// NowNext returns, per TUNARR channel id, the program airing at `now` and the one
+	// NowNext returns, per Loomarr channel id, the program airing at `now` and the one
 	// following it. A channel with no generated guide is simply absent.
 	NowNext(ctx context.Context, now time.Time) (map[string]ChannelNowNext, error)
-	// Upcoming returns, for one TUNARR channel, the program airing now (if any) followed by
+	// Upcoming returns, for one Loomarr channel, the program airing now (if any) followed by
 	// the next programs in airtime order, up to `limit` entries; commercial/flex gaps are
 	// skipped (§9 guide freshness). Powers the Overview "what's on later" strip. An unknown
 	// id / empty guide yields an empty slice, not an error.
-	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]NowNextEntry, error)
+	Upcoming(ctx context.Context, channelID string, now time.Time, limit int) ([]NowNextEntry, error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -587,11 +608,11 @@ type IconSuggestion struct {
 // Implemented by channels.Engine + the store; abstracted so the API doesn't
 // couple to the reconcile internals.
 type ChannelService interface {
-	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
+	// Reconcile converges one channel on its selected playout backend (§9,
 	// POST /v1/channels/{id}/reconcile).
 	Reconcile(ctx context.Context, channelID string) error
-	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
-	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
+	// Purge hard-deletes Loomarr's channel state plus any retained managed Tunarr projection —
+	// the DELETE /v1/channels/{id}?purge=true path (§7).
 	Purge(ctx context.Context, channelID string) error
 	// CyclePreviewDraft computes "what would air at `at`" for one channel WITHOUT touching
 	// Tunarr or the store beyond the read — the §8.1 time-travel preview. A draftLineup /
@@ -608,15 +629,16 @@ type ChannelService interface {
 		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
 }
 
-// LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and
-// the "wired?" status check. Implemented by setup.LiveTVConnector.
+// LiveTVService backs the Live TV setup status check (§6/§7). Mutating repair belongs to
+// BackendTransitioner so it cannot bypass durable publication ordering.
 type LiveTVService interface {
-	Connect(ctx context.Context) (tunerAdded, listingAdded bool, err error)
-	// Reconnect force-re-wires the tuner (remove + re-add + re-scan) to clear a stale
-	// channel→stream binding — the media server streaming a since-deleted channel id
-	// ("guide right, plays wrong"). Returns how many tuners were reset.
-	Reconnect(ctx context.Context) (tunersReset int, err error)
 	Wired(ctx context.Context) (bool, error)
+}
+
+// TunerRescanner is the operation-specific media-server freshness seam from §9. A guide refresh
+// cannot remove a channel from an already-registered M3U tuner; the tuner itself must be re-read.
+type TunerRescanner interface {
+	RescanTuner(ctx context.Context) error
 }
 
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
@@ -713,25 +735,26 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store         store.Store
-	Auth          Authorizer
-	Log           *slog.Logger
-	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ready         ReadyFunc
-	Login         LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords     PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions      SessionManager    // /v1/auth/logout (Phase 9)
-	UserSync      UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	CookieSecure  string            // COOKIE_SECURE: auto|true|false (§11)
-	DevLogin      bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof         bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	Channels      ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV        LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunarrConnect TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest       SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
-	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
-	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	Store          store.Store
+	Auth           Authorizer
+	Log            *slog.Logger
+	BackupSQLite   BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	Ready          ReadyFunc
+	Login          LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords      PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions       SessionManager    // /v1/auth/logout (Phase 9)
+	UserSync       UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure   string            // COOKIE_SECURE: auto|true|false (§11)
+	DevLogin       bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof          bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	Channels       ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV         LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect  TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest        SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	Search         SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
+	Collections    CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
+	Icons          IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
@@ -756,13 +779,15 @@ type Options struct {
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService
 	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
-	BootstrapDrift func() []string
-	Jobs           JobService       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings       SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide          GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision      Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Approver       ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
-	Binder         ChannelBinder    // explicit channel intent/number helpers; not the approval gate
+	BootstrapDrift    func() []string
+	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
+	BackendCheckpoint func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
+	Guide             GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision         Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Approver          ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
+	Binder            ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.
@@ -770,6 +795,9 @@ type Options struct {
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
+	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
+	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
+	PlayoutSecretCurrent func(context.Context) (string, error)
 	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
@@ -845,7 +873,7 @@ func humaConfig() huma.Config {
 	// per-instance place to put it.
 	huma.DefaultArrayNullable = false
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
-	cfg.Info.Description = "Turn a sentence into a self-maintaining Tunarr channel. " +
+	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs

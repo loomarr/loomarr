@@ -16,6 +16,14 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
 
+# dependency-cruiser intentionally leaves transpilers optional. Declare the
+# analyzer-only compatible compiler beside it so pnpm's isolated linker makes
+# it resolvable without changing any package's TypeScript 7 compiler.
+packageExtensions:
+  "dependency-cruiser@17.4.3":
+    dependencies:
+      typescript: "~6.0.3"
+
 # esbuild (used by tsx + vitest + vite) ships a platform binary via a postinstall
 # build script; pnpm blocks build scripts by default. Approve exactly this one.
 onlyBuiltDependencies:

@@ -62,6 +62,35 @@ const clearTransferredBuffers = async (transferred: NonNullable<ReturnType<Hls["
   }
 };
 
+const createHlsController = (HlsController: typeof Hls): Hls =>
+  new HlsController({
+    // Manifest parsing is safe before attachment on a fresh source-scoped controller, but fragment
+    // loading is not. The handoff below performs the one explicit start only after attach.
+    autoStartLoad: false,
+    capLevelToPlayerSize: true,
+    // Baseline HLS is MPEG-TS. Keep its transmux off the UI thread; hls.js shares and reference-
+    // counts this worker across the bounded source-scoped controller pair.
+    enableWorker: true,
+    // Live channel: keep chasing the live edge, and be patient while it warms up. A channel takes a
+    // few seconds to produce its first segment (the encoder spins up), during which the playlist
+    // may briefly have no media — hls.js must RETRY, not give up.
+    liveDurationInfinity: true,
+    manifestLoadingMaxRetry: 8,
+    manifestLoadingRetryDelay: 1000,
+    levelLoadingMaxRetry: 8,
+    fragLoadingMaxRetry: 8,
+    // ⚠ Start ~TWO segments from the live edge — the balance between fast first-paint and a
+    // survivable buffer (both measured in-browser). hls.js's default is 3 (~12s at our 4s
+    // segments); 1 sits at the live edge and leaves transcodes no cushion against a realtime dip.
+    liveSyncDurationCount: 2,
+    // Keep corrective live-edge seeks well above the sync target so a slow transcode can drift and
+    // let its buffer absorb a dip rather than causing another visible stall.
+    liveMaxLatencyDurationCount: 10,
+    // Build a forward cushion after fast start; keep enough back buffer for a short viewer rewind.
+    maxBufferLength: 60,
+    backBufferLength: 30,
+  });
+
 function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   const [state, setState] = useState<{ channelId: string; status: PlayerStatus; error?: string }>({
     channelId,
@@ -76,11 +105,16 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
   // A boolean cannot do this: the next attach resets it to false and accidentally re-authorizes an
   // older request that resolves late.
   const generationRef = useRef(0);
-  // A Channel route-param change keeps this hook and its <video> mounted. Retain the single hls.js
-  // controller across that synchronous effect hand-off so a tune does not recompile its worker and
-  // rebuild every parser/controller. The zero-delay disposal still destroys it when Watch really
-  // unmounts; the replacement attach cancels that disposal before starting its mint.
-  const hlsRef = useRef<{ instance?: Hls; destroyTimer?: number }>({});
+  // A Channel route-param change keeps this hook and its <video> mounted. The active controller
+  // transfers its MediaSource and compatible SourceBuffers to a fresh, unused standby. Controllers
+  // are source-scoped: once the replacement paints, the detached old active is destroyed and a new
+  // standby is constructed off the critical path. Only two are live; unmount destroys both.
+  const hlsRef = useRef<{
+    instance?: Hls;
+    standby?: Hls;
+    standbyFresh?: boolean;
+    destroyTimer?: number;
+  }>({});
   const warmedPlayURL = attempt?.playURL;
 
   const bind = useCallback(
@@ -99,12 +133,15 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // the same transferred MediaSource blob URL.
       video.dataset.playbackChannel = channelId;
 
+      let replenishAfterFirstFrame: (() => void) | undefined;
       let firstFrame = false;
       const onFirstFrame = () => {
         if (firstFrame) return;
         firstFrame = true;
+        if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
         markTunePhase(attempt, "first-frame");
         setState({ channelId, status: "playing" });
+        replenishAfterFirstFrame?.();
       };
       let frameCallback: number | undefined;
       let firstFrameWatchArmed = false;
@@ -142,41 +179,25 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
       // larger than the frame; low-latency off — this is live TV, and the steadier buffer survives a
       // flaky link.
       if (Hls.isSupported()) {
-        const hls =
-          hlsRef.current.instance ??
-          new Hls({
-            capLevelToPlayerSize: true,
-            enableWorker: true,
-            // Live channel: keep chasing the live edge, and be patient while it warms up. A channel
-            // takes a few seconds to produce its first segment (the encoder spins up), during which
-            // the playlist may briefly have no media — hls.js must RETRY, not give up.
-            liveDurationInfinity: true,
-            manifestLoadingMaxRetry: 8,
-            manifestLoadingRetryDelay: 1000,
-            levelLoadingMaxRetry: 8,
-            fragLoadingMaxRetry: 8,
-            // ⚠ **Start ~TWO segments from the live edge — the balance between fast first-paint and a
-            // survivable buffer (both measured in-browser).** hls.js's default liveSyncDurationCount is 3
-            // (~12s at our 4s segments) — the black window V47 first fixed by dropping it to 1. But 1
-            // sits the playhead AT the live edge, and on a TRANSCODING channel (HEVC→h264 at ~1.2×
-            // realtime, "little margin" per the doctor) the encoder never pulls ahead, so headroom stays
-            // pinned at 0s and any dip below realtime plays out as a BLACK FRAME with nothing buffered to
-            // cover it (measured: a transcoding channel held 0s headroom for 30s and fired a `waiting`
-            // event). Two segments keeps first-paint fast (one extra ~4s segment vs V47) while giving a
-            // one-segment cushion against those dips. A direct-play (`-c copy`) channel fills far past
-            // this instantly, so it costs the fast path nothing.
-            liveSyncDurationCount: 2,
-            // liveMaxLatencyDurationCount governs when hls.js gives up chasing and hard-seeks to the edge
-            // (which itself looks like a stall). Keep it well above the sync target so a slow transcode is
-            // allowed to drift and be absorbed by the buffer instead of triggering a corrective seek.
-            liveMaxLatencyDurationCount: 10,
-            // Generous forward buffer + a back buffer so the player keeps BUILDING a cushion after the
-            // fast start (start near the edge, buffer up behind the scenes — what Emby/Jellyfin do). The
-            // back buffer also lets a viewer nudge back a few seconds without a re-fetch.
-            maxBufferLength: 60,
-            backBufferLength: 30,
-          });
+        const previous = hlsRef.current.instance;
+        let transferred = previous?.url && previous.media === video ? previous.transferMedia() : null;
+        previous?.stopLoad();
+        // Each hls.js controller owns one source URL for its lifetime. A normal tune consumes the
+        // already-constructed fresh standby; a superseding burst can arrive before replenishment,
+        // in which case retire the older detached controller and create the required source owner.
+        const parked = hlsRef.current.standby;
+        const hls = parked && hlsRef.current.standbyFresh ? parked : createHlsController(Hls);
+        if (parked && parked !== hls && parked !== previous) parked.destroy();
         hlsRef.current.instance = hls;
+        hlsRef.current.standby = previous;
+        hlsRef.current.standbyFresh = false;
+        replenishAfterFirstFrame = () => {
+          if (!current() || hlsRef.current.instance !== hls) return;
+          const retired = hlsRef.current.standby;
+          if (retired && retired !== hls) retired.destroy();
+          hlsRef.current.standby = createHlsController(Hls);
+          hlsRef.current.standbyFresh = true;
+        };
         let manifestParsed = false;
         let replacementAttached = false;
         const playReplacement = () => {
@@ -215,53 +236,65 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
               break;
             default:
               setState({ channelId, status: "error", error: "The stream stopped. Try again in a moment." });
-              if (hlsRef.current.instance === hls) hlsRef.current.instance = undefined;
+              if (hlsRef.current.instance === hls) {
+                const standby = hlsRef.current.standby;
+                hlsRef.current.instance = undefined;
+                hlsRef.current.standby = undefined;
+                hlsRef.current.standbyFresh = false;
+                if (standby && standby !== hls) standby.destroy();
+              }
               hls.destroy();
           }
         };
-        // Preserve the reusable MediaSource AND its compatible SourceBuffers, but never their outgoing
-        // Channel-relative bytes. transferMedia() is hls.js's public in-place handoff; clearing the
-        // buffered ranges through standard MSE avoids both WebKit's expensive MediaSource close/open
-        // and its equally expensive SourceBuffer remove/recreate cycle. Prepared publications leave
-        // MediaSource in `ended`, which remains reusable: SourceBuffer.remove/append transitions it
-        // back to `open`. Only a closed source (or failed clear) needs hls.js's full reset below.
-        let transferred = hls.url && hls.media === video ? hls.transferMedia() : null;
-        let clearing: Promise<void> | undefined;
-        if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
-          // Start manifest I/O immediately, but do not attach hls.js to the transferred buffers until
-          // their asynchronous removal completes. WebKit can strand hls.js's SourceBuffer blocker
-          // when attach and remove overlap, even though the replacement segment has already arrived.
-          clearing = clearTransferredBuffers(transferred);
-          video.currentTime = 0;
-        } else {
-          transferred = null;
-        }
         if (requestFrame) video.addEventListener("loadeddata", onLoadedData, { once: true });
         else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
         hls.loadSource(url);
-        if (clearing) {
+
+        // Preserve the reusable MediaSource AND its compatible SourceBuffers, but never their
+        // outgoing Channel-relative bytes. transferMedia() is hls.js's public cross-controller
+        // handoff; a controller is source-scoped, while the expensive MSE/decoder allocation lives
+        // across tunes. Prepared publications leave MediaSource in `ended`, which remains reusable:
+        // SourceBuffer.remove/append transitions it back to `open`. Only a closed source (or failed
+        // clear) needs hls.js's full MSE reset below.
+        if (transferred?.mediaSource && transferred.mediaSource.readyState !== "closed") {
+          video.currentTime = 0;
           try {
-            await clearing;
+            await clearTransferredBuffers(transferred);
           } catch {
             // A failed range removal cannot be reused safely. Attaching the element directly gives
-            // hls.js a fresh MediaSource; the transferred source loses its final reference when the
-            // element's blob URL is replaced.
+            // the replacement controller a fresh MediaSource; the transferred source loses its
+            // final reference when the element's blob URL is replaced.
             transferred = null;
           }
+        } else {
+          transferred = null;
         }
         if (!current()) {
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
+          hls.stopLoad();
+          // A newer bind has already swapped this controller into standby; keep the bounded pool.
+          // If it is still active, the Watch surface was left while clear was pending, so no future
+          // bind can own either controller and both must be released here.
+          if (hlsRef.current.instance === hls) {
+            const standby = hlsRef.current.standby;
+            hls.destroy();
+            if (standby && standby !== hls) standby.destroy();
+            hlsRef.current.instance = undefined;
+            hlsRef.current.standby = undefined;
+            hlsRef.current.standbyFresh = false;
+          }
           return () => undefined;
         }
         if (transferred) hls.attachMedia(transferred);
-        else if (hls.media !== video) hls.attachMedia(video);
+        else hls.attachMedia(video);
         replacementAttached = true;
+        hls.startLoad();
         if (manifestParsed) playReplacement();
         return () => {
           stopFirstFrameWatch();
@@ -272,8 +305,12 @@ function useHlsPlayer(channelId: string, attempt?: TuneAttempt): UseHlsPlayer {
           hls.stopLoad();
           hlsRef.current.destroyTimer = window.setTimeout(() => {
             if (hlsRef.current.instance !== hls) return;
+            const standby = hlsRef.current.standby;
             hls.destroy();
+            if (standby && standby !== hls) standby.destroy();
             hlsRef.current.instance = undefined;
+            hlsRef.current.standby = undefined;
+            hlsRef.current.standbyFresh = false;
             hlsRef.current.destroyTimer = undefined;
           }, 0);
         };

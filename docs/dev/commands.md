@@ -59,6 +59,8 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make build` |  | build the cgo-free Go server and required Rust image worker <br>*runs:* `rust-build` |
 | `make rust-build` |  | build the required Rust image worker |
+| `make image-cert` | ✅ | certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path <br>*runs:* `rust-build` |
+| `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
@@ -70,7 +72,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make test-pg` | ✅ | store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker) |
+| `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` |
 
 ## OpenAPI (Phase 8)
 
@@ -142,7 +144,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e`
+`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

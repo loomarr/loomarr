@@ -95,27 +95,28 @@ const DatabasePage = () => {
     view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <div className="h-full overflow-auto p-6">
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Database"
-        className="mb-4"
         description="Which database Loomarr stores everything in, and how to move to another one."
       />
-      <DatabaseMigration
-        status={view}
-        step={step}
-        onStepChange={setStep}
-        dsn={dsn}
-        onDsnChange={setDsn}
-        checks={checks}
-        preflightPassed={passed}
-        onPreflight={() => preflight.mutate({ data: { dsn } })}
-        onBackup={() => backup.mutate()}
-        onMigrate={() => migrate.mutate({ data: { dsn } })}
-        pending={pending}
-        error={error}
-        envPinned={envPinned}
-      />
+      <div className="min-h-0 flex-1 overflow-auto p-6">
+        <DatabaseMigration
+          status={view}
+          step={step}
+          onStepChange={setStep}
+          dsn={dsn}
+          onDsnChange={setDsn}
+          checks={checks}
+          preflightPassed={passed}
+          onPreflight={() => preflight.mutate({ data: { dsn } })}
+          onBackup={() => backup.mutate()}
+          onMigrate={() => migrate.mutate({ data: { dsn } })}
+          pending={pending}
+          error={error}
+          envPinned={envPinned}
+        />
+      </div>
     </div>
   );
 };

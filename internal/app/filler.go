@@ -24,37 +24,36 @@ import (
 	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
-// fillerSourceAdapter bridges the Tunarr client → filler.FillerSource (§10): it
-// ensures the `local` filler source over FILLER_DIR and reads the scanned clips.
-// Clip identity = the Tunarr program uuid; duration comes from Tunarr's scan.
-type fillerSourceAdapter struct{ prog *programmer.Tunarr }
-
-func (a fillerSourceAdapter) EnsureLocalSource(ctx context.Context, dir string) error {
-	_, err := a.prog.EnsureLocalFillerSource(ctx, dir)
-	return err
+// fillerSourceAdapter bridges the optional Tunarr annotation slice used by
+// filler.DirSource (§10): it registers FILLER_DIR and joins Tunarr program uuids
+// onto Loomarr's locally-scanned, content-hash-identified clips.
+type fillerSourceAdapter struct {
+	prog       tunarrFillerClient
+	configured func() bool
 }
 
-func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
-	// Find Loomarr's local source, then read its clips. EnsureLocalFillerSource ran
-	// first (Sync ensures before listing), so a local source exists.
-	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
-	if err != nil {
-		return nil, err
+// tunarrFillerClient is the exact programmer slice needed to annotate Loomarr's local
+// filler catalog with optional Tunarr program ids. Keeping the seam narrow lets the adapter's
+// live-enable behavior be tested without starting a network service.
+type tunarrFillerClient interface {
+	EnsureLocalFillerSource(ctx context.Context, dir string) (programmer.EnsureLocalSourceResult, error)
+	ListLocalFillerClipsAll(ctx context.Context) ([]programmer.LocalClip, error)
+}
+
+// available is resolved per call so an internal-only process can gain Tunarr filler
+// annotation after the connection is saved, without turning an empty Tunarr URL into a
+// warning on every ordinary local scan. A nil resolver preserves the adapter's historical
+// always-on behavior for direct construction in tests.
+func (a fillerSourceAdapter) available() bool {
+	return a.configured == nil || a.configured()
+}
+
+func (a fillerSourceAdapter) EnsureLocalSource(ctx context.Context, dir string) error {
+	if !a.available() {
+		return nil
 	}
-	out := make([]filler.RawClip, len(clips))
-	for i, c := range clips {
-		// Infer kind + era from the clip name (§10 cheapest tagging tier): Tunarr's
-		// scan gives id/name/duration only, so kind defaults to Commercial (pod-
-		// eligible) unless the name says bumper/station/psa/trailer. Without this a
-		// clip lands as a generic interstitial the pod assembler can never place, so
-		// filler would silently never build unless AI tagging is on. AI tagging (§10)
-		// still refines era/audience/category afterward.
-		out[i] = filler.RawClip{
-			TunarrProgramID: c.ProgramID, Name: c.Name, DurationMs: c.DurationMs,
-			Kind: filler.KindFromName(c.Name), Era: filler.EraFromName(c.Name),
-		}
-	}
-	return out, nil
+	_, err := a.prog.EnsureLocalFillerSource(ctx, dir)
+	return err
 }
 
 // LocalClipIDsByName maps a clip's file name to the Tunarr program uuid Tunarr assigned it.
@@ -65,6 +64,9 @@ func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawCl
 // a Tunarr filler-list, it cannot corrupt the catalog or misdirect internal playout, both of
 // which key on the path.
 func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string]string, error) {
+	if !a.available() {
+		return map[string]string{}, nil
+	}
 	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
 	if err != nil {
 		return nil, err

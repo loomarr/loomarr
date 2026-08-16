@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/backendtransition"
 	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/buildinfo"
 	"github.com/mantonx/loomarr/internal/catalog"
@@ -179,13 +181,22 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// service is out of scope here — the app already isn't ready without a store.
 	var set resolved
 	var secrets *settings.Secrets
+	var secretRedactor *settings.Redactor
 	if st != nil {
-		r, sec, _, slog2, serr := bootSettings(context.Background(), st, log)
+		r, sec, red, slog2, serr := bootSettings(context.Background(), st, log)
 		if serr != nil {
 			return nil, serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
 		}
-		set, secrets, log = r, sec, slog2
+		set, secrets, secretRedactor, log = r, sec, red, slog2
 		slog.SetDefault(log)
+	}
+	refreshSecretRedactor := func() {
+		if secretRedactor != nil && set.svc != nil && secrets != nil {
+			secretRedactor.Set(collectSecrets(settings.NewRegistry(), set.svc, secrets))
+		}
+	}
+	readGeneratedSecret := func(ctx context.Context, secret settings.GeneratedSecret) (string, error) {
+		return currentGeneratedSecret(ctx, store.DialectOf(st), secrets, secret, refreshSecretRedactor)
 	}
 
 	// The event bus (§7 SSE) and the domain-event emitter (§4 inv. 2) are built up
@@ -280,7 +291,57 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
+	var tunerRescanner api.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector
+	var channelEngine *channels.Engine
+	var liveTVConnector *setup.LiveTVConnector
+	var backendController *backendtransition.Controller
+	var backendView backendtransition.CheckpointView
+	// A replica may enter the transition lock after another replica saved a newer
+	// target or changed who owns it. Refreshing the settings snapshot inside that lock
+	// makes durable values and provenance, rather than whichever process happened to
+	// enqueue first, authoritative.
+	refreshBackendSettings := func(ctx context.Context) error {
+		if set.svc != nil {
+			if err := set.svc.Refresh(ctx); err != nil {
+				return fmt.Errorf("refresh settings before backend transition: %w", err)
+			}
+		}
+		return nil
+	}
+	desiredBackend := func(context.Context) (string, error) {
+		return set.str("playout.backend"), nil
+	}
+	resolveDesiredBackend := func(ctx context.Context) (string, error) {
+		if err := refreshBackendSettings(ctx); err != nil {
+			return "", err
+		}
+		return desiredBackend(ctx)
+	}
+	checkpointSnapshot := func(ctx context.Context) (backendtransition.Snapshot, error) {
+		if backendView == nil {
+			return backendtransition.Snapshot{}, fmt.Errorf("backend transition checkpoint is unavailable")
+		}
+		return backendView.Snapshot(ctx)
+	}
+	appliedBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		return snapshot.Applied, err
+	}
+	reconcileBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		return snapshot.ReconcileBackend(), err
+	}
+	transportBackendContext := func(ctx context.Context) (string, error) {
+		snapshot, err := checkpointSnapshot(ctx)
+		if err != nil {
+			return "", err
+		}
+		if snapshot.PublishedInternal {
+			return backendtransition.BackendInternal, nil
+		}
+		return snapshot.Applied, nil
+	}
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutObserver api.PlayoutObserver
@@ -317,20 +378,48 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
-		// Live TV points at whichever backend actually STREAMS (§9.1). `playout.backend`
-		// defaults to `internal`, and wiring Tunarr's URLs unconditionally pointed the media
-		// server at a backend that was not serving those channels — the channels appear in the
-		// guide and refuse to play. Resolved per call so a backend switch applies without a
-		// restart; the playout secret is read the same lazy way it is on the spawn path.
-		connector := setup.NewLiveTVConnector(lib, func() setup.TunarrURLs {
-			tok := ""
-			if secrets != nil {
-				tok = secrets.Value(settings.SecretPlayout)
-			}
-			return setup.LiveTVURLsFor(
-				set.str("playout.backend"), set.str("tunarr.url"), set.str("server.public_url"), tok)
-		})
-		liveTVSvc = liveTVAdapter{connector}
+		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
+		// The connector's fixed fallback is empty so accidentally using a compatibility helper
+		// fails closed instead of publishing a process-local target.
+		liveTVConnector = setup.NewLiveTVConnectorFixed(lib, setup.LiveTVURLs{})
+		liveTVSvc = liveTVAdapter{
+			c: liveTVConnector,
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+				if set.svc != nil {
+					if err := set.svc.Refresh(ctx); err != nil {
+						return setup.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
+					}
+				}
+				backend, err := appliedBackendContext(ctx)
+				if err != nil {
+					return setup.LiveTVURLs{}, err
+				}
+				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+				if err != nil {
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
+				}
+				return setup.LiveTVURLsFor(
+					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
+				), nil
+			},
+		}
+		transportFreshness := transportTunerRescanner{
+			c: liveTVConnector,
+			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+				backend, err := transportBackendContext(ctx)
+				if err != nil {
+					return setup.LiveTVURLs{}, err
+				}
+				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+				if err != nil {
+					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
+				}
+				return setup.LiveTVURLsFor(
+					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
+				), nil
+			},
+		}
+		tunerRescanner = transportFreshness
 
 		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):
 		// uses the concrete Tunarr client's media-source methods (prog), or the injected
@@ -370,7 +459,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// numbering that consulted the real client while the reconcile used the double would
 		// disagree about which numbers exist. Both must read the same Tunarr.
 		chanNumbers = tunarrNumbers{pusher}
-		engine := channels.New(st, pusher, avail, connector, channels.Config{
+		channelEngine = channels.New(st, pusher, avail, transportFreshness, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
@@ -383,34 +472,39 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			// Backend selection is durable and per-channel-aware inside the engine: this closure
+			// supplies the durable in-progress target when one exists, otherwise the applied
+			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
+			// This keeps ordinary reconcile aligned with the fleet barrier during a transition.
+			ResolvePlayoutBackendContext: reconcileBackendContext,
 		}, time.Now, log)
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		engine.WithRatings(libraryRatings{lib: lib})
+		channelEngine.WithRatings(libraryRatings{lib: lib})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		engine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
-		engine.WithNotifier(emitter)
+		channelEngine.WithNotifier(emitter)
 		// A reconcile that has to MOVE a channel because Tunarr already occupies its number is an
 		// operator-facing fact that must outlive a log line (§9 V54) — the number is what a viewer
 		// tunes to, and the log that recorded the original strand had already scrolled away by the
 		// time anyone asked what happened.
 		if activityRec != nil {
-			engine.WithActivity(activityRec)
+			channelEngine.WithActivity(activityRec)
 		}
-		channelSvc = engine
+		channelSvc = channelEngine
 
 		// Now that the scheduler engine exists, give the emitter its backfill
 		// handler: provisioning availability events (webhook + reconciler) fan to
 		// OnAvailability, so an acquisition that lands `available` reconciles the
 		// channels referencing it immediately — instead of waiting up to a full
 		// sweep interval. (#10: the emitter was nil before this wire.)
-		emitter.setEngine(engine)
+		emitter.setEngine(channelEngine)
 
 		// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
 		// where BOTH halves already exist — the engine that answers "what airs when" and the
@@ -433,7 +527,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			if secrets == nil {
 				return ""
 			}
-			return secrets.Value(settings.SecretPlayout)
+			token, err := readGeneratedSecret(context.Background(), settings.SecretPlayout)
+			if err != nil {
+				return "" // fail child URL generation closed while durable auth is unavailable.
+			}
+			return token
 		}
 		// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
 		// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
@@ -495,7 +593,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log,
 		)
 		playoutRes = &playoutResolver{
-			engine: engine, lib: lib, now: time.Now,
+			engine: channelEngine, lib: lib, now: time.Now,
 			detectContext: rootCtx,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 			// state and must not be able to change it.
@@ -677,7 +775,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 						set.str("library.path_map"),
 					)
 				},
-				GlobalBackend: func() string { return set.str("playout.backend") },
+				GlobalBackendContext:    appliedBackendContext,
+				TransportBackendContext: transportBackendContext,
 				Rendition: func() prepared.RenditionContract {
 					return playout.CanonicalPreparedRendition(
 						playout.TierFor(set.str("playout.quality_tier")),
@@ -696,9 +795,56 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			jobReg.Add(preparedPlayoutJob(planner, ""))
 			preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		}
-		playoutSvc = playout.NewOrigin(playout.OriginDependencies{
+		var lifecycleGate *playoutAdmissionGate
+		// Every transport hop uses one durable eligibility decision, including SQLite's raw
+		// playlist/program chain. Postgres additionally closes the process-wide listener gate
+		// whenever notification continuity cannot be proved.
+		backendView = backendtransition.NewDurableView(st)
+		durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
+			return durableInternalTransportPlayable(ctx, st, backendView, channelID)
+		}
+		if store.DialectOf(st) == store.DialectPostgres {
+			lifecycleGate = &playoutAdmissionGate{}
+		}
+		origin := playout.NewOrigin(playout.OriginDependencies{
 			Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+			Available: func() bool {
+				return lifecycleGate == nil || lifecycleGate.Available()
+			},
+			Eligible: durablePlayoutEligibility,
 		})
+		playoutSvc = origin
+
+		// The durable backend checkpoint is initialized synchronously before any request can
+		// observe its runtime gates. Initialize performs store I/O only; fleet and media-server
+		// work is retried by settings writes and channel maintenance.
+		backendURLs := func(ctx context.Context, target string) (setup.LiveTVURLs, error) {
+			tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
+			if err != nil {
+				return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
+			}
+			return setup.LiveTVURLsFor(
+				target, set.str("tunarr.url"), set.str("server.public_url"), tok,
+			), nil
+		}
+		builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
+			store: st, fleet: channelEngine,
+			publisher: &backendPublisher{connector: liveTVConnector, urls: backendURLs},
+			cutover:   inheritedInternalCutover{channels: st, playout: playoutSvc},
+			desired:   resolveDesiredBackend,
+		})
+		if err != nil {
+			return nil, err
+		}
+		backendController = builtBackendController
+		if lifecycleGate != nil {
+			lifecycle := &postgresPlayoutLifecycle{
+				store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
+			}
+			if err := lifecycle.Start(rootCtx); err != nil {
+				return nil, fmt.Errorf("start postgres playout lifecycle: %w", err)
+			}
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -722,8 +868,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
 		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
 		// lease/batch are still constructed; only its standalone loop is gone.
-		chSweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh))
+		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
+		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
+			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
+		}))
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
@@ -1151,7 +1299,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// unconditionally alongside the store, not inside the `lib != nil` branch.
 		passwordSvc = auth.NewPasswordService(st, newID, time.Now)
 		sessMgr = mgr
-		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
+		authorizer = api.NewSessionAuthorizerCurrent(mgr, func(ctx context.Context) (string, error) {
+			return readGeneratedSecret(ctx, settings.SecretAPI)
+		})
 	}
 
 	// The playout device token (§11). A FUNC, not a captured value, so a REGENERATED token
@@ -1162,8 +1312,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// serving streams unauthenticated because a secret could not be minted would silently
 	// remove the only auth those routes have.
 	var playoutSecret func() string
+	var playoutSecretCurrent func(context.Context) (string, error)
 	if secrets != nil {
 		playoutSecret = func() string { return secrets.Value(settings.SecretPlayout) }
+		playoutSecretCurrent = func(ctx context.Context) (string, error) {
+			return readGeneratedSecret(ctx, settings.SecretPlayout)
+		}
 	}
 
 	// The settings API surface (config-design §8): wired when the store (hence the
@@ -1181,12 +1335,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
 	if st != nil {
-		var tunarrGuide api.GuideReader
-		if set.str("tunarr.url") != "" {
-			tunarrGuide = guideAdapter{
-				tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
-				window: 2 * time.Hour,
-			}
+		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
+		// Its connection resolves per request, so adding tunarr.url later hot-applies; while
+		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
+		var tunarrGuide tunarrGuideReader = guideAdapter{
+			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+			window: 2 * time.Hour,
 		}
 		// playoutRes is nil when internal playout is not wired; the router then has no reader
 		// for internal channels and gives them no entry — never a fallback to Tunarr's guide,
@@ -1200,23 +1354,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			internal: internalGuide,
 			channels: st,
 			// The same nil-means-inherit precedence playoutChannels uses (§15): a channel's own
-			// policy.playout.backend wins, else the global. Resolved live so a backend switch
-			// applies to the next render.
-			internalFor: func(ch store.Channel) bool {
-				return schedule.PlaysInternally(ch.Policy, set.str("playout.backend"))
-			},
-			window: 2 * time.Hour,
+			// policy.playout.backend wins, else the durable applied global. A prepared target
+			// cannot leak into the next render before publication.
+			appliedBackend: appliedBackendContext,
+			window:         2 * time.Hour,
 		}
 	}
 
 	var settingsSvc api.SettingsService
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
-			svc:     set.svc,
-			secrets: secrets,
-			store:   st,
-			log:     log,
-			tests:   connectionTests(set),
+			svc: set.svc, secrets: secrets, store: st, log: log,
+			tests: connectionTests(set), refreshRedactor: refreshSecretRedactor,
+			readSecret: readGeneratedSecret,
 		}
 	}
 
@@ -1331,47 +1481,58 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	}
 
 	return api.Router(log, api.Options{
-		Store:         st,
-		Auth:          authorizer,
-		Log:           log,
-		BackupSQLite:  backup,
-		Ready:         ready,
-		Login:         loginSvc,
-		Sessions:      sessMgr,
-		Passwords:     passwordSvc,
-		UserSync:      userSync,
-		CookieSecure:  set.str("cookie.secure"),
-		DevLogin:      ov.DevLogin,
-		Pprof:         ov.Pprof,
-		Channels:      channelSvc,
-		LiveTV:        liveTVSvc,
-		TunarrConnect: tunarrConnectSvc,
-		Suggest:       suggestSvc,
-		Search:        searchSvc,
-		Collections:   collectionsSvc,
-		Icons:         iconSvc,
-		Images:        imageService(imageSvc),
-		Events:        eventBus,
-		Shutdown:      rootCtx.Done(),
-		Filler:        fillerSvc,
-		Pods:          podPreview,
-		SystemLLM:     systemLLM,
-		Database:      databaseSvc,
-		Backups:       backupsSvc,
-		SSO:           ssoSvc,
-		Restart:       restartSvc,
-		Activity:      activityRec,
+		Store:          st,
+		Auth:           authorizer,
+		Log:            log,
+		BackupSQLite:   backup,
+		Ready:          ready,
+		Login:          loginSvc,
+		Sessions:       sessMgr,
+		Passwords:      passwordSvc,
+		UserSync:       userSync,
+		CookieSecure:   set.str("cookie.secure"),
+		DevLogin:       ov.DevLogin,
+		Pprof:          ov.Pprof,
+		Channels:       channelSvc,
+		LiveTV:         liveTVSvc,
+		TunerRescanner: tunerRescanner,
+		TunarrConnect:  tunarrConnectSvc,
+		Suggest:        suggestSvc,
+		Search:         searchSvc,
+		Collections:    collectionsSvc,
+		Icons:          iconSvc,
+		Images:         imageService(imageSvc),
+		Events:         eventBus,
+		Shutdown:       rootCtx.Done(),
+		Filler:         fillerSvc,
+		Pods:           podPreview,
+		SystemLLM:      systemLLM,
+		Database:       databaseSvc,
+		Backups:        backupsSvc,
+		SSO:            ssoSvc,
+		Restart:        restartSvc,
+		Activity:       activityRec,
 		// The baseline for "has a boot-time setting changed?" is what THIS generation
 		// booted with, captured here rather than per call (config-design §3).
 		BootstrapDrift: bootstrapDrift(bootCfg),
 		Jobs:           jobsSvc,
 		Settings:       settingsSvc,
-		Guide:          guideSvc,
-		Provision:      provisionSvc,
-		Approver:       proposalApprover,
-		Binder:         chBinder,
-		LiveConfig:     liveConfig,
-		LiveConfigInt:  set.intv,
+		BackendTransition: currentBackendTransition{
+			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
+		},
+		Guide:      guideSvc,
+		Provision:  provisionSvc,
+		Approver:   proposalApprover,
+		Binder:     chBinder,
+		LiveConfig: liveConfig,
+		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
+			snapshot, err := checkpointSnapshot(ctx)
+			return api.BackendCheckpoint{
+				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
+				PublishedInternal: snapshot.PublishedInternal,
+			}, err
+		},
+		LiveConfigInt: set.intv,
 		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
 		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
 		LiveConfigBoolOn: set.boolOn,
@@ -1383,9 +1544,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:   playoutGuideSvc,
-		TimelineThumbs: timelineThumbs,
-		PlayoutSecret:  playoutSecret,
+		PlayoutGuide:         playoutGuideSvc,
+		TimelineThumbs:       timelineThumbs,
+		PlayoutSecret:        playoutSecret,
+		PlayoutSecretCurrent: playoutSecretCurrent,
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.

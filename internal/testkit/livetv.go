@@ -20,11 +20,16 @@ type LiveTV struct {
 	nextID    int
 	Refreshes int
 	Rescans   int // tuner re-scans (§9 new-channel discovery)
+	calls     []string
 
 	// Injectable failures (nil = success).
-	AddTunerErr error
-	RefreshErr  error
-	RescanErr   error
+	AddTunerErr      error
+	AddListingErr    error
+	RemoveTunerErr   error
+	RemoveListingErr error
+	StaleListingsErr error
+	RefreshErr       error
+	RescanErr        error
 }
 
 // fakeTuner models a media-server tuner host with the fields the URL-change
@@ -58,6 +63,7 @@ func (l *LiveTV) idLocked() string { return "tuner-" + strconv.Itoa(l.nextID) }
 func (l *LiveTV) TunerRegistered(_ context.Context, m3u string) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "check-tuner:"+m3u)
 	for _, t := range l.tuners {
 		if t.url == m3u {
 			return true, nil
@@ -69,6 +75,7 @@ func (l *LiveTV) TunerRegistered(_ context.Context, m3u string) (bool, error) {
 func (l *LiveTV) ListingRegistered(_ context.Context, xmltv string) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "check-listing:"+xmltv)
 	for _, u := range l.listings {
 		if u == xmltv {
 			return true, nil
@@ -80,6 +87,7 @@ func (l *LiveTV) ListingRegistered(_ context.Context, xmltv string) (bool, error
 func (l *LiveTV) AddTuner(_ context.Context, m3u string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "add-tuner:"+m3u)
 	if l.AddTunerErr != nil {
 		return l.AddTunerErr
 	}
@@ -93,6 +101,10 @@ func (l *LiveTV) AddTuner(_ context.Context, m3u string) error {
 func (l *LiveTV) AddListingProvider(_ context.Context, xmltv string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "add-listing:"+xmltv)
+	if l.AddListingErr != nil {
+		return l.AddListingErr
+	}
 	l.nextID++
 	l.listings["listing-"+strconv.Itoa(l.nextID)] = xmltv
 	return nil
@@ -102,6 +114,7 @@ func (l *LiveTV) AddListingProvider(_ context.Context, xmltv string) error {
 func (l *LiveTV) StaleLoomarrTuners(_ context.Context, desiredM3U string) ([]string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "stale-tuners:"+desiredM3U)
 	var ids []string
 	for id, t := range l.tuners {
 		if t.friendlyName == loomarrFriendlyName && t.url != desiredM3U {
@@ -124,23 +137,40 @@ func (l *LiveTV) LoomarrTuners(_ context.Context) ([]string, error) {
 	return ids, nil
 }
 
-// StaleLoomarrListings returns ids of Tunarr-guide listing providers whose url is
-// not the desired XMLTV (the fake treats any /api/xmltv.xml path as Tunarr-shaped).
+// StaleLoomarrListings mirrors library.LiveTV's ownership rule: either Tunarr's
+// XMLTV path or Loomarr's internal-playout guide path is managed, including when
+// the latter carries its device-token query string.
 func (l *LiveTV) StaleLoomarrListings(_ context.Context, desiredXMLTV string) ([]string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "stale-listings:"+desiredXMLTV)
+	if l.StaleListingsErr != nil {
+		return nil, l.StaleListingsErr
+	}
 	var ids []string
 	for id, u := range l.listings {
-		if strings.HasSuffix(strings.TrimRight(u, "/"), "/api/xmltv.xml") && u != desiredXMLTV {
+		if isLoomarrListing(u) && u != desiredXMLTV {
 			ids = append(ids, id)
 		}
 	}
 	return ids, nil
 }
 
+func isLoomarrListing(raw string) bool {
+	path := strings.TrimRight(raw, "/")
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	return strings.HasSuffix(path, "/api/xmltv.xml") || strings.HasSuffix(path, "/playout/guide.xml")
+}
+
 func (l *LiveTV) RemoveTuner(_ context.Context, id string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "remove-tuner:"+id)
+	if l.RemoveTunerErr != nil {
+		return l.RemoveTunerErr
+	}
 	delete(l.tuners, id)
 	return nil
 }
@@ -148,6 +178,10 @@ func (l *LiveTV) RemoveTuner(_ context.Context, id string) error {
 func (l *LiveTV) RemoveListingProvider(_ context.Context, id string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "remove-listing:"+id)
+	if l.RemoveListingErr != nil {
+		return l.RemoveListingErr
+	}
 	delete(l.listings, id)
 	return nil
 }
@@ -155,6 +189,7 @@ func (l *LiveTV) RemoveListingProvider(_ context.Context, id string) error {
 func (l *LiveTV) RefreshGuide(_ context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "refresh-guide")
 	if l.RefreshErr != nil {
 		return l.RefreshErr
 	}
@@ -162,9 +197,10 @@ func (l *LiveTV) RefreshGuide(_ context.Context) error {
 	return nil
 }
 
-func (l *LiveTV) RescanTuner(_ context.Context, _ string) error {
+func (l *LiveTV) RescanTuner(_ context.Context, m3u string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.calls = append(l.calls, "rescan-tuner:"+m3u)
 	if l.RescanErr != nil {
 		return l.RescanErr
 	}
@@ -187,6 +223,15 @@ func (l *LiveTV) HasTuner(url string) bool {
 		}
 	}
 	return false
+}
+
+// Calls returns the ordered media-server operations observed by this double.
+// It lets transition tests prove target registration precedes stale retirement
+// without inventing a private mock for the library.LiveTV capability.
+func (l *LiveTV) Calls() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.calls...)
 }
 
 // Note: this mock deliberately does NOT reference library.LiveTV to avoid a

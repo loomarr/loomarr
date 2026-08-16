@@ -185,7 +185,17 @@ func assignLayers(byName map[string]*Package) {
 		return max
 	}
 
-	for name, p := range byName {
+	// The graph is collapsed to top-level domains, so distinct acyclic Go packages can become a
+	// cycle here (for example app/subpackage A → metrics and metrics → app/subpackage B). Traverse
+	// roots in a stable order so the defensive cycle break cannot make generated docs depend on
+	// randomized map iteration.
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		p := byName[name]
 		p.Layer = depth(name, map[string]bool{})
 	}
 }

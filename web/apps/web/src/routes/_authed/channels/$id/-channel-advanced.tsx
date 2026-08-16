@@ -27,10 +27,8 @@ const relaxationSentence = (step: { kind: string; from: string; to: string }): s
   }
 };
 
-// The per-channel playout override (§9.1). "" = inherit the global `playout.backend` registry
-// setting — the nil-means-inherit shape that makes "changing the default affects new channels
-// only" true rather than aspirational: a channel that never opted in has no stored value to
-// change, so a fleet-wide flip is not expressible by accident.
+// The per-channel playout override (§9.1). "" follows the live global
+// `playout.backend`; an explicit value stays pinned across global changes.
 const BACKEND_OPTIONS: { value: string; label: string }[] = [
   { value: "inherit", label: "Follow the default" },
   { value: "internal", label: "Loomarr" },

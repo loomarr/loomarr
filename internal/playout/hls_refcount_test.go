@@ -498,3 +498,32 @@ func TestHLSManager_RejoinWithinGraceKeepsOneAttach(t *testing.T) {
 		t.Fatalf("a rejoin within grace caused %d attaches, want 1", got)
 	}
 }
+
+func TestHLSManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T) {
+	att := &fakeAttacher{}
+	m := newTestHLSManager(t, att)
+
+	for _, tc := range []struct {
+		channel string
+		plan    EncodePlan
+	}{
+		{"ch1", PlanBaseline},
+		{"ch1", PlanHEVC10},
+		{"ch2", PlanFull},
+	} {
+		if _, _, err := m.Playlist(tc.channel, tc.plan); err != nil {
+			t.Fatalf("Playlist(%s, %s): %v", tc.channel, tc.plan, err)
+		}
+	}
+
+	m.StopChannel("ch1")
+
+	if got := att.detaches.Load(); got != 2 {
+		t.Fatalf("session detaches = %d, want the two ch1 plans", got)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.remuxes) != 1 || m.remuxes[remuxKey{channel: "ch2", plan: PlanFull}] == nil {
+		t.Fatalf("remaining remuxes = %#v, want only ch2", m.remuxes)
+	}
+}

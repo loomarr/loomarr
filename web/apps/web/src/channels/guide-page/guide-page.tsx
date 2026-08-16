@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GuideDetailCard } from "@/components/loomarr/guide/guide-detail-card";
 import { GuideGrid } from "@/components/loomarr/guide/guide-grid";
 import { ColorBars } from "@/components/loomarr/shell/color-bars";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
@@ -207,15 +208,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
     // underneath a grid that had room.
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
-      <div className="flex flex-wrap items-start justify-between gap-4 border-border border-b px-7 py-4.5">
-        <div>
-          <h1 className="font-semibold text-xl">Channels</h1>
-          <p className="mt-0.75 text-muted-foreground text-sm">
-            Every channel Loomarr manages, and what's on right now.
-          </p>
-        </div>
-
-        {/* THE origination door (§12) — for both roles, since `/suggest` folded in here and
+      <PageHeader
+        title="Channels"
+        description="Every channel Loomarr manages, and what's on right now."
+        actions={
+          /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
             this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
             the create path IS describe→approve, inlined.
 
@@ -231,18 +228,19 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
             ⚠ …but NOT while the panel is open. Once `adding` is true this button is the
             "Close", and an empty guide is exactly when the operator is most likely to have
             opened it: hiding it there would leave the panel with no way out. So the door
-            reappears the moment it becomes the exit. */}
-        {(!isEmpty || adding) && (
-          <Button
-            variant={adding ? "outline" : "suggest"}
-            onClick={() => (adding ? closePanel() : setAdding(true))}
-            aria-expanded={adding}
-          >
-            {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
-            {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
-          </Button>
-        )}
-      </div>
+            reappears the moment it becomes the exit. */
+          (!isEmpty || adding) && (
+            <Button
+              variant={adding ? "outline" : "suggest"}
+              onClick={() => (adding ? closePanel() : setAdding(true))}
+              aria-expanded={adding}
+            >
+              {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
+              {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+            </Button>
+          )
+        }
+      />
 
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
       {adding && (

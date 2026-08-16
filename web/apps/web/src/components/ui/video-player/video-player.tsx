@@ -108,14 +108,15 @@ const VideoPlayer = ({
     const el = videoRef.current;
     if (!el) return;
     const release = attach(el);
-    const requestFrame = el.requestVideoFrameCallback?.bind(el);
     const onReplacementFrame = () => clearHeldFrame(el);
-    let frameCallback: number | undefined;
-    if (requestFrame) frameCallback = requestFrame(onReplacementFrame);
-    else el.addEventListener("playing", onReplacementFrame, { once: true });
+    // Registering rVFC immediately can observe the outgoing decoded frame that cleanup just
+    // captured, while registering it after loadeddata can miss a compact replacement's only
+    // presented frame. loadeddata itself means the replacement has current frame data, which is
+    // exactly when the held poster should give way.
+    const onReplacementLoadedData = onReplacementFrame;
+    el.addEventListener("loadeddata", onReplacementLoadedData, { once: true });
     return () => {
-      if (frameCallback !== undefined) el.cancelVideoFrameCallback?.(frameCallback);
-      el.removeEventListener("playing", onReplacementFrame);
+      el.removeEventListener("loadeddata", onReplacementLoadedData);
       holdDecodedFrame(el);
       release();
     };

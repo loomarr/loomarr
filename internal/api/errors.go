@@ -1,11 +1,20 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 )
+
+func statusFromError(err error, fallback int) int {
+	var statusErr huma.StatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.GetStatus()
+	}
+	return fallback
+}
 
 // Loomarr's error copy convention (§7). Every problem a person can see is written for a
 // person: a short Title-Case `title` and a full-sentence `detail` that says how to fix it —

@@ -150,7 +150,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title={title} description={description} className="border-border border-b px-6 py-4" />
+      <PageHeader title={title} description={description} />
 
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
         {children}

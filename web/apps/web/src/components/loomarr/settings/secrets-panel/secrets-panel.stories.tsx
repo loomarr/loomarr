@@ -11,19 +11,16 @@ const SECRETS: SecretRow[] = [
     label: "API token",
     purpose: "Break-glass admin access for scripts and automation.",
     consequence: "The current token stops working immediately.",
-    displayable: true,
   },
   {
-    name: "session_secret",
-    label: "Session secret",
-    purpose: "Signs session cookies. Nothing to paste anywhere, so it is never displayed.",
-    consequence: "Every session is revoked, including yours.",
-    displayable: false,
+    name: "playout_token",
+    label: "Playback token",
+    purpose: "Lets a media server read Loomarr's Live TV endpoints.",
+    consequence: "Existing tuner and guide URLs stop working immediately.",
   },
 ];
 
-// §4's display policy, differentiated by purpose: values you must paste elsewhere are
-// viewable on demand; the one with nothing to paste never is.
+// §4's display policy: operator-facing credentials are viewable on demand.
 const meta = {
   title: "Settings/SecretsPanel",
   component: SecretsPanel,

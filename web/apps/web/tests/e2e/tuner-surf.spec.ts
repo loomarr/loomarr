@@ -126,24 +126,29 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
   }, `/channels/${id}/watch`);
   await page.keyboard.press("x");
   await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
-  await page.waitForFunction(
-    ({ channel, count }) =>
-      (
-        window as Window & {
-          __loomarrDecodedFrames?: Array<{
-            at: number;
-            channel: string;
-            ended: boolean;
-            paused: boolean;
-            src: string;
-          }>;
-        }
-      ).__loomarrDecodedFrames
-        ?.slice(count)
-        .some((frame) => frame.channel === channel) ?? false,
-    { channel: id, count: before.count },
-    { timeout: 10_000 },
-  );
+  try {
+    await page.waitForFunction(
+      ({ channel, count }) =>
+        (
+          window as Window & {
+            __loomarrDecodedFrames?: Array<{
+              at: number;
+              channel: string;
+              ended: boolean;
+              paused: boolean;
+              src: string;
+            }>;
+          }
+        ).__loomarrDecodedFrames
+          ?.slice(count)
+          .some((frame) => frame.channel === channel) ?? false,
+      { channel: id, count: before.count },
+      { timeout: 10_000 },
+    );
+  } catch (error) {
+    const playback = await playbackSnapshot(page, id, started);
+    throw new Error(`${id} produced no target frame: ${JSON.stringify(playback)}`, { cause: error });
+  }
   const decoded = await page.evaluate(
     ({ channel, count }) =>
       (
@@ -232,6 +237,53 @@ const adjacentWarmCounts = (
     }),
   );
 
+const playbackSnapshot = async (page: Page, channel: string, since: number) =>
+  page.locator("video").evaluate(
+    (element, { channel, since }) => ({
+      currentTime: element.currentTime,
+      duration: element.duration,
+      ended: element.ended,
+      events: (
+        window as Window & {
+          __loomarrMediaEvents?: Array<{
+            at: number;
+            channel: string;
+            currentTime: number;
+            readyState: number;
+            type: string;
+          }>;
+        }
+      ).__loomarrMediaEvents?.filter((event) => event.at >= since && event.channel === channel),
+      frames: (
+        window as Window & {
+          __loomarrDecodedFrames?: Array<{
+            at: number;
+            channel: string;
+            ended: boolean;
+            paused: boolean;
+            src: string;
+          }>;
+        }
+      ).__loomarrDecodedFrames?.filter((frame) => frame.at >= since && frame.channel === channel),
+      paused: element.paused,
+      readyState: element.readyState,
+      marks: performance
+        .getEntriesByType("mark")
+        .filter((entry) => entry.startTime >= since && entry.name.startsWith("loomarr:tune:"))
+        .map((entry) => ({ name: entry.name, at: entry.startTime - since })),
+      resources: performance
+        .getEntriesByType("resource")
+        .filter((entry) => entry.startTime >= since)
+        .filter((entry) => /play-url|master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+        .map((entry) => ({
+          name: new URL(entry.name).pathname,
+          responseEnd: entry.responseEnd - since,
+          startTime: entry.startTime - since,
+        })),
+    }),
+    { channel, since },
+  );
+
 test("100-channel tuner meets surf latency and latest-request-wins gates", async ({ page }) => {
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
@@ -303,6 +355,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   });
   const osd: number[] = [];
   const adjacentFrames: number[] = [];
+  const adjacentTraces: string[] = [];
   let current = 50;
   for (let sample = 0; sample < 20; sample++) {
     const target = current === 100 ? 1 : current + 1;
@@ -317,12 +370,19 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     const previousFrames = await page.evaluate(
       () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
     );
+    const started = await page.evaluate(() => performance.now());
     await channelUp(page);
     await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
-    await page.waitForFunction(
-      (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
-      previousFrames,
-    );
+    try {
+      await page.waitForFunction(
+        (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
+        previousFrames,
+        { timeout: 10_000 },
+      );
+    } catch (error) {
+      const playback = await playbackSnapshot(page, id, started);
+      throw new Error(`${id} produced no target frame: ${JSON.stringify(playback)}`, { cause: error });
+    }
 
     const timing = await page.evaluate(() => {
       const latest = (name: string) =>
@@ -336,9 +396,53 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       };
     });
     expect(timing.detail).toMatchObject({ adjacent: true, warmed: true });
-    expect(await page.locator("video").evaluate((element) => element.paused)).toBe(false);
+    const playback = await playbackSnapshot(page, id, started);
+    expect(
+      playback.events?.some((event) => event.type === "playing"),
+      `${id} never joined target playback: ${JSON.stringify(playback)}`,
+    ).toBe(true);
+    // WebKit can consume this compact VOD faster than wall time and expose its decoded frame only
+    // after natural completion. ended implies paused by the media-element contract, so accept that
+    // state only after the target-generation playing proof above. A paused, non-ended replacement
+    // is the production regression and remains a hard failure.
+    expect(playback.paused && !playback.ended, `${id} playback state: ${JSON.stringify(playback)}`).toBe(
+      false,
+    );
     osd.push(timing.osd);
     adjacentFrames.push(timing.frame);
+    adjacentTraces.push(
+      await page.evaluate(
+        ({ id, started }) => {
+          const frame = performance.getEntriesByName("loomarr:tune:request-to-first-frame").at(-1) as
+            | PerformanceMeasure
+            | undefined;
+          const attemptId = (frame?.detail as { attemptId?: number } | undefined)?.attemptId;
+          const phases = attemptId
+            ? performance
+                .getEntriesByType("mark")
+                .filter((entry) => entry.name.startsWith(`loomarr:tune:${attemptId}:`))
+                .map((entry) => `${entry.name.split(":").at(-1)}@${(entry.startTime - started).toFixed(0)}`)
+            : [];
+          const resources = performance
+            .getEntriesByType("resource")
+            .filter((entry) => entry.startTime >= started)
+            .filter((entry) => /master\.m3u8|init\.mp4|segment\.m4s/.test(entry.name))
+            .map(
+              (entry) =>
+                `${new URL(entry.name).pathname.split("/").at(-1)}:${(entry.startTime - started).toFixed(0)}-${(entry.responseEnd - started).toFixed(0)}`,
+            );
+          const events = (
+            window as Window & {
+              __loomarrMediaEvents?: Array<{ at: number; channel: string; type: string }>;
+            }
+          ).__loomarrMediaEvents
+            ?.filter((event) => event.at >= started && event.channel === id)
+            .map((event) => `${event.type}@${(event.at - started).toFixed(0)}`);
+          return [...phases, ...resources, ...(events ?? [])].join(" ");
+        },
+        { id, started },
+      ),
+    );
     expect(backend.state.playURLMints.filter((candidate) => candidate === id)).toHaveLength(targetMints);
     await expect(page.locator("video")).toHaveCount(1);
     // The frame makes this Channel active; its post-frame warmer must finish the next Channel
@@ -353,7 +457,9 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(p95(osd), `OSD p95: ${p95(osd).toFixed(1)}ms`).toBeLessThan(100);
   expect(
     p95(adjacentFrames),
-    `prepared adjacent first-frame p95: ${p95(adjacentFrames).toFixed(1)}ms`,
+    `prepared adjacent first-frame p95: ${p95(adjacentFrames).toFixed(1)}ms; samples: ${adjacentFrames
+      .map((sample) => sample.toFixed(1))
+      .join(", ")}; traces: ${adjacentTraces.join(" | ")}`,
   ).toBeLessThan(750);
 
   const manifestDurations = await page.evaluate(() =>

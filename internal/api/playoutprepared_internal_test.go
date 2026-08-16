@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 type preparedProbePlayout struct {
@@ -21,18 +23,41 @@ type preparedProbePlayout struct {
 	assetOK      bool
 }
 
+func preparedHandlerServer(t *testing.T, probe *preparedProbePlayout) *Server {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/prepared.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	ch := store.Channel{Channel: schedule.Channel{
+		ID: "ch-one", Name: "Channel One", Number: 1, Status: schedule.StatusLive,
+	}}
+	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	return &Server{playout: probe, store: st}
+}
+
 func (p *preparedProbePlayout) Tune(_ context.Context, request playout.TuneRequest) (playout.Presentation, error) {
 	p.request = request
 	return p.presentation, p.err
 }
 
-func (p *preparedProbePlayout) OpenAsset(string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (p *preparedProbePlayout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return p.asset, p.assetOK, nil
 }
 
+func (*preparedProbePlayout) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
+	return playout.Admission{Context: ctx}, nil
+}
+
+func (*preparedProbePlayout) StopChannel(string) {}
+
 func TestHLSPreparedModeReturnsNoContentWithoutLiveFallback(t *testing.T) {
 	probe := &preparedProbePlayout{err: playout.ErrPreparedUnavailable}
-	s := &Server{playout: probe}
+	s := preparedHandlerServer(t, probe)
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/master.m3u8?mode=prepared", nil)
 	req.SetPathValue("id", "ch-one")
 	w := httptest.NewRecorder()
@@ -51,7 +76,7 @@ func TestHLSPreparedModeIsNotCopiedOntoImmutableAssetURLs(t *testing.T) {
 	probe := &preparedProbePlayout{presentation: playout.Presentation{
 		Manifest: []byte("#EXTM3U\np-publication-segment\n"), Release: func() {},
 	}}
-	s := &Server{playout: probe}
+	s := preparedHandlerServer(t, probe)
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/playout/hls/ch-one/master.m3u8?mode=prepared&sig=signed&plan=hevc8", nil)
 	req.SetPathValue("id", "ch-one")

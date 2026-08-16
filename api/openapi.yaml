@@ -541,7 +541,7 @@ components:
             - time_slot
           type: string
         tunarrId:
-          description: Server-assigned Tunarr channel id; empty until first reconcile
+          description: Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout
           type: string
       required:
         - id
@@ -3266,7 +3266,7 @@ components:
           description: A flex/commercial-pod gap rather than a program
           type: boolean
         startMs:
-          description: Epoch ms; airtime as Tunarr scheduled it
+          description: Epoch ms; airtime as the selected playout backend scheduled it
           format: int64
           type: integer
         stopMs:
@@ -4381,13 +4381,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the new value is returned (config-design §4).
-          type: boolean
         value:
+          description: The newly generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SecretRevealOutputBody:
       additionalProperties: false
@@ -4399,13 +4397,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        displayable:
-          description: Whether the value is returned (config-design §4).
-          type: boolean
         value:
+          description: The current generated token.
           type: string
       required:
-        - displayable
+        - value
       type: object
     SeparationPolicy:
       additionalProperties: false
@@ -5609,7 +5605,7 @@ components:
           minimum: 1
           type: integer
         status:
-          description: Pause (off air, keep the channel) or resume.
+          description: Pause Loomarr-managed playout and guide surfaces, or resume. In v1, a retained Tunarr projection keeps its last lineup.
           enum:
             - paused
             - building
@@ -5774,7 +5770,7 @@ components:
         - priority
       type: object
 info:
-  description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
+  description: "Turn a sentence into a self-maintaining virtual TV channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
   title: Loomarr API
   version: 0.1.0
 openapi: 3.1.0
@@ -5998,7 +5994,7 @@ paths:
         - channels
   /v1/channels/now-next:
     get:
-      description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel."
+      description: Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.
       operationId: channels-now-next
       responses:
         "200":
@@ -6026,12 +6022,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: "Also delete the Tunarr channel (default: detach only, §7)"
+        - description: "Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"
           explode: false
           in: query
           name: purge
           schema:
-            description: "Also delete the Tunarr channel (default: detach only, §7)"
+            description: "Hard-delete Loomarr's channel state and any retained managed Tunarr projection (default: detach only, §7)"
             type: boolean
       responses:
         "204":
@@ -6383,7 +6379,7 @@ paths:
         - channels
   /v1/channels/{id}/reconcile:
     post:
-      description: Admin only. Idempotent (§9).
+      description: Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).
       operationId: reconcile-channel
       parameters:
         - in: path
@@ -6406,7 +6402,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Force desired→Tunarr reconciliation
+      summary: Force channel convergence
       tags:
         - channels
   /v1/channels/{id}/refine:
@@ -6508,7 +6504,7 @@ paths:
         - channels
   /v1/channels/{id}/upcoming:
     get:
-      description: The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
+      description: The program airing now (first) then the next few, in airtime order, from the backend that streams this channel (gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
       operationId: channel-upcoming
       parameters:
         - in: path
@@ -8642,17 +8638,16 @@ paths:
         - settings
   /v1/settings/secrets/{name}:
     get:
-      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
+      description: Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.
       operationId: secret-reveal
       parameters:
-        - description: Which generated secret to reveal.
+        - description: Which generated token to reveal.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to reveal.
+            description: Which generated token to reveal.
             enum:
-              - session_secret
               - api_token
               - playout_token
             type: string
@@ -8669,22 +8664,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Reveal a generated secret
+      summary: Reveal a generated token
       tags:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | PLAYOUT_TOKEN with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.
       operationId: secret-regenerate
       parameters:
-        - description: Which generated secret to rotate.
+        - description: Which generated token to rotate.
           in: path
           name: name
           required: true
           schema:
-            description: Which generated secret to rotate.
+            description: Which generated token to rotate.
             enum:
-              - session_secret
               - api_token
               - playout_token
             type: string
@@ -8701,7 +8695,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Regenerate a generated secret
+      summary: Regenerate a generated token
       tags:
         - settings
   /v1/settings/{key}:
@@ -8786,7 +8780,7 @@ paths:
         - setup
   /v1/setup/livetv-reconnect:
     post:
-      description: Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).
+      description: Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9).
       operationId: livetv-reconnect
       responses:
         "200":
@@ -8801,7 +8795,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Force-re-wire the Tunarr tuner
+      summary: Force-re-wire the Live TV tuner
       tags:
         - setup
   /v1/setup/state:

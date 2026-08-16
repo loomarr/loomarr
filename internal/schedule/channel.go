@@ -47,10 +47,11 @@ func (s Strategy) Valid() bool {
 type ChannelStatus string
 
 const (
-	// StatusBuilding: created, initial reconcile not yet pushed to Tunarr.
+	// StatusBuilding: created, initial reconcile has not yet converged on the
+	// selected playout backend.
 	StatusBuilding ChannelStatus = "building"
-	// StatusLive: reconciled to Tunarr and playing (possibly with pending slots
-	// still backfilling).
+	// StatusLive: reconciled to the selected playout backend and ready to play
+	// (possibly with pending slots still backfilling).
 	StatusLive ChannelStatus = "live"
 	// StatusDrifted: the periodic sweep found a scheduled program missing from
 	// the library and substituted it (§9 slot revalidation) — surfaced so the
@@ -68,28 +69,35 @@ const (
 	// ExclusionReport names each benched entry and why); this status is what makes it
 	// worth surfacing.
 	StatusEmpty ChannelStatus = "empty"
-	// StatusDetached: Loomarr no longer manages this channel (soft-deleted; the
-	// Tunarr channel may still exist unless purge=true).
+	// StatusDetached: Loomarr no longer manages this channel (soft-deleted; a
+	// retained external projection may still exist unless purge=true).
 	StatusDetached ChannelStatus = "detached"
 	// StatusPaused: the operator deliberately took the channel off the sweep — a
 	// resumable "off air, but keep it" state, distinct from detached (which is "no
 	// longer managed"). Like detached it is never auto-reconciled (the sweep skips
 	// it), but unlike detached it is a normal, non-error state that resumes to
-	// `building` via a PATCH. v1 leaves the Tunarr channel playing its last lineup.
+	// `building` via a PATCH. A retained Tunarr projection keeps its last lineup.
 	StatusPaused ChannelStatus = "paused"
 )
 
-// Channel is a Loomarr-managed Tunarr channel (§9 scheduler domain). Identity is
-// Loomarr's own ID; TunarrID is the *server-assigned* id from Tunarr's create
-// response (Phase-0 finding: Tunarr ignores client-supplied ids), empty until
-// the first reconcile creates the Tunarr channel.
+// Reconcilable reports whether automatic or direct reconciliation may manage a channel.
+// Paused and detached are the two explicit lifecycle opt-outs; every other status remains
+// active so building, empty, live, and drifted channels can converge or recover.
+func (s ChannelStatus) Reconcilable() bool {
+	return s != StatusPaused && s != StatusDetached
+}
+
+// Channel is Loomarr's backend-neutral channel definition (§9 scheduler domain).
+// ID is Loomarr-owned. TunarrID is the optional server-assigned identifier of a
+// Tunarr projection (Tunarr ignores client-supplied ids), so internal channels and
+// channels not yet projected to Tunarr leave it empty.
 type Channel struct {
 	ID        string   // Loomarr id (uuid-like, assigned on create)
 	IntentRef string   // proposal/intent this channel came from (§8); "" for a hand-made channel
-	Name      string   // display name / Tunarr channel name
-	Number    int      // Tunarr channel number (guide position)
-	Group     string   // Tunarr groupTitle (channel grouping in the guide)
-	Logo      string   // icon URL (Tunarr channel.icon.path); optional
+	Name      string   // display name
+	Number    int      // channel number (guide position)
+	Group     string   // channel grouping in the guide
+	Logo      string   // optional channel icon URL
 	Strategy  Strategy // ordering strategy
 	// BreaksPerHour is the commercial-break density (§10): how many ad breaks per
 	// hour of program runtime the scheduler interleaves between programs (0 = none).
@@ -113,7 +121,7 @@ type Channel struct {
 	// run (the policy-free path leaves it 0, preserving today's un-windowed behavior).
 	DefaultWindow time.Duration
 	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
-	TunarrID      string        // server-assigned Tunarr channel id; "" until first reconcile
+	TunarrID      string        // retained Tunarr projection id; "" until first-ever successful projection
 	Status        ChannelStatus // Loomarr-side status
 	Shuffle       ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
 	UpdatedAt     int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)

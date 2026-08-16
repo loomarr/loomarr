@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -30,9 +32,17 @@ const (
 type sqlStore struct {
 	db      *sql.DB
 	dialect Dialect
+	// dsn is retained only by the Postgres adapter so commit invalidation listeners can own
+	// a dedicated pgx connection without consuming or retaining a database/sql pooled handle.
+	// Empty for SQLite.
+	dsn string
 	// mu guards onClose only — the pool itself is already goroutine-safe.
 	mu      sync.Mutex
 	onClose []func() // pre-close hooks, run in order before the pool closes (see OnClose)
+	// settingLock is the SQLite implementation of WithSettingLock. SQLite is
+	// explicitly single-instance, so the process is the complete lock domain.
+	// Postgres does not use this mutex; it takes a database-wide advisory lock.
+	settingLock sync.Mutex
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -135,11 +145,97 @@ func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 // updated_by NULL — these writes have no human author. The audited admin path is
 // UpsertSetting.
 func (s *sqlStore) SetSetting(ctx context.Context, key, value string) error {
+	if s.dialect == DialectPostgres {
+		payload, err := settingInvalidation(key, value)
+		if err != nil {
+			return err
+		}
+		var notified any
+		return s.db.QueryRowContext(ctx,
+			`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
+			 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+			 RETURNING pg_notify('`+postgresInvalidationChannel+`', $4)`,
+			key, value, time.Now().Unix(), payload).Scan(&notified)
+	}
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`),
 		key, value, time.Now().Unix())
 	return err
+}
+
+const settingLockNamespace = "loomarr:setting-workflow:"
+
+// WithSettingLock hides the backend-specific serialization mechanism behind the
+// settings store seam. Postgres advisory locks are session-scoped, so the
+// callback runs while one dedicated *sql.Conn remains checked out. Ordinary
+// store calls inside fn may use any pooled connection: every cooperating replica
+// is excluded by the advisory lock key, not by a SQL transaction.
+func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) (retErr error) {
+	if key == "" {
+		return fmt.Errorf("setting lock key is empty")
+	}
+	if fn == nil {
+		return fmt.Errorf("setting lock callback is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if s.dialect == DialectSQLite {
+		s.settingLock.Lock()
+		defer s.settingLock.Unlock()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return fn(ctx)
+	}
+	if s.dialect != DialectPostgres {
+		return fmt.Errorf("setting lock: unsupported store dialect %q", s.dialect)
+	}
+
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("setting lock %q: reserve postgres connection: %w", key, err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: close postgres connection: %w", key, err))
+		}
+	}()
+
+	lockName := settingLockNamespace + key
+	const lockSQL = `SELECT pg_advisory_lock(hashtextextended(current_database() || ':' || $1, 0))`
+	if _, err := conn.ExecContext(ctx, lockSQL, lockName); err != nil {
+		// Cancellation can race with the server granting the lock. Discarding the
+		// session is the only safe answer when acquisition was not acknowledged.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		return fmt.Errorf("setting lock %q: acquire postgres advisory lock: %w", key, err)
+	}
+
+	// Unlock with an independent bounded context. The operation's context may have
+	// been cancelled while fn was running; returning the session to the pool with a
+	// held advisory lock would silently strand the lock. If explicit unlock cannot
+	// be proved, poison the driver connection so database/sql discards the session.
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		const unlockSQL = `SELECT pg_advisory_unlock(hashtextextended(current_database() || ':' || $1, 0))`
+		var unlocked bool
+		unlockErr := conn.QueryRowContext(cleanupCtx, unlockSQL, lockName).Scan(&unlocked)
+		if unlockErr == nil && unlocked {
+			return
+		}
+		if unlockErr == nil {
+			unlockErr = errors.New("postgres session did not own advisory lock")
+		}
+		// Returning driver.ErrBadConn from Raw tells database/sql not to reuse the
+		// underlying session; Postgres releases session locks when it disconnects.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: release postgres advisory lock: %w", key, unlockErr))
+	}()
+
+	return fn(ctx)
 }
 
 // SettingRow is a persisted override plus its audit metadata (config-design §3).

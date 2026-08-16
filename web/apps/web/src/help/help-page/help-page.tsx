@@ -49,10 +49,10 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col">
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
-      <div className="flex flex-col gap-6 md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card className="flex flex-col gap-3 p-3">
             <div>

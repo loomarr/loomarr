@@ -104,8 +104,13 @@ func buildSyncer(rootCtx context.Context, st store.Store, set resolved, log *slo
 		// counts failures into a logger nobody wired is the same silence with extra steps.
 		Log: log.Warn,
 	}
-	if set.str("tunarr.url") != "" {
-		src.Tunarr = fillerSourceAdapter{fillerProg}
+	// Keep the adapter present across the process lifetime, but resolve availability per
+	// call. An install may start internal-only and add Tunarr later; boot-gating this field
+	// left every clip without a Tunarr program uuid until restart. The adapter itself no-ops
+	// while the URL is empty, so local-only scans stay quiet and fully supported.
+	src.Tunarr = fillerSourceAdapter{
+		prog:       fillerProg,
+		configured: func() bool { return set.str("tunarr.url") != "" },
 	}
 
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).

@@ -5,10 +5,10 @@ import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
 // ChannelUpcoming — the viewer-facing "what's on later" strip (P7 / plan finding 5): the
-// program airing now, then the next few, with their real Tunarr airtimes (GET
-// /v1/channels/{id}/upcoming — §6, Tunarr owns airtimes). Read-only, shown to every user on
-// the channel Overview. Gaps are already filtered out server-side, so this just renders the
-// list of shows. The first entry is "on now" when the channel is live and it has started.
+// program airing now, then the next few, with airtimes from the backend streaming this channel
+// (GET /v1/channels/{id}/upcoming). Read-only, shown to every user on the channel Overview.
+// Gaps are already filtered out server-side, so this just renders the list of shows. The first
+// entry is "on now" when the channel is live and it has started.
 const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcomingProps) => {
   const upcoming = channelsApi.useChannelUpcoming(channelId, undefined, {
     query: { retry: false },

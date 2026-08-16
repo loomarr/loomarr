@@ -105,7 +105,7 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 | Component | Purpose | States to register |
 | --- | --- | --- |
 | `AppShell` | Nav rail (Channels, Board, Suggest, Filler, Users, Settings, Help) + ⌘K + user menu | member / admin / mobile-web collapsed |
-| `PageHeader` | A page's single semantic title and optional explanatory copy | title only · title + description |
+| `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
 | `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
@@ -273,6 +273,8 @@ These suites join **phase 13's gate** in the main doc's build plan.
 
 ### Responsive posture
 - Desktop-first admin surfaces, fully functional ≥768px. Mobile web is a first-class *read-and-approve* experience (Board, approval queue, channel status); creation flows are optimized for desktop. The true mobile app is the future Expo target (§4.2) — mobile web is not asked to fake it.
+- **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
+- **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---
 

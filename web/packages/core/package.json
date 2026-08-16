@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Platform-agnostic domain layer: SSE invalidation bus, zod schemas, formatters.",
   "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*/index.ts"
+    ".": "./index.ts",
+    "./*": "./*.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

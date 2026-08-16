@@ -39,9 +39,10 @@ type harness struct {
 }
 
 type harnessConfig struct {
-	llm         *testkit.LLM
-	seerr       bool
-	connections bool // false ⇒ fresh install: seed NO connection settings
+	llm           *testkit.LLM
+	seerr         bool
+	connections   bool // false ⇒ fresh install: seed NO connection settings
+	tunarrPlayout bool // true ⇒ explicitly select Tunarr instead of the internal default
 }
 
 type harnessOpt func(*harnessConfig)
@@ -52,8 +53,13 @@ func withLLM(l *testkit.LLM) harnessOpt { return func(c *harnessConfig) { c.llm 
 // withSeerr seeds seerr.url so the Acquisition feature is on.
 func withSeerr() harnessOpt { return func(c *harnessConfig) { c.seerr = true } }
 
+// withTunarrPlayout selects Tunarr for journeys whose observable contract is the remote
+// projection. The product default is internal, so a fixture must opt in rather than inheriting
+// an old assumption that configuring tunarr.url also selected it for playout.
+func withTunarrPlayout() harnessOpt { return func(c *harnessConfig) { c.tunarrPlayout = true } }
+
 // withoutConnections builds a store-only "fresh install" (the FE's initial state):
-// no library/tunarr/llm/... configured, so every feature route is unconfigured.
+// no library/tunarr/llm/... external connection is configured.
 func withoutConnections() harnessOpt { return func(c *harnessConfig) { c.connections = false } }
 
 func newHarness(t *testing.T, opts ...harnessOpt) *harness {
@@ -99,7 +105,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	}
 
 	if cfg.connections {
-		h.seedConnections()
+		h.seedConnections(cfg)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,7 +128,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 // testkit doubles — the same table bootSettings reads (§3). Large runner intervals
 // keep periodic ticks from racing the assertions; the suggester worker pool is a
 // queue consumer, not a ticker, so it stays live.
-func (h *harness) seedConnections() {
+func (h *harness) seedConnections(cfg harnessConfig) {
 	set := func(k, v string) {
 		if err := h.store.SetSetting(context.Background(), k, v); err != nil {
 			h.t.Fatal(err)
@@ -135,7 +141,10 @@ func (h *harness) seedConnections() {
 	set("llm.provider", "ollama")
 	set("llm.url", h.ollama.URL)
 	set("llm.model", "qwen3:8b")
-	set("tunarr.url", h.tunarrStub.URL) // gate only; real pushes hit the injected tun
+	set("tunarr.url", h.tunarrStub.URL) // reachability/setup only; real pushes hit the injected tun
+	if cfg.tunarrPlayout {
+		set("playout.backend", "tunarr")
+	}
 	set("filler.dir", h.t.TempDir())
 	set("channel.reconcile_every", "9999h")
 	set("filler.sync_every", "9999h")
@@ -152,8 +161,9 @@ func clearLoomarrEnv(t *testing.T) {
 		"LIBRARY_FLAVOR", "LIBRARY_URL", "LIBRARY_TOKEN",
 		"SEERR_URL", "SEERR_API_KEY", "SONARR_URL", "SONARR_API_KEY", "RADARR_URL", "RADARR_API_KEY",
 		"TUNARR_URL", "TUNARR_TRANSCODE_CONFIG_ID",
+		"PLAYOUT_BACKEND",
 		"LLM_PROVIDER", "LLM_URL", "LLM_MODEL", "LLM_API_KEY", "TMDB_API_KEY",
-		"FILLER_DIR", "FILLER_AI_TAGGING", "SESSION_SECRET", "API_TOKEN",
+		"FILLER_DIR", "FILLER_AI_TAGGING", "API_TOKEN",
 		"CHANNEL_RECONCILE_EVERY", "FILLER_SYNC_EVERY",
 		"JOB_WORKERS", "SUGGEST_MAX_ACQUISITIONS",
 	}

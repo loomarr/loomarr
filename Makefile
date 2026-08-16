@@ -194,7 +194,7 @@ eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRAR
 
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build
+.PHONY: build rust-build image-cert image-bench
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -206,6 +206,24 @@ rust-build: ## build the required Rust image worker
 	LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(CARGO) build --release --locked -p loomarr-image
 	install -d $(BIN_DIR)
 	install -m 0755 target/release/loomarr-image $(BIN_DIR)/loomarr-image
+
+image-cert: rust-build ## certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_CERT_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-certification.json}"; \
+	  if [ -n "$${IMAGE_CERT_CORPUS:-}" ]; then \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report" --corpus "$$IMAGE_CERT_CORPUS"; \
+	  else \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report"; \
+	  fi
+
+image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_BENCH_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-benchmark.json}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-bench \
+	    --worker "$(BIN_DIR)/loomarr-image" --report "$$report" \
+	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}"
 
 .PHONY: dev
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
@@ -268,7 +286,7 @@ dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its back
 ## ---- store conformance (Phase 3/4) --------------------------------------
 
 .PHONY: test-pg
-test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (testcontainers; requires Docker)
+test-pg: rust-dev-build ## all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker)
 # ⚠ The `-run TestPostgresConformance` filter this used to carry meant every OTHER integration test
 # in the package compiled and never ran — including TestMigrateSQLiteToPostgres, which its own file
 # header calls "the V11 gate", plus TestMigrateCoversEveryTable and the three TestPreflight* tests.
@@ -279,7 +297,7 @@ test-pg: ## store conformance + the SQLite→Postgres migration vs Postgres (tes
 # This is the third variant of "green that proves nothing" this repo has hit — after a pipe masking
 # an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
 # compiling, and EXECUTING are three separate facts.
-	$(GO) test -race -tags=integration ./internal/store/
+	$(GO) test -race -tags=integration ./internal/store/ ./internal/backendtransition/ ./internal/app/
 
 ## ---- OpenAPI (Phase 8) ---------------------------------------------------
 
@@ -417,7 +435,7 @@ FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
 fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm lint && pnpm codegen && pnpm -r --parallel typecheck \
+	cd $(WEB) && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck \
 	  && pnpm --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook

@@ -354,7 +354,7 @@ authentication_backend:
   file:
     path: '/config/users.yml'
 session:
-  secret: 'insecure_test_session_secret_at_least_64_characters_long_for_authelia'
+  secret: 'insecure_test_session_secret_at_least_64_characters_long_for_authelia' # retired-ok: Authelia fixture key, not Loomarr configuration
   cookies:
     # ⚠ Must MATCH the URL the client dials, or discovery 400s with "no session cookie
     # configuration matches url" — Authelia derives its issuer from this. And it must be an IP

@@ -10,7 +10,31 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
+
+func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
+	client := testkit.NewTunarr()
+	enabled := false
+	adapter := fillerSourceAdapter{
+		prog:       client,
+		configured: func() bool { return enabled },
+	}
+	if got, err := adapter.LocalClipIDsByName(context.Background()); err != nil || len(got) != 0 {
+		t.Fatalf("disabled annotation = %v, %v; want empty success", got, err)
+	}
+	if client.FillerClipReads != 0 {
+		t.Fatalf("disabled adapter made %d Tunarr calls", client.FillerClipReads)
+	}
+
+	enabled = true
+	if _, err := adapter.LocalClipIDsByName(context.Background()); err != nil {
+		t.Fatalf("enabled annotation: %v", err)
+	}
+	if client.FillerClipReads != 1 {
+		t.Fatalf("enabled adapter made %d calls, want 1", client.FillerClipReads)
+	}
+}
 
 // The hosted picker stores credentials under the branded provider, not the flattened `openai`
 // wire kind. The filler language path must resolve that same active selection or it sends an

@@ -27,6 +27,11 @@ type settingsAdapter struct {
 	secrets *settings.Secrets
 	store   store.Store
 	log     *slog.Logger
+	// refreshRedactor re-snapshots every generated and app-managed secret after a
+	// mutation. It is intentionally callback-only: the adapter never receives or
+	// exposes the redactor's values.
+	refreshRedactor func()
+	readSecret      func(context.Context, settings.GeneratedSecret) (string, error)
 	// tests maps a check name → a live connection probe (media_server, tunarr, …).
 	// nil-safe: an unknown/unconfigured check returns a neutral "not configured".
 	tests map[string]func(ctx context.Context) (bool, string)
@@ -77,6 +82,9 @@ func (a settingsAdapter) List(ctx context.Context) []api.SettingEntry {
 
 func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, updatedBy string) []api.SettingResult {
 	results, err := a.svc.Patch(ctx, storePersister{st: a.store}, edits, updatedBy)
+	if a.refreshRedactor != nil {
+		a.refreshRedactor()
+	}
 	out := make([]api.SettingResult, 0, len(results))
 	for _, r := range results {
 		out = append(out, api.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
@@ -93,6 +101,9 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 // since an empty-string PATCH on one is rejected as replace-only (§9).
 func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResult {
 	res, err := a.svc.Clear(ctx, storePersister{st: a.store}, key)
+	if a.refreshRedactor != nil {
+		a.refreshRedactor()
+	}
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
@@ -102,6 +113,9 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 // SetEnvOverride is §3.1's unlock: claim a key for the app, or hand it back.
 func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) api.SettingResult {
 	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store}, key, on, updatedBy)
+	if a.refreshRedactor != nil {
+		a.refreshRedactor()
+	}
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
 	}
@@ -124,29 +138,27 @@ func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 	}
 }
 
-func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (string, bool, error) {
+func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (string, error) {
 	g := settings.GeneratedSecret(name)
 	value, err := a.secrets.Regenerate(ctx, g)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-	// Refresh the redactor so the OLD value stops being scrubbed and the NEW one
-	// starts (the caller wires the redactor; here we just report displayability).
-	if !g.Displayable() {
-		return "", false, nil
+	if a.refreshRedactor != nil {
+		a.refreshRedactor()
 	}
-	return value, true, nil
+	return value, nil
 }
 
-// RevealSecret returns a displayable generated secret's current value (§4 eye
-// toggle). Reading never rotates — that distinction is the whole point of this
-// route: the §13 webhook panel shows the URL already pasted into Sonarr/Radarr.
-func (a settingsAdapter) RevealSecret(_ context.Context, name string) (string, bool, error) {
+// RevealSecret returns a generated token's current value (§4 eye toggle).
+// Reading never rotates: the Live TV step must show the URL already pasted into
+// the media server, not silently invalidate it.
+func (a settingsAdapter) RevealSecret(ctx context.Context, name string) (string, error) {
 	g := settings.GeneratedSecret(name)
-	if !g.Displayable() {
-		return "", false, nil // SESSION_SECRET: nothing to paste anywhere (§4)
+	if a.readSecret != nil {
+		return a.readSecret(ctx, g)
 	}
-	return a.secrets.Value(g), true, nil
+	return a.secrets.Value(g), nil
 }
 
 func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) {

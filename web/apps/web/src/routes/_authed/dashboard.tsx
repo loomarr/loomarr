@@ -112,7 +112,7 @@ const DashboardScreen = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Dashboard" className="border-border border-b px-6 py-4" />
+      <PageHeader title="Dashboard" />
 
       {/* ⚠ `[&>*]:shrink-0` is load-bearing: the column is a flex-col that scrolls (overflow-auto).
           Without it, when the stacked panels are taller than the viewport, flex SHRINKS each panel
