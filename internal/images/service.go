@@ -79,7 +79,7 @@ type Config struct {
 
 // Observer is the composition-root seam for image worker telemetry.
 type Observer struct {
-	QueueWait func(time.Duration)
+	QueueWait func(class string, wait time.Duration)
 	InFlight  func(delta int)
 	Worker    func(rustgen.Observation)
 }
@@ -93,7 +93,7 @@ type Service struct {
 	store    Store
 	blob     *blobStore
 	renderer Renderer
-	slots    chan struct{}
+	capacity *workerCapacity
 	// group collapses concurrent identical rendition requests into one encode. Without it, a cold
 	// poster grid asking fifty browsers for the same width would run fifty identical encodes and
 	// race each other writing the same file.
@@ -123,7 +123,7 @@ func New(cfg Config, store Store, renderer Renderer, now func() time.Time) *Serv
 	}
 	workers := min(4, max(1, runtime.GOMAXPROCS(0)))
 	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), renderer: renderer,
-		slots: make(chan struct{}, workers), now: now}
+		capacity: newWorkerCapacity(workers), now: now}
 }
 
 // defaultMaxUploadBytes mirrors `images.max_upload_bytes` (§15). Declared here too so a Service
@@ -255,7 +255,7 @@ func (s *Service) inspect(ctx context.Context, data []byte, hash string) (rustge
 	}
 	workerCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	manifest, err := s.generate(workerCtx, s.workerRequest(hash, source, staging, nil))
+	manifest, err := s.generate(workerCtx, workerInteractive, s.workerRequest(hash, source, staging, nil))
 	if err != nil {
 		cleanup()
 		return rustgen.Manifest{}, func() {}, err
@@ -263,24 +263,20 @@ func (s *Service) inspect(ctx context.Context, data []byte, hash string) (rustge
 	return manifest, cleanup, nil
 }
 
-func (s *Service) generate(ctx context.Context, request rustgen.Request) (rustgen.Manifest, error) {
+func (s *Service) generate(ctx context.Context, class workerClass, request rustgen.Request) (rustgen.Manifest, error) {
 	waitStarted := time.Now()
-	select {
-	case s.slots <- struct{}{}:
-	case <-ctx.Done():
-		if s.cfg.Observer.QueueWait != nil {
-			s.cfg.Observer.QueueWait(time.Since(waitStarted))
-		}
-		return rustgen.Manifest{}, ctx.Err()
-	}
+	release, err := s.capacity.acquire(ctx, class)
 	if s.cfg.Observer.QueueWait != nil {
-		s.cfg.Observer.QueueWait(time.Since(waitStarted))
+		s.cfg.Observer.QueueWait(string(class), time.Since(waitStarted))
+	}
+	if err != nil {
+		return rustgen.Manifest{}, err
 	}
 	if s.cfg.Observer.InFlight != nil {
 		s.cfg.Observer.InFlight(1)
 	}
 	defer func() {
-		<-s.slots
+		release()
 		if s.cfg.Observer.InFlight != nil {
 			s.cfg.Observer.InFlight(-1)
 		}
@@ -492,7 +488,11 @@ func (s *Service) encodeRenditions(ctx context.Context, rec Image, f Format, wid
 	}
 	workerCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	manifest, err := s.generate(workerCtx, s.workerRequest(rec.Hash, origPath, staging, targets))
+	class := workerInteractive
+	if f == FormatAVIF {
+		class = workerBackground
+	}
+	manifest, err := s.generate(workerCtx, class, s.workerRequest(rec.Hash, origPath, staging, targets))
 	if err != nil {
 		return nil, err
 	}

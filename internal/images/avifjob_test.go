@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/images/rustgen"
 )
@@ -75,6 +77,22 @@ type recordingRenderer struct {
 	mu       sync.Mutex
 	requests []rustgen.Request
 	next     Renderer
+}
+
+type blockingAVIFRenderer struct {
+	next    Renderer
+	started chan struct{}
+}
+
+func (r *blockingAVIFRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
+	for _, target := range req.Targets {
+		if target.Format == string(FormatAVIF) {
+			r.started <- struct{}{}
+			<-ctx.Done()
+			return rustgen.Manifest{}, ctx.Err()
+		}
+	}
+	return r.next.Generate(ctx, req)
 }
 
 func (r *recordingRenderer) Generate(ctx context.Context, req rustgen.Request) (rustgen.Manifest, error) {
@@ -159,4 +177,65 @@ func TestAVIFJobRemovesWholeLadderWhenStorePublicationFails(t *testing.T) {
 			t.Errorf("failed Store publication left w%d on disk: %v", width, statErr)
 		}
 	}
+}
+
+func TestAVIFDrainKeepsLazyRenditionCapacityAvailable(t *testing.T) {
+	svc, fs := newTestService(t)
+	rec := seedWithWebP(t, svc, RoleIcon, 64, 64)
+	svc.capacity = newWorkerCapacity(2)
+	blocking := &blockingAVIFRenderer{next: svc.renderer, started: make(chan struct{}, 2)}
+	svc.renderer = blocking
+
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	defer cancelFirst()
+	defer cancelSecond()
+	firstDone := make(chan struct{})
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = NewAVIFJob(svc, fs, nil).Run(firstCtx)
+	}()
+	select {
+	case <-blocking.started:
+	case <-time.After(time.Second):
+		t.Fatal("first AVIF process did not start")
+	}
+	go func() {
+		defer close(secondDone)
+		_, _ = NewAVIFJob(svc, fs, nil).Run(secondCtx)
+	}()
+
+	waitCtx, cancelWait := context.WithTimeout(context.Background(), time.Second)
+	defer cancelWait()
+	for {
+		svc.capacity.mu.Lock()
+		waiting := svc.capacity.backgroundWaiters
+		svc.capacity.mu.Unlock()
+		if waiting == 1 {
+			break
+		}
+		select {
+		case <-waitCtx.Done():
+			t.Fatal("second AVIF process did not queue")
+		default:
+			runtime.Gosched()
+		}
+	}
+
+	renderCtx, cancelRender := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelRender()
+	if _, err := svc.Rendition(renderCtx, rec.Hash, FormatJPEG, RoleIcon.Widths()[0]); err != nil {
+		t.Fatalf("lazy JPEG behind saturated AVIF work: %v", err)
+	}
+	select {
+	case <-blocking.started:
+		t.Fatal("a second background process consumed the reserved interactive slot")
+	default:
+	}
+
+	cancelSecond()
+	cancelFirst()
+	<-secondDone
+	<-firstDone
 }

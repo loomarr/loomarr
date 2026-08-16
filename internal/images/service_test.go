@@ -161,14 +161,18 @@ func TestIngestStoresAndDescribes(t *testing.T) {
 
 func TestIngestObservesTheQueueAndRealWorkerProcess(t *testing.T) {
 	var queueWaits []time.Duration
+	var queueClasses []string
 	var inFlight []int
 	var worker []rustgen.Observation
 	svc := New(Config{
 		Dir: t.TempDir(),
 		Observer: Observer{
-			QueueWait: func(wait time.Duration) { queueWaits = append(queueWaits, wait) },
-			InFlight:  func(delta int) { inFlight = append(inFlight, delta) },
-			Worker:    func(observation rustgen.Observation) { worker = append(worker, observation) },
+			QueueWait: func(class string, wait time.Duration) {
+				queueClasses = append(queueClasses, class)
+				queueWaits = append(queueWaits, wait)
+			},
+			InFlight: func(delta int) { inFlight = append(inFlight, delta) },
+			Worker:   func(observation rustgen.Observation) { worker = append(worker, observation) },
 		},
 	}, newFakeStore(), testkit.RustImageRenderer(t), func() time.Time { return fixedNow })
 	data := pngBytes(t, testImage(64, 36))
@@ -178,6 +182,9 @@ func TestIngestObservesTheQueueAndRealWorkerProcess(t *testing.T) {
 	}
 	if len(queueWaits) != 1 || queueWaits[0] < 0 {
 		t.Errorf("queue waits = %v", queueWaits)
+	}
+	if !slices.Equal(queueClasses, []string{"interactive"}) {
+		t.Errorf("queue classes = %v", queueClasses)
 	}
 	if !slices.Equal(inFlight, []int{1, -1}) {
 		t.Errorf("in-flight transitions = %v", inFlight)

@@ -47,8 +47,9 @@ Correctness remains owned by `make image-cert`; the benchmark never substitutes 
 
 ### 3. Reserve capacity for interactive work
 
-- Replace the undifferentiated global permits with a bounded policy that always reserves interactive
-  capacity while AVIF drains in the background.
+- Replace the undifferentiated global permits with a bounded policy that reserves one interactive
+  slot while AVIF drains whenever total capacity is at least two; on a single-slot host, prioritize
+  an interactive waiter at the next process boundary because the running worker cannot be preempted.
 - Keep lazy JPEG/WebP and animated WebP responsive under a saturated AVIF queue.
 - Prove the policy with deterministic scheduler tests and production queue-wait metrics.
 
