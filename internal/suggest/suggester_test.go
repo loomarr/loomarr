@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/catalog"
@@ -219,6 +220,33 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 	// prompt + repair loop enforce final-answer JSON instead.
 	if llmMock.LastOpts.JSONMode {
 		t.Error("JSONMode should be OFF on grounded/tool turns (it corrupts tool-calling)")
+	}
+}
+
+// A tool-capable model can still ignore its tool contract on the first turn and
+// emit plausible-looking ids from memory. Grounding must not merely discard that
+// answer: one bounded corrective turn gives the model a chance to use the catalog,
+// while the surfaced-id gate remains the sole authority for accepted picks.
+func TestSuggest_RetriesEarlyFinalWithoutCatalogResults(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":999999,"name":"Invented"}]}`),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := buildSuggester(t, llmMock)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "late-night science fiction"})
+	if err != nil {
+		t.Fatalf("corrective catalog turn should recover: %v", err)
+	}
+	if llmMock.Calls != 3 {
+		t.Fatalf("model calls = %d, want initial final + catalog call + grounded final", llmMock.Calls)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 {
+		t.Fatalf("proposal = %+v, want only the grounded Matrix pick", prop)
+	}
+	if !strings.Contains(llmMock.Prompt(), "call catalog_search now") {
+		t.Fatalf("corrective prompt missing from final model turn: %q", llmMock.Prompt())
 	}
 }
 

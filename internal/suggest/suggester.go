@@ -119,6 +119,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// re-asks, so grounding holds even when the final JSON is retried.
 	surfaced := map[provision.Key]catalog.Candidate{}
 	temp := groundedTemp
+	groundingRetryUsed := false
 
 	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
 	// candidates with real ids — the same shape a tool call produces — so seeding them here
@@ -166,7 +167,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// temperature. maxToolRounds bounds each generation; maxRepairs bounds the
 	// re-asks. JOB_TIMEOUT + httpx.TimeoutLLM are the hard ceilings.
 	for repair := 0; ; repair++ {
-		final, err := s.generate(ctx, &messages, tools, surfaced, temp)
+		final, err := s.generate(ctx, &messages, tools, surfaced, temp, &groundingRetryUsed)
 		if err != nil {
 			return Proposal{}, err
 		}
@@ -189,7 +190,8 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, temp float64) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, temp float64, groundingRetryUsed *bool) (string, error) {
+	var rejectedUngroundedFinal string
 	for round := 0; round < maxToolRounds; round++ {
 		// The model turn is about to block — say so BEFORE awaiting it. This is the
 		// slow step (model load + inference), so reporting it afterwards would leave
@@ -215,6 +217,26 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				})
 			}
 			continue
+		}
+		if len(surfaced) == 0 && !*groundingRetryUsed {
+			// Some tool-capable models occasionally answer from memory on the first
+			// turn instead of using the offered tool. Never let those plausible ids
+			// near buildProposal: preserve the rejected turn as context and spend one
+			// bounded retry explicitly requiring a catalog call. If it ignores that
+			// too, the ordinary surfaced-id chokepoint fails closed.
+			*groundingRetryUsed = true
+			rejectedUngroundedFinal = resp.Content
+			*messages = append(*messages,
+				llm.Message{Role: llm.Assistant, Content: resp.Content},
+				llm.Message{Role: llm.User, Content: groundingRetryPrompt},
+			)
+			continue
+		}
+		if len(surfaced) == 0 && resp.Content == "" && rejectedUngroundedFinal != "" {
+			// Preserve the more precise fail-closed outcome when the corrective
+			// turn is empty: the run produced readable picks, but none were
+			// grounded. Parsing the empty retry would misclassify it as bad JSON.
+			return rejectedUngroundedFinal, nil
 		}
 		return resp.Content, nil
 	}
@@ -934,6 +956,9 @@ When finished, reply with ONLY this JSON (no prose):
 const repairPrompt = `Your previous reply was not valid JSON matching the required schema (or was empty). ` +
 	`Reply now with ONLY the JSON object {"rationale":...,"picks":[...]} and nothing else. ` +
 	`Use ONLY ids that appeared in a catalog_search result.`
+
+const groundingRetryPrompt = `You replied before using the catalog, so none of those titles can be accepted. ` +
+	`Do not return final picks yet: call catalog_search now, then select ONLY ids returned by that tool.`
 
 // userPrompt renders the intent into the first user turn.
 func userPrompt(i Intent) string {
