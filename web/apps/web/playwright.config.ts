@@ -1,6 +1,5 @@
-import { cpus } from "node:os";
 import { defineConfig } from "@playwright/test";
-import { DESKTOP, DETERMINISM, MOBILE } from "./playwright.shared";
+import { DESKTOP, DETERMINISM, MOBILE, VISUAL_WORKERS } from "./playwright.shared";
 
 // Visual + a11y suite (frontend-design §5) over the OFFLINE storybook-static build —
 // Chromatic rejected. Deterministic by construction via the shared kit in
@@ -22,9 +21,12 @@ export default defineConfig({
   // core count is safe.
   //
   // Derived from cpus() rather than hardcoded: the runner ALSO reports 4 today, and pinning a
-  // literal would silently cap a larger runner later while looking deliberate. Left undefined
-  // outside CI so an interactive run keeps half the machine for the person using it.
-  ...(process.env.CI ? { workers: cpus().length } : {}),
+  // literal would silently cap a larger runner later while looking deliberate.
+  //
+  // ⚠ Local runs are no longer left on Playwright's default. "Half the machine" is a CPU
+  // statement, and the resource these suites exhaust is MEMORY — on a 24-core desktop the
+  // default asked for 12 browsers and swap-thrashed the box into a hard restart. See WORKERS.
+  workers: VISUAL_WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
