@@ -146,7 +146,7 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
 		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
 	}
-	lineup, err := LineupEntries(proposal)
+	lineup, err := lineupEntries(proposal)
 	if err != nil {
 		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
 	}
@@ -380,10 +380,6 @@ func channelNameFromIntent(p store.Proposal) string {
 	return "Suggested channel"
 }
 
-// ChannelNameFromIntent is the exported form, kept for callers/tests outside this
-// package that need the same derivation (mirrors the unexported helper 1:1).
-func ChannelNameFromIntent(p store.Proposal) string { return channelNameFromIntent(p) }
-
 // truncateLabel shortens on a word boundary so a long intent doesn't produce a name
 // cut mid-word in the middle of a TV guide.
 func truncateLabel(s string, max int) string {
@@ -417,7 +413,7 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
-	return LineupEntries(p)
+	return lineupEntries(p)
 }
 
 // PolicyFromIntent resolves the approved proposal's grounded ChannelPolicy
@@ -477,7 +473,7 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 	return store.Proposal{}, fmt.Errorf("no approved proposal for intent %q", jobID)
 }
 
-// LineupEntries maps an approved proposal's picks — BOTH the in-library lineup
+// lineupEntries maps an approved proposal's picks — BOTH the in-library lineup
 // AND the acquisition list — to scheduler entries. This is the fix for the #9
 // seam: acquisitions previously never entered ch.Lineup, so once a title landed
 // `available` it had no entry to fill and was permanently unschedulable (the
@@ -490,7 +486,7 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 // which start as pending slots and swap to programs in place as they land.
 // Duplicate keys are collapsed so a title that appears in both lists (e.g. an
 // acquisition the human also marked in-library) yields exactly one entry.
-func LineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
+func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
 	out := make([]schedule.LineupEntry, 0, len(p.Lineup)+len(p.Acquisitions))
 	seen := make(map[provision.Key]struct{}, len(p.Lineup)+len(p.Acquisitions))
 	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {

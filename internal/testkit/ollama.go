@@ -84,20 +84,6 @@ func (o *Ollama) SetPulled(tags ...string) {
 	o.mu.Unlock()
 }
 
-// SetVersion overrides the reported Ollama version.
-func (o *Ollama) SetVersion(v string) {
-	o.mu.Lock()
-	o.version = v
-	o.mu.Unlock()
-}
-
-// SetPullError makes /api/pull stream a single error frame (the failure path).
-func (o *Ollama) SetPullError(msg string) {
-	o.mu.Lock()
-	o.pullFrames = []map[string]any{{"status": "pulling", "error": msg}}
-	o.mu.Unlock()
-}
-
 // PullHits reports how many times /api/pull was called (assertion helper).
 func (o *Ollama) PullHits() int {
 	o.mu.Lock()

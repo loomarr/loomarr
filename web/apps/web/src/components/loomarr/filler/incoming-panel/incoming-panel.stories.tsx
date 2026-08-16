@@ -136,8 +136,14 @@ const OneBelt: Story = {
 // "(the description already says enough)" answers.
 const OneBeltExpanded: Story = {
   args: { ...OneBelt.args },
+  // ⚠ findByRole, not getByRole. Storybook 10.5.8 starts `play` before the story has mounted, so
+  // a synchronous query hits an EMPTY #storybook-root and throws. The throw does not surface as a
+  // failed story: the render phase still settles on `finished` rather than `errored`, so
+  // gallery.spec.ts's wait — which tolerates `errored` precisely so a broken play fails on its own
+  // assertion — is satisfied, and the only evidence left is a screenshot of the un-expanded panel.
+  // This one had a baseline tall enough to catch it; a story without one would just be wrong.
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /Show what is happening to Coca-Cola/ }));
+    await userEvent.click(await canvas.findByRole("button", { name: /Show what is happening to Coca-Cola/ }));
   },
 };
 
