@@ -114,10 +114,19 @@ doctor: ## report toolchain drift, worktrees, ports, caches, and misplaced artif
 agent-harness-test: ## regression-test worktree isolation and shared-output claims
 	@./scripts/agent-harness-test.sh
 
+.PHONY: compose-verify
+compose-verify: ## verify Traefik, database wiring, and pinned release images
+	@./scripts/check-compose.sh
+
+.PHONY: release-verify
+release-verify: ## verify release tag, OCI naming, and immutable publication policy
+	@./scripts/check-release-tag.sh --self-test
+	@./scripts/check-release-image-absence.sh --self-test
+
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test test ## Rust + Go formatting, lint, cross-platform compile, harness, and unit tests (the default gate)
+check: rust-check fmt shellcheck vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, cross-platform compile, harness, release contracts, and unit tests (the default gate)
 
 .PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker

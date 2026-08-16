@@ -92,6 +92,9 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"PLAYOUT_FONT_PATH":     "read directly via os.Getenv in internal/playout/font.go",
 	"FILLER_DROP_DIR":       "compose-only — selects the host path bound at /filler",
 	"MEDIA_SERVER_IP":       "compose-only — dev Tunarr's extra_hosts entry",
+	"LOOMARR_VERSION":       "compose-only — selects the pinned GHCR image tag",
+	"LOOMARR_HTTP_BIND":     "compose-only — selects the address where Traefik publishes HTTP",
+	"LOOMARR_HTTP_PORT":     "compose-only — selects Traefik's published host port",
 }
 
 // scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many
