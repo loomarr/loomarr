@@ -98,7 +98,7 @@ func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (I
 	// Found by running the real binary against a real folder; every unit test passed throughout,
 	// because they all dropped their fixtures into the WATCH folder.
 	if watchDir != clipDir {
-		unfiled, err := collectMedia(clipDir)
+		unfiled, err := collectMedia(clipDir, watchDir)
 		if err != nil {
 			return res, err
 		}
@@ -130,6 +130,14 @@ func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (I
 			continue
 		}
 		if _, err := os.Stat(dst); err == nil {
+			// A path alias can make src and dst the SAME filesystem object even after every
+			// layout-level containment check (notably a bind mount changed between validation
+			// and intake). Duplicate cleanup must never unlink the canonical catalog file.
+			srcInfo, srcErr := os.Stat(src)
+			dstInfo, dstErr := os.Stat(dst)
+			if srcErr == nil && dstErr == nil && os.SameFile(srcInfo, dstInfo) {
+				continue
+			}
 			// ⚠ A duplicate. The arriving copy is REMOVED rather than left in place: leaving it
 			// would mean re-hashing the same file on every pass forever, and the operator would
 			// watch a folder that never drains. The clip itself is not lost — the copy already
@@ -170,13 +178,22 @@ func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (I
 //
 // ⚠ Sidecars are NOT returned as entries — they travel with their clip. Returning them would
 // make each one an "unhashable file" and inflate Skipped on every pass.
-func collectMedia(dir string) ([]string, error) {
+func collectMedia(dir string, excludedDirs ...string) ([]string, error) {
+	excluded := make(map[string]struct{}, len(excludedDirs))
+	for _, path := range excludedDirs {
+		if path != "" {
+			excluded[filepath.Clean(path)] = struct{}{}
+		}
+	}
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:nilerr // an unreadable subtree is skipped, not fatal
 		}
 		if d.IsDir() {
+			if _, skip := excluded[filepath.Clean(path)]; skip {
+				return fs.SkipDir
+			}
 			// ⚠ Skip Loomarr's own subdirectories. Draining the CLIP folder walks the same tree
 			// the watch folder lives in, so without this a file waiting in `_watch` is collected
 			// TWICE in one pass — once as an arrival and once as an unfiled clip — and the second

@@ -35,6 +35,10 @@ const scanFields = "ProviderIds,ProductionYear,Genres,Overview,OfficialRating"
 // A zero `since` degenerates to the whole library (no MinDateLastSaved) — callers that want
 // that should use AllItems for intent's sake.
 func (c *Client) RecentlyAdded(ctx context.Context, since time.Time) ([]SearchResult, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	q := scanQuery()
 	if !since.IsZero() {
 		// MinDateLastSaved catches both fresh imports and re-saves (metadata refresh that
@@ -48,6 +52,10 @@ func (c *Client) RecentlyAdded(ctx context.Context, since time.Time) ([]SearchRe
 // safety net for anything the incremental "recently added" window missed (e.g. Loomarr was
 // down across a scan interval, or a provider id landed on an item older than `since`).
 func (c *Client) AllItems(ctx context.Context) ([]SearchResult, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	return c.scan(ctx, scanQuery())
 }
 
@@ -71,7 +79,7 @@ func (c *Client) scan(ctx context.Context, q url.Values) ([]SearchResult, error)
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out searchResponse
 	if err := c.do(req, &out); err != nil {

@@ -43,6 +43,10 @@ type sqlStore struct {
 	// explicitly single-instance, so the process is the complete lock domain.
 	// Postgres does not use this mutex; it takes a database-wide advisory lock.
 	settingLock sync.Mutex
+	// approvalLocks is the SQLite implementation of requester-scoped proposal
+	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
+	// Entries are bounded by the household user count (§1) and live with the store.
+	approvalLocks sync.Map
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -171,7 +175,7 @@ const settingLockNamespace = "loomarr:setting-workflow:"
 // callback runs while one dedicated *sql.Conn remains checked out. Ordinary
 // store calls inside fn may use any pooled connection: every cooperating replica
 // is excluded by the advisory lock key, not by a SQL transaction.
-func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) (retErr error) {
+func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(context.Context) error) error {
 	if key == "" {
 		return fmt.Errorf("setting lock key is empty")
 	}
@@ -190,27 +194,38 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 		}
 		return fn(ctx)
 	}
+	return s.withPostgresAdvisoryLock(ctx, "setting lock", settingLockNamespace, key, fn)
+}
+
+// withPostgresAdvisoryLock holds one session-scoped advisory lock while fn uses
+// ordinary pooled Store calls. It is the settings transition lock; proposal
+// approvals use their own transaction-bound ordering in approval.go.
+func (s *sqlStore) withPostgresAdvisoryLock(
+	ctx context.Context,
+	label, namespace, key string,
+	fn func(context.Context) error,
+) (retErr error) {
 	if s.dialect != DialectPostgres {
-		return fmt.Errorf("setting lock: unsupported store dialect %q", s.dialect)
+		return fmt.Errorf("%s: unsupported store dialect %q", label, s.dialect)
 	}
 
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("setting lock %q: reserve postgres connection: %w", key, err)
+		return fmt.Errorf("%s %q: reserve postgres connection: %w", label, key, err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: close postgres connection: %w", key, err))
+			retErr = errors.Join(retErr, fmt.Errorf("%s %q: close postgres connection: %w", label, key, err))
 		}
 	}()
 
-	lockName := settingLockNamespace + key
+	lockName := namespace + key
 	const lockSQL = `SELECT pg_advisory_lock(hashtextextended(current_database() || ':' || $1, 0))`
 	if _, err := conn.ExecContext(ctx, lockSQL, lockName); err != nil {
 		// Cancellation can race with the server granting the lock. Discarding the
 		// session is the only safe answer when acquisition was not acknowledged.
 		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		return fmt.Errorf("setting lock %q: acquire postgres advisory lock: %w", key, err)
+		return fmt.Errorf("%s %q: acquire postgres advisory lock: %w", label, key, err)
 	}
 
 	// Unlock with an independent bounded context. The operation's context may have
@@ -232,7 +247,7 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 		// Returning driver.ErrBadConn from Raw tells database/sql not to reuse the
 		// underlying session; Postgres releases session locks when it disconnects.
 		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		retErr = errors.Join(retErr, fmt.Errorf("setting lock %q: release postgres advisory lock: %w", key, unlockErr))
+		retErr = errors.Join(retErr, fmt.Errorf("%s %q: release postgres advisory lock: %w", label, key, unlockErr))
 	}()
 
 	return fn(ctx)
@@ -248,6 +263,22 @@ type SettingRow struct {
 	// EnvOverride marks a key an admin has taken back from the environment
 	// (config-design §3.1): while true, this stored value wins over the env var.
 	EnvOverride bool
+}
+
+// SettingMutation is one value change inside an audited SettingBatch. Audit
+// metadata belongs to the batch so the interface cannot represent one PATCH with
+// conflicting authors or timestamps across rows.
+type SettingMutation struct {
+	Key   string
+	Value string
+}
+
+// SettingBatch is one atomic group of audited setting mutations.
+type SettingBatch struct {
+	Upserts   []SettingMutation
+	Deletes   []string
+	UpdatedAt time.Time
+	UpdatedBy string
 }
 
 func (s *sqlStore) ListSettings(ctx context.Context) ([]SettingRow, error) {
@@ -278,11 +309,57 @@ func (s *sqlStore) ListSettings(ctx context.Context) ([]SettingRow, error) {
 // UpsertSetting is the audited admin write path (config-design §3, §8). It stamps
 // updated_at from the row's time and updated_by (empty ⇒ NULL).
 func (s *sqlStore) UpsertSetting(ctx context.Context, row SettingRow) error {
-	var by any
-	if row.UpdatedBy != "" {
-		by = row.UpdatedBy
+	return s.ApplySettingBatch(ctx, SettingBatch{
+		Upserts:   []SettingMutation{{Key: row.Key, Value: row.Value}},
+		UpdatedAt: row.UpdatedAt,
+		UpdatedBy: row.UpdatedBy,
+	})
+}
+
+// ApplySettingBatch commits all mutations in one transaction so replicas never
+// observe a durable partial generation of coupled settings.
+func (s *sqlStore) ApplySettingBatch(ctx context.Context, batch SettingBatch) (retErr error) {
+	if err := validateSettingBatch(batch); err != nil {
+		return err
 	}
-	at := row.UpdatedAt
+	if len(batch.Upserts) == 0 && len(batch.Deletes) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin setting batch: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
+
+	for _, row := range batch.Upserts {
+		if err := s.upsertSetting(ctx, tx, row, batch.UpdatedAt, batch.UpdatedBy); err != nil {
+			return err
+		}
+	}
+	for _, key := range batch.Deletes {
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM settings WHERE key = ?`), key); err != nil {
+			return fmt.Errorf("delete setting %q: %w", key, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit setting batch: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) upsertSetting(
+	ctx context.Context, tx *sql.Tx, row SettingMutation, updatedAt time.Time, updatedBy string,
+) error {
+	var by any
+	if updatedBy != "" {
+		by = updatedBy
+	}
+	at := updatedAt
 	if at.IsZero() {
 		at = time.Now()
 	}
@@ -292,11 +369,37 @@ func (s *sqlStore) UpsertSetting(ctx context.Context, row SettingRow) error {
 	// edit, which is the one moment they are certain to be editing it. SetSettingEnvOverride
 	// is the only writer. On INSERT it takes the column default (false), so a first-time
 	// value write never claims the key either.
-	_, err := s.db.ExecContext(ctx, s.ph(
+	_, err := tx.ExecContext(ctx, s.ph(
 		`INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
 		row.Key, row.Value, at.Unix(), by)
-	return err
+	if err != nil {
+		return fmt.Errorf("upsert setting %q: %w", row.Key, err)
+	}
+	return nil
+}
+
+func validateSettingBatch(batch SettingBatch) error {
+	seen := make(map[string]struct{}, len(batch.Upserts)+len(batch.Deletes))
+	for _, row := range batch.Upserts {
+		if row.Key == "" {
+			return errors.New("setting batch contains an empty upsert key")
+		}
+		if _, ok := seen[row.Key]; ok {
+			return fmt.Errorf("setting batch contains duplicate key %q", row.Key)
+		}
+		seen[row.Key] = struct{}{}
+	}
+	for _, key := range batch.Deletes {
+		if key == "" {
+			return errors.New("setting batch contains an empty delete key")
+		}
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("setting batch contains duplicate key %q", key)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
 }
 
 // SetSettingEnvOverride claims a key for the app, or hands it back (config-design §3.1).
@@ -318,8 +421,7 @@ func (s *sqlStore) SetSettingEnvOverride(ctx context.Context, key string, on boo
 }
 
 func (s *sqlStore) DeleteSetting(ctx context.Context, key string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM settings WHERE key = ?`), key)
-	return err
+	return s.ApplySettingBatch(ctx, SettingBatch{Deletes: []string{key}})
 }
 
 // Close runs any registered pre-close hooks, then closes the pool.

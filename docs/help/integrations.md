@@ -23,7 +23,7 @@ as a Live TV tuner.
 - `SERVER_PUBLIC_URL` — set this. The address your media server reaches Loomarr on. Stream URLs
   are built from it, and a wrong value only shows up when a channel fails to play.
 - `PLAYOUT_QUALITY_TIER` — `efficient` (720p), `balanced` (1080p), or higher.
-- `PLAYOUT_MAX_CHANNELS` — how many stream at once (default 4).
+- `PLAYOUT_MAX_CHANNELS` — optional live-transcode safety cap (`0`/empty uses measured capacity automatically).
 - `PLAYOUT_ENCODER` — leave empty. Loomarr measures which encoders work at boot and picks one.
 
 For hardware encoding, pass your GPU through: `PLAYOUT_RENDER_DEVICE=/dev/dri` for Intel and AMD,

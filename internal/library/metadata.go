@@ -56,6 +56,10 @@ const maxIDsPerRequest = 100
 // thinner guide to no guide can use the partial result. That is the right default here — an EPG
 // with titles but no descriptions is far better than an empty one.
 func (c *Client) ItemMetadataByID(ctx context.Context, itemIDs []string) (map[string]ItemMetadata, error) {
+	c, err := c.operation()
+	if err != nil {
+		return nil, err
+	}
 	out := make(map[string]ItemMetadata, len(itemIDs))
 	if len(itemIDs) == 0 {
 		return out, nil
@@ -86,7 +90,7 @@ func (c *Client) ItemMetadataByID(ctx context.Context, itemIDs []string) (map[st
 		if err != nil {
 			return out, err
 		}
-		c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+		c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
 		var resp metadataItemsResponse
 		if err := c.do(req, &resp); err != nil {

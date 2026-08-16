@@ -128,8 +128,8 @@ type Capability struct {
 type Capacity struct {
 	// Chosen never ends up zero — worst case EncoderSoftware, which needs no hardware.
 	Chosen Encoder
-	// MaxChannels is the default for `playout.max_channels` (§15), derived from the
-	// measured speed with headroom (channelsFromSpeed).
+	// MaxChannels is the automatic admission budget (§15), derived from the measured speed with
+	// headroom (channelsFromSpeed). `playout.max_channels` can only cap this result downward.
 	MaxChannels int
 	// All is every probe result in preference order, so the wizard can show "every
 	// option, measured" and an operator can see WHY their GPU was skipped.

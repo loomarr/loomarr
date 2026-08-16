@@ -30,9 +30,9 @@ The beta ships only when every blocker below is either closed on `main` or delib
 
 | Blocker | Evidence | Ownership / exit |
 | --- | --- | --- |
-| Internal playout requires `server.public_url`, but the default wizard never collects it. | `web/apps/web/src/wizard/steps/steps.ts`; `web/apps/web/src/wizard/playout-step/playout-step.tsx`; `internal/settings/declared.go`; `internal/app/playoutadapter.go` | Release Compose now refuses an empty value, closing the hidden Docker failure. The wizard still needs the field/checklist for non-Compose paths. |
+| Internal playout requires `server.public_url`, but the default wizard never collects it. | `web/apps/web/src/wizard/steps/steps.ts`; `web/apps/web/src/wizard/playout-step/playout-step.tsx`; `web/apps/web/src/test/wizard-router.test.tsx`; `internal/settings/declared.go`; `internal/app/playoutadapter.go` | This slice adds the internal-only registry field, reachable-address guidance, env-lock behavior, persisted completion gate, and routed valid/invalid/error regressions. Close only after it merges to `main`. |
 | Suggestion jobs can strand on restart and the UI depends on one SSE terminal frame. | `internal/store/{sqlite,postgres}.go`; `internal/suggest/worker.go`; `web/apps/web/src/suggest/use-suggestion-run/use-suggestion-run.ts` | Active `first-channel-success` / `proposal-jobs` claim. Re-audit after merge; do not duplicate it here. |
-| Concurrent auto-approval can exceed a user's unattended-acquisition quota. | `internal/suggest/autoapprove.go`; `internal/store/approval.go` | Unowned. Serialize or reserve quota in the approval transaction, with SQLite/Postgres race conformance. |
+| Concurrent auto-approval can exceed a user's unattended-acquisition quota. | `internal/suggest/autoapprove.go`; `internal/store/approval.go`; store conformance | This change orders every approval for a requester, then runs automatic quota reads and commit on one transaction/session; manual approval participates in ordering without being quota-rejected, and post-commit reconciliation runs after ordering is released. Exit: merge after SQLite/Postgres concurrent, cancellation/reacquisition, and independent-Postgres-pool evidence is green. |
 | Channel status and post-approval routing assume Tunarr in some places and internal HLS in others. | `web/apps/web/src/routes/_authed/channels/$id/route.tsx`; `channel-watch.tsx`; `use-hls-player.ts`; `internal/api/channelplayurl.go` | Partly active first-channel/playback work. Remaining exit: use canonical `inAppPlayable`; route Tunarr to a real handoff rather than Watch. |
 | The product calls AI/TMDB optional while the only normal channel-origination UI requires suggestions. | `README.md`; `docs/install/index.md`; `docs/help/quickstart.md`; `internal/api/proposals.go`; `docs/design.md` §12 | Beta documentation now names TMDB and an LLM as prerequisites for the defining flow. Close after merge; a non-AI UI is not promised for this beta. |
 | `--profile postgres` starts Postgres but leaves Loomarr on SQLite. | `docker/compose.yaml`; `docs/install/docker.md`; `docs/help/quickstart.md` | `docker/compose.postgres.yaml` and `compose-verify` now wire and enforce the Postgres DSN. Close after merge and runtime restore proof. |
@@ -41,14 +41,13 @@ The beta ships only when every blocker below is either closed on `main` or delib
 | The release image is not rebuilt in CI for all Docker build inputs; tag publishing does not require or run the full gate. | `.github/workflows/ci.yml`; `Dockerfile`; `.github/workflows/release.yml` | Image inputs now cover Go, web, OpenAPI, and embedded help; release tags require successful main CI and prereleases cannot move `latest`. Close after the workflow runs on the merged commit. |
 | Distributed binary/model notices and integrity evidence are incomplete. | `Dockerfile`; `THIRD_PARTY_NOTICES.md` | Whisper binaries/libraries/models and SBOM limits are now inventoried. Executable archive digests, mutable ffmpeg source, and final NOTICE/legal review remain open. |
 | Backup prose overstates scope and restore guidance is not a drill. | `.env.example`; `docs/install/{docker,upgrading}.md`; `docs/design.md` durability section | Database-only scope, off-volume copies, and rollback permissions are now explicit. SQLite and Postgres restore drills remain open. |
-| Playout admission normally replaces measured capacity with the default override of four. | `internal/app/app.go`; `internal/settings/declared.go`; `internal/api/playout.go`; `docs/design.md` capacity section | Contract deviation requiring maintainer decision: enforce `min(measured, override)` or amend the design before code. |
+| Playout admission normally replaces measured capacity with the default override of four. | `internal/app/app.go`; `internal/settings/declared.go`; `internal/api/playout.go`; `docs/design.md` capacity section | Resolved in the beta capacity slice: measurement is authoritative, `0` is automatic, a positive setting can only lower it, unknown measurement safely means one transcode, and both admission and quality use the same effective budget. Close after merge and full gates. |
 | Required decoded playback and browser/runtime certification is incomplete. | `PROGRESS.md` V58; `internal/api/playoutchain_live_test.go`; active tuner-browser plan | Active `tuner-browser-matrix` / `tuner-cert` claim. Beta waits for recorded evidence on `main`. |
 
 ## Required cleanup before the tag
 
 Cleanup is release work when it removes ambiguity, false affordances, or a known failure mode. It is not permission for broad aesthetic refactors.
 
-- Make the agent process-ownership scan tolerate an unrelated process whose worktree directory was deleted. The current `set -e` scan exits before reaching valid PIDs.
 - Remove or correct false UI actions and copy: permanent-delete wording for detach, the toast-only “Open in media server,” missing stream handoff, and backend-blind “Not on air yet.”
 - Reconcile stale status/design claims, including contradictory open/fixed entries and the obsolete production-`testing` exemption.
 - Make `make doctor` and contributor docs surface the Node 22 contract consistently; do not treat results from the host's unsupported Node 26 as release evidence.
@@ -58,9 +57,9 @@ Cleanup is release work when it removes ambiguity, false affordances, or a known
 
 ## Evidence snapshot
 
-- Current main GitHub CI has green native `linux/amd64` and `linux/arm64` release-image builds, Postgres conformance, frontend shards, docs, visual/a11y shards, wizard e2e, and the macOS agent harness. The current run was still completing Rust certification when this plan was written.
+- Main commit `90c4d29` is all green: CI run `31925624018` and Docs site run `31925624025` both completed successfully, including native `linux/amd64` and `linux/arm64` release-image builds, Postgres conformance, frontend shards, docs, visual/a11y shards, wizard e2e, the macOS agent harness, and Rust certification.
 - Local `make test` passed under the race detector.
-- Local `make check` reached the agent harness after Rust, formatting, shell, vet, tag, and lint gates passed, then reproduced the deleted-cwd process bug above.
+- The agent process-ownership scan now tolerates an unrelated process whose worktree directory was deleted, with a regression in `scripts/agent-harness-test.sh`.
 - Local `make doctor` correctly rejected Node 26 because the release toolchain contract is Node 22.x.
 - No release tag or published image exists yet. A green component gate is evidence, not proof of the full beta journey.
 

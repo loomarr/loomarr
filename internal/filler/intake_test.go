@@ -434,3 +434,81 @@ func TestTakeIn_DoesNotCollectWatchFolderArrivalsTwice(t *testing.T) {
 		t.Errorf("TakeIn = %+v, want exactly 1 taken and 0 skipped — the arrival was seen twice", res)
 	}
 }
+
+func TestTakeIn_DoesNotCollectCustomNestedWatchArrivalsTwice(t *testing.T) {
+	root := t.TempDir()
+	clips := filepath.Join(root, "clips")
+	watch := filepath.Join(clips, "inbox")
+	if err := os.MkdirAll(watch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeClip(t, watch, "arriving.mp4", 4096, 34)
+
+	res, err := TakeIn(watch, clips, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Taken != 1 || res.Skipped != 0 {
+		t.Errorf("TakeIn custom watch = %+v, want exactly 1 taken and 0 skipped", res)
+	}
+}
+
+func TestTakeIn_AliasedNestedWatchUsesClipTraversalSpelling(t *testing.T) {
+	realRoot := t.TempDir()
+	aliases := t.TempDir()
+	aliasA := filepath.Join(aliases, "a")
+	aliasB := filepath.Join(aliases, "b")
+	if err := os.Symlink(realRoot, aliasA); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(realRoot, aliasB); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	layout, err := NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeClip(t, layout.WatchDir(), "arriving.mp4", 4096, 35)
+
+	res, err := TakeIn(layout.WatchDir(), layout.ClipDir(), false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Taken != 1 || res.Skipped != 0 {
+		t.Errorf("TakeIn aliased custom watch = %+v, want exactly 1 taken and 0 skipped", res)
+	}
+}
+
+func TestTakeIn_NeverDeletesWhenSourceAndDestinationAreTheSameFile(t *testing.T) {
+	clips := filepath.Join(t.TempDir(), "clips")
+	candidate := writeClip(t, t.TempDir(), "candidate.mp4", 4096, 36)
+	id, err := ClipID(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filed, err := ClipPath(clips, id, ".mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(candidate, filed); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "shard-alias")
+	if err := os.Symlink(filepath.Dir(filed), alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	res, err := TakeIn(alias, clips, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != (IntakeResult{}) {
+		t.Errorf("same-file alias intake = %+v, want no mutation", res)
+	}
+	if _, err := os.Stat(filed); err != nil {
+		t.Fatalf("same-file duplicate cleanup removed the live catalog clip: %v", err)
+	}
+}

@@ -129,6 +129,20 @@ type JobStore interface {
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 }
 
+// ProposalApprovalReader is the transaction-bound read view available to an
+// unattended approval guard. Reads and the eventual approval commit use the same
+// transaction/connection, so losing a Postgres session loses both ordering and work.
+type ProposalApprovalReader interface {
+	GetUser(ctx context.Context, id string) (User, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
+// ProposalApprovalGuard runs after requester ordering is acquired and before any
+// approval mutation. Any error rolls the transaction back and leaves the proposal
+// submitted; callers may use a private sentinel for a safe policy decline.
+type ProposalApprovalGuard func(context.Context, ProposalApprovalReader) error
+
 // ProposalStore is the suggester proposal surface (§8).
 type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
@@ -138,6 +152,12 @@ type ProposalStore interface {
 	// intent-bound channel. Existing title lifecycle state is never overwritten.
 	// The returned count is newly inserted wanted titles.
 	CommitProposalApproval(ctx context.Context, commit ProposalApproval) (int, error)
+	// CommitProposalApprovalGuarded runs guard and the same durable commit under
+	// requester ordering. SQLite uses its single-process keyed semaphore; Postgres
+	// takes a transaction-scoped advisory lock and runs guard + commit on that same
+	// transaction/connection. Manual CommitProposalApproval enters the same ordering
+	// but has no guard, so deliberate admin spending is never quota-rejected.
+	CommitProposalApprovalGuarded(ctx context.Context, commit ProposalApproval, guard ProposalApprovalGuard) (int, error)
 	// CommitProposalDenial atomically wins the submitted -> denied decision.
 	CommitProposalDenial(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
@@ -457,6 +477,10 @@ type SettingStore interface {
 	// (config-design §3). The settings service loads this into its snapshot; the
 	// API surfaces updatedBy/updatedAt per field.
 	ListSettings(ctx context.Context) ([]SettingRow, error)
+	// ApplySettingBatch commits one settings PATCH's valid upserts and deletes in
+	// one transaction. Readers therefore observe either the complete old settings
+	// generation or the complete new one (config-design §8).
+	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
 	// This is the audited write path; SetSetting stays the un-audited system path

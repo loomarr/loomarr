@@ -63,6 +63,7 @@ const SettingField = ({
   labelledBy,
   onEnvOverride,
   disabledReason,
+  descriptionId,
   className,
 }: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
@@ -81,7 +82,7 @@ const SettingField = ({
   // reference. Full fields associate both the ordinary help and any unavailable reason.
   const describedBy = compact
     ? undefined
-    : [entry.doc ? `${id}-doc` : undefined, disabledReason ? `${id}-unavailable` : undefined]
+    : [entry.doc ? `${id}-doc` : undefined, disabledReason ? `${id}-unavailable` : undefined, descriptionId]
         .filter(Boolean)
         .join(" ") || undefined;
 
@@ -225,7 +226,7 @@ const SettingField = ({
         {entry.doc && (
           // `describedById` points at the sr-only doc this component already renders below, so the
           // help prose lives in the DOM ONCE rather than once per carrier.
-          <FieldHelp label={label} describedById={describedBy}>
+          <FieldHelp label={label} describedById={`${id}-doc`}>
             {entry.doc}
           </FieldHelp>
         )}
@@ -347,7 +348,7 @@ const SettingField = ({
       {/* The doc, kept in the DOM for `aria-describedby` (screen readers) but visually hidden —
           the visible affordance is the FieldHelp (i) tooltip in the label row. */}
       {entry.doc && (
-        <p id={describedBy} className="sr-only">
+        <p id={`${id}-doc`} className="sr-only">
           {entry.doc}
         </p>
       )}

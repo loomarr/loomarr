@@ -79,14 +79,35 @@ func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) LiveTV
 // media-server Live TV capability (§6). Transition-coordinated production calls pass an explicit
 // URL pair; the fixed pair exists for the single-operation compatibility helpers and tests.
 type LiveTVConnector struct {
-	lib          library.LiveTV
+	library      LiveTVSource
 	fallbackURLs LiveTVURLs
+}
+
+// LiveTVSource starts one immutable media-server operation. Production returns
+// library.Client.Snapshot; fixed tests and adapters return the same value each time.
+type LiveTVSource func() library.LiveTV
+
+// NewLiveTVConnector wires a live library source. Each public connector operation
+// resolves the source exactly once and carries that bound capability through all
+// enumerate, mutate, verify, and refresh calls.
+func NewLiveTVConnector(source LiveTVSource, urls LiveTVURLs) *LiveTVConnector {
+	return &LiveTVConnector{library: source, fallbackURLs: urls}
 }
 
 // NewLiveTVConnectorFixed wires a connector to a fixed URL pair — for tests and any caller with
 // no live settings to read. Production transition and status paths use the explicit Target methods.
 func NewLiveTVConnectorFixed(lib library.LiveTV, urls LiveTVURLs) *LiveTVConnector {
-	return &LiveTVConnector{lib: lib, fallbackURLs: urls}
+	return NewLiveTVConnector(func() library.LiveTV { return lib }, urls)
+}
+
+// Snapshot binds the current media-server connection for a compound workflow whose
+// phases are invoked separately. The returned connector can safely be retained from
+// Prepare through RefreshTarget and RetireStale without re-reading live credentials.
+func (c *LiveTVConnector) Snapshot() *LiveTVConnector {
+	if c == nil {
+		return nil
+	}
+	return NewLiveTVConnectorFixed(c.library(), c.fallbackURLs)
 }
 
 // ConnectResult reports what the connect did — so the API/UI can distinguish
@@ -114,12 +135,13 @@ func (r ConnectResult) AlreadyWired() bool {
 // be published between Prepare and RefreshTarget, and durable activation belongs
 // between RefreshTarget and RetireStale (§6).
 func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
+	lib := c.library()
 	urls := c.fallbackURLs
-	res, err := c.Prepare(ctx, urls)
+	res, err := prepare(ctx, lib, urls)
 	if err != nil {
 		return res, err
 	}
-	retired, err := c.RetireStale(ctx, urls)
+	retired, err := retireStale(ctx, lib, urls)
 	res.merge(retired)
 	if err != nil {
 		return res, err
@@ -129,7 +151,7 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	}
 
 	res.Poked = true
-	res.PokeErr = c.RefreshTarget(ctx, urls)
+	res.PokeErr = refreshTarget(ctx, lib, urls)
 	return res, nil
 }
 
@@ -139,38 +161,42 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 // The explicit target makes a multi-step cutover immune to a live setting changing
 // between its durable phases.
 func (c *LiveTVConnector) Prepare(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	return prepare(ctx, c.library(), urls)
+}
+
+func prepare(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
 	var res ConnectResult
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}
 
-	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
+	tunerThere, err := lib.TunerRegistered(ctx, urls.M3U)
 	if err != nil {
 		return res, fmt.Errorf("enumerate tuner hosts: %w", err)
 	}
 	if !tunerThere {
-		if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
+		if err := lib.AddTuner(ctx, urls.M3U); err != nil {
 			return res, fmt.Errorf("register tuner: %w", err)
 		}
 		res.TunerAdded = true
 	}
-	if tunerThere, err = c.lib.TunerRegistered(ctx, urls.M3U); err != nil {
+	if tunerThere, err = lib.TunerRegistered(ctx, urls.M3U); err != nil {
 		return res, fmt.Errorf("verify tuner host: %w", err)
 	} else if !tunerThere {
 		return res, fmt.Errorf("verify tuner host: target registration is missing")
 	}
 
-	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
+	listingThere, err := lib.ListingRegistered(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate listing providers: %w", err)
 	}
 	if !listingThere {
-		if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
+		if err := lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
 			return res, fmt.Errorf("register listing provider: %w", err)
 		}
 		res.ListingAdded = true
 	}
-	if listingThere, err = c.lib.ListingRegistered(ctx, urls.XMLTV); err != nil {
+	if listingThere, err = lib.ListingRegistered(ctx, urls.XMLTV); err != nil {
 		return res, fmt.Errorf("verify listing provider: %w", err)
 	} else if !listingThere {
 		return res, fmt.Errorf("verify listing provider: target registration is missing")
@@ -184,15 +210,19 @@ func (c *LiveTVConnector) Prepare(ctx context.Context, urls LiveTVURLs) (Connect
 // working pair before its replacement exists. A hand-added tuner is never returned
 // by the library ownership queries and therefore never touched.
 func (c *LiveTVConnector) RetireStale(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	return retireStale(ctx, c.library(), urls)
+}
+
+func retireStale(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
 	var res ConnectResult
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}
-	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
+	tunerThere, err := lib.TunerRegistered(ctx, urls.M3U)
 	if err != nil {
 		return res, fmt.Errorf("verify target tuner before retirement: %w", err)
 	}
-	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
+	listingThere, err := lib.ListingRegistered(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("verify target listing before retirement: %w", err)
 	}
@@ -200,23 +230,23 @@ func (c *LiveTVConnector) RetireStale(ctx context.Context, urls LiveTVURLs) (Con
 		return res, fmt.Errorf("retire stale live tv registrations: target tuner and listing must both exist")
 	}
 
-	staleTuners, err := c.lib.StaleLoomarrTuners(ctx, urls.M3U)
+	staleTuners, err := lib.StaleLoomarrTuners(ctx, urls.M3U)
 	if err != nil {
 		return res, fmt.Errorf("enumerate stale tuner hosts: %w", err)
 	}
 	for _, id := range staleTuners {
-		if err := c.lib.RemoveTuner(ctx, id); err != nil {
+		if err := lib.RemoveTuner(ctx, id); err != nil {
 			return res, fmt.Errorf("remove stale tuner %s: %w", id, err)
 		}
 		res.TunerRemoved++
 	}
 
-	staleListings, err := c.lib.StaleLoomarrListings(ctx, urls.XMLTV)
+	staleListings, err := lib.StaleLoomarrListings(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate stale listing providers: %w", err)
 	}
 	for _, id := range staleListings {
-		if err := c.lib.RemoveListingProvider(ctx, id); err != nil {
+		if err := lib.RemoveListingProvider(ctx, id); err != nil {
 			return res, fmt.Errorf("remove stale listing provider %s: %w", id, err)
 		}
 		res.ListingRemoved++
@@ -229,14 +259,18 @@ func (c *LiveTVConnector) RetireStale(ctx context.Context, urls LiveTVURLs) (Con
 // before the fetch, and separate from RetireStale so activation can commit before
 // old registrations are removed. Both pokes are attempted; the first error wins.
 func (c *LiveTVConnector) RefreshTarget(ctx context.Context, urls LiveTVURLs) error {
+	return refreshTarget(ctx, c.library(), urls)
+}
+
+func refreshTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) error {
 	if err := validateLiveTVURLs(urls); err != nil {
 		return err
 	}
 	var first error
-	if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
+	if err := lib.RescanTuner(ctx, urls.M3U); err != nil {
 		first = fmt.Errorf("rescan tuner: %w", err)
 	}
-	if err := c.lib.RefreshGuide(ctx); err != nil && first == nil {
+	if err := lib.RefreshGuide(ctx); err != nil && first == nil {
 		first = fmt.Errorf("refresh guide: %w", err)
 	}
 	return first
@@ -273,51 +307,55 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 // explicit form while holding their durable workflow lock, so a live resolver cannot select a
 // stale process-local backend or change targets between removal and re-addition.
 func (c *LiveTVConnector) ReconnectTarget(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
+	return reconnectTarget(ctx, c.library(), urls)
+}
+
+func reconnectTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
 	var res ConnectResult
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}
 
-	tuners, err := c.lib.LoomarrTuners(ctx)
+	tuners, err := lib.LoomarrTuners(ctx)
 	if err != nil {
 		return res, fmt.Errorf("enumerate loomarr tuners: %w", err)
 	}
 	// Passing an empty desired URL asks the existing ownership query for every
 	// Loomarr-shaped provider. Reconnect deliberately includes the provider already
 	// at the target URL; unlike RetireStale, it must force a fresh binding.
-	listings, err := c.lib.StaleLoomarrListings(ctx, "")
+	listings, err := lib.StaleLoomarrListings(ctx, "")
 	if err != nil {
 		return res, fmt.Errorf("enumerate loomarr listing providers: %w", err)
 	}
 
 	for _, id := range tuners {
-		if err := c.lib.RemoveTuner(ctx, id); err != nil {
+		if err := lib.RemoveTuner(ctx, id); err != nil {
 			return res, fmt.Errorf("remove tuner %s: %w", id, err)
 		}
 		res.TunerRemoved++
 	}
-	if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
+	if err := lib.AddTuner(ctx, urls.M3U); err != nil {
 		return res, fmt.Errorf("re-add tuner: %w", err)
 	}
 	res.TunerAdded = true
 
 	for _, id := range listings {
-		if err := c.lib.RemoveListingProvider(ctx, id); err != nil {
+		if err := lib.RemoveListingProvider(ctx, id); err != nil {
 			return res, fmt.Errorf("remove listing provider %s: %w", id, err)
 		}
 		res.ListingRemoved++
 	}
-	if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
+	if err := lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
 		return res, fmt.Errorf("re-add listing provider: %w", err)
 	}
 	res.ListingAdded = true
 
 	// Poke so the re-added tuner's channels are re-read now (the whole point).
 	res.Poked = true
-	if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
+	if err := lib.RescanTuner(ctx, urls.M3U); err != nil {
 		res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
 	}
-	if err := c.lib.RefreshGuide(ctx); err != nil && res.PokeErr == nil {
+	if err := lib.RefreshGuide(ctx); err != nil && res.PokeErr == nil {
 		res.PokeErr = fmt.Errorf("refresh guide: %w", err)
 	}
 	return res, nil
@@ -332,14 +370,18 @@ func (c *LiveTVConnector) Wired(ctx context.Context) (bool, error) {
 // adapters use this form with a durable checkpoint read so Postgres replicas never report against
 // a stale process-local backend.
 func (c *LiveTVConnector) WiredTarget(ctx context.Context, urls LiveTVURLs) (bool, error) {
+	return wiredTarget(ctx, c.library(), urls)
+}
+
+func wiredTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (bool, error) {
 	if urls.M3U == "" || urls.XMLTV == "" {
 		return false, nil // nothing wireable ⇒ not wired; the checklist reports it as such
 	}
-	tuner, err := c.lib.TunerRegistered(ctx, urls.M3U)
+	tuner, err := lib.TunerRegistered(ctx, urls.M3U)
 	if err != nil {
 		return false, err
 	}
-	listing, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
+	listing, err := lib.ListingRegistered(ctx, urls.XMLTV)
 	if err != nil {
 		return false, err
 	}
@@ -350,7 +392,7 @@ func (c *LiveTVConnector) WiredTarget(ctx context.Context, urls LiveTVURLs) (boo
 // server's guide-refresh task after an existing channel's lineup changed.
 // Best-effort.
 func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
-	return c.lib.RefreshGuide(ctx)
+	return c.library().RefreshGuide(ctx)
 }
 
 // RescanTuner implements channels.GuidePoker (§9): make the media server re-read
@@ -368,5 +410,5 @@ func (c *LiveTVConnector) RescanTarget(ctx context.Context, urls LiveTVURLs) err
 	if urls.M3U == "" {
 		return nil // nothing to rescan; the poke is best-effort by contract (§9)
 	}
-	return c.lib.RescanTuner(ctx, urls.M3U)
+	return c.library().RescanTuner(ctx, urls.M3U)
 }

@@ -553,13 +553,10 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 		totalClips += n
 	}
 
-	// Read live rather than through a dedicated field: filler.dir hot-applies
-	// (config-design §3), and a value captured at construction would report the old folder
-	// after an operator changed it — on the very screen they would go to check.
-	dir := ""
-	if s.liveConfig != nil {
-		dir = s.liveConfig("filler.dir")
-	}
+	// Report the filesystem root this generation is actually operating against. Settings may
+	// already show a different desired root while restart is pending; presenting that desired
+	// path here would claim scan/fetch actions target a directory they do not yet use.
+	dir := s.fillerLayout.ClipDir()
 
 	// ⚠ Read through the BOOL seam, never liveConfig: settings.String panics on a non-string
 	// Kind, so routing this key through the string accessor took the whole route down with an

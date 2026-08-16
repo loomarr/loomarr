@@ -68,6 +68,9 @@ type Server struct {
 	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	// fillerLayout is the immutable filesystem topology applied to this server generation.
+	// Operational routes keep interpreting catalog paths against this root until restart.
+	fillerLayout filler.Layout
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -99,10 +102,10 @@ type Server struct {
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
 	restart RestartService
-	// bootstrapDrift names the boot-time settings whose saved value differs from the one
-	// this process is running (config-design §3). nil ⇒ no drift is reported, which is
+	// restartDrift names restart-scoped settings whose saved value differs from the one
+	// this application generation is running (config-design §3). nil ⇒ no drift is reported, which is
 	// correct for a handler with no config seam rather than a false "restart needed".
-	bootstrapDrift func() []string
+	restartDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
@@ -127,6 +130,10 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
+	// libraryConfigured resolves the complete live media-server connection from one settings
+	// snapshot. A domain-specific seam keeps handlers from independently reading flavor, URL,
+	// and token and accidentally observing a mixed generation during a concurrent save.
+	libraryConfigured func() bool
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready ReadyFunc
@@ -221,6 +228,13 @@ func (s *Server) unconfigured(keys ...string) bool {
 	return false
 }
 
+// libraryUnconfigured gates every optional media-library operation on the same complete,
+// atomic {flavor,url,token} predicate. Nil preserves the unit-test convention that an
+// explicitly wired adapter is usable without a settings runtime.
+func (s *Server) libraryUnconfigured() bool {
+	return s.libraryConfigured != nil && !s.libraryConfigured()
+}
+
 // SettingsService is the settings surface the API depends on (config-design §8).
 // Implemented by a settings.Service adapter in the composition root; abstracted
 // so the API package needn't import internal/settings. Secrets are masked here —
@@ -277,6 +291,7 @@ type SettingEntry struct {
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
 	Group        string              `json:"group"`
 	Kind         string              `json:"kind"`
+	Apply        string              `json:"apply" enum:"live,restart" doc:"When a saved value becomes active: live on the next owning operation, or restart in the next app generation."`
 	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
 	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
 	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
@@ -765,12 +780,15 @@ type Options struct {
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
-	Images    ImageService
-	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Shutdown  <-chan struct{}  // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Images   ImageService
+	Events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown <-chan struct{} // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler   FillerService   // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods     PodPreviewer    // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
+	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
+	FillerLayout filler.Layout
+	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). Production wires it on both backends so a reconnect can observe the
 	// successful cutover; nil is reserved for embeddings without migration status.
@@ -785,8 +803,9 @@ type Options struct {
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService
-	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
-	BootstrapDrift    func() []string
+	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
+	// (config-design §3).
+	RestartDrift      func() []string
 	Jobs              JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings          SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	BackendTransition BackendTransitioner                              // durable backend prepare/publish/retire coordinator
@@ -842,6 +861,10 @@ type Options struct {
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
 	LiveConfig func(key string) string
+	// LibraryConfigured atomically reports whether the complete live media-server
+	// {flavor,url,token} connection is usable. The composition root supplies it; unit tests
+	// that wire a concrete adapter may omit it.
+	LibraryConfigured func() bool
 	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
 	// string, because settings.String PANICS on a non-string key — an int setting read
 	// through the string seam took down GET /v1/users in the quota work, and only a run

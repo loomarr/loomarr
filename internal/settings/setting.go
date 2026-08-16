@@ -40,6 +40,16 @@ const (
 	PresentationLanguage Presentation = "language"
 )
 
+// ApplyTiming says when a persisted setting becomes the running value. The zero
+// value is deliberately live: declarations have always hot-applied unless they
+// explicitly opt into the much rarer generation boundary.
+type ApplyTiming string
+
+const (
+	ApplyLive    ApplyTiming = ""
+	ApplyRestart ApplyTiming = "restart"
+)
+
 // Group is a Settings-UI page (config-design §5). Every setting belongs to
 // exactly one; the wizard renders one group's form per step (§6).
 type Group string
@@ -119,6 +129,7 @@ type Setting struct {
 	Group        Group
 	Kind         Kind
 	Presentation Presentation // optional richer editor semantics beyond Kind
+	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
 	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
 	Enum         []EnumOption // Kind == KindEnum: the closed set, each with a display label
 	Advanced     bool         // hidden behind the per-page "Show advanced" toggle (§5)
