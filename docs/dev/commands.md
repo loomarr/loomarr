@@ -42,6 +42,8 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | --- | --- | --- |
 | `make check` | ✅ | Rust + Go formatting, lint, harness, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `test` |
 | `make rust-check` |  | format, lint, and test the required Rust image worker |
+| `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` |  | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` |  | shellcheck every repository shell script |
 | `make vet` |  | go vet |

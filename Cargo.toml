@@ -1,5 +1,6 @@
 [workspace]
 members = ["rust/loomarr-image"]
+exclude = ["rust/loomarr-image/fuzz"]
 resolver = "2"
 
 [workspace.package]

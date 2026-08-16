@@ -80,6 +80,17 @@ throughput loser. The production CLI and recipe remain unchanged.
 - Keep expensive supply-chain and fuzz work scheduled or manually dispatched unless it is both fast
   and deterministic enough for the required PR gate.
 
+**Checkpoint 5 implementation:** Cargo minor/patch updates are one weekly Dependabot group across
+the production and excluded fuzz workspaces; majors remain deliberate one-crate reviews. Pinned
+cargo-deny checks RustSec advisories, an explicit SPDX allow-list, and crates.io-only sources for
+both lockfiles. Both owned shipping crate roots forbid unsafe code. A pinned cargo-fuzz/libFuzzer job
+drives valid bounded JSON around arbitrary and seed-mutated image bytes for 60 seconds weekly or on
+manual dispatch, retaining crash reproducers. These network-sensitive tools remain outside
+`make check`; lock enforcement, clippy/tests, and the unsafe prohibition stay in the fast gate.
+The first audit found RUSTSEC-2026-0204 in the transitive `crossbeam-epoch` graph and advanced the
+lockfile to 0.9.20. The non-shipping fuzz workspace is excluded from the container context, keeping
+its large local compile cache out of ordinary image builds.
+
 ### 6. Choose the next Rust capability from evidence
 
 - Use production worker duration, queue wait, peak RSS, input/output bytes, and failure outcomes to

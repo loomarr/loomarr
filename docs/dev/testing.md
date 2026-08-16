@@ -37,10 +37,25 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | e2e | `make e2e` | The embedded SPA through first-run | CI |
 | ffmpeg | `make test-ffmpeg` | Programmes sequence through real ffmpeg | manual |
 | LLM eval | `make eval` | Real intents against a real model | manual |
+| Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
+| Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
 | Maintainer smoke | `make smoke` | The real stack end to end | manual |
 
 Store conformance is one suite over two backends — don't fork the assertions per dialect.
+
+### Rust dependency review
+
+Dependabot opens one weekly grouped PR for Cargo minor and patch updates across the production and
+fuzz workspaces. Major updates are deliberately excluded: update one direct crate at a time, amend
+the §14 rationale when its capability or cost changes, and compare `Cargo.lock` rather than accepting
+a generated diff blindly. Every Cargo update runs `make rust-audit`, `make rust-check`,
+`make image-cert`, and the amd64/arm64 release build. An advisory ignore requires a reason, an owner,
+and a removal issue in the same PR; an unannotated permanent ignore is not policy.
+
+Loomarr-owned shipping Rust crates use `#![forbid(unsafe_code)]`. Transitive codecs may contain
+unsafe or native code, which is why they remain behind the one-shot worker boundary. The fuzz harness
+is non-shipping test infrastructure built around libFuzzer; its own source contains no unsafe block.
 
 Auth tests need the negative cases: members get 403 on titles, approve and admin routes;
 sessions die on disable.

@@ -10,6 +10,7 @@
 
 GO      ?= go
 CARGO   ?= cargo
+RUST_FUZZ_TOOLCHAIN ?= nightly-2026-08-14
 PKG     := ./...
 BIN_DIR := bin
 
@@ -112,12 +113,21 @@ agent-harness-test: ## regression-test worktree isolation and shared-output clai
 .PHONY: check
 check: rust-check fmt shellcheck vet tags-verify vet-tags lint agent-harness-test test ## Rust + Go formatting, lint, harness, and unit tests (the default gate)
 
-.PHONY: rust-check
+.PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
 	$(CARGO) fmt --all -- --check
 	$(CARGO) clippy --workspace --all-targets --all-features --locked -- -D warnings
 	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 	$(CARGO) test --workspace --all-features --locked
+
+rust-audit: ## check Rust advisories, licences, and dependency sources (needs cargo-deny)
+	$(CARGO) deny check advisories licenses sources
+	$(CARGO) deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
+
+rust-fuzz: ## fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz)
+	@seconds="$${FUZZ_SECONDS:-60}"; \
+	  cd rust/loomarr-image; \
+	  $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run protocol_decoder -- -max_total_time="$$seconds" -max_len=1048576
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)

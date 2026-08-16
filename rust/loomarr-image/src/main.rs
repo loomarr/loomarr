@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use loomarr_image::{capabilities, run_generate, run_generate_with_avif_threads};
 
 fn main() {
