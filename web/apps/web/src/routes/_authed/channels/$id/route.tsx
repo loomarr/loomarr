@@ -44,7 +44,14 @@ const SECTIONS = [
 type AirState = { dot: OnAirState; label: string; detail: string };
 
 const airStateOf = (ch: ChannelDTO): AirState => {
+  // "Broadcasting" is backend-agnostic. Tunarr channels signal it with a pushed projection
+  // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
+  // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
+  // (§9.1 V57: effective backend plays internally AND the lifecycle is reconcilable). Keying
+  // "On air" on `tunarrId` alone told every working internal-playout channel it was "Not on
+  // air yet — connect Tunarr", contradicting reality at the first-channel "aha" moment.
   const pushed = Boolean(ch.tunarrId);
+  const broadcasting = pushed || ch.inAppPlayable;
   if (ch.status === "detached") {
     return { dot: "off", label: "Off air", detail: "Loomarr no longer manages this channel." };
   }
@@ -62,15 +69,17 @@ const airStateOf = (ch: ChannelDTO): AirState => {
       detail: "Something changed in your library. Loomarr is bringing the lineup back in line.",
     };
   }
-  if (ch.status === "live" && pushed) {
+  if (ch.status === "live" && broadcasting) {
     return { dot: "live", label: "On air", detail: "Playing now in your TV guide." };
   }
-  // building, or live-without-a-push (not yet broadcasting). Once Tunarr is connected it
-  // goes live on its own — no manual step.
+  // building, or live-without-broadcasting (not yet reaching a viewer). An internal-playout
+  // channel gets there on its own as it reconciles; a Tunarr-backed one once Tunarr connects.
   return {
     dot: "reconciling",
     label: "Not on air yet",
-    detail: pushed ? "Getting ready to broadcast." : "It'll go live automatically once Tunarr is connected.",
+    detail: pushed
+      ? "Getting ready to broadcast."
+      : "It'll go live automatically once it's ready to broadcast.",
   };
 };
 
@@ -270,4 +279,4 @@ const Route = createFileRoute("/_authed/channels/$id")({
   component: ChannelDetailLayout,
 });
 
-export { Route, SECTIONS };
+export { airStateOf, Route, SECTIONS };

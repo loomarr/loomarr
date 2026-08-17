@@ -84,7 +84,7 @@ type meOutput struct {
 
 func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
 	r := requestFrom(ctx)
-	rateKey := clientIP(r) + "|" + in.Body.Username
+	rateKey := s.clientIP(r) + "|" + in.Body.Username
 	token, expires, u, err := s.login.Login(ctx, in.Body.Username, in.Body.Password, rateKey)
 	if err != nil {
 		switch {
@@ -187,16 +187,30 @@ func (s *Server) secureCookie(r *http.Request) bool {
 	case "false":
 		return false
 	default: // auto
-		return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+		// X-Forwarded-Proto is honored only behind a trusted proxy (§11). A direct client
+		// could otherwise send `X-Forwarded-Proto: http` to keep its OWN cookie non-Secure;
+		// that only weakens the sender's session, but the header is not trustworthy input
+		// unless a proxy sets it, so it rides the same gate as the rate-limit IP.
+		if s.trustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			return true
+		}
+		return r.TLS != nil
 	}
 }
 
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
+// clientIP returns the address the login rate-limiter keys on. X-Forwarded-For is honored
+// only when `security.trust_proxy` is set (§11): without a proxy, the socket peer is the real
+// client and the header is attacker-controlled, so trusting it would let a direct client rotate
+// XFF per request and defeat the per-IP throttle. Behind a proxy the peer is the proxy, so the
+// first forwarded hop is the real client and trusting it is correct — and correct only there.
+func (s *Server) clientIP(r *http.Request) string {
+	if s.trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if i := strings.IndexByte(xff, ','); i >= 0 {
+				return strings.TrimSpace(xff[:i])
+			}
+			return strings.TrimSpace(xff)
 		}
-		return strings.TrimSpace(xff)
 	}
 	host := r.RemoteAddr
 	if i := strings.LastIndexByte(host, ':'); i >= 0 {

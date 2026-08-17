@@ -34,6 +34,7 @@ type Server struct {
 	passwords    PasswordService
 	userSync     UserSyncer
 	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
+	trustProxy   bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
 	// devLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
 	// development (§11). Set from LOOMARR_DEV_LOGIN at boot and read ONCE here, when
 	// routes are registered: an unset flag means the route never exists, which is a
@@ -767,6 +768,7 @@ type Options struct {
 	Sessions       SessionManager    // /v1/auth/logout (Phase 9)
 	UserSync       UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	CookieSecure   string            // COOKIE_SECURE: auto|true|false (§11)
+	TrustProxy     bool              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
 	DevLogin       bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
 	Pprof          bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
 	Channels       ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent

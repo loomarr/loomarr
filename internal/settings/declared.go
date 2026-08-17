@@ -1017,6 +1017,11 @@ func declared() []Setting {
 			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto", Advanced: true,
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
+		{
+			Key: "security.trust_proxy", Label: "Trust reverse proxy", EnvVar: "TRUST_PROXY", Group: GroupUsersSecurity,
+			Kind: KindBool, Default: "false", Advanced: true,
+			Doc: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
+		},
 
 		// --- SSO: a third CREDENTIAL path, never a provisioning one (§11, D-F, V8) ---
 		//
