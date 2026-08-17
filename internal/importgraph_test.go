@@ -50,8 +50,19 @@ func loomarrPackages(t *testing.T) map[string]*build.Package {
 		}
 		// Skip what `go list ./...` skips, plus the frontend tree and VCS metadata. A
 		// `testdata` directory is not a package even when it holds .go files.
+		//
+		// ⚠ Dot-directories are skipped as a CLASS, not by name. The worktree harness drops
+		// `.artifacts/<instance>/` scratch trees inside the repo — full worktree copies that
+		// carry real `internal/*.go` files but a stale snapshot's package docs — and the walk
+		// was picking them up as bogus `.../.artifacts/...` packages, failing the package-doc
+		// gate on source that is not ours. A named denylist rots: the next `.foo` scratch dir
+		// reintroduces the hole. No Loomarr package lives under a dot-dir, so skipping the whole
+		// class is the durable invariant.
+		if d.Name() != "." && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
 		switch d.Name() {
-		case ".git", "node_modules", "testdata", "web", ".agents", ".claude":
+		case "node_modules", "testdata", "web":
 			return filepath.SkipDir
 		}
 

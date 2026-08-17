@@ -49,7 +49,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		// original boot.
 		startedAt: time.Now(),
 		store:     opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
-		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, devLogin: opts.DevLogin,
+		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, trustProxy: opts.TrustProxy, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods,
 		fillerLayout: opts.FillerLayout,

@@ -1480,6 +1480,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Passwords:      passwordSvc,
 		UserSync:       userSync,
 		CookieSecure:   set.str("cookie.secure"),
+		TrustProxy:     set.boolv("security.trust_proxy"),
 		DevLogin:       ov.DevLogin,
 		Pprof:          ov.Pprof,
 		Channels:       channelSvc,
