@@ -11,7 +11,9 @@ on:
 # A recreated tag cannot race another publisher for the same immutable image
 # name. Queue rather than cancel so every attempt reaches an auditable result.
 concurrency:
-  group: release-${{ github.ref_name }}
+  # Global, not per tag. Two stable tags finishing out of order could otherwise move
+  # `latest` backwards even though each immutable SemVer tag is individually protected.
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -39,41 +41,19 @@ jobs:
     name: Build & publish image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Validate the release tag and source commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          ./scripts/check-release-tag.sh "$GITHUB_REF_NAME"
-          git fetch --no-tags origin main
-          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
-            echo "release tag must point at the current main commit" >&2
-            exit 1
-          fi
-          run="$(gh api \
-            "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=20" \
-            --jq '[.workflow_runs[] | select(.head_branch == "main" and (.event == "push" or .event == "workflow_dispatch"))] | sort_by(.created_at) | last | [.id, .conclusion] | @tsv')"
-          IFS=$'\t' read -r run_id conclusion <<< "$run"
-          if [[ "$conclusion" != success ]]; then
-            echo "tagged main commit does not have a successful CI run (found: ${conclusion:-none})" >&2
-            exit 1
-          fi
-          jobs="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" --jq '.jobs[] | [.name, .conclusion] | @tsv')"
-          for platform in linux/amd64 linux/arm64; do
-            if ! grep -Fqx "Image — release build (${platform})"$'\t'"success" <<< "$jobs"; then
-              echo "successful CI run did not prove the release image for ${platform}" >&2
-              exit 1
-            fi
-          done
+        run: ./scripts/validate-release-source.sh
 
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -81,44 +61,39 @@ jobs:
 
       - name: Protect the immutable version tag
         shell: bash
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          ./scripts/check-release-image-absence.sh "${IMAGE}:${version}"
+        run: ./scripts/check-release-image-absence.sh "${IMAGE}:${GITHUB_REF_NAME#v}"
 
-      - name: Derive tags & labels
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          flavor: |
-            latest=false
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-
-      - name: Build and push
+      # Push only a canonical digest. Public SemVer/latest tags do not exist yet:
+      # the helper below creates them only after keyless signing and an
+      # identity-bound verification of that exact digest.
+      - name: Build and push digest only
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           target: runtime
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
-          provenance: true
+          provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=release
           cache-to: type=gha,scope=release,mode=max
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.5
 
-      - name: Sign the pushed image (keyless)
+      - name: Sign, verify, and promote the release image
+        shell: bash
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+          RELEASE_TAG: ${{ github.ref_name }}
+          PUBLISH_LATEST: ${{ !contains(github.ref_name, '-') }}
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
+          COSIGN_CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: ./scripts/publish-release-image.sh

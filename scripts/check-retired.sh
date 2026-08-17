@@ -225,7 +225,8 @@ RETIRED=(
 	'ResizeLadder|image resizing is owned by the required loomarr-image Rust worker'
 	'FFmpegAVIF|AVIF encoding is owned by the required loomarr-image Rust worker'
 	'HasAVIFEncoder|worker startup self-test is the image capability gate'
-	'AVIFEncoder|AVIF encoding is owned by the required loomarr-image Rust worker'
+  'AVIFEncoder|AVIF encoding is owned by the required loomarr-image Rust worker'
+	'check-release-notices.sh|retired: releaseverify owns notice policy directly; do not restore the duplicate middle-man wrapper'
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

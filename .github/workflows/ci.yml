@@ -48,7 +48,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       agent: ${{ steps.filter.outputs.agent }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # need the merge base to diff against
       # Plain git rather than a third-party action: this is ~15 lines of shell, and a
@@ -142,7 +142,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
@@ -154,7 +154,7 @@ jobs:
     if: needs.changes.outputs.agent == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # This exercises the `lsof` process-ownership adapter. Linux runs the same harness through
       # `make check`, where `/proc` is available.
       - name: Worktree isolation, claims, leases, and process ownership
@@ -166,8 +166,8 @@ jobs:
     if: needs.changes.outputs.go == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -201,8 +201,8 @@ jobs:
       matrix:
         shard: [1, 2]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: ${{ env.GO_VERSION }}
           # ⚠ DELIBERATELY OFF — the step below owns every Go cache path in this job.
@@ -250,7 +250,7 @@ jobs:
         run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
       - name: Restore Go caches (modules + build + golangci)
         id: gocache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
@@ -323,7 +323,7 @@ jobs:
           echo "release=$VERSION_ID" >> "$GITHUB_OUTPUT"
       - name: Cache ffmpeg packages
         id: ffmpeg-cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/ffmpeg-debs
           key: ffmpeg-debs-${{ runner.os }}-${{ steps.os.outputs.release }}-v1
@@ -373,7 +373,7 @@ jobs:
         run: IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert
       - name: Keep the Rust image certification report
         if: always() && matrix.shard == 1
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rust-image-certification
           path: ${{ runner.temp }}/image-certification.json
@@ -426,7 +426,7 @@ jobs:
       # next run should not recompile from cold merely because an assertion failed.
       - name: Save Go caches (main only)
         if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
@@ -440,8 +440,8 @@ jobs:
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           # Off for the same reason as the `go` job: the step below owns both Go cache
           # paths, and leaving setup-go's on would restore/save `~/.cache/go-build` twice
@@ -461,7 +461,7 @@ jobs:
         run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
       - name: Restore Go caches (store conformance)
         id: gocache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
@@ -476,7 +476,7 @@ jobs:
       # pressure on caches that are still being read.
       - name: Save Go caches (main only)
         if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
@@ -503,14 +503,14 @@ jobs:
       matrix:
         shard: [1, 2]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Enable pnpm (pinned via web/package.json packageManager)
         run: corepack enable
       - name: Cache pnpm store
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
@@ -559,13 +559,13 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
       - name: Cache pnpm store
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
@@ -609,7 +609,7 @@ jobs:
       # and only one survives — silently, so the shard you actually wanted is the one missing.
       - name: Keep the failure images (visual + e2e)
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-failures-shard-${{ matrix.shard }}
           path: web/apps/web/test-results/
@@ -629,8 +629,8 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
@@ -641,7 +641,7 @@ jobs:
         run: make tuner-e2e-host
       - name: Keep tuner failure evidence
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tuner-failures
           path: web/apps/web/test-results/
@@ -677,22 +677,24 @@ jobs:
     # headroom for a completely cold Docker build without allowing a hung download to run all day.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
       # BOTH matrix entries are required because the bug this job exists for was arch-specific
-      # and release.yml publishes both. Load/push nothing — the build IS the assertion, and the
-      # Dockerfile's own build-time proofs (yt-dlp --version, ffmpeg -version, and a real whisper
-      # transcription) run inside it.
+      # and release.yml publishes both. Load the one native image without pushing it: the
+      # Dockerfile's own build-time proofs run inside it, then the next step inspects the actual
+      # runtime filesystem and OCI labels rather than trusting Dockerfile prose.
       #
       # ⚠ READ the release cache but never write a CI copy. release.yml owns that multi-platform
       # cache and refreshes it only after publishing a real image. The former `image-ci` scope was
       # never written anywhere, despite the comment claiming this job consumed the release cache.
       - name: Build (${{ matrix.platform }})
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
           push: false
+          load: true
+          tags: loomarr-ci:verify
           # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
           # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
           # layer it was caching takes to build, because `mode=max` ships every
@@ -705,15 +707,31 @@ jobs:
           # invalidate only their affected layers; unchanged release layers remain reusable.
           cache-from: type=gha,scope=release
 
+      - name: Inspect packaged license and notice metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=loomarr-ci:verify
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.documentation" }}')" = \
+            "https://github.com/mantonx/loomarr/blob/main/THIRD_PARTY_NOTICES.md"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
+            "MIT AND GPL-3.0-or-later"
+          container=$(docker create "$image")
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/share/doc/loomarr/LICENSE" "$RUNNER_TEMP/LICENSE"
+          docker cp "$container:/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md" "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
+          cmp LICENSE "$RUNNER_TEMP/LICENSE"
+          cmp THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
+
   docs:
     name: Docs — links + structure + prose
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -730,7 +748,7 @@ jobs:
       # references in PROGRESS.md, .claude/commands/, design/ and two Go doc comments.
       # Keep in step with LINK_GLOBS in the Makefile.
       - name: Links (offline)
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
         with:
           args: >-
             --offline --no-progress
@@ -740,7 +758,7 @@ jobs:
 
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
       - name: Prose
-        uses: errata-ai/vale-action@v3
+        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3
         with:
           files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
           fail_on_error: true

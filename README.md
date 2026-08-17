@@ -121,5 +121,7 @@ Security issues: [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE). Bundled components, including the GPL `ffmpeg`, are listed in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Loomarr source is [MIT](LICENSE). The distributed image also contains GPL and permissively licensed
+components; their terms and the redistribution work still open for beta are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The image carries both files under
+`/usr/share/doc/loomarr/`.

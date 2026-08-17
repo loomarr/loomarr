@@ -122,6 +122,8 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 release-verify: ## verify release tag, OCI naming, and immutable publication policy
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
+	@$(GO) test ./internal/releaseverify
+	@$(GO) run ./cmd/releaseverify -root .
 
 .PHONY: backup-restore-verify backup-restore-drill
 backup-restore-verify: ## isolated SQLite backup, destructive replacement, restore, and state validation

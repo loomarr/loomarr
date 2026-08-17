@@ -61,33 +61,30 @@ operator opted into a variant; they now ship in **everything we publish**, so th
 aggregate licensing below applies to the default image rather than an opt-in one.
 
 The image ships five external executables, the Whisper shared-library set, and two model files.
-The ingest job uses all of them; `ffmpeg`/`ffprobe` additionally serve playout (§9.1). Loomarr invokes each executable as a
-**separate process via `exec`** — it does not link against them. Under the GPL this is
-*mere aggregation*: it does **not** make Loomarr a derivative work, and Loomarr's own
-code remains MIT. However, because the image redistributes these binaries, the image as
-a whole must honor each component's license, disclosed here.
+The ingest job uses all of them; `ffmpeg`/`ffprobe` additionally serve playout (§9.1). Loomarr invokes
+each executable as a separate process via `exec`. Loomarr's source remains MIT-licensed, while the
+published image must also satisfy every redistributed component's terms. This inventory does not
+make a legal conclusion about aggregation or derivative-work status; that conclusion belongs to the
+final redistribution review recorded below.
 
 | Binary | Upstream | License | Notes |
 | --- | --- | --- | --- |
-| `yt-dlp` | https://github.com/yt-dlp/yt-dlp | The Unlicense (public domain) | Self-contained `yt-dlp_linux` build (bundles its own Python via PyInstaller). |
-| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (the BtbN `-gpl-` build) | See the source-offer below. Serves BOTH yt-dlp stream merging (§10) and the playout encoder (§9.1). |
-| `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (same build) | Added with internal playout (§9.1) — Loomarr owns duration once it owns the encoder. Same source offer as `ffmpeg`. |
+| `yt-dlp` standalone executable | https://github.com/yt-dlp/yt-dlp | **GPL-3.0-or-later** for the combined executable | The source project is primarily Unlicense, but upstream states that official PyInstaller executables bundle GPLv3+ dependencies and the combined work is GPLv3+. Loomarr ships `yt-dlp_linux` / `yt-dlp_linux_aarch64`, so the executable terms apply. See upstream's [license section](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#license) and [third-party license inventory](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |
+| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (the BtbN `-gpl-` build enables GPL and version 3) | Serves both yt-dlp stream merging (§10) and the playout encoder (§9.1). Exact corresponding source remains open below. |
+| `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (same build) | Added with internal playout (§9.1). It shares ffmpeg's open corresponding-source blocker. |
 | `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
 | `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.1` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
 | `ggml-small.en.bin`, `ggml-tiny.bin` | https://huggingface.co/ggerganov/whisper.cpp | MIT | Revision- and SHA256-pinned Whisper model data; `small.en` transcribes and `tiny` identifies language. |
 
-### GPL source offer (ffmpeg)
+### GPL source status (ffmpeg; release blocker)
 
-The `ffmpeg` binary in the published `loomarr` image is a **GPL-3.0** build produced by
-the [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) project from the
-published [FFmpeg](https://ffmpeg.org/) source. In accordance with the GPL, the
-corresponding source is available from FFmpeg (<https://ffmpeg.org/download.html>,
-series `n8.1`) and the BtbN build scripts (<https://github.com/BtbN/FFmpeg-Builds>).
-The exact version is pinned by `FFMPEG_TAG` in the [`Dockerfile`](Dockerfile) and is
-the authority if this paragraph and that line ever disagree.
-
-**If you redistribute the Loomarr image, you carry the GPL obligation** to make that
-ffmpeg source available to your recipients. There is one image and it contains ffmpeg.
+The intended `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The current
+[`Dockerfile`](Dockerfile) still downloads `FFMPEG_TAG=n8.1-latest` from BtbN's mutable `latest`
+release. That does not identify one retained archive, build-script commit, FFmpeg commit, dependency
+source set, or corresponding-source bundle. Links to the general FFmpeg and BtbN repositories are
+useful provenance, but they are not an exact corresponding-source offer for the bytes in an image.
+The release must pin a retained archive by digest and record/provide its exact corresponding source
+before the first beta is redistributed.
 
 ⚠ This section previously said the opposite — that redistributing the default image
 "carries no such obligation — it contains no ffmpeg", which was true only while ffmpeg
@@ -95,6 +92,25 @@ shipped in a separate opt-in variant. Internal playout (§9.1) made ffmpeg load-
 for streaming, the variant collapsed into the one image, and this paragraph did not
 follow. A stale licensing statement is worse than a stale feature description, which is
 why it is corrected in place rather than quietly rewritten.
+
+## Open redistribution review — beta blockers
+
+This notice is an inventory, not release clearance. The first beta remains blocked until all of the
+following have evidence on the release commit:
+
+- pin the BtbN ffmpeg archive immutably and retain the exact corresponding source for FFmpeg, build
+  scripts, and bundled GPL dependencies; rerun the unchanged full `make test-ffmpeg` gate;
+- retain the exact corresponding source and license texts for the GPLv3+ dependencies bundled in
+  both official yt-dlp standalone executables;
+- pin the runtime and build base images by digest and make the Debian package input reproducible;
+- include the required DejaVu font license and complete the frontend/Rust transitive license-text
+  inventory;
+- inspect and include any required Prometheus `NOTICE` material; and
+- complete a final qualified legal/NOTICE review of the assembled image and its downloadable source
+  materials.
+
+Until those items close, neither this file nor the BuildKit SBOM should be read as a claim that the
+image is ready for redistribution.
 
 ## Reference specs (not redistributed as code)
 
