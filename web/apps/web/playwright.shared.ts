@@ -15,19 +15,26 @@ import { devices } from "@playwright/test";
 // core-bound; floor of 2 so a busy machine still runs them concurrently rather than serially.
 const localWorkers = () => Math.max(2, Math.min(4, Math.floor(freemem() / (1.5 * 1024 ** 3))));
 
-// ⚠ THE TWO SUITES DO NOT SHARE A CONCURRENCY PROFILE, only a determinism kit. Keep these
-// separate even though it looks like duplication.
+// ⚠ GATE ON `GITHUB_ACTIONS`, NOT ON `CI`. This is the whole point of the constant.
 //
-// VISUAL is hermetic — static storybook server, stubbed network, no shared state — so nothing
-// contends and CI can take the full core count.
+// Every sanctioned Playwright entry point is a make target that runs Docker with
+// `-e CI=$(PW_CI)` and `PW_CI ?= 1` — fe-visual, fe-visual-update, e2e, e2e-update. So `CI` is
+// set on a DEVELOPER'S MACHINE just as it is on the runner: it records the config intent
+// (behave like CI), not whose hardware this is. Gating the worker count on it therefore hands
+// a 24-core workstation 24 browsers under `make fe-visual-update`, which is exactly the
+// swap-thrash hard-lock this constant exists to prevent — measured going 16GB free to 2GB with
+// swap fully consumed, in about a minute.
 //
-// E2E is NOT. `tuner-surf.spec.ts` MEASURES surf latency against a threshold, so parallel
-// browsers change the very thing under test. It deliberately carried no worker setting; giving
-// it `cpus().length` in CI put 4 browsers on a 4-core runner and blew that test's 120s budget.
-// CI therefore keeps Playwright's own default here, and only the LOCAL cap is applied — the
-// local cap lowers concurrency, which a latency gate tolerates fine.
-const VISUAL_WORKERS = process.env.CI ? cpus().length : localWorkers();
-const E2E_WORKERS = process.env.CI ? undefined : localWorkers();
+// `GITHUB_ACTIONS` is set by the runner itself and is never forwarded by those make targets,
+// so it distinguishes the MACHINE. That is the question being asked here.
+//
+// ⚠ The two suites still do not share a concurrency profile, only a determinism kit. VISUAL is
+// hermetic (static storybook server, stubbed network, no shared state), so the real runner can
+// take the full core count. E2E's CI concurrency is deliberately left at Playwright's own
+// default rather than retuned by us — `undefined` means "do not set this key".
+const onRealCI = !!process.env.GITHUB_ACTIONS;
+const VISUAL_WORKERS = onRealCI ? cpus().length : localWorkers();
+const E2E_WORKERS = onRealCI ? undefined : localWorkers();
 
 // The determinism kit both Playwright suites share (frontend-design §5.2), in ONE place.
 //

@@ -525,6 +525,19 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 # What it DOES buy is a local gate that behaves like CI: all cores, and `test.only` refused in
 # both places rather than only one.
 PW_CI ?= 1
+
+# ⚠ Forwarded so the CONTAINER can tell a real runner from a developer's desktop. `CI=1` above
+# is deliberately set for local runs too (that is the whole point of PW_CI), so inside the
+# container `CI` says "behave like CI" and cannot answer "whose hardware is this".
+#
+# playwright.shared.ts needs that second answer, because worker count is a MEMORY decision:
+# a 24-core workstation given cpus() workers boots 24 browsers and swap-thrashes into a hard
+# lock, measured going from 16GB free to 2GB in about a minute under fe-visual-update. It is
+# empty locally and `true` on the runner, which GitHub sets and this Makefile never fabricates.
+#
+# Everything else PW_CI buys is unchanged — notably `forbidOnly`, so `test.only` is still
+# refused locally exactly as it is in CI.
+PW_REAL_CI ?= $(GITHUB_ACTIONS)
 PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
 # PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/4`). Empty by
@@ -554,12 +567,12 @@ PW_DOCKER_USER ?= --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test $(PW_SHARD)
 
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --update-snapshots
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
@@ -567,12 +580,12 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
 e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
 
 .PHONY: tuner-e2e
 tuner-e2e: fe-build ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.tuner.config.ts
 
 .PHONY: tuner-e2e-host
@@ -599,7 +612,7 @@ smoke-down: ## tear down the smoke stack (container, volume, temp database)
 
 .PHONY: e2e-update
 e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
-	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -e GITHUB_ACTIONS=$(PW_REAL_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
 
 # Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't
