@@ -14,6 +14,10 @@ import "math/bits"
 // hides a genuinely new advert behind a "already have it" flag).
 const DupHashThreshold = 12.0
 
+// dHashAlgorithm versions every choice that makes a cached sequence comparable: 1/3fps sampling,
+// a 9x8 grayscale frame, left-greater-than-right bits, and aligned-prefix comparison.
+const dHashAlgorithm = "dhash-v1-1over3fps-gray9x8-leftgt-alignedprefix"
+
 // dHashFrame hashes one 9x8 grayscale frame to 64 bits: bit set when the left
 // pixel is brighter than its right neighbour. Pure — the frames come from
 // MediaTools.GrayFrames and tests construct them directly.

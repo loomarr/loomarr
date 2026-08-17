@@ -39,6 +39,8 @@ var ErrProposalGone = errors.New("filler: the split proposal was resolved while 
 type SplitStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
 	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 	UpsertClip(ctx context.Context, c StoreClip) error
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
@@ -382,15 +384,19 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 		hashes []uint64
 	}
 	var candidates []hashed
+	cached, cacheErr := sp.store.ListClipFingerprints(ctx, dHashAlgorithm)
+	if cacheErr != nil && sp.log != nil {
+		sp.log.Warn("catalog fingerprint cache read failed; missing entries will be recomputed", "err", cacheErr)
+	}
 	for _, c := range catalog {
 		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
-		frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
-		if err != nil {
+		hashes, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
+		if !ok {
 			continue
 		}
-		candidates = append(candidates, hashed{path: c.Path, hashes: dHashFrames(frames)})
+		candidates = append(candidates, hashed{path: c.Path, hashes: hashes})
 	}
 	if len(candidates) == 0 {
 		return
@@ -408,6 +414,30 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 			}
 		}
 	}
+}
+
+// catalogFingerprint hides persistence and failure policy behind one operation. A cache problem
+// is never a duplicate verdict: recompute from media, and if that also fails omit this candidate.
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached []uint64) ([]uint64, bool) {
+	if len(cached) > 0 {
+		return cached, true
+	}
+	frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
+	if err != nil {
+		return nil, false
+	}
+	hashes := dHashFrames(frames)
+	if len(hashes) == 0 {
+		return nil, false
+	}
+
+	// Preserve completed ffmpeg work even when the pass expires between decode and persistence.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, dHashAlgorithm, hashes); err != nil && sp.log != nil {
+		sp.log.Warn("catalog fingerprint cache write failed", "clip", c.Hash, "err", err)
+	}
+	return hashes, true
 }
 
 // Confirm writes the operator's reviewed cut list to the catalog (§10): each

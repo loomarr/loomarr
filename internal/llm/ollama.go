@@ -185,9 +185,10 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 //
 // It reuses the shared Chat wire type deliberately — the images ride on the same ollamaMessage
 // the text path uses, which is why that field carries omitempty (see ollamaMessage.Images):
-// no images ⇒ the field is absent ⇒ a text request is unchanged. NO tools, NO json format,
-// NO num_ctx block: vision is one stateless question, not the grounded tool loop, so it sends
-// the minimal request and returns the answer as a Response for the caller to parse tags from.
+// no images ⇒ the field is absent ⇒ a text request is unchanged. NO tools and NO num_ctx
+// block: vision is one stateless question, not the grounded tool loop. JSON format IS pinned: the
+// caller asks for a JSON object, and prompt-only enforcement produced malformed syntax often
+// enough to spend the retry ladder on otherwise successful local inference.
 func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (Response, error) {
 	if len(jpegs) == 0 {
 		return Response{}, fmt.Errorf("vision request carries no images")
@@ -200,6 +201,7 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	body, err := json.Marshal(ollamaChatReq{
 		Model:     o.model,
 		Stream:    false,
+		Format:    "json",
 		KeepAlive: o.keepAlive,
 		Messages: []ollamaMessage{{
 			Role:    "user",

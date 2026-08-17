@@ -109,12 +109,11 @@ func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endM
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span.
+	// whisper.cpp wants 16kHz mono wav; use the shared span extractor so every caller has the same
+	// seek/duration semantics.
 	wav := filepath.Join(dir, "span.wav")
-	if out, err := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
-		"-i", file, "-ar", "16000", "-ac", "1", "-y", wav).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("ffmpeg wav extract: %w: %s", err, out)
+	if err := ExtractSpanWAV(ctx, t.FFmpegPath, file, startMs, endMs, wav); err != nil {
+		return nil, err
 	}
 	base := filepath.Join(dir, "out")
 	if out, err := exec.CommandContext(ctx, t.WhisperPath,
@@ -133,7 +132,7 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 	// per-frame Hamming 1.1 for a re-encoded duplicate vs 27.6–32.2 different).
 	var stdout bytes.Buffer
 	cmd := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-vf", "fps=1/3,scale=9:8", "-pix_fmt", "gray",
 		"-f", "rawvideo", "-")
 	cmd.Stdout = &stdout
@@ -232,7 +231,7 @@ func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64
 	// Stream copy (§10 — no re-encode): fast, lossless, and the boundaries being
 	// cut at are scene changes, which is where keyframes cluster.
 	if combined, err := exec.CommandContext(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-to", msToSeconds(endMs),
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-c", "copy", "-avoid_negative_ts", "make_zero", "-y", out).CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg cut %s: %w: %s", out, err, combined)
 	}

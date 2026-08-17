@@ -663,6 +663,10 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// between them does not matter.
 	defer func() { _ = s.pruneOrphanSplitProposals(ctx) }()
 
+	// Fingerprints are the third no-FK sibling. A row whose content hash is no longer catalogued
+	// cannot be reused and would otherwise accumulate forever as files come and go.
+	defer func() { _ = s.pruneOrphanClipFingerprints(ctx) }()
+
 	if len(keepIDs) == 0 {
 		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
 		// empty or unreadable, which is exactly when a swept reel looks most like a deleted one —

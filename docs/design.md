@@ -1413,6 +1413,15 @@ Tagging options form a **grounding ladder** — cheapest, most-trusted signal fi
 
 Tiers 0–2 are pre-V44 (text-only classification via the configured LLM — filename, the source title/description that yt-dlp/Archive preserve as info-JSON sidecars, and, for split segments, the segment transcript, V34; whisper.cpp, §14). **V44 adds tiers 3–5**: persisting transcripts and running them on demand (`transcribe` job below), a grounded `brand` field, cheap frame heuristics, and vision-based tagging. Vision is no longer future work — it is the only tier that reads a *wordless* clip, and it fits the same grounding discipline (a model reading `KELLOGG'S` off an on-screen box is grounded exactly as an era is grounded when its year appears in the filename). Even text-only tagging is what makes thousands of clips practical; the visual tier closes the silent-advert gap that no amount of text ever could.
 
+⚠ **Vision JSON is field-tolerant and evidence-strict.** A local model can return a valid object
+with one wrong-typed optional field (measured live: `category: 0`). That field is discarded without
+discarding the independently readable fields in the same answer; a numeric-string era is likewise
+accepted as an integer. This does not weaken grounding: brand and era still need literal visible
+evidence, and category still has to resolve through the taxonomy. A syntactically invalid or
+non-object answer remains a retryable provider failure. The Ollama vision request also enables its
+native JSON output mode; prompt-only JSON produced malformed syntax often enough to consume real
+retries. Hosted providers retain their existing portable prompt-and-parse path.
+
 **On-demand transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would be a ~9.5-hour scan on arm64. The `transcribe` job (below, modelled on the language gate) is therefore opt-in, timer-driven, batched, and **selective**: it transcribes only clips whose source text is *thin OR that remain untagged after a text-only pass* — a clip with a rich archive.org description never pays for Whisper. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
 
 **Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
@@ -1595,6 +1604,14 @@ the hosted path can guess, which is why the floor exists.
 | Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
 | Cost | free | fractions of a cent for a 10s span |
 | Offline | yes | no |
+
+⚠ **An unavailable backend is a skip, not a retry.** If the selected detector has no model,
+executable, media tool, or hosted client configured, the language rung records why it did not apply
+and the clip advances immediately. Backoff is reserved for a backend that was ready enough to run
+and then failed, or one that ran but returned no trustworthy answer. Retrying a missing model at
+5- and 30-minute intervals cannot make it appear; it only turns an optional quality gate into a
+35-minute ingest delay. A later configuration change can use the ordinary rewind action to re-run
+the rung for clips that already passed it.
 
 ⚠ **NOT Ollama, and this is the trap worth naming.** "We already run a local LLM, so we do not need
 whisper" is the reasonable inference and it is wrong: Ollama has no audio input path at all. Probed
@@ -3111,11 +3128,34 @@ That is why attempts reached 12 against a `MaxAttempts` of 3, and why the row ne
 **Any rung that ever times out loops forever**; `split` is simply the one that timed out first.
 Failure and deferral both persist through a detached context.
 
-**Known gap, deliberately not built.** A much longer recording — a 3-hour capture is ~500 segments
-— would spend ~5 minutes in the fingerprint pass alone and exceed a pass again. The fix then is a
-per-pass SEGMENT budget with resume by `(ParentHash, index)`; the lineage column already exists
-(§10 V45, migration 00039). Not built because the measured corpus does not reach it, and a resume
-rule interacts with proposal editing in ways that need their own design.
+**Every segment operation is duration-bounded.** The ffmpeg adapters seek with `-ss` and limit work
+with `-t (end-start)`. They never pair an input seek with absolute `-to end`: `-to` is a position,
+not a duration, and made a late 30-second segment decode, transcribe or cut an ever-growing portion
+of the reel. That error made fingerprinting super-linear and could produce oversized cuts.
+
+**Catalog fingerprints are persisted derived evidence (V54c).** Duplicate detection compares every
+proposed span with the existing catalog. Decoding every whole catalog clip again for every reel
+makes the rung scale with *catalog size × reels attempted*, and a retry or restart discards all of
+that completed work. Loomarr therefore stores each successful, non-empty whole-clip dHash sequence
+in the sibling `filler_clip_fingerprints` table and reuses it across reels and process restarts.
+Each reel loads the current algorithm's cache in one read, not one query per catalog clip; missing
+entries are filled individually as soon as their decode completes.
+
+The cache key is **`(clip_hash, algorithm)`**. The content hash ties evidence to the actual bytes,
+so a replaced or re-encoded file is a hard miss. The algorithm versions the sampling, frame shape,
+hash construction and comparison alignment, so detector changes never reinterpret stale evidence.
+Catalog pruning removes orphan entries; there is no foreign key to the rebuildable `clips` cache,
+matching the pipeline/proposal sibling-table rule. Cache reads and writes are fail-open: malformed
+rows are omitted while valid siblings remain reusable, a cache outage falls back to the media, and
+an undecodable or empty frame sequence is never evidence of a duplicate. Writes use a short context
+detached from the expiring pass after ffmpeg returns, so a deadline can repeat at most the clip being
+decoded, not every completed catalog predecessor. This derived cache adds no operator control.
+
+**Known gap, narrowed but not erased.** A much longer recording — a 3-hour capture is ~500 proposed
+segments — can still spend ~5 minutes fingerprinting those proposal-local spans even with every
+catalog clip cached. The remaining fix is a per-pass SEGMENT budget with durable proposal progress;
+catalog caching deliberately does not pretend one reel's spans are reusable by another. Not built
+here because proposal editing and partial de-dup decisions need their own state contract.
 
 #### The rule V51g established, restated as its principle (V54)
 

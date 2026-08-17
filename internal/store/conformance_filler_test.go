@@ -78,6 +78,15 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	return c
 }
 
+func cachedClipFingerprint(ctx context.Context, s Store, clipHash, algorithm string) ([]uint64, bool, error) {
+	all, err := s.ListClipFingerprints(ctx, algorithm)
+	if err != nil {
+		return nil, false, err
+	}
+	frames, found := all[clipHash]
+	return frames, found, nil
+}
+
 func ids2(clips []Clip) []string {
 	out := make([]string, len(clips))
 	for i, c := range clips {
@@ -526,6 +535,46 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" || !got.VisionTagged {
 		t.Errorf("vision tags lost on re-sync {brand:%q visible:%q tagged:%v} — UpsertClip must omit them from DO UPDATE", got.Brand, got.VisibleText, got.VisionTagged)
+	}
+}
+
+func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	one := sampleClip("fingerprint-one", "One", filler.Commercial, 1993, filler.General, "")
+	two := sampleClip("fingerprint-two", "Two", filler.Commercial, 1994, filler.General, "")
+	if err := s.UpsertClip(ctx, one); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClip(ctx, two); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", nil); err == nil {
+		t.Fatal("empty fingerprint was persisted")
+	}
+	want := []uint64{0, 1, ^uint64(0)}
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", want); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1")
+	if err != nil || !found || len(got) != len(want) || got[2] != want[2] {
+		t.Fatalf("fingerprint round-trip = (%v, %v, %v), want %v", got, found, err, want)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v2"); err != nil || found {
+		t.Errorf("different algorithm hit the cache: found=%v err=%v", found, err)
+	}
+	if err := s.UpsertClipFingerprint(ctx, two.Hash, "dhash-v1", []uint64{7}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DeleteClipsNotIn(ctx, []string{two.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1"); err != nil || found {
+		t.Errorf("pruned clip left an orphan fingerprint: found=%v err=%v", found, err)
+	}
+	if got, found, err := cachedClipFingerprint(ctx, s, two.Hash, "dhash-v1"); err != nil || !found || len(got) != 1 || got[0] != 7 {
+		t.Errorf("kept clip lost its fingerprint: got=%v found=%v err=%v", got, found, err)
 	}
 }
 

@@ -27,6 +27,7 @@ type fakeTools struct {
 	chapterCalls     int
 	blackSilenceCall int
 	cutCalls         []string
+	grayCalls        []string
 }
 
 func key3(path string, start, end int64) string { return fmt.Sprintf("%s|%d|%d", path, start, end) }
@@ -50,6 +51,7 @@ func (f *fakeTools) Transcribe(_ context.Context, _ string, start, end int64) ([
 
 func (f *fakeTools) GrayFrames(_ context.Context, path string, start, end int64) ([][]byte, error) {
 	// The splitter passes drop-dir-joined paths; tests key on the basename.
+	f.grayCalls = append(f.grayCalls, key3(filepath.Base(path), start, end))
 	frames, ok := f.grayFrames[key3(filepath.Base(path), start, end)]
 	if !ok {
 		return nil, fmt.Errorf("no frames for %s", key3(path, start, end))
@@ -79,12 +81,17 @@ func (f *fakeTools) Cut(_ context.Context, _ string, start, end int64, out strin
 
 // splitMemStore is an in-memory SplitStore.
 type splitMemStore struct {
-	clips     map[string]filler.StoreClip
-	proposals map[string]filler.SplitProposal
+	clips                map[string]filler.StoreClip
+	proposals            map[string]filler.SplitProposal
+	fingerprints         map[string][]uint64
+	fingerprintAlgorithm string
 }
 
 func newSplitMemStore() *splitMemStore {
-	return &splitMemStore{clips: map[string]filler.StoreClip{}, proposals: map[string]filler.SplitProposal{}}
+	return &splitMemStore{
+		clips: map[string]filler.StoreClip{}, proposals: map[string]filler.SplitProposal{},
+		fingerprints: map[string][]uint64{},
+	}
 }
 
 // ⚠ **Keyed by HASH, because `store.UpsertClip` is `ON CONFLICT(hash)` and `store.GetClip` is
@@ -104,6 +111,21 @@ func (m *splitMemStore) ListClips(context.Context) ([]filler.StoreClip, error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+func (m *splitMemStore) ListClipFingerprints(_ context.Context, algorithm string) (map[string][]uint64, error) {
+	out := make(map[string][]uint64)
+	if algorithm != m.fingerprintAlgorithm {
+		return out, nil
+	}
+	for hash, frames := range m.fingerprints {
+		out[hash] = append([]uint64(nil), frames...)
+	}
+	return out, nil
+}
+func (m *splitMemStore) UpsertClipFingerprint(_ context.Context, clipHash, algorithm string, frames []uint64) error {
+	m.fingerprintAlgorithm = algorithm
+	m.fingerprints[clipHash] = append([]uint64(nil), frames...)
+	return nil
 }
 func (m *splitMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
 	m.clips[c.Hash] = c
@@ -455,6 +477,53 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	// would cry wolf on exactly the clips that are new.
 	if p.Segments[1].DupOf != "" {
 		t.Errorf("segment flagged against its OWN compilation: %+v", p.Segments[1])
+	}
+}
+
+func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
+	st := newSplitMemStore()
+	firstHash := seedCompilation(st, "comps/first.mp4", 30_000)
+	existing := filler.StoreClip{}
+	existing.Hash = "hash-of-catalog-ad"
+	existing.Path = "old/catalog-ad.mp4"
+	existing.DurationMs = 30_000
+	st.clips[existing.Hash] = existing
+
+	pattern := make([]byte, 72)
+	for i := range pattern {
+		pattern[i] = byte(i)
+	}
+	tools := &fakeTools{
+		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
+		grayFrames: map[string][][]byte{
+			key3("catalog-ad.mp4", 0, 30_000): {pattern},
+			key3("first.mp4", 0, 30_000):      {pattern},
+			key3("second.mp4", 0, 30_000):     {pattern},
+		},
+	}
+
+	first := newSplitter(st, tools, nil, t.TempDir())
+	p, err := first.Propose(context.Background(), firstHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(st.proposals, p.ID)
+	delete(st.clips, firstHash)
+
+	secondHash := seedCompilation(st, "comps/second.mp4", 30_000)
+	if _, err := newSplitter(st, tools, nil, t.TempDir()).Propose(context.Background(), secondHash); err != nil {
+		t.Fatal(err)
+	}
+
+	catalogCall := key3("catalog-ad.mp4", 0, 30_000)
+	calls := 0
+	for _, call := range tools.grayCalls {
+		if call == catalogCall {
+			calls++
+		}
+	}
+	if calls != 1 {
+		t.Errorf("catalog media decoded %d times across two splitters, want one persisted-cache fill; calls=%v", calls, tools.grayCalls)
 	}
 }
 

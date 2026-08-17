@@ -457,6 +457,12 @@ func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreC
 	}
 	return out, nil
 }
+func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error) {
+	return a.st.ListClipFingerprints(ctx, algorithm)
+}
+func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, frames)
+}
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }

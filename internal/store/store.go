@@ -272,6 +272,11 @@ type ClipStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+	// The persisted derived cache used by compilation de-duplication (§10). Reads batch the
+	// catalog by exact algorithm; corrupt rows are omitted with an error so valid siblings remain
+	// reusable and the bad row is recomputed.
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 }
 
 // SplitProposalStore is the persisted split-proposal surface (§10, V34) —
