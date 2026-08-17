@@ -39,6 +39,13 @@ interface ChannelWatchProps {
   onSavePolicy: (policy: ChannelPolicy) => void;
   /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
   mediaServerName?: string;
+  /**
+   * Media-server base URL (`library.url`) for the "Open in …" hand-off. Loomarr can only reach the
+   * media server's front door, not a per-channel Live TV deep link — Emby/Jellyfin don't expose one
+   * — so the hand-off opens the media server and the viewer navigates to Live TV. Absent/empty ⇒ the
+   * button is hidden rather than doing nothing.
+   */
+  mediaServerUrl?: string;
   tuner?: {
     canSurf: boolean;
     requestedChannel?: ChannelDTO;
@@ -111,6 +118,7 @@ const ChannelWatch = ({
   isAdmin,
   onSavePolicy,
   mediaServerName = "your media server",
+  mediaServerUrl,
   tuner,
 }: ChannelWatchProps) => {
   const player = useHlsPlayer(channel.id, tuner?.attempt);
@@ -177,8 +185,15 @@ const ChannelWatch = ({
     toast.success("Channel updated — applies on the next segment.");
   };
 
-  const openInMediaServer = () =>
-    toast.info(`Opening ${channel.name} in ${mediaServerName} — same stream, your usual client.`);
+  // Real hand-off (§9.1): open the media server's front door in a new tab so the viewer can reach
+  // Live TV in their usual client. Loomarr has no per-channel deep link — Emby/Jellyfin don't expose
+  // one — so this is the media-server root, not this channel. `noopener,noreferrer` keeps the new tab
+  // from reaching back into this app. The button is only rendered when a URL exists (see below), so
+  // this is not called without one.
+  const openInMediaServer = () => {
+    if (!mediaServerUrl) return;
+    window.open(mediaServerUrl, "_blank", "noopener,noreferrer");
+  };
 
   // The mini-guide scrubber (§9.1 V47) fills the player's full-width `scrubber` slot. Shown once we
   // have a timeline and the stream is healthy; otherwise the player's control bar has no scrubber row.
@@ -330,9 +345,13 @@ const ChannelWatch = ({
           ) : (
             <span />
           )}
-          <Button variant="outline" size="sm" onClick={openInMediaServer} className="shrink-0">
-            Open in {mediaServerName}
-          </Button>
+          {mediaServerUrl ? (
+            <Button variant="outline" size="sm" onClick={openInMediaServer} className="shrink-0">
+              Open in {mediaServerName}
+            </Button>
+          ) : (
+            <span />
+          )}
         </div>
       </section>
     </div>
