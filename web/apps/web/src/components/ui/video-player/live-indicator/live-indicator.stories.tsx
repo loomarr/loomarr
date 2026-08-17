@@ -16,4 +16,23 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {};
+export const Default: Story = {
+  args: {
+    state: { mode: "live", lagSeconds: 0, viewerTimeMs: Date.now(), noticeRevision: 0 },
+    onGoLive: () => undefined,
+  },
+};
+
+export const BehindLive: Story = {
+  args: {
+    state: { mode: "behind", lagSeconds: 83, viewerTimeMs: Date.now(), noticeRevision: 0 },
+    onGoLive: () => undefined,
+  },
+};
+
+export const Paused: Story = {
+  args: {
+    state: { mode: "paused", lagSeconds: 23, viewerTimeMs: Date.now(), noticeRevision: 0 },
+    onGoLive: () => undefined,
+  },
+};

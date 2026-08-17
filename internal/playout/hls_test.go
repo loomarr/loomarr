@@ -1,9 +1,27 @@
 package playout
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestLiveHLSRetainsTheSharedDVRHorizon(t *testing.T) {
+	if DVRHorizon != 15*time.Minute {
+		t.Fatalf("DVRHorizon = %v, want 15m", DVRHorizon)
+	}
+	args := hlsArgs("/seg", PlanBaseline)
+	if got := argVal(args, "-hls_list_size"); got != strconv.Itoa(15*60/4) {
+		t.Fatalf("live segment window = %q, want 225 four-second segments", got)
+	}
+	if got := argVal(args, "-hls_delete_threshold"); got != "1" {
+		t.Fatalf("live delete threshold = %q, want one unreferenced segment", got)
+	}
+	if flags := argVal(args, "-hls_flags"); !strings.Contains(flags, "program_date_time") {
+		t.Fatalf("-hls_flags %q missing program_date_time", flags)
+	}
+}
 
 // argVal returns the token immediately after the first occurrence of flag, or "".
 func argVal(args []string, flag string) string {

@@ -177,3 +177,19 @@ func TestChannelTimeline_NoGuideIsEmptyNotError(t *testing.T) {
 		t.Errorf("no guide should yield an empty strip, got %d airings", len(airings))
 	}
 }
+
+func TestChannelTimelineIncludesTheSharedDVRLookbehind(t *testing.T) {
+	g := &fakeXMLTVGuide{}
+	srv, st := newTimelineServer(t, g, nil)
+	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+
+	_ = getTimeline(t, srv, "ch1")
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.windows) != 1 {
+		t.Fatalf("timeline guide calls = %d, want one", len(g.windows))
+	}
+	if want := 3*time.Hour + playout.DVRHorizon; g.windows[0] != want {
+		t.Fatalf("timeline window = %v, want %v including DVR history", g.windows[0], want)
+	}
+}

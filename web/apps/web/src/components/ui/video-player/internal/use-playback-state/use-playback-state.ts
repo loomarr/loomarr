@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import type { LivePlaybackTransport } from "../../live-playback-transport.type";
 
 // usePlaybackState owns everything about the <video> element's transport: play/pause, elapsed and
 // duration, mute/volume, and the "metadata has loaded" flag. Extracted from VideoPlayer so the media
@@ -17,6 +18,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), h
 const usePlaybackState = (
   videoRef: RefObject<HTMLVideoElement | null>,
   { startAt, endAt }: PlaybackWindow = {},
+  liveTransport?: LivePlaybackTransport,
 ) => {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -78,6 +80,10 @@ const usePlaybackState = (
     const el = videoRef.current;
     if (!el) return;
     if (el.paused) {
+      if (liveTransport) {
+        void liveTransport.play(el);
+        return;
+      }
       // ⚠ Replay from the window's start. Without this, pressing Play after the window ended
       // advances one frame and `onTimeUpdate` immediately re-pauses — the classic "the button is
       // broken". The 0.05 slack absorbs the snap below.
@@ -85,8 +91,9 @@ const usePlaybackState = (
       // The promise is caught: autoplay policies reject play() without a gesture, and an uncaught
       // rejection logs an unhandled-promise error on an ordinary interaction.
       void el.play().catch(() => setPlaying(false));
-    } else el.pause();
-  }, [videoRef, startAt, endAt]);
+    } else if (liveTransport) liveTransport.pause(el);
+    else el.pause();
+  }, [videoRef, startAt, endAt, liveTransport]);
 
   // Re-clamp when the WINDOW MOVES under a mounted player — the operator retypes a cut point in
   // the mm:ss field while the preview is open.

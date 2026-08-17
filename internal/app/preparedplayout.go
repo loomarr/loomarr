@@ -15,7 +15,6 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-const preparedBoundaryLookbehind = 10 * time.Second
 const preparedCandidateBatch = 16
 
 type preparedChannelReader interface {
@@ -263,7 +262,7 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 	channelPolicy := schedule.ResolveAudioLanguage(channel.Policy, "")
 	now := r.now()
 	broadcasts, err := r.timeline.ScheduledBroadcasts(
-		ctx, request.ChannelID, now.Add(-preparedBoundaryLookbehind), now.Add(time.Nanosecond),
+		ctx, request.ChannelID, now.Add(-playout.DVRHorizon), now.Add(time.Nanosecond),
 	)
 	if err != nil {
 		return playout.PreparedWindow{}, false, err

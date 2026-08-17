@@ -32,11 +32,14 @@ type preparedTimelineFake struct {
 	broadcasts          map[string][]playout.Broadcast
 	audioTrackByChannel map[string]int
 	audioCalls          int
+	lastFrom            time.Time
+	lastTo              time.Time
 }
 
 func (f *preparedTimelineFake) ScheduledBroadcasts(
-	_ context.Context, channelID string, _, _ time.Time,
+	_ context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
+	f.lastFrom, f.lastTo = from, to
 	return f.broadcasts[channelID], nil
 }
 
@@ -275,6 +278,28 @@ func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 	}
 	if inputs.calls != inputCalls || timeline.audioCalls != audioCalls {
 		t.Fatal("warmed tune re-resolved a source or ran an audio probe")
+	}
+}
+
+func TestPreparedRuntimeTuneRequestsTheSharedDVRLookbehind(t *testing.T) {
+	now := time.Unix(25_000, 0)
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+		Kind: schedule.SlotProgram, LibraryItemID: "current",
+		Start: now.Add(-time.Minute), Stop: now.Add(time.Hour),
+	}}}}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		timeline, &preparedInputsFake{}, preparedLookupFake{}, func() time.Time { return now }, nil,
+		func() string { return "policy" }, func() string { return "internal" },
+		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
+	)
+
+	_, _, _ = r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	if want := now.Add(-playout.DVRHorizon); !timeline.lastFrom.Equal(want) {
+		t.Fatalf("prepared schedule starts at %v, want DVR cutoff %v", timeline.lastFrom, want)
+	}
+	if !timeline.lastTo.Equal(now.Add(time.Nanosecond)) {
+		t.Fatalf("prepared schedule stops at %v, want live edge %v", timeline.lastTo, now.Add(time.Nanosecond))
 	}
 }
 

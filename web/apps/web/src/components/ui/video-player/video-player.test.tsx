@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useHoldControls } from "./internal/hold-controls-context";
 import { VideoPlayer } from "./video-player";
@@ -121,6 +121,31 @@ describe("VideoPlayer", () => {
     expect(requestFrame).not.toHaveBeenCalled();
 
     delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+  });
+
+  it("keeps behind-live context and Go Live together in the playback toolbar", () => {
+    const goLive = vi.fn();
+    const { container } = render(
+      <VideoPlayer
+        src={SRC}
+        live
+        topBar={<span>CH 42</span>}
+        liveTransport={{
+          state: { mode: "behind", lagSeconds: 23, viewerTimeMs: 1_000, noticeRevision: 0 },
+          play: vi.fn(),
+          pause: vi.fn(),
+          goLive,
+        }}
+      />,
+    );
+
+    const controls = screen.getByRole("group", { name: "Playback controls" });
+    expect(within(controls).getByText("23s behind")).toBeInTheDocument();
+    fireEvent.click(within(controls).getByRole("button", { name: "Go live" }));
+    expect(goLive).toHaveBeenCalledOnce();
+
+    const topBar = container.querySelector(".bg-linear-to-b") as HTMLElement;
+    expect(within(topBar).queryByRole("button", { name: "Go live" })).not.toBeInTheDocument();
   });
 });
 

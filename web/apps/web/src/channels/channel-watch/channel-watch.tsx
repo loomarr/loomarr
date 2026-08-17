@@ -5,7 +5,7 @@ import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
@@ -90,8 +90,7 @@ const clock = (ms: number): string => {
 // time left — all PROGRAMME time from the schedule, not video time. null when nothing is airing at
 // this instant (the player omits the time). Rendered as a node so the "/ total" is dimmed like the
 // mock and the "left" reads grey beside it.
-const programmeTime = (airings: GuideAiring[]): React.ReactNode => {
-  const now = Date.now();
+const programmeTime = (airings: GuideAiring[], now: number): React.ReactNode => {
   const current = airings.find((a) => now >= a.startMs && now < a.stopMs);
   if (!current) return null;
   const elapsed = now - current.startMs;
@@ -118,6 +117,16 @@ const ChannelWatch = ({
   useEffect(() => {
     if (player.status === "playing") tuner?.ready(channel.id);
   }, [channel.id, player.status, tuner?.ready]);
+  const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
+  useEffect(() => {
+    if (expiryNoticeRef.current.channelId !== channel.id) {
+      expiryNoticeRef.current = { channelId: channel.id, revision: 0 };
+    }
+    const revision = player.liveTransport.state.noticeRevision;
+    if (revision <= expiryNoticeRef.current.revision) return;
+    expiryNoticeRef.current.revision = revision;
+    toast.info("That paused point is no longer available, so you're back live.");
+  }, [channel.id, player.liveTransport.state.noticeRevision]);
   // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
   // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
   // second click makes "open the channel" a two-step act to do the obvious thing.
@@ -174,11 +183,13 @@ const ChannelWatch = ({
   // The mini-guide scrubber (§9.1 V47) fills the player's full-width `scrubber` slot. Shown once we
   // have a timeline and the stream is healthy; otherwise the player's control bar has no scrubber row.
   const scrubber =
-    airings.length > 0 && player.status !== "error" ? <TimelineScrubber airings={airings} /> : undefined;
+    airings.length > 0 && player.status !== "error" ? (
+      <TimelineScrubber airings={airings} nowMs={player.liveTransport.state.viewerTimeMs} />
+    ) : undefined;
 
   // The controls-row time (mock): elapsed / total + "N min left" for the programme airing now, from
   // the schedule (the player has no source for programme time, so channel-watch derives it).
-  const timeLeft = programmeTime(airings);
+  const timeLeft = programmeTime(airings, player.liveTransport.state.viewerTimeMs);
   const osdChannel = tuner?.requestedChannel ?? channel;
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
@@ -240,6 +251,7 @@ const ChannelWatch = ({
   const playerEl = (
     <VideoPlayer
       live
+      liveTransport={player.liveTransport}
       scrubber={scrubber}
       topBar={topBar}
       timeLeft={timeLeft}
@@ -276,15 +288,14 @@ const ChannelWatch = ({
               )}
             </div>
 
-            {/* The tune-in status line under the player — the player's own control bar carries the
-                LIVE badge, scrubber, controls and fullscreen, so this is just the join note. */}
-            <p className="px-1 text-muted-foreground text-xs">
-              {player.status === "error"
-                ? (player.error ?? "The stream stopped.")
-                : player.status === "loading"
-                  ? "Tuning in…"
-                  : "You're joining live, mid-programme."}
-            </p>
+            {/* Loading/error needs prose outside the frame. Once media is ready, the compact live
+                control in the playback bar owns live/paused/behind state without duplicating it in
+                a second status line below the picture. */}
+            {player.status !== "playing" && (
+              <p className="px-1 text-muted-foreground text-xs">
+                {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
+              </p>
+            )}
             {player.status === "error" && tuner && (
               <Button variant="outline" size="sm" onClick={tuner.retry} className="self-start">
                 Retry channel

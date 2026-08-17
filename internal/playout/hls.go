@@ -42,10 +42,14 @@ import (
 // keyframes predictably.
 const hlsSegmentDuration = 4
 
-// hlsWindow is how many segments the live playlist keeps. Enough to give a client a few seconds
-// of rewind buffer against a network blip; small enough that the on-disk footprint per channel
-// stays trivial (window × segment-seconds of video). `delete_segments` prunes past this.
-const hlsWindow = 6
+// DVRHorizon is the one server-side time-shift contract shared by live HLS, prepared playback,
+// and the Watch timeline (§9.1 V60). Media remains one bounded window per active
+// (Channel, EncodePlan), never a private copy or encoder per viewer.
+const DVRHorizon = 15 * time.Minute
+
+// hlsWindow is the number of whole target-duration segments required to cover DVRHorizon.
+// `delete_segments` plus the one-segment delete threshold bounds scratch just behind this window.
+const hlsWindow = int(DVRHorizon/time.Second) / hlsSegmentDuration
 
 // hlsRelayMaxBytes bounds the lossless startup queue. Only the current channel and its two adjacent
 // warm candidates use HLS remuxes, so this does not scale with the guide's channel count. 128 MiB
@@ -757,6 +761,7 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(hlsSegmentDuration),
 		"-hls_list_size", strconv.Itoa(hlsWindow),
+		"-hls_delete_threshold", "1",
 		"-hls_allow_cache", "0",
 	}
 
@@ -785,7 +790,7 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 			//    the tag is what makes the browser use its HEVC decoder instead of showing black.
 			"-bsf:a", "aac_adtstoasc",
 			"-tag:v", "hvc1",
-			"-hls_flags", "delete_segments+independent_segments+omit_endlist",
+			"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 			"-hls_segment_type", "fmp4",
 			"-hls_fmp4_init_filename", "init.mp4",
 			"-hls_segment_filename", filepath.Join(dir, "seg-%d.m4s"),
@@ -793,7 +798,7 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 		)
 	}
 	return append(base,
-		"-hls_flags", "delete_segments+independent_segments+omit_endlist",
+		"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", filepath.Join(dir, "seg-%d.ts"),
 		filepath.Join(dir, hlsPlaylistName),

@@ -1617,6 +1617,61 @@ targets. Android TV, Roku, and Apple TV remain later adapters over the same cont
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.
 
+### Pause is shared time-shift, not a private playback stack (V60)
+
+Pausing an internal Channel freezes the viewer's broadcast position; resuming continues from that
+same position while it remains inside a bounded fifteen-minute DVR horizon. The player reports how
+far it trails the Channel wall clock and offers one explicit **Go Live** action. A paused position
+that falls out of the horizon cannot be reconstructed: the transport returns to the safe live edge
+and says that the paused point expired. Tuning another Channel always joins that Channel live.
+
+The Web adapter exposes that contract through the generic player transport, not a second Channel
+player. Pause records both the exact media time and the viewer's Channel wall-clock time, then pauses
+the one mounted element without stopping its shared HLS session. Resume seeks that exact media time
+when it remains in the published seekable ranges and reports a `behind` mode whose lag advances from
+the stored wall clock. **Go Live** restarts loading at the HLS live edge and seeks to hls.js's live
+sync position (or the native seekable end). While paused, a ten-second manifest read keeps a
+native-HLS lease warm without creating media or a viewer-specific worker. The hls.js back buffer and
+latency correction are set beyond the fifteen-minute product horizon, so client defaults cannot
+silently discard a position the server still promises.
+
+These transport states belong in the playback bar: live is a compact status, while paused or behind
+live shows the increasing lag beside the **Go Live** action. Programme time and the mini-guide use
+the stored viewer wall clock, so their labels follow delayed playback rather than continuing to
+describe the live edge. The top bar remains Channel identity only. A Channel tune resets the
+transport to live; the bounded fresh-standby handoff above may join replacement playback after
+manifest, fragment, or `loadeddata`, but those callbacks must never resume a viewer who deliberately
+paused the active Channel.
+
+The history is shared media, never per-viewer encoding. Live HLS keeps one rolling fifteen-minute
+segment window on the existing remux keyed by `(Channel, EncodePlan)`, adds
+`EXT-X-PROGRAM-DATE-TIME`, and removes media older than that bound. Its refcount, grace lease, and
+admission stay unchanged: pausing ten viewers does not create ten remuxes, and a 100-Channel Guide
+does not keep 100 encoders alive. Only an active or adjacent-warmed hot-set Channel owns live
+scratch; its bounded history disappears with that remux after the existing grace.
+
+Prepared playback exposes the same wall-clock horizon without copying or repackaging bytes. The
+Origin renders a rolling manifest over immutable publication-keyed fragments from the current and
+as many prior prepared Airings as intersect the fifteen-minute lookbehind, inserting a
+discontinuity and each publication's init map at every Airing boundary. The prepared resolver asks
+the authoritative schedule for that same lookbehind; missing prior publications shorten available
+history but never start tune-time preparation or force a live encoder. The current Airing must still
+be a prepared hit for this path to win.
+
+The Watch Channel timeline asks for the same fifteen minutes behind the Channel wall clock plus its
+existing three-hour future, so programme names, episode context, and break blocks follow a delayed
+viewer instead of disappearing at the live boundary. The exported playout DVR horizon is the one
+server constant used by live HLS, prepared manifests, prepared resolution, and this Watch projection;
+it is a product contract, not a setting or platform-specific policy.
+
+The V60 server gate proves: live ffmpeg arguments retain exactly the bounded shared horizon and emit
+programme date-time; a prepared manifest reaches the same wall-clock cutoff across multiple Airings
+without creating media; the resolver requests that lookbehind; the Watch timeline includes it; and
+the existing shared-remux identity remains `(Channel, EncodePlan)`. Web, Safari-native HLS, and later
+native-TV transports consume this one history through their platform player adapters. The Web gate
+proves exact pause-point resume, wall-clock lag, expiry fallback and notice, explicit Go Live, and
+that tuner replacement callbacks cannot override an intentional pause.
+
 ### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
 The consumers above do **not** have the same codec tolerance, and pretending they do is a black

@@ -1,3 +1,5 @@
+import type { LivePlaybackTransport } from "./live-playback-transport.type";
+
 interface VideoPlayerProps {
   // What to play. Any URL the browser can source a <video> from — this primitive knows nothing
   // about where it came from, which is what lets it serve clips, channel streams and previews
@@ -33,6 +35,9 @@ interface VideoPlayerProps {
   // mini-guide timeline) as its own full-width row above the buttons — the mock's layout. Play,
   // volume and fullscreen stay.
   live?: boolean;
+  // Optional live-clock controller. Channel Watch supplies it so the generic play toggle preserves
+  // an intentional paused point and the top-left status can offer a one-action return to live.
+  liveTransport?: LivePlaybackTransport;
   // The live scrubber SLOT (§9.1 V47). A live channel cannot seek but has a schedule, so the caller
   // (channel-watch) passes a mini-guide timeline (TimelineScrubber) here and the player renders it
   // FULL-WIDTH in its own row of the control bar. The player stays ignorant of what the strip is (it

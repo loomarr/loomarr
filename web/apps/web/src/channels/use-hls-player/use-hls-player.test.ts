@@ -41,6 +41,7 @@ vi.mock("hls.js", () => {
     media: HTMLMediaElement | null = null;
     url: string | null = null;
     config: unknown;
+    liveSyncPosition: number | null = 98;
     attachMedia = vi.fn((media: HTMLMediaElement) => {
       this.media = media;
     });
@@ -72,7 +73,10 @@ const videoEl = (canPlay = "") =>
     canPlayType: () => canPlay,
     dataset: {},
     poster: "",
+    currentTime: 0,
+    paused: false,
     pause: vi.fn(),
+    seekable: { length: 0, start: vi.fn(), end: vi.fn() },
     play: vi.fn().mockResolvedValue(undefined),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -777,6 +781,84 @@ describe("useHlsPlayer", () => {
     act(() => currentRelease());
     await waitFor(() => expect(current.destroy).toHaveBeenCalled());
     await waitFor(() => expect(superseded.destroy).toHaveBeenCalled());
+  });
+
+  it("resumes the exact paused point and can return to the live edge", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const video = videoEl() as HTMLVideoElement;
+    video.currentTime = 44;
+    Object.defineProperty(video, "seekable", {
+      value: { length: 1, start: () => 0, end: () => 100 },
+      configurable: true,
+    });
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as {
+      liveSyncPosition: number;
+      startLoad: ReturnType<typeof vi.fn>;
+    };
+
+    act(() => result.current.liveTransport.pause(video));
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(result.current.liveTransport.state.mode).toBe("paused");
+
+    vi.mocked(Date.now).mockReturnValue(1_015_000);
+    await act(async () => result.current.liveTransport.play(video));
+    expect(controller.startLoad).toHaveBeenCalledWith(44);
+    expect(video.currentTime).toBe(44);
+    expect(result.current.liveTransport.state).toMatchObject({ mode: "behind", lagSeconds: 15 });
+
+    await act(async () => result.current.liveTransport.goLive(video));
+    expect(controller.startLoad).toHaveBeenCalledWith(-1);
+    expect(video.currentTime).toBe(98);
+    expect(result.current.liveTransport.state).toMatchObject({ mode: "live", lagSeconds: 0 });
+  });
+
+  it("keeps an intentional pause while the active controller buffers another fragment", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const video = videoEl() as HTMLVideoElement;
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as { on: ReturnType<typeof vi.fn> };
+    const fragmentBuffered = controller.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "fragBuffered")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(fragmentBuffered).toBeTypeOf("function");
+
+    act(() => result.current.liveTransport.pause(video));
+    vi.mocked(video.play).mockClear();
+    act(() => fragmentBuffered?.());
+
+    expect(video.play).not.toHaveBeenCalled();
+    expect(result.current.liveTransport.state.mode).toBe("paused");
+  });
+
+  it("returns live and raises a notice when the paused point has left the shared window", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const video = videoEl() as HTMLVideoElement;
+    video.currentTime = 44;
+    let seekableStart = 0;
+    Object.defineProperty(video, "seekable", {
+      value: { length: 1, start: () => seekableStart, end: () => 100 },
+      configurable: true,
+    });
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+
+    act(() => result.current.liveTransport.pause(video));
+    seekableStart = 50;
+    await act(async () => result.current.liveTransport.play(video));
+
+    expect(result.current.liveTransport.state).toMatchObject({ mode: "live", noticeRevision: 1 });
   });
 
   it("surfaces an error when the mint returns no URL", async () => {
