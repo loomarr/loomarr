@@ -4761,6 +4761,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `images` | Every image Loomarr shows: ingest, content-addressed storage, derivatives, serving (§22) |
 | `metrics` | The Prometheus surface (§7, §18) |
 | `buildinfo` | The version stamped in at build time |
+| `releaseverify` | Build-time policy over the release chain: pinned actions, digest-only builds, and signing strictly before tag promotion |
 
 **The edges** — inbound HTTP, wiring, and the things that only exist for tests:
 
