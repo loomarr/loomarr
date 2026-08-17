@@ -4,6 +4,14 @@ Migrations only run forward, so: **back up, then pull.**
 
 ## Back up
 
+The simplest way is the admin UI: **Settings → System → Backup**, which downloads a snapshot with
+your signed-in session — no token needed. To script it instead, use the endpoint below.
+
+`/v1/backup` is admin-only. The `API_TOKEN` it needs is **not** the internal one Loomarr
+auto-generates; reveal a usable value under **Settings → Secrets** (eye toggle + copy), or set your
+own `API_TOKEN=<something-long>` in `.env` and restart. Export it as `$API_TOKEN` before the curl —
+without it the request is `401`.
+
 SQLite — this streams a consistent snapshot while the app runs:
 
 ```bash

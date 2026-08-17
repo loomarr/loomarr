@@ -95,6 +95,7 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"LOOMARR_VERSION":       "compose-only — selects the pinned GHCR image tag",
 	"LOOMARR_HTTP_BIND":     "compose-only — selects the address where Traefik publishes HTTP",
 	"LOOMARR_HTTP_PORT":     "compose-only — selects Traefik's published host port",
+	"API_TOKEN":             "generated secret (internal/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
 }
 
 // scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many

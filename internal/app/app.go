@@ -139,6 +139,15 @@ var lastPlayoutResolver *playoutResolver
 
 const replicaSettingsRefreshInterval = 30 * time.Second
 
+// internalPlayoutNeedsPublicURL reports whether the boot path should warn that internal
+// playout has no reachable base URL. Callers invoke it only inside the internal-playout branch,
+// so the sole question here is whether server.public_url is effectively empty — whitespace is
+// treated as unset because a blank env value round-trips to "  " through some shells and is not
+// a usable URL. (beta-readiness D-4.)
+func internalPlayoutNeedsPublicURL(publicURL string) bool {
+	return strings.TrimSpace(publicURL) == ""
+}
+
 // startReplicaSettingsRefresh owns the one periodic settings reader for a Postgres
 // application generation. SQLite is single-process by contract and returns without
 // starting a goroutine or issuing any additional store reads.
@@ -876,6 +885,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}()
 		log.Info("internal playout registered",
 			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
+
+		// server.public_url is the base a media client dials for HLS segments. Internal playout
+		// is the default backend, and an unset public URL makes channels appear in the guide but
+		// fail at tune time (playout.go returns 503). The first-run wizard requires this (#387),
+		// but an env-only, restored-DB, or API-driven install bypasses the wizard entirely and
+		// otherwise gets no signal until a viewer hits the dead channel. Warn at boot so the
+		// operator sees it in the logs, not in a support ticket. (§9.1; beta-readiness D-4.)
+		if internalPlayoutNeedsPublicURL(set.str("server.public_url")) {
+			log.Warn("internal playout: server.public_url is unset — channels will appear in the guide but fail at tune time; set SERVER_PUBLIC_URL (or server.public_url) to this instance's reachable base URL")
+		}
 
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep

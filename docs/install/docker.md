@@ -91,6 +91,12 @@ the cap.
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.
 
+The easiest backup is the admin UI: **Settings → System → Backup** downloads a snapshot with your
+signed-in session, no token required. To script it, use `/v1/backup` (admin-only). Reveal a usable
+`API_TOKEN` under **Settings → Secrets** (eye toggle + copy), or set your own
+(`API_TOKEN=<something-long>` in `.env`, then restart); export it as `$API_TOKEN` before the curl,
+or the request is `401`.
+
 Back up SQLite:
 
 ```bash
