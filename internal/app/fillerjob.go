@@ -88,18 +88,19 @@ func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 
 // The split-review sweep (§10 V54): expired proposals are retired and their recordings reclaimed.
 //
-// ⚠ **This job needs `Timeout: scheduler.LongJobTimeout` and the `long` queue, and cannot declare
-// them yet.** Both land in #304, which is a sibling stack rather than a parent of this one — so
-// until it merges this runs under River's inherited one-minute default. A sweep over a large
-// backlog does real file I/O and will exceed that. Add the field in the merge commit; the tracking
-// note is here rather than in a TODO because the fix is someone else's already-written PR.
+// ⚠ **`Timeout` is not optional here** — the sweep retires proposals and reclaims their source
+// recordings, real file I/O that over a large backlog exceeds River's one-minute default. The
+// ceiling also routes the job to the `long` queue (derived from `Timeout > 0`, `scheduler.queueFor`).
+// #304 gave every other job in this file its ceiling but left this one under the default; a stale
+// note here claimed the fix "cannot declare them yet, both land in #304" long after #304 had merged.
 //
 // ⚠ Daily, deliberately off-peak, and NOT more often. The window is measured in weeks, so a faster
 // cadence buys nothing and only widens the chance of a pass landing while an operator is mid-review
 // on a reel that is one hour past its expiry.
 func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-split-sweep", Group: scheduler.GroupFiller, Title: "Expire split suggestions",
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-split-sweep", Group: scheduler.GroupFiller, Title: "Expire split suggestions",
 		Description: "Removes expired split proposals and their source recordings while retaining produced clips.",
 		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
 		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
