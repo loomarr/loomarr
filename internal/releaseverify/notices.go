@@ -58,7 +58,7 @@ func VerifyNotices(root string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("Dockerfile has no active %s instruction containing release-notice evidence %q", requirement.instruction, requirement.fragment)
+			return fmt.Errorf("dockerfile has no active %s instruction containing release-notice evidence %q", requirement.instruction, requirement.fragment)
 		}
 	}
 

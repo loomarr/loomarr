@@ -178,7 +178,7 @@ func VerifyReleaseWorkflow(path string) error {
 			cosignIndex = index
 			with, mapErr := requiredMap(step, "with")
 			if mapErr != nil || len(with.Content) != 2 || scalarValue(with, "cosign-release") != "v2.6.5" {
-				return errors.New("Cosign installer must select exactly v2.6.5")
+				return errors.New("cosign installer must select exactly v2.6.5")
 			}
 		}
 		trimmedRun := strings.TrimSpace(run)
@@ -238,7 +238,8 @@ func VerifyReleaseWorkflow(path string) error {
 	if protectCount != 1 {
 		return fmt.Errorf("release workflow must protect the immutable SemVer tag exactly once, found %d", protectCount)
 	}
-	if !(checkoutIndex < validateIndex && validateIndex < protectIndex && protectIndex < buildIndex && buildIndex < cosignIndex && cosignIndex < publishIndex) {
+	if checkoutIndex >= validateIndex || validateIndex >= protectIndex || protectIndex >= buildIndex ||
+		buildIndex >= cosignIndex || cosignIndex >= publishIndex {
 		return errors.New("release order must be checkout, source validation, tag protection, digest-only build, Cosign install, then sign/verify/promotion")
 	}
 	return nil
