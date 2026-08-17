@@ -102,7 +102,9 @@ following have evidence on the release commit:
   scripts, and bundled GPL dependencies; rerun the unchanged full `make test-ffmpeg` gate;
 - retain the exact corresponding source and license texts for the GPLv3+ dependencies bundled in
   both official yt-dlp standalone executables;
-- pin the runtime and build base images by digest and make the Debian package input reproducible;
+- ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
+  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) and make the Debian
+  package input reproducible (still open — `apt-get install` in the runtime stage is unpinned);
 - include the required DejaVu font license and complete the frontend/Rust transitive license-text
   inventory;
 - inspect and include any required Prometheus `NOTICE` material; and

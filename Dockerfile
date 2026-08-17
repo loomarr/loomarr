@@ -14,7 +14,7 @@
 # same major CI and contributors certify; a release build is not the place to trial
 # the next Node line. Corepack is separately pinned because it is no longer bundled
 # in newer official Node images.
-FROM --platform=$BUILDPLATFORM node:22.22.2-bookworm-slim AS fe
+FROM --platform=$BUILDPLATFORM node:22.22.2-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS fe
 RUN npm install -g corepack@0.35.0 && corepack enable
 WORKDIR /src
 COPY web ./web
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
 # far faster than compiling under QEMU emulation, and correct because the static
 # pure-Go build has no arch-specific C toolchain to satisfy.
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS build
 ARG TARGETARCH
 WORKDIR /src
 # Cache modules first.
@@ -55,7 +55,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
 # libwebp and Rust standard library always match the runtime architecture.
-FROM rust:1.97-bookworm AS image-worker
+FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS image-worker
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust ./rust
@@ -109,7 +109,14 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # time with "rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2" —
 # a broken image that looks healthy until someone actually ingests. Keep these
 # arch-aware, and never assume the build host is amd64.
-FROM debian:stable-slim AS runtime
+#
+# ⚠ Digest-pinned. The `@sha256:` is the real pin; the human-readable tag is a hint, and for
+# `stable-slim` a ROLLING one that moves on every Debian point release — a reproducible beta
+# image cannot ride a tag whose contents change under it (first-beta-readiness.md, distribution
+# integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
+# `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
+# image-worker bases above.
+FROM debian:stable-slim@sha256:1710bde34461551a19a47c787885ec9ad7058d9a5bead2affb8d088fa2f8502b AS runtime
 ARG TARGETARCH
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
