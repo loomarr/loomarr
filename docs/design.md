@@ -928,10 +928,11 @@ optimization does not weaken fresh-request ownership.
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports both **keyword search** (by title text) and **discovery** (by genre + era) — so an abstract intent ("high-energy 90s action") surfaces themed content instead of an empty title-match, and each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
+- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. When one surfaced series carries both TMDB and TVDB ids, either returned id resolves to that one canonical candidate (and selecting both aliases still yields one title); an id absent from the result remains ungrounded. The tool supports both **keyword search** (by title text) and **discovery** (by genre + era) — so an abstract intent ("high-energy 90s action") surfaces themed content instead of an empty title-match, and each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
+- Broad genre membership is candidate generation, not proof of fit: every intent qualifier needs positive support in the returned title/genre/overview metadata, and a negative qualifier is a rejection gate. If broad discovery lacks a qualifier, the model may search a specific believed match by name, but it still accepts that title only when the new tool result supports all qualifiers; model memory is never grounding evidence.
 
 ### Provider abstraction
 One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**

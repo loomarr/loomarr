@@ -44,7 +44,12 @@ func buildSuggester() (*suggest.Suggester, *tmdb.Client, error) {
 	if provider == nil {
 		return nil, nil, fmt.Errorf("LLM not configured (set LLM_PROVIDER/LLM_URL/LLM_MODEL[/LLM_API_KEY])")
 	}
-	return suggest.New(provider, cat, tm, 10), tm, nil
+	validator := suggest.Validator(tm)
+	if os.Getenv("LOOMARR_EVAL_TRACE") == "1" {
+		provider = newEvalTraceProvider(provider)
+		validator = evalTraceValidator{inner: tm}
+	}
+	return suggest.New(provider, cat, validator, 10), tm, nil
 }
 
 // buildProvider mirrors cmd/loomarr's buildProviderFor: Ollama for local, the

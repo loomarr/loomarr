@@ -208,9 +208,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			for _, tc := range resp.ToolCalls {
 				result, cands := s.runTool(ctx, tc)
 				for _, c := range cands {
-					if k, err := c.Key(); err == nil {
-						surfaced[k] = c
-					}
+					indexSurfacedCandidate(surfaced, c)
 				}
 				*messages = append(*messages, llm.Message{
 					Role: llm.Tool, Content: result, ToolCallID: tc.ID,
@@ -242,6 +240,23 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 	}
 	// Ran out of tool rounds without a final turn — treat as empty (repairable).
 	return "", nil
+}
+
+// indexSurfacedCandidate records every usable identity the catalog actually
+// returned for a candidate. A series' canonical storage key prefers TVDB, while
+// the model's output schema permits selecting that same surfaced row by TMDB and
+// omitting the optional tvdbId. Both are grounded because both ids came from the
+// tool result; no synthesized or unseen alias is indexed.
+func indexSurfacedCandidate(surfaced map[provision.Key]catalog.Candidate, candidate catalog.Candidate) {
+	identities := []provision.Title{{MediaType: candidate.MediaType, TMDBID: candidate.TMDBID}}
+	if candidate.MediaType == provision.Series {
+		identities = append(identities, provision.Title{MediaType: candidate.MediaType, TVDBID: candidate.TVDBID})
+	}
+	for _, identity := range identities {
+		if key, err := identity.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
 }
 
 // runTool executes a model tool call. Only catalog_search is honored; anything
@@ -333,6 +348,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	picks := out.Picks
 	acqCount := 0
 	maxAcq := s.maxAcq
+	used := make(map[provision.Key]struct{}, len(picks))
 	if intent.MaxAcquire > 0 && intent.MaxAcquire < maxAcq {
 		maxAcq = intent.MaxAcquire
 	}
@@ -346,6 +362,14 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		if !ok {
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
+		canonicalKey, err := cand.Key()
+		if err != nil {
+			continue
+		}
+		if _, duplicate := used[canonicalKey]; duplicate {
+			continue // the model selected both aliases for one surfaced title
+		}
+		used[canonicalKey] = struct{}{}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)
 		// Carry the adjacency consensus onto the pick so the approval surface can show WHY
 		// it was offered ("recommended by 5 of your films"). Zero for every other corpus.
@@ -353,7 +377,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		// Derived from the intent rather than threaded through as another parameter: the
 		// intent is already here, and votes are a property of what was OFFERED, not of what
 		// the catalog returned — keeping them off Candidate keeps identity clean.
-		item.AdjacentVotes = adjacentVotesOf(intent, provision.Key(key))
+		item.AdjacentVotes = adjacentVotesOf(intent, canonicalKey)
 		// Grounding chokepoint: attach the model's proposed AIRING season window only
 		// for a series, and only after clamping (an inverted or non-positive range is
 		// dropped → all seasons, never an empty channel). The range can only NARROW an
@@ -925,6 +949,7 @@ RULES:
 - If a call returns few or no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.
 - HONOR EVERY QUALIFIER in the intent, not just the main noun. "cozy British murder mysteries" means British AND cozy AND mystery — a 1940s American noir or a Swedish thriller that merely has "murder" in the title does NOT fit; check the overview (setting, country, tone) and REJECT it. "classic Star Trek — the original series and Next Generation" names TWO specific shows: include those, not every Star Trek series. It is BETTER to return fewer, well-matched picks (or none) than to pad the lineup with titles that only match one keyword.
+- Require positive metadata evidence for EVERY qualifier in the intent; sharing the broad discovery genre is not enough. A negative qualifier is a HARD rejection gate. If broad discovery has no candidate whose genres/overview support every qualifier, think of titles that may fit and search those specific titles by name, then accept them only when the catalog result's metadata actually supports all qualifiers. Never use prior model knowledge as the evidence.
 - HONOR EXPLICITLY NAMED titles: if the intent names specific shows/movies, search for those by name and prefer them; don't substitute lookalikes.
 - A pick whose genres/overview CONTRADICT the intent (wrong country, wrong tone, wrong era, wrong subject) must be dropped even if its title contains the keyword. Matching one word is not fitting the intent.
 - Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.

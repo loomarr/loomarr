@@ -68,6 +68,84 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	}
 }
 
+// A surfaced series may carry both TMDB and TVDB identity. Series storage prefers
+// TVDB, but the model contract permits omitting the optional tvdbId and selecting
+// the exact surfaced TMDB id. That is still grounded evidence, not fabrication.
+func TestGrounding_DualIDSeriesAcceptsSurfacedTMDBAlias(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SearchItems = []testkit.SearchStub{{
+		Terms: []string{"chemistry"}, LibraryItemID: "lib-breaking-bad", Name: "Breaking Bad",
+		Type: "Series", Year: 2008, TMDBID: 1396, TVDBID: 81189, Genres: []string{"Crime", "Drama"},
+	}}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "chemistry", "media_type": "series"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
+	)
+
+	prop, err := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).Suggest(
+		context.Background(), suggest.Intent{Description: "chemistry crime drama"},
+	)
+	if err != nil {
+		t.Fatalf("surfaced TMDB alias should ground the dual-ID series: %v", err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 81189 || prop.Lineup[0].TMDBID != 1396 {
+		t.Fatalf("proposal = %+v, want the canonical dual-ID library candidate", prop)
+	}
+}
+
+func TestGrounding_DualIDSeriesRejectsUnseenAlias(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SearchItems = []testkit.SearchStub{{
+		Terms: []string{"chemistry"}, LibraryItemID: "lib-breaking-bad", Name: "Breaking Bad",
+		Type: "Series", Year: 2008, TMDBID: 1396, TVDBID: 81189, Genres: []string{"Crime", "Drama"},
+	}}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "chemistry", "media_type": "series"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":999999,"name":"Invented Alias"}]}`),
+	)
+
+	_, err := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).Suggest(
+		context.Background(), suggest.Intent{Description: "chemistry crime drama"},
+	)
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+		t.Fatalf("unseen alias must remain rejected, got %v", err)
+	}
+}
+
+func TestGrounding_DualIDSeriesAliasesDoNotDuplicateCandidate(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SearchItems = []testkit.SearchStub{{
+		Terms: []string{"chemistry"}, LibraryItemID: "lib-breaking-bad", Name: "Breaking Bad",
+		Type: "Series", Year: 2008, TMDBID: 1396, TVDBID: 81189, Genres: []string{"Crime", "Drama"},
+	}}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "chemistry", "media_type": "series"}),
+		testkit.FinalResponse(`{"picks":[
+			{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"},
+			{"mediaType":"series","tvdbId":81189,"name":"Breaking Bad"}
+		]}`),
+	)
+
+	prop, err := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).Suggest(
+		context.Background(), suggest.Intent{Description: "chemistry crime drama"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 {
+		t.Fatalf("dual aliases duplicated one candidate: %+v", prop.Lineup)
+	}
+}
+
 // A pick whose id IS surfaced but does NOT exist on TMDB (withdrawn/bad) is
 // dropped by the acquisition re-validation (§8).
 func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
@@ -220,6 +298,28 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 	// prompt + repair loop enforce final-answer JSON instead.
 	if llmMock.LastOpts.JSONMode {
 		t.Error("JSONMode should be OFF on grounded/tool turns (it corrupts tool-calling)")
+	}
+}
+
+func TestSuggest_PromptRequiresPositiveEvidenceForEveryQualifier(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	if _, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
+		Description: "gentle atmospheric mysteries without horror",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	prompt := llmMock.Prompt()
+	for _, required := range []string{
+		"positive metadata evidence for EVERY qualifier",
+		"negative qualifier is a HARD rejection gate",
+		"search those specific titles by name",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Errorf("grounded qualifier contract missing %q", required)
+		}
 	}
 }
 
