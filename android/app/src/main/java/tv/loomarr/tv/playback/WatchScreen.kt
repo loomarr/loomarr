@@ -1,5 +1,10 @@
 package tv.loomarr.tv.playback
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,7 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -18,10 +26,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import tv.loomarr.tv.design.Body
 import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
+import tv.loomarr.tv.design.LiveBadge
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 import tv.loomarr.tv.design.Panel
@@ -42,6 +52,11 @@ fun WatchScreen(
     val state by model.state.collectAsStateWithLifecycle()
     val focus = remember { FocusRequester() }
 
+    // Bumped by any key the screen handles, to re-show the now-playing banner. A counter rather
+    // than a boolean because the banner hides itself on a timer: setting a flag that is already
+    // true would not restart it, so pressing a key while the banner was fading would do nothing.
+    var bannerNonce by remember { mutableIntStateOf(0) }
+
     // The screen owns the D-pad, so it must hold focus from the moment it appears — otherwise the
     // first press goes nowhere and the remote feels broken.
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -53,6 +68,14 @@ fun WatchScreen(
                 .focusable()
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+
+                    // Any handled key re-shows the banner, including DPad centre — which is
+                    // otherwise inert here. On a television "where am I?" is the commonest
+                    // question during playback, and pressing something to find out is the
+                    // universal answer; a viewer should not have to change channel to see the
+                    // channel they are on.
+                    bannerNonce++
+
                     when (event.key) {
                         // DPad and the dedicated channel keys both surf: a TV remote may send
                         // either, and a viewer pressing CHANNEL+ expects the same thing as up.
@@ -71,6 +94,9 @@ fun WatchScreen(
                             model.channelDown()
                             true
                         }
+                        // Consumed so it does not travel on and trigger something else; the reveal
+                        // above is the whole effect.
+                        Key.DirectionCenter, Key.Enter -> true
                         else -> false
                     }
                 },
@@ -92,6 +118,8 @@ fun WatchScreen(
 
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
+                val playing = current.playUrl != null
+
                 if (current.playUrl != null) {
                     PlayerScreen(playUrl = current.playUrl)
                 } else {
@@ -102,10 +130,35 @@ fun WatchScreen(
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
-                NowPlaying(
-                    channel = channel,
-                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-                )
+
+                // Re-shown whenever the channel changes — `selected` is the key, so surfing brings
+                // the banner back without the viewer asking. `bannerNonce` lets a plain key press
+                // do the same without a channel change, so a viewer who has forgotten where they
+                // are can check.
+                var banner by remember { mutableStateOf(true) }
+                LaunchedEffect(current.selected, bannerNonce) {
+                    banner = true
+                    delay(BANNER_VISIBLE_MS)
+                    banner = false
+                }
+
+                AnimatedVisibility(
+                    visible = banner,
+                    // Slides from below rather than fading: over moving video a cross-fade reads as
+                    // a compression artefact, while motion from off-screen is unambiguous.
+                    enter = slideInVertically { it } + fadeIn(),
+                    exit = slideOutVertically { it } + fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomStart),
+                ) {
+                    NowPlaying(
+                        channel = channel,
+                        // Only claim LIVE while something is actually playing. A tuning channel is
+                        // not live yet, and a badge that is always on is decoration rather than
+                        // status.
+                        live = playing,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
@@ -116,10 +169,16 @@ fun WatchScreen(
  *
  * Sits on a [Panel] so it stays legible over video: a bordered `static-900` surface rather than
  * text floating on a moving picture, which is unreadable the moment a bright frame passes under it.
+ *
+ * ⚠ It HIDES. A now-playing bar that never goes away is not information, it is an obstruction: it
+ * covers the bottom of every frame for as long as the viewer watches, and the one thing a
+ * television is for is the picture. It appears on a channel change, which is when a viewer wants
+ * confirmation of where they landed, and withdraws once that question is answered.
  */
 @Composable
 private fun NowPlaying(
     channel: Channel,
+    live: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Panel(modifier = modifier) {
@@ -139,6 +198,9 @@ private fun NowPlaying(
                 channel.name,
                 modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
             )
+            if (live) {
+                LiveBadge(modifier = Modifier.padding(start = LoomarrTokens.Space.S4))
+            }
         }
         Body(
             "Up and down to change channel",
@@ -146,3 +208,12 @@ private fun NowPlaying(
         )
     }
 }
+
+/**
+ * How long the now-playing banner stays up after a channel change or a key press.
+ *
+ * Five seconds, matching the convention every set-top box has trained viewers on. Long enough to
+ * read a channel name and number without hurrying, short enough that it is gone before it starts
+ * feeling like part of the picture.
+ */
+private const val BANNER_VISIBLE_MS = 5_000L
