@@ -25,6 +25,8 @@ import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
 import tv.loomarr.tv.pairing.PairingViewModelFactory
+import tv.loomarr.tv.playback.WatchScreen
+import tv.loomarr.tv.playback.WatchViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,11 +43,28 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                PairingScreen(
-                    model = viewModel(factory = PairingViewModelFactory(store)),
-                )
+                LoomarrApp(store)
             }
         }
+    }
+}
+
+/**
+ * The whole app, which is two screens: pair, then watch.
+ *
+ * Routing is derived from pairing state rather than a navigation graph. A television has exactly one
+ * decision to make at launch — am I paired? — and the answer already lives in [PairingUiState], so a
+ * router here would be a second copy of it that could disagree.
+ */
+@Composable
+private fun LoomarrApp(store: DeviceStore) {
+    val pairing: PairingViewModel = viewModel(factory = PairingViewModelFactory(store))
+    val state by pairing.state.collectAsStateWithLifecycle()
+
+    if (state is PairingUiState.Paired) {
+        WatchScreen(model = viewModel(factory = WatchViewModelFactory(store)))
+    } else {
+        PairingScreen(model = pairing)
     }
 }
 
