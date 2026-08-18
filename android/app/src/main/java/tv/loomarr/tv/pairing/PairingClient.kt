@@ -17,6 +17,16 @@ data class Pairing(
     val userCode: String,
     /** Seconds to wait between polls, as advised by the server. */
     val intervalSeconds: Int,
+    /**
+     * Seconds this code remains valid, derived from the server's `expiresAt`.
+     *
+     * ⚠ Stored as a DURATION, not the server's timestamp. A television's clock is frequently wrong
+     * — no RTC on some boxes, NTP not yet synced at first boot — so comparing a server instant
+     * against local `now` can show a code as long expired or valid for hours. A duration measured
+     * from the moment the response arrived only depends on elapsed time, which the device does
+     * track correctly.
+     */
+    val expiresInSeconds: Long,
 )
 
 /** The outcome of one poll. Modelled as a type because "keep waiting" is not an error. */
@@ -39,6 +49,52 @@ sealed interface PollResult {
 
     /** The code is dead (expired, consumed, or wrong). Start a new pairing. */
     data object Expired : PollResult
+}
+
+/**
+ * How long a code lives when the server does not say, or says something unparseable.
+ *
+ * Matches the server's own PairingTTL. A countdown is a promise to the viewer, so guessing SHORT is
+ * the safe direction: a code that outlives its displayed timer is merely surprising, while one that
+ * dies before the timer reaches zero looks broken.
+ */
+private const val DEFAULT_PAIRING_TTL_SECONDS = 10L * 60
+
+/**
+ * How long the code lasts, measured against the SERVER's clock rather than this device's.
+ *
+ * ⚠ The device clock cannot be trusted, and this is not hypothetical: the first build of this
+ * countdown read "Expires in 133:37" for a ten-minute code, because the emulator's clock sat two
+ * hours behind the host. A television is exactly the class of device this happens on — some boxes
+ * have no RTC, and NTP may not have synced at first boot.
+ *
+ * So the expiry instant is compared against the server's own `Date` response header, which arrived
+ * in the same exchange and shares its clock. Both fall back to the known TTL, because a countdown
+ * is a nicety and failing a working handshake over one unreadable header would be the wrong trade.
+ */
+private fun secondsUntil(
+    rfc3339: String,
+    serverDateHeader: String?,
+): Long {
+    if (rfc3339.isBlank()) return DEFAULT_PAIRING_TTL_SECONDS
+    return runCatching {
+        val expiry = java.time.Instant.parse(rfc3339)
+        val serverNow =
+            serverDateHeader
+                ?.let {
+                    runCatching {
+                        java.time.ZonedDateTime
+                            .parse(it, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                            .toInstant()
+                    }.getOrNull()
+                }
+                // No usable Date header: the TTL is a better guess than a clock known to drift.
+                ?: return DEFAULT_PAIRING_TTL_SECONDS
+        java.time.Duration
+            .between(serverNow, expiry)
+            .seconds
+            .coerceAtLeast(0)
+    }.getOrDefault(DEFAULT_PAIRING_TTL_SECONDS)
 }
 
 /**
@@ -71,6 +127,11 @@ class PairingClient(
                     // Fall back rather than fail: a server that omits the hint is not broken, and a
                     // device that refuses to poll over a missing number would be.
                     intervalSeconds = payload.optInt("interval", 5),
+                    expiresInSeconds =
+                        secondsUntil(
+                            payload.optString("expiresAt"),
+                            response.header("Date"),
+                        ),
                 )
             }
         }
