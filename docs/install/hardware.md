@@ -33,6 +33,30 @@ Leaving it unset is fine — the container starts normally on a host with no GPU
 Driver libraries ship in the image. QSV is amd64-only, because `intel-media-va-driver` has no
 arm64 build. VAAPI and Vulkan work on both.
 
+### Picking the right GPU on a multi-GPU host
+
+Loomarr probes the render node `/dev/dri/renderD128` by default. On a box with **more than one
+GPU** — a discrete card such as an **Intel Arc** alongside the CPU's integrated graphics, or an Arc
+next to an NVIDIA card — the one you want is often `renderD129` (or higher), and which node is which
+is not guessable. If the encoder you expect never passes the boot probe on such a host, point Loomarr
+at the right node:
+
+```bash
+PLAYOUT_RENDER_NODE=/dev/dri/renderD129 \
+PLAYOUT_RENDER_DEVICE=/dev/dri \
+  docker compose -f docker/compose.yaml --profile sqlite up -d
+```
+
+To find which node is your card, list them by device path or ask VAAPI directly:
+
+```bash
+ls -l /dev/dri/by-path/                       # maps PCI addresses to renderD12x
+vainfo --display drm --device /dev/dri/renderD129   # should list H264/HEVC encode entrypoints
+```
+
+The node that reports encode entrypoints (`VAEntrypointEncSlice…`) is the one to set. A single-GPU
+host needs none of this — the default `renderD128` is correct.
+
 ## NVIDIA
 
 NVENC needs nothing from the image — the NVIDIA container toolkit provides the driver:

@@ -137,6 +137,10 @@ services:
       PLAYOUT_ENCODER: ${PLAYOUT_ENCODER:-}
       PLAYOUT_MAX_CHANNELS: ${PLAYOUT_MAX_CHANNELS:-}
       PLAYOUT_QUALITY_TIER: ${PLAYOUT_QUALITY_TIER:-}
+      # Which DRM render node the encoder probes. Empty ⇒ /dev/dri/renderD128. Set this on a
+      # MULTI-GPU host (a discrete Intel Arc alongside an iGPU, or an Arc next to NVIDIA) where the
+      # card you want is renderD129 or higher — see docs/install/hardware.md.
+      PLAYOUT_RENDER_NODE: ${PLAYOUT_RENDER_NODE:-}
       AUTO_MIGRATE: "true"
     expose: ["8080"]
     volumes:
