@@ -662,8 +662,9 @@ jobs:
   #
   # ⚠ It must inspect `needs.*.result` explicitly. A skipped dependency does NOT fail a job by
   # default, but neither does a FAILED one when `if: always()` is set — so a naive aggregate
-  # would report success while a real job was red. Only `skipped` and `success` are accepted;
-  # anything else (failure, cancelled) fails the gate.
+  # would report success while a real job was red. `success` and `skipped` pass; `cancelled` is
+  # tolerated (a superseded run or fail-fast collateral — the real failure still reports
+  # `failure`); anything else (notably `failure`) fails the gate.
   image:
     name: Image — release build (${{ matrix.platform }})
     needs: changes
@@ -825,6 +826,15 @@ jobs:
           for r in $results; do
             case "$r" in
               success|skipped) ;;
+              # `cancelled` is NOT a failure. It means one of two things, and neither is a defect
+              # in this commit: (1) a newer push/merge superseded this run via `cancel-in-progress`
+              # (the newer run is authoritative), or (2) a sibling job genuinely FAILED and
+              # fail-fast cancelled the rest — but that real failure surfaces as `failure` on the
+              # actual job, which the wildcard below still catches. Treating `cancelled` as red is
+              # what left main showing a false red on every rapid merge (see the concurrency note
+              # at the top of this file). A real regression always reports `failure`, never
+              # `cancelled`, so accepting it here loses no coverage.
+              cancelled) echo "note: a job was cancelled (superseded or fail-fast collateral) — not a failure" ;;
               *) echo "::error::a required job reported '$r'"; exit 1 ;;
             esac
           done
