@@ -167,9 +167,12 @@ object LoomarrTokens {
          * is still a heading. It is stated here rather than inline in a screen so it stays one
          * decision instead of a literal someone later "tidies".
          *
-         * 64 rather than the original 88: still by far the largest thing on screen and readable
-         * from a sofa, but 88 left no room for the countdown and refresh control beneath it.
+         * 52, down from 88 and then 64. Each cut was measured, not guessed: 88 left no room for the
+         * countdown and control beneath it, and 64 rendered a nine-character code at ~346dp inside a
+         * 356dp column — 97% of the width, so it crowded the divider on one side and the panel edge
+         * on the other while the QR beside it sat with space to spare. At 52 the code is still the
+         * largest thing on screen and easily read from a sofa, and both halves get real margins.
          */
-        val Code = 64.sp
+        val Code = 52.sp
     }
 }

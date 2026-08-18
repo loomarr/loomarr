@@ -120,6 +120,10 @@ private fun NowPlaying(
             MonoData(
                 channel.number.toString(),
                 color = LoomarrTokens.Color.Signal,
+                // Explicit, because the default dropped to `Md` for the pairing screen's long
+                // server address. A channel number is two or three glyphs and is the thing a
+                // viewer reads while surfing, so it keeps the larger size.
+                fontSize = LoomarrTokens.Type.Lg,
             )
             Heading(
                 channel.name,

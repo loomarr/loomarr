@@ -100,11 +100,16 @@ fun MonoData(
     text: String,
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = LoomarrTokens.Color.Static0,
+    // ⚠ `Md`, not `Lg`. A server address is the longest string on the pairing screen — nineteen
+    // characters of monospace at `Lg` measured ~342dp inside a 356dp column, 96% of the width, so
+    // it pressed against the divider and the panel edge at once. Machine data is a supporting
+    // value here, not the headline; the code above it is what the viewer transcribes.
+    fontSize: androidx.compose.ui.unit.TextUnit = LoomarrTokens.Type.Md,
 ) = Text(
     text = text,
     modifier = modifier,
     color = color,
-    fontSize = LoomarrTokens.Type.Lg,
+    fontSize = fontSize,
     fontFamily = FontFamily.Monospace,
 )
 
