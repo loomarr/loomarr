@@ -26,9 +26,18 @@ ISC), compatible with MIT redistribution. The authoritative, versioned list is
 | `golang.org/x/crypto`, `golang.org/x/time` | BSD-3-Clause |
 | `modernc.org/sqlite` | BSD-3-Clause |
 
-The Apache-2.0 components (`prometheus/client_golang` and its transitive `prometheus/*`) are
-represented in the dependency inventory. A release review must inspect their upstream NOTICE
-requirements separately; an SBOM does not reproduce NOTICE text.
+The Apache-2.0 components (`prometheus/client_golang` and its transitive `prometheus/*`) carry a
+§4(d) NOTICE requirement, satisfied here rather than deferred to the SBOM. The upstream `NOTICE`
+reads:
+
+> Prometheus instrumentation library for Go applications
+> Copyright 2012-2015 The Prometheus Authors
+>
+> This product includes software developed at SoundCloud Ltd. (http://soundcloud.com/).
+
+Upstream additionally attributes bundled components (`beorn7/perks`, Go support for Protocol
+Buffers, and others; see the full [`NOTICE`](https://github.com/prometheus/client_golang/blob/main/NOTICE)).
+The full Apache-2.0 license text also rides in the release SBOM.
 
 ## Compose deployment companion (not in the Loomarr image)
 
@@ -75,6 +84,26 @@ final redistribution review recorded below.
 | `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
 | `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.1` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
 | `ggml-small.en.bin`, `ggml-tiny.bin` | https://huggingface.co/ggerganov/whisper.cpp | MIT | Revision- and SHA256-pinned Whisper model data; `small.en` transcribes and `tiny` identifies language. |
+| `DejaVuSans.ttf` (Debian `fonts-dejavu-core`) | https://dejavu-fonts.github.io | Bitstream Vera Fonts (MIT-style) + public-domain DejaVu changes | The single font the "no signal"/dead-air playout card renders (§16); `debian:stable-slim` ships none, so `fonts-dejavu-core` is installed for it. Permissive and redistributable; the one condition is that the copyright + permission notice accompany the fonts — satisfied by the package's own `/usr/share/doc/fonts-dejavu-core/copyright` in the image. See [Font license](#dejavu-font-license-bitstream-vera) below. |
+
+### DejaVu font license (Bitstream Vera)
+
+The bundled `DejaVuSans.ttf` (Debian `fonts-dejavu-core`) is redistributable under the **Bitstream
+Vera Fonts Copyright**, an MIT-style permissive license; the DejaVu project's own changes are placed
+in the public domain. The image satisfies the license's notice condition by retaining the package's
+`/usr/share/doc/fonts-dejavu-core/copyright`. The operative grant:
+
+> Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of
+> Bitstream, Inc.
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts
+> accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to
+> reproduce and distribute the Font Software, including without limitation the rights to use, copy,
+> merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom
+> the Font Software is furnished to do so, subject to the following conditions: [the copyright/
+> trademark and this permission notice must accompany the Font Software; modified fonts must be
+> renamed to exclude "Bitstream" and "Vera"]. The full text ships at the path above and at
+> <https://dejavu-fonts.github.io/License.html>.
 
 ### GPL source status (ffmpeg; release blocker)
 
@@ -112,9 +141,11 @@ following have evidence on the release commit:
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
   [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) and make the Debian
   package input reproducible (still open — `apt-get install` in the runtime stage is unpinned);
-- include the required DejaVu font license and complete the frontend/Rust transitive license-text
-  inventory;
-- inspect and include any required Prometheus `NOTICE` material; and
+- ~~include the required DejaVu font license~~ (done — the Bitstream Vera grant is reproduced above,
+  and the image retains the package's own `copyright`) and complete the frontend/Rust transitive
+  license-text inventory (still open — a full SBOM-side task, not the shipped fonts);
+- ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
+  reproduced above); and
 - complete a final qualified legal/NOTICE review of the assembled image and its downloadable source
   materials.
 
