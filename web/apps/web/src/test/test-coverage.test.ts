@@ -82,7 +82,6 @@ const KNOWN_GAPS = new Set([
   "settings/secrets-settings/secrets-settings.tsx",
   "settings/settings-page/settings-page.tsx",
   "settings/use-settings-entries/use-settings-entries.ts",
-  "suggest/use-suggestion-run/use-suggestion-run.ts",
   "wizard/bootstrap-step/bootstrap-step.tsx",
   "wizard/checklist-step/checklist-step.tsx",
   "wizard/playout-step/playout-step.tsx",

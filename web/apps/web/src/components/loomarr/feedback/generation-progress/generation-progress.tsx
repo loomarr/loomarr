@@ -3,21 +3,23 @@ import { Check, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
 
-// GenerationProgress — the SSE suggester stepper (§3), driven by `suggestion` frames
-// (searching → reasoning → scoring → done, or failed). The in-flight step carries
-// the one sanctioned >300ms motion — the suggester shimmer (§2.4) in the `suggest`
-// AI color (§2.1) — and stills under reduced-motion. Done steps lock green (§2.4);
-// failed reads onair with the problem text (§6), never a raw stack.
-const STEPS: { phase: SuggestionPhase; label: string; active: string }[] = [
-  { phase: "reasoning", label: "Pick titles that fit", active: "Picking titles that fit" },
-  { phase: "searching", label: "Search the library", active: "Searching the library" },
-  { phase: "scoring", label: "Score the lineup", active: "Scoring the lineup" },
+// GenerationProgress — the SSE suggester stepper (§3), driven by `suggestion` frames.
+// The in-flight step carries the one sanctioned >300ms motion — the suggester shimmer
+// (§2.4) in the `suggest` AI color (§2.1) — and stills under reduced-motion. Done steps
+// lock green (§2.4); failed reads onair with the problem text (§6), never a raw stack.
+//
+// ⚠ **Two steps, not three, because the backend emits a LOOP, not a line.** A run reports
+// `reasoning → searching → reasoning → searching → … → scoring → done`: the model thinks,
+// asks for titles, thinks again, for as many passes as it needs (a real run was measured at
+// six reasoning/searching pairs). Mapping `reasoning` and `searching` to two SEPARATE steps
+// made the active spinner march to step 2 and then jump BACKWARD to step 1 on the next pass,
+// over and over — a checklist walking backwards, which reads as broken. They are one piece of
+// work ("find the titles") alternating internally, so they share ONE step; `round` (shown as
+// "pass N") is what conveys the loop advancing. Only `scoring` genuinely follows.
+const STEPS: { phases: SuggestionPhase[]; label: string; active: string }[] = [
+  { phases: ["reasoning", "searching"], label: "Find the titles", active: "Finding the titles" },
+  { phases: ["scoring"], label: "Score the lineup", active: "Scoring the lineup" },
 ];
-
-// Reasoning leads because that is the order the work happens in: the model thinks first,
-// and only then asks for titles. The list used to open with "Search the library", which
-// paired with a phase that was reported once up front to make every slow run look like a
-// slow search. The slow part is the thinking.
 
 // Seconds before the elapsed time appears. A quick run should not be narrated; a slow one
 // should say something, because silence is what makes a wait feel broken.
@@ -38,20 +40,17 @@ const detail = (round: number | undefined, seconds: number | undefined): string 
 const GenerationProgress = ({ phase, round, elapsedSeconds, error, className }: GenerationProgressProps) => {
   const failed = phase === "failed";
   const complete = phase === "done";
-  const activeIdx = STEPS.findIndex((s) => s.phase === phase);
-  // Only "scoring" (the last step, and the one that runs outside the tool loop) implies
-  // the earlier steps are finished. The first two REPEAT — the model thinks, searches,
-  // then thinks again — so an index-based "everything before the active step is done"
-  // rule would tick reasoning off the moment a search began, and then un-tick it on the
-  // next pass. A step is only ever done when the run has genuinely moved past the loop.
-  const pastLoop = complete || phase === "scoring";
+  const activeIdx = phase ? STEPS.findIndex((s) => s.phases.includes(phase)) : -1;
   const showElapsed = elapsedSeconds !== undefined && elapsedSeconds >= SHOW_ELAPSED_AFTER_S;
   const activeDetail = detail(round, showElapsed ? elapsedSeconds : undefined);
+  // With the loop folded into one step, "everything before the active step is done" is now
+  // honest: the only backward step left is scoring→find, which never happens (the run only
+  // moves forward across these two). A completed run marks both done.
   const statusOf = (i: number): "done" | "active" | "todo" => {
     if (complete) return "done";
     if (failed) return "todo";
     if (i === activeIdx) return "active";
-    if (pastLoop && i < activeIdx) return "done";
+    if (i < activeIdx) return "done";
     return "todo";
   };
   return (
@@ -60,7 +59,7 @@ const GenerationProgress = ({ phase, round, elapsedSeconds, error, className }: 
         {STEPS.map((step, i) => {
           const status = statusOf(i);
           return (
-            <li key={step.phase} className="flex items-center gap-3">
+            <li key={step.label} className="flex items-center gap-3">
               <span className="flex size-5 items-center justify-center" aria-hidden>
                 {status === "done" ? (
                   <Check className="size-4 text-lock" />

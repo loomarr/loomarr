@@ -54,6 +54,10 @@ const useSuggestionRun = (): SuggestionRun => {
     // A run stops being "running" once it lands a proposal or reports a terminal phase,
     // whichever the client learns first.
     isRunning: jobId !== undefined && proposal === undefined && !(phase && TERMINAL.includes(phase)),
+    // A job that reached the terminal `failed` phase without ever producing a proposal.
+    // The submit succeeded (so `error` is null); the failure arrived on the SSE stream.
+    // Without surfacing this, the panel falls through to a blank form as if nothing ran.
+    failed: jobId !== undefined && proposal === undefined && phase === "failed",
     error: submit.error,
     start: (intent: Intent) => {
       setPhase(undefined);
