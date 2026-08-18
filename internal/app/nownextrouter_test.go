@@ -17,6 +17,7 @@ import (
 // Tunarr's guide. Both readers return a programme; only one of them is about the schedule this
 // channel is actually playing.
 func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
 	// ⚠ A SECOND, TUNARR-BACKED CHANNEL IS LOAD-BEARING. With only internal channels present,
@@ -53,6 +54,7 @@ func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
 
 // The other half: a Tunarr-backed channel must keep reading Tunarr's guide, unchanged.
 func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
 
@@ -71,6 +73,7 @@ func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
 }
 
 func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	reads := 0
 	r := nowNextRouter{
@@ -95,6 +98,7 @@ func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
 }
 
 func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
+	t.Parallel()
 	want := errors.New("checkpoint unavailable")
 	r := nowNextRouter{
 		channels:       routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "one"}}}},
@@ -108,6 +112,7 @@ func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
 // `playout.backend` is per-channel overridable (§15), so a MIXED install must be right — this is
 // the case a global on/off switch would get wrong.
 func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	internalCh := store.Channel{
 		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
@@ -142,6 +147,7 @@ func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 // An internal channel with no internal reader must yield NO entry — never a silent fall back to
 // Tunarr's guide, which is the defect itself.
 func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
@@ -161,6 +167,7 @@ func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
 // An install with every channel on internal playout must not pay a Tunarr round trip to render
 // its channel list, and must not be degraded when Tunarr is slow or down.
 func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	guide := &countingGuide{}
 	r := nowNextRouter{
@@ -182,6 +189,7 @@ func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
 // A Tunarr outage must not blank an internal channel's card — the internal half does not depend
 // on it and must still answer.
 func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	internalCh := store.Channel{
 		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
@@ -214,6 +222,7 @@ func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
 // Internal playout has no remote identity requirement: a fresh internal-only channel must get
 // now/next from its local timeline even when it has never had a Tunarr id.
 func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	r := nowNextRouter{
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
@@ -231,6 +240,7 @@ func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 }
 
 func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	guide := &countingGuide{}
 	r := nowNextRouter{
@@ -274,6 +284,7 @@ func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
 // Upcoming routes on the backend too — the strip and the card must not disagree with each other
 // any more than either may disagree with the grid.
 func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
@@ -296,6 +307,7 @@ func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 }
 
 func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	var upcomingID string
 	guide := stubGuide{
@@ -325,6 +337,7 @@ func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 
 // A series card reads as the SHOW, not the episode name — the same choice XMLTV's <title> makes.
 func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
+	t.Parallel()
 	b := playout.Broadcast{
 		Kind:        schedule.SlotProgram,
 		Title:       "Bart the Genius",
@@ -338,6 +351,7 @@ func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
 // The tmdb id joins a card back to its provisioning key, so a tvdb key must yield NOTHING rather
 // than an id from a different space that would link to an unrelated title.
 func TestTMDBIDFromKey(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"movie:tmdb:603":    "603",
 		"series:tvdb:71663": "",

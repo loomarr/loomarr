@@ -94,6 +94,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 // landed in the middle of an unrelated episode. The reconciler had already persisted the accepted
 // deck; playout simply was not reading it.
 func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
+	t.Parallel()
 	preview := &countingCycle{slots: []schedule.Slot{{
 		Kind: schedule.SlotProgram, Title: "mutable preview", LibraryItemID: "preview", DurationMs: 60000,
 	}}}
@@ -122,6 +123,7 @@ func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
 // via filler-lists; internal playout has no such negotiator, so without this every break was
 // dead air (the offline card).
 func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
@@ -158,6 +160,7 @@ func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 // The pod is a SEQUENCE, so the resolver must pick whichever clip covers this instant —
 // otherwise every viewer sees the bumper on loop and the ads never play.
 func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
@@ -185,6 +188,7 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 
 // No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
 func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
+	t.Parallel()
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
 	airing, src, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
@@ -201,6 +205,7 @@ func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 // ⚠ A crafted clip id must NOT stream a file from outside FILLER_DIR. The id reaches here from
 // the database, so containment is enforced at resolution, not assumed at write time.
 func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
+	t.Parallel()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		// ⚠ The RAW traversal string, deliberately NOT run through clipAt — hashing it would
 		// produce a perfectly valid id and test nothing. What must be refused is the crafted
@@ -220,6 +225,7 @@ func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
 
 // The embedded fallback bumper card is generated, not a file: it has no path to play.
 func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
+	t.Parallel()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		// ⚠ An EMPTY path, not a hashed one: the fallback card is generated rather than played
 		// from a file, and "" is how the resolver knows. Hashing it would give the card a path
@@ -242,6 +248,7 @@ func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
 // An operator override wins outright and must NOT trigger a probe: probing trial-encodes every
 // candidate at ~5s apiece, which would be paid for nothing.
 func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
+	t.Parallel()
 	probed := false
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
 	r.encoder = func() string { return "h264_nvenc" }
@@ -264,6 +271,7 @@ func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
 // correct answer. So with a bogus ffmpeg path the probe finds nothing and yields libx264 — which
 // is exactly the contract worth pinning.
 func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
+	t.Parallel()
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
 	r.encoder = func() string { return "" }
 	r.ffmpegPath = func() string { return "/nonexistent/ffmpeg" }
@@ -278,6 +286,7 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 // A viewer must never pay the machine-capability benchmark. Boot warms it independently; until
 // that result is ready, software is the conservative immediately-available fallback.
 func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
+	t.Parallel()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
@@ -307,6 +316,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 // The probe runs ONCE. It is called per program boundary, and trial-encoding every candidate on
 // each one would make every program transition take ~20 seconds.
 func TestProfile_ProbesOnlyOnce(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
 	r.encoder = func() string { return "" }
@@ -340,6 +350,7 @@ func (r *recordingPlays) RecordClipPlay(_ context.Context, clipHash string, _ ti
 // (`RecordClipPlay` is keyed `WHERE hash = ?`). A test that outlives the model it encodes
 // stops being a guard and becomes a reason not to look.
 func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
@@ -364,6 +375,7 @@ func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 // useless: it is an UPDATE with an attacker-independent but wrong key, and the swallowed error
 // means it would never be noticed.
 func TestAiringNow_DoesNotCountAnEntryWithNoHash(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Name: "no-hash", DurationMs: 8000},
@@ -386,6 +398,7 @@ func TestAiringNow_DoesNotCountAnEntryWithNoHash(t *testing.T) {
 // Without the `into == 0` check this counts on every resolve, and a 30s advert re-resolved by
 // a reconnecting viewer would report several plays for one airing.
 func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
@@ -408,6 +421,7 @@ func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
 
 // Counting is telemetry: a store failure must never stop a break from airing.
 func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
@@ -426,6 +440,7 @@ func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
 
 // No recorder wired (Tunarr-backed, or telemetry off) is a supported configuration.
 func TestAiringNow_NoRecorderIsFine(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},

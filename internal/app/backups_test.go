@@ -56,6 +56,7 @@ func seed(t *testing.T, dir string, names ...string) {
 // URL path segment, so the difference between validating it and joining it is the
 // difference between an admin-only backup download and an admin-only arbitrary file read.
 func TestBackupsService_OpenRejectsTraversal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	seed(t, dir, "loomarr-2026-07-29-033000.db")
 	// The files an attacker would be reaching for: one beside the backups, one above.
@@ -96,6 +97,7 @@ func TestBackupsService_OpenRejectsTraversal(t *testing.T) {
 // Open resolves only files the listing knows about, so "exists on disk" and "is a backup
 // this instance will serve" stay one question with one answer.
 func TestBackupsService_OpenUnknownName(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	svc := newBackupsService(dir, 7, &stubWriter{})
 	if _, err := svc.Open(context.Background(), "loomarr-2026-07-29-033000.db"); err == nil {
@@ -106,6 +108,7 @@ func TestBackupsService_OpenUnknownName(t *testing.T) {
 // List reports the policy alongside the files — the page renders "nightly at 03:30 ·
 // keeps 7", and neither number is derivable from the file list.
 func TestBackupsService_ListReportsPolicy(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	seed(t, dir, "loomarr-2026-07-28-033000.db", "loomarr-2026-07-29-033000.db", "unrelated.txt")
 
@@ -136,6 +139,7 @@ func TestBackupsService_ListReportsPolicy(t *testing.T) {
 // implementation would delete an old backup, then add the new one — reaching the same
 // count from a state where a failed write leaves the operator worse off.
 func TestBackupsService_RunWritesThenPrunes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	seed(t, dir, "loomarr-2026-07-26-033000.db", "loomarr-2026-07-27-033000.db")
 
@@ -165,6 +169,7 @@ func TestBackupsService_RunWritesThenPrunes(t *testing.T) {
 // retention by deleting the oldest and then fail, leaving fewer backups than it started
 // with — at the exact moment the database is unhealthy.
 func TestBackupsService_FailedWriteDeletesNothing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	seed(t, dir, "loomarr-2026-07-26-033000.db", "loomarr-2026-07-27-033000.db")
 

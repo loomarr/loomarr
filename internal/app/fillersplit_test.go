@@ -103,6 +103,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 // for lineage, but its pipeline row must leave Incoming's running/review conveyor; otherwise the UI
 // claims the already-confirmed reel is still being prepared forever.
 func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
 	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
@@ -160,6 +161,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 // No drop-folder ⇒ the typed unavailable error the API renders as a 409 naming
 // the Settings remedy (§10, V34).
 func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
+	t.Parallel()
 	a, _ := newSplitAdapter(t, events.NewBus(), false)
 	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, api.ErrSplitUnavailable) {
 		t.Errorf("Split without a splitter = %v, want ErrSplitUnavailable", err)
@@ -172,6 +174,7 @@ func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 // A missing clip is a SYNCHRONOUS not-found: the caller gets its 404 in the
 // response, not as an SSE error frame seconds later.
 func TestSplit_MissingClipFailsSynchronously(t *testing.T) {
+	t.Parallel()
 	a, _ := newSplitAdapter(t, events.NewBus(), true)
 	if _, err := a.Split(context.Background(), "gone.mp4"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("Split of a missing clip = %v, want store.ErrNotFound", err)
@@ -182,6 +185,7 @@ func TestSplit_MissingClipFailsSynchronously(t *testing.T) {
 // terminal frame carrying the proposal id — and the proposal itself persisted
 // for the review to read back after a reconnect (§7, V34).
 func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
+	t.Parallel()
 	bus := events.NewBus()
 	ch, unsub := bus.Subscribe()
 	t.Cleanup(unsub)
@@ -261,6 +265,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 // This asserts the outcome an operator actually needs: N reviewed segments become N distinct,
 // airable catalog rows, each pointing back at a parent that is still there.
 func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 
@@ -415,6 +420,7 @@ func awaitSplitTerminal(t *testing.T, ch <-chan events.Event, jobID string) stri
 // The fix: `POST /v1/filler/split` on a parked reel puts it back where the pipeline can see it.
 // Without this the re-detect writes a freshly scored proposal that no rung will ever read.
 func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
+	t.Parallel()
 	bus := events.NewBus()
 	ch, unsub := bus.Subscribe()
 	t.Cleanup(unsub)
@@ -452,6 +458,7 @@ func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
 // and the rung would then ground the outgoing segment list or re-Propose the same reel
 // concurrently. A failed detection must therefore leave the reel exactly as it found it.
 func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
+	t.Parallel()
 	bus := events.NewBus()
 	ch, unsub := bus.Subscribe()
 	t.Cleanup(unsub)

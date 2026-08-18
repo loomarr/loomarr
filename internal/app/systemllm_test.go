@@ -29,6 +29,7 @@ import (
 // This asserts through Resolve (what every reader actually calls), NOT through the
 // store row — reading the row back would have passed against the broken code.
 func TestPersistSelection_HotAppliesToSettingsReaders(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 
@@ -85,6 +86,7 @@ func TestPersistSelection_HotAppliesToSettingsReaders(t *testing.T) {
 // provider is an OpenAI-compatible client, so it must persist as "openai" — the fix
 // for the 502 "openrouter is not one of [ollama openai]" that broke the hosted picker.
 func TestWireKind(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"":           "ollama", // back-compat default
 		"ollama":     "ollama",
@@ -100,6 +102,7 @@ func TestWireKind(t *testing.T) {
 }
 
 func TestSelectHosted_RejectsAnOllamaTagBeforeCallingTheProvider(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // any provider call would fail differently; validation must happen first
 
@@ -111,6 +114,7 @@ func TestSelectHosted_RejectsAnOllamaTagBeforeCallingTheProvider(t *testing.T) {
 }
 
 func TestHostedSelectionMatchesGenericOpenAIByCanonicalURL(t *testing.T) {
+	t.Parallel()
 	openRouter, _ := llm.HostedProviderByKey("openrouter")
 	custom, _ := llm.HostedProviderByKey(llm.CustomProviderKey)
 
@@ -132,6 +136,7 @@ func TestHostedSelectionMatchesGenericOpenAIByCanonicalURL(t *testing.T) {
 // neither may collapse to "" (which would instead mean "inherit Ollama's 5m default",
 // silently reversing what the operator asked for).
 func TestKeepAliveArg(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		in   time.Duration
@@ -191,6 +196,7 @@ func (b *syncBuf) String() string {
 // outcome collapsed to nil, `llm model warmed took=0` — announcing a preload that
 // never happened. "Nothing to warm" is a third outcome and says nothing at all.
 func TestWarm_LogsEachOutcomeHonestly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		warmer  llm.Warmer

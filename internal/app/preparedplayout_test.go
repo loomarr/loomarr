@@ -101,6 +101,7 @@ func newPreparedRuntimeForTest(
 }
 
 func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(10_000, 0)
 	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{
 		"internal": {{Kind: schedule.SlotProgram, LibraryItemID: "shared", Start: now.Add(-time.Minute), Stop: now.Add(time.Hour)}},
@@ -141,6 +142,7 @@ func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
 }
 
 func TestPreparedRuntimeCandidatesKeepChannelAudioOverridesDistinct(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(15_000, 0)
 	timeline := &preparedTimelineFake{
 		broadcasts: map[string][]playout.Broadcast{
@@ -178,6 +180,7 @@ func TestPreparedRuntimeCandidatesKeepChannelAudioOverridesDistinct(t *testing.T
 }
 
 func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(17_000, 0)
 	channels := make([]store.Channel, 100)
 	broadcasts := make(map[string][]playout.Broadcast, len(channels))
@@ -234,6 +237,7 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 }
 
 func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(20_000, 0)
 	previous := playout.Broadcast{Kind: schedule.SlotProgram, LibraryItemID: "previous", Start: now.Add(-time.Minute), Stop: now.Add(-time.Second)}
 	current := playout.Broadcast{Kind: schedule.SlotProgram, LibraryItemID: "current", Start: now.Add(-time.Second), Stop: now.Add(time.Hour)}
@@ -282,6 +286,7 @@ func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 }
 
 func TestPreparedRuntimeTuneRequestsTheSharedDVRLookbehind(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(25_000, 0)
 	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
 		Kind: schedule.SlotProgram, LibraryItemID: "current",
@@ -304,6 +309,7 @@ func TestPreparedRuntimeTuneRequestsTheSharedDVRLookbehind(t *testing.T) {
 }
 
 func TestPreparedRuntimePolicyChangeMakesTuneMissUntilPlannerRewarms(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(30_000, 0)
 	policy := "balanced"
 	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
@@ -333,6 +339,7 @@ func TestPreparedRuntimePolicyChangeMakesTuneMissUntilPlannerRewarms(t *testing.
 }
 
 func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(40_000, 0)
 	preparedLibrary, err := prepared.NewLibrary(t.TempDir())
 	if err != nil {
@@ -379,6 +386,7 @@ func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *tes
 }
 
 func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(45_000, 0)
 	preparedLibrary, err := prepared.NewLibrary(t.TempDir())
 	if err != nil {
@@ -426,6 +434,7 @@ func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *tes
 }
 
 func TestPreparedRuntimeChannelAudioPolicyChangeMakesTuneMissImmediately(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(50_000, 0)
 	channels := preparedChannels{channels: []store.Channel{{
 		Channel: schedule.Channel{ID: "ch"},
@@ -460,6 +469,7 @@ func TestPreparedRuntimeChannelAudioPolicyChangeMakesTuneMissImmediately(t *test
 }
 
 func TestPreparedBudgetBytesUsesGiBAndSaturates(t *testing.T) {
+	t.Parallel()
 	if got := preparedBudgetBytes(512); got != int64(512)<<30 {
 		t.Fatalf("preparedBudgetBytes(512) = %d", got)
 	}

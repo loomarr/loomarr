@@ -36,6 +36,7 @@ func (r *recordingSources) SetFillerSourceFetchPolicy(context.Context, string, *
 }
 
 func TestRememberSources(t *testing.T) {
+	t.Parallel()
 	fixed := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	newAdapter := func(rs *recordingSources) fillerServiceAdapter {
 		return fillerServiceAdapter{sources: rs, now: func() time.Time { return fixed }}
@@ -94,6 +95,7 @@ func TestRememberSources(t *testing.T) {
 }
 
 func TestArchiveIDFrom(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ in, want string }{
 		{"https://archive.org/details/classic_tv_commercials", "classic_tv_commercials"},
 		{"http://archive.org/details/item-1/", "item-1"},
@@ -117,6 +119,7 @@ func TestArchiveIDFrom(t *testing.T) {
 // "0:00" — claiming the clip is empty, which is a different and false statement from "we don't
 // know how long this is".
 func TestDiscoveredStats_OmitsAnItemItLearnedNothingAbout(t *testing.T) {
+	t.Parallel()
 	stats := discoveredStats([]clipfetch.DiscoveredItem{
 		{ID: "probed", DurationMS: 91_090, Height: 960},
 		{ID: "unprobed"},
@@ -148,6 +151,7 @@ func TestDiscoveredStats_OmitsAnItemItLearnedNothingAbout(t *testing.T) {
 // The two entry points are what keep them apart: `Ingest` downloads, `IngestAsked` downloads and
 // remembers. Only the caller knows which it holds.
 func TestIngest_AutoFetchDoesNotRegisterEveryClipAsASource(t *testing.T) {
+	t.Parallel()
 	rec := &recordingSources{}
 	a := fillerServiceAdapter{
 		sources: rec,
@@ -174,6 +178,7 @@ func TestIngest_AutoFetchDoesNotRegisterEveryClipAsASource(t *testing.T) {
 // The mirror: an OPERATOR pasting a collection URL still gets it remembered, or the Sources tab
 // stops answering "where did this come from".
 func TestIngestAsked_RemembersWhatTheOperatorNamed(t *testing.T) {
+	t.Parallel()
 	rec := &recordingSources{}
 	a := fillerServiceAdapter{
 		sources: rec,

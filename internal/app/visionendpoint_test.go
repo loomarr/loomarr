@@ -30,6 +30,7 @@ func visionSet(t *testing.T, rows map[string]string) resolved {
 // Unset vision provider ⇒ byte-identical to the pre-V54a behaviour. Every existing install must
 // keep working with no new settings.
 func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
+	t.Parallel()
 	v := visionEndpoint(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "llm.api_key": "sk-main",
@@ -49,6 +50,7 @@ func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
 }
 
 func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) {
+	t.Parallel()
 	v := visionEndpoint(visionSet(t, map[string]string{
 		"llm.provider":           "openai",
 		"llm.hosted_provider":    "openrouter",
@@ -68,6 +70,7 @@ func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) 
 // the host they just named — here, localhost. Inheriting it would be a credential leak to any
 // address an operator can type.
 func TestVisionEndpoint_NeverInheritsTheKeyOnceAProviderIsNamed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, provider, url string }{
 		{"local ollama", "ollama", ""},
 		{"a different hosted service", "openai", "https://vision.example.com/v1"},
@@ -90,6 +93,7 @@ func TestVisionEndpoint_NeverInheritsTheKeyOnceAProviderIsNamed(t *testing.T) {
 
 // The common case — hosted text, local vision — needs the provider knob alone.
 func TestVisionEndpoint_LocalOllamaNeedsNoURL(t *testing.T) {
+	t.Parallel()
 	v := visionEndpoint(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "ollama", "filler.vision.model": "llava:7b",
@@ -108,6 +112,7 @@ func TestVisionEndpoint_LocalOllamaNeedsNoURL(t *testing.T) {
 // An explicit vision key is used when the operator supplies one — the knob has to be usable for a
 // genuinely hosted vision service, or "never inherit" would just mean "never authenticate".
 func TestVisionEndpoint_UsesItsOwnKeyWhenGiven(t *testing.T) {
+	t.Parallel()
 	v := visionEndpoint(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "openai", "filler.vision.url": "https://vision.example.com/v1",
@@ -125,6 +130,7 @@ func TestVisionEndpoint_UsesItsOwnKeyWhenGiven(t *testing.T) {
 // Before V54a this combination silently produced `llava:7b` → openrouter.ai → 401 on every
 // segment, reported only as "a segment could not be classified".
 func TestVisionEndpoint_LocalModelDoesNotGoToTheHostedEndpoint(t *testing.T) {
+	t.Parallel()
 	v := visionEndpoint(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "ollama", "filler.vision.model": "llava:7b",
@@ -139,6 +145,7 @@ func TestVisionEndpoint_LocalModelDoesNotGoToTheHostedEndpoint(t *testing.T) {
 // like it worked. The operator saves "Ollama", the next reel still 401s against the hosted
 // endpoint, and nothing connects the two.
 func TestHotVisionProvider_PicksUpASettingsChangeWithoutARestart(t *testing.T) {
+	t.Parallel()
 	rows := map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "llm.api_key": "sk-main",
@@ -175,6 +182,7 @@ func TestHotVisionProvider_PicksUpASettingsChangeWithoutARestart(t *testing.T) {
 // ⚠ Memoised on the resolved wiring: rebuilding per call would discard the HTTP connection pool
 // on every segment — 60 of them in one pass at the default `max_split_vision`.
 func TestHotVisionProvider_ReusesTheProviderWhileSettingsAreUnchanged(t *testing.T) {
+	t.Parallel()
 	h := &hotVisionProvider{set: visionSet(t, map[string]string{
 		"llm.provider": "ollama", "llm.url": defaultOllamaBase, "llm.model": "llava:7b",
 	})}
@@ -195,6 +203,7 @@ func TestHotVisionProvider_ReusesTheProviderWhileSettingsAreUnchanged(t *testing
 // `ground` treats a provider failure as "stop, retry next pass"; a nil was indistinguishable from
 // vision being switched off, which is how this went unnoticed.
 func TestHotVisionProvider_SaysWhyWhenThereIsNoEndpoint(t *testing.T) {
+	t.Parallel()
 	h := &hotVisionProvider{set: visionSet(t, map[string]string{"llm.provider": "openai", "llm.url": ""})}
 	_, err := h.resolve()
 	if err == nil {

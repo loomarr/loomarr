@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -98,7 +97,7 @@ func imageServer(t *testing.T) *httptest.Server {
 
 	st := testkit.MigratedSQLiteStore(t)
 
-	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
+	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
