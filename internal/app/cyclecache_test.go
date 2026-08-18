@@ -80,6 +80,7 @@ func testChannel() store.Channel {
 // CPU spent recomputing an answer that had not changed. If this ever goes back to computing per
 // request, the endpoint silently returns to ~100ms/channel.
 func TestCycleCache_UnchangedChannelIsArrangedOnce(t *testing.T) {
+	t.Parallel()
 	r, eng, _ := cachedResolver(t, testChannel())
 	at := time.Now()
 
@@ -97,6 +98,7 @@ func TestCycleCache_UnchangedChannelIsArrangedOnce(t *testing.T) {
 // A changed LINEUP must never be served from the cache. This is the correctness half: the
 // fingerprint exists so a stale arrangement is unreachable rather than merely unlikely.
 func TestCycleCache_ChangedLineupIsRearranged(t *testing.T) {
+	t.Parallel()
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
@@ -120,6 +122,7 @@ func TestCycleCache_ChangedLineupIsRearranged(t *testing.T) {
 // Mutating a deeply-nested one is the point: a shallow hash would pass the lineup test above and
 // still fail here.
 func TestCycleCache_ChangedPolicyIsRearranged(t *testing.T) {
+	t.Parallel()
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
@@ -142,6 +145,7 @@ func TestCycleCache_ChangedPolicyIsRearranged(t *testing.T) {
 // reconcile (0 = unresolved → a real id), which changes franchise ordering — so a fingerprint
 // that only covered Key/season would pin the channel to its pre-heal arrangement forever.
 func TestCycleCache_ChangedEntryMetadataIsRearranged(t *testing.T) {
+	t.Parallel()
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
@@ -162,6 +166,7 @@ func TestCycleCache_ChangedEntryMetadataIsRearranged(t *testing.T) {
 // a curation rule that switches the channel at 21:00 genuinely changes the answer. The bucket is
 // what bounds how long the pre-boundary arrangement can survive.
 func TestCycleCache_CrossingABucketRearranges(t *testing.T) {
+	t.Parallel()
 	r, eng, _ := cachedResolver(t, testChannel())
 	at := time.Now().Truncate(cycleBucket)
 
@@ -180,6 +185,7 @@ func TestCycleCache_CrossingABucketRearranges(t *testing.T) {
 // Two requests a few seconds apart SHARE an arrangement. Without quantisation the guide's window
 // start moves every poll and the cache would never hit — a cache that is correct and useless.
 func TestCycleCache_NearbyInstantsShareAnArrangement(t *testing.T) {
+	t.Parallel()
 	r, eng, _ := cachedResolver(t, testChannel())
 	at := time.Now().Truncate(cycleBucket)
 
@@ -198,6 +204,7 @@ func TestCycleCache_NearbyInstantsShareAnArrangement(t *testing.T) {
 // An entry must not outlive its TTL: availability, hot-applied settings and the filler pool are
 // invisible to the fingerprint by design, and the TTL is the ONLY thing bounding their staleness.
 func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	clock := func() time.Time { return now }
 	c := newCycleCache(clock)
@@ -220,6 +227,7 @@ func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 // With no store wired the resolver must still answer, computing live. Tests and any install that
 // skips the wiring get correct (merely slower) listings rather than an empty grid.
 func TestCycleCache_NoStoreFallsBackToLiveComputation(t *testing.T) {
+	t.Parallel()
 	eng := &countingCycle{slots: []schedule.Slot{{Kind: schedule.SlotProgram}}}
 	r := &playoutResolver{engine: eng, now: time.Now} // no channels, no cycles
 
@@ -240,6 +248,7 @@ func TestCycleCache_NoStoreFallsBackToLiveComputation(t *testing.T) {
 // every sixty seconds and re-paid a full arrangement for a byte-identical answer — which is what
 // put the endpoint's p99 at 90ms against a p50 of 21ms.
 func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
+	t.Parallel()
 	ch := testChannel()
 	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // explicit off + no rules ⇒ invariant
 	r, eng, _ := cachedResolver(t, ch)
@@ -263,6 +272,7 @@ func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
 // "nothing configured" as invariant would pass every test written against a rule-less channel and
 // then serve a Christmas lineup in January.
 func TestCycleCache_EmptySeasonalPolicyIsStillTimeVarying(t *testing.T) {
+	t.Parallel()
 	ch := testChannel() // zero policy: Mode == SeasonalDefault ("") ⇒ resolves to Auto
 	if ch.Policy.Seasonal.Mode == schedule.SeasonalOff {
 		t.Fatal("precondition: a zero policy must NOT be SeasonalOff, or this test proves nothing")
@@ -286,6 +296,7 @@ func TestCycleCache_EmptySeasonalPolicyIsStillTimeVarying(t *testing.T) {
 // exactly the case the bucket exists for, and dropping it there would serve the pre-boundary
 // lineup past the boundary.
 func TestCycleCache_RuledChannelKeepsItsBucket(t *testing.T) {
+	t.Parallel()
 	ch := testChannel()
 	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // off, so RULES are the only varying input
 	ch.Policy.Rules = []schedule.SchedulingRule{{ID: "r1", Label: "Marathon"}}

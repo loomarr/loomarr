@@ -70,6 +70,7 @@ func newTimelineTMDB(t *testing.T) *tmdb.Client {
 // observable: the resolver only emits a URL for an image whose bytes exist, so the row it finds
 // proves which TMDB URL it resolved the key to.
 func TestTimelineThumbResolver(t *testing.T) {
+	t.Parallel()
 	st := newMemImageStore()
 	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st)
 	ctx := context.Background()
@@ -144,6 +145,7 @@ func (f *timelineFetchStub) FetchNow(_ context.Context, work []images.Image, _ t
 // third-party URL, which is a beacon telling TMDB who is watching what and when. The honest
 // degradation on a failed bounded fetch is no image — never a gray permanent placeholder.
 func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
+	t.Parallel()
 	st := newMemImageStore()
 	contentHash := strings.Repeat("d", 64)
 	src := imgBase + "/lisa.jpg"
@@ -169,6 +171,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 
 // Without an image service the resolver returns nothing rather than falling back to TMDB's CDN.
 func TestTimelineThumbWithoutImageServiceEmitsNothing(t *testing.T) {
+	t.Parallel()
 	r := timelineThumbResolver{tmdb: newTimelineTMDB(t)}
 	if url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6); url != "" || hash != "" {
 		t.Errorf("ThumbFor with no image service = (%q, %q), want empty — never a third-party URL", url, hash)

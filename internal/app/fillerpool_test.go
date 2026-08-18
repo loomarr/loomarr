@@ -60,6 +60,7 @@ func commercial(path string, era int, aud filler.Audience) filler.Clip {
 // numbers ARE the channel route's — this test fails the moment someone gives the aggregate its
 // own opinion about the ladder.
 func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a, _ := newPoolAdapter(t,
 		[]filler.Clip{
@@ -100,6 +101,7 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 
 // Worst first, so the strip's diagnosis line can name a channel without the caller sorting.
 func TestPool_ListsChannelsWorstFirst(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a, _ := newPoolAdapter(t,
 		// Only 1990s kids material exists, so the 90s channel matches exactly and the
@@ -159,6 +161,7 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 // A paused channel is not airing, so reporting it as uncovered would tell the operator to fix
 // a problem they created on purpose — and would push a real gap further down the list.
 func TestPool_ExcludesPausedAndDetachedChannels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	paused := liveChannel("ch-paused", "Off Air", 8, 1990)
 	paused.Status = schedule.StatusPaused
@@ -186,6 +189,7 @@ func TestPool_ExcludesPausedAndDetachedChannels(t *testing.T) {
 // no channels at all still reports what it holds, which is exactly the fresh-install state the
 // strip's "Propose a pull" button exists for.
 func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a, _ := newPoolAdapter(t,
 		[]filler.Clip{
@@ -229,6 +233,7 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 //
 // Seen live on the maintainer's install, 2026-08-03.
 func TestPool_UntaggedCountsTheCatalogNotTheReviewQueue(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	a, st := newPoolAdapter(t,
 		[]filler.Clip{

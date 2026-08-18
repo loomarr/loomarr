@@ -14,6 +14,7 @@ var provNow = time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 // provenance line is that a pending slot stops being a mystery — "acquiring" and "requested"
 // are different situations, and collapsing them would be the `gap bool` mistake in prose.
 func TestProvenance_DistinguishesTheStates(t *testing.T) {
+	t.Parallel()
 	seen := map[string]provision.State{}
 	for _, st := range []provision.State{
 		provision.Available, provision.Downloading, provision.Requested, provision.Unavailable,
@@ -33,6 +34,7 @@ func TestProvenance_DistinguishesTheStates(t *testing.T) {
 // Download progress is the honest thing to show once a release is moving: "acquiring" alone
 // is indistinguishable from stuck.
 func TestProvenance_ShowsDownloadProgress(t *testing.T) {
+	t.Parallel()
 	got := provenanceOf(provision.Record{
 		State: provision.Downloading, Progress: 0.62, ETAText: "8m",
 	}, provNow)
@@ -47,6 +49,7 @@ func TestProvenance_ShowsDownloadProgress(t *testing.T) {
 // A stalled download is EXACTLY the case worth surfacing — otherwise it looks identical to
 // one that is simply early.
 func TestProvenance_SurfacesAStalledQueueWhenThereIsNoProgress(t *testing.T) {
+	t.Parallel()
 	got := provenanceOf(provision.Record{
 		State: provision.Downloading, DownloadStatus: "stalled",
 	}, provNow)
@@ -58,6 +61,7 @@ func TestProvenance_SurfacesAStalledQueueWhenThereIsNoProgress(t *testing.T) {
 // A deadline is how long before Loomarr gives up. Coarse on purpose: a 48-hour window counted
 // to the minute implies precision the process does not have.
 func TestProvenance_CountsDownToTheDeadline(t *testing.T) {
+	t.Parallel()
 	got := provenanceOf(provision.Record{
 		State: provision.Requested, Deadline: provNow.Add(41 * time.Hour),
 	}, provNow)
@@ -68,6 +72,7 @@ func TestProvenance_CountsDownToTheDeadline(t *testing.T) {
 
 // A passed deadline must say so rather than render a negative duration.
 func TestProvenance_PassedDeadlineDoesNotGoNegative(t *testing.T) {
+	t.Parallel()
 	got := provenanceOf(provision.Record{
 		State: provision.Requested, Deadline: provNow.Add(-3 * time.Hour),
 	}, provNow)
@@ -81,12 +86,14 @@ func TestProvenance_PassedDeadlineDoesNotGoNegative(t *testing.T) {
 
 // A record with no deadline set still renders — the deadline is optional, not required.
 func TestProvenance_NoDeadlineStillDescribesTheState(t *testing.T) {
+	t.Parallel()
 	if got := provenanceOf(provision.Record{State: provision.Requested}, provNow); got == "" {
 		t.Error("a requested title with no deadline produced no provenance at all")
 	}
 }
 
 func TestTimeLeft_ScalesTheUnitToTheDistance(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		in   time.Duration
 		want string

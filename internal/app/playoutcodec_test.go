@@ -19,6 +19,7 @@ import (
 // to h264 — the maximally-compatible choice. This pins that vote so a refactor can't quietly flip
 // a tie toward HEVC and force fMP4 on a channel that isn't clearly HEVC-dominant.
 func TestMajorityBroadcastCodec(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		codecs []string
@@ -46,6 +47,7 @@ func TestMajorityBroadcastCodec(t *testing.T) {
 }
 
 func TestComputeChannelCodecRetriesAChangingChannel(t *testing.T) {
+	t.Parallel()
 	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 2, 2, 2}}
 	r := &playoutResolver{channels: access, codecs: access}
 
@@ -62,6 +64,7 @@ func TestComputeChannelCodecRetriesAChangingChannel(t *testing.T) {
 }
 
 func TestComputeChannelCodecRetriesAStaleTargetedWrite(t *testing.T) {
+	t.Parallel()
 	access := &testkit.ChannelCodecStore{
 		ReadRevisions: []int64{1, 1, 2, 2},
 		WriteErrors:   []error{store.ErrChannelStale, nil},
@@ -77,6 +80,7 @@ func TestComputeChannelCodecRetriesAStaleTargetedWrite(t *testing.T) {
 }
 
 func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("database unavailable")
 	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 1}, WriteErrors: []error{boom}}
 	r := &playoutResolver{channels: access, codecs: access}
@@ -88,6 +92,7 @@ func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
 }
 
 func TestMeasureChannelCodecPinsOneLibraryConnectionAcrossBatch(t *testing.T) {
+	t.Parallel()
 	providerCalls := 0
 	lib := library.NewDynamic(func() library.Connection {
 		providerCalls++

@@ -21,6 +21,7 @@ import (
 // nil-engine path is safe (#10): an event emitted before the scheduler is wired
 // still reaches the bus and never panics.
 func TestEventEmitterPublishesToBus(t *testing.T) {
+	t.Parallel()
 	bus := events.NewBus()
 	sub, unsubscribe := bus.Subscribe()
 	defer unsubscribe()
@@ -66,7 +67,8 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 // The assertion is deliberately just "builds and answers": the value here is that the
 // process stays alive long enough to tell the operator what's wrong.
 func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T) {
-	h, err := BuildHandler(context.Background(), nil, slog.New(slog.DiscardHandler), Overrides{})
+	t.Parallel()
+	h, err := BuildHandler(t.Context(), nil, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatalf("BuildHandler with no store returned an error: %v", err)
 	}
@@ -94,9 +96,10 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 // exposes the domain gauges — not just the RED/runtime foundation. This is the
 // end-to-end wiring the metrics package unit tests can't prove on their own.
 func TestBuildHandlerExposesDomainMetrics(t *testing.T) {
+	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)
 
-	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
+	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}

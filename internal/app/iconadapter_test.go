@@ -113,6 +113,7 @@ func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []sche
 // A themed channel (e.g. Star Trek) offers each series' own poster — the point of
 // §icon P2: candidates come from the channel's OWN lineup, not a generic library.
 func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
+	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
 		"/tv/1000":   "/tng.jpg",
 		"/movie/603": "/matrix.jpg",
@@ -167,6 +168,7 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 // hash, deleting that row. A suggestion's `url` becomes the channel's stored `logo`, so offering
 // the placeholder would mint a logo that resolves for under a minute and 404s forever after.
 func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
+	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
 		"/tv/1000": "/tng.jpg",
 		"/tv/1001": "/ds9.jpg",
@@ -196,6 +198,7 @@ func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
 // A per-title TMDB failure must be skipped, not fail the whole request — one bad
 // title on a five-series channel shouldn't deny the other four suggestions.
 func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
+	t.Parallel()
 	mock := tmdbPosterStub(t,
 		map[string]string{"/tv/1000": "/tng.jpg"},
 		map[string]bool{"/tv/1001": true}, // this one 500s
@@ -221,6 +224,7 @@ func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
 // A title with no poster on TMDB is a legitimate empty result, not an error — it's
 // simply omitted from the candidates.
 func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
+	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{"/tv/1000": ""}, nil)
 	defer mock.Close()
 
@@ -242,6 +246,7 @@ func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
 // Two lineup entries resolving to the same poster URL (a channel referencing the same
 // title via more than one entry) must be de-duplicated.
 func TestIconAdapter_DedupesByURL(t *testing.T) {
+	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
 		"/tv/1000":  "/tng.jpg",
 		"/tv/99000": "/tng.jpg", // same poster under a different id, for the test
@@ -266,6 +271,7 @@ func TestIconAdapter_DedupesByURL(t *testing.T) {
 
 // A malformed/legacy key is skipped, not fatal.
 func TestIconAdapter_SkipsMalformedKeys(t *testing.T) {
+	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: provision.Key("garbage"), Title: "Malformed"},

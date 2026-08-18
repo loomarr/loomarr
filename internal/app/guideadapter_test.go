@@ -18,6 +18,7 @@ import (
 // which is fixed in wall-clock time) lets the boundaries be exercised precisely; the
 // pinned capture guards the PARSING, in programmer/guide_contract_test.go.
 func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	ms := func(offset time.Duration) string { return strconv.FormatInt(now.Add(offset).UnixMilli(), 10) }
 
@@ -61,6 +62,7 @@ func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
 // Upcoming powers the Overview "what's on later" strip: the airing program FIRST, then the
 // next ones in airtime order, gaps skipped, finished entries omitted, capped at limit.
 func TestUpcoming_AiringThenNextPrograms_SkipsGapsAndFinished(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	ms := func(offset time.Duration) string { return strconv.FormatInt(now.Add(offset).UnixMilli(), 10) }
 
@@ -120,6 +122,7 @@ func titles(es []api.NowNextEntry) []string {
 
 // A channel with nothing scheduled in the window is absent, not an empty-titled card.
 func TestNowNext_OmitsChannelsWithNothingScheduled(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"ch-1":{"id":"ch-1","name":"Empty","number":1,"programs":[]}}`))
 	}))

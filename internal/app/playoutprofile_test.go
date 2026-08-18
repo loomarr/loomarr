@@ -161,7 +161,7 @@ func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{}); err != nil {
+	if _, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{}); err != nil {
 		t.Fatal(err)
 	}
 	r := lastPlayoutResolver

@@ -11,6 +11,7 @@ import (
 )
 
 func TestToAPIEntry_ExposesApplyTiming(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		apply settings.ApplyTiming
@@ -31,6 +32,7 @@ func TestToAPIEntry_ExposesApplyTiming(t *testing.T) {
 }
 
 func TestProbeWritableDirectory(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := probeWritableDirectory(dir); err != nil {
 		t.Fatalf("writable temp directory failed probe: %v", err)
@@ -58,6 +60,7 @@ func TestProbeWritableDirectory(t *testing.T) {
 }
 
 func TestConnectionTests_FillerRejectsWatchContainingClipLibrary(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	for name, watch := range map[string]string{
 		"same":     filepath.Join(base, "clips"),

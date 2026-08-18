@@ -58,6 +58,7 @@ func (c *rotatingCycle) asks() int {
 // The Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon /
 // Lethal Weapon 2 / Akira.
 func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
+	t.Parallel()
 	eng := &rotatingCycle{window: 24 * time.Hour}
 	r := &playoutResolver{engine: eng, now: time.Now}
 
@@ -84,6 +85,7 @@ func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 // An UNBOUNDED window (WindowFull) means the deck never rotates, so segmentation must collapse to
 // exactly one resolve — the pre-existing behaviour, and the cheap path.
 func TestSegmentedBroadcasts_UnboundedWindowResolvesOnce(t *testing.T) {
+	t.Parallel()
 	eng := &rotatingCycle{window: 0}
 	r := &playoutResolver{engine: eng, now: time.Now}
 
@@ -99,6 +101,7 @@ func TestSegmentedBroadcasts_UnboundedWindowResolvesOnce(t *testing.T) {
 
 // A pathological window must not turn one guide request into thousands of arrangements.
 func TestSegmentedBroadcasts_IsBoundedBySegmentCap(t *testing.T) {
+	t.Parallel()
 	eng := &rotatingCycle{window: time.Minute} // absurd: a one-minute rotation
 	r := &playoutResolver{engine: eng, now: time.Now}
 
@@ -117,6 +120,7 @@ func TestSegmentedBroadcasts_IsBoundedBySegmentCap(t *testing.T) {
 // windows may still be previewed; the window containing now comes from the same persisted cycle as
 // AiringNow.
 func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, time.August, 15, 13, 30, 0, 0, time.UTC)
 	eng := &rotatingCycle{window: 24 * time.Hour}
 	accepted := &stubChannels{}

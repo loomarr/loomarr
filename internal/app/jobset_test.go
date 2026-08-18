@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -87,7 +86,7 @@ func TestJobSet(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 
 	t.Setenv("API_TOKEN", "jobset-token")
-	h, err := app.BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), app.Overrides{})
+	h, err := app.BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), app.Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -29,7 +28,7 @@ func listJobs(t *testing.T, st store.Store) []jobView {
 	t.Helper()
 	t.Setenv("API_TOKEN", "test-app-token")
 
-	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
+	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
