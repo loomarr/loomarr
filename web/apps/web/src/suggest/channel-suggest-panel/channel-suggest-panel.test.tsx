@@ -8,11 +8,37 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
+
+// The failed-run case is driven by a hook override: the failure arrives as an SSE `failed`
+// phase, which the panel test's isolated (provider-less) render can't emit. useSuggestionRun's
+// own test proves the phase→failed mapping; this proves the panel RENDERS that failure instead
+// of silently dropping back to the describe form (the reported bug). Default: delegate to the
+// REAL hook so every other test in this file keeps exercising the true flow through MSW.
+let runOverride: SuggestionRun | undefined;
+vi.mock("../use-suggestion-run", async (importActual) => {
+  const actual = await importActual<typeof import("../use-suggestion-run")>();
+  const useReal = actual.useSuggestionRun;
+  // biome-ignore lint/correctness/useHookAtTopLevel: mock replacement hook delegating to the real one, not a conditional component hook.
+  return { useSuggestionRun: () => runOverride ?? useReal() };
+});
+
+const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
+  phase: "failed",
+  round: undefined,
+  proposal: undefined,
+  isRunning: false,
+  failed: true,
+  error: undefined,
+  start: vi.fn(),
+  reset: vi.fn(),
+  ...over,
+});
 
 // The panel reuses the whole Suggest flow (useSuggestionRun → GenerationProgress →
 // ProposalReview), so its test mirrors suggest-workspace's harness: an admin auth/me, a POST
@@ -91,6 +117,10 @@ const renderPanel = (onCreated: (id: string) => void) => {
 };
 
 describe("ChannelSuggestPanel", () => {
+  beforeEach(() => {
+    runOverride = undefined; // default every test back to the real hook
+  });
+
   it("submits the typed intent to start a run", async () => {
     const user = userEvent.setup();
     const { submissions } = stubSuggest();
@@ -174,5 +204,24 @@ describe("ChannelSuggestPanel", () => {
     // panel would call. The old `includes("/approve")` would also have matched the BULK route.
     expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  // The reported bug: describe a channel, the job fails (e.g. no AI provider), and the panel
+  // silently dropped back to an empty describe form — no error, no way to tell what happened.
+  it("surfaces a failed run with a message and a retry instead of a silent empty form", async () => {
+    const reset = vi.fn();
+    runOverride = failedRun({ reset });
+    stubSuggest();
+    renderPanel(() => {});
+
+    // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Settings → AI/)).toBeInTheDocument();
+    // …and the describe form is NOT rendered underneath it (the silent-drop bug).
+    expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
+
+    // Try again clears the run back to the form.
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(reset).toHaveBeenCalled();
   });
 });

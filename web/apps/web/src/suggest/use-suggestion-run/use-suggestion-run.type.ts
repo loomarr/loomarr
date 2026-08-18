@@ -13,6 +13,13 @@ interface SuggestionRun {
   proposal?: ProposalDTO;
   // True from submit until the run reaches a terminal phase.
   isRunning: boolean;
+  // True when the run reached the terminal `failed` phase without producing a proposal.
+  // Distinct from `error`: `error` is a failure of the SUBMIT request (the job never
+  // started); `failed` is a job that started, ran, and errored mid-flight (e.g. the LLM
+  // is unreachable). The submit succeeds (200 + jobId) in that case, so `error` stays
+  // null and only this flag surfaces the runtime failure — without it the panel silently
+  // drops back to an empty form.
+  failed: boolean;
   error?: unknown;
   start: (intent: Intent) => void;
   reset: () => void;

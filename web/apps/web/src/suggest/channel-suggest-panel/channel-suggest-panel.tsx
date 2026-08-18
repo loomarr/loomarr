@@ -65,8 +65,10 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
         </p>
       </div>
 
-      {/* Idle — the describe form (with optional constraints). */}
-      {!run.isRunning && !proposal && (
+      {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
+          flight OR has failed: a failed run shows the failure below with its own way back,
+          so falling through to a blank form here would swallow the error the user needs. */}
+      {!run.isRunning && !run.failed && !proposal && (
         <IntentForm initialDescription={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
       )}
 
@@ -78,6 +80,25 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
           announced a library search that had not started and could not be the slow part. */}
       {run.isRunning && (
         <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
+      )}
+
+      {/* Failed — the job started but errored mid-flight (e.g. the AI provider is
+          unreachable). GenerationProgress renders the failed step; we add the way back the
+          component itself has no opinion on. Most failures here are an unconfigured/unreachable
+          AI provider, so the hint points there. */}
+      {run.failed && (
+        <div className="flex flex-col gap-3">
+          <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
+          <p className="text-muted-foreground text-sm">
+            The run didn't finish. If you haven't connected an AI provider yet, add one under Settings → AI,
+            then try again.
+          </p>
+          <div>
+            <Button variant="outline" size="sm" onClick={run.reset}>
+              Try again
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
