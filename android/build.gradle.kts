@@ -12,4 +12,12 @@ plugins {
     // ktlint is the Biome analogue: one tool for format + lint, so style is decided by the tool
     // rather than argued about in review. `make android-fmt` applies it.
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
+    // Screenshot tests on the JVM. Roborazzi renders real Compose through Robolectric rather than
+    // an emulator, so a UI regression is caught by `./gradlew verifyRoborazziDebug` in CI with no
+    // device attached — the same reason web's visual suite is worth having.
+    //
+    // ⚠ Held at 1.60.0 to match the runtime artifacts; see the pin note in app/build.gradle.kts.
+    // From 1.61.0 the library is built against a Kotlin newer than this project's 2.1.0, whose
+    // metadata a 2.1 compiler cannot read.
+    id("io.github.takahirom.roborazzi") version "1.60.0" apply false
 }
