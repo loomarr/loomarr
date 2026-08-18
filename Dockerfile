@@ -159,9 +159,20 @@ ARG DENO_ARM64_SHA256=310b8f48e59964ff18890d35e64f64fb90e8b1cc5d9ebff8c818327d5a
 # still emits continuous output and exits 0, and the failure presents as "the channel repeats one
 # show" rather than as an error.
 #
-# n8.1 is the newest series BtbN publishes in the `latest` release (it ships 7.1 and 8.1 only), and
-# the full `make test-ffmpeg` playout suite is green against it.
-ARG FFMPEG_TAG=n8.1-latest
+# ffmpeg is pinned to an IMMUTABLE BtbN release + per-arch SHA256, exactly like yt-dlp, deno, and
+# whisper below — a redistributed image must be reproducible and its GPL corresponding-source must
+# identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+#
+# ⚠ STAY ON THE n8.1 SERIES. ffmpeg >= 9 cannot advance a concat demuxer past a chunked entry, which
+# is load-bearing for playout (a channel would freeze on the first commercial-broken programme). This
+# pin is `n8.1.2-44-g7c533d0f86` from the dated release below; the `make test-ffmpeg` playout suite is
+# green against the n8.1 series. To bump: pick a newer `autobuild-YYYY-MM-DD-HH-MM` release that still
+# ships an `n8.1` gpl build, take its exact asset filename, download both arch archives, and update
+# FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s together — never point any one of them at `latest`.
+ARG FFMPEG_RELEASE=autobuild-2026-08-16-13-00
+ARG FFMPEG_BUILD_ID=n8.1.2-44-g7c533d0f86
+ARG FFMPEG_AMD64_SHA256=17780994c4679806fb227676f66a0af30c6379afc770324829f48f2a379be558
+ARG FFMPEG_ARM64_SHA256=e970a7dd450b440a21126a8bac3a1c95178b6ba05bee2465a4d2a586345c81ac
 ARG WHISPER_VERSION=v1.9.1
 ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
 ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
@@ -184,17 +195,18 @@ ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1b
 ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
-      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    # BtbN's asset name repeats the release series in the SUFFIX
-    # (ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz), so it is DERIVED from FFMPEG_TAG rather than
-    # written out a second time. It used to be a literal `gpl-7.1`, which meant bumping the pin in
-    # one place produced a 404 at build time instead of a new ffmpeg — the same hand-maintained
-    # coupling this repo has been bitten by elsewhere.
-    FFMPEG_SERIES="${FFMPEG_TAG%-latest}"; FFMPEG_SERIES="${FFMPEG_SERIES#n}"; \
-    FFMPEG_BUILD="ffmpeg-${FFMPEG_TAG}-${FFMPEG_ARCH}-gpl-${FFMPEG_SERIES}"; \
+    # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
+    # (ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl-8.1.tar.xz — build id `n8.1.2-44-g7c533d0f86`,
+    # suffix `8.1`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
+    # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
+    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (8, 1).
+    FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
+    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
+    FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
@@ -266,7 +278,8 @@ RUN set -eux; \
     chmod +x /usr/local/bin/deno; \
     rm -f /tmp/deno.zip; \
     curl -fsSL -o /tmp/ffmpeg.tar.xz \
-      "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_BUILD}.tar.xz"; \
+      "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
+    echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
     # ffmpeg AND ffprobe (revised, §9.1). ffprobe was excluded to save ~99MB on the
     # grounds that "Loomarr never probes media — Tunarr assigns duration during its

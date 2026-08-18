@@ -78,13 +78,17 @@ final redistribution review recorded below.
 
 ### GPL source status (ffmpeg; release blocker)
 
-The intended `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The current
-[`Dockerfile`](Dockerfile) still downloads `FFMPEG_TAG=n8.1-latest` from BtbN's mutable `latest`
-release. That does not identify one retained archive, build-script commit, FFmpeg commit, dependency
-source set, or corresponding-source bundle. Links to the general FFmpeg and BtbN repositories are
-useful provenance, but they are not an exact corresponding-source offer for the bytes in an image.
-The release must pin a retained archive by digest and record/provide its exact corresponding source
-before the first beta is redistributed.
+The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The
+[`Dockerfile`](Dockerfile) now pins it to an **immutable** archive — release
+`autobuild-2026-08-16-13-00`, build `n8.1.2-44-g7c533d0f86`, verified by per-architecture SHA256
+(`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
+bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
+
+**Still open (release-artifact action, not a Dockerfile change):** record and provide the exact
+corresponding source for that pinned build — the FFmpeg commit `n8.1.2-44-g7c533d0f86`, BtbN's
+build scripts at that release, and the bundled GPL dependency sources — and confirm `make test-ffmpeg`
+is green against the pinned build on the release commit. The immutable digest is what makes such a
+corresponding-source offer *possible*; retaining the bundle itself is the remaining step.
 
 ⚠ This section previously said the opposite — that redistributing the default image
 "carries no such obligation — it contains no ffmpeg", which was true only while ffmpeg
@@ -98,8 +102,11 @@ why it is corrected in place rather than quietly rewritten.
 This notice is an inventory, not release clearance. The first beta remains blocked until all of the
 following have evidence on the release commit:
 
-- pin the BtbN ffmpeg archive immutably and retain the exact corresponding source for FFmpeg, build
-  scripts, and bundled GPL dependencies; rerun the unchanged full `make test-ffmpeg` gate;
+- ~~pin the BtbN ffmpeg archive immutably~~ (done — `FFMPEG_RELEASE`/`FFMPEG_BUILD_ID` +
+  per-arch SHA256 in [`Dockerfile`](Dockerfile)) and retain the exact corresponding source for FFmpeg,
+  build scripts, and bundled GPL dependencies at that pinned build; rerun the unchanged full
+  `make test-ffmpeg` gate against it (still open — corresponding-source retention is a release-artifact
+  step, and the gate result must be recorded on the release commit);
 - retain the exact corresponding source and license texts for the GPLv3+ dependencies bundled in
   both official yt-dlp standalone executables;
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
