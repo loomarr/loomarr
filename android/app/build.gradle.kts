@@ -142,6 +142,12 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
 
+    // QR generation for the pairing screen. `core` ONLY — the `android-core`/`zxing-android-embedded`
+    // wrappers exist for SCANNING, which needs a camera this app does not have and does not want.
+    // Encoding is pure Kotlin/Java, and the matrix is drawn with Compose so the code uses our own
+    // tokens rather than a bundled black-on-white bitmap.
+    implementation("com.google.zxing:core:3.5.3")
+
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

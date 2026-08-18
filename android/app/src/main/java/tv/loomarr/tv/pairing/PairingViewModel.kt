@@ -22,10 +22,18 @@ sealed interface PairingUiState {
      */
     data object NeedsServer : PairingUiState
 
-    /** A code is on screen and the device is polling. */
+    /**
+     * A code is on screen and the device is polling.
+     *
+     * Two URIs because RFC 8628 defines two and they do different jobs: [verificationUri] is the
+     * short address a human types, [verificationUriComplete] carries the code for a QR to encode.
+     * Showing the complete one as text would be worse than useless — longer to read, and the code
+     * is already displayed on its own.
+     */
     data class AwaitingApproval(
         val userCode: String,
         val verificationUri: String,
+        val verificationUriComplete: String,
     ) : PairingUiState
 
     data class Paired(
@@ -87,8 +95,12 @@ class PairingViewModel(
                     PairingUiState.AwaitingApproval(
                         userCode = pairing.userCode,
                         // The human-facing half of RFC 8628: the address to type, matching the web
-                        // app's /pair route.
+                        // app's /pair route. Scheme stripped because nobody types "http://".
                         verificationUri = "${baseUrl.removePrefix("http://").removePrefix("https://")}/pair",
+                        // ⚠ The QR needs the FULL url, scheme included — a scanner handed
+                        // "host/pair?code=…" has no protocol to open. This is the one place the
+                        // scheme must survive.
+                        verificationUriComplete = "$baseUrl/pair?code=${pairing.userCode}",
                     )
 
                 when (val outcome = pollUntilSettled(client, pairing)) {

@@ -3,12 +3,16 @@ package tv.loomarr.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.runBlocking
@@ -20,6 +24,8 @@ import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
+import tv.loomarr.tv.design.Panel
+import tv.loomarr.tv.design.QrCode
 import tv.loomarr.tv.design.TuningText
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
@@ -101,21 +107,29 @@ private fun PairingScreen(model: PairingViewModel) {
                 )
 
             is PairingUiState.AwaitingApproval -> {
-                Body("On your phone or computer, go to", align = TextAlign.Center)
-                // The address is machine-produced, so it is set in mono like every other
-                // machine-produced value in the product.
+                // ONE instruction, naming the address inline. The earlier layout had three separate
+                // lines of guidance around two competing columns, and read as a wall rather than a
+                // single next step.
+                Body("On your phone, go to", align = TextAlign.Center)
                 MonoData(
                     current.verificationUri,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
-                )
-                Body(
-                    "and enter this code",
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S5),
-                )
-                CodeDisplay(
-                    current.userCode,
                     modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
                 )
+
+                // ⚠ The code and the QR are ONE object, not two columns — a bordered panel, both
+                // halves on a shared centre line, with the code first because it always works.
+                // Scanning depends on the phone being able to reach the server: on a Tailscale or
+                // VPN address a phone off the network gets a dead link, which is worse than typing
+                // because it fails silently.
+                Panel(modifier = Modifier.padding(top = LoomarrTokens.Space.S5)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S8),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CodeDisplay(current.userCode)
+                        QrCode(content = current.verificationUriComplete, size = 180.dp)
+                    }
+                }
             }
 
             // "You're on the air" is the product's own phrase for this moment (frontend-design §1).
