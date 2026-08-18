@@ -160,7 +160,7 @@ func (s *sqlStore) ListDeviceTokensForUser(ctx context.Context, userID string) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeviceToken
 	for rows.Next() {
 		var t DeviceToken

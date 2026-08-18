@@ -64,7 +64,7 @@ func postJSON(t *testing.T, srv *httptest.Server, path string, body any, cookie 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	out := map[string]any{}
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	return res.StatusCode, out
@@ -111,7 +111,7 @@ func TestDevicePairingEndToEndOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("device token on /v1/auth/me = %d, want 200", res.StatusCode)
 	}
@@ -195,7 +195,7 @@ func TestDeviceListAndRevoke(t *testing.T) {
 		} `json:"devices"`
 	}
 	_ = json.NewDecoder(res.Body).Decode(&list)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if len(list.Devices) != 1 || list.Devices[0].DeviceName != "Shield" {
 		t.Fatalf("device list = %+v, want one Shield", list.Devices)
 	}
@@ -211,7 +211,7 @@ func TestDeviceListAndRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dres.Body.Close()
+	_ = dres.Body.Close()
 	if dres.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke = %d, want 204", dres.StatusCode)
 	}
@@ -223,7 +223,7 @@ func TestDeviceListAndRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mres.Body.Close()
+	_ = mres.Body.Close()
 	if mres.StatusCode == http.StatusOK {
 		t.Fatal("a revoked device token still authenticates")
 	}
@@ -250,14 +250,14 @@ func TestDeviceRevokeIsScopedToOwner(t *testing.T) {
 		} `json:"devices"`
 	}
 	_ = json.NewDecoder(res.Body).Decode(&list)
-	res.Body.Close()
+	_ = res.Body.Close()
 
 	boss := login(t, srv, "boss", "pw")
 	del, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/auth/devices/"+list.Devices[0].ID, nil)
 	del.AddCookie(boss)
 	del.Header.Set("X-Loomarr-Csrf", "1")
 	dres, _ := srv.Client().Do(del)
-	dres.Body.Close()
+	_ = dres.Body.Close()
 	if dres.StatusCode == http.StatusNoContent {
 		t.Fatal("another user revoked a device they do not own")
 	}
@@ -265,7 +265,7 @@ func TestDeviceRevokeIsScopedToOwner(t *testing.T) {
 	me, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)
 	me.Header.Set("Authorization", "Bearer "+token)
 	mres, _ := srv.Client().Do(me)
-	mres.Body.Close()
+	_ = mres.Body.Close()
 	if mres.StatusCode != http.StatusOK {
 		t.Error("the owner's device stopped working after a foreign revoke attempt")
 	}
