@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // The backup gate lives HERE, not in the handler — the handler only maps sentinels to
@@ -19,11 +19,7 @@ import (
 func newTestDatabaseService(t *testing.T) (*databaseService, string) {
 	t.Helper()
 	dir := t.TempDir()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(dir, "loomarr.db"), true)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	backups := filepath.Join(dir, "backups")
 	return newDatabaseService(st, dir, func() string { return backups }, nil), backups
 }

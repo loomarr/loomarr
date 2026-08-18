@@ -34,17 +34,13 @@ func TestBuildHandler_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	t.Setenv("LIBRARY_TOKEN", mediaServer.AdminToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/internal-reconcile.db", true)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	// BuildHandler owns background work under ctx. Stop it before closing the store or its
-	// shutdown waits on workers that can no longer finish their final database operation.
-	t.Cleanup(func() {
-		cancel()
-		_ = st.Close()
-	})
+	// BuildHandler owns background work under ctx. Stop it before the store closes (via
+	// t.Cleanup registered inside MigratedSQLiteStore) or its shutdown waits on workers
+	// that can no longer finish their final database operation. t.Cleanup funcs run in
+	// LIFO order, so registering cancel's cleanup AFTER the store's ensures cancel fires
+	// first.
+	t.Cleanup(cancel)
+	st := testkit.MigratedSQLiteStore(t)
 
 	tunarr := testkit.NewTunarr()
 	handler, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})

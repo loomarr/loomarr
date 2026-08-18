@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/app"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // ⚠ **THE JOB SET IS THE CONTRACT (§18.1).** Every job's name, cron default and settings key
@@ -84,11 +84,7 @@ func TestJobSet(t *testing.T) {
 		"seerr-queue-poll | acquisitions | 0 * * * * * | job.seerr_queue_poll.schedule",
 	}
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/jobs.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	t.Setenv("API_TOKEN", "jobset-token")
 	h, err := app.BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), app.Overrides{})

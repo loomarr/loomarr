@@ -8,6 +8,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // ⚠ **A job's ceiling must not become every other job's ceiling.**
@@ -30,11 +31,7 @@ import (
 // a causal relation, not a timing window that a slow CI box could invert. The only deadline is the
 // failure bound.
 func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/queues.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 
 	started := make(chan struct{})
 	release := make(chan struct{})

@@ -12,6 +12,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 type staticChannelReader struct{ channel store.Channel }
@@ -24,11 +25,7 @@ func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	lastPlayoutResolver = nil
 	t.Setenv("API_TOKEN", "capacity-test-token")
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/capacity.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	for key, value := range map[string]string{
 		"playout.backend":      "internal",
 		"playout.encoder":      "libx264",
@@ -157,11 +154,7 @@ func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
 	lastPlayoutResolver = nil
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/ladder.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	// Playout is only wired on the internal backend; without this the resolver is nil and
 	// the test would pass vacuously.
 	if err := st.SetSetting(context.Background(), "playout.backend", "internal"); err != nil {
