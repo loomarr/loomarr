@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.runBlocking
+import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
@@ -64,26 +64,28 @@ private fun PairingScreen(model: PairingViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0B0F19))
-            .padding(48.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(LoomarrTokens.Static950)
+                .padding(48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         when (val current = state) {
-            is PairingUiState.Loading -> Text(
-                text = "Starting…",
-                fontSize = 28.sp,
-                color = Color.White,
-            )
+            is PairingUiState.Loading ->
+                Text(
+                    text = "Starting…",
+                    fontSize = 28.sp,
+                    color = LoomarrTokens.Static0,
+                )
 
             is PairingUiState.NeedsServer -> {
-                Text(text = "Loomarr", fontSize = 40.sp, color = Color.White)
+                Text(text = "Loomarr", fontSize = 40.sp, color = LoomarrTokens.Static0)
                 Text(
                     text = "No server address is set for this device yet.",
                     fontSize = 24.sp,
-                    color = Color(0xFF9CA3AF),
+                    color = LoomarrTokens.Static400,
                     modifier = Modifier.padding(top = 24.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -93,47 +95,49 @@ private fun PairingScreen(model: PairingViewModel = viewModel()) {
                 Text(
                     text = "Set up Loomarr",
                     fontSize = 40.sp,
-                    color = Color.White,
+                    color = LoomarrTokens.Static0,
                 )
                 Text(
                     text = "On your phone or computer, go to",
                     fontSize = 24.sp,
-                    color = Color(0xFF9CA3AF),
+                    color = LoomarrTokens.Static400,
                     modifier = Modifier.padding(top = 32.dp),
                     textAlign = TextAlign.Center,
                 )
                 Text(
                     text = current.verificationUri,
                     fontSize = 34.sp,
-                    color = Color.White,
+                    color = LoomarrTokens.Static0,
                 )
                 Text(
                     text = "and enter this code",
                     fontSize = 24.sp,
-                    color = Color(0xFF9CA3AF),
+                    color = LoomarrTokens.Static400,
                     modifier = Modifier.padding(top = 32.dp),
                 )
                 // The code is the payload of this entire screen.
                 Text(
                     text = current.userCode,
                     fontSize = 88.sp,
-                    color = Color(0xFFF59E0B),
+                    color = LoomarrTokens.Signal,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
 
-            is PairingUiState.Paired -> Text(
-                text = "${current.deviceName} is ready",
-                fontSize = 40.sp,
-                color = Color.White,
-            )
+            is PairingUiState.Paired ->
+                Text(
+                    text = "${current.deviceName} is ready",
+                    fontSize = 40.sp,
+                    color = LoomarrTokens.Static0,
+                )
 
-            is PairingUiState.Failed -> Text(
-                text = current.message,
-                fontSize = 28.sp,
-                color = Color(0xFFF87171),
-                textAlign = TextAlign.Center,
-            )
+            is PairingUiState.Failed ->
+                Text(
+                    text = current.message,
+                    fontSize = 28.sp,
+                    color = LoomarrTokens.Onair,
+                    textAlign = TextAlign.Center,
+                )
         }
     }
 }

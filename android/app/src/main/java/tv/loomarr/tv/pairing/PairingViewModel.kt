@@ -23,11 +23,18 @@ sealed interface PairingUiState {
     data object NeedsServer : PairingUiState
 
     /** A code is on screen and the device is polling. */
-    data class AwaitingApproval(val userCode: String, val verificationUri: String) : PairingUiState
+    data class AwaitingApproval(
+        val userCode: String,
+        val verificationUri: String,
+    ) : PairingUiState
 
-    data class Paired(val deviceName: String) : PairingUiState
+    data class Paired(
+        val deviceName: String,
+    ) : PairingUiState
 
-    data class Failed(val message: String) : PairingUiState
+    data class Failed(
+        val message: String,
+    ) : PairingUiState
 }
 
 /**
@@ -41,7 +48,6 @@ class PairingViewModel(
     private val store: DeviceStore,
     private val clientFor: (baseUrl: String) -> PairingClient = { PairingClient(it) },
 ) : ViewModel() {
-
     private val _state = MutableStateFlow<PairingUiState>(PairingUiState.Loading)
     val state: StateFlow<PairingUiState> = _state.asStateFlow()
 
@@ -63,24 +69,27 @@ class PairingViewModel(
             }
             val client = clientFor(baseUrl)
             while (true) {
-                val pairing = try {
-                    client.start(deviceName = android.os.Build.MODEL ?: "Android TV")
-                } catch (error: Exception) {
-                    // Include the underlying reason. A bare "can't reach it" sent the first
-                    // emulator run chasing the network when the real cause was Android's cleartext
-                    // block — the exception said so, and the UI threw that away.
-                    _state.value = PairingUiState.Failed(
-                        "Can't reach Loomarr at $baseUrl\n${error.message ?: error::class.simpleName}",
-                    )
-                    return@launch
-                }
+                val pairing =
+                    try {
+                        client.start(deviceName = android.os.Build.MODEL ?: "Android TV")
+                    } catch (error: Exception) {
+                        // Include the underlying reason. A bare "can't reach it" sent the first
+                        // emulator run chasing the network when the real cause was Android's cleartext
+                        // block — the exception said so, and the UI threw that away.
+                        _state.value =
+                            PairingUiState.Failed(
+                                "Can't reach Loomarr at $baseUrl\n${error.message ?: error::class.simpleName}",
+                            )
+                        return@launch
+                    }
 
-                _state.value = PairingUiState.AwaitingApproval(
-                    userCode = pairing.userCode,
-                    // The human-facing half of RFC 8628: the address to type, matching the web
-                    // app's /pair route.
-                    verificationUri = "${baseUrl.removePrefix("http://").removePrefix("https://")}/pair",
-                )
+                _state.value =
+                    PairingUiState.AwaitingApproval(
+                        userCode = pairing.userCode,
+                        // The human-facing half of RFC 8628: the address to type, matching the web
+                        // app's /pair route.
+                        verificationUri = "${baseUrl.removePrefix("http://").removePrefix("https://")}/pair",
+                    )
 
                 when (val outcome = pollUntilSettled(client, pairing)) {
                     is PollResult.Paired -> {
@@ -100,16 +109,20 @@ class PairingViewModel(
         }
     }
 
-    private suspend fun pollUntilSettled(client: PairingClient, pairing: Pairing): PollResult {
+    private suspend fun pollUntilSettled(
+        client: PairingClient,
+        pairing: Pairing,
+    ): PollResult {
         while (true) {
             delay(pairing.intervalSeconds.coerceAtLeast(1) * 1000L)
-            val result = try {
-                client.poll(pairing.deviceCode)
-            } catch (error: Exception) {
-                // A transient network failure is not a dead code. Keep waiting — the alternative
-                // discards a code the viewer may already be typing.
-                continue
-            }
+            val result =
+                try {
+                    client.poll(pairing.deviceCode)
+                } catch (error: Exception) {
+                    // A transient network failure is not a dead code. Keep waiting — the alternative
+                    // discards a code the viewer may already be typing.
+                    continue
+                }
             if (result != PollResult.Pending) return result
         }
     }
@@ -123,7 +136,9 @@ class PairingViewModel(
  * `Cannot create an instance of class …` the moment the screen renders. The type checker cannot
  * see it because `viewModel()` is generic — only running the app does.
  */
-class PairingViewModelFactory(private val store: DeviceStore) : ViewModelProvider.Factory {
+class PairingViewModelFactory(
+    private val store: DeviceStore,
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(PairingViewModel::class.java)) {
             "unexpected ViewModel: ${modelClass.name}"

@@ -626,3 +626,19 @@ fe-build:
 .PHONY: seed
 seed: ## populate a dev store via the real domain paths (approval gate honored — AGENTS.md)
 	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed
+
+.PHONY: android-tokens
+android-tokens: ## regenerate the Android design tokens from the shared tokens.json
+	node scripts/gen-android-tokens.mjs
+
+.PHONY: android-tokens-verify
+android-tokens-verify: android-tokens ## regenerated tokens must match committed (CI red on drift)
+	@git diff --exit-code android/app/src/main/java/tv/loomarr/tv/design/LoomarrTokens.kt
+
+.PHONY: android
+android: android-tokens-verify ## Android TV client — tokens + ktlint + Android Lint + unit tests + debug APK
+	cd android && ./gradlew --no-daemon ktlintCheck lintDebug testDebugUnitTest assembleDebug
+
+.PHONY: android-fmt
+android-fmt: ## Android TV client — apply ktlint formatting
+	cd android && ./gradlew --no-daemon ktlintFormat

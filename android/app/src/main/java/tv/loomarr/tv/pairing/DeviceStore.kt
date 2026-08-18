@@ -17,8 +17,9 @@ private val Context.dataStore by preferencesDataStore(name = "loomarr")
  * of encrypting at rest here is small, while a Keystore-backed key that cannot be unlocked without
  * user authentication would be actively wrong on a device nobody signs into.
  */
-class DeviceStore(private val context: Context) {
-
+class DeviceStore(
+    private val context: Context,
+) {
     suspend fun serverUrl(): String? = context.dataStore.data.first()[SERVER_URL]
 
     suspend fun setServerUrl(url: String) {

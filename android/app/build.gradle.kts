@@ -2,6 +2,33 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jlleitschuh.gradle.ktlint")
+}
+
+// ⚠ ktlint's formatter and its checker disagree, so the FORMATTER wins by decision.
+//
+// `ktlintFormat` writes `suspend fun start(...): Pairing = withContext(Dispatchers.IO) {` — the
+// function-signature rule prefers a body on the signature line when it fits — and `ktlintCheck`
+// then rejects that exact output under multiline-expression-wrapping. Left alone,
+// `make android-fmt` produces code `make android` refuses: a gate nobody can satisfy, which is
+// worse than no gate at all.
+//
+// Set here rather than in `.editorconfig` because that route did not take effect — the property
+// was read and the rule kept firing. This is the mechanism that actually applies.
+ktlint {
+    // ⚠ Pin the ENGINE, not just the plugin. Plugin 12.1.2 bundles a ktlint engine older than
+    // Kotlin 2.1, and its embedded parser then fails on syntax the Kotlin 2.1 compiler accepts —
+    // reported as "KtLint failed to parse file" for a file that compiles cleanly, which reads as a
+    // code error rather than the version mismatch it is.
+    version.set("1.5.0")
+    additionalEditorconfig.set(
+        mapOf(
+            "ktlint_standard_multiline-expression-wrapping" to "disabled",
+            // @Composable functions are PascalCase by Compose convention (`PairingScreen`), which
+            // ktlint's function-naming rule — written for ordinary functions — flags.
+            "ktlint_standard_function-naming" to "disabled",
+        ),
+    )
 }
 
 android {

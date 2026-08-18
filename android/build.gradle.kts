@@ -6,4 +6,7 @@ plugins {
     // Required from Kotlin 2.0: the Compose compiler ships as a Kotlin plugin rather than an AGP
     // extension version. Its version tracks the Kotlin version, so both move together.
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" apply false
+    // ktlint is the Biome analogue: one tool for format + lint, so style is decided by the tool
+    // rather than argued about in review. `make android-fmt` applies it.
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
 }

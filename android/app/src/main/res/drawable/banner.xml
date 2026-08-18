@@ -5,6 +5,9 @@
     android:height="180dp"
     android:viewportWidth="320"
     android:viewportHeight="180">
-    <path android:fillColor="#111827" android:pathData="M0,0h320v180h-320z" />
-    <path android:fillColor="#F59E0B" android:pathData="M24,84h56v12h-56z" />
+    <!-- static-950 and signal, from the shared design tokens. XML cannot reference the generated
+         Kotlin, so these are the two places a token value is written by hand — keep them in step
+         with web/packages/tokens/generated/tokens.json. -->
+    <path android:fillColor="#0B0C0E" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FFB020" android:pathData="M24,84h56v12h-56z" />
 </vector>
