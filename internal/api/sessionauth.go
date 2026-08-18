@@ -13,6 +13,7 @@ import (
 // the Phase-9 fill of the Phase-8 Authorizer seam.
 type sessionAuthorizer struct {
 	mgr             *auth.Manager
+	devices         *auth.DeviceManager
 	apiToken        string
 	apiTokenCurrent func(context.Context) (string, error)
 }
@@ -20,6 +21,13 @@ type sessionAuthorizer struct {
 // NewSessionAuthorizer builds the session+token authorizer.
 func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
 	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
+}
+
+// WithDevices enables the paired-device credential path (§11, Shield P1). Separate from the
+// constructors so an authorizer built without it behaves exactly as before.
+func (a *sessionAuthorizer) WithDevices(devices *auth.DeviceManager) *sessionAuthorizer {
+	a.devices = devices
+	return a
 }
 
 // NewSessionAuthorizerCurrent builds the production session authorizer with a
@@ -48,11 +56,26 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 			return roleOf(u), &user
 		}
 	}
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+
+	// A paired device (§11, Shield P1) — checked BEFORE the API_TOKEN comparison, and returning on
+	// a hit, because both credentials arrive in the same header. If API_TOKEN were tried first, a
+	// device token would be compared against the household admin secret; ordering it this way means
+	// the admin comparison only ever sees credentials that are not device tokens.
+	//
+	// A device acts AS the member who approved it and inherits that member's role — never admin by
+	// virtue of being a device. That is the whole point of this path: the alternative was shipping
+	// the admin break-glass token to every TV in the house.
+	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
+		if user, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
+			return roleOf(user), &user
+		}
+	}
+
 	// API_TOKEN Bearer → admin (machine access + break-glass, §11). Resolve only
 	// after session auth failed; a normal human request should not pay a durable
 	// generated-secret read merely because Postgres replicas are enabled.
-	const prefix = "Bearer "
-	h := r.Header.Get("Authorization")
 	if len(h) > len(prefix) && h[:len(prefix)] == prefix {
 		apiToken := a.apiToken
 		if a.apiTokenCurrent != nil {
