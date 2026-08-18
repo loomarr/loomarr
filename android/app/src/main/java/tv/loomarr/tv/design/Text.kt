@@ -118,12 +118,18 @@ fun MonoData(
     // it pressed against the divider and the panel edge at once. Machine data is a supporting
     // value here, not the headline; the code above it is what the viewer transcribes.
     fontSize: androidx.compose.ui.unit.TextUnit = LoomarrTokens.Type.Md,
+    // ⚠ Capped by the caller, because unbounded is what let a guide ruler label wrap into a vertical
+    // column of single characters when its box was narrower than the text. Machine data is short by
+    // nature, so wrapping it is almost always a layout fault rather than intent.
+    maxLines: Int = Int.MAX_VALUE,
 ) = Text(
     text = text,
     modifier = modifier,
     color = color,
     fontSize = fontSize,
     fontFamily = FontFamily.Monospace,
+    maxLines = maxLines,
+    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
 )
 
 /**

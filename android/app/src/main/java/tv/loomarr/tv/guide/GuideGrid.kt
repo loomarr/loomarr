@@ -1,8 +1,10 @@
 package tv.loomarr.tv.guide
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,8 +65,14 @@ fun GuideGrid(
 ) {
     val listState = rememberLazyListState()
 
+    // ⚠ ONE scroll state, shared by the ruler and every row. The default window is four hours and
+    // only about 1.8 fit on a 1080p screen, so the timeline MUST scroll — and if the ruler scrolled
+    // independently (or not at all) the times would stop naming the blocks beneath them, which is
+    // worse than showing no times.
+    val timeScroll = rememberScrollState()
+
     Column(modifier = modifier) {
-        TimeRuler(window = window)
+        TimeRuler(window = window, scroll = timeScroll)
 
         LazyColumn(
             state = listState,
@@ -73,6 +82,7 @@ fun GuideGrid(
                 ChannelRow(
                     channel = channel,
                     window = window,
+                    scroll = timeScroll,
                     onTune = { onTune(channel) },
                 )
             }
@@ -80,22 +90,32 @@ fun GuideGrid(
     }
 }
 
-/** Hour marks across the top, aligned to the same gutter every row uses. */
+/** Hour marks across the top, scrolling in lockstep with the rows beneath. */
 @Composable
-private fun TimeRuler(window: GuideWindow) {
+private fun TimeRuler(
+    window: GuideWindow,
+    scroll: ScrollState,
+) {
     Row(modifier = Modifier.padding(bottom = LoomarrTokens.Space.S2)) {
         Box(modifier = Modifier.width(ChannelGutter)) {
             SectionHeading("Channel")
         }
-        // Marks every half hour, which is the granularity a schedule is actually built on.
-        val halfHours = (window.durationMs / (30 * 60_000L)).toInt()
-        repeat(halfHours) { index ->
-            Box(modifier = Modifier.width(HourWidth / 2)) {
-                MonoData(
-                    text = clockLabel(window.fromMs + index * 30 * 60_000L),
-                    color = LoomarrTokens.Color.Static400,
-                    fontSize = LoomarrTokens.Type.Sm,
-                )
+        Row(
+            // The ruler follows the shared scroll but is not itself scrollable: dragging it would
+            // let a viewer desynchronise the times from the blocks.
+            modifier = Modifier.horizontalScroll(scroll, enabled = false),
+        ) {
+            // Marks every half hour, which is the granularity a schedule is actually built on.
+            val halfHours = (window.durationMs / (30 * 60_000L)).toInt()
+            repeat(halfHours) { index ->
+                Box(modifier = Modifier.width(HourWidth / 2)) {
+                    MonoData(
+                        text = clockLabel(window.fromMs + index * 30 * 60_000L),
+                        color = LoomarrTokens.Color.Static400,
+                        fontSize = LoomarrTokens.Type.Sm,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -105,6 +125,7 @@ private fun TimeRuler(window: GuideWindow) {
 private fun ChannelRow(
     channel: ChannelTimeline,
     window: GuideWindow,
+    scroll: ScrollState,
     onTune: () -> Unit,
 ) {
     Row(
@@ -127,12 +148,14 @@ private fun ChannelRow(
             )
         }
 
-        channel.airings.forEach { airing ->
-            AiringCell(
-                airing = airing,
-                width = widthFor(airing, window),
-                onSelect = onTune,
-            )
+        Row(modifier = Modifier.horizontalScroll(scroll)) {
+            channel.airings.forEach { airing ->
+                AiringCell(
+                    airing = airing,
+                    width = widthFor(airing, window),
+                    onSelect = onTune,
+                )
+            }
         }
     }
 }
