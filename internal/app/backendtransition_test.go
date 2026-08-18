@@ -16,7 +16,7 @@ import (
 )
 
 func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	fleetErr := errors.New("fleet remains pending")
 	probe := testkit.NewBackendTransitionPhaseProbe()
 	probe.FailFleetOnce(fleetErr)
@@ -125,7 +125,7 @@ func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
 }
 
 func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) {
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	seed := func(id string, policy *schedule.PlayoutPolicy) {
 		t.Helper()
@@ -154,7 +154,7 @@ func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) 
 func TestBuildHandlerInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
 		ID: "legacy", Name: "Legacy", Number: 7, Status: schedule.StatusLive,
 	}}); err != nil {

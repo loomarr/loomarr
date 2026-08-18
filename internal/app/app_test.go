@@ -11,7 +11,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // TestEventEmitterPublishesToBus is the #11 seam: the composition-root emitter
@@ -94,11 +94,7 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 // exposes the domain gauges — not just the RED/runtime foundation. This is the
 // end-to-end wiring the metrics package unit tests can't prove on their own.
 func TestBuildHandlerExposesDomainMetrics(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/app.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {

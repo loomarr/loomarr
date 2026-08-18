@@ -13,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // splitFakeTools implements filler.MediaTools with chapter-only behaviour — the
@@ -66,11 +67,7 @@ const (
 
 func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/f.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	// A compilation to split.
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
 		Hash: compHash,
@@ -265,11 +262,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 // airable catalog rows, each pointing back at a parent that is still there.
 func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/f.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	// A real file at the sharded location the row claims, so the cut reads something.
 	drop := t.TempDir()

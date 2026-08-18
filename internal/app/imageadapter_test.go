@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // The image service's wiring test (§22, V52).
@@ -96,11 +96,7 @@ func imageServer(t *testing.T) *httptest.Server {
 	// origin. If the DTO leaks this value, its ThumbHash paints while every real rendition fails.
 	t.Setenv("SERVER_PUBLIC_URL", "http://machine-client-only.invalid:8080")
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/img.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {

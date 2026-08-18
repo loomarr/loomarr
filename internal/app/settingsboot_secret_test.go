@@ -14,7 +14,7 @@ import (
 func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) {
 	t.Setenv("API_TOKEN", "")
 	t.Setenv("PLAYOUT_TOKEN", "")
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	legacyKey := "secret." + "session_" + "secret"
 	const legacyValue = "legacy-inert-value-should-not-be-live"
 	if err := st.SetSetting(context.Background(), legacyKey, legacyValue); err != nil {

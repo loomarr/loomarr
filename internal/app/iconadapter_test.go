@@ -15,6 +15,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
@@ -119,11 +120,7 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	}, nil)
 	defer mock.Close()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: "series:tmdb:1000", Title: "Star Trek: TNG"},
 		{Key: "series:tvdb:2000", Title: "Star Trek: DS9"},
@@ -176,11 +173,7 @@ func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
 	}, nil)
 	defer mock.Close()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: "series:tmdb:1000", Title: "Warm"},
 		{Key: "series:tmdb:1001", Title: "Cold"},
@@ -209,11 +202,7 @@ func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
 	)
 	defer mock.Close()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: "series:tmdb:1000", Title: "Good Title"},
 		{Key: "series:tmdb:1001", Title: "Bad Title"},
@@ -235,11 +224,7 @@ func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
 	mock := tmdbPosterStub(t, map[string]string{"/tv/1000": ""}, nil)
 	defer mock.Close()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: "series:tmdb:1000", Title: "No Poster"},
 	})
@@ -263,11 +248,7 @@ func TestIconAdapter_DedupesByURL(t *testing.T) {
 	}, nil)
 	defer mock.Close()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: "series:tmdb:1000", Title: "TNG"},
 		{Key: "series:tmdb:99000", Title: "TNG (dup)"},
@@ -285,11 +266,7 @@ func TestIconAdapter_DedupesByURL(t *testing.T) {
 
 // A malformed/legacy key is skipped, not fatal.
 func TestIconAdapter_SkipsMalformedKeys(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
 		{Key: provision.Key("garbage"), Title: "Malformed"},
 	})

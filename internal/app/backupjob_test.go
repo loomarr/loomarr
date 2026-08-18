@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // jobView mirrors the fields of the /v1/jobs read model this test cares about.
@@ -66,11 +67,7 @@ func findJob(jobs []jobView, name string) (jobView, bool) {
 // On SQLite the backup job is registered and ENABLED — it is the install that can actually
 // run it.
 func TestBackupJob_EnabledOnSQLite(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/app.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	jobs := listJobs(t, st)
 	got, ok := findJob(jobs, "backup")

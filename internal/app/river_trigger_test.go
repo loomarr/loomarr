@@ -8,6 +8,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // ⚠ **The regression guard for a 50× Run-now slowdown, and it is subtle enough to reintroduce.**
@@ -26,11 +27,7 @@ import (
 // a performance number, so it will not go flaky on a slow CI box. A regression lands at ~5s and
 // fails clearly; the healthy path measures ~100ms with 20× of headroom.
 func TestRiverTrigger_IsNotOnTheSlowSchedulePath(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/trigger.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
+	st := testkit.MigratedSQLiteStore(t)
 
 	fired := make(chan time.Time, 4)
 	reg := scheduler.NewRegistry().Add(scheduler.Job{

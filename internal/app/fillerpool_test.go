@@ -9,6 +9,7 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // The Filler page's pool strip (§10 V35) aggregates per-channel coverage. §6 of the build plan
@@ -18,11 +19,7 @@ import (
 func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (podPreviewAdapter, store.Store) {
 	t.Helper()
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/pool.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	for _, c := range clips {
 		if err := st.UpsertClip(ctx, store.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {

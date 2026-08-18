@@ -12,7 +12,7 @@ import (
 
 func TestDurableInternalTransportPlayableRejectsEveryOffAirShape(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	checkpoint := testkit.Snapshotter[backendtransition.Snapshot]{Result: backendtransition.Snapshot{
 		Applied: schedule.PlayoutBackendInternal, PublishedInternal: true,
 	}}

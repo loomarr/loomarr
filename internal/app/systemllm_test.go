@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -13,7 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/settings"
-	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 // Selecting a model must HOT-APPLY, not merely land in the settings table
@@ -31,11 +30,7 @@ import (
 // store row — reading the row back would have passed against the broken code.
 func TestPersistSelection_HotAppliesToSettingsReaders(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "smoke.db"), true)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
