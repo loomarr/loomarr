@@ -3,11 +3,12 @@ package tv.loomarr.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -152,20 +153,36 @@ private fun PairingOffer(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    Panel(padding = LoomarrTokens.Space.S6) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S7),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // ⚠ No "Scan" label. A QR is self-evident, and the height budget is real: at 1080p
-            // with a 48dp overscan margin the usable height is 888px, and this panel measured 958
-            // with the label — the button and countdown were cut off. The label was the cheapest
-            // thing to lose.
-            QrCode(content = state.verificationUriComplete, size = 150.dp)
+    // ⚠ An explicit width rather than the inherited full width. CenteredScreen's column is
+    // fillMaxSize, so without this the panel spans the screen edge to edge — the QR pinned far left,
+    // the code far right, and the divider nowhere near the middle.
+    //
+    // Stated rather than intrinsic: the two halves must be EQUAL for the divider to land on the
+    // true centre, and an intrinsic width would size them to their content instead, putting the
+    // rule wherever the longer side happened to end.
+    Panel(
+        modifier = Modifier.width(760.dp),
+        padding = LoomarrTokens.Space.S6,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Equal weights so each half owns exactly half the panel, which puts the divider on the
+            // true centre line regardless of how long the address or code happen to be.
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                // ⚠ No "Scan" label. A QR is self-evident, and the height budget is real: at 1080p
+                // with a 48dp overscan margin the usable height is 888px, and this panel measured
+                // 958 with the label — the button and countdown were cut off.
+                QrCode(content = state.verificationUriComplete, size = 150.dp)
+            }
 
             VerticalDivider(height = 150.dp)
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Body("Go to")
                 MonoData(
                     state.verificationUri,
