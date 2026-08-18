@@ -3,23 +3,20 @@ package tv.loomarr.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.runBlocking
+import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.CenteredScreen
+import tv.loomarr.tv.design.CodeDisplay
+import tv.loomarr.tv.design.ErrorText
+import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
@@ -34,9 +31,9 @@ class MainActivity : ComponentActivity() {
         val store = DeviceStore(applicationContext)
 
         // Development affordance: `adb shell am start -n tv.loomarr.tv/.MainActivity -e server
-        // http://10.0.2.2:18305` sets the address without a keyboard. A TV cannot practically type
-        // a URL, so the shipped path will be discovery or an on-screen entry step — this exists so
-        // the app is testable before that lands, and it is inert when the extra is absent.
+        // http://10.0.2.2:18305` sets the address without a keyboard. A TV cannot practically type a
+        // URL, so the shipped path will be discovery or an on-screen entry step — this exists so the
+        // app is testable before that lands, and it is inert when the extra is absent.
         intent?.getStringExtra("server")?.takeIf { it.isNotBlank() }?.let { url ->
             runBlocking { store.setServerUrl(url) }
         }
@@ -71,92 +68,48 @@ private fun LoomarrApp(store: DeviceStore) {
 /**
  * The first screen a TV shows: where to go, and what to type.
  *
- * Designed for a 10-foot read. The code is the largest thing on screen because it is the one piece
- * of information someone has to carry across the room to a phone, and the address is second because
- * it is useless without knowing where to type the code.
- *
- * ⚠ Overscan: older TVs crop the edges of the picture, so nothing sits within 48dp of the border.
- * That margin is convention on Android TV, not caution.
+ * Every size, colour and margin comes from the design system — [CenteredScreen] owns the overscan
+ * margin and the background, and the text components own the scale. This screen states WHAT it is
+ * showing; it no longer decides how big anything is.
  */
 @Composable
-private fun PairingScreen(model: PairingViewModel = viewModel()) {
+private fun PairingScreen(model: PairingViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(LoomarrTokens.Static950)
-                .padding(48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
+    CenteredScreen {
         when (val current = state) {
-            is PairingUiState.Loading ->
-                Text(
-                    text = "Starting…",
-                    fontSize = 28.sp,
-                    color = LoomarrTokens.Static0,
-                )
+            is PairingUiState.Loading -> Body("Starting…")
 
             is PairingUiState.NeedsServer -> {
-                Text(text = "Loomarr", fontSize = 40.sp, color = LoomarrTokens.Static0)
-                Text(
-                    text = "No server address is set for this device yet.",
-                    fontSize = 24.sp,
-                    color = LoomarrTokens.Static400,
-                    modifier = Modifier.padding(top = 24.dp),
-                    textAlign = TextAlign.Center,
+                Heading("Loomarr")
+                Body(
+                    "No server address is set for this device yet.",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S6),
+                    align = TextAlign.Center,
                 )
             }
 
             is PairingUiState.AwaitingApproval -> {
-                Text(
-                    text = "Set up Loomarr",
-                    fontSize = 40.sp,
-                    color = LoomarrTokens.Static0,
+                Heading("Set up Loomarr")
+                Body(
+                    "On your phone or computer, go to",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
+                    align = TextAlign.Center,
                 )
-                Text(
-                    text = "On your phone or computer, go to",
-                    fontSize = 24.sp,
-                    color = LoomarrTokens.Static400,
-                    modifier = Modifier.padding(top = 32.dp),
-                    textAlign = TextAlign.Center,
+                Body(current.verificationUri, color = LoomarrTokens.Color.Static0)
+                Body(
+                    "and enter this code",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
                 )
-                Text(
-                    text = current.verificationUri,
-                    fontSize = 34.sp,
-                    color = LoomarrTokens.Static0,
-                )
-                Text(
-                    text = "and enter this code",
-                    fontSize = 24.sp,
-                    color = LoomarrTokens.Static400,
-                    modifier = Modifier.padding(top = 32.dp),
-                )
-                // The code is the payload of this entire screen.
-                Text(
-                    text = current.userCode,
-                    fontSize = 88.sp,
-                    color = LoomarrTokens.Signal,
-                    modifier = Modifier.padding(top = 8.dp),
+                CodeDisplay(
+                    current.userCode,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
                 )
             }
 
-            is PairingUiState.Paired ->
-                Text(
-                    text = "${current.deviceName} is ready",
-                    fontSize = 40.sp,
-                    color = LoomarrTokens.Static0,
-                )
+            is PairingUiState.Paired -> Heading("${current.deviceName} is ready")
 
-            is PairingUiState.Failed ->
-                Text(
-                    text = current.message,
-                    fontSize = 28.sp,
-                    color = LoomarrTokens.Onair,
-                    textAlign = TextAlign.Center,
-                )
+            is PairingUiState.Failed -> ErrorText(current.message)
         }
     }
 }

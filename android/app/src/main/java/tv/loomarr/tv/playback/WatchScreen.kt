@@ -1,13 +1,8 @@
 package tv.loomarr.tv.playback
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,17 +16,18 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.ErrorText
+import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
+import tv.loomarr.tv.design.Screen
 
 /**
  * The watch surface: full-screen video with a now-playing banner, surfed with the D-pad.
  *
- * ⚠ Nothing sits within 48dp of the edge. Older televisions crop the picture (overscan), and the
- * banner is the one thing that must stay readable when they do.
+ * [Screen] supplies the overscan margin, so the banner stays readable on a television that crops
+ * its own picture.
  */
 @Composable
 fun WatchScreen(model: WatchViewModel) {
@@ -42,17 +38,15 @@ fun WatchScreen(model: WatchViewModel) {
     // first press goes nowhere and the remote feels broken.
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    Box(
+    Screen(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(LoomarrTokens.Static950)
                 .focusRequester(focus)
                 .focusable()
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                     when (event.key) {
-                        // DPadUp/Down and the dedicated channel keys both surf: a TV remote may send
+                        // DPad and the dedicated channel keys both surf: a TV remote may send
                         // either, and a viewer pressing CHANNEL+ expects the same thing as up.
                         Key.DirectionUp, Key.ChannelUp -> {
                             model.channelUp()
@@ -68,58 +62,38 @@ fun WatchScreen(model: WatchViewModel) {
     ) {
         when (val current = state) {
             is WatchUiState.Loading ->
-                Text(
-                    text = "Loading channels…",
-                    fontSize = 28.sp,
-                    color = LoomarrTokens.Static0,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                Body("Loading channels…", modifier = Modifier.align(Alignment.Center))
 
             is WatchUiState.Failed ->
-                Text(
-                    text = current.message,
-                    fontSize = 26.sp,
-                    color = LoomarrTokens.Onair,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center).padding(48.dp),
-                )
+                ErrorText(current.message, modifier = Modifier.align(Alignment.Center))
 
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
                 if (current.playUrl != null) {
                     PlayerScreen(playUrl = current.playUrl)
                 } else {
-                    Text(
-                        text = "Tuning ${channel.name}…",
-                        fontSize = 28.sp,
-                        color = LoomarrTokens.Static400,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
+                    Body("Tuning ${channel.name}…", modifier = Modifier.align(Alignment.Center))
                 }
                 NowPlaying(
                     channel = channel,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(48.dp).fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
                 )
             }
         }
     }
 }
 
+/** What is on, and how to change it. */
 @Composable
 private fun NowPlaying(
     channel: Channel,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        Text(
-            text = "${channel.number}  ${channel.name}",
-            fontSize = 32.sp,
-            color = LoomarrTokens.Static0,
-        )
-        Text(
-            text = "Up and down to change channel",
-            fontSize = 20.sp,
-            color = LoomarrTokens.Static400,
+        Heading("${channel.number}  ${channel.name}")
+        Body(
+            "Up and down to change channel",
+            color = LoomarrTokens.Color.Static400,
         )
     }
 }
