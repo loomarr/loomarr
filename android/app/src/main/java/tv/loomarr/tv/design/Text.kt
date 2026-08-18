@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 
 /**
  * Loomarr's text styles for a 10-foot screen.
@@ -99,12 +100,36 @@ fun MonoData(
     text: String,
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = LoomarrTokens.Color.Static0,
+    // ⚠ `Md`, not `Lg`. A server address is the longest string on the pairing screen — nineteen
+    // characters of monospace at `Lg` measured ~342dp inside a 356dp column, 96% of the width, so
+    // it pressed against the divider and the panel edge at once. Machine data is a supporting
+    // value here, not the headline; the code above it is what the viewer transcribes.
+    fontSize: androidx.compose.ui.unit.TextUnit = LoomarrTokens.Type.Md,
 ) = Text(
     text = text,
     modifier = modifier,
     color = color,
-    fontSize = LoomarrTokens.Type.Lg,
+    fontSize = fontSize,
     fontFamily = FontFamily.Monospace,
+)
+
+/**
+ * A label over a section of a panel — "Scan QR Code", "Visit Website".
+ *
+ * Upper-case and wide-tracked, the same register web's empty-state titles use. That treatment reads
+ * as a LABEL rather than a sentence, which is what keeps two of them side by side from looking like
+ * competing instructions.
+ */
+@Composable
+fun SectionHeading(
+    text: String,
+    modifier: Modifier = Modifier,
+) = Text(
+    text = text.uppercase(),
+    modifier = modifier,
+    color = LoomarrTokens.Color.Static400,
+    fontSize = LoomarrTokens.Type.Sm,
+    letterSpacing = (LoomarrTokens.Type.Sm.value * 0.1f).sp,
 )
 
 /**

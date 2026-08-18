@@ -64,7 +64,13 @@ const radiusLines = Object.entries(tokens.radius ?? {})
 // off. Emitting these values RAW would make 14sp body text unreadable at that distance, so each is
 // multiplied by TV_SCALE. The ratios between steps — what makes the scale a scale — are preserved;
 // only the absolute size moves.
-const TV_SCALE = 2;
+//
+// 1.5, NOT 2. The first pass used 2 and every screen came out crowded and clipped: at 2× a body
+// line is 32sp, which on a 1080p xhdpi panel is ~64px — 7% of the usable height for one line of
+// helper text. Padding was then shaved repeatedly to compensate, which made the crowding worse
+// rather than better, because the type was the problem. 1.5 matches Android TV's own guidance and
+// leaves room to breathe while staying legible from a sofa.
+const TV_SCALE = 1.5;
 const typeLines = Object.entries(tokens.typography?.size ?? {})
   .map(([name, value]) => {
     const scaled = Math.round(value * TV_SCALE);
@@ -125,8 +131,14 @@ ${typeLines}
          * a viewer must transcribe from several metres away, and the largest web step (${(tokens.typography?.size?.["2xl"] ?? 32)}sp)
          * is still a heading. It is stated here rather than inline in a screen so it stays one
          * decision instead of a literal someone later "tidies".
+         *
+         * 52, down from 88 and then 64. Each cut was measured, not guessed: 88 left no room for the
+         * countdown and control beneath it, and 64 rendered a nine-character code at ~346dp inside a
+         * 356dp column — 97% of the width, so it crowded the divider on one side and the panel edge
+         * on the other while the QR beside it sat with space to spare. At 52 the code is still the
+         * largest thing on screen and easily read from a sofa, and both halves get real margins.
          */
-        val Code = 88.sp
+        val Code = 52.sp
     }
 }
 `;
