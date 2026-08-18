@@ -139,8 +139,10 @@ following have evidence on the release commit:
 - retain the exact corresponding source and license texts for the GPLv3+ dependencies bundled in
   both official yt-dlp standalone executables;
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
-  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) and make the Debian
-  package input reproducible (still open — `apt-get install` in the runtime stage is unpinned);
+  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) ~~and make the Debian
+  package input reproducible~~ (done — the runtime stage repoints apt at a fixed
+  `snapshot.debian.org` timestamp (`DEBIAN_SNAPSHOT`) matching the base image's own build snapshot, so
+  every `apt-get install` resolves the same package versions on every build);
 - ~~include the required DejaVu font license~~ (done — the Bitstream Vera grant is reproduced above,
   and the image retains the package's own `copyright`) and complete the frontend/Rust transitive
   license-text inventory (still open — a full SBOM-side task, not the shipped fonts);
