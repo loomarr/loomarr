@@ -114,6 +114,20 @@ class WatchViewModel(
         }
     }
 
+    /**
+     * Tune the channel with this id — how the guide hands a selection to playback.
+     *
+     * Falls back to tuning nothing rather than guessing when the id is absent: the guide and the
+     * watch surface load their channel lists independently, so a channel present in one and not the
+     * other is a real possibility, and tuning "whatever was at that index" would put a viewer on a
+     * programme they did not choose.
+     */
+    fun tuneChannelId(channelId: String) {
+        val current = _state.value as? WatchUiState.Ready ?: return
+        val index = current.channels.indexOfFirst { it.id == channelId }
+        if (index >= 0) tune(index)
+    }
+
     fun channelUp() {
         (_state.value as? WatchUiState.Ready)?.let { tune(it.selected + 1) }
     }

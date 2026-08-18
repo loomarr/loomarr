@@ -49,20 +49,33 @@ fun Heading(
     textAlign = align,
 )
 
-/** Ordinary reading text. */
+/**
+ * Ordinary reading text.
+ *
+ * [fontSize] is overridable for dense surfaces — a guide cell holds two lines in 96dp and cannot use
+ * the same size as a paragraph on an otherwise empty screen. It stays a token either way; the
+ * parameter chooses a step on the scale rather than escaping it.
+ */
 @Composable
 fun Body(
     text: String,
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = LoomarrTokens.Color.Static400,
     align: TextAlign? = null,
+    fontSize: androidx.compose.ui.unit.TextUnit = LoomarrTokens.Type.Md,
+    maxLines: Int = Int.MAX_VALUE,
 ) = Text(
     text = text,
     modifier = modifier,
     color = color,
-    fontSize = LoomarrTokens.Type.Md,
-    lineHeight = LoomarrTokens.Type.Md * 1.5f,
+    fontSize = fontSize,
+    lineHeight = fontSize * 1.5f,
     textAlign = align,
+    maxLines = maxLines,
+    // ⚠ Ellipsis, not clip. A guide cell is sized by its block's DURATION, so a long series name in
+    // a short slot will always overflow — truncating mid-glyph looks like a rendering fault, while
+    // an ellipsis reads as "there is more".
+    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
 )
 
 /**

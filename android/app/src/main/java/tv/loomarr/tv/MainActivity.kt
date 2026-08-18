@@ -13,7 +13,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -39,11 +41,14 @@ import tv.loomarr.tv.design.SectionHeading
 import tv.loomarr.tv.design.TuningText
 import tv.loomarr.tv.design.TvButton
 import tv.loomarr.tv.design.VerticalDivider
+import tv.loomarr.tv.guide.GuideScreen
+import tv.loomarr.tv.guide.GuideViewModelFactory
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
 import tv.loomarr.tv.pairing.PairingViewModelFactory
 import tv.loomarr.tv.playback.WatchScreen
+import tv.loomarr.tv.playback.WatchViewModel
 import tv.loomarr.tv.playback.WatchViewModelFactory
 
 class MainActivity : ComponentActivity() {
@@ -80,7 +85,7 @@ private fun LoomarrApp(store: DeviceStore) {
     val state by pairing.state.collectAsStateWithLifecycle()
 
     if (state is PairingUiState.Paired) {
-        WatchScreen(model = viewModel(factory = WatchViewModelFactory(store)))
+        PairedApp(store)
     } else {
         PairingScreen(model = pairing)
     }
@@ -210,5 +215,37 @@ private fun PairingOffer(
                 focusRequester = focus,
             )
         }
+    }
+}
+
+/**
+ * The two paired surfaces: what is playing, and what is on.
+ *
+ * A boolean rather than a navigation graph, because there are exactly two and the transition between
+ * them is symmetric — the guide opens over playback and selecting a channel returns to it. A nav
+ * library would add a dependency and a second place for this state to live.
+ *
+ * ⚠ The GUIDE is the entry point, not playback. A viewer arriving at a television wants to see what
+ * is on before committing to a channel, and the watch surface has no way to browse — landing there
+ * first would mean the only path to the guide is a button nobody has been told about.
+ */
+@Composable
+private fun PairedApp(store: DeviceStore) {
+    var showingGuide by remember { mutableStateOf(true) }
+    val watch: WatchViewModel = viewModel(factory = WatchViewModelFactory(store))
+
+    if (showingGuide) {
+        GuideScreen(
+            model = viewModel(factory = GuideViewModelFactory(store)),
+            onTune = { channel ->
+                watch.tuneChannelId(channel.channelId)
+                showingGuide = false
+            },
+        )
+    } else {
+        WatchScreen(
+            model = watch,
+            onOpenGuide = { showingGuide = true },
+        )
     }
 }
