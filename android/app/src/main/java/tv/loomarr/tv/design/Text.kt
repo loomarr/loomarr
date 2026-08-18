@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 
 /**
  * Loomarr's text styles for a 10-foot screen.
@@ -105,6 +106,25 @@ fun MonoData(
     color = color,
     fontSize = LoomarrTokens.Type.Lg,
     fontFamily = FontFamily.Monospace,
+)
+
+/**
+ * A label over a section of a panel — "Scan QR Code", "Visit Website".
+ *
+ * Upper-case and wide-tracked, the same register web's empty-state titles use. That treatment reads
+ * as a LABEL rather than a sentence, which is what keeps two of them side by side from looking like
+ * competing instructions.
+ */
+@Composable
+fun SectionHeading(
+    text: String,
+    modifier: Modifier = Modifier,
+) = Text(
+    text = text.uppercase(),
+    modifier = modifier,
+    color = LoomarrTokens.Color.Static400,
+    fontSize = LoomarrTokens.Type.Sm,
+    letterSpacing = (LoomarrTokens.Type.Sm.value * 0.1f).sp,
 )
 
 /**

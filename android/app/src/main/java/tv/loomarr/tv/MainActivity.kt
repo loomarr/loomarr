@@ -3,7 +3,7 @@ package tv.loomarr.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +35,7 @@ import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 import tv.loomarr.tv.design.Panel
 import tv.loomarr.tv.design.QrCode
+import tv.loomarr.tv.design.SectionHeading
 import tv.loomarr.tv.design.TuningText
 import tv.loomarr.tv.design.TvButton
 import tv.loomarr.tv.design.VerticalDivider
@@ -164,34 +165,34 @@ private fun PairingOffer(
         modifier = Modifier.width(760.dp),
         padding = LoomarrTokens.Space.S6,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // ⚠ Top-aligned, not centre-aligned. Each half now leads with a heading, and those headings
+        // must sit on the same line for the two options to read as parallel choices — centring the
+        // halves would float them against each other's differing content heights.
+        Row(verticalAlignment = Alignment.Top) {
             // Equal weights so each half owns exactly half the panel, which puts the divider on the
             // true centre line regardless of how long the address or code happen to be.
-            Box(
+            Column(
                 modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S4),
             ) {
-                // ⚠ No "Scan" label. A QR is self-evident, and the height budget is real: at 1080p
-                // with a 48dp overscan margin the usable height is 888px, and this panel measured
-                // 958 with the label — the button and countdown were cut off.
+                SectionHeading("Scan QR Code")
                 QrCode(content = state.verificationUriComplete, size = 150.dp)
             }
 
-            VerticalDivider(height = 150.dp)
+            VerticalDivider(height = 210.dp)
 
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                // ⚠ Spaced rather than stacked. The address and code were butting against each
+                // other with only 4dp between them, which is what made this side feel tight — the
+                // left half is a single object with natural whitespace, so the right needed its own.
+                verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S4),
             ) {
-                Body("Go to")
-                MonoData(
-                    state.verificationUri,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
-                )
-                CodeDisplay(
-                    state.userCode,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S3),
-                )
+                SectionHeading("Visit Website")
+                MonoData(state.verificationUri)
+                CodeDisplay(state.userCode)
             }
         }
 
