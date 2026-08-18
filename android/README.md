@@ -84,3 +84,23 @@ Both compiled cleanly and failed only when the app actually ran:
   no certificate, and without a network security config OkHttp fails with a generic exception that
   reads as "server unreachable". Note `<domain>` matches hostnames/suffixes, **not** CIDR — listing
   `192.168.0.0` does not cover `192.168.1.47`, so it must be `base-config`.
+
+## ⚠ Local resource limits
+
+An earlier session froze this machine by accumulation — Gradle and Kotlin daemons across many
+builds, plus an emulator, scrcpy, a backend and a frontend dev server. Each was reasonable alone.
+
+`gradle.properties` therefore pins `workers.max=4` and `parallel=false`, and gives the Kotlin daemon
+its own ceiling — it forks separately from the Gradle daemon, so capping `org.gradle.jvmargs` alone
+bounds only half the memory. The build still takes about 7 seconds.
+
+```sh
+make android-load    # what is already running before you add to it
+make android-stop    # release this module's daemons when finished
+```
+
+**Do not pass `--no-daemon`.** It reads as the careful option and is the opposite for repeated
+builds: it starts a fresh JVM per invocation, where a reused daemon is one bounded process.
+
+Run one heavy thing at a time — the emulator or a full gate, not both — and kill the emulator when
+you are done with it (`adb -s emulator-5560 emu kill`).

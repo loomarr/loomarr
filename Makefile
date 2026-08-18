@@ -635,10 +635,21 @@ android-tokens: ## regenerate the Android design tokens from the shared tokens.j
 android-tokens-verify: android-tokens ## regenerated tokens must match committed (CI red on drift)
 	@git diff --exit-code android/app/src/main/java/tv/loomarr/tv/design/LoomarrTokens.kt
 
+.PHONY: android-load
+android-load: ## report heavy local processes before starting a build
+	@sh scripts/dev-load-check.sh
+
+# ⚠ NOT --no-daemon. A reused warm daemon is ONE bounded JVM; --no-daemon starts a fresh one per
+# invocation, which is worse under the rapid successive builds an agent session produces. The
+# ceilings live in android/gradle.properties instead, where they bound every entry point.
 .PHONY: android
 android: android-tokens-verify ## Android TV client — tokens + ktlint + Android Lint + unit tests + debug APK
-	cd android && ./gradlew --no-daemon ktlintCheck lintDebug testDebugUnitTest assembleDebug
+	cd android && ./gradlew ktlintCheck lintDebug testDebugUnitTest assembleDebug
 
 .PHONY: android-fmt
 android-fmt: ## Android TV client — apply ktlint formatting
-	cd android && ./gradlew --no-daemon ktlintFormat
+	cd android && ./gradlew ktlintFormat
+
+.PHONY: android-stop
+android-stop: ## stop the Gradle/Kotlin daemons this module started
+	cd android && ./gradlew --stop

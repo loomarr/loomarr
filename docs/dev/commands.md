@@ -153,8 +153,10 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
 | `make android-tokens` |  | regenerate the Android design tokens from the shared tokens.json |
 | `make android-tokens-verify` |  | regenerated tokens must match committed (CI red on drift) <br>*runs:* `android-tokens` |
+| `make android-load` |  | report heavy local processes before starting a build |
 | `make android` | ✅ | Android TV client — tokens + ktlint + Android Lint + unit tests + debug APK <br>*runs:* `android-tokens-verify` |
 | `make android-fmt` |  | Android TV client — apply ktlint formatting |
+| `make android-stop` |  | stop the Gradle/Kotlin daemons this module started |
 
 ## What CI runs
 
