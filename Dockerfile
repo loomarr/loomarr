@@ -118,6 +118,14 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # image-worker bases above.
 FROM debian:stable-slim@sha256:1710bde34461551a19a47c787885ec9ad7058d9a5bead2affb8d088fa2f8502b AS runtime
 ARG TARGETARCH
+# The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
+# resolves the SAME package versions on every build — the digest-pinned base above fixes the root
+# filesystem, and this fixes what gets layered onto it. This is the value the pinned base's OWN
+# `debian.sources` records in a comment (`# http://snapshot.debian.org/archive/debian/<ts>`); keep
+# the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
+# pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
+# digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
+ARG DEBIAN_SNAPSHOT=20260803T000000Z
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
 # Release-asset digests were copied from the upstream GitHub release records. Some
@@ -207,7 +215,15 @@ RUN set -eux; \
     FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
     FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
-    apt-get update; \
+    # Repoint apt at the pinned snapshot (see the DEBIAN_SNAPSHOT note above) so every install below
+    # is reproducible. deb822 `debian.sources`; both the archive and security suites. `http://`, not
+    # https, is deliberate and matches the base image's own recorded snapshot comment: this stage runs
+    # BEFORE `ca-certificates` is installed (it is one of the packages being fetched), so TLS would
+    # fail its own cert check — and repo integrity comes from the GPG `Signed-By` keyring, not the
+    # transport. Snapshots carry an old `Valid-Until`, so updates use `Check-Valid-Until=false`.
+    printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
+      "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
+    apt-get -o Acquire::Check-Valid-Until=false update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
     # without them EVERY hardware family fails the capability probe on EVERY host —
