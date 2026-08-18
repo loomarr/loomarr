@@ -63,6 +63,32 @@ Cleanup is release work when it removes ambiguity, false affordances, or a known
 - Local `make doctor` correctly rejected Node 26 because the release toolchain contract is Node 22.x.
 - No release tag or published image exists yet. A green component gate is evidence, not proof of the full beta journey.
 
+### Update — 2026-08-17 (folded from a since-removed parallel assessment)
+
+Current `main` has advanced past the `90c4d29` snapshot to `b5725310`, all green (CI run on
+that commit built both `linux/amd64` and `linux/arm64` release images). Several cleanup and
+hardening items from this ledger landed as small PRs and are now on `main`:
+
+- **#406** — `airStateOf` keys "On air" on `inAppPlayable`, not `tunarrId`, so a working
+  internal-playout channel no longer reads "Not on air yet — connect Tunarr" (closes the
+  Required-cleanup item *"backend-blind 'Not on air yet'"*). Same PR added the
+  `security.trust_proxy` gate (`X-Forwarded-For`/`-Proto` trusted only behind a proxy) and an
+  arch-gate fix (the package-doc walk skips scratch `.artifacts/`).
+- **#407** — backup docs lead with the admin UI / `Settings → Secrets`; internal playout warns
+  at boot when `server.public_url` is unset (env-only installs that bypass the wizard).
+- **#408** — `filler-split-sweep` now carries the long-job timeout #304 missed.
+- **#409** — the four `FROM` base images are digest-pinned (part of the distribution-integrity
+  blocker; the ffmpeg immutable-archive pin, license texts, and legal review remain open).
+- **#410** — "Open in media server" is a real hand-off (opens `library.url`), not a no-op toast
+  (closes the Required-cleanup item *"the toast-only 'Open in media server'"*).
+
+A live browser QA pass (fresh empty-DB install, then an OpenRouter-backed run) verified the
+wizard, empty states, add-channel, settings, and help surfaces, and drove a grounded
+suggest→proposal end-to-end. **These do not close the release.** The distribution, first-channel
+proposal-job durability, and platform-proof (decoded-playback / browser-runtime certification)
+blockers in the ledger above remain open and are owned separately; a set of green component
+cleanups is not the full beta journey.
+
 ## Delivery sequence
 
 1. Release/repository truth: harness cleanup, Compose image/Postgres wiring, release tag policy and CI inputs, backup/install/upgrade/license docs.
