@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jlleitschuh.gradle.ktlint")
+    id("io.github.takahirom.roborazzi")
 }
 
 // ⚠ ktlint's formatter and its checker disagree, so the FORMATTER wins by decision.
@@ -29,6 +30,18 @@ ktlint {
             "ktlint_standard_function-naming" to "disabled",
         ),
     )
+}
+
+// ⚠ Baselines live in the REPO, not under build/.
+//
+// Roborazzi's default output is build/outputs/roborazzi, which `gradlew clean` deletes and git never
+// sees. CI would then run verifyRoborazziDebug with no baseline to compare against and pass — a gate
+// that cannot fail, which is worse than no gate at all.
+//
+// Committed PNGs also make a UI change REVIEWABLE: the diff shows the actual pixels, which is the
+// whole reason to keep screenshots rather than assertions about colour values.
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
 }
 
 android {
@@ -77,6 +90,17 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    testOptions {
+        unitTests {
+            // ⚠ Required by Robolectric, and NOT the same switch as `isReturnDefaultValues`. This
+            // one puts the module's real resources, assets and manifest on the unit-test classpath
+            // so Robolectric can inflate them; the other makes stubbed framework calls return
+            // null/0, which is the thing the org.json note below argues against. Compose cannot
+            // render without resources, so a screenshot test needs this.
+            isIncludeAndroidResources = true
+        }
     }
 
     lint {
@@ -168,4 +192,32 @@ dependencies {
     // would let a parsing bug pass as a null field rather than fail. A real implementation means
     // these tests exercise the parsing they claim to.
     testImplementation("org.json:json:20240303")
+
+    // ── screenshot tests ────────────────────────────────────────────────────────────────────────
+    //
+    // Roborazzi renders real Compose on the JVM through Robolectric, so the design system is gated
+    // without an emulator: CI runs `verifyRoborazziDebug` on an ordinary runner. That is the same
+    // bargain web's visual suite makes, and it is what makes a styling regression a failing build
+    // rather than something noticed later on a television.
+    // ⚠ 1.60.0 is the NEWEST release this project can use, and the pin is load-bearing.
+    //
+    // From 1.61.0 Roborazzi is compiled against a newer Kotlin than this project's 2.1.0, and
+    // Kotlin metadata is backward- but not forward-compatible: the 2.1 compiler cannot read it. The
+    // build then fails with "Module was compiled with an incompatible version of Kotlin … expected
+    // version is 2.1.0" followed by unresolved references to `captureRoboImage` and `onRoot`, which
+    // read as a missing dependency rather than as the version mismatch they are.
+    //
+    // ⚠ Determined by COMPILING each candidate, not by reading POMs. The POM for 1.71.0 declares
+    // `kotlin-stdlib 2.0.21`, which looks compatible and is not the compiler that built it — the
+    // stdlib it depends on and the compiler that produced its metadata are different things.
+    //
+    // The alternative — moving this project to Kotlin 2.3 — drags the Compose compiler plugin with
+    // it (their versions track together) and the Compose BOM is already pinned by compileSdk 36.
+    // A screenshot tool should fit the toolchain, not redefine it. Same failure mode as the ktlint
+    // engine pin in the root build file.
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.60.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.60.0")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
