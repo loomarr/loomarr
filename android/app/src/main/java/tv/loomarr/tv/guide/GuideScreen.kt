@@ -40,8 +40,19 @@ fun GuideScreen(
                 )
 
             is GuideUiState.Ready ->
-                GuideGrid(
+                ChannelBrowser(
                     window = current.window,
+                    // ⚠ "Now" comes from the SERVER's window, not System.currentTimeMillis().
+                    //
+                    // The device clock cannot be trusted — the emulator's sits hours behind its
+                    // host, and a television is exactly the hardware where that happens: some boxes
+                    // have no RTC and NTP may not have synced. The first build of this screen read
+                    // "Nothing scheduled" for a channel airing a film, because the device's idea of
+                    // now fell outside the window the server had just sent.
+                    //
+                    // The window's start IS the server's now: it defaults to the moment of the
+                    // request, so it is a clock that already agrees with the schedule.
+                    nowMs = current.window.fromMs,
                     onTune = onTune,
                     modifier = Modifier.fillMaxSize(),
                 )

@@ -56,6 +56,13 @@ class GuideViewModel(
 
             val window =
                 try {
+                    // The server's default four-hour window, the same span the web grid shows.
+                    //
+                    // An earlier draft narrowed this to two hours because a feature film could not
+                    // hold its own time range at 4h. That was fixing the wrong end: the span is what
+                    // the guide MEANS, and halving it halves what the viewer can see coming. The
+                    // block was short of room, so the room is what changed — a narrower channel
+                    // list and smaller block type, not less schedule.
                     clientFor(baseUrl, token).window()
                 } catch (error: Exception) {
                     _state.value = GuideUiState.Failed(error.message ?: "Couldn't load the guide.")

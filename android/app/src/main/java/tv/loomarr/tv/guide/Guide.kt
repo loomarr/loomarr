@@ -35,8 +35,21 @@ data class Airing(
     val episodeLabel: String
         get() = if (season > 0 && episode > 0) "S${season}E$episode" else ""
 
-    /** What to show as the block's primary line: the series for an episode, the title otherwise. */
-    val heading: String get() = series?.takeIf { it.isNotBlank() } ?: title
+    /**
+     * What to show as the block's primary line: the series for an episode, the title otherwise.
+     *
+     * ⚠ A filler block carries an EMPTY title — verified against live data, not assumed. It is a
+     * commercial break rather than a programme, so it is named rather than rendered as a blank.
+     */
+    val heading: String
+        get() =
+            series?.takeIf { it.isNotBlank() }
+                ?: title.takeIf { it.isNotBlank() }
+                ?: when (kind) {
+                    "filler" -> "Commercial break"
+                    "flex" -> "Off air"
+                    else -> "Coming up"
+                }
 }
 
 /** One channel's row in the grid. */

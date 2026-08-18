@@ -85,16 +85,45 @@ class PlaybackClient(
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw IOException("play-url failed: ${response.code}")
                 val payload = JSONObject(response.body?.string().orEmpty())
-                val url = payload.optString("url")
-                if (url.isBlank()) {
-                    // The server returns an EMPTY url — not an error — when `server.public_url` is
-                    // unset, because it has no absolute address to sign. A native client cannot use
-                    // the relative form a browser falls back to, so this is the one misconfiguration
-                    // that strands TVs while the web app keeps working. Name it rather than failing
-                    // as a generic playback error.
-                    throw IOException("this Loomarr has no public URL configured, so it cannot stream to a TV")
-                }
+
+                val url =
+                    resolveStreamUrl(
+                        baseUrl = baseUrl,
+                        relativeUrl = payload.optString("relativeUrl"),
+                        absoluteUrl = payload.optString("url"),
+                    )
+
                 PlayUrl(url = url, expiresAt = payload.optString("expiresAt"))
             }
         }
 }
+
+/**
+ * Which of the server's two stream addresses this device should actually fetch.
+ *
+ * ⚠ The RELATIVE one, resolved against the address this device paired to — not the absolute `url`.
+ *
+ * The server builds that absolute URL from its own Host header, which is its idea of where it lives
+ * rather than the address this client reached it by. The two differ whenever anything sits between.
+ * The emulator is the cheapest demonstration: it pairs to `10.0.2.2` and is handed
+ * `http://localhost:18305/…`, and on Android `localhost` is the DEVICE — so playback dies with a
+ * ConnectException while the guide loads perfectly over the very same pairing. A Shield behind a
+ * reverse proxy, or reached over Tailscale, breaks in exactly the same way.
+ *
+ * An earlier comment here held that a native client "cannot use the relative form a browser falls
+ * back to". It can, and by the same rule a browser does: [baseUrl] came from pairing, so it is the
+ * one address this device is known to be able to reach.
+ */
+internal fun resolveStreamUrl(
+    baseUrl: String,
+    relativeUrl: String,
+    absoluteUrl: String,
+): String =
+    when {
+        relativeUrl.isNotBlank() -> baseUrl.trimEnd('/') + "/" + relativeUrl.trimStart('/')
+        // Only when the server sent no relative form at all. Better than failing outright, but it
+        // carries the Host-header assumption above and will strand any client that does not share
+        // the server's own notion of its address.
+        absoluteUrl.isNotBlank() -> absoluteUrl
+        else -> throw IOException("this Loomarr returned no stream address for the channel")
+    }
