@@ -4,13 +4,18 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -20,13 +25,18 @@ import tv.loomarr.tv.design.Body
 import tv.loomarr.tv.design.BrandLockup
 import tv.loomarr.tv.design.CenteredScreen
 import tv.loomarr.tv.design.CodeDisplay
+import tv.loomarr.tv.design.ColorBars
+import tv.loomarr.tv.design.Countdown
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
+import tv.loomarr.tv.design.HorizontalDivider
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 import tv.loomarr.tv.design.Panel
 import tv.loomarr.tv.design.QrCode
 import tv.loomarr.tv.design.TuningText
+import tv.loomarr.tv.design.TvButton
+import tv.loomarr.tv.design.VerticalDivider
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
@@ -86,14 +96,18 @@ private fun PairingScreen(model: PairingViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
 
     CenteredScreen {
-        // ⚠ The mark drops its tagline while a code is on screen. The lockup plus the instructions
-        // plus an 88sp code is taller than 1080p minus the overscan margin, and the first build
-        // clipped the code mid-glyph — the one element a viewer must read exactly. The brand gives
-        // up a line before the payload does.
-        BrandLockup(
-            modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6),
-            tagline = state !is PairingUiState.AwaitingApproval,
-        )
+        // ⚠ While a code is on screen the mark shrinks to the bare strip: no wordmark, no tagline.
+        //
+        // The pairing panel now carries a QR, an address, the code, a countdown and a control, and
+        // the full lockup on top of that left ten pixels of headroom — which is how the button and
+        // countdown ended up clipped. The brand does not need to introduce itself on the screen a
+        // viewer is already staring at; the strip alone is recognisably Loomarr, and the payload
+        // gets the room.
+        if (state is PairingUiState.AwaitingApproval) {
+            ColorBars(modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6))
+        } else {
+            BrandLockup(modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6))
+        }
 
         when (val current = state) {
             // "Tuning in…" rather than "Starting…" — nostalgia lives in the microcopy
@@ -106,43 +120,77 @@ private fun PairingScreen(model: PairingViewModel) {
                     align = TextAlign.Center,
                 )
 
-            is PairingUiState.AwaitingApproval -> {
-                // ONE instruction, naming the address inline. The earlier layout had three separate
-                // lines of guidance around two competing columns, and read as a wall rather than a
-                // single next step.
-                Body("On your phone, go to", align = TextAlign.Center)
-                MonoData(
-                    current.verificationUri,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
-                )
-
-                // ⚠ The code and the QR are ONE object, not two columns — a bordered panel, both
-                // halves on a shared centre line, with the code first because it always works.
-                // Scanning depends on the phone being able to reach the server: on a Tailscale or
-                // VPN address a phone off the network gets a dead link, which is worse than typing
-                // because it fails silently.
-                // ⚠ Sized against the height budget, not by eye. At 1080p with a 48dp overscan
-                // margin the usable height is 888px, and the first version totalled 896 — eight
-                // pixels over, so the QR's bottom edge clipped. A 140dp code and the tighter panel
-                // padding bring the stack back inside it with room to spare.
-                Panel(
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S4),
-                    padding = LoomarrTokens.Space.S4,
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S6),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CodeDisplay(current.userCode)
-                        QrCode(content = current.verificationUriComplete, size = 140.dp)
-                    }
-                }
-            }
+            is PairingUiState.AwaitingApproval ->
+                PairingOffer(state = current, onRefresh = model::refreshCode)
 
             // "You're on the air" is the product's own phrase for this moment (frontend-design §1).
             is PairingUiState.Paired -> Heading("${current.deviceName} is on the air")
 
             is PairingUiState.Failed -> ErrorText(current.message)
+        }
+    }
+}
+
+/**
+ * The pairing offer: scan on the left, type on the right, divided down the middle.
+ *
+ * Two equal halves rather than a primary and a fallback, because they genuinely suit different
+ * people — someone with their phone in hand scans, someone at a laptop types. The rule between them
+ * says "either of these", where a stacked layout would have implied "this, then that".
+ *
+ * Below the rule sits the countdown and the way out. A code expires after ten minutes, and until
+ * now the only recovery from a missed one was restarting the app — which is not something a viewer
+ * can be expected to work out from a remote.
+ */
+@Composable
+private fun PairingOffer(
+    state: PairingUiState.AwaitingApproval,
+    onRefresh: () -> Unit,
+) {
+    // The button is the screen's only control, so it takes focus on arrival. Without this the first
+    // D-pad press goes nowhere and the remote feels broken.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+
+    Panel(padding = LoomarrTokens.Space.S6) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S7),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // ⚠ No "Scan" label. A QR is self-evident, and the height budget is real: at 1080p
+            // with a 48dp overscan margin the usable height is 888px, and this panel measured 958
+            // with the label — the button and countdown were cut off. The label was the cheapest
+            // thing to lose.
+            QrCode(content = state.verificationUriComplete, size = 150.dp)
+
+            VerticalDivider(height = 150.dp)
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Body("Go to")
+                MonoData(
+                    state.verificationUri,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
+                )
+                CodeDisplay(
+                    state.userCode,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S3),
+                )
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = LoomarrTokens.Space.S5))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Countdown(secondsRemaining = state.secondsRemaining)
+            TvButton(
+                text = "Get a new code",
+                onClick = onRefresh,
+                modifier = Modifier.padding(top = LoomarrTokens.Space.S3),
+                focusRequester = focus,
+            )
         }
     }
 }

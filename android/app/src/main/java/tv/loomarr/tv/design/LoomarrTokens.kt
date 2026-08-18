@@ -130,34 +130,34 @@ object LoomarrTokens {
     /**
      * Type scale, in sp.
      *
-     * ⚠ Scaled ×2 from the web values. A television is viewed from roughly three metres
+     * ⚠ Scaled ×1.5 from the web values. A television is viewed from roughly three metres
      * rather than an arm's length, so web's 14sp body would be unreadable. The RATIOS between steps
      * are preserved — this moves the whole scale, it does not redesign it.
      */
     object Type {
-        /** typography.size.2xs (11sp on web, ×2 for 10-foot viewing) */
-        val Xs2 = 22.sp
+        /** typography.size.2xs (11sp on web, ×1.5 for 10-foot viewing) */
+        val Xs2 = 17.sp
 
-        /** typography.size.xs (12sp on web, ×2 for 10-foot viewing) */
-        val Xs = 24.sp
+        /** typography.size.xs (12sp on web, ×1.5 for 10-foot viewing) */
+        val Xs = 18.sp
 
-        /** typography.size.sm (13sp on web, ×2 for 10-foot viewing) */
-        val Sm = 26.sp
+        /** typography.size.sm (13sp on web, ×1.5 for 10-foot viewing) */
+        val Sm = 20.sp
 
-        /** typography.size.base (14sp on web, ×2 for 10-foot viewing) */
-        val Base = 28.sp
+        /** typography.size.base (14sp on web, ×1.5 for 10-foot viewing) */
+        val Base = 21.sp
 
-        /** typography.size.md (16sp on web, ×2 for 10-foot viewing) */
-        val Md = 32.sp
+        /** typography.size.md (16sp on web, ×1.5 for 10-foot viewing) */
+        val Md = 24.sp
 
-        /** typography.size.lg (20sp on web, ×2 for 10-foot viewing) */
-        val Lg = 40.sp
+        /** typography.size.lg (20sp on web, ×1.5 for 10-foot viewing) */
+        val Lg = 30.sp
 
-        /** typography.size.xl (24sp on web, ×2 for 10-foot viewing) */
-        val Xl = 48.sp
+        /** typography.size.xl (24sp on web, ×1.5 for 10-foot viewing) */
+        val Xl = 36.sp
 
-        /** typography.size.2xl (32sp on web, ×2 for 10-foot viewing) */
-        val Xl2 = 64.sp
+        /** typography.size.2xl (32sp on web, ×1.5 for 10-foot viewing) */
+        val Xl2 = 48.sp
 
         /**
          * A pairing code, read across a room and typed into a phone.
@@ -166,7 +166,10 @@ object LoomarrTokens {
          * a viewer must transcribe from several metres away, and the largest web step (32sp)
          * is still a heading. It is stated here rather than inline in a screen so it stays one
          * decision instead of a literal someone later "tidies".
+         *
+         * 64 rather than the original 88: still by far the largest thing on screen and readable
+         * from a sofa, but 88 left no room for the countdown and refresh control beneath it.
          */
-        val Code = 88.sp
+        val Code = 64.sp
     }
 }

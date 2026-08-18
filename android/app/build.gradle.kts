@@ -64,6 +64,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // ⚠ Required for java.time below API 26. minSdk is 23, and Instant/Duration would compile
+        // fine and then throw NoClassDefFoundError on an older device — a crash the build cannot
+        // see. Desugaring back-ports them instead of hand-rolling an RFC3339 parser, which is the
+        // kind of code that quietly mishandles offsets and leap seconds.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -141,6 +146,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // QR generation for the pairing screen. `core` ONLY — the `android-core`/`zxing-android-embedded`
     // wrappers exist for SCANNING, which needs a camera this app does not have and does not want.
