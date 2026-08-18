@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { PairedDevices } from "@/settings/paired-devices";
 import { SecretsSettings } from "@/settings/secrets-settings";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -42,6 +43,7 @@ const SecuritySettings = () => (
     footer={
       <>
         <SsoNote />
+        <PairedDevices />
         <SecretsSettings />
       </>
     }

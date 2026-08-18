@@ -3,6 +3,7 @@ import {
   getChannelPlayUrlMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
+  getDeviceListMockHandler,
   getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
@@ -63,6 +64,10 @@ const appHandlers = (): RequestHandler[] => [
   // "not bootstrapped, no SSO, no dev login" whether or not that was true.
   getSetupStateMockHandler({ bootstrapped: true, devLogin: false, sso: false }),
   getSetupStatusMockHandler({ checks: [] }),
+  // Settings → Security lists the operator's paired devices on mount (§11, Shield P1). Empty is
+  // the honest default: a test that cares about devices overrides this, and every other test that
+  // merely renders the page gets the "no devices yet" state rather than an unhandled request.
+  getDeviceListMockHandler({ devices: [] }),
   getListChannelsMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),
