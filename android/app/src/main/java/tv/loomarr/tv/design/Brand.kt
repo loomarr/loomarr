@@ -1,0 +1,108 @@
+package tv.loomarr.tv.design
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+/**
+ * The SMPTE test-card strip that is the whole design's namesake.
+ *
+ * Seven hard-edged segments in the broadcast accents, in the same order the web client uses:
+ * signal · caution · lock · tune · suggest · onair · static-400. The colours come from the shared
+ * tokens, so the brand mark IS the palette rather than a picture of it — change a token and both
+ * clients move together.
+ *
+ * Purely decorative, so it carries no content description.
+ */
+@Composable
+fun ColorBars(
+    modifier: Modifier = Modifier,
+    width: androidx.compose.ui.unit.Dp = 320.dp,
+    height: androidx.compose.ui.unit.Dp = 24.dp,
+) {
+    val segments =
+        listOf(
+            LoomarrTokens.Color.Signal,
+            LoomarrTokens.Color.Caution,
+            LoomarrTokens.Color.Lock,
+            LoomarrTokens.Color.Tune,
+            LoomarrTokens.Color.Suggest,
+            LoomarrTokens.Color.Onair,
+            LoomarrTokens.Color.Static400,
+        )
+
+    Row(
+        modifier =
+            modifier
+                .width(width)
+                .height(height)
+                // 2px on web; the TV strip is larger, so the same near-square corner reads as the
+                // hard edge a test card is supposed to have.
+                .clip(RoundedCornerShape(2.dp)),
+    ) {
+        segments.forEach { segment ->
+            androidx.compose.foundation.layout.Spacer(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(segment),
+            )
+        }
+    }
+}
+
+/**
+ * The LOOMARR mark: the test-card strip above the wordmark, with the tagline beneath.
+ *
+ * This is the web client's `hero` lockup, scaled for a television. The wordmark is all-caps and
+ * wide-tracked; the tagline is monospaced, in the same register the rest of the product uses.
+ *
+ * ⚠ The tracking is the mark. "LOOMARR" set without letter-spacing is a different logo — web pins
+ * it at 0.08em on the hero, and this matches rather than approximates it.
+ */
+@Composable
+fun BrandLockup(
+    modifier: Modifier = Modifier,
+    tagline: Boolean = true,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S3),
+    ) {
+        ColorBars()
+        Text(
+            text = "LOOMARR",
+            color = LoomarrTokens.Color.Static0,
+            fontSize = LoomarrTokens.Type.Xl2,
+            fontWeight = FontWeight.Bold,
+            // 0.08em at this size. Compose takes letterSpacing in sp rather than em, so it is
+            // computed from the font size instead of copied as a magic number.
+            letterSpacing = (LoomarrTokens.Type.Xl2.value * 0.08f).sp,
+        )
+        if (tagline) {
+            Text(
+                text = "always something on",
+                color = LoomarrTokens.Color.Static400,
+                fontSize = LoomarrTokens.Type.Md,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+    }
+}
