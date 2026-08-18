@@ -1,8 +1,9 @@
 package tv.loomarr.tv.playback
 
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,10 +19,14 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
+import tv.loomarr.tv.design.MonoData
+import tv.loomarr.tv.design.Panel
 import tv.loomarr.tv.design.Screen
+import tv.loomarr.tv.design.TuningText
 
 /**
  * The watch surface: full-screen video with a now-playing banner, surfed with the D-pad.
@@ -62,17 +67,30 @@ fun WatchScreen(model: WatchViewModel) {
     ) {
         when (val current = state) {
             is WatchUiState.Loading ->
-                Body("Loading channels…", modifier = Modifier.align(Alignment.Center))
+                TuningText("Tuning in…", modifier = Modifier.align(Alignment.Center))
 
             is WatchUiState.Failed ->
                 ErrorText(current.message, modifier = Modifier.align(Alignment.Center))
+
+            // Nothing is wrong — there is simply nothing on, which is what a test card is for.
+            is WatchUiState.DeadAir ->
+                DeadAir(
+                    title = "Dead air",
+                    description = "No channels are scheduled yet. Create one in Loomarr and it will appear here.",
+                    modifier = Modifier.align(Alignment.Center),
+                )
 
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
                 if (current.playUrl != null) {
                     PlayerScreen(playUrl = current.playUrl)
                 } else {
-                    Body("Tuning ${channel.name}…", modifier = Modifier.align(Alignment.Center))
+                    // `tune` cyan is the token for an in-progress state, so the colour carries the
+                    // meaning rather than the word alone.
+                    TuningText(
+                        "Tuning ${channel.name}…",
+                        modifier = Modifier.align(Alignment.Center),
+                    )
                 }
                 NowPlaying(
                     channel = channel,
@@ -83,17 +101,34 @@ fun WatchScreen(model: WatchViewModel) {
     }
 }
 
-/** What is on, and how to change it. */
+/**
+ * What is on, and how to change it — the TV counterpart of web's now-playing strip.
+ *
+ * Sits on a [Panel] so it stays legible over video: a bordered `static-900` surface rather than
+ * text floating on a moving picture, which is unreadable the moment a bright frame passes under it.
+ */
 @Composable
 private fun NowPlaying(
     channel: Channel,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        Heading("${channel.number}  ${channel.name}")
+    Panel(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // ⚠ The channel number is mono. frontend-design §2.2 names channel numbers explicitly:
+            // "if it came from a machine, it's set in mono", and the web guide sets them the same
+            // way — a proportional number here would read as a different product.
+            MonoData(
+                channel.number.toString(),
+                color = LoomarrTokens.Color.Signal,
+            )
+            Heading(
+                channel.name,
+                modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+            )
+        }
         Body(
             "Up and down to change channel",
-            color = LoomarrTokens.Color.Static400,
+            modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
         )
     }
 }

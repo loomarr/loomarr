@@ -13,11 +13,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.runBlocking
 import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.BrandLockup
 import tv.loomarr.tv.design.CenteredScreen
 import tv.loomarr.tv.design.CodeDisplay
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
+import tv.loomarr.tv.design.MonoData
+import tv.loomarr.tv.design.TuningText
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
@@ -77,37 +80,46 @@ private fun PairingScreen(model: PairingViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
 
     CenteredScreen {
-        when (val current = state) {
-            is PairingUiState.Loading -> Body("Starting…")
+        // ⚠ The mark drops its tagline while a code is on screen. The lockup plus the instructions
+        // plus an 88sp code is taller than 1080p minus the overscan margin, and the first build
+        // clipped the code mid-glyph — the one element a viewer must read exactly. The brand gives
+        // up a line before the payload does.
+        BrandLockup(
+            modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6),
+            tagline = state !is PairingUiState.AwaitingApproval,
+        )
 
-            is PairingUiState.NeedsServer -> {
-                Heading("Loomarr")
+        when (val current = state) {
+            // "Tuning in…" rather than "Starting…" — nostalgia lives in the microcopy
+            // (frontend-design §1), and this is a television.
+            is PairingUiState.Loading -> TuningText("Tuning in…")
+
+            is PairingUiState.NeedsServer ->
                 Body(
                     "No server address is set for this device yet.",
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S6),
                     align = TextAlign.Center,
                 )
-            }
 
             is PairingUiState.AwaitingApproval -> {
-                Heading("Set up Loomarr")
-                Body(
-                    "On your phone or computer, go to",
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
-                    align = TextAlign.Center,
+                Body("On your phone or computer, go to", align = TextAlign.Center)
+                // The address is machine-produced, so it is set in mono like every other
+                // machine-produced value in the product.
+                MonoData(
+                    current.verificationUri,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
                 )
-                Body(current.verificationUri, color = LoomarrTokens.Color.Static0)
                 Body(
                     "and enter this code",
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S5),
                 )
                 CodeDisplay(
                     current.userCode,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
                 )
             }
 
-            is PairingUiState.Paired -> Heading("${current.deviceName} is ready")
+            // "You're on the air" is the product's own phrase for this moment (frontend-design §1).
+            is PairingUiState.Paired -> Heading("${current.deviceName} is on the air")
 
             is PairingUiState.Failed -> ErrorText(current.message)
         }

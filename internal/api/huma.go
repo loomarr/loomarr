@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -897,6 +898,11 @@ type Options struct {
 	LiveConfigBoolOn func(key string) bool
 }
 
+// arrayNullableOnce guards the one write to Huma's package-level DefaultArrayNullable (see the
+// note in humaConfig): the value is constant, and doing it once keeps parallel Router() builds
+// from racing Huma's schema registry on it.
+var arrayNullableOnce sync.Once
+
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).
 func humaConfig() huma.Config {
 	// ⚠ Arrays are NOT nullable (V53b). Huma's default is `true` because a Go nil slice really
@@ -914,7 +920,14 @@ func humaConfig() huma.Config {
 	// (api.go) and the spec export (export.go), so the runtime and the document cannot disagree
 	// about it. It is a package-level global in Huma rather than a Config field, so there is no
 	// per-instance place to put it.
-	huma.DefaultArrayNullable = false
+	//
+	// ⚠ Through a sync.Once, NOT bare. `humaConfig` runs on every `Router()` build, and tests build
+	// many routers IN PARALLEL (the device-pairing suite is the one that surfaced it): a bare write
+	// here races Huma's schema registry, which READS this same global while another goroutine's
+	// Router() writes it → `-race` failure. The value is a constant, so writing it once is
+	// sufficient and correct; the Once makes that write happen-before every reader without changing
+	// behavior. Kept inside humaConfig so the "single constructor owns it" invariant above holds.
+	arrayNullableOnce.Do(func() { huma.DefaultArrayNullable = false })
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
 	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
