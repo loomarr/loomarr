@@ -1,0 +1,52 @@
+# Publish a GitHub Release with notes when a version tag is pushed.
+#
+# DELIBERATELY SEPARATE from release.yml. That workflow is locked to ONE hardened job — build,
+# sign (keyless cosign), and promote the image — and `internal/releaseverify` REJECTS any second
+# job or extra step in it, because every addition is attack surface on the signing identity
+# (`packages: write` + `id-token: write`). Release-notes creation needs none of that power, only
+# `contents: write`, so it lives here in its own workflow with the minimum permission. The two run
+# in parallel off the same `v*` tag and never share a token.
+#
+# Notes = GitHub's auto-generated list of merged PRs since the previous tag (`--generate-notes`),
+# with a curated header prepended from `docs/release/<tag>.md` when one exists (the beta framing and
+# the known-limitations list a machine can't infer). A tag with a `-` (e.g. `v0.1.0-beta.1`) is
+# marked a prerelease.
+name: Release notes
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release; nothing else
+
+concurrency:
+  group: release-notes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-notes:
+    name: Publish GitHub Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A curated header (beta framing + known limitations) if the repo ships one for this tag.
+          header="docs/release/${TAG}.md"
+          args=(release create "$TAG" --title "$TAG" --generate-notes --verify-tag)
+          # Prerelease when the SemVer tag carries a pre-release suffix (e.g. -beta.1).
+          case "$TAG" in *-*) args+=(--prerelease) ;; esac
+          # --notes-file is PREPENDED to the auto-generated PR list when combined with
+          # --generate-notes, so the curated framing leads and the mechanical changelog follows.
+          if [ -f "$header" ]; then
+            args+=(--notes-file "$header")
+          fi
+          gh "${args[@]}"
