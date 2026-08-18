@@ -29,12 +29,18 @@ type Server struct {
 	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
 	backupSQLite BackupStreamer
 	// login/sessions wire /v1/auth/* (§11); nil until Phase 9 is configured.
-	login        LoginService
-	sessions     SessionManager
-	passwords    PasswordService
-	userSync     UserSyncer
-	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
-	trustProxy   bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	login     LoginService
+	sessions  SessionManager
+	passwords PasswordService
+	userSync  UserSyncer
+	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
+	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
+	devices *auth.DeviceManager
+	// deviceLimiter bounds pairing starts and code-approval attempts. The user code is short by
+	// design (a human reads it off a TV), so a bounded attempt count is what makes it safe.
+	deviceLimiter *auth.RateLimiter
+	cookieSecure  string // COOKIE_SECURE: auto|true|false (§11)
+	trustProxy    bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
 	// devLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
 	// development (§11). Set from LOOMARR_DEV_LOGIN at boot and read ONCE here, when
 	// routes are registered: an unset flag means the route never exists, which is a
@@ -758,15 +764,20 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store          store.Store
-	Auth           Authorizer
-	Log            *slog.Logger
-	BackupSQLite   BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ready          ReadyFunc
-	Login          LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords      PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions       SessionManager    // /v1/auth/logout (Phase 9)
-	UserSync       UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Store        store.Store
+	Auth         Authorizer
+	Log          *slog.Logger
+	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	Ready        ReadyFunc
+	Login        LoginService    // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords    PasswordService // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions     SessionManager  // /v1/auth/logout (Phase 9)
+	UserSync     UserSyncer      // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	// Devices wires /v1/auth/device/* (§11, Shield P1); nil ⇒ routes absent.
+	Devices *auth.DeviceManager
+	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
+	// acceptable only in tests. Production wires it at composition beside Devices.
+	DeviceLimiter  *auth.RateLimiter
 	CookieSecure   string            // COOKIE_SECURE: auto|true|false (§11)
 	TrustProxy     bool              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
 	DevLogin       bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent

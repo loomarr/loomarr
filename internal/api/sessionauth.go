@@ -23,22 +23,21 @@ func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
 	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
 }
 
-// WithDevices enables the paired-device credential path (§11, Shield P1). Separate from the
-// constructors so an authorizer built without it behaves exactly as before.
-func (a *sessionAuthorizer) WithDevices(devices *auth.DeviceManager) *sessionAuthorizer {
-	a.devices = devices
-	return a
-}
-
 // NewSessionAuthorizerCurrent builds the production session authorizer with a
 // request-boundary API token resolver. Postgres uses it to observe a rotation
 // performed by another replica; resolver errors fail only the bearer fallback
 // closed and never interfere with a valid user session.
+//
+// devices may be nil, which disables the paired-device path entirely — the authorizer then behaves
+// exactly as it did before §11/Shield P1. It is a constructor parameter rather than a setter so a
+// security-critical object cannot exist in a half-configured state, and so the one composition site
+// that enables device auth is greppable.
 func NewSessionAuthorizerCurrent(
 	mgr *auth.Manager,
+	devices *auth.DeviceManager,
 	apiToken func(context.Context) (string, error),
 ) Authorizer {
-	return &sessionAuthorizer{mgr: mgr, apiTokenCurrent: apiToken}
+	return &sessionAuthorizer{mgr: mgr, devices: devices, apiTokenCurrent: apiToken}
 }
 
 func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
@@ -90,6 +89,18 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 		}
 	}
 	return RoleAnonymous, nil
+}
+
+// hasBearer reports whether a request carries an Authorization: Bearer credential.
+//
+// Used by the CSRF guard to exempt token callers: a browser cannot be tricked into attaching a
+// bearer header cross-site the way it attaches a cookie, so such a request is not a CSRF vector.
+// This does NOT assert the credential is valid — an invalid one fails authorization moments later,
+// and a request with no user never reaches the guard at all.
+func hasBearer(r *http.Request) bool {
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	return len(h) > len(prefix) && h[:len(prefix)] == prefix
 }
 
 // UserAuthorizer is implemented by authorizers that can also return the

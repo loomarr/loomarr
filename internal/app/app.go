@@ -1267,6 +1267,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var userSync api.UserSyncer
 	var provisionSvc api.Provisioner
 	var passwordSvc api.PasswordService
+	var deviceMgr *auth.DeviceManager
+	var deviceLimiter *auth.RateLimiter
 	if st != nil {
 		// Auth wires on the STORE alone (§11 rework): identity is Loomarr-owned, so
 		// bootstrap + local login work with zero media-server config. The media-server
@@ -1305,7 +1307,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// unconditionally alongside the store, not inside the `lib != nil` branch.
 		passwordSvc = auth.NewPasswordService(st, newID, time.Now)
 		sessMgr = mgr
-		authorizer = api.NewSessionAuthorizerCurrent(mgr, func(ctx context.Context) (string, error) {
+		// Device pairing (§11, Shield P1) — the credential path for a client with no keyboard.
+		// Wired alongside local accounts and for the same reason: it needs no media server, since a
+		// device inherits the role of the Loomarr user who approved it.
+		deviceMgr = auth.NewDeviceManager(st, time.Now)
+		// Deliberately tighter than the login limiter: a login attempt is a human retyping a
+		// password they know, while a pairing-code attempt is a guess at a short code. Five tries
+		// refilling at one per twenty seconds leaves normal use untouched and makes grinding the
+		// keyspace hopeless within the ten-minute window a code lives for.
+		deviceLimiter = auth.NewRateLimiter(0.05, 5)
+		authorizer = api.NewSessionAuthorizerCurrent(mgr, deviceMgr, func(ctx context.Context) (string, error) {
 			return readGeneratedSecret(ctx, settings.SecretAPI)
 		})
 	}
@@ -1498,6 +1509,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Sessions:       sessMgr,
 		Passwords:      passwordSvc,
 		UserSync:       userSync,
+		Devices:        deviceMgr,
+		DeviceLimiter:  deviceLimiter,
 		CookieSecure:   set.str("cookie.secure"),
 		TrustProxy:     set.boolv("security.trust_proxy"),
 		DevLogin:       ov.DevLogin,

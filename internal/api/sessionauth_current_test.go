@@ -10,7 +10,7 @@ import (
 
 func TestSessionAuthorizerCurrentObservesAPITokenRotation(t *testing.T) {
 	token := "first-token"
-	a := NewSessionAuthorizerCurrent(nil, func(context.Context) (string, error) {
+	a := NewSessionAuthorizerCurrent(nil, nil, func(context.Context) (string, error) {
 		return token, nil
 	})
 	request := func(value string) *http.Request {
@@ -31,7 +31,7 @@ func TestSessionAuthorizerCurrentObservesAPITokenRotation(t *testing.T) {
 }
 
 func TestSessionAuthorizerCurrentFailsBearerClosedOnReadError(t *testing.T) {
-	a := NewSessionAuthorizerCurrent(nil, func(context.Context) (string, error) {
+	a := NewSessionAuthorizerCurrent(nil, nil, func(context.Context) (string, error) {
 		return "would-match", errors.New("database unavailable")
 	})
 	r := httptest.NewRequest(http.MethodGet, "/v1/settings", nil)

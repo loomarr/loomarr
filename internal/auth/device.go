@@ -167,6 +167,22 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 	return token, pairing.DeviceName, nil
 }
 
+// Pending resolves a still-unapproved pairing by the code a human typed, so an approval screen can
+// name the device before granting it anything ("Approve Living Room Shield?"). Read-only.
+func (m *DeviceManager) Pending(ctx context.Context, rawUserCode string) (store.DevicePairing, error) {
+	return m.store.GetDevicePairingByUserCode(ctx, NormalizeUserCode(rawUserCode), m.now())
+}
+
+// ListFor returns a user's paired devices for the revocation UI.
+func (m *DeviceManager) ListFor(ctx context.Context, userID string) ([]store.DeviceToken, error) {
+	return m.store.ListDeviceTokensForUser(ctx, userID)
+}
+
+// Revoke kills one device. Scoped by user in the store, so this cannot revoke someone else's TV.
+func (m *DeviceManager) Revoke(ctx context.Context, tokenHash, userID string) (bool, error) {
+	return m.store.DeleteDeviceToken(ctx, tokenHash, userID)
+}
+
 // ResolveDevice authenticates a device token and returns its owning user, so a device acts AS the
 // member who approved it and inherits that member's role — never more.
 func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (store.User, error) {
