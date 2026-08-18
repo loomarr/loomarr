@@ -212,3 +212,37 @@ describe("ChannelWatch pickers", () => {
     );
   });
 });
+
+describe("ChannelWatch — Open in media server hand-off", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+  });
+
+  it("opens the media server's URL in a new tab (a real hand-off, not a toast)", async () => {
+    stubTracks();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(
+      <ChannelWatch
+        channel={live}
+        isAdmin
+        onSavePolicy={vi.fn()}
+        mediaServerName="Emby"
+        mediaServerUrl="http://emby.home:8096"
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open in Emby" }));
+
+    expect(open).toHaveBeenCalledWith("http://emby.home:8096", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
+  it("hides the button when no media-server URL is configured (no dead affordance)", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+
+    await screen.findByRole("button", { name: "Audio" });
+    expect(screen.queryByRole("button", { name: /Open in/ })).not.toBeInTheDocument();
+  });
+});
