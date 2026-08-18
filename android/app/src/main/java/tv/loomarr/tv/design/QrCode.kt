@@ -20,16 +20,32 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 /**
- * A QR code, drawn rather than bitmapped.
+ * A QR code, drawn rather than bitmapped, in Loomarr's own colours.
  *
- * The matrix is encoded with ZXing and painted with Compose, so the code takes our own tokens
- * instead of a stock black-on-white image. That matters on a dark TV: an inverted photo-negative
- * QR reads badly to some scanners, so this keeps dark modules on a light quiet-zone the way a
- * printed code does, but frames it in the product's own surface.
+ * ⚠ Scanning depends on LUMINANCE contrast, not hue — a scanner thresholds the image to light and
+ * dark — so the palette choice here is constrained by physics rather than taste. Measured against
+ * the light quiet zone:
+ *
+ * ```
+ *   static-800  #1B1E24   16.7:1   used here
+ *   static-950  #0B0C0E   19.6:1   near-black
+ *   signal      #FFB020    1.8:1   unscannable
+ *   tune        #4CC9E8    1.9:1   unscannable
+ * ```
+ *
+ * So the modules take `static-800` — the design's nested-surface token, which reads as the
+ * product's near-black rather than a stock `#000000`, while keeping contrast far above what any
+ * scanner needs. An accent-coloured QR would look on-brand in a screenshot and fail in a living
+ * room.
+ *
+ * ⚠ NOT inverted. Light modules on a dark field is the obvious "dark theme" move and it breaks
+ * scanners: the finder patterns are defined dark-on-light, and while some readers cope, many do
+ * not. The quiet zone therefore stays light and the code stays dark-on-light, framed by the
+ * product's surface rather than floating on white.
  *
  * ⚠ The quiet zone is not optional. A QR needs a light margin of at least four modules or scanners
  * fail to find it, so the light background extends past the matrix by design — dropping it to save
- * space is the single most common way a rendered QR becomes unscannable.
+ * space is the most common way a rendered QR becomes unscannable.
  */
 @Composable
 fun QrCode(
@@ -63,7 +79,11 @@ fun QrCode(
             modifier
                 .size(size)
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
-                .background(Color.White)
+                // `static-100` rather than pure white: the design's own light tone. Measured at
+                // 13.9:1 against the modules — down from 16.7:1 on pure white, and still far above
+                // anything a scanner needs — so the whole mark sits inside the palette at no real
+                // cost.
+                .background(LoomarrTokens.Color.Static100)
                 .padding(4.dp),
     ) {
         val moduleSize = this.size.width / matrix.width
@@ -71,7 +91,7 @@ fun QrCode(
             for (y in 0 until matrix.height) {
                 if (!matrix.get(x, y)) continue
                 drawRect(
-                    color = Color.Black,
+                    color = LoomarrTokens.Color.Static800,
                     topLeft = Offset(x * moduleSize, y * moduleSize),
                     size = Size(moduleSize, moduleSize),
                 )

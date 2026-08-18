@@ -97,6 +97,42 @@ class QrCodeTest {
         assertTrue("bottom-right corner is not quiet", pixels[width * width - 1] == WHITE)
     }
 
+    /**
+     * ⚠ The QR's colours are design tokens, and a token edit could silently make it unscannable.
+     *
+     * Scanners threshold on LUMINANCE, not hue, so the constraint is contrast: `signal` amber
+     * measures 1.8:1 on a light field and would look perfectly on-brand in a screenshot while
+     * failing in a living room. This pins the actual pair well above that.
+     */
+    @Test
+    fun `the module colour stays far clear of a scanner's contrast floor`() {
+        val modules = LoomarrTokens.Color.Static800
+        val quietZone = LoomarrTokens.Color.Static100
+
+        val ratio = contrastRatio(modules, quietZone)
+
+        assertTrue(
+            "QR contrast fell to $ratio:1 — a scanner needs a wide margin, not merely WCAG text contrast",
+            ratio > 7.0,
+        )
+    }
+
+    private fun contrastRatio(
+        a: androidx.compose.ui.graphics.Color,
+        b: androidx.compose.ui.graphics.Color,
+    ): Double {
+        fun channel(c: Float): Double {
+            val v = c.toDouble()
+            return if (v <= 0.03928) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+        }
+
+        fun luminance(color: androidx.compose.ui.graphics.Color): Double =
+            0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+
+        val (hi, lo) = listOf(luminance(a), luminance(b)).sortedDescending()
+        return (hi + 0.05) / (lo + 0.05)
+    }
+
     private companion object {
         const val BLACK = 0xFF000000.toInt()
         const val WHITE = 0xFFFFFFFF.toInt()

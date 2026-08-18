@@ -57,6 +57,7 @@ fun Screen(
 @Composable
 fun Panel(
     modifier: Modifier = Modifier,
+    padding: androidx.compose.ui.unit.Dp = LoomarrTokens.Space.S6,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -68,7 +69,7 @@ fun Panel(
                     width = 1.dp,
                     color = LoomarrTokens.Color.Static700,
                     shape = RoundedCornerShape(LoomarrTokens.Radius.Md),
-                ).padding(LoomarrTokens.Space.S6),
+                ).padding(padding),
         content = content,
     )
 }

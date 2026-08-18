@@ -121,13 +121,20 @@ private fun PairingScreen(model: PairingViewModel) {
                 // Scanning depends on the phone being able to reach the server: on a Tailscale or
                 // VPN address a phone off the network gets a dead link, which is worse than typing
                 // because it fails silently.
-                Panel(modifier = Modifier.padding(top = LoomarrTokens.Space.S5)) {
+                // ⚠ Sized against the height budget, not by eye. At 1080p with a 48dp overscan
+                // margin the usable height is 888px, and the first version totalled 896 — eight
+                // pixels over, so the QR's bottom edge clipped. A 140dp code and the tighter panel
+                // padding bring the stack back inside it with room to spare.
+                Panel(
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S4),
+                    padding = LoomarrTokens.Space.S4,
+                ) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S8),
+                        horizontalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S6),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         CodeDisplay(current.userCode)
-                        QrCode(content = current.verificationUriComplete, size = 180.dp)
+                        QrCode(content = current.verificationUriComplete, size = 140.dp)
                     }
                 }
             }
