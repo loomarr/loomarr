@@ -269,3 +269,76 @@ func TestPreparedOriginCarriesThePreviousAiringAcrossADiscontinuity(t *testing.T
 		position += next + len(want)
 	}
 }
+
+// The rendered window must carry BOTH tags a native player needs across a programme boundary. The
+// pre-existing discontinuity test asserts an ordered subsequence, which is structurally blind to a
+// tag that is simply absent — so these assert presence and value instead.
+func TestPreparedManifestCarriesDiscontinuitySequenceAndPerBoundaryDateTime(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousSpec := preparedSpec("episode-a")
+	currentSpec := preparedSpec("episode-b")
+	publishHLS(t, lib, previousSpec)
+	publishHLS(t, lib, currentSpec)
+	started := time.Unix(1_004, 0).UTC()
+	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+		Previous: []PreparedAiring{{
+			Specification: previousSpec,
+			StartedAt:     started.Add(-8 * time.Second),
+			// Three programmes already scrolled out of this Channel's window.
+			DiscontinuitySequence: 3,
+		}},
+		Current: PreparedAiring{Specification: currentSpec, StartedAt: started, Offset: 500 * time.Millisecond},
+	}})
+
+	presentation, hit, err := origin.Tune(t.Context(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+	if err != nil || !hit {
+		t.Fatalf("Tune = (_, %v, %v), want prepared hit", hit, err)
+	}
+	manifest := string(presentation.Manifest)
+
+	// The ordinal comes from the airing at the HEAD of the window, which is what a reload must be
+	// able to correlate against.
+	if want := "#EXT-X-DISCONTINUITY-SEQUENCE:3"; !strings.Contains(manifest, want) {
+		t.Errorf("manifest missing %q:\n%s", want, manifest)
+	}
+
+	// One PDT per boundary: the window spans two airings, so a single head PDT is the bug.
+	if got, want := strings.Count(manifest, "#EXT-X-PROGRAM-DATE-TIME:"), 2; got != want {
+		t.Errorf("PROGRAM-DATE-TIME count = %d, want %d (one per boundary):\n%s", got, want, manifest)
+	}
+
+	// The second PDT must describe the segment it precedes, not repeat the window's head.
+	discontinuity := strings.Index(manifest, "#EXT-X-DISCONTINUITY\n")
+	if discontinuity < 0 {
+		t.Fatalf("manifest has no discontinuity:\n%s", manifest)
+	}
+	if !strings.Contains(manifest[discontinuity:], "#EXT-X-PROGRAM-DATE-TIME:"+started.Format(time.RFC3339Nano)) {
+		t.Errorf("no PDT for the current airing's start after the boundary:\n%s", manifest)
+	}
+}
+
+// A Channel with no boundary history omits the tag rather than asserting a false zero point.
+func TestPreparedManifestOmitsDiscontinuitySequenceAtTheStartOfAChannel(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := preparedSpec("episode-a")
+	publishHLS(t, lib, spec)
+	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+		Current: PreparedAiring{Specification: spec, StartedAt: time.Unix(1_000, 0).UTC(), Offset: time.Second},
+	}})
+
+	presentation, hit, err := origin.Tune(t.Context(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+	if err != nil || !hit {
+		t.Fatalf("Tune = (_, %v, %v), want prepared hit", hit, err)
+	}
+	if manifest := string(presentation.Manifest); strings.Contains(manifest, "#EXT-X-DISCONTINUITY-SEQUENCE") {
+		t.Errorf("unstarted Channel should omit the tag:\n%s", manifest)
+	}
+}

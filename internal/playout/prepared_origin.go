@@ -21,6 +21,15 @@ type PreparedAiring struct {
 	Specification prepared.Specification
 	StartedAt     time.Time
 	Offset        time.Duration
+	// DiscontinuitySequence is how many programme boundaries have already scrolled out of this
+	// Channel's rendered window — the EXT-X-DISCONTINUITY-SEQUENCE of the FIRST segment rendered
+	// from this Airing (RFC 8216 §4.3.3.3).
+	//
+	// It is stamped by the resolver, not computed by the renderer: the renderer only ever sees the
+	// Airings still inside the window, so it cannot count the ones that already aged out. Zero is
+	// the honest default — a Channel whose history is unknown renders a window that simply starts
+	// counting at zero, which is stable for as long as that window lives.
+	DiscontinuitySequence int64
 }
 
 // PreparedWindow is the live edge plus the preceding Airings needed to render the shared DVR
@@ -242,24 +251,58 @@ func renderPreparedManifest(current preparedMedia, previous []preparedMedia) ([]
 	if sequence < 0 {
 		sequence = 0
 	}
+
+	// EXT-X-DISCONTINUITY-SEQUENCE counts the boundaries that have already aged OUT of the window,
+	// so it must be derived from the same wall clock MEDIA-SEQUENCE is — never from a counter held
+	// across requests. Every tune is stateless and any two callers asking at the same instant must
+	// get the same manifest, which a mutable counter cannot guarantee.
+	//
+	// ⚠ REQUIRED, not cosmetic (RFC 8216 §4.3.3.3). A sliding window drops a discontinuity from its
+	// head roughly once per programme; without this tag a player cannot correlate discontinuity
+	// indices between two reloads. hls.js tolerates the omission because it dead-reckons from
+	// EXT-X-PROGRAM-DATE-TIME, which is why the browser gates never caught this — ExoPlayer and
+	// AVPlayer do not, and resynchronise the decoder instead.
+	//
+	// The count is carried on the Airing rather than recomputed here: this renderer only ever sees
+	// the airings still INSIDE the window, so it cannot count what already scrolled past. The
+	// resolver walks the accepted schedule and is the only layer that knows a Channel's programme
+	// history, so it stamps the boundary ordinal it already has.
+	discontinuities := refs[0].media.airing.DiscontinuitySequence
+	if discontinuities < 0 {
+		discontinuities = 0
+	}
 	out := []string{
 		"#EXTM3U", current.version,
 		fmt.Sprintf("#EXT-X-TARGETDURATION:%d", int(math.Ceil(longest.Seconds()))),
 		fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d", sequence),
 	}
+	if discontinuities > 0 {
+		out = append(out, fmt.Sprintf("#EXT-X-DISCONTINUITY-SEQUENCE:%d", discontinuities))
+	}
 	if current.independent != "" {
 		out = append(out, current.independent)
 	}
-	out = append(out, "#EXT-X-PROGRAM-DATE-TIME:"+refs[0].segment.startsAt.UTC().Format(time.RFC3339Nano))
 	previousBoundary := ""
 	for _, ref := range refs {
 		boundary := fmt.Sprintf("%s/%d", ref.media.key, ref.media.airing.StartedAt.UnixNano())
-		if boundary != previousBoundary {
+		startsBoundary := boundary != previousBoundary
+		if startsBoundary {
 			if previousBoundary != "" {
 				out = append(out, "#EXT-X-DISCONTINUITY")
 			}
 			out = append(out, ref.media.init)
 			previousBoundary = boundary
+		}
+		// A PDT at every boundary, not one at the head. Wall clock is what maps a segment back onto
+		// the Channel's timeline, and a player cannot carry that mapping ACROSS a discontinuity:
+		// timestamps restart there, so everything after the first boundary would be dead-reckoned
+		// from EXTINF sums alone. hls.js hides this by re-deriving from the single head PDT, but the
+		// V60 time-shift readout ("1M 23S BEHIND") is wall-clock based, so on a native player it
+		// drifts from the first programme change onward.
+		//
+		// Emitted immediately before the segment it describes — the only position it applies to.
+		if startsBoundary {
+			out = append(out, "#EXT-X-PROGRAM-DATE-TIME:"+ref.segment.startsAt.UTC().Format(time.RFC3339Nano))
 		}
 		out = append(out, ref.segment.extinf, ref.segment.uri)
 	}
