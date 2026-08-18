@@ -277,19 +277,26 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 	if current < 0 || broadcasts[current].Kind != schedule.SlotProgram {
 		return playout.PreparedWindow{}, false, nil
 	}
+	// `current` is the index of what is on, so it is also the number of programme boundaries this
+	// Channel has already crossed within the resolved range — the EXT-X-DISCONTINUITY-SEQUENCE
+	// ordinal the renderer cannot derive on its own (it only ever sees the Airings still inside the
+	// DVR window, never the ones that scrolled past). Each Airing is stamped with its own ordinal so
+	// the renderer can read it off whichever Airing lands at the head of the window.
 	currentAiring, ok, err := r.preparedAiring(
 		request.ChannelID, channelPolicy, broadcasts[current], now.Sub(broadcasts[current].Start),
 	)
 	if err != nil || !ok {
 		return playout.PreparedWindow{}, false, err
 	}
+	currentAiring.DiscontinuitySequence = int64(current)
 	window := playout.PreparedWindow{Current: currentAiring}
-	for _, broadcast := range broadcasts[:current] {
+	for index, broadcast := range broadcasts[:current] {
 		airing, hit, lookupErr := r.preparedAiring(request.ChannelID, channelPolicy, broadcast, 0)
 		if lookupErr != nil {
 			return playout.PreparedWindow{}, false, lookupErr
 		}
 		if hit {
+			airing.DiscontinuitySequence = int64(index)
 			window.Previous = append(window.Previous, airing)
 		}
 	}

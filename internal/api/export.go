@@ -36,6 +36,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
 	srv.registerAuth(humaAPI)
+	srv.registerDeviceAuth(humaAPI)
 	srv.registerUsers(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)

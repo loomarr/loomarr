@@ -30,7 +30,13 @@ func (s *Server) registerMiddleware(api huma.API) {
 		// X-Loomarr-Csrf: 1. Combined with SameSite=Strict this closes form-based
 		// CSRF cheaply. Bearer-token (machine) callers are exempt — they don't send
 		// cookies, so they aren't a CSRF vector. Login is exempt (no session yet).
-		if isMutating(r.Method) && user != nil && r.URL.Path != "/v1/auth/login" &&
+		//
+		// ⚠ The exemption tests for a BEARER credential, not for the absence of a user. Those were
+		// the same thing while API_TOKEN was the only bearer path (it resolves to admin with no
+		// user), but a paired device (§11, Shield P1) authenticates by bearer AND carries identity.
+		// Keying on `user != nil` would demand a CSRF header from a client that cannot be
+		// cross-site-forged, so the condition now says what the paragraph above always meant.
+		if isMutating(r.Method) && user != nil && !hasBearer(r) && r.URL.Path != "/v1/auth/login" &&
 			r.Header.Get("X-Loomarr-Csrf") != "1" {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "missing X-Loomarr-Csrf header")
 			return

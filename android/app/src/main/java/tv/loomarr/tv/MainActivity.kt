@@ -1,0 +1,115 @@
+package tv.loomarr.tv
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.runBlocking
+import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.CenteredScreen
+import tv.loomarr.tv.design.CodeDisplay
+import tv.loomarr.tv.design.ErrorText
+import tv.loomarr.tv.design.Heading
+import tv.loomarr.tv.design.LoomarrTokens
+import tv.loomarr.tv.pairing.DeviceStore
+import tv.loomarr.tv.pairing.PairingUiState
+import tv.loomarr.tv.pairing.PairingViewModel
+import tv.loomarr.tv.pairing.PairingViewModelFactory
+import tv.loomarr.tv.playback.WatchScreen
+import tv.loomarr.tv.playback.WatchViewModelFactory
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val store = DeviceStore(applicationContext)
+
+        // Development affordance: `adb shell am start -n tv.loomarr.tv/.MainActivity -e server
+        // http://10.0.2.2:18305` sets the address without a keyboard. A TV cannot practically type a
+        // URL, so the shipped path will be discovery or an on-screen entry step — this exists so the
+        // app is testable before that lands, and it is inert when the extra is absent.
+        intent?.getStringExtra("server")?.takeIf { it.isNotBlank() }?.let { url ->
+            runBlocking { store.setServerUrl(url) }
+        }
+
+        setContent {
+            MaterialTheme {
+                LoomarrApp(store)
+            }
+        }
+    }
+}
+
+/**
+ * The whole app, which is two screens: pair, then watch.
+ *
+ * Routing is derived from pairing state rather than a navigation graph. A television has exactly one
+ * decision to make at launch — am I paired? — and the answer already lives in [PairingUiState], so a
+ * router here would be a second copy of it that could disagree.
+ */
+@Composable
+private fun LoomarrApp(store: DeviceStore) {
+    val pairing: PairingViewModel = viewModel(factory = PairingViewModelFactory(store))
+    val state by pairing.state.collectAsStateWithLifecycle()
+
+    if (state is PairingUiState.Paired) {
+        WatchScreen(model = viewModel(factory = WatchViewModelFactory(store)))
+    } else {
+        PairingScreen(model = pairing)
+    }
+}
+
+/**
+ * The first screen a TV shows: where to go, and what to type.
+ *
+ * Every size, colour and margin comes from the design system — [CenteredScreen] owns the overscan
+ * margin and the background, and the text components own the scale. This screen states WHAT it is
+ * showing; it no longer decides how big anything is.
+ */
+@Composable
+private fun PairingScreen(model: PairingViewModel) {
+    val state by model.state.collectAsStateWithLifecycle()
+
+    CenteredScreen {
+        when (val current = state) {
+            is PairingUiState.Loading -> Body("Starting…")
+
+            is PairingUiState.NeedsServer -> {
+                Heading("Loomarr")
+                Body(
+                    "No server address is set for this device yet.",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S6),
+                    align = TextAlign.Center,
+                )
+            }
+
+            is PairingUiState.AwaitingApproval -> {
+                Heading("Set up Loomarr")
+                Body(
+                    "On your phone or computer, go to",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
+                    align = TextAlign.Center,
+                )
+                Body(current.verificationUri, color = LoomarrTokens.Color.Static0)
+                Body(
+                    "and enter this code",
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
+                )
+                CodeDisplay(
+                    current.userCode,
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
+                )
+            }
+
+            is PairingUiState.Paired -> Heading("${current.deviceName} is ready")
+
+            is PairingUiState.Failed -> ErrorText(current.message)
+        }
+    }
+}

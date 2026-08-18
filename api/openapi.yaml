@@ -1378,6 +1378,108 @@ components:
       required:
         - status
       type: object
+    DeviceApproveInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceApproveInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        userCode:
+          description: The code shown on the device
+          examples:
+            - BCDF-GHJK
+          type: string
+      required:
+        - userCode
+      type: object
+    DeviceApproveOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceApproveOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deviceName:
+          type: string
+      required:
+        - deviceName
+      type: object
+    DeviceDTO:
+      additionalProperties: false
+      properties:
+        createdAt:
+          type: string
+        deviceName:
+          type: string
+        id:
+          type: string
+        lastSeenAt:
+          type: string
+      required:
+        - id
+        - deviceName
+        - createdAt
+        - lastSeenAt
+      type: object
+    DeviceListOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceListOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        devices:
+          items:
+            $ref: "#/components/schemas/DeviceDTO"
+          type: array
+      required:
+        - devices
+      type: object
+    DevicePollInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DevicePollInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deviceCode:
+          description: The secret returned by /start
+          type: string
+      required:
+        - deviceCode
+      type: object
+    DevicePollOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DevicePollOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deviceName:
+          type: string
+        token:
+          description: "Bearer credential; send as Authorization: Bearer <token>"
+          type: string
+      required:
+        - token
+        - deviceName
+      type: object
     DeviceProfileBody:
       additionalProperties: false
       properties:
@@ -1408,6 +1510,54 @@ components:
         video10bit:
           description: Whether the client can decode 10-bit (or deeper) video.
           type: boolean
+      type: object
+    DeviceStartInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceStartInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deviceName:
+          description: Label shown in the owner's device list
+          examples:
+            - Living Room Shield
+          maxLength: 64
+          type: string
+      type: object
+    DeviceStartOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceStartOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deviceCode:
+          description: Secret the device keeps and polls with; never displayed
+          type: string
+        expiresAt:
+          description: RFC3339; after this the codes are dead
+          type: string
+        interval:
+          description: Seconds the device should wait between polls
+          format: int64
+          type: integer
+        userCode:
+          description: Short code to display on screen
+          examples:
+            - BCDF-GHJK
+          type: string
+      required:
+        - deviceCode
+        - userCode
+        - expiresAt
+        - interval
       type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
@@ -6003,6 +6153,123 @@ paths:
       summary: What Loomarr has been doing, newest first
       tags:
         - system
+  /v1/auth/device/approve:
+    post:
+      operationId: device-pair-approve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceApproveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceApproveOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a device's pairing code
+      tags:
+        - auth
+  /v1/auth/device/poll:
+    post:
+      operationId: device-pair-poll
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevicePollInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicePollOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Exchange an approved pairing for a device token
+      tags:
+        - auth
+  /v1/auth/device/start:
+    post:
+      operationId: device-pair-start
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceStartInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceStartOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Begin pairing a device
+      tags:
+        - auth
+  /v1/auth/devices:
+    get:
+      operationId: device-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List this user's paired devices
+      tags:
+        - auth
+  /v1/auth/devices/{id}:
+    delete:
+      operationId: device-revoke
+      parameters:
+        - description: Device id from the device list
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Device id from the device list
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke one paired device
+      tags:
+        - auth
   /v1/auth/login:
     post:
       operationId: login

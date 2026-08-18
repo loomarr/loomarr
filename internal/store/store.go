@@ -205,6 +205,21 @@ type UserStore interface {
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+
+	// Device pairing (§11, Shield P1) — the credential class a keyboard-less client uses. Kept in
+	// this interface rather than a separate one because it is the same concern as sessions: who is
+	// allowed to act, and how that permission is revoked.
+	CreateDevicePairing(ctx context.Context, p DevicePairing) error
+	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error)
+	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
+	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
+	DeleteDevicePairing(ctx context.Context, codeHash string) error
+	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error
+	CreateDeviceToken(ctx context.Context, t DeviceToken) error
+	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
+	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
+	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
+	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
 }
 
 // ClipStore is the filler clip catalog (§10).
