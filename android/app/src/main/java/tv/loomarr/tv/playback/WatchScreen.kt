@@ -35,7 +35,10 @@ import tv.loomarr.tv.design.TuningText
  * its own picture.
  */
 @Composable
-fun WatchScreen(model: WatchViewModel) {
+fun WatchScreen(
+    model: WatchViewModel,
+    onOpenGuide: () -> Unit = {},
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val focus = remember { FocusRequester() }
 
@@ -53,7 +56,14 @@ fun WatchScreen(model: WatchViewModel) {
                     when (event.key) {
                         // DPad and the dedicated channel keys both surf: a TV remote may send
                         // either, and a viewer pressing CHANNEL+ expects the same thing as up.
-                        Key.DirectionUp, Key.ChannelUp -> {
+                        // ⚠ Up opens the GUIDE rather than surfing. On a television that is the
+                        // near-universal convention, and the dedicated CHANNEL+ key still surfs —
+                        // so a viewer gets both behaviours without either being hidden.
+                        Key.DirectionUp, Key.Menu -> {
+                            onOpenGuide()
+                            true
+                        }
+                        Key.ChannelUp -> {
                             model.channelUp()
                             true
                         }
