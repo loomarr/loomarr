@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -62,6 +63,51 @@ fun ColorBars(
                         .weight(1f)
                         .fillMaxHeight()
                         .background(segment),
+            )
+        }
+    }
+}
+
+/**
+ * The empty state, as a test card.
+ *
+ * ⚠ A test card is literally what a set showed when nothing was broadcasting, so on this screen the
+ * motif IS the state rather than decoration applied to it. The web guide uses the same treatment for
+ * "Dead air", and reuses the same bars rather than a separate asset.
+ *
+ * A test-card BLOCK, not the lockup's thin strip: presence here comes from size. It is deliberately
+ * STILL — a test card that jitters reads as a fault, while one that simply holds reads as standing
+ * by, which is what dead air means.
+ *
+ * The title takes web's empty-state treatment: mono, upper-case, wide-tracked. That register says
+ * "no signal" in a way sentence-case body text does not.
+ */
+@Composable
+fun DeadAir(
+    title: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S5),
+    ) {
+        ColorBars(width = 400.dp, height = 120.dp)
+        Text(
+            text = title.uppercase(),
+            color = LoomarrTokens.Color.Static400,
+            fontSize = LoomarrTokens.Type.Lg,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = (LoomarrTokens.Type.Lg.value * 0.08f).sp,
+        )
+        if (description != null) {
+            Text(
+                text = description,
+                color = LoomarrTokens.Color.Static400,
+                fontSize = LoomarrTokens.Type.Md,
+                lineHeight = LoomarrTokens.Type.Md * 1.5f,
+                textAlign = TextAlign.Center,
             )
         }
     }

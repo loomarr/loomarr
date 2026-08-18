@@ -19,6 +19,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
@@ -70,6 +71,14 @@ fun WatchScreen(model: WatchViewModel) {
 
             is WatchUiState.Failed ->
                 ErrorText(current.message, modifier = Modifier.align(Alignment.Center))
+
+            // Nothing is wrong — there is simply nothing on, which is what a test card is for.
+            is WatchUiState.DeadAir ->
+                DeadAir(
+                    title = "Dead air",
+                    description = "No channels are scheduled yet. Create one in Loomarr and it will appear here.",
+                    modifier = Modifier.align(Alignment.Center),
+                )
 
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]

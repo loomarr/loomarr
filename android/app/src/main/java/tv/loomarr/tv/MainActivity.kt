@@ -80,9 +80,14 @@ private fun PairingScreen(model: PairingViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
 
     CenteredScreen {
-        // The mark leads every idle surface, the way the web login and wizard do. This is the one
-        // screen a viewer stares at while waiting, so it is where the brand belongs.
-        BrandLockup(modifier = Modifier.padding(bottom = LoomarrTokens.Space.S8))
+        // ⚠ The mark drops its tagline while a code is on screen. The lockup plus the instructions
+        // plus an 88sp code is taller than 1080p minus the overscan margin, and the first build
+        // clipped the code mid-glyph — the one element a viewer must read exactly. The brand gives
+        // up a line before the payload does.
+        BrandLockup(
+            modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6),
+            tagline = state !is PairingUiState.AwaitingApproval,
+        )
 
         when (val current = state) {
             // "Tuning in…" rather than "Starting…" — nostalgia lives in the microcopy
@@ -105,11 +110,11 @@ private fun PairingScreen(model: PairingViewModel) {
                 )
                 Body(
                     "and enter this code",
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S8),
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S5),
                 )
                 CodeDisplay(
                     current.userCode,
-                    modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
+                    modifier = Modifier.padding(top = LoomarrTokens.Space.S1),
                 )
             }
 

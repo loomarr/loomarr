@@ -23,6 +23,15 @@ sealed interface WatchUiState {
     data class Failed(
         val message: String,
     ) : WatchUiState
+
+    /**
+     * Reachable and authenticated, but nothing is scheduled to play.
+     *
+     * Distinct from [Failed] because it is not a failure: nothing is wrong, there is simply nothing
+     * on. That is the difference between an error message and a test card, and a viewer should see
+     * the second.
+     */
+    data object DeadAir : WatchUiState
 }
 
 /**
@@ -70,7 +79,7 @@ class WatchViewModel(
                 }
 
             if (channels.isEmpty()) {
-                _state.value = WatchUiState.Failed("No channels are available to play on this device yet.")
+                _state.value = WatchUiState.DeadAir
                 return@launch
             }
 
