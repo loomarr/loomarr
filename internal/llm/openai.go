@@ -162,7 +162,16 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("openai chat: status %d", resp.StatusCode)
+		// ⚠ The body carries WHY, and a bare status code hides it. On this text path the common
+		// 404 is "model not found" — an OpenAI-compatible gateway (OpenRouter, etc.) rejecting the
+		// configured `llm.model`, e.g. a slug with a `:variant` suffix the chat endpoint doesn't
+		// serve. Without the body the operator sees "status 404" and cannot tell a wrong model
+		// from a wrong URL from a dead key. The vision and audio paths already read it; this one
+		// was left bare, so a misconfigured model surfaced as an opaque failure (a channel-create
+		// "Generation failed" with nothing to act on).
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
+		return Response{}, fmt.Errorf("openai chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 	}
 	var out openaiChatResp
 	if err := decodeOpenAIJSON(resp, &out, "openai response"); err != nil {
