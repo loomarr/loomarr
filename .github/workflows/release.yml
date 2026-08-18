@@ -1,18 +1,27 @@
-# Release — on a semver tag (v1.2.3), build and publish both image variants to
-# GHCR, multi-arch (amd64 + arm64), with SBOM + build provenance + keyless cosign
-# signatures. The Dockerfile FE stage embeds the SPA, so the published image is
-# UI-complete (design §16).
+# Release — on a semver tag (v1.2.3), build and publish the image to GHCR, multi-arch
+# (amd64 + arm64), with SBOM + build provenance + keyless cosign signatures. The Dockerfile
+# FE stage embeds the SPA, so the published image is UI-complete (design §16).
+#
+# TWO jobs, deliberately, and locked by internal/releaseverify:
+#   build   — matrix over NATIVE per-arch runners; each leg pushes ONE arch BY DIGEST only (no
+#             public tag, no signing). Native `ubuntu-24.04` / `ubuntu-24.04-arm` runners replace
+#             QEMU emulation, which spent ~30 min compiling the Rust worker for arm64 under emulation.
+#   publish — merges the two per-arch digests into one multi-arch index (pushed by digest), then
+#             keyless-signs and identity-verifies THAT index and only then promotes the public
+#             SemVer/latest tags, through the single audited helper.
+# Nothing public exists until after signing. The signing job carries the id-token; the build legs
+# do not.
 name: Release
 
 on:
   push:
     tags: ["v*"]
 
-# A recreated tag cannot race another publisher for the same immutable image
-# name. Queue rather than cancel so every attempt reaches an auditable result.
+# A recreated tag cannot race another publisher for the same immutable image name. Queue rather
+# than cancel so every attempt reaches an auditable result.
 concurrency:
-  # Global, not per tag. Two stable tags finishing out of order could otherwise move
-  # `latest` backwards even though each immutable SemVer tag is individually protected.
+  # Global, not per tag. Two stable tags finishing out of order could otherwise move `latest`
+  # backwards even though each immutable SemVer tag is individually protected.
   group: release
   cancel-in-progress: false
 
@@ -27,18 +36,82 @@ env:
   IMAGE: ghcr.io/${{ github.repository }} # ghcr.io/mantonx/loomarr
 
 jobs:
-  # ONE image, deliberately — there is no variant matrix any more.
-  #
-  # ⚠ This job could never have succeeded as written. It carried a second matrix leg
-  # building `--target filler`, and the Dockerfile has no `filler` stage (`grep '^FROM'`
-  # yields fe, build, runtime). The ingest tooling — yt-dlp, ffmpeg, deno, whisper — all
-  # ships in the single runtime image (§14/§16), so the variant it targeted stopped
-  # existing without this file being told. It went unnoticed because release.yml runs
-  # only on a `v*` tag and no such tag had ever been cut: the first real release would
-  # have published the core image and then gone red, which is the worst moment to find
-  # out. Whatever else changes here, do not reintroduce a target the Dockerfile lacks.
-  images:
-    name: Build & publish image
+  # Build each release architecture on its NATIVE runner and push it BY DIGEST only. No public tag,
+  # no signing here — the id-token stays with the publish job. Each leg writes its digest to an
+  # artifact the publish job reads back.
+  build:
+    name: Build image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate the release tag and source commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/validate-release-source.sh
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push only a canonical per-architecture digest. Public SemVer/latest tags do not exist yet:
+      # the publish job creates them only after merging, keyless signing, and an identity-bound
+      # verification of the merged index.
+      - name: Build and push digest only
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max
+
+      - name: Record the digest for the publish job
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          printf '%s' "$DIGEST" > "/tmp/digests/${{ matrix.arch }}"
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-digest-${{ matrix.arch }}
+          path: /tmp/digests/${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge the per-arch digests into one multi-arch index, then sign, verify, and promote through the
+  # single audited helper. This job alone carries the signing identity.
+  publish:
+    name: Sign and publish image
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -49,7 +122,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/validate-release-source.sh
 
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GHCR
@@ -59,29 +131,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Download the per-arch digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: release-digest-*
+          merge-multiple: true
+
       - name: Protect the immutable version tag
         shell: bash
         run: ./scripts/check-release-image-absence.sh "${IMAGE}:${GITHUB_REF_NAME#v}"
 
-      # Push only a canonical digest. Public SemVer/latest tags do not exist yet:
-      # the helper below creates them only after keyless signing and an
-      # identity-bound verification of that exact digest.
-      - name: Build and push digest only
-        id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          target: runtime
-          platforms: linux/amd64,linux/arm64
-          push: true
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          build-args: |
-            VERSION=${{ github.ref_name }}
-            COMMIT=${{ github.sha }}
-          provenance: mode=max
-          sbom: true
-          cache-from: type=gha,scope=release
-          cache-to: type=gha,scope=release,mode=max
+      # Merge the two by-digest architectures into one index, pushed BY DIGEST only (still no public
+      # tag). The publish helper below asserts the index holds exactly linux/amd64 + linux/arm64
+      # before it signs, so a bad or partial merge cannot be signed or promoted.
+      - name: Merge the per-arch digests into one index
+        id: merge
+        shell: bash
+        run: ./scripts/merge-release-digests.sh
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -91,7 +158,7 @@ jobs:
       - name: Sign, verify, and promote the release image
         shell: bash
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
           RELEASE_TAG: ${{ github.ref_name }}
           PUBLISH_LATEST: ${{ !contains(github.ref_name, '-') }}
           COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
