@@ -102,8 +102,8 @@ agent-baseline: ## run make check once per clean commit/toolchain and share the 
 agent-verify: ## run focused changed-file checks (not the final gate; BASE=origin/main)
 	@BASE="$(or $(BASE),origin/main)" ./scripts/agent.sh verify
 
-agent-worktree: ## create + bootstrap a ready-to-use sibling worktree (TOPIC=branch)
-	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" ./scripts/agent.sh worktree "$(TOPIC)"
+agent-worktree: ## create + bootstrap a ready-to-use sibling worktree off origin/main (TOPIC=branch; BASE=HEAD to stack)
+	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" ./scripts/agent.sh worktree "$(TOPIC)"
 
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap

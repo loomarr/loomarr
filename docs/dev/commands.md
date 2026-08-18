@@ -31,7 +31,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | run make check once per clean commit/toolchain and share the green result across worktrees |
 | `make agent-verify` |  | run focused changed-file checks (not the final gate; BASE=origin/main) |
-| `make agent-worktree` |  | create + bootstrap a ready-to-use sibling worktree (TOPIC=branch) |
+| `make agent-worktree` |  | create + bootstrap a ready-to-use sibling worktree off origin/main (TOPIC=branch; BASE=HEAD to stack) |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |

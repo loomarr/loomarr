@@ -310,7 +310,33 @@ worktree() {
 	target="${WORKTREE_PATH:-$(dirname "$primary")/$(basename "$primary")-$slug}"
 	[ ! -e "$target" ] || { echo "agent-worktree: target exists: $target" >&2; exit 1; }
 	git -C "$primary" show-ref --verify --quiet "refs/heads/$topic" && { echo "agent-worktree: branch exists: $topic" >&2; exit 1; }
-	git -C "$ROOT" worktree add "$target" -b "$topic" HEAD
+
+	# Branch off origin/main by default, NOT the primary worktree's HEAD. A new worktree is almost
+	# always the start of a fresh PR, and branching off HEAD silently inherits whatever branch the
+	# primary happens to be parked on — a stale or unrelated one — so the new work sits on the wrong
+	# base and every rebase fights history it never meant to touch. Fetching first also picks up
+	# merges that landed while you worked. `BASE=HEAD` (or BASE=<ref>) opts into deliberate stacking
+	# on the current branch or an explicit ref. Same BASE convention as `make agent-verify`.
+	#
+	# The origin/main default degrades gracefully: an offline dev, a fresh clone mid-fetch, or a repo
+	# whose remote is named differently (or a hermetic test repo with no remote) all fall back to HEAD
+	# rather than failing — HEAD is the only base guaranteed to exist. An EXPLICIT, unresolvable BASE
+	# is still a hard error, because the caller named a specific ref and silently ignoring it would be
+	# the surprising thing.
+	base="${BASE:-origin/main}"
+	if [ -z "${BASE:-}" ]; then
+		# Best-effort refresh of the default base only; never fetch on an explicit BASE.
+		git -C "$ROOT" fetch --quiet origin main 2>/dev/null || true
+		if ! git -C "$ROOT" rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+			echo "agent-worktree: origin/main not available; falling back to HEAD" >&2
+			base=HEAD
+		fi
+	elif ! git -C "$ROOT" rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+		echo "agent-worktree: unknown BASE=$base (want a ref like origin/main or HEAD)" >&2
+		exit 2
+	fi
+	echo "agent-worktree: branching $topic off $base ($(git -C "$ROOT" rev-parse --short "$base"))" >&2
+	git -C "$ROOT" worktree add "$target" -b "$topic" "$base"
 	if [ "${COPY_ENV:-0}" = 1 ] && [ -f "$primary/.env" ]; then
 		cp "$primary/.env" "$target/.env"
 		chmod 600 "$target/.env"
