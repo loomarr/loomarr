@@ -116,7 +116,9 @@ Create a sibling worktree through the harness:
 make agent-worktree TOPIC=<branch>
 ```
 
-It installs frontend dependencies and runs codegen. Credentials are not copied by default; use
+It branches off a freshly fetched `origin/main` — not whatever branch the primary worktree is parked
+on — so a new worktree always starts from current main. To stack deliberately on the current branch (or
+any other base), pass `BASE=HEAD` (or `BASE=<ref>`). It installs frontend dependencies and runs codegen. Credentials are not copied by default; use
 `COPY_ENV=1` only when the task genuinely needs the maintainer's configured integrations. Secondary
 worktrees receive deterministic, distinct backend/frontend/Storybook/Tunarr ports, a Compose project,
 an SQLite database, a prepared-publication library, a filler drop folder, and
