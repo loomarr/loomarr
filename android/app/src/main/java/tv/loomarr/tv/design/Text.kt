@@ -28,6 +28,7 @@ fun Display(
     modifier = modifier,
     color = color,
     fontSize = LoomarrTokens.Type.Xl2,
+    lineHeight = LoomarrTokens.Type.Xl2 * 1.5f,
     textAlign = align,
 )
 
@@ -43,6 +44,7 @@ fun Heading(
     modifier = modifier,
     color = color,
     fontSize = LoomarrTokens.Type.Xl,
+    lineHeight = LoomarrTokens.Type.Xl * 1.5f,
     textAlign = align,
 )
 
@@ -58,6 +60,7 @@ fun Body(
     modifier = modifier,
     color = color,
     fontSize = LoomarrTokens.Type.Md,
+    lineHeight = LoomarrTokens.Type.Md * 1.5f,
     textAlign = align,
 )
 
@@ -132,5 +135,9 @@ fun ErrorText(
     modifier = modifier,
     color = LoomarrTokens.Color.Onair,
     fontSize = LoomarrTokens.Type.Lg,
+    // ⚠ Compose does NOT derive line height from font size — left unset, wrapped lines render on
+    // top of one another. Invisible until a string is long enough to wrap, which is why the first
+    // multi-line error on screen was an unreadable overlap. 1.5 is the design's body leading.
+    lineHeight = LoomarrTokens.Type.Lg * 1.5f,
     textAlign = align,
 )
