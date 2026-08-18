@@ -109,7 +109,11 @@ jobs:
           fi
           # Prose. Cheap and fast, so it gates on the whole documentation set rather than
           # trying to be clever about which page changed.
-          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/'; then
+          # `ci\.yml$`, not the whole workflows tree: the docs job lints prose and links (its
+          # DOC_GLOBS/LINK_GLOBS never include .github/workflows), so only a ci.yml edit that
+          # changes how the docs job itself runs needs to re-trigger it. release.yml / pages.yml
+          # carry no prose this job checks. (Go keeps the broad glob — it actionlints every one.)
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/ci\.yml$'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
@@ -125,12 +129,22 @@ jobs:
           # The Android TV client (§11, Shield). `api/openapi.yaml` gates it because the client is
           # GENERATED from that spec — the same reason `web/` regenerates its orval client — so a
           # backend field rename must fail the Android build rather than reach a television.
-          if echo "$changed" | grep -qE '^android/|^api/openapi\.yaml$|^Makefile$|^\.github/workflows/'; then
+          # ⚠ `ci\.yml$`, not the whole `.github/workflows/` tree — same reasoning as the web
+          # filter below. The Android job is defined only in ci.yml and consumes no other workflow,
+          # so a release.yml / pages.yml edit cannot change the APK build and must not spend an
+          # Android runner. `api/openapi.yaml` stays because the client is GENERATED from it.
+          if echo "$changed" | grep -qE '^android/|^api/openapi\.yaml$|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/'; then
+          # ⚠ `ci\.yml$`, not the whole `.github/workflows/` tree. The web family (frontend +
+          # tuner + playwright x4) is defined ONLY in ci.yml, and nothing in it consumes another
+          # workflow file — so an edit to release.yml / pages.yml / release-notes.yml has no way to
+          # affect a web job and must not spend six runners rebuilding + re-Playwrighting the SPA.
+          # The Go filter keeps the broad glob on purpose: `make ci-lint` actionlints EVERY workflow
+          # and `cmd/releaseverify` reads release.yml, so those genuinely need any-workflow coverage.
+          if echo "$changed" | grep -qE '^web/|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
