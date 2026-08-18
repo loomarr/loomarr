@@ -20,15 +20,30 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlinx.coroutines.runBlocking
+import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
+import tv.loomarr.tv.pairing.PairingViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val store = DeviceStore(applicationContext)
+
+        // Development affordance: `adb shell am start -n tv.loomarr.tv/.MainActivity -e server
+        // http://10.0.2.2:18305` sets the address without a keyboard. A TV cannot practically type
+        // a URL, so the shipped path will be discovery or an on-screen entry step — this exists so
+        // the app is testable before that lands, and it is inert when the extra is absent.
+        intent?.getStringExtra("server")?.takeIf { it.isNotBlank() }?.let { url ->
+            runBlocking { store.setServerUrl(url) }
+        }
+
         setContent {
             MaterialTheme {
-                PairingScreen()
+                PairingScreen(
+                    model = viewModel(factory = PairingViewModelFactory(store)),
+                )
             }
         }
     }
@@ -62,6 +77,17 @@ private fun PairingScreen(model: PairingViewModel = viewModel()) {
                 fontSize = 28.sp,
                 color = Color.White,
             )
+
+            is PairingUiState.NeedsServer -> {
+                Text(text = "Loomarr", fontSize = 40.sp, color = Color.White)
+                Text(
+                    text = "No server address is set for this device yet.",
+                    fontSize = 24.sp,
+                    color = Color(0xFF9CA3AF),
+                    modifier = Modifier.padding(top = 24.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             is PairingUiState.AwaitingApproval -> {
                 Text(

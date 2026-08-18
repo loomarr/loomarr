@@ -52,3 +52,35 @@ cd android
   opposite things with them. Collapsing them makes the TV discard a good code every few seconds.
 - **`LEANBACK_LAUNCHER`, not `LAUNCHER`.** The TV home screen only shows the former; an app with
   only the phone category installs and is then unreachable.
+
+## Running it without a Shield
+
+An Android TV emulator on API 30 matches the Shield's Android 11 exactly, and boots in about 20
+seconds with KVM.
+
+```sh
+sdkmanager "emulator" "system-images;android-30;android-tv;x86"
+avdmanager create avd -n loomarr-tv -k "system-images;android-30;android-tv;x86" -d tv_1080p
+emulator -avd loomarr-tv -no-window -no-audio -gpu swiftshader_indirect -port 5560
+
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+# 10.0.2.2 is the emulator's alias for the HOST — localhost inside the VM is the VM.
+adb shell am start -n tv.loomarr.tv/.MainActivity -e server http://10.0.2.2:18305
+adb exec-out screencap -p > screen.png
+```
+
+**What the emulator proves:** the screen renders at 10-foot scale, the pairing handshake completes,
+the token persists. **What it cannot:** hardware HEVC/AV1 decoding, surround passthrough, or real
+tune latency — the emulator decodes in software. Those stay hardware questions.
+
+## Two runtime traps the build could not catch
+
+Both compiled cleanly and failed only when the app actually ran:
+
+- **`viewModel()` needs a factory.** With none, it reflects on a *no-arg* constructor, so a
+  ViewModel taking arguments throws `Cannot create an instance of class …` the moment the screen
+  renders. `viewModel()` is generic, so the type checker cannot see it.
+- **Cleartext HTTP is blocked from API 28.** A self-hosted Loomarr on a LAN is plain `http://` with
+  no certificate, and without a network security config OkHttp fails with a generic exception that
+  reads as "server unreachable". Note `<domain>` matches hostnames/suffixes, **not** CIDR — listing
+  `192.168.0.0` does not cover `192.168.1.47`, so it must be `base-config`.
