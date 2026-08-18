@@ -2,11 +2,18 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GenerationProgress } from "./generation-progress";
 
+// The active step is the ONE the spinner sits on. The suggester loop alternates
+// reasoning↔searching, so those two phases must resolve to the SAME step — otherwise the
+// active indicator marches forward then jumps backward on the next pass, a checklist walking
+// in reverse. `activeStep` reads which of the two rows carries the spinner.
+const activeStep = (container: HTMLElement): string | null =>
+  container.querySelector(".animate-spin")?.closest("li")?.textContent?.replace(/….*$/, "") ?? null;
+
 describe("GenerationProgress", () => {
   it("marks the current step active and shows its in-flight label", () => {
     render(<GenerationProgress phase="scoring" />);
     expect(screen.getByText("Scoring the lineup…")).toBeInTheDocument();
-    expect(screen.getByText("Search the library")).toBeInTheDocument();
+    expect(screen.getByText("Find the titles")).toBeInTheDocument();
   });
 
   it("renders the problem text on failure, never a raw stack", () => {
@@ -14,23 +21,30 @@ describe("GenerationProgress", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("The model timed out.");
   });
 
-  // The tool loop alternates thinking and searching, so a step that is about to run
-  // again must NOT be ticked off. Marking reasoning done the moment a search starts
-  // would show a checkmark that un-ticks on the next pass.
-  it("does not complete an earlier step while the tool loop is still running", () => {
-    const { container } = render(<GenerationProgress phase="searching" round={2} />);
-    expect(screen.getByText("Searching the library…")).toBeInTheDocument();
-    // Assert the tick MARK, not the label: a completed step still renders its text, so
-    // checking for "Pick titles that fit" would pass whether or not it was ticked off.
-    // Reasoning runs again after this search, so nothing may be marked done yet.
+  // THE BUG THIS FIXES. The backend emits reasoning → searching → reasoning → … for as many
+  // passes as the model needs. Both phases are one piece of work ("find the titles"), so the
+  // active spinner must NOT move between them — before the fix it ping-ponged step 1 ↔ step 2
+  // on every flip, which read as broken.
+  it("keeps the same step active across the reasoning↔searching loop (no backward jump)", () => {
+    const { container, rerender } = render(<GenerationProgress phase="reasoning" round={1} />);
+    const first = activeStep(container);
+    expect(first).toBe("Finding the titles");
+
+    rerender(<GenerationProgress phase="searching" round={1} />);
+    expect(activeStep(container)).toBe(first); // searching stays on the same row
+
+    rerender(<GenerationProgress phase="reasoning" round={2} />);
+    expect(activeStep(container)).toBe(first); // …and back again, still no movement
+    // Nothing is ticked off mid-loop: the run has not moved past finding the titles.
     expect(container.querySelectorAll(".text-lock")).toHaveLength(0);
   });
 
-  // Scoring runs outside the loop, so reaching it genuinely means the loop is over.
-  it("completes the loop steps once the run reaches scoring", () => {
+  // Scoring runs after the loop, so reaching it genuinely means finding is done.
+  it("completes the find step once the run reaches scoring", () => {
     const { container } = render(<GenerationProgress phase="scoring" />);
-    // Two ticks: the two loop steps are behind us for real.
-    expect(container.querySelectorAll(".text-lock")).toHaveLength(2);
+    // One tick: "Find the titles" is behind us for real; "Score the lineup" is active.
+    expect(container.querySelectorAll(".text-lock")).toHaveLength(1);
+    expect(activeStep(container)).toBe("Scoring the lineup");
   });
 
   // A short run should not be narrated; the count only appears once the wait is long

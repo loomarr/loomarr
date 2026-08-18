@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { GenerationProgress } from "./generation-progress";
 
-// The SSE suggester stepper (§3): searching · reasoning · scoring · done · failed.
+// The SSE suggester stepper (§3). Phases: reasoning/searching (one "Find the titles" step,
+// alternating in a loop) → scoring → done, or failed.
 const meta = {
   title: "Feedback/GenerationProgress",
   component: GenerationProgress,
