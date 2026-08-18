@@ -44,7 +44,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check` | ✅ | Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `test` |
+| `make check` | ✅ | Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, -race opt-out guard, and unit tests (the default gate) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `vet` `tags-verify` `vet-tags` `windows-compile` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` `test` |
 | `make rust-check` |  | format, lint, and test the required Rust image worker |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
@@ -58,6 +58,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make test` |  | unit tests only (never touch the network — §19) |
 | `make go-shard-verify` | ✅ | the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift) |
+| `make go-race-verify` | ✅ | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` |  | playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`) |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 
@@ -160,7 +161,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 
 ## What CI runs
 
-`agent-harness-test` · `android` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
+`agent-harness-test` · `android` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the

@@ -193,10 +193,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    # `make check` was 308–428s and the whole job 7.2–12.2 min — the critical path on every
-    # Go-touching PR. `go test -race` is effectively all of it (measured 2026-08-09: `make
-    # lint` is 5.4s warm, so splitting lint off would buy nothing; the 41 packages sum to
-    # 436s and the runner has 4 cores). So the TESTS are what shards.
+    # `go test -race` is effectively the whole cost here (measured 2026-08-09: `make lint` is
+    # 5.4s warm, so splitting lint off buys nothing). So the TESTS are what shards.
+    #
+    # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
+    # dominated by a few packages (internal/app alone is ~125s), so round-robin balance depends on
+    # the split COUNT. Modelled critical path (slowest shard): 2 shards = 237s, 3 = 185s, 4 = 215s
+    # — 4 REGRESSES because round-robin happens to pile app+store+integration onto one shard. 3 is
+    # the measured sweet spot (−22% vs 2). The real floor is internal/app at ~125s, one unsplittable
+    # package; sharding cannot beat it — that needs the per-test SQLite-setup sharing the `test`
+    # target's note describes, tracked separately.
+    #
+    # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
+    # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
+    # keeps that list honest; it is fail-safe (race stays ON for anything not explicitly opted out).
     #
     # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
     # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
@@ -208,7 +218,7 @@ jobs:
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -373,6 +383,11 @@ jobs:
       # tests have already "passed" is one cancelled job away from never running at all.
       - name: The shard split covers every package
         run: make go-shard-verify SHARDS=${{ strategy.job-total }}
+      # The -race opt-out list must name only real packages (fail-safe: race stays ON for anything
+      # not listed, so this catches a stale/renamed entry, not a coverage gap). `make check` also
+      # runs this, but assert it up front alongside the shard guard.
+      - name: The -race opt-out list is real
+        run: make go-race-verify
       - run: make check GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
       # One shard certifies the RELEASE-profile worker against the deterministic real-codec
       # corpus. `make check` already covers debug Rust tests in both shards; this is the packaged

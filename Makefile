@@ -135,7 +135,7 @@ backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres b
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify test ## Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, and unit tests (the default gate)
+check: rust-check fmt shellcheck privacy-verify vet tags-verify vet-tags windows-compile lint agent-harness-test compose-verify release-verify go-race-verify test ## Rust + Go formatting, lint, privacy, cross-platform compile, harness, release contracts, -race opt-out guard, and unit tests (the default gate)
 
 .PHONY: rust-check rust-audit rust-fuzz
 rust-check: ## format, lint, and test the required Rust image worker
@@ -215,7 +215,22 @@ test: ## unit tests only (never touch the network — §19)
 # string, and `go test` with NO packages exits 0 — so a bad GO_SHARD would have produced a silent
 # green over zero tests, which is the exact failure this sharding must not be able to cause. Here a
 # failing helper fails the recipe: `pkgs=$(...)` carries the substitution's status into the `&&`.
-	@pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))" && $(GO) test -race -timeout 25m $$pkgs
+#
+# `-race` is scoped, not tree-wide: scripts/go-race-policy.sh splits this shard's packages into the
+# ones that run UNDER -race (the default — everything with any concurrency, incl. every httptest
+# server) and a short, verified opt-out set of concurrency-free config/table-test packages that run
+# without it, to skip the detector's ~2-3x overhead where no race is possible. `make go-race-verify`
+# guards the opt-out list; the split is per-shard so it composes with GO_SHARD.
+#
+# ⚠ Each `go test` runs ONLY IF its list is non-empty. A shard whose opt-out subset is empty is
+# normal (data-dependent on the split), but `go test` with no packages exits 0 — the same silent-
+# green trap as above — so an empty list must SKIP the invocation, never invoke `go test` with none.
+	@set -e; \
+	pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))"; \
+	race_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --race)"; \
+	norace_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --no-race)"; \
+	if [ -n "$$race_pkgs" ]; then $(GO) test -race -timeout 25m $$race_pkgs; fi; \
+	if [ -n "$$norace_pkgs" ]; then $(GO) test -timeout 25m $$norace_pkgs; fi
 
 .PHONY: go-shard-verify
 go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift)
@@ -225,6 +240,15 @@ go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI 
 # the pipeline would notice. SHARDS must match ci.yml's `matrix.shard` count; CI passes it from
 # `strategy.job-total` so the two cannot drift apart.
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
+
+.PHONY: go-race-verify
+go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package
+# ⚠ A GUARD, not decoration. The opt-out list is FAIL-SAFE by construction — race stays ON for
+# anything not listed, so a forgotten new package is race-checked, never silently skipped. What this
+# catches is the other drift: a RACE_OFF entry that no longer names a real package (renamed, moved,
+# deleted). That entry would opt nothing out — harmless for coverage, but the list would be lying
+# about what it excludes, so CI goes red until it is corrected.
+	@./scripts/go-race-policy.sh --verify
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
