@@ -151,10 +151,14 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make smoke-down` |  | tear down the smoke stack (container, volume, temp database) |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` |
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
+| `make android-tokens` |  | regenerate the Android design tokens from the shared tokens.json |
+| `make android-tokens-verify` |  | regenerated tokens must match committed (CI red on drift) <br>*runs:* `android-tokens` |
+| `make android` | ✅ | Android TV client — tokens + ktlint + Android Lint + unit tests + debug APK <br>*runs:* `android-tokens-verify` |
+| `make android-fmt` |  | Android TV client — apply ktlint formatting |
 
 ## What CI runs
 
-`agent-harness-test` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
+`agent-harness-test` · `android` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the
