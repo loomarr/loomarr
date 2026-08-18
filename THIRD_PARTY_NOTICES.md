@@ -39,6 +39,32 @@ Upstream additionally attributes bundled components (`beorn7/perks`, Go support 
 Buffers, and others; see the full [`NOTICE`](https://github.com/prometheus/client_golang/blob/main/NOTICE)).
 The full Apache-2.0 license text also rides in the release SBOM.
 
+## Frontend dependencies (bundled into the embedded SPA)
+
+The web UI is built with Vite and **embedded into the Go binary** (`internal/web/embed.go`
+`//go:embed all:dist`), so its RUNTIME dependencies ship inside the published image. Only the
+production (non-`devDependencies`) tree is bundled; build/test tooling (Vite, Biome, Playwright,
+Storybook, vitest) is not shipped and is out of scope here.
+
+The bundled tree is entirely permissive and MIT-compatible. `pnpm licenses list --prod` over the
+shipped closure resolves to **MIT (the large majority), plus ISC, Apache-2.0, and 0BSD** — no
+copyleft (no GPL/LGPL/AGPL/MPL/EPL/CDDL) reaches the bundle. Notable direct runtime deps: `react`
+/ `react-dom` (MIT), the TanStack set — `react-query` / `react-form` / `react-virtual` (MIT),
+`@base-ui/react` and `@dnd-kit/*` (MIT), `react-markdown` / `remark-gfm` (MIT), `lucide-react`
+(ISC), `hls.js` and `class-variance-authority` (Apache-2.0). The authoritative, versioned list is
+[`web/pnpm-lock.yaml`](web/pnpm-lock.yaml); the full per-package inventory rides in the release SBOM.
+
+## Rust dependencies (compiled into the image worker)
+
+The image-processing worker (`internal/images/rustgen` → the `loomarr-image` crate) is compiled
+during the image build and its binary ships in the image. Its dependency tree is **confined to an
+explicit permissive allow-list, enforced on every build** by `cargo-deny` via [`deny.toml`](deny.toml)
+and the `make rust-audit` gate: MIT, Apache-2.0 (incl. the LLVM exception), the BSD family, ISC,
+Zlib, Unicode-3.0, Unlicense, CC0-1.0, NCSA, and 0BSD — a crate under any other license fails the
+build rather than shipping. `cargo-deny` also denies unknown registries and git sources. The
+authoritative, versioned list is [`Cargo.lock`](Cargo.lock); the full per-crate inventory rides in
+the release SBOM.
+
 ## Compose deployment companion (not in the Loomarr image)
 
 The supported Docker Compose topology starts the official `traefik:v3.7.1` image as its HTTP edge,
@@ -142,8 +168,11 @@ following have evidence on the release commit:
   [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) and make the Debian
   package input reproducible (still open — `apt-get install` in the runtime stage is unpinned);
 - ~~include the required DejaVu font license~~ (done — the Bitstream Vera grant is reproduced above,
-  and the image retains the package's own `copyright`) and complete the frontend/Rust transitive
-  license-text inventory (still open — a full SBOM-side task, not the shipped fonts);
+  and the image retains the package's own `copyright`) ~~and complete the frontend/Rust transitive
+  license-text inventory~~ (done — the Frontend and Rust dependency sections above state the shipped
+  closures' licenses: the bundled JS tree is MIT/ISC/Apache-2.0/0BSD with no copyleft, and the Rust
+  tree is confined to `deny.toml`'s permissive allow-list enforced by `make rust-audit`; the full
+  per-package/per-crate texts ride in the release SBOM);
 - ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
   reproduced above); and
 - complete a final qualified legal/NOTICE review of the assembled image and its downloadable source
