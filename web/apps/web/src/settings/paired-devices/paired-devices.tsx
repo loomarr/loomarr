@@ -74,6 +74,12 @@ const ApproveDevice = () => {
         Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
         device gets your access, not admin access, and you can remove it at any time.
       </p>
+      {/* The address to put ON the television. This panel is for an operator already in Settings;
+          the device itself cannot direct anyone here, so it names the short route instead. */}
+      <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+        Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
+        easier to reach from a phone.
+      </p>
       <form className="mt-3 flex flex-wrap items-start gap-2" onSubmit={submit}>
         <Input
           aria-label="Code shown on the device"
