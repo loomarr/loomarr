@@ -1,4 +1,4 @@
-import type { ApproveOutputBody, ListProposalsOutputBody, RefineChannelOutputBody } from "@loomarr/api";
+import type { ApproveOutputBody, ProposalJourneyDTO, RefineChannelOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LoomarrEventsProvider } from "@/events";
@@ -13,17 +13,14 @@ import { RefinePanel } from "./refine-panel";
 const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-// An EventSource stand-in that records the latest instance so a play() can push a frame.
-// The failed-run story needs a real `suggestion` frame to reach the panel; Storybook (like
-// jsdom) has no EventSource of its own.
 class StoryEventSource {
   static last: StoryEventSource | undefined;
-  private handlers = new Map<string, (e: MessageEvent) => void>();
+  private handlers = new Map<string, (event: MessageEvent) => void>();
   constructor() {
     StoryEventSource.last = this;
   }
-  addEventListener(type: string, cb: (e: MessageEvent) => void) {
-    this.handlers.set(type, cb);
+  addEventListener(type: string, callback: (event: MessageEvent) => void) {
+    this.handlers.set(type, callback);
   }
   close() {}
   emit(type: string, data: unknown) {
@@ -31,66 +28,73 @@ class StoryEventSource {
   }
 }
 
+const proposal = {
+  intent: { description: "add more Schwarzenegger" },
+  lineup: [
+    { name: "Heat", year: 1995, mediaType: "movie" as const, tmdbId: 949, inLibrary: true },
+    { name: "Predator", year: 1987, mediaType: "movie" as const, tmdbId: 106, inLibrary: true },
+  ],
+  acquisitions: [],
+  alternates: [],
+  scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
+};
+
+const landedJourney: ProposalJourneyDTO = {
+  version: 1,
+  jobId: "job-1",
+  milestone: "awaiting_approval",
+  intent: proposal.intent,
+  attempts: [],
+  proposal: { id: "p1", status: "submitted", proposal },
+  actions: ["review"],
+  createdAt: "2026-08-22T10:00:00Z",
+  updatedAt: "2026-08-22T10:00:00Z",
+};
+
 // RefinePanel owns live generated-API hooks (useChannelRefine, useApproveProposal)
 // rather than taking injectable state — same shape as ApprovalQueue elsewhere in this
 // package, which has no story for the same reason. Unlike that component, this one was
 // asked for a story to demonstrate the landed diff, so this decorator stubs `fetch`
 // deterministically (no backend, no new dependency) the same way the co-located test
-// does: dispatch by method/path, matching the real refine → poll → approve endpoints.
-const withStubbedRefine = (): Decorator => (Story) => {
-  window.fetch = ((url: string, init?: RequestInit) => {
-    if (typeof url === "string" && url.includes("/refine")) {
-      return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
-    }
-    if (init?.method === "POST" && typeof url === "string" && url.includes("/approve")) {
-      // ⚠ `status` was MISSING here until the body was typed — a live example of exactly what
-      // #281 is about. The stub predates the field, `tsc` had nothing to compare it against, and
-      // the story kept passing because this particular response is never read by an assertion.
-      // It would have gone on lying until something did read it.
-      return Promise.resolve(
-        jsonResponse<ApproveOutputBody>({ channelId: "ch-1", enqueued: 0, status: "approved" }),
-      );
-    }
-    return Promise.resolve(
-      jsonResponse<ListProposalsOutputBody>({
-        proposals: [
-          {
-            id: "p1",
-            jobId: "job-1",
-            status: "submitted",
-            proposal: {
-              intent: { description: "add more Schwarzenegger" },
-              lineup: [
-                { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
-                { name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true },
-              ],
-              acquisitions: [],
-              alternates: [],
-              scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
-            },
-          },
-        ],
-      }),
+// does: dispatch by method/path, matching the real refine → Journey → approve endpoints.
+const withStubbedRefine =
+  (journey: ProposalJourneyDTO = landedJourney): Decorator =>
+  (Story) => {
+    window.sessionStorage.removeItem("loomarr.activeChannelRefine");
+    window.fetch = ((url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/refine")) {
+        return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
+      }
+      if (init?.method === "POST" && typeof url === "string" && url.includes("/approve")) {
+        // ⚠ `status` was MISSING here until the body was typed — a live example of exactly what
+        // #281 is about. The stub predates the field, `tsc` had nothing to compare it against, and
+        // the story kept passing because this particular response is never read by an assertion.
+        // It would have gone on lying until something did read it.
+        return Promise.resolve(
+          jsonResponse<ApproveOutputBody>({ channelId: "ch-1", enqueued: 0, status: "approved" }),
+        );
+      }
+      return Promise.resolve(jsonResponse<ProposalJourneyDTO>(journey));
+    }) as typeof fetch;
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={client}>
+        <Story />
+      </QueryClientProvider>
     );
-  }) as typeof fetch;
+  };
 
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <QueryClientProvider client={client}>
-      <Story />
-    </QueryClientProvider>
-  );
-};
-
-// Same fetch stub, but the run never lands a proposal (a failed run produces none), and
-// the tree is wrapped in the events provider with a dispatchable EventSource so play()
-// can fire the `failed` frame that drives the panel's inline error.
+// The terminal SSE frame can arrive before the authoritative Journey refetch. This fixture
+// deliberately leaves that read pending so the panel proves its immediate, safe fallback;
+// unit tests separately pin restoration from the persisted failed Journey.
 const withFailingRefine = (): Decorator => (Story) => {
+  window.sessionStorage.removeItem("loomarr.activeChannelRefine");
   window.fetch = ((url: string) => {
     if (typeof url === "string" && url.includes("/refine")) {
       return Promise.resolve(jsonResponse<RefineChannelOutputBody>({ jobId: "job-1" }));
     }
-    return Promise.resolve(jsonResponse<ListProposalsOutputBody>({ proposals: [] }));
+    return new Promise<Response>(() => {});
   }) as typeof fetch;
   (window as unknown as { EventSource: unknown }).EventSource = StoryEventSource;
 

@@ -63,6 +63,7 @@ const useChannelRefine = (): ChannelRefine => {
   const proposal: ProposalDTO | undefined = journey?.proposal
     ? { ...journey.proposal, jobId: journey.jobId }
     : undefined;
+  const terminalPhase = phase === "done" || phase === "failed";
   const setActive = (next: ActiveRefine | undefined) => {
     setActiveState(next);
     if (typeof window === "undefined") return;
@@ -77,7 +78,10 @@ const useChannelRefine = (): ChannelRefine => {
     proposal,
     failure: journey?.failure,
     actions: journey?.actions ?? [],
-    isRunning: active !== undefined && (!journey || journey.milestone === "generating"),
+    // SSE is only a latency hint, but a terminal hint must stop the spinner while the
+    // authoritative Journey refetch catches up. Reload/event loss still recovers from
+    // the persisted milestone because phase starts undefined.
+    isRunning: active !== undefined && !terminalPhase && (!journey || journey.milestone === "generating"),
     error: refine.error ?? journeyQuery.error,
     start: (channelId: string, change: string) => {
       setPhase(undefined);
