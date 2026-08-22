@@ -19,21 +19,16 @@ import (
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/backendtransition"
 	"github.com/mantonx/loomarr/internal/binder"
-	"github.com/mantonx/loomarr/internal/buildinfo"
-	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/media"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
-	"github.com/mantonx/loomarr/internal/proposalworkflow"
-	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -810,130 +805,18 @@ func buildHandler(
 		proposalApprover = suggest.NewApprover(st, chBinder, time.Now)
 	}
 
-	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
-	// the LLM provider, the grounded suggester, and the worker pool. A store owns
-	// these long-lived services; their dynamic adapters and feature gates decide
-	// which configured capabilities each operation may use. The catalog + search
-	// share one impl (§7.2).
-	var suggestSvc api.SuggestService
-	var proposalWorkflow api.ProposalWorkflow
-	var durableWorkflow *proposalworkflow.Workflow
-	var searchSvc api.SearchService
-	var collectionsSvc api.CollectionService
-	var systemLLM api.SystemLLMService
-	var iconSvc api.IconService
-	// imageSvc is the image service (§22, V52) — the one pipeline every image travels. Built
-	// below on the store alone; nil without one, which the /v1/images routes answer as "absent".
-	var imageSvc *images.Service
-	// imageFetcher is the same fetcher the background jobs use, shared with the interactive
-	// callers that adopt on a request (the icon picker — see iconAdapter). One fetcher, so the
-	// SSRF allowlist and the concurrency cap are enforced identically whoever asks.
-	var imageFetcher *images.Fetcher
-	if st != nil {
-		// Journey restoration remains available even when an LLM provider is not:
-		// persisted workflow state is the recovery surface for configuring it.
-		durableWorkflow = proposalworkflow.New(st, newID, time.Now)
-		proposalWorkflow = durableWorkflow
+	suggestions, err := buildSuggestions(
+		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
+		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
+	)
+	if err != nil {
+		return nil, err
 	}
-	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
-	// It remains wired while the key is empty so a later settings save hot-applies; the resolver
-	// degrades an unconfigured lookup to the timeline's supported image-less rendering.
-	var timelineThumbs api.TimelineThumbResolver
-	if st != nil {
-		// The image service (§22, V52). First in this block deliberately: it depends on nothing
-		// else here, and the jobs registered later need it.
-		var imageErr error
-		imageSvc, imageErr = newImageService(st, set, ov.ImageWorkerExecutable, buildinfo.Get().Version)
-		if imageErr != nil {
-			return nil, imageErr
-		}
-		imageFetcher = registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, fillerLayout, set, activityRec, log)
-
-		lib := libraryClient
-		// The Guide/Watch programme previews — a series episode's still or a movie's backdrop,
-		// from the provisioning key. The shared fetcher warms cold interactive artwork before the
-		// response returns; while the credential is empty the resolver's supported soft-failure
-		// leaves the surfaces on their image-less rendering.
-		timelineThumbs = timelineThumbResolver{tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher}
-		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
-		// collection id at reconcile, so a franchise's films play together in release order.
-		// The resolver stays wired while unconfigured and reports the enrichment unresolved,
-		// allowing a later reconcile to heal it after the key is saved. The engine was created
-		// in the earlier st-block, so reach it through channelSvc.
-		if engine, ok := channelSvc.(*channels.Engine); ok {
-			engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
-		}
-		// The catalog and validator share the same dynamic adapter. An empty credential
-		// is an honest unconfigured error, never permission to skip validation.
-		// clip corpus wired in Phase 12. The presence source binds one library snapshot
-		// for every discovery batch, then marks owned titles as lineup picks rather than acquisitions.
-		cat := catalog.New(lib, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-			return libraryPresence{lib: lib.Snapshot()}
-		})
-		searchSvc = searchAdapter{cat}
-		// The scope.collections picker (§2.2). Gated on the library alone — unlike search it
-		// needs no TMDB, because a collection is the operator's own shelf and never a TMDB
-		// lookup. Shares this block's library client.
-		collectionsSvc = libraryCollections{lib: lib}
-
-		// Channel icon suggestions (§icon P2): the service remains wired for hot apply;
-		// the API's live setting gate returns 501 while the TMDB key is empty.
-		iconSvc = iconAdapter{store: st, tmdb: tmdbClient, images: imageSvc, fetch: imageFetcher, log: log}
-
-		// The model is a config choice (§8/§14): ollama (local default) or the
-		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
-		// For LOCAL ollama the active model is runtime-swappable (§8.1): an in-app
-		// selection persisted to the settings store overrides LLM_MODEL and can be
-		// changed without a restart. A hosted openai provider names its model in
-		// config and isn't wrapped (nothing local to swap/probe/pull).
-		provider, systemLLMSvc := buildLLM(rootCtx, set, st, eventBus, log)
-		// Tests inject a scripted in-process LLM for the suggester; the systemLLM
-		// picker still probes llm.url (point that at the Ollama HTTP double).
-		if ov.LLM != nil {
-			provider = ov.LLM
-		}
-		sug := suggest.New(provider, cat, tmdbClient, set.intv("suggest.max_acquisitions"))
-		// Enrich a not-yet-owned acquisition's rating from TMDB (§389), so an audience
-		// ceiling doesn't drop it before it can even show as a pending slot. Suggestions
-		// are live-gated on TMDB configuration; sparse rating coverage is fine (the
-		// reconciler heals from the library once the title lands).
-		sug.WithRatings(tmdbClient)
-		svc := suggest.NewService(st, sug, suggest.Config{
-			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-		}, newID, time.Now, log).
-			WithProgressEmitter(emitter).
-			WithDurableWorkflow(durableWorkflow) // §8 SSE + durable lifecycle
-
-		// The §11 auto-approve grant, hard-gated by the pending-acquisition cap. The
-		// default limit is read PER CALL so raising suggest.max_acquisitions takes
-		// effect without a restart, like every other setting (config-design §3).
-		svc = svc.WithAutoApprove(suggest.NewAutoApprover(
-			st,
-			proposalApprover,
-			func(context.Context) int { return set.intv("suggest.max_acquisitions") },
-			log,
-		))
-
-		// Self-updating channels (§8.2): the channel-scoped auto-curate grant + the
-		// scheduled re-curation job. The Curator approves a re-curation proposal because
-		// its CHANNEL opted in (schedule.AutoCurate), bounded by the quality bar + title
-		// cap (global settings, per-channel overridable) — through the SAME suggest.Approver
-		// gate, audit "auto-curate". The Runner (registered below) triggers the refresh
-		// refine that produces the proposal the Curator considers.
-		curator := recurate.NewCurator(st, proposalApprover, recurateThresholds{set}, log)
-		svc = svc.WithAutoCurate(curator)
-		// The §8.3 adjacency corpus rides the SAME catalog the suggester grounds against,
-		// so an adjacency candidate is the same shape (and gets the same in-library
-		// backfill) as one the model found itself. Nil-safe: a catalog without a TMDB
-		// client yields no adjacency and re-curation runs the LLM corpus alone.
-		recurateRunner := recurate.NewRunner(st, svc, log).WithAdjacency(cat)
-		jobReg.Add(recurateRunner.Job())
-
-		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
-		systemLLM = systemLLMSvc
-		owner.goRun(func(ctx context.Context) { svc.Run(ctx) })
-		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb_configured", set.str("tmdb.api_key") != "")
-	}
+	suggestSvc, proposalWorkflow := suggestions.suggest, suggestions.workflow
+	searchSvc, collectionsSvc := suggestions.search, suggestions.collections
+	systemLLM, iconSvc := suggestions.systemLLM, suggestions.icons
+	imageSvc := suggestions.images
+	timelineThumbs := suggestions.timelineThumbs
 
 	// Filler & commercials (§10, Phase 12). Loomarr scans and probes the drop-folder
 	// ITSELF; Tunarr is consulted only to annotate clips with program uuids for
