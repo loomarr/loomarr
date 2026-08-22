@@ -179,12 +179,12 @@ type playoutResolver struct {
 func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
 	now := r.now()
 
-	slots, err := r.acceptedCycle(ctx, channelID)
+	slots, epoch, err := r.acceptedCycle(ctx, channelID)
 	if err != nil {
 		return playout.Airing{}, "", err
 	}
 
-	airing := playout.AiringAt(slots, playoutEpoch(channelID), now)
+	airing := playout.AiringAt(slots, epoch, now)
 
 	// A BREAK GAP resolves to a real commercial (§10). Tunarr used to do this: the scheduler
 	// leaves flex, and Tunarr played clips from a filler-list into it. Internal playout has no
@@ -248,15 +248,19 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 // acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
 // current guide own reads. Keeping the seam here makes it impossible for a programme boundary to
 // accidentally call the mutable authoring preview again.
-func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) ([]schedule.Slot, error) {
+func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) ([]schedule.Slot, time.Time, error) {
 	if r.channels == nil {
-		return nil, errors.New("read accepted channel schedule: channel reader is not configured")
+		return nil, time.Time{}, errors.New("read accepted channel schedule: channel reader is not configured")
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
-		return nil, fmt.Errorf("read accepted channel schedule %s: %w", channelID, err)
+		return nil, time.Time{}, fmt.Errorf("read accepted channel schedule %s: %w", channelID, err)
 	}
-	return ch.Desired, nil
+	epoch, err := effectivePlayoutAnchor(ch)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return ch.Desired, epoch, nil
 }
 
 // ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
@@ -553,7 +557,17 @@ func (r *playoutResolver) segmentedBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
 ) ([]playout.Broadcast, error) {
-	epoch := playoutEpoch(channelID)
+	if r.channels == nil {
+		return nil, errors.New("read channel playout anchor: channel reader is not configured")
+	}
+	ch, err := r.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("read channel playout anchor %s: %w", channelID, err)
+	}
+	epoch, err := effectivePlayoutAnchor(ch)
+	if err != nil {
+		return nil, err
+	}
 
 	slots, window, err := r.cycleAt(ctx, channelID, from)
 	if err != nil {
@@ -1001,40 +1015,13 @@ func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
 	return int(r.maxChannels.Load())
 }
 
-// playoutEpoch anchors a channel's cycle on the wall clock.
-//
-// The anchor has to be STABLE, and the obvious candidates are all wrong:
-//
-//   - `time.Now()` is not an anchor, it is the query.
-//   - Process start would make every channel jump back to its first program on restart.
-//   - `Channel.UpdatedAt` is tempting — it is stored, and it moves when the lineup moves — but
-//     it is stamped on EVERY write including a routine reconcile sweep, so a background job
-//     would re-anchor a channel mid-program and the viewer would see it jump.
-//
-// So: a fixed reference instant plus a per-channel offset derived from the channel id, the same
-// deterministic-without-storage trick channels.PodSeed uses. Two channels created together
-// therefore do not march in lockstep, the anchor survives restarts and reconciles, and nothing
-// needs to be persisted or migrated.
-func playoutEpoch(channelID string) time.Time {
-	// Fixed, not computed: any drift in this value is a channel jumping. In the past so
-	// `now - epoch` is positive for every real clock.
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	offset := channelOffset(channelID) % int64(24*time.Hour)
-	return base.Add(time.Duration(offset))
-}
-
-// channelOffset hashes a channel id to a stable non-negative number (FNV-1a, as PodSeed does).
-func channelOffset(channelID string) int64 {
-	var h uint64 = 14695981039346656037
-	for _, b := range []byte(channelID) {
-		h ^= uint64(b)
-		h *= 1099511628211
+// effectivePlayoutAnchor enforces the persisted timeline origin. A live channel without
+// one is corrupt control-plane state; guessing would let the encoder and guide diverge.
+func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
+	if ch.PlayoutAnchor.IsZero() {
+		return time.Time{}, fmt.Errorf("channel %s has no playout anchor", ch.ID)
 	}
-	// Mask the sign bit rather than negating: negating math.MinInt64 overflows back to itself,
-	// which would make one channel-id-in-2^64 produce a negative offset and an epoch in the
-	// future — and a future epoch clamps to offset 0, silently pinning that channel to its
-	// first program forever.
-	return int64(h & 0x7fffffffffffffff)
+	return ch.PlayoutAnchor, nil
 }
 
 // playoutSpawner builds the SESSION encoder for a channel: the long-lived parent that reads the

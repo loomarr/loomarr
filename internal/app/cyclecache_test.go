@@ -47,6 +47,9 @@ type stubChannels struct {
 func (s *stubChannels) GetChannel(context.Context, string) (store.Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ch.PlayoutAnchor.IsZero() {
+		s.ch.PlayoutAnchor = time.Unix(1_700_000_000, 0).UTC()
+	}
 	return s.ch, nil
 }
 

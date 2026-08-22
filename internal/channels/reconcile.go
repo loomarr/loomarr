@@ -222,6 +222,11 @@ func (e *Engine) reconcileOnce(
 	drifted := staleCount > 0
 	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
 	nextStatus := e.statusFor(desired, drifted)
+	// Anchor a new channel at the instant its first playable deck becomes live.
+	// Once set, every later reconcile and backend transition preserves it.
+	if ch.PlayoutAnchor.IsZero() && (nextStatus == schedule.StatusLive || nextStatus == schedule.StatusDrifted) {
+		ch.PlayoutAnchor = e.now().UTC().Truncate(time.Second)
+	}
 	// Empty internal channels are absent from the tuner M3U. Crossing that membership
 	// edge in either direction therefore needs the stronger tuner re-scan, not merely a
 	// guide refresh. The reverse edge matters when a policy change filters a live channel

@@ -138,9 +138,36 @@ func TestReconcile_InternalMaterializesWithoutProgrammer(t *testing.T) {
 	if ch.Status != schedule.StatusLive || programCount(ch) != 1 || ch.Desired[0].LibraryItemID != "lib-1" {
 		t.Fatalf("internal desired state was not materialized: status=%s desired=%+v", ch.Status, ch.Desired)
 	}
+	wantAnchor := time.Unix(1_800_000_000, 0).UTC()
+	if !ch.PlayoutAnchor.Equal(wantAnchor) {
+		t.Fatalf("first-live playout anchor = %v, want %v", ch.PlayoutAnchor, wantAnchor)
+	}
 	wantDeadline := time.Unix(1_800_000_000, 0).UTC().Add(10 * time.Minute)
 	if !ch.ReconcileDeadline.Equal(wantDeadline) {
 		t.Fatalf("deadline = %v, want %v", ch.ReconcileDeadline, wantDeadline)
+	}
+}
+
+func TestReconcile_PreservesFirstLivePlayoutAnchor(t *testing.T) {
+	st := newStore(t)
+	clock := time.Unix(1_800_000_000, 0).UTC()
+	e := channels.New(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+		ReconcileTTL:                 10 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
+	}, func() time.Time { return clock }, testkit.Logger())
+	seedChannel(t, st, "anchored", 15, entry("movie:tmdb:1", "A"))
+
+	if err := e.Reconcile(context.Background(), "anchored"); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := st.GetChannel(context.Background(), "anchored")
+	clock = clock.Add(2 * time.Hour)
+	if err := e.Reconcile(context.Background(), "anchored"); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := st.GetChannel(context.Background(), "anchored")
+	if !again.PlayoutAnchor.Equal(first.PlayoutAnchor) {
+		t.Fatalf("reconcile moved anchor from %v to %v", first.PlayoutAnchor, again.PlayoutAnchor)
 	}
 }
 

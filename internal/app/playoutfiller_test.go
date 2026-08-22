@@ -78,7 +78,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		// A break gap FIRST, so a clock at the epoch lands inside it.
 		engine:         stubCycle{slots: slots},
 		channels:       accepted,
-		now:            func() time.Time { return playoutEpoch("ch1") },
+		now:            func() time.Time { return testPlayoutAnchor() },
 		tier:           func() string { return "balanced" },
 		encoder:        func() string { return "" },
 		capacity:       func() int { return 4 },
@@ -87,6 +87,8 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		fillerDir:      dir,
 	}
 }
+
+func testPlayoutAnchor() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
 
 // THE DEFECT THIS CLOSES: the finite ffmpeg child asks AiringNow again at every programme EOF.
 // AiringNow used to rebuild the authoring preview on each request, after recording the outgoing
@@ -104,7 +106,7 @@ func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
 	}}
 	r := &playoutResolver{
 		engine: preview, channels: accepted,
-		now: func() time.Time { return playoutEpoch("ch1") },
+		now: func() time.Time { return testPlayoutAnchor() },
 	}
 
 	airing, _, err := r.AiringNow(context.Background(), "ch1")
@@ -116,6 +118,27 @@ func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
 	}
 	if got := preview.count(); got != 0 {
 		t.Fatalf("CyclePreview called %d times, want 0 on the broadcast path", got)
+	}
+}
+
+func TestAiringNow_FreshChannelStartsAtPersistedActivation(t *testing.T) {
+	t.Parallel()
+	anchor := time.Unix(1_800_000_000, 0).UTC()
+	accepted := &stubChannels{}
+	accepted.ch.ID = "fresh"
+	accepted.ch.PlayoutAnchor = anchor
+	accepted.ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFlex, Title: "first", DurationMs: int64((30 * time.Minute) / time.Millisecond)},
+		{Kind: schedule.SlotFlex, Title: "second", DurationMs: int64((30 * time.Minute) / time.Millisecond)},
+	}
+	r := &playoutResolver{channels: accepted, now: func() time.Time { return anchor.Add(time.Second) }}
+
+	airing, _, err := r.AiringNow(context.Background(), "fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Title != "first" || airing.Offset != time.Second {
+		t.Fatalf("first tune = %q at %v, want first at 1s", airing.Title, airing.Offset)
 	}
 }
 
@@ -170,7 +193,7 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	r := fillerResolver(t, dir, pod)
 
 	// 6s into the break: past the 4s bumper, 2s into the first ad.
-	base := playoutEpoch("ch1")
+	base := testPlayoutAnchor()
 	r.now = func() time.Time { return base.Add(6 * time.Second) }
 
 	airing, _, err := r.AiringNow(context.Background(), "ch1")
@@ -408,7 +431,7 @@ func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
 	r.clipPlays = plays
 
 	// Three seconds into the break: the clip is already rolling.
-	base := playoutEpoch("ch1")
+	base := testPlayoutAnchor()
 	r.now = func() time.Time { return base.Add(3 * time.Second) }
 
 	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {

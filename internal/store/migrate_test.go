@@ -213,6 +213,39 @@ func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 	}
 }
 
+func TestChannelPlayoutAnchorMigrationSeedsExistingRows(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-anchor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 61); err != nil {
+		t.Fatalf("migrate through 61: %v", err)
+	}
+	const updatedAt int64 = 1_800_000_123
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO channels (id, name, number, strategy, status, updated_at)
+		 VALUES ('pre-anchor', 'Pre anchor', 162, 'sequential', 'live', ?)`, updatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 62); err != nil {
+		t.Fatalf("migrate through 62: %v", err)
+	}
+	var anchor int64
+	if err := db.QueryRowContext(ctx, `SELECT playout_anchor FROM channels WHERE id='pre-anchor'`).Scan(&anchor); err != nil {
+		t.Fatal(err)
+	}
+	if anchor != updatedAt {
+		t.Fatalf("backfilled playout anchor = %d, want %d", anchor, updatedAt)
+	}
+}
+
 func TestMigrationProviderRejectsUnknownDialect(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "unknown.db"))
 	if err != nil {
