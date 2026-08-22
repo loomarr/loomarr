@@ -90,7 +90,7 @@ func TestProgramArgs_MapsExactlyOneVideoAndOneAudioTrack(t *testing.T) {
 }
 
 // A child must EXIT at its slot boundary — that EOF is the sequencing signal the parent's
-// concat demuxer acts on. A child that played to the end of the file would overrun its slot.
+// block supervisor acts on. A child that played to the end of the file would overrun its slot.
 func TestProgramArgs_BoundsTheChildToItsSlot(t *testing.T) {
 	args := transcodeArgs(DefaultProfile(), testStreamURL, 0, 20*time.Minute)
 	if v, ok := argsAfter(args, "-t"); !ok || v != "1200.000" {
@@ -121,21 +121,6 @@ func TestProgramArgs_UsesChildReconnectTierNotTheParentOne(t *testing.T) {
 	}
 }
 
-// Conversely the parent needs exactly that flag, because it is the program-advance MECHANISM
-// and not a resilience nicety.
-func TestConcatArgs_ReconnectAtEofIsWhatAdvancesPrograms(t *testing.T) {
-	got := joined(ConcatArgs("http://loomarr:8080/playout/playlist?c=1"))
-
-	if !strings.Contains(got, "-reconnect_at_eof 1") {
-		t.Error("without -reconnect_at_eof the channel plays ONE program and stops — " +
-			"a child's EOF must be non-fatal")
-	}
-	// And it must not get the child tier's flags.
-	if strings.Contains(got, "-reconnect_streamed") {
-		t.Error("-reconnect_streamed is the CHILD's flag")
-	}
-}
-
 // `-reconnect*` are options on ffmpeg's HTTP PROTOCOL, not global ones. Against a local file
 // input they are a HARD FAILURE — "Option reconnect not found", exit 8, before ffmpeg opens
 // anything. Found by executing the args, not by reading them: the arg-shape tests asserted
@@ -144,98 +129,15 @@ func TestConcatArgs_ReconnectAtEofIsWhatAdvancesPrograms(t *testing.T) {
 // This is a production path, not a test artifact: filler clips are local files (§10), so an
 // unconditional flag list means every commercial break fails to start.
 func TestArgs_ReconnectFlagsOnlyForHttpInputs(t *testing.T) {
-	local := []struct {
-		name string
-		args []string
-	}{
-		{"child on a local file", transcodeArgs(DefaultProfile(), "/media/filler/clip.mp4", 0, time.Minute)},
-		{"parent on a local playlist", ConcatArgs("/var/lib/loomarr/list.ffconcat")},
-	}
-	for _, tc := range local {
-		if got := joined(tc.args); strings.Contains(got, "-reconnect") {
-			t.Errorf("%s carries a -reconnect flag; ffmpeg exits 8 with "+
-				"\"Option reconnect not found\": %q", tc.name, got)
-		}
+	local := transcodeArgs(DefaultProfile(), "/media/filler/clip.mp4", 0, time.Minute)
+	if got := joined(local); strings.Contains(got, "-reconnect") {
+		t.Errorf("local child carries a -reconnect flag; ffmpeg exits 8 with "+
+			"\"Option reconnect not found\": %q", got)
 	}
 
 	// …but an http input must still get them.
 	if got := joined(transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Minute)); !strings.Contains(got, "-reconnect 1") {
 		t.Error("an http child lost its reconnect flags — a network blip would kill the slot")
-	}
-	if got := joined(ConcatArgs("http://loomarr:8080/playout/playlist")); !strings.Contains(got, "-reconnect_at_eof 1") {
-		t.Error("an http parent lost -reconnect_at_eof — the channel would stop after one program")
-	}
-}
-
-// The protocol whitelist governs the playlist's ENTRIES, so it applies even when the playlist
-// itself is a local file — which is the shape the live test uses.
-func TestConcatArgs_ProtocolWhitelistIsUnconditional(t *testing.T) {
-	if got := joined(ConcatArgs("/var/lib/loomarr/list.ffconcat")); !strings.Contains(got, "-protocol_whitelist") {
-		t.Errorf("a local playlist still needs its entries whitelisted: %q", got)
-	}
-}
-
-// The parent RE-MUXES and never re-encodes. That is what makes one channel cost one encode
-// regardless of program count — and if it ever encoded, the children's normalization would
-// be pointless work.
-func TestConcatArgs_ParentCopiesAndNeverEncodes(t *testing.T) {
-	got := joined(ConcatArgs("http://loomarr:8080/playout/playlist?c=1"))
-	if !strings.Contains(got, "-c copy") {
-		t.Error("the parent must -c copy; encoding here would double the CPU per channel")
-	}
-	for _, forbidden := range []string{"-c:v", "-b:v", "-preset", "-crf"} {
-		if strings.Contains(got, forbidden) {
-			t.Errorf("parent carries encode arg %q — it must only re-mux: %q", forbidden, got)
-		}
-	}
-}
-
-// The concat demuxer refuses an http:// entry unless told the protocol is allowed, and
-// resolves entries relative to the playlist unless -safe 0. Both failures look like "the
-// playlist is broken" rather than naming the flag.
-func TestConcatArgs_AllowsHttpEntriesInThePlaylist(t *testing.T) {
-	got := joined(ConcatArgs("http://loomarr:8080/playout/playlist?c=1"))
-	if !strings.Contains(got, "-protocol_whitelist") || !strings.Contains(got, "http") {
-		t.Error("no protocol whitelist — the demuxer refuses http:// playlist entries")
-	}
-	if !strings.Contains(got, "-safe 0") {
-		t.Error("no -safe 0 — absolute URLs in the playlist are rejected")
-	}
-	if !strings.Contains(got, "-stream_loop -1") {
-		t.Error("no -stream_loop -1 — the parent must cycle the playlist forever")
-	}
-}
-
-// TWO entries, not one. The demuxer needs something to ADVANCE TO when the first hits EOF;
-// a one-line playlist ends the channel after the first program.
-func TestPlaylist_HasTwoIdenticalEntries(t *testing.T) {
-	const u = "http://loomarr:8080/playout/program?c=1&token=t"
-	got := Playlist(u)
-
-	if !strings.HasPrefix(got, "ffconcat version 1.0\n") {
-		t.Errorf("missing the ffconcat header: %q", got)
-	}
-	if n := strings.Count(got, "file '"); n != 2 {
-		t.Errorf("%d entries, want exactly 2 — the demuxer needs one to advance to", n)
-	}
-	if !strings.Contains(got, "file '"+u+"'") {
-		t.Errorf("entry does not carry the program URL: %q", got)
-	}
-}
-
-// A quote in the URL would terminate the `file '…'` directive and make the playlist parse as
-// something else entirely rather than failing cleanly.
-func TestPlaylist_EscapesQuotesAndStripsNewlines(t *testing.T) {
-	got := Playlist("http://h/p?c=it's&x=1\ninjected")
-
-	if strings.Contains(got, "injected\n") && strings.Count(got, "\n") > 3 {
-		t.Errorf("a newline in the URL added a playlist line: %q", got)
-	}
-	if strings.Contains(got, "?c=it's") {
-		t.Errorf("unescaped quote terminates the directive: %q", got)
-	}
-	if !strings.Contains(got, `'\''`) {
-		t.Errorf("want the ffconcat quote escape, got %q", got)
 	}
 }
 
@@ -404,8 +306,8 @@ func TestProgramArgs_DoesNotBurstTheShortTailBeforeABoundary(t *testing.T) {
 // progress text into it would corrupt the transport stream.
 func TestProgramArgs_ProgressIsStructuredAndOffStdout(t *testing.T) {
 	for name, args := range map[string][]string{
-		"child":  transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
-		"parent": ConcatArgs("http://loomarr:8080/playout/playlist?c=1"),
+		"child": transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
+		"mux":   BlockMuxArgs(),
 	} {
 		v, ok := argsAfter(args, "-progress")
 		if !ok || !strings.HasPrefix(v, "pipe:") {
@@ -420,9 +322,9 @@ func TestProgramArgs_ProgressIsStructuredAndOffStdout(t *testing.T) {
 // Both processes write the stream to stdout, which is what Process.Stdout fans out.
 func TestArgs_OutputGoesToStdout(t *testing.T) {
 	for name, args := range map[string][]string{
-		"child":  transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
-		"parent": ConcatArgs("http://loomarr:8080/playout/playlist?c=1"),
-		"card":   TestCardArgs(DefaultProfile(), "", "CH", ""),
+		"child": transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
+		"mux":   BlockMuxArgs(),
+		"card":  TestCardArgs(DefaultProfile(), "", "CH", ""),
 	} {
 		if args[len(args)-1] != "pipe:1" {
 			t.Errorf("%s: last arg = %q, want pipe:1", name, args[len(args)-1])
@@ -537,7 +439,7 @@ func TestProgramArgs_SoftwareDoesNotHardwareDecode(t *testing.T) {
 //
 // It is ALSO what keeps the CPU scale/pad chain working: `scale_cuda` has no pad option, so 4:3
 // content through a GPU-only chain emits 1440x1080 instead of a letterboxed 1920x1080 — which
-// breaks the concat parent's `-c copy` on any channel mixing aspect ratios (verified against
+// breaks the continuous mux's `-c copy` on any channel mixing aspect ratios (verified against
 // real ffmpeg).
 func TestProgramArgs_NoHwaccelOutputFormat(t *testing.T) {
 	for _, enc := range encoderPreference {

@@ -1288,7 +1288,7 @@ an encode genuinely could not fit.
 Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
 **tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an
 Airing and more than ten seconds remain. A child opened near the start of an Airing, or for its short
-remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the concat parent asks
+remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the block supervisor asks
 “what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
 return from a commercial block appear roughly ten seconds late.
 
@@ -1900,8 +1900,9 @@ boolean bolted onto it) is what did not scale. The model is two types with a pur
 Therefore the session's identity is **`(channelID, EncodePlan)`**, not `channelID` alone, and not a
 device target — many DeviceProfiles bucket into few EncodePlans, so encoder fan-out is bounded by the
 (small, fixed) bucket count, never by the number of distinct devices. It threads the whole chain: a
-viewer attaches *with* a plan; the session key carries it; the parent reads `/playout/playlist/{id}
-?plan=P`; each program child plans its copy against `P`. The tuner path (`/playout/stream`) sends no
+viewer attaches *with* a plan; the session key carries it; the block supervisor requests
+`/playout/program/{id}?plan=P`; each finite child plans its copy against `P` and acknowledges the
+session's pinned broadcast format. The tuner path (`/playout/stream`) sends no
 profile and resolves to `full`; the HLS/Watch remux resolves the client's profile to its plan.
 
 ⚠ **`?plan=` replaces `?target=` (V48).** The old `browser`/`mediaserver` token is retired; the
@@ -4937,7 +4938,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 - **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
 
   ⚠ **`testing` itself DOES reach the binary, through exactly one package, and that is now pinned rather than merely true.** `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package) is ordinary package code on purpose: both backend drivers must import `RunConformance`, SQLite in-package and Postgres behind a build tag, so the assertions cannot live in `_test.go`. `flag` follows `testing` in. The principle above is right, so `TestOnlyStoreLinksTestingIntoTheBinary` names the one permitted package and fails on a second — the exemption cannot spread by precedent. The exit is known and unblocked: verified 2026-08-10 that the suite references **zero** unexported store identifiers, so it can move to a sibling package the binary never reaches. That is a ~4,450-line mechanical move across the tree's highest-churn files, so it is sequenced, not taken opportunistically.
-- **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the ffconcat mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
+- **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the block-supervisor mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
 - **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
 - **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
 

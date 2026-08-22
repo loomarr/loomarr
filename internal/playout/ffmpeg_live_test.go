@@ -275,7 +275,7 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	}
 	// Resolution and framerate must match the profile EXACTLY, not approximately.
 	if !strings.Contains(s, itoa(p.Width)+","+itoa(p.Height)) {
-		t.Errorf("output is not %dx%d — the concat parent would reject it mid-stream:\n%s",
+		t.Errorf("output is not %dx%d — the continuous mux would reject it mid-stream:\n%s",
 			p.Width, p.Height, s)
 	}
 	if !strings.Contains(s, itoa(p.Framerate)+"/1") {
@@ -289,66 +289,6 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	// Stereo: a 4.0 or 5.1 source must be downmixed, or the layout varies between programs.
 	if !strings.Contains(s, ",2") {
 		t.Errorf("audio is not 2-channel — a varying layout breaks -c copy:\n%s", s)
-	}
-}
-
-// TWO programs encoded independently must be byte-compatible enough to CONCATENATE. This is
-// the actual invariant `-c copy` needs, and no arg-shape test can prove it: it requires
-// encoding twice and then remuxing the pair through the concat demuxer.
-//
-// Different seek offsets stand in for "two different programs" — the point is that two
-// separate ffmpeg invocations produced output the demuxer will splice.
-func TestLive_TwoProgramsConcatenateWithCopy(t *testing.T) {
-	bin := ffmpegBin(t)
-	probe := ffprobeBin(t)
-	url := embyStreamURL(t)
-	dir := t.TempDir()
-
-	p := DefaultProfile()
-	p.Encoder = Detect(context.Background(), bin, p, "").Chosen
-
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
-	defer cancel()
-
-	// Encode two "programs" from different offsets, exactly as two children would.
-	parts := []string{dir + "/a.ts", dir + "/b.ts"}
-	for i, offset := range []time.Duration{30 * time.Second, 300 * time.Second} {
-		args := replaceOutput(transcodeArgs(p, url, offset, 2*time.Second), parts[i])
-		proc, err := Start(ctx, bin, args, nil, nil)
-		if err != nil {
-			t.Fatalf("part %d start: %v", i, err)
-		}
-		go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-		if err := proc.Wait(); err != nil {
-			t.Fatalf("part %d failed: %v\n%s", i, err, proc.LastError())
-		}
-	}
-
-	// Now concatenate them with -c copy, which is what the parent does. If the children
-	// disagreed on any pinned property, THIS is where it surfaces.
-	list := dir + "/list.txt"
-	if err := os.WriteFile(list,
-		[]byte("file '"+parts[0]+"'\nfile '"+parts[1]+"'\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	joinedOut := dir + "/joined.ts"
-	cmd := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error",
-		"-f", "concat", "-safe", "0", "-i", list,
-		"-c", "copy", "-f", "mpegts", joinedOut)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("-c copy concatenation of two independently-encoded programs FAILED — "+
-			"the children are not normalizing identically: %v\n%s", err, out)
-	}
-
-	// The joined stream must be longer than either part, i.e. both actually made it in.
-	got, err := exec.CommandContext(ctx, probe, "-v", "error",
-		"-show_entries", "format=duration", "-of", "csv=p=0", joinedOut).Output()
-	if err != nil {
-		t.Fatalf("ffprobe: %v", err)
-	}
-	t.Logf("joined duration: %s", strings.TrimSpace(string(got)))
-	if d := strings.TrimSpace(string(got)); strings.HasPrefix(d, "0") || d == "" {
-		t.Errorf("joined stream has no duration (%q) — concatenation produced nothing", d)
 	}
 }
 
@@ -418,19 +358,40 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 		parts = append(parts, part)
 	}
 
-	playlist := dir + "/blocks.ffconcat"
-	contents := fmt.Sprintf("ffconcat version 1.0\nfile '%s'\nfile '%s'\n", parts[0], parts[1])
-	if err := os.WriteFile(playlist, []byte(contents), 0o600); err != nil {
+	joined := dir + "/channel.ts"
+	proc, err := StartPiped(ctx, bin, BlockMuxArgs(), nil, nil)
+	if err != nil {
+		t.Fatalf("channel mux start: %v", err)
+	}
+	joinedFile, err := os.Create(joined)
+	if err != nil {
 		t.Fatal(err)
 	}
-	joined := dir + "/channel.ts"
-	proc, err := Start(ctx, bin, replaceOutput(ConcatArgs(playlist), "-t", "4", joined), nil, nil)
-	if err != nil {
-		t.Fatalf("channel parent start: %v", err)
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(joinedFile, proc.Stdout)
+		copyDone <- copyErr
+	}()
+	for _, part := range parts {
+		input, openErr := os.Open(part)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		_, copyErr := io.Copy(proc.Stdin, input)
+		_ = input.Close()
+		if copyErr != nil {
+			t.Fatal(copyErr)
+		}
 	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
+	_ = proc.Stdin.Close()
 	if err := proc.Wait(); err != nil {
-		t.Fatalf("channel parent: %v\n%s", err, proc.LastError())
+		t.Fatalf("channel mux: %v\n%s", err, proc.LastError())
+	}
+	if err := <-copyDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := joinedFile.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	frames, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
@@ -555,52 +516,6 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	<-copyDone
 	_ = hls.wait()
 	_ = channel.Wait()
-}
-
-// The parent's concat args must be ACCEPTED by ffmpeg. The protocol whitelist and -safe 0 are
-// easy to get wrong, and both failures read as "the playlist is broken" rather than naming
-// the flag.
-//
-// This uses a local playlist of local files rather than HTTP, because the point is that the
-// demuxer + copy muxer accept the flag combination — the HTTP half is covered by the routes.
-func TestLive_ConcatArgsAreAcceptedByFfmpeg(t *testing.T) {
-	bin := ffmpegBin(t)
-	dir := t.TempDir()
-
-	// A short real-ish part to concatenate: the synthetic card, so this test needs no Emby.
-	part := dir + "/part.ts"
-	p := DefaultProfile()
-	p.Width, p.Height = 320, 180
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	cardArgs := replaceOutput(TestCardArgs(p, "", "", ""), "-t", "1", part)
-	proc, err := Start(ctx, bin, cardArgs, nil, nil)
-	if err != nil {
-		t.Fatalf("card start: %v", err)
-	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("card: %v\n%s", err, proc.LastError())
-	}
-
-	playlist := dir + "/list.ffconcat"
-	if err := os.WriteFile(playlist, []byte(Playlist(part)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// The real ConcatArgs, with the trailing pipe swapped for a bounded file. `-stream_loop
-	// -1` would otherwise run forever, so bound it with -t.
-	args := replaceOutput(ConcatArgs(playlist), "-t", "3", dir+"/out.ts")
-	proc, err = Start(ctx, bin, args, nil, nil)
-	if err != nil {
-		t.Fatalf("concat start: %v", err)
-	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("the parent's own args were rejected by ffmpeg: %v\nlast stderr: %s",
-			err, proc.LastError())
-	}
 }
 
 // replaceOutput swaps the trailing "pipe:1" for a bounded file output.
@@ -766,7 +681,7 @@ func frameHash(t *testing.T, bin, path string) string {
 //
 // A chunked finite response is the real programme contract: its unknowable encoded byte length
 // means net/http cannot send Content-Length. Go must observe that EOF and open the next block; it
-// must not delegate advancement to ffmpeg's concat demuxer, whose behavior changed in n9.
+// must not delegate advancement to a media-tool demuxer whose behavior can change by release.
 func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 	bin := ffmpegBin(t)
 

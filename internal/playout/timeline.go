@@ -7,16 +7,9 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
-// "What is airing right now?" — the question the ffconcat loop asks (§9.1).
-//
-// The mechanism (prior-art §1, Tunarr's): one long-lived `-c copy` ffmpeg reads a two-line
-// HTTP ffconcat playlist whose entries BOTH point at a "what's on now" endpoint. Each time
-// the concat demuxer opens it, that endpoint answers for the current wall-clock, spawns a
-// child encode for that one item, and streams finite MPEG-TS until it ends. The demuxer
-// advances, loops, asks again — and gets the next thing.
-//
-// So the program boundary is the concat demuxer's EOF-and-advance. There is no splicing
-// code, and this file is the whole sequencing layer.
+// "What is airing right now?" — the question the block supervisor asks at each finite EOF (§9.1).
+// The wall-clock answer, including its stable identity and start time, is what advances the
+// long-lived mux; process timing is never treated as scheduling truth.
 //
 // Deliberately NOT a new scheduler. `schedule.ComputeDesiredAt` already answers "what does
 // this channel air at instant T", honouring curation rules, seasonality, ordering,
@@ -64,8 +57,7 @@ type Airing struct {
 	// that begins when someone watches.
 	Offset time.Duration
 	// Remaining is how much of the item is left. The child encode is bounded by it, so the
-	// process exits at the item boundary and the concat demuxer advances — that EOF is the
-	// sequencing signal.
+	// process exits at the item boundary and the block supervisor resolves again.
 	Remaining time.Duration
 }
 

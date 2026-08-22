@@ -30,7 +30,7 @@ type BlockSource func(context.Context, string, EncodePlan) (Block, error)
 
 // BlockSpawner builds the production session spawner around finite, explicit blocks. One long-lived
 // copy mux keeps output timestamps monotonic; Go owns the EOF-and-advance loop so an Airing boundary
-// is no longer hidden inside ffconcat.
+// is no longer hidden inside a media-tool demuxer.
 func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger) Spawner {
 	return func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error) {
 		proc, err := StartPiped(ctx, ffmpeg, BlockMuxArgs(), log, nil)

@@ -175,7 +175,7 @@ type Server struct {
 	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
 	playoutSecretCurrent func(context.Context) (string, error)
 	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
-	// sequencing layer the concat demuxer re-opens per program. nil ⇒ the route 501s.
+	// finite-block layer the Go supervisor re-opens per program. nil ⇒ the route 501s.
 	playoutResolver PlayoutResolver
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.

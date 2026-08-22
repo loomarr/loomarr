@@ -48,7 +48,6 @@ const atCapacityDetail = "Loomarr is already using its measured transcode capaci
 //
 //	GET /playout/tuner.m3u          the channel list the media server registers
 //	GET /playout/stream/{id}        continuous MPEG-TS — what the TV actually plays
-//	GET /playout/playlist/{id}      the 2-line ffconcat the parent ffmpeg reads
 
 // playoutTokenParam is the query parameter carrying the device token.
 //
@@ -185,16 +184,6 @@ func (s *Server) playoutURL(kind, channelID string) string {
 	return fmt.Sprintf("%s/v1/playout/%s/%s?%s", base, kind, url.PathEscape(channelID), q.Encode())
 }
 
-// withPlan appends `&plan=<p>` to a playout URL that already carries a query (playoutURL always
-// sets the token, so there is always a `?`). It is the one place the plan is written on the internal
-// playlist→program hop, keyed off EncodePlan.String, so a program child inherits the session's served
-// plan (§9.1 V50: PlanBaseline=h264/TS, PlanHEVC8/10=HEVC/fMP4) and its copy/transcode decision
-// cannot drift from the parent's. Written explicitly (including PlanBaseline) so the served plan is
-// self-documenting in a log line and unambiguous about how the child must encode.
-func withPlan(rawURL string, t playout.EncodePlan) string {
-	return rawURL + "&" + playoutPlanParam + "=" + url.QueryEscape(t.String())
-}
-
 // streamHandler serves a channel as continuous MPEG-TS. This is what the television plays.
 //
 // Three properties make it a live stream rather than a file download, each with a failure mode
@@ -289,49 +278,6 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-// playlistHandler serves the two-line ffconcat playlist the parent ffmpeg reads.
-//
-// Both lines are the same program URL — that is the mechanism, not a mistake (prior-art §1).
-// The concat demuxer needs a second entry to advance to when the first hits EOF, and
-// `-stream_loop -1` cycles between them forever; each open of the program URL asks "what is
-// airing now?" and gets whatever is current.
-func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
-	channelID := r.PathValue("id")
-	if channelID == "" {
-		http.NotFound(w, r)
-		return
-	}
-	admission, ok := s.acquirePlayoutAdmission(w, r, channelID)
-	if !ok {
-		return
-	}
-	// The playlist performs no resolver or encoder work, so its lease is needed only for the
-	// fail-closed durable decision at this admission boundary.
-	admission.Release()
-	programURL := s.playoutURL("program", channelID)
-	if programURL == "" {
-		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
-			"Set Loomarr's public address in Settings → Server so streams can be reached.")
-		return
-	}
-
-	// Propagate the session's PLAN (§9.1 V48) down to the program URL: a baseline session's parent
-	// fetches `playlist?plan=baseline`, so every program it requests must also carry `baseline` and
-	// plan its copy for that bucket. The playlist and its programs are one codec audience; the plan is
-	// what makes them so. This is an INTERNAL parent→program hop — the plan was already fixed when the
-	// session was created (clientPlan enforced the safe default at the client edge), so ParseEncodePlan
-	// here round-trips the canonical token; an absent one degrades to PlanBaseline, the safe floor.
-	plan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
-	programURL = withPlan(programURL, plan)
-
-	// text/plain: ffmpeg does not care about the type, and there is no registered one for
-	// ffconcat. Nosniff so a browser that opens the URL cannot reinterpret the bytes.
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(playout.Playlist(programURL)))
 }
 
 // acquirePlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
@@ -744,22 +690,17 @@ func (s *Server) registerPlayout(api huma.API) {
 		Summary: "Playout XMLTV guide (device-authed)", Tags: []string{"playout"},
 	}, "XMLTV listings for every internally-played channel.", "application/xml"), s.guideHandler)
 
-	// The continuous MPEG-TS a TV/media server plays, plus the ffconcat + program the parent reads.
+	// The continuous MPEG-TS a TV/media server plays, plus the finite block endpoint its supervisor reads.
 	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-stream", Method: http.MethodGet, Path: "/v1/playout/stream/{id}",
 		Summary: "Channel MPEG-TS stream (device-authed)", Tags: []string{"playout"},
 	}, "A continuous transport stream of whatever the channel is playing now.",
 		"video/mp2t"), s.streamHandler)
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
-		OperationID: "playout-playlist", Method: http.MethodGet, Path: "/v1/playout/playlist/{id}",
-		Summary: "Channel ffconcat playlist (device-authed)", Tags: []string{"playout"},
-	}, "The ffconcat playlist the parent ffmpeg reads to sequence programs.",
-		"text/plain"), s.playlistHandler)
-	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per program.
+	// The sequencing layer (playoutprogram.go): the Go supervisor re-opens this once per block.
 	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-program", Method: http.MethodGet, Path: "/v1/playout/program/{id}",
 		Summary: "One program's MPEG-TS (device-authed)", Tags: []string{"playout"},
-	}, "One program's transport stream; the concat demuxer re-opens this per program.",
+	}, "One finite transport block; the channel supervisor re-opens this at each airing boundary.",
 		"video/mp2t"), s.programHandler)
 
 	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by

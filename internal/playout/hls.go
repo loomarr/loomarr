@@ -66,8 +66,8 @@ const hlsRelayMaxBytes = 128 << 20
 //
 // ⚠ Sized for the SLOWEST cold start, which is a heavy transcode, not a copy (§9.1 V47 made this
 // real). A cold browser session for an HEVC 1080p channel does a whole chain before the first
-// keyframe-aligned segment can be cut: parent spin-up → concat demuxer opens the program URL →
-// the program child's ffprobe → encoder init → enough transcoded frames to reach a keyframe → the
+// keyframe-aligned segment can be cut: mux spin-up → supervisor opens the program URL → the
+// program child's ffprobe → encoder init → enough transcoded frames to reach a keyframe → the
 // `-c copy` remux segments on it. Measured on the dev box, that exceeded 20s on the FIRST attach
 // (the session then warmed and every later attach was instant) — a real channel 502'd on the cold
 // hit while working perfectly a second later. 45s covers that chain and still fails a genuinely

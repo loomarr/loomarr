@@ -14,14 +14,10 @@ import (
 
 // GET /playout/program/{id} — "what is airing right now?" (§9.1, prior-art §1).
 //
-// THIS IS THE SEQUENCING LAYER, and it is worth being precise about why it looks so
-// unremarkable. The parent ffmpeg reads a two-line ffconcat playlist whose entries both point
-// here. Each time the concat demuxer opens this URL it gets a FINITE MPEG-TS stream of the one
-// program currently on; when that program ends the child exits, the demuxer sees EOF, advances
-// to the next (identical) entry, re-requests, and gets the NEXT program.
-//
-// So there is no splicing code, no scheduler loop, no "advance to the next item" state machine.
-// The demuxer's EOF-and-advance IS the program boundary, and this handler is the whole of it.
+// THIS IS THE FINITE BLOCK LAYER. The Go supervisor opens this URL, receives one MPEG-TS block,
+// writes it into the session's long-lived copy mux, and resolves again at EOF. Airing identity and
+// the first block's pinned broadcast format travel in internal headers so the supervisor never has
+// to infer a transition or decoder shape from anonymous bytes.
 //
 // It also means this handler is called REPEATEDLY for one channel — once per program, forever.
 // It must therefore be cheap, idempotent, and above all CONSISTENT: two calls at the same
@@ -163,7 +159,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		// The card, not a 502 (see serveCard): the usual cause is the media server being
 		// unreachable, which is upstream of us and typically transient — and writing an error
-		// document into the concat demuxer's stream would end the channel for every viewer
+		// document in place of MPEG-TS would leave every viewer without channel bytes
 		// rather than the one program we could not resolve.
 		if !s.serveCard(w, r, channelID, encPlan, profile, cardUnavailable, offlineCardDuration) {
 			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
@@ -298,27 +294,13 @@ func boundedCardDuration(remaining time.Duration) time.Duration {
 //
 // ⚠ **Why every non-fatal playout failure ends up here rather than at an HTTP error.**
 //
-// This handler's response body IS an entry in the parent ffmpeg's concat playlist. An RFC7807
-// problem document written to it is not "an error the client handles" — it is malformed MPEG-TS
-// arriving where the demuxer expected a program. Executed against the pinned BtbN n7.1 build the
-// image ships, a 5xx on an entry open ends the parent:
-//
-//	[in#0/concat] Error during demuxing: Server returned 5XX Server Error reply
-//	PARENT EXITED after 388ms  err=signal: segmentation fault
-//
-// and the parent dying takes the whole channel with it — session.close() drops every viewer and
-// the HLS remux directory is removed underneath the browser player. So ONE unreadable file used
-// to end the broadcast for everyone watching, until the next tune-in.
-//
-// Two comments in this file previously asserted the opposite — that a 502 was "RETRYABLE, the
-// demuxer will re-request, so a transient library outage heals itself". No such mechanism exists:
-// ConcatArgs sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP error
-// STATUS, and `reconnect_on_http_error` appears nowhere in the tree.
-//
-// The card is what a broadcaster actually does with a dead feed, and it works here for a reason
+// A problem document is not transport data. The supervisor rejects a non-2xx response and retries,
+// but a bounded card keeps the channel paced, visible and self-healing instead of turning a missing
+// source into repeated connection churn. The card is what a broadcaster does with a dead feed, and
+// it works here for a reason
 // specific to Loomarr's model: "what is on now" is re-derived from the wall clock on every
 // request, so the card needs no knowledge of how long the failed program had left. It occupies
-// offlineCardDuration, the demuxer re-asks, and the channel resumes at whatever is genuinely airing
+// offlineCardDuration, the supervisor re-asks, and the channel resumes at whatever is genuinely airing
 // by then — mid-program, which is correct for a wall clock. A transient media-server outage now
 // costs the viewer a caption for a few seconds instead of the channel.
 func (s *Server) serveCard(
@@ -550,17 +532,9 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 // failProgram writes the 502 for a program that could not be produced at all — every ladder step
 // exhausted AND the offline card itself unrenderable.
 //
-// ⚠ **This ends the channel, for everyone watching.** The comment here used to claim the opposite
-// ("Retryable by the demuxer (it re-requests), so a transient library outage self-heals"); it was
-// wrong, and it was wrong in the direction that made a 502 look cheap. A 5xx on a concat entry open
-// kills the parent ffmpeg — measured on the pinned n7.1 build, `Error during demuxing` then
-// `signal: segmentation fault` — which drops every viewer and removes the HLS remux directory.
-// `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP error
-// status, and `reconnect_on_http_error` is nowhere in this tree.
-//
-// So this is a LAST RESORT and there are exactly two callers, both of which have already tried the
-// card. Anything that reaches for it without doing so first is trading a broken program for a
-// broken channel.
+// This is a LAST RESORT and there are exactly two callers, both of which have already tried the
+// card. The supervisor will retry the failed block with bounded backoff, but viewers receive no new
+// transport bytes until one attempt succeeds.
 func (s *Server) failProgram(w http.ResponseWriter, r *http.Request, channelID, what, reason string) {
 	s.log.Warn("playout: program could not be produced — this channel will not play",
 		"channel", channelID, "program", what, "reason", reason)
@@ -570,7 +544,7 @@ func (s *Server) failProgram(w http.ResponseWriter, r *http.Request, channelID, 
 
 // copyAndFlush streams src to dst, flushing so the demuxer sees bytes promptly.
 //
-// Not plain io.Copy: Go buffers the response, and the concat demuxer does not treat the stream as
+// Not plain io.Copy: Go buffers the response, and the block supervisor does not treat the stream as
 // started until data arrives. Flushing per chunk keeps the handoff between programs from stalling
 // at the boundary — the point where a stall is most visible to a viewer.
 //

@@ -837,7 +837,7 @@ func (r *playoutResolver) airingFiller(
 // channel that goes dark because a metadata read timed out, which trades a small annoyance for a
 // total outage.
 //
-// One probe per PROGRAMME, not per request: the concat demuxer asks for a new program at each
+// One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
 func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamURL string) int {

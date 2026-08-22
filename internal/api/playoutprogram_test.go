@@ -296,7 +296,7 @@ func TestPlayoutProgram_RequiresTheDeviceToken(t *testing.T) {
 }
 
 // THE CORE BEHAVIOUR: one program's bytes, then the response ENDS. That EOF is what makes the
-// concat demuxer advance to the next program — a response that never ended would pin the
+// block supervisor advance to the next program — a response that never ended would pin the
 // channel to one program forever.
 func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 	enc := &fakeEncoder{output: "program-bytes"}
@@ -419,16 +419,9 @@ func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
 
 // A resolver failure shows the CARD, not a 502.
 //
-// ⚠ This test used to be TestPlayoutProgram_ResolverFailureIsRetryable and asserted the opposite,
-// on the stated premise that a 502 was "retryable — the demuxer will come back". That premise was
-// false: `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP
-// error STATUS, so a 5xx written into a concat entry ends the parent ffmpeg (measured on the
-// pinned n7.1 build: `Error during demuxing` then `signal: segmentation fault`) and drops every
-// viewer on the channel.
-//
 // The usual cause of a resolver failure is the media server being briefly unreachable — the single
 // most likely failure this handler sees. Trading the whole broadcast for it is the wrong trade, so
-// the handler now renders the card and the demuxer re-asks 30s later, by which time the outage has
+// the handler renders the card and the supervisor re-asks 30s later, by which time the outage has
 // usually passed.
 func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
 	enc := &fakeEncoder{output: "card-bytes"}
@@ -800,7 +793,7 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 	if cards := enc.cardPath(); len(cards) == 0 {
 		t.Error("a failing copy produced no offline card — the channel is left with nothing to play")
 	}
-	// The status is the point: a 5xx here is written INTO the concat demuxer's stream and kills the
+	// The status is the point: a terminal 5xx leaves the supervisor without a transport block and
 	// parent ffmpeg, taking every viewer with it. One bad file must not end the broadcast.
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200: a 5xx on a concat entry kills the parent and drops every viewer", resp.StatusCode)
