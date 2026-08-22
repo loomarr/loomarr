@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,7 +21,6 @@ import (
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
-	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/media"
@@ -818,140 +816,10 @@ func buildHandler(
 	imageSvc := suggestions.images
 	timelineThumbs := suggestions.timelineThumbs
 
-	// Filler & commercials (§10, Phase 12). Loomarr scans and probes the drop-folder
-	// ITSELF; Tunarr is consulted only to annotate clips with program uuids for
-	// Tunarr-backed filler-lists. Plus the AI-tagging job and the pod assembler wired
-	// into the scheduler.
-	//
-	// ⚠ This comment said filler "is a pure Loomarr↔Tunarr concern" and that "the media
-	// server is out of the filler path" until 2026-08-10. Neither has been true since
-	// sources became pluggable: `library` is a filler source kind alongside `folder`,
-	// `youtube` and `archive`. The same stale claim was in filler/clip.go and design.md §2.
-	var fillerSvc api.FillerService
-	var podPreview api.PodPreviewer
-	if st != nil {
-		fillerProg := programmer.NewDynamic(set.tunarrConfig())
-		// The catalog comes from OUR OWN scan of FILLER_DIR (§9.1), with Tunarr consulted only
-		// to annotate each clip with its program uuid for Tunarr-backed filler-lists. That
-		// ordering is the fix: previously Tunarr's scan DEFINED the catalog, so an install
-		// running internal playout with no Tunarr had no commercials at all.
-		//
-		// Tunarr is attached only when configured — with no tunarr.url there is nothing to
-		// annotate with, and the scan alone is a complete catalog.
-		// ⚠ CREATE the drop-folder if it is missing. `filler.dir` defaults to /data/filler
-		// (like database.url and backup.dir), and the scanner treats a missing ROOT as a
-		// FATAL error on purpose — that check exists so a typo'd path cannot present as an
-		// empty catalog. Without this, shipping a default would swap an honest "not
-		// configured" for a scan error on every fresh install: configured, and broken.
-		//
-		// Best-effort after Layout has proved the paths do not alias: a target that cannot be
-		// created is the operator's to fix, and scan reports it without pruning the catalog.
-		// Layout construction itself fails closed when filesystem identity cannot be inspected,
-		// because starting destructive intake on an unverifiable topology is unsafe.
-		if dir := fillerLayout.ClipDir(); dir != "" {
-			if err := os.MkdirAll(dir, 0o750); err != nil {
-				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
-					"dir", dir, "err", err)
-			}
-			// The setup health check probes the EFFECTIVE watch folder too. Materialise the derived
-			// default at boot so a fresh install is green before its first arrival; an explicitly
-			// configured, unusable watch path still fails visibly rather than being ignored.
-			watch := fillerLayout.WatchDir()
-			if err := os.MkdirAll(watch, 0o750); err != nil {
-				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
-					"dir", watch, "err", err)
-			}
-		}
-		// The catalog syncer + its scan sources (§10 V38c). Every switch inside is read LIVE, not
-		// captured — see buildSyncer for why. Its always-wired library scanner treats an empty
-		// connection as an optional source and begins using a saved connection on the next scan.
-		syncer := buildSyncer(st, set, fillerLayout, log, fillerProg, libraryClient)
-
-		// ⚠ The provider is returned alongside the tagger because the ingest pipeline's tag rung
-		// needs the SAME one (§10 V51b) — see buildTagger for why nil is the honest state for both.
-		taggerProvider, tagger := buildTagger(st, set, fillerLayout, log)
-		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no
-		// longer exists. A nil fetcher is the NORMAL state on loomarr:latest, not an error — the
-		// `ingest` feature gate reports it. See buildFetcher for the two-downloader rule.
-		fetcher := buildFetcher(set, fillerLayout, log)
-		splitter := buildSplitter(st, set, fillerLayout, log)
-		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
-		// below. The pipeline needs the vision provider and the splitter, which are wired further
-		// down, while this adapter is needed further up — so one of the two has to be completed
-		// late. A pointer receiver would avoid the second assignment, but every other adapter here
-		// is a value and making one of them special is worse than one honest re-assignment.
-		fillerAdapter := fillerServiceAdapter{
-			syncer: syncer, tagger: tagger, fetcher: fetcher,
-			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
-			sources: st, now: time.Now,
-			splitter: splitter, splitClips: fillerSplitStoreAdapter{st},
-		}
-
-		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to
-		// build a matched filler-list per channel (attached to Tunarr on reconcile).
-		// The SAME adapter instance backs the §12 preview endpoint, so preview and
-		// reconcile share one assembler and one policy — they cannot drift.
-		podAdapter := buildPodAdapter(st, set, log)
-		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
-		// Commercial breaks for internal playout (§10): the SAME pod assembler the API preview
-		// and the reconciler use, so the ad that plays is the one the channel page promised.
-		// Assigned here rather than at construction because the resolver is built with the
-		// channel engine (above) while the pod adapter needs the filler catalog (here).
-		if playoutRes != nil {
-			playoutRes.pods = podPreview
-		}
-		if engine, ok := channelSvc.(*channels.Engine); ok {
-			engine.WithPods(podAdapter)
-			log.Info("filler pod assembler wired into the scheduler")
-		}
-
-		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
-		// shared heartbeat. Interval key: filler.sync_every.
-		jobReg.Add(fillerSyncJob(syncer))
-		log.Info("filler catalog sync registered", "dir", fillerLayout.ClipDir(), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
-
-		fillerPipeline := buildPipeline(st, set, fillerLayout, log, emitter, splitter, taggerProvider)
-		jobReg.Add(fillerPipelineJob(fillerPipeline))
-		// The operator-triggered paths now reach the same machinery as the cron driver — see the
-		// note on `fillerAdapter` above for why this lands here rather than at construction.
-		fillerAdapter.pipeline = fillerPipeline
-
-		// The split-review sweep (§10 V54): reels whose leftover cuts nobody reviewed expire, and
-		// their recordings are reclaimed. ⚠ No adapter — `SweepStore` is a pure SUBSET of
-		// `store.Store`. The clip dir is the same containment boundary
-		// the splitter uses; the window is read live so a change applies on the next run.
-		jobReg.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-			fillerSweepStoreAdapter{st}, fillerLayout.ClipDir(),
-			func() time.Duration { return set.dur("filler.split.review_window") },
-			time.Now, log)))
-
-		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
-		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
-		// next run to honour it, not the next restart.
-		//
-		// ⚠ `filler.fetch.every == 0` disables the whole job. It is checked inside Run rather
-		// than by skipping registration, so the Tasks page still shows the row: an omitted row is
-		// indistinguishable from a job that runs fine and has never failed — the same call V12
-		// made for backups on Postgres.
-		autoFetch := filler.NewFetcher(
-			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
-			archiveDiscoverAdapter{}, fillerAdapter, fillerLayout.ClipDir(),
-			filler.FetchLimits{
-				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
-				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
-				MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
-			}, log,
-		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
-		fillerAdapter.autoFetch = autoFetch
-		fillerSvc = fillerAdapter
-		jobReg.Add(fillerFetchJob(autoFetch))
-		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
-
-		// (The scheduled compilation split job registered here until V51b. It is now the `split`
-		// rung of the pipeline above — same detection, same auto-confirm gate, but its output is
-		// SPAWNED into the pipeline so each cut advert runs the whole ladder for itself instead of
-		// waiting for whichever sweep noticed it next.)
-	}
+	fillers := buildFillerSubsystem(
+		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
+	)
+	fillerSvc, podPreview := fillers.service, fillers.preview
 
 	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`
 	// and `backup.retain` were declared without in V4. Writes one snapshot into
