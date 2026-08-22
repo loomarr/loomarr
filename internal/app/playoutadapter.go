@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -1024,11 +1026,11 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 	return ch.PlayoutAnchor, nil
 }
 
-// playoutSpawner builds the SESSION encoder for a channel: the long-lived parent that reads the
-// ffconcat playlist and re-muxes with `-c copy` (prior-art §1).
+// playoutSpawner builds the SESSION encoder for a channel: a block-aware Go supervisor feeds one
+// long-lived `-c copy` mux. Each finite HTTP response is an explicit Airing boundary.
 //
 // This is the parent, not a program child. It never re-encodes — all the encoding happens in the
-// per-program children the concat demuxer requests — which is what makes one channel cost one
+// per-program children the supervisor requests — which is what makes one channel cost one
 // encode regardless of how many programs it plays.
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
@@ -1036,17 +1038,26 @@ func playoutSpawner(
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := publicURL()
 		if base == "" {
-			// Without an absolute base the parent cannot fetch its own playlist: ffmpeg is a
-			// separate process with no notion of "the origin this came from". Failing here with
-			// a clear message beats emitting a URL that fails inside ffmpeg.
-			return nil, fmt.Errorf("playout: server.public_url is not set, so ffmpeg cannot reach the playlist")
+			return nil, fmt.Errorf("playout: server.public_url is not set, so the session cannot open blocks")
 		}
-		// The playlist URL carries the session's TARGET (§9.1 V47), so every program the concat
-		// demuxer requests from it plans its copy for the right codec audience. Two sessions of one
-		// channel (a browser one, a tuner one) read two different playlist URLs that differ only here.
-		playlistURL := fmt.Sprintf("%s/v1/playout/playlist/%s?token=%s&target=%s",
-			strings.TrimRight(base, "/"), url.PathEscape(channelID), url.QueryEscape(token()),
-			url.QueryEscape(target.String()))
-		return playout.Start(ctx, ffmpegBin, playout.ConcatArgs(playlistURL), log, nil)
+		source := playout.BlockSource(func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (io.ReadCloser, error) {
+			programURL := fmt.Sprintf("%s/v1/playout/program/%s?token=%s&plan=%s",
+				strings.TrimRight(base, "/"), url.PathEscape(blockChannel), url.QueryEscape(token()),
+				url.QueryEscape(blockPlan.String()))
+			req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return nil, err
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				_ = resp.Body.Close()
+				return nil, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
+			}
+			return resp.Body, nil
+		})
+		return playout.BlockSpawner(ffmpegBin, source, log)(ctx, channelID, target)
 	}
 }

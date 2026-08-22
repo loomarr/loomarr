@@ -652,35 +652,10 @@ func frameHash(t *testing.T, bin, path string) string {
 
 // CAN THIS FFMPEG ADVANCE A CONCAT PLAYLIST PAST A CHUNKED HTTP ENTRY?
 //
-// This is a CAPABILITY test, not a version assertion, and the distinction is the point: the answer
-// depends on the ffmpeg binary in front of it, and there are three different ones in play (the
-// image pins n7.1, CI installs Ubuntu's apt build, a developer has whatever is on PATH). Asking the
-// binary is the only honest check — the same rule capability.go and filters.go already follow.
-//
-// ⚠ **What it guards.** `/v1/playout/program/{id}` streams a LIVE encode, so Go's net/http sends it
-// chunked with no `Content-Length` — and it can never send one, because the byte length of a live
-// encode is unknowable. On ffmpeg **n9.0** that is fatal to the whole mechanism:
-//
-//	[http] Stream ends prematurely at 85916, should be 18446744073709551615
-//	[in#0/concat] Error during demuxing: Input/output error
-//
-// 18446744073709551615 is UINT64_MAX — ffmpeg 9 treats an unknown-length body as INFINITE, so any
-// termination reads as premature, the demuxer raises EIO and STOPS rather than opening the next
-// playlist entry. A channel then plays one programme forever.
-//
-// Measured 2026-08-09 on an identical minimal harness (a static file + a throwaway server, no
-// Loomarr code): n7.1.5 chunked → 5 entry fetches, advances; n9.0 chunked → 1 fetch, 3× EIO;
-// n9.0 with Content-Length → 5 fetches, advances. So it is the missing length, not HTTP itself.
-//
-// ⚠ **This is a hard blocker on bumping FFMPEG_TAG in the Dockerfile.** Nothing else in the tree
-// would catch it: `-stream_loop -1` REPLAYS the buffered programme, so the parent still emits
-// continuous output and exits 0, and the EIO lines are swallowed by `-loglevel error`. The symptom
-// is a channel stuck on one programme, not a failure. Run this before changing the pin.
-//
-// Mitigations tested and REFUTED on 9 — do not spend time re-trying them: dropping `-reconnect` /
-// `-reconnect_at_eof`; `-seekable 0`; connection-close (HTTP/1.0) framing; `-ignore_io_errors`
-// (HLS-only, not a concat option); `-multiple_requests 1` (hangs).
-func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
+// A chunked finite response is the real programme contract: its unknowable encoded byte length
+// means net/http cannot send Content-Length. Go must observe that EOF and open the next block; it
+// must not delegate advancement to ffmpeg's concat demuxer, whose behavior changed in n9.
+func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 	bin := ffmpegBin(t)
 
 	// One short MPEG-TS, shaped like a program child's output.
@@ -698,13 +673,7 @@ func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
 	}
 
 	var fetches atomic.Int64
-	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/playlist") {
-			// The same two-identical-entries shape the real playlist endpoint emits.
-			_, _ = fmt.Fprintf(w, "ffconcat version 1.0\nfile '%s/seg'\nfile '%s/seg'\n", srv.URL, srv.URL)
-			return
-		}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fetches.Add(1)
 		// NO Content-Length, flushed per chunk — byte-for-byte how pipeChild streams a live
 		// programme, which is what makes this a faithful test rather than a synthetic one.
@@ -721,31 +690,32 @@ func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// The REAL ConcatArgs, bounded to a file so the run terminates.
-	args := replaceOutput(ConcatArgs(srv.URL+"/playlist"), "-t", "6", t.TempDir()+"/joined.ts")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	proc, err := Start(ctx, bin, args, nil, nil)
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (io.ReadCloser, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if fetches.Load() >= 3 {
+			// Let the third body reach the mux before ending the live session.
+			time.AfterFunc(100*time.Millisecond, cancel)
+		}
+		return resp.Body, nil
+	})
+	proc, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
-		t.Fatalf("parent start: %v", err)
+		t.Fatalf("block spawner start: %v", err)
 	}
 	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if werr := proc.Wait(); werr != nil {
-		t.Fatalf("parent failed: %v\nlast stderr: %s", werr, proc.LastError())
-	}
+	_ = proc.Wait() // context cancellation ends this intentionally live process.
 
-	// 6s of output over 2s entries needs the demuxer to have opened a new entry at least twice.
-	if got := fetches.Load(); got < 2 {
-		v, _ := exec.CommandContext(ctx, bin, "-version").Output()
-		ver := strings.SplitN(strings.TrimSpace(string(v)), "\n", 2)[0]
-		t.Fatalf("this ffmpeg fetched the entry %d time(s) and never advanced.\n"+
-			"  %s\n"+
-			"  It cannot read a chunked (no Content-Length) concat entry to EOF, which is what\n"+
-			"  /v1/playout/program/{id} necessarily serves — so EVERY internal-playout channel on\n"+
-			"  this binary plays one programme and then repeats it.\n"+
-			"  Known good: n7.1.x (what the Dockerfile pins). Known bad: n9.0.\n"+
-			"  This is not a Loomarr regression; it is the ffmpeg on PATH.", got, ver)
+	if got := fetches.Load(); got < 3 {
+		t.Fatalf("block source opened %d times, want at least 3 finite blocks", got)
 	}
 }
 

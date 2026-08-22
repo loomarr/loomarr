@@ -57,7 +57,10 @@ type Progress struct {
 // the MPEG-TS the session fans out to viewers.
 type Process struct {
 	Stdout io.ReadCloser
-	proc   *proctree.Supervisor
+	// Stdin is populated only for a process whose caller owns a live input stream (the channel
+	// mux). Ordinary finite encoders leave it nil.
+	Stdin io.WriteCloser
+	proc  *proctree.Supervisor
 
 	log *slog.Logger
 
@@ -71,15 +74,43 @@ type Process struct {
 // Signalling only the parent leaves children running — the exact bug viewra has, where start
 // uses Setpgid but the watchdog calls Process.Kill().
 func Start(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
+	return startProcess(ctx, bin, args, log, onProgress, false)
+}
+
+// StartPiped launches ffmpeg with caller-owned stdin. The returned Process owns both pipe ends;
+// closing Stdin is the clean EOF signal that lets the mux flush and exit.
+func StartPiped(ctx context.Context, bin string, args []string, log *slog.Logger, onProgress func(Progress)) (*Process, error) {
+	return startProcess(ctx, bin, args, log, onProgress, true)
+}
+
+func startProcess(
+	ctx context.Context, bin string, args []string, log *slog.Logger,
+	onProgress func(Progress), piped bool,
+) (*Process, error) {
 	cmd := exec.Command(bin, args...) //nolint:gosec // args are built by this package, never user text
+	var stdin io.WriteCloser
+	var err error
+	if piped {
+		stdin, err = cmd.StdinPipe()
+		if err != nil {
+			return nil, fmt.Errorf("stdin pipe: %w", err)
+		}
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		if stdin != nil {
+			_ = stdin.Close()
+		}
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	progress, err := wireProgress(cmd)
 	if err != nil {
+		_ = stdout.Close()
+		if stdin != nil {
+			_ = stdin.Close()
+		}
 		return nil, err
 	}
 
@@ -91,14 +122,22 @@ func Start(ctx context.Context, bin string, args []string, log *slog.Logger, onP
 		stderr, err = cmd.StderrPipe()
 		if err != nil {
 			progress.closeFailure()
+			_ = stdout.Close()
+			if stdin != nil {
+				_ = stdin.Close()
+			}
 			return nil, fmt.Errorf("stderr pipe: %w", err)
 		}
 	}
 
-	p := &Process{Stdout: stdout, log: log}
+	p := &Process{Stdout: stdout, Stdin: stdin, log: log}
 	supervised, err := proctree.Start(ctx, cmd)
 	if err != nil {
 		progress.closeFailure()
+		_ = stdout.Close()
+		if stdin != nil {
+			_ = stdin.Close()
+		}
 		if stderr != nil {
 			_ = stderr.Close()
 		}
