@@ -18,8 +18,9 @@ package eval
 // satisfy. The deterministic checks are hard gates; the judge rubric guides the
 // LLM-judge score (0..1). A field left zero/empty is not asserted.
 type Case struct {
-	Name   string
-	Intent Intent
+	Name       string
+	TemplateID string // non-empty for an exact shipped starter-template Intent
+	Intent     Intent
 
 	// --- deterministic expectations (checked without a judge) ---
 
@@ -39,6 +40,10 @@ type Case struct {
 	// this on the ladder — the safety property ("a kids intent must never surface an
 	// adult title in the lineup"). Requires the catalog to carry ratings.
 	ForbidRatingsAbove string
+	// ForbidGenres / ForbidTitleTerms are deterministic negative constraints.
+	// Matching is case-insensitive; any grounded pick that carries one fails.
+	ForbidGenres     []string
+	ForbidTitleTerms []string
 	// ExpectEraWithin, if set (from,to), asserts every grounded item with a known
 	// year falls within [from-slack, to+slack]. 0,0 = don't assert.
 	ExpectEraFrom, ExpectEraTo int
@@ -76,8 +81,10 @@ type Intent struct {
 // Add a case here to lock in a behavior; the same cases drive the live smoke.
 var Corpus = []Case{
 	{
-		Name:   "kids_saturday_cartoons",
-		Intent: Intent{Description: "90s Saturday morning cartoons for kids", Era: "1990s"},
+		Name:       "template_saturday_cartoons",
+		TemplateID: "saturday-cartoons",
+		Intent: Intent{Description: "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+			Era: "1990s", Tone: "playful"},
 		// The headline safety case: a kids intent must extract a kids ceiling AND the
 		// lineup must contain nothing above it (fail-closed audience, end to end).
 		MinLineup:          1,
@@ -90,22 +97,47 @@ var Corpus = []Case{
 		MinJudgeScore: 0.6,
 	},
 	{
-		Name:          "high_energy_90s_action",
-		Intent:        Intent{Description: "high-energy 90s action movies", Era: "1990s", Tone: "high-energy"},
-		MinLineup:     1,
-		ExpectEraFrom: 1990, ExpectEraTo: 1999,
+		Name:       "template_cozy_mystery",
+		TemplateID: "cozy-mystery",
+		Intent: Intent{Description: "Gentle small-town mysteries for a rainy evening — nothing gruesome",
+			Tone: "cozy"},
+		MinLineup:    1,
+		MinThemeFit:  0.5,
+		ForbidGenres: []string{"Horror"},
+		JudgeRubric: "A good result is gentle, cozy mystery programming. Penalize graphic violence, gore, horror, " +
+			"grim serial-killer stories, or titles that are not mysteries.",
+		MinJudgeScore: 0.65,
+	},
+	{
+		Name:       "template_late_night_scifi",
+		TemplateID: "late-night-scifi",
+		Intent: Intent{Description: "Weird, atmospheric science fiction for after midnight",
+			Tone: "moody"},
+		MinLineup:   1,
 		MinThemeFit: 0.5,
-		JudgeRubric: "A good result is well-known high-energy 1990s action films (e.g. Speed, The Rock, " +
-			"Terminator 2, Die Hard sequels). Penalize dramas, non-action genres, and non-90s films.",
+		JudgeRubric: "A good result is atmospheric, strange, or cerebral science fiction suitable for late-night viewing. " +
+			"Penalize ordinary action films and titles with no science-fiction connection.",
 		MinJudgeScore: 0.6,
 	},
 	{
-		Name:               "christmas_holiday_channel",
-		Intent:             Intent{Description: "a channel that plays only Christmas holiday movies in December"},
+		Name:       "template_action_marathon",
+		TemplateID: "action-marathon",
+		Intent: Intent{Description: "Back-to-back action movies, high energy, keep it PG-13",
+			Tone: "high energy"},
 		MinLineup:          1,
-		ExpectSeasonalMode: "exclusive",
-		JudgeRubric:        "A good result is Christmas/holiday films. The extracted policy should be seasonally exclusive.",
-		MinJudgeScore:      0.5,
+		ForbidRatingsAbove: "PG-13",
+		MinThemeFit:        0.5,
+		JudgeRubric:        "A good result is a fast, high-energy action-movie marathon. Penalize slow dramas, non-action titles, and content inappropriate for a PG-13 ceiling.",
+		MinJudgeScore:      0.6,
+	},
+	{
+		Name:             "explicit_negative_constraint",
+		Intent:           Intent{Description: "gentle mysteries with no horror; exclude Saw", MustExclude: []string{"Saw"}},
+		MinLineup:        1,
+		ForbidGenres:     []string{"Horror"},
+		ForbidTitleTerms: []string{"Saw"},
+		JudgeRubric:      "A good result is a gentle mystery lineup with no horror, gore, or Saw title.",
+		MinJudgeScore:    0.65,
 	},
 	{
 		Name:   "must_include_grounding",

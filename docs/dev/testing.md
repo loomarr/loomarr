@@ -37,12 +37,23 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | e2e | `make e2e` | The embedded SPA through first-run | CI |
 | ffmpeg | `make test-ffmpeg` | Programmes sequence through real ffmpeg | manual |
 | LLM eval | `make eval` | Real intents against a real model | manual |
+| LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
 | Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
 | Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
 | Maintainer smoke | `make smoke` | The real stack end to end | manual |
 
 Store conformance is one suite over two backends — don't fork the assertions per dialect.
+
+### Semantic evaluation versus certification
+
+`make eval` is exploratory and exits cleanly when its real library, TMDB, or LLM configuration is
+absent. `make eval-cert` is an assertion: missing configuration, a skipped/unexecuted case, a hard
+grounding or negative-constraint failure, a required judge failure, or an unwritable scorecard makes
+the command fail. It always bypasses Go's test cache and writes
+`$LOOMARR_ARTIFACT_DIR/semantic-certification.json` unless `LOOMARR_EVAL_OUT` selects another path.
+The scorecard records its schema/corpus version and provider/model, never credentials. It certifies
+that one configured model and catalog snapshot; it is not part of the hermetic `make check` gate.
 
 ### Rust dependency review
 
