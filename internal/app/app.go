@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/backendtransition"
@@ -30,21 +29,17 @@ import (
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/media"
-	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/proposalworkflow"
-	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
-	"github.com/mantonx/loomarr/internal/retention"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
-	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
@@ -182,175 +177,20 @@ func buildHandler(
 	owner *generationLifecycle,
 	capturePlayoutResolver func(*playoutResolver),
 ) (http.Handler, error) {
-	// Readiness is true only once the store is connected + migrated (§17).
-	ready := func() (bool, string) {
-		if st == nil {
-			return false, "no store configured"
-		}
-		if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && err != store.ErrNotFound {
-			return false, "store unreachable: " + err.Error()
-		}
-		return true, "ok"
+	foundation, err := buildFoundation(rootCtx, st, log, ov)
+	if err != nil {
+		return nil, err
 	}
+	ready := foundation.ready
+	set, desiredSet := foundation.set, foundation.desiredSet
+	appliedRestartSettings, fillerLayout := foundation.appliedRestartSettings, foundation.fillerLayout
+	secrets, log := foundation.secrets, foundation.log
+	libraryClient, tmdbClient := foundation.libraryClient, foundation.tmdbClient
+	refreshSecretRedactor, readGeneratedSecret := foundation.refreshSecretRedactor, foundation.readGeneratedSecret
+	eventBus, emitter := foundation.eventBus, foundation.emitter
+	jobReg, activityRec := foundation.jobs, foundation.activity
 
-	// State gauges for /metrics (§17): read from the store on scrape. Non-fatal —
-	// a registration failure just omits these gauges, it never blocks boot.
-	if st != nil {
-		if err := metrics.RegisterStoreCollector(st, time.Now); err != nil {
-			log.Warn("metrics: store collector not registered", "err", err)
-		}
-	}
-
-	// Settings subsystem (config-design §3): once the store is open, build the
-	// registry + resolution service (env pins validated → boot error), the
-	// generated secrets, and the redactor. Every subsystem below reads config
-	// through `set` (env > db > default) instead of raw cfg fields. Most values
-	// remain live; generation-scoped storage is frozen below, while connection
-	// adapters take complete per-operation snapshots so a saved flavor/URL/token takes effect on
-	// the next call. Without a store we can't
-	// resolve DB overrides, so fall back to env-only defaults via a store-less
-	// service is out of scope here — the app already isn't ready without a store.
-	var set resolved
-	var desiredSet resolved
-	var appliedRestartSettings map[string]string
-	var fillerLayout filler.Layout
-	var secrets *settings.Secrets
-	var secretRedactor *settings.Redactor
-	if st != nil {
-		r, sec, red, slog2, serr := bootSettings(context.Background(), st, log)
-		if serr != nil {
-			return nil, serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
-		}
-		set, secrets, secretRedactor, log = r, sec, red, slog2
-		desiredSet = set
-		set, appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
-		fillerLayout, serr = filler.NewLayout(set.str("filler.dir"), set.str("filler.watch_dir"))
-		if serr != nil {
-			return nil, fmt.Errorf("resolve filler storage layout: %w", serr)
-		}
-		canonicalFillerRestartBaseline(appliedRestartSettings, fillerLayout)
-		slog.SetDefault(log)
-	}
-	// One always-wired media-library adapter serves every capability in this generation.
-	// Its connection source resolves the complete live {flavor,url,token} triple once per
-	// operation, so an empty install can be configured, rotated, or cleared without rebuilding
-	// this handler.
-	var libraryClient *library.Client
-	if st != nil {
-		libraryClient = library.NewDynamic(set.libraryConn(), instanceDeviceID(rootCtx, st))
-	}
-	// One always-constructed dynamic TMDB adapter serves every TMDB-backed capability
-	// and the setup probe. Its credential resolves once per operation, so configure,
-	// rotate, and clear all take effect without rebuilding the handler. Tests may move
-	// only the external origin; they exercise this same production adapter and setting.
-	var tmdbClient *tmdb.Client
-	if st != nil {
-		key := func() string { return set.str("tmdb.api_key") }
-		if ov.TMDBBaseURL != "" {
-			tmdbClient = tmdb.NewDynamicWithBase(ov.TMDBBaseURL, key)
-		} else {
-			tmdbClient = tmdb.NewDynamic(key)
-		}
-	}
-	refreshSecretRedactor := func() {
-		if secretRedactor != nil && set.svc != nil && secrets != nil {
-			secretRedactor.Set(collectSecrets(settings.NewRegistry(), set.svc, secrets))
-		}
-	}
-	readGeneratedSecret := func(ctx context.Context, secret settings.GeneratedSecret) (string, error) {
-		return currentGeneratedSecret(ctx, store.DialectOf(st), secrets, secret, refreshSecretRedactor)
-	}
-
-	// The event bus (§7 SSE) and the domain-event emitter (§4 inv. 2) are built up
-	// front so both the webhook ingest handler and the provisioning reconciler can
-	// fan their terminal transitions to the SAME sink. The emitter routes each
-	// event to (a) the channel scheduler's backfill (OnAvailability → recompute +
-	// push the affected channels) and (b) the bus (→ SSE frame for the UI). The
-	// scheduler engine doesn't exist yet at this point, so the emitter takes it
-	// later via setEngine; until then (and if the scheduler is unconfigured) events
-	// still reach the bus. Events are a latency optimization — the channel sweep
-	// reconciles regardless — so a nil engine is safe, never a correctness gap (§9).
-	eventBus := events.NewBus()
-	emitter := &eventEmitter{bus: eventBus}
-
-	// The background-job scheduler (§18.1): all recurring work — reconcile, the channel
-	// sweep, filler sync, session cleanup, and (later phases) the availability pollers —
-	// registers here as a named job with a settings-driven interval, then runs under ONE
-	// heartbeat loop that is also on-demand-triggerable ("Run now"). Jobs are appended to
-	// this registry as each subsystem is wired below; the scheduler is built + started once
-	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
-	jobReg := scheduler.NewRegistry()
-	var episodeRefresh *reconcile.EpisodeRefresh
-
-	// Dashboard activity feed (§12, V32). One recorder, passed to every subsystem that
-	// records a line — nil-safe, so a store-less boot records nothing rather than needing a
-	// guard at each write point.
-	var activityRec *activity.Recorder
-	if st != nil {
-		activityRec = activity.New(st, log).WithNotifier(emitter)
-	}
-
-	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
-	// constructed given a store so acquisitions process the moment a requester is
-	// configured — no restart (§8.1). Its dynamic seerr/library connections are empty
-	// until configured; with nothing `wanted` it's a no-op. Session cleanup is part of
-	// daily housekeeping rather than piggybacking the reconcile ticker.
-	if st != nil {
-		lib := libraryClient
-		req := set.requesterFor() // Seerr or direct Sonarr/Radarr, per requester.provider (§6)
-		rec := reconcile.NewDynamic(st, req, func() reconcile.LibraryLookup {
-			return lib.Snapshot()
-		}, emitter, reconcile.Config{
-			RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
-		}, time.Now, log)
-		// The reconcile tick is now a scheduler job (§18.1) — same Tick logic, driven by the
-		// shared heartbeat on a cron schedule instead of its own ticker.
-		jobReg.Add(rec.Job())
-		// Retention for the accumulating tables (§5, §18.1). The purge POLICY — what may be
-		// deleted, in what order, after how long — lives in internal/retention; the store owns
-		// only the SQL. Windows are read live, so a settings change applies on the next run.
-		jobReg.Add(retention.New(st, retention.Windows{
-			Proposals: func() time.Duration { return set.dur("proposals.retention") },
-			Jobs:      func() time.Duration { return set.dur("jobs.retention") },
-			Activity:  func() time.Duration { return set.dur("activity.retention") },
-		}, time.Now, log).Job())
-
-		// Poll-based availability (§4, §18.1): the PRIMARY path a requested title reaches
-		// `available`. The scan lists what the media server recently added and confirms any
-		// in-flight title now present — the same LibraryConfirmed transition the reconciler's
-		// deadline backstop applies, but continuous. `lib` (a *library.Client) satisfies
-		// LibraryScanner. Incremental runs often (recent window); Full is the daily safety net.
-		libScan := reconcile.NewLibraryScan(st, lib, emitter, set.dur("job.library_scan.lookback"), time.Now, log).
-			WithActivity(activityRec)
-		jobReg.AddAll(libScan.Jobs())
-
-		// Keeps the cached series episode lists current (§5, §18.1) so the guide never
-		// enumerates a show on the request path. Deliberately NOT folded into library-scan:
-		// that job only correlates in-flight acquisitions and returns early when there are
-		// none, so it would never revisit an already-available show — the exact set this
-		// refreshes. Bounded to the shows channel lineups actually reference.
-		episodeRefresh = reconcile.NewDynamicEpisodeRefresh(st, func() reconcile.EpisodeResolver {
-			return episodeResolver(lib.Snapshot())
-		}, func() time.Duration {
-			return set.dur("episodes.max_age")
-		}, time.Now, log)
-
-		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
-		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
-		// status (Downloading / Partly available, no percentage). Both promote grabbed titles
-		// requested→downloading and persist what they know; availability stays the library
-		// scan's job. The two branches are mutually exclusive (a provider is arr XOR seerr), so
-		// their distinct job names never collide in the registry.
-		if arr := set.arrRequester(); arr != nil {
-			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
-				"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
-		} else if seerr := set.seerrRequester(); seerr != nil {
-			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
-				"Updates requested titles from the coarse acquisition states reported by Seerr."))
-		}
-	}
+	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec, log)
 
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
