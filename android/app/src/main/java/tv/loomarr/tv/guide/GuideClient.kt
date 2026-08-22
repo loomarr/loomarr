@@ -2,6 +2,7 @@ package tv.loomarr.tv.guide
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -98,6 +99,12 @@ class GuideClient(
                                         series = a.optString("series").takeIf { it.isNotBlank() },
                                         season = a.optInt("season"),
                                         episode = a.optInt("episode"),
+                                        description = a.optString("description").takeIf { it.isNotBlank() },
+                                        genres = a.optJSONArray("genres").stringValues(),
+                                        year = a.optInt("year"),
+                                        rating = a.optString("rating").takeIf { it.isNotBlank() },
+                                        thumbUrl = sameOriginUrl(a.optString("thumbUrl")),
+                                        runtimeMs = a.optLong("runtimeMs"),
                                         startMs = a.optLong("startMs"),
                                         stopMs = a.optLong("stopMs"),
                                         nominal = a.optBoolean("nominal", false),
@@ -111,6 +118,7 @@ class GuideClient(
                             channelId = c.optString("channelId"),
                             name = c.optString("name", "Channel"),
                             number = c.optInt("number"),
+                            logoUrl = absoluteUrl(c.optString("logo")),
                             status = c.optString("status", "live"),
                             pendingCount = c.optInt("pendingCount"),
                             airings = airings,
@@ -128,4 +136,26 @@ class GuideClient(
             channels = channels,
         )
     }
+
+    private fun absoluteUrl(value: String): String? =
+        value
+            .takeIf { it.isNotBlank() }
+            ?.let { baseUrl.toHttpUrlOrNull()?.resolve(it)?.toString() }
+
+    /** Guide previews are an explicit same-instance contract; reject a drifting third-party URL. */
+    private fun sameOriginUrl(value: String): String? {
+        val origin = baseUrl.toHttpUrlOrNull() ?: return null
+        val resolved = value.takeIf { it.isNotBlank() }?.let(origin::resolve) ?: return null
+        return resolved
+            .takeIf { it.scheme == origin.scheme && it.host == origin.host && it.port == origin.port }
+            ?.toString()
+    }
+
+    private fun org.json.JSONArray?.stringValues(): List<String> =
+        buildList {
+            val values = this@stringValues ?: return@buildList
+            for (index in 0 until values.length()) {
+                values.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
 }

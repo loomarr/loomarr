@@ -3,9 +3,9 @@ package tv.loomarr.tv.guide
 /**
  * One block on a channel's timeline.
  *
- * A subset of the server's GuideAiring: the fields a 10-foot grid cell can actually show. The wire
- * type also carries genres, ratings, pod composition and image records, which belong to the web
- * hover card rather than a cell read from three metres away.
+ * The viewer-facing portion of the server's GuideAiring. Dense timeline cells use only the heading
+ * and time, while the focused TV detail card projects the episode metadata and same-origin artwork;
+ * pod composition remains an operator-facing web concern.
  */
 data class Airing(
     /** `program`, `filler`, `pending`, or `flex`. */
@@ -14,6 +14,12 @@ data class Airing(
     val series: String?,
     val season: Int,
     val episode: Int,
+    val description: String? = null,
+    val genres: List<String> = emptyList(),
+    val year: Int = 0,
+    val rating: String? = null,
+    val thumbUrl: String? = null,
+    val runtimeMs: Long = 0,
     val startMs: Long,
     val stopMs: Long,
     /**
@@ -34,6 +40,10 @@ data class Airing(
     /** "S2E4" for an episode, empty for a film. */
     val episodeLabel: String
         get() = if (season > 0 && episode > 0) "S${season}E$episode" else ""
+
+    /** The episode name beneath a series heading; absent for films or duplicate API values. */
+    val episodeTitle: String?
+        get() = title.takeIf { series != null && it.isNotBlank() && it != series }
 
     /**
      * What to show as the block's primary line: the series for an episode, the title otherwise.
@@ -57,6 +67,7 @@ data class ChannelTimeline(
     val channelId: String,
     val name: String,
     val number: Int,
+    val logoUrl: String? = null,
     /** `building`, `live`, `empty`, `drifted`, `detached`, or `paused`. */
     val status: String,
     /** Titles still being acquired — drives the "filling in" chip. */

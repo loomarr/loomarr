@@ -206,7 +206,12 @@ an h264 channel correctly reports baseline.
 
 ### S2 — Playback
 
-Full-screen ExoPlayer over the signed HLS URL; now/next banner; channel up/down surfing.
+Full-screen ExoPlayer over the signed HLS URL, with the paired app entering a watching-first remote
+flow. Watching owns transient now/next chrome; up/down and Channel Up/Down tune adjacent playable
+Channels, digits jump to an exact Channel number, OK opens Guide, Menu opens the Surf rail, and Back
+returns to the last tuned Channel. Surf is an overlay over the still-mounted player and groups
+available favourites, session recents, then all playable Channels. The client does not fabricate
+favourites while the server has no user-preference contract for them.
 
 **Carry the `sig` with `ResolvingDataSource`, not header injection** — the credential is a query
 param, already appended server-side to every segment URI and to `#EXT-X-MAP:URI`. Non-obvious detail
@@ -223,6 +228,11 @@ starts on prepared hits.
 
 Channel × time grid, D-pad navigable, tune on select. Fed by the existing guide endpoints — the same
 source of truth as XMLTV and the web guide.
+
+The grid follows the Android TV composite contract: All/Favourites/Recent filter chips above the
+grid, a visible position rail beside a long Channel list, and a bottom detail bar that tracks the
+focused airing. Up/down changes Channel, left/right changes airing, OK tunes the focused Channel,
+and Back cancels to Watching. Optional empty filters fall back without dropping focus.
 
 **Use these (all `RoleMember`, all JSON):**
 
@@ -246,7 +256,10 @@ jank on a Shield at 60fps. Use standard `LazyRow`/`LazyColumn` (the `Tv*` varian
 **The 100 × 4h sizing is reasoned from virtualization behaviour, not measured.** Validate with a
 Macrobenchmark scroll test on a 2GB tube before committing to the design.
 
-**Gate:** navigate a 100-channel × 4-hour grid without dropped focus or dropped frames.
+**Gate:** navigate a 100-channel × 4-hour grid without dropped focus or dropped frames. For every
+Android UI change, install the current APK in a windowed, centred API-30 TV emulator and traverse all
+touched surfaces with D-pad, OK, Back, Menu, and any changed number-key path. Screenshot/headless
+evidence supplements this hands-on gate; it does not replace it.
 
 ### S4 — Program detail + polish
 

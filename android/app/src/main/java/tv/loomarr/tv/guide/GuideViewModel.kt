@@ -3,11 +3,17 @@ package tv.loomarr.tv.guide
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tv.loomarr.tv.pairing.DeviceStore
+import tv.loomarr.tv.playback.ChannelCatalog
+import tv.loomarr.tv.playback.ChannelCatalogState
 
 /** What the guide surface is showing. */
 sealed interface GuideUiState {
@@ -37,12 +43,14 @@ sealed interface GuideUiState {
 /**
  * Loads the guide window.
  *
- * Deliberately does not poll. A schedule changes on the order of minutes and a viewer is looking at
- * a grid for seconds; a background refresh that redraws under a moving focus ring costs more than
- * the freshness is worth. The window is re-fetched when the surface is entered.
+ * Refreshes from the shared Channel catalog's reconciliation boundary rather than running its own
+ * timer. It also reloads when Guide is opened. SSE normally supplies a catalog boundary immediately;
+ * foreground/reconnect and the catalog's low-frequency loss-recovery read keep Guide membership
+ * correct when a frame is missed.
  */
 class GuideViewModel(
     private val store: DeviceStore,
+    private val catalog: ChannelCatalog,
     private val serverNowFor: suspend (baseUrl: String, token: String) -> Long = { url, token ->
         GuideClient(url, token).serverNowMs()
     },
@@ -56,21 +64,34 @@ class GuideViewModel(
         GuideClient(url, token).window(fromMs = fromMs, toMs = toMs)
     },
 ) : ViewModel() {
+    private var artworkAuthorization: String? = null
     private val _state = MutableStateFlow<GuideUiState>(GuideUiState.Loading)
     val state: StateFlow<GuideUiState> = _state.asStateFlow()
+    private var loadJob: Job? = null
 
     init {
-        load()
+        // A catalog revision means an authoritative Channel GET completed. Refreshing the guide
+        // from the same revision boundary prevents a new Channel appearing in Surf while its Guide
+        // row remains absent. Revisions advance on reconnect/foreground even if ids did not change.
+        viewModelScope.launch {
+            catalog.state
+                .filterIsInstance<ChannelCatalogState.Ready>()
+                .map { it.revision }
+                .distinctUntilChanged()
+                .collect { load() }
+        }
     }
 
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val baseUrl = store.serverUrl()
             val token = store.token()
             if (baseUrl.isNullOrBlank() || token.isNullOrBlank()) {
                 _state.value = GuideUiState.Failed("This device is not paired yet.")
                 return@launch
             }
+            artworkAuthorization = "Bearer $token"
 
             val loaded =
                 try {
@@ -79,7 +100,10 @@ class GuideViewModel(
                         window = { fromMs, toMs -> windowFor(baseUrl, token, fromMs, toMs) },
                     )
                 } catch (error: Exception) {
-                    _state.value = GuideUiState.Failed(error.message ?: "Couldn't load the guide.")
+                    // A latency refresh must not erase the programme data already on screen.
+                    if (_state.value !is GuideUiState.Ready) {
+                        _state.value = GuideUiState.Failed(error.message ?: "Couldn't load the guide.")
+                    }
                     return@launch
                 }
 
@@ -92,6 +116,9 @@ class GuideViewModel(
                 }
         }
     }
+
+    /** Member-visible image renditions use the same paired credential as the Guide request. */
+    internal fun artworkAuthorization(): String? = artworkAuthorization
 }
 
 internal data class LoadedGuideWindow(
@@ -123,13 +150,14 @@ internal suspend fun loadGuideGridWindow(
 /** Builds [GuideViewModel] — see PairingViewModelFactory for why a factory is required. */
 class GuideViewModelFactory(
     private val store: DeviceStore,
+    private val catalog: ChannelCatalog,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(GuideViewModel::class.java)) {
             "unexpected ViewModel: ${modelClass.name}"
         }
         @Suppress("UNCHECKED_CAST")
-        return GuideViewModel(store) as T
+        return GuideViewModel(store, catalog) as T
     }
 }
 
@@ -143,11 +171,11 @@ class GuideViewModelFactory(
 private const val GRID_LOOKBACK_MS = 30 * 60 * 1000L
 
 /**
- * How much schedule the grid shows at once.
+ * How much schedule the 10-foot grid shows at once.
  *
- * Four hours, the same span the web grid defaults to. An earlier draft halved it because a feature
- * film could not hold its own time range — that was fixing the wrong end. The span is what the guide
- * MEANS, and halving it halves what the viewer can see coming; the block was short of room, so the
- * room is what changed.
+ * Two hours matches the supplied TV composition and keeps a normal 22-minute episode wide enough
+ * to carry its series name. The web can show four hours because it has a wider pointer-driven
+ * viewport; copying that span into the overscan-safe TV canvas produced an almost blank grid of
+ * unlabeled slivers on the real Simpsons schedule.
  */
-private const val GRID_SPAN_MS = 4 * 60 * 60 * 1000L
+private const val GRID_SPAN_MS = 2 * 60 * 60 * 1000L

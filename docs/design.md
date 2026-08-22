@@ -1709,6 +1709,89 @@ request-to-first-decoded-frame timings plus the resolved copy/transcode plan. It
 maintainer's normal database or media-server configuration, and no agent invokes the `make smoke*`
 targets. Android TV, Roku, and Apple TV remain later adapters over the same controller vocabulary.
 
+### Android TV is a watching-first remote surface
+
+The paired Android TV client opens on **Watching** and keeps one tuned Channel as its home state.
+It is a member-scoped native adapter over the same Channel, Guide, device-profile, and signed-HLS
+contracts as Web; it does not gain an admin session, a media-server device token, or a second
+playback API.
+
+The installed client is a first-class TV launcher application: its Leanback activity, 320 × 180
+banner, and adaptive plus legacy icons use the canonical Loomarr colour-bar identity. Installation
+makes it discoverable in the launcher's Apps collection. Pinning it into a device's favourites row
+remains an explicit launcher preference; the app never edits the user's home-screen ordering.
+
+The remote has three explicit surfaces:
+
+- **Watching** keeps video full-screen. Up/down (and dedicated Channel Up/Down keys) tune the
+  adjacent playable Channel, number keys collect an exact Channel number, OK opens Guide, D-pad
+  Left opens Surf (with Menu retained as an alias), and Back follows the Android TV convention by
+  returning to the device launcher. The transient chrome
+  shows Channel identity, the on-air block, progress, and next block from the member JSON Guide.
+  The Channel identity and programme bar are one transient state: both clear after five seconds of
+  inactivity and reappear together after a remote action or tune. The programme bar and its
+  continuous progress track span the physical screen width and meet the bottom edge; title,
+  episode/time metadata, and remote hints remain inside the overscan-safe content area. The bar has
+  a translucent black surface, with the remote-hint row held close to the physical bottom. TV time
+  labels use a 12-hour clock with an explicit AM or PM. The bar has the next programme plus remote
+  hints below; it must not collapse to the intrinsic width of any child. It must not invent codec,
+  caption, resolution, favourite, or schedule metadata the server did not supply.
+- **Surf** is an overlay on the still-mounted player, not a replacement playback surface. It groups
+  available favourites, session recents, then every playable Channel; OK tunes the focused row and
+  Back cancels. Until a user-preference contract supplies favourites, that group is present but
+  empty rather than populated with guessed Channels.
+- **Guide** is a Channel-by-time grid. Its timeline, focus surfaces, position rail, and focused-detail
+  surface span the physical screen; readable labels, artwork, and metadata remain inside the
+  overscan-safe content area. Inside the grid, up/down changes Channel and left/right changes the
+  focused airing. Up from the first Channel enters the filter row; left/right traverses enabled
+  All/Favourites/Recent filters, Down returns to the same grid position, and OK activates the
+  focused filter. Empty optional filters remain visibly disabled and are skipped during traversal,
+  so they cannot strand focus. In the grid, OK tunes the focused Channel; Back returns to Watching
+  without tuning. The detail bar follows grid focus, and a visible row-position rail keeps a long
+  lineup understandable. The focused detail is
+  a real programme card rather than a repeated grid label: it shows the same-origin 16:9 thumbnail
+  when supplied, series and episode title, season/episode, time range, year/rating/genres when
+  present, and a short description. Artwork preserves the whole image inside its frame and has a
+  deliberate no-art fallback. Compact grid blocks still prioritize the series/film heading and
+  time; the detail card owns information that cannot fit legibly in a duration-sized block.
+  The TV opens a two-hour window with thirty minutes of lookback: unlike the wider web grid, that
+  keeps a normal 22-minute episode labelled inside the overscan-safe 960dp canvas and matches the
+  supplied TV composition instead of rendering routine episodes as anonymous slivers.
+
+Focus is never implicit: each surface requests focus after placement, clamps every move to a valid
+target, and keeps the focused row visible under remote repeat. Guide and Watching derive "now" from
+the server-authored clock, never the television RTC. Pairing, device capability probing,
+latest-request-wins tuning, signed URL handling, bounded player error recovery, and overscan-safe
+margins remain unchanged.
+
+Watching, Surf, and Guide share one app-scoped **playable Channel catalog**; no surface snapshots
+its own lineup. The catalog treats authenticated `/v1/events` `channel` frames only as invalidation
+signals and always re-reads `GET /v1/channels` as the authority. It performs the same full read when
+the event stream connects or reconnects and whenever the app returns to the foreground, coalesces a
+burst of frames into one read, and reconnects with bounded exponential backoff. While foregrounded,
+a five-minute safety reconciliation bounds staleness when a lossy frame is dropped but the socket
+stays open (including the in-memory bus's cross-replica limitation); it is a recovery backstop, not
+the normal update path. A transient read or stream failure retains the last complete catalog rather
+than replacing live playback with an error.
+On a successful refresh, the currently tuned Channel is preserved by id; a newly added playable
+Channel appears in Surf and Guide without restarting the app, while removal of the tuned Channel
+falls back deterministically to the first playable Channel and mints a fresh play URL. Guide schedule
+data is re-read after every successful catalog reconciliation so Channel membership and programme
+rows cannot disagree. This is deliberately reconciliation rather than event-sourced state: SSE is
+lossy and in-memory (§7), so duplicate, reordered, or dropped frames affect latency only.
+
+The surface is resolution-independent: layout is authored against Android TV's 960 × 540 dp canvas
+and renders that same composition at 1920 × 1080 xhdpi or 3840 × 2160 xxxhdpi. Text and controls use
+dp/sp rather than physical pixels. The Media3 player remains a full-screen `SurfaceView`, so a TV's
+UI density does not cap a supported stream at the UI reference resolution. Screenshot gates cover
+both density classes; 1080p is a reference capture, not a playback or display ceiling.
+
+An Android UI change is not accepted from screenshot tests or a headless launch alone. The current
+APK must also run in a windowed, centred API-30 Android TV emulator, and the touched path must be
+traversed with its real remote keys while focus, overscan, clipping, and text overflow are observed.
+That hands-on checkpoint is required evidence in the PR; an off-centre emulator or a stale installed
+APK does not satisfy it.
+
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.
 

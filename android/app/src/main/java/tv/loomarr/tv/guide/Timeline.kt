@@ -134,6 +134,7 @@ internal fun TimelineBlock(
     onAir: Boolean,
     height: Dp,
     modifier: Modifier = Modifier,
+    focused: Boolean = false,
 ) {
     val treatment = blockTreatment(width.value, airing.kind, onAir)
 
@@ -147,8 +148,8 @@ internal fun TimelineBlock(
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
                 .background(treatment.fill)
                 .border(
-                    width = 1.dp,
-                    color = treatment.stroke,
+                    width = if (focused) 3.dp else 1.dp,
+                    color = if (focused) LoomarrTokens.Color.Signal else treatment.stroke,
                     shape = RoundedCornerShape(LoomarrTokens.Radius.Sm),
                 ),
     ) {
@@ -350,7 +351,7 @@ private fun hourBoundaries(window: GuideWindow): List<Long> {
 }
 
 /**
- * "8:30" in the device's own timezone.
+ * "8:30 PM" in the device's own timezone.
  *
  * ⚠ Converted through `ZoneId.systemDefault()`, not by arithmetic on the epoch. Dividing epoch ms
  * into hours and minutes yields UTC, which is right only in Britain in winter.
@@ -364,5 +365,7 @@ internal fun clockLabel(epochMs: Long): String {
         java.time.Instant
             .ofEpochMilli(epochMs)
             .atZone(java.time.ZoneId.systemDefault())
-    return "%d:%02d".format(local.hour, local.minute)
+    val hour = (local.hour % 12).takeUnless { it == 0 } ?: 12
+    val meridiem = if (local.hour < 12) "AM" else "PM"
+    return "%d:%02d %s".format(hour, local.minute, meridiem)
 }

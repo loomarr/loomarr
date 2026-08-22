@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.runBlocking
@@ -42,12 +46,19 @@ import tv.loomarr.tv.design.TuningText
 import tv.loomarr.tv.design.TvButton
 import tv.loomarr.tv.design.VerticalDivider
 import tv.loomarr.tv.guide.GuideScreen
+import tv.loomarr.tv.guide.GuideViewModel
 import tv.loomarr.tv.guide.GuideViewModelFactory
+import tv.loomarr.tv.navigation.TvHomeState
+import tv.loomarr.tv.navigation.TvSurface
 import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
 import tv.loomarr.tv.pairing.PairingViewModelFactory
+import tv.loomarr.tv.playback.ChannelCatalogState
+import tv.loomarr.tv.playback.ChannelCatalogViewModel
+import tv.loomarr.tv.playback.ChannelCatalogViewModelFactory
 import tv.loomarr.tv.playback.WatchScreen
+import tv.loomarr.tv.playback.WatchUiState
 import tv.loomarr.tv.playback.WatchViewModel
 import tv.loomarr.tv.playback.WatchViewModelFactory
 
@@ -150,7 +161,7 @@ private fun PairingScreen(model: PairingViewModel) {
  * can be expected to work out from a remote.
  */
 @Composable
-private fun PairingOffer(
+internal fun PairingOffer(
     state: PairingUiState.AwaitingApproval,
     onRefresh: () -> Unit,
 ) {
@@ -196,7 +207,11 @@ private fun PairingOffer(
                 verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S4),
             ) {
                 SectionHeading("Visit Website")
-                MonoData(state.verificationUri)
+                MonoData(
+                    state.verificationUri,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                )
                 CodeDisplay(state.userCode)
             }
         }
@@ -219,33 +234,71 @@ private fun PairingOffer(
 }
 
 /**
- * The two paired surfaces: what is playing, and what is on.
+ * The watching-first paired shell: Watching, its Surf overlay, and Guide.
  *
- * A boolean rather than a navigation graph, because there are exactly two and the transition between
- * them is symmetric — the guide opens over playback and selecting a channel returns to it. A nav
- * library would add a dependency and a second place for this state to live.
- *
- * ⚠ The GUIDE is the entry point, not playback. A viewer arriving at a television wants to see what
- * is on before committing to a channel, and the watch surface has no way to browse — landing there
- * first would mean the only path to the guide is a button nobody has been told about.
+ * [TvHomeState] keeps those three remote states explicit without adding a navigation dependency or
+ * duplicating playback state. Watching is the entry point; Surf leaves its player mounted, while
+ * Guide is the full-screen browse surface and always returns to Watching after Back or a tune.
  */
 @Composable
 private fun PairedApp(store: DeviceStore) {
-    var showingGuide by remember { mutableStateOf(true) }
-    val watch: WatchViewModel = viewModel(factory = WatchViewModelFactory(store))
+    var home by remember { mutableStateOf(TvHomeState()) }
+    val catalogModel: ChannelCatalogViewModel =
+        viewModel(factory = ChannelCatalogViewModelFactory(store))
+    val catalog = catalogModel.catalog
+    val catalogState by catalog.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    if (showingGuide) {
+    // The stream exists only while the TV is foregrounded. Every start also performs a complete
+    // reconciliation, so an event missed while asleep cannot leave the lineup stale.
+    DisposableEffect(lifecycleOwner, catalog) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> catalog.start()
+                    Lifecycle.Event.ON_STOP -> catalog.stop()
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) catalog.start()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            catalog.stop()
+        }
+    }
+
+    val watch: WatchViewModel = viewModel(factory = WatchViewModelFactory(store, catalog))
+    val watchState by watch.state.collectAsStateWithLifecycle()
+    val guide: GuideViewModel = viewModel(factory = GuideViewModelFactory(store, catalog))
+
+    if (home.surface == TvSurface.Guide) {
         GuideScreen(
-            model = viewModel(factory = GuideViewModelFactory(store)),
+            model = guide,
             onTune = { channel ->
                 watch.tuneChannelId(channel.channelId)
-                showingGuide = false
+                home = home.watch()
             },
+            onBack = { home = home.watch() },
+            recentChannelIds =
+                (watchState as? WatchUiState.Ready)?.recentChannelIds
+                    ?: emptyList(),
+            playableChannelIds =
+                (catalogState as? ChannelCatalogState.Ready)
+                    ?.channels
+                    ?.mapTo(mutableSetOf()) { it.id },
         )
     } else {
         WatchScreen(
             model = watch,
-            onOpenGuide = { showingGuide = true },
+            guideModel = guide,
+            showingSurf = home.surfVisible,
+            onOpenGuide = {
+                guide.load()
+                home = home.openGuide()
+            },
+            onOpenSurf = { home = home.openSurf() },
+            onCloseSurf = { home = home.closeOverlay() },
         )
     }
 }

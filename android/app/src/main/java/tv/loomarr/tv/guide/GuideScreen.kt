@@ -1,5 +1,7 @@
 package tv.loomarr.tv.guide
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -8,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
-import tv.loomarr.tv.design.Screen
+import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.TuningText
 
 /**
@@ -21,10 +23,14 @@ import tv.loomarr.tv.design.TuningText
 fun GuideScreen(
     model: GuideViewModel,
     onTune: (ChannelTimeline) -> Unit,
+    onBack: () -> Unit = {},
+    favoriteChannelIds: Set<String> = emptySet(),
+    recentChannelIds: List<String> = emptyList(),
+    playableChannelIds: Set<String>? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
 
-    Screen {
+    GuideSurface {
         when (val current = state) {
             is GuideUiState.Loading ->
                 TuningText("Loading the guide…", modifier = Modifier.align(Alignment.Center))
@@ -39,9 +45,17 @@ fun GuideScreen(
                     description = "No channels are scheduled yet. Create one in Loomarr and it will appear here.",
                 )
 
-            is GuideUiState.Ready ->
+            is GuideUiState.Ready -> {
+                val liveNowMs = rememberServerNow(current.nowMs)
+                val playableWindow =
+                    current.window.copy(
+                        channels =
+                            current.window.channels.filter { channel ->
+                                playableChannelIds == null || channel.channelId in playableChannelIds
+                            },
+                    )
                 GuideGrid(
-                    window = current.window,
+                    window = playableWindow,
                     // ⚠ "Now" comes from the SERVER, not System.currentTimeMillis().
                     //
                     // The device clock cannot be trusted — the emulator's sits hours behind its
@@ -54,10 +68,23 @@ fun GuideScreen(
                     // at now; it now opens deliberately EARLIER so the on-air block has room to its
                     // left, so the window's start and the current instant are different facts. The
                     // ViewModel carries the server's now separately.
-                    nowMs = current.nowMs,
+                    nowMs = liveNowMs,
                     onTune = onTune,
+                    onBack = onBack,
+                    favoriteChannelIds = favoriteChannelIds,
+                    recentChannelIds = recentChannelIds,
+                    artworkAuthorization = model.artworkAuthorization(),
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
         }
     }
+}
+
+@Composable
+internal fun GuideSurface(content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(LoomarrTokens.Color.Static950),
+        content = content,
+    )
 }

@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * The guide timeline's geometry and per-kind styling.
@@ -53,20 +55,36 @@ class TimelineTest {
     )
 
     /**
-     * The real timeline width on a 1080p television: 960dp, less 96dp of overscan and the grid's
-     * 260dp channel column.
+     * The timeline width on the shared 960dp TV canvas: 96dp overscan, 210dp Channel column, and
+     * the 12dp position rail. The same canvas maps to either 1080p/xhdpi or 4K/xxxhdpi.
      */
-    private val pane = 604.dp
+    private val pane = 642.dp
+
+    @Test
+    fun `clock labels use twelve hour time`() {
+        fun localEpoch(
+            hour: Int,
+            minute: Int,
+        ) = LocalDate
+            .of(2026, 8, 22)
+            .atTime(hour, minute)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals("12:05 AM", clockLabel(localEpoch(0, 5)))
+        assertEquals("7:24 PM", clockLabel(localEpoch(19, 24)))
+    }
 
     @Test
     fun `block width is proportional to duration`() {
         val w = window()
         // A two-hour film occupies half of the four-hour pane.
         val twoHours = airing(startMinutes = 0, durationMinutes = 120)
-        assertEquals(302f, twoHours.widthIn(w, pane).value, 0.5f)
+        assertEquals(321f, twoHours.widthIn(w, pane).value, 0.5f)
 
         val fourMinutes = airing(startMinutes = 0, durationMinutes = 4)
-        assertEquals(10.1f, fourMinutes.widthIn(w, pane).value, 0.5f)
+        assertEquals(10.7f, fourMinutes.widthIn(w, pane).value, 0.5f)
     }
 
     @Test
@@ -87,7 +105,7 @@ class TimelineTest {
         // Started an hour before the window opened and runs an hour into it. Only the hour INSIDE
         // the window may be drawn — sizing it by full duration overhangs the strip.
         val overhanging = airing(startMinutes = -60, durationMinutes = 120)
-        assertEquals(151f, overhanging.widthIn(w, pane).value, 0.5f)
+        assertEquals(160.5f, overhanging.widthIn(w, pane).value, 0.5f)
         assertEquals(0f, overhanging.offsetIn(w, pane).value, 0.01f)
     }
 
@@ -102,9 +120,9 @@ class TimelineTest {
     fun `offsets are measured against the served window`() {
         val w = window()
         // Halfway through a four-hour window is halfway across the pane.
-        assertEquals(302f, w.offsetOf(windowStart + 2 * hour, pane).value, 0.5f)
+        assertEquals(321f, w.offsetOf(windowStart + 2 * hour, pane).value, 0.5f)
         assertEquals(0f, w.offsetOf(windowStart, pane).value, 0.01f)
-        assertEquals(604f, w.offsetOf(windowStart + 4 * hour, pane).value, 0.5f)
+        assertEquals(642f, w.offsetOf(windowStart + 4 * hour, pane).value, 0.5f)
     }
 
     @Test

@@ -6,7 +6,10 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import tv.loomarr.tv.navigation.TuneHistory
+import tv.loomarr.tv.navigation.channelIndexForNumber
 import tv.loomarr.tv.pairing.DeviceStore
 
 /** What the watch surface is showing. */
@@ -18,6 +21,7 @@ sealed interface WatchUiState {
         val channels: List<Channel>,
         val selected: Int,
         val playUrl: String?,
+        val recentChannelIds: List<String> = emptyList(),
     ) : WatchUiState
 
     data class Failed(
@@ -42,6 +46,7 @@ sealed interface WatchUiState {
  */
 class WatchViewModel(
     private val store: DeviceStore,
+    private val catalog: ChannelCatalog,
     private val clientFor: (baseUrl: String, token: String) -> PlaybackClient = { url, token ->
         PlaybackClient(url, token)
     },
@@ -51,12 +56,13 @@ class WatchViewModel(
     val state: StateFlow<WatchUiState> = _state.asStateFlow()
 
     private var client: PlaybackClient? = null
+    private var history = TuneHistory()
 
     init {
-        load()
+        observeCatalog()
     }
 
-    private fun load() {
+    private fun observeCatalog() {
         viewModelScope.launch {
             val baseUrl = store.serverUrl()
             val token = store.token()
@@ -64,28 +70,54 @@ class WatchViewModel(
                 _state.value = WatchUiState.Failed("This device is not paired yet.")
                 return@launch
             }
-            val playback = clientFor(baseUrl, token)
-            client = playback
+            client = clientFor(baseUrl, token)
 
-            val channels =
-                try {
-                    // Only channels the server will actually mint a URL for. `inAppPlayable` is the
-                    // same predicate behind its 409, so filtering here turns a tune-time error into
-                    // a channel that never appears in the list.
-                    playback.channels().filter { it.inAppPlayable }
-                } catch (error: Exception) {
-                    _state.value = WatchUiState.Failed(error.message ?: "Couldn't load channels.")
-                    return@launch
-                }
+            catalog.state.collect(::applyCatalog)
+        }
+    }
 
-            if (channels.isEmpty()) {
-                _state.value = WatchUiState.DeadAir
-                return@launch
+    /** Reconcile playback by Channel identity, never by a stale list index. */
+    private fun applyCatalog(catalogState: ChannelCatalogState) {
+        when (catalogState) {
+            ChannelCatalogState.Loading -> {
+                if (_state.value !is WatchUiState.Ready) _state.value = WatchUiState.Loading
             }
 
-            _state.value = WatchUiState.Ready(channels = channels, selected = 0, playUrl = null)
-            tune(0)
+            is ChannelCatalogState.Failed -> {
+                // This is only reachable before a complete snapshot exists. Refresh failures after
+                // that retain Ready in ChannelCatalog and therefore cannot tear down live video.
+                if (_state.value !is WatchUiState.Ready) {
+                    _state.value = WatchUiState.Failed(catalogState.message)
+                }
+            }
+
+            is ChannelCatalogState.Ready -> reconcileChannels(catalogState.channels)
         }
+    }
+
+    private fun reconcileChannels(channels: List<Channel>) {
+        if (channels.isEmpty()) {
+            _state.value = WatchUiState.DeadAir
+            return
+        }
+
+        val previous = _state.value as? WatchUiState.Ready
+        val previousChannelId = previous?.channels?.getOrNull(previous.selected)?.id
+        val selected = channels.indexOfFirst { it.id == previousChannelId }.takeIf { it >= 0 } ?: 0
+        val selectedChannelId = channels[selected].id
+        val keptCurrentChannel = previousChannelId == selectedChannelId
+
+        _state.value =
+            WatchUiState.Ready(
+                channels = channels,
+                selected = selected,
+                playUrl = previous?.playUrl.takeIf { keptCurrentChannel },
+                recentChannelIds = history.recentChannelIds,
+            )
+
+        // Additions and metadata edits do not disturb playback. Initial load or removal of the
+        // tuned Channel selects the deterministic first playable Channel and mints a fresh URL.
+        if (!keptCurrentChannel) tune(selected)
     }
 
     /** Tune the channel at [index], wrapping at both ends so surfing is continuous. */
@@ -93,10 +125,16 @@ class WatchViewModel(
         val current = _state.value as? WatchUiState.Ready ?: return
         val playback = client ?: return
         val wrapped = ((index % current.channels.size) + current.channels.size) % current.channels.size
+        history = history.tuned(current.channels[wrapped].id)
 
         // Clear the URL first so the player tears down the old stream rather than showing the
         // previous channel while the next one is still being minted.
-        _state.value = current.copy(selected = wrapped, playUrl = null)
+        _state.value =
+            current.copy(
+                selected = wrapped,
+                playUrl = null,
+                recentChannelIds = history.recentChannelIds,
+            )
 
         viewModelScope.launch {
             try {
@@ -105,7 +143,7 @@ class WatchViewModel(
                 // ⚠ Latest-request-wins. Surfing fires tunes faster than they resolve, and a slow
                 // response for a channel the viewer has already left would otherwise replace the one
                 // they are on now.
-                if (latest.selected == wrapped) {
+                if (latest.channels.getOrNull(latest.selected)?.id == current.channels[wrapped].id) {
                     _state.value = latest.copy(playUrl = url.url)
                 }
             } catch (error: Exception) {
@@ -128,6 +166,12 @@ class WatchViewModel(
         if (index >= 0) tune(index)
     }
 
+    /** Tune an exact Channel number after the remote's bounded digit-entry timeout. */
+    fun tuneChannelNumber(digits: String) {
+        val current = _state.value as? WatchUiState.Ready ?: return
+        channelIndexForNumber(current.channels, digits)?.let(::tune)
+    }
+
     fun channelUp() {
         (_state.value as? WatchUiState.Ready)?.let { tune(it.selected + 1) }
     }
@@ -140,12 +184,13 @@ class WatchViewModel(
 /** Builds [WatchViewModel] — see PairingViewModelFactory for why a factory is required. */
 class WatchViewModelFactory(
     private val store: DeviceStore,
+    private val catalog: ChannelCatalog,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(WatchViewModel::class.java)) {
             "unexpected ViewModel: ${modelClass.name}"
         }
         @Suppress("UNCHECKED_CAST")
-        return WatchViewModel(store) as T
+        return WatchViewModel(store, catalog) as T
     }
 }
