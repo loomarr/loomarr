@@ -664,7 +664,7 @@ android-tokens: ## regenerate the Android design tokens from the shared tokens.j
 
 .PHONY: android-tokens-verify
 android-tokens-verify: android-tokens ## regenerated tokens must match committed (CI red on drift)
-	@git diff --exit-code android/app/src/main/java/tv/loomarr/tv/design/LoomarrTokens.kt
+	@git diff --exit-code android/app/src/main/java/loomarr/media/design/LoomarrTokens.kt
 
 .PHONY: android-load
 android-load: ## report heavy local processes before starting a build

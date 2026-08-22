@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const tokensPath = resolve(root, "web/packages/tokens/generated/tokens.json");
-const outPath = resolve(root, "android/app/src/main/java/tv/loomarr/tv/design/LoomarrTokens.kt");
+const outPath = resolve(root, "android/app/src/main/java/loomarr/media/design/LoomarrTokens.kt");
 
 const tokens = JSON.parse(readFileSync(tokensPath, "utf8"));
 
@@ -91,7 +91,7 @@ const file = `// GENERATED FILE — DO NOT EDIT.
 // first hand-written TV screen used a Tailwind amber (#F59E0B) in place of Loomarr's signal colour
 // (#FFB020), and nothing could catch it.
 
-package tv.loomarr.tv.design
+package loomarr.media.design
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp

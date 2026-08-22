@@ -18,9 +18,9 @@ signing and upgrade path. See [Share app bundles and APKs internally][internal-s
 ## Permanent identity and signing
 
 - Play package names are unique, permanent, cannot be deleted, and cannot be reused. Confirm the
-  developer account and reserve `loomarr.media` before automating anything. Keep the existing
-  `tv.loomarr.tv` Kotlin namespace; source namespace and installed application identity need not be
-  the same. See
+  developer account and reserve `loomarr.media` before automating anything. Use `loomarr.media` for
+  both the Kotlin namespace and installed application identity so current code carries no legacy
+  package name. See
   [Create and set up your app][create-app].
 - New apps must use Play App Signing. The release AAB is signed locally with an **upload key**;
   Google holds the distinct **app signing key** and signs the APKs installed on devices. Keep the

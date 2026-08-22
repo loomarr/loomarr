@@ -78,7 +78,7 @@ ANDROID_HOME=/path/to/Android scripts/run-android-tv-emulator.sh
 
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 # 10.0.2.2 is the emulator's alias for the HOST — localhost inside the VM is the VM.
-adb shell am start -n loomarr.media.debug/tv.loomarr.tv.MainActivity -e server http://10.0.2.2:18305
+adb shell am start -n loomarr.media.debug/loomarr.media.MainActivity -e server http://10.0.2.2:18305
 adb exec-out screencap -p > screen.png
 ```
 

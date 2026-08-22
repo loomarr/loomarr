@@ -1805,8 +1805,8 @@ APK does not satisfy it.
 `loomarr.media` is the permanent production application id. It is reserved once in the Loomarr Play
 Console account and is never reused for a different product or signing identity. Local debug builds
 use `loomarr.media.debug`, so developer installs cannot overwrite, downgrade, or impersonate a
-Play-delivered build. Kotlin namespace and API vocabulary remain `tv.loomarr.tv`; application id is
-an installation identity, not a reason to churn source packages.
+Play-delivered build. The Kotlin namespace is also `loomarr.media`, so the current source and
+installation identities carry no legacy package name.
 
 Android client releases use SemVer names and a deterministic, increasing Play `versionCode`. The
 code allocates two decimal digits each to minor and patch and four release slots within a patch:

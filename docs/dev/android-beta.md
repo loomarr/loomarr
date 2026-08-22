@@ -1,7 +1,6 @@
 # Android TV beta releases
 
-Loomarr's Play identity is `loomarr.media`. Kotlin remains under `tv.loomarr.tv`; changing the
-installed identity does not require renaming source packages. Debug builds install as
+Loomarr's Play identity and Kotlin namespace are both `loomarr.media`. Debug builds install as
 `loomarr.media.debug` and cannot replace a Play build.
 
 The full rationale and current Google requirements are in

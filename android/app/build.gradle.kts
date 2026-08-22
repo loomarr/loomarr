@@ -58,7 +58,7 @@ val hasReleaseSigning =
     listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { it.isPresent }
 
 android {
-    namespace = "tv.loomarr.tv"
+    namespace = "loomarr.media"
     compileSdk = 36
 
     signingConfigs {
