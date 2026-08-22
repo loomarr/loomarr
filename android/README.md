@@ -41,6 +41,10 @@ cd android
 ./gradlew :app:testDebugUnitTest      # pairing, guide geometry/windowing, and playback contracts
 ```
 
+The checked-in TV launcher banner is generated from the same Geist compact lockup as the web shell.
+After changing that brand system, run `scripts/generate-android-tv-brand.sh` from a bootstrapped
+worktree before rebuilding the APK.
+
 ## Notes worth keeping
 
 - **`tv-foundation` is deliberately absent.** `TvLazyRow`/`TvLazyColumn` were **removed** in
@@ -54,6 +58,9 @@ cd android
   opposite things with them. Collapsing them makes the TV discard a good code every few seconds.
 - **`LEANBACK_LAUNCHER`, not `LAUNCHER`.** The TV home screen only shows the former; an app with
   only the phone category installs and is then unreachable.
+- **Installation adds Loomarr to Apps, not the favourites row.** Android TV owns favourites and
+  their ordering as a user preference. On Shield, select **Add app to favourites** at the end of
+  the home-screen app row and choose Loomarr. The APK supplies both its TV banner and icon.
 
 ## Running it without a Shield
 
@@ -63,7 +70,7 @@ seconds with KVM.
 ```sh
 sdkmanager "emulator" "system-images;android-30;android-tv;x86"
 avdmanager create avd -n loomarr-tv -k "system-images;android-30;android-tv;x86" -d tv_1080p
-emulator -avd loomarr-tv -no-audio -gpu swiftshader_indirect -port 5560
+ANDROID_HOME=/path/to/Android scripts/run-android-tv-emulator.sh
 
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 # 10.0.2.2 is the emulator's alias for the HOST — localhost inside the VM is the VM.
@@ -80,8 +87,11 @@ remote controls it exposes. Check D-pad focus, OK, Back, Menu, number entry, ove
 text overflow; record the traversed path in the PR. Do not count a launch that leaves the emulator
 off-centre or opens an older installed APK.
 
-On KDE, mixed-DPI Wayland makes X11 coordinates unreliable. Center the launched emulator through
-KWin itself:
+The repository launcher waits for the emulator window, centers it through KWin, and synchronizes the
+guest timezone with the host as part of every startup. The Android TV image otherwise defaults to
+GMT, which makes correctly formatted Guide instants look several hours wrong. On KDE, mixed-DPI
+Wayland makes X11 coordinates unreliable, so do not replace this with manual `wmctrl` geometry. To
+recenter an already-running window:
 
 ```sh
 wmctrl -a "Android Emulator - loomarr-tv"

@@ -1,5 +1,7 @@
 package tv.loomarr.tv.guide
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -8,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
-import tv.loomarr.tv.design.Screen
+import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.TuningText
 
 /**
@@ -28,7 +30,7 @@ fun GuideScreen(
 ) {
     val state by model.state.collectAsStateWithLifecycle()
 
-    Screen {
+    GuideSurface {
         when (val current = state) {
             is GuideUiState.Loading ->
                 TuningText("Loading the guide…", modifier = Modifier.align(Alignment.Center))
@@ -71,9 +73,18 @@ fun GuideScreen(
                     onBack = onBack,
                     favoriteChannelIds = favoriteChannelIds,
                     recentChannelIds = recentChannelIds,
+                    artworkAuthorization = model.artworkAuthorization(),
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
     }
+}
+
+@Composable
+internal fun GuideSurface(content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(LoomarrTokens.Color.Static950),
+        content = content,
+    )
 }

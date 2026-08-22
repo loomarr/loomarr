@@ -83,6 +83,57 @@ enum class GuideMove {
     Right,
 }
 
+enum class GuideFocusTarget {
+    Grid,
+    Filters,
+}
+
+/** The Guide's virtual focus graph keeps filter controls reachable without relying on platform focus guesses. */
+data class GuideFocus(
+    val target: GuideFocusTarget = GuideFocusTarget.Grid,
+    val cursor: GuideCursor = GuideCursor(),
+    val filterIndex: Int = 0,
+) {
+    fun move(
+        rows: List<ChannelTimeline>,
+        direction: GuideMove,
+        enabledFilterIndices: List<Int>,
+        activeFilterIndex: Int,
+    ): GuideFocus =
+        when (target) {
+            GuideFocusTarget.Grid -> {
+                if (direction == GuideMove.Up && cursor.row <= 0) {
+                    copy(
+                        target = GuideFocusTarget.Filters,
+                        filterIndex =
+                            activeFilterIndex.takeIf { it in enabledFilterIndices }
+                                ?: enabledFilterIndices.firstOrNull()
+                                ?: 0,
+                    )
+                } else {
+                    copy(cursor = cursor.move(rows, direction))
+                }
+            }
+            GuideFocusTarget.Filters ->
+                when (direction) {
+                    GuideMove.Left -> copy(filterIndex = adjacentFilter(enabledFilterIndices, filterIndex, -1))
+                    GuideMove.Right -> copy(filterIndex = adjacentFilter(enabledFilterIndices, filterIndex, 1))
+                    GuideMove.Down -> copy(target = GuideFocusTarget.Grid)
+                    GuideMove.Up -> this
+                }
+        }
+}
+
+private fun adjacentFilter(
+    enabledFilterIndices: List<Int>,
+    current: Int,
+    offset: Int,
+): Int {
+    if (enabledFilterIndices.isEmpty()) return 0
+    val position = enabledFilterIndices.indexOf(current).takeIf { it >= 0 } ?: 0
+    return enabledFilterIndices[(position + offset).coerceIn(0, enabledFilterIndices.lastIndex)]
+}
+
 /** One explicit focus target in the guide; every move clamps to real data. */
 data class GuideCursor(
     val row: Int = 0,

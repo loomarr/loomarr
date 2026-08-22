@@ -351,7 +351,7 @@ private fun hourBoundaries(window: GuideWindow): List<Long> {
 }
 
 /**
- * "8:30" in the device's own timezone.
+ * "8:30 PM" in the device's own timezone.
  *
  * ⚠ Converted through `ZoneId.systemDefault()`, not by arithmetic on the epoch. Dividing epoch ms
  * into hours and minutes yields UTC, which is right only in Britain in winter.
@@ -365,5 +365,7 @@ internal fun clockLabel(epochMs: Long): String {
         java.time.Instant
             .ofEpochMilli(epochMs)
             .atZone(java.time.ZoneId.systemDefault())
-    return "%d:%02d".format(local.hour, local.minute)
+    val hour = (local.hour % 12).takeUnless { it == 0 } ?: 12
+    val meridiem = if (local.hour < 12) "AM" else "PM"
+    return "%d:%02d %s".format(hour, local.minute, meridiem)
 }

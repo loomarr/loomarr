@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.runBlocking
@@ -50,6 +54,9 @@ import tv.loomarr.tv.pairing.DeviceStore
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.pairing.PairingViewModel
 import tv.loomarr.tv.pairing.PairingViewModelFactory
+import tv.loomarr.tv.playback.ChannelCatalogState
+import tv.loomarr.tv.playback.ChannelCatalogViewModel
+import tv.loomarr.tv.playback.ChannelCatalogViewModelFactory
 import tv.loomarr.tv.playback.WatchScreen
 import tv.loomarr.tv.playback.WatchUiState
 import tv.loomarr.tv.playback.WatchViewModel
@@ -236,9 +243,34 @@ internal fun PairingOffer(
 @Composable
 private fun PairedApp(store: DeviceStore) {
     var home by remember { mutableStateOf(TvHomeState()) }
-    val watch: WatchViewModel = viewModel(factory = WatchViewModelFactory(store))
+    val catalogModel: ChannelCatalogViewModel =
+        viewModel(factory = ChannelCatalogViewModelFactory(store))
+    val catalog = catalogModel.catalog
+    val catalogState by catalog.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // The stream exists only while the TV is foregrounded. Every start also performs a complete
+    // reconciliation, so an event missed while asleep cannot leave the lineup stale.
+    DisposableEffect(lifecycleOwner, catalog) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> catalog.start()
+                    Lifecycle.Event.ON_STOP -> catalog.stop()
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) catalog.start()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            catalog.stop()
+        }
+    }
+
+    val watch: WatchViewModel = viewModel(factory = WatchViewModelFactory(store, catalog))
     val watchState by watch.state.collectAsStateWithLifecycle()
-    val guide: GuideViewModel = viewModel(factory = GuideViewModelFactory(store))
+    val guide: GuideViewModel = viewModel(factory = GuideViewModelFactory(store, catalog))
 
     if (home.surface == TvSurface.Guide) {
         GuideScreen(
@@ -252,7 +284,7 @@ private fun PairedApp(store: DeviceStore) {
                 (watchState as? WatchUiState.Ready)?.recentChannelIds
                     ?: emptyList(),
             playableChannelIds =
-                (watchState as? WatchUiState.Ready)
+                (catalogState as? ChannelCatalogState.Ready)
                     ?.channels
                     ?.mapTo(mutableSetOf()) { it.id },
         )

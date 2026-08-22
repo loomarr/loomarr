@@ -5,9 +5,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,14 +28,19 @@ import org.robolectric.annotation.GraphicsMode
 import tv.loomarr.tv.PairingOffer
 import tv.loomarr.tv.guide.Airing
 import tv.loomarr.tv.guide.ChannelTimeline
+import tv.loomarr.tv.guide.GUIDE_FOCUSED_FILTER_TAG
+import tv.loomarr.tv.guide.GUIDE_GRID_TAG
 import tv.loomarr.tv.guide.GuideGrid
+import tv.loomarr.tv.guide.GuideSurface
 import tv.loomarr.tv.guide.GuideUiState
 import tv.loomarr.tv.guide.GuideWindow
 import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.playback.Channel
+import tv.loomarr.tv.playback.NOW_PLAYING_BAR_TAG
 import tv.loomarr.tv.playback.SurfRail
 import tv.loomarr.tv.playback.WatchUiState
 import tv.loomarr.tv.playback.WatchingChrome
+import tv.loomarr.tv.playback.watchingChromeContainer
 
 /**
  * Screenshots of the design system's pieces.
@@ -110,11 +126,53 @@ class DesignScreenshotTest {
                     numberEntry = "21",
                     numberEntryChannelName = "Nature Documentaries",
                     visibleNonce = 1,
-                    modifier = Modifier.fillMaxSize().padding(OverscanMargin),
+                    modifier = Modifier.watchingChromeContainer(),
                 )
             }
         }
         compose.onRoot().captureRoboImage()
+    }
+
+    @Test
+    fun `watching chrome clears after inactivity`() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            Box(modifier = Modifier.fillMaxSize().background(LoomarrTokens.Color.Static800)) {
+                WatchingChrome(
+                    channel = sampleChannels[2],
+                    guide = sampleGuide,
+                    numberEntry = "",
+                    visibleNonce = 1,
+                    modifier = Modifier.watchingChromeContainer(),
+                )
+            }
+        }
+
+        compose.onNodeWithText("NATURE DOCUMENTARIES").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(6_000)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("NATURE DOCUMENTARIES").assertCountEquals(0)
+    }
+
+    @Test
+    fun `watching programme bar spans the screen and reaches the bottom edge`() {
+        compose.setContent {
+            Box(modifier = Modifier.fillMaxSize().background(LoomarrTokens.Color.Static800)) {
+                WatchingChrome(
+                    channel = sampleChannels[2],
+                    guide = sampleGuide,
+                    numberEntry = "",
+                    visibleNonce = 1,
+                    modifier = Modifier.watchingChromeContainer(),
+                )
+            }
+        }
+
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val bar = compose.onNodeWithTag(NOW_PLAYING_BAR_TAG).fetchSemanticsNode().boundsInRoot
+        assertEquals(screen.left, bar.left, 0f)
+        assertEquals(screen.right, bar.right, 0f)
+        assertEquals(screen.bottom, bar.bottom, 0f)
     }
 
     @Test
@@ -133,7 +191,7 @@ class DesignScreenshotTest {
                     numberEntry = "21",
                     numberEntryChannelName = "Nature Documentaries",
                     visibleNonce = 1,
-                    modifier = Modifier.fillMaxSize().padding(OverscanMargin),
+                    modifier = Modifier.watchingChromeContainer(),
                 )
             }
         }
@@ -168,9 +226,32 @@ class DesignScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = "w960dp-h540dp-television-xxxhdpi")
+    fun `android tv surf at 4k density`() {
+        compose.setContent {
+            Box(modifier = Modifier.fillMaxSize().background(LoomarrTokens.Color.Static800)) {
+                SurfRail(
+                    state =
+                        WatchUiState.Ready(
+                            channels = sampleChannels,
+                            selected = 2,
+                            playUrl = "preview",
+                            lastChannelId = sampleChannels[0].id,
+                            recentChannelIds = listOf(sampleChannels[1].id),
+                        ),
+                    guide = sampleGuide,
+                    onTune = {},
+                    onCancel = {},
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage()
+    }
+
+    @Test
     fun `android tv guide`() {
         compose.setContent {
-            Screen {
+            GuideSurface {
                 GuideGrid(
                     window = (sampleGuide as GuideUiState.Ready).window,
                     nowMs = sampleNow,
@@ -180,6 +261,65 @@ class DesignScreenshotTest {
             }
         }
         compose.onRoot().captureRoboImage()
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-television-xxxhdpi")
+    fun `android tv guide at 4k density`() {
+        compose.setContent {
+            GuideSurface {
+                GuideGrid(
+                    window = (sampleGuide as GuideUiState.Ready).window,
+                    nowMs = sampleNow,
+                    onTune = {},
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage()
+    }
+
+    @Test
+    fun `android tv guide spans the screen`() {
+        compose.setContent {
+            GuideSurface {
+                GuideGrid(
+                    window = (sampleGuide as GuideUiState.Ready).window,
+                    nowMs = sampleNow,
+                    onTune = {},
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val guide = compose.onNodeWithTag(GUIDE_GRID_TAG).fetchSemanticsNode().boundsInRoot
+        assertEquals(screen.left, guide.left, 0f)
+        assertEquals(screen.top, guide.top, 0f)
+        assertEquals(screen.right, guide.right, 0f)
+        assertEquals(screen.bottom, guide.bottom, 0f)
+    }
+
+    @Test
+    @OptIn(ExperimentalTestApi::class)
+    fun `android tv guide filter row is reachable with the d-pad`() {
+        compose.setContent {
+            GuideSurface {
+                GuideGrid(
+                    window = (sampleGuide as GuideUiState.Ready).window,
+                    nowMs = sampleNow,
+                    onTune = {},
+                    recentChannelIds = listOf("nature"),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(GUIDE_GRID_TAG).performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag(GUIDE_FOCUSED_FILTER_TAG).assertTextContains("All · 6")
+
+        compose.onNodeWithTag(GUIDE_GRID_TAG).performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag(GUIDE_FOCUSED_FILTER_TAG).assertTextContains("Recent · 1")
     }
 
     private val sampleChannels =
@@ -211,7 +351,12 @@ class DesignScreenshotTest {
                                 pendingCount = 0,
                                 airings =
                                     listOf(
-                                        sampleAiring("${channel.name} Premiere", 7_200_000L, 9_000_000L),
+                                        sampleAiring(
+                                            title = "Pilot episode",
+                                            startMs = 7_200_000L,
+                                            stopMs = 9_000_000L,
+                                            series = channel.name,
+                                        ),
                                         sampleAiring(
                                             if (index == 2) "Blue Planet — The Deep" else "${channel.name} Late",
                                             9_000_000L,
@@ -228,12 +373,17 @@ class DesignScreenshotTest {
         title: String,
         startMs: Long,
         stopMs: Long,
+        series: String? = null,
     ) = Airing(
         kind = "program",
         title = title,
-        series = null,
-        season = 0,
-        episode = 0,
+        series = series,
+        season = if (series == null) 0 else 2,
+        episode = if (series == null) 0 else 4,
+        description = if (series == null) null else "A focused episode description that belongs in the detail card.",
+        genres = if (series == null) emptyList() else listOf("Drama", "Adventure"),
+        year = if (series == null) 0 else 1996,
+        rating = if (series == null) null else "TV-PG",
         startMs = startMs,
         stopMs = stopMs,
         nominal = false,

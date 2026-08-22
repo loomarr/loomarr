@@ -40,6 +40,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,7 +48,6 @@ import kotlinx.coroutines.delay
 import tv.loomarr.tv.design.Body
 import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
-import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 import tv.loomarr.tv.design.OverscanMargin
@@ -128,7 +128,7 @@ fun WatchScreen(
                             }
                             true
                         }
-                        Key.Menu -> {
+                        Key.DirectionLeft, Key.Menu -> {
                             onOpenSurf()
                             true
                         }
@@ -170,7 +170,8 @@ fun WatchScreen(
                             ?.let(current.channels::get)
                             ?.name,
                     visibleNonce = bannerNonce + current.selected,
-                    modifier = Modifier.fillMaxSize().padding(OverscanMargin),
+                    showProgrammeBar = !showingSurf,
+                    modifier = Modifier.watchingChromeContainer(),
                 )
 
                 if (showingSurf) {
@@ -199,6 +200,7 @@ internal fun WatchingChrome(
     modifier: Modifier = Modifier,
     numberEntryChannelName: String? = null,
     playing: Boolean = true,
+    showProgrammeBar: Boolean = true,
 ) {
     val guideInfo = guide.infoFor(channel.id)
     var visible by remember { mutableStateOf(true) }
@@ -209,21 +211,28 @@ internal fun WatchingChrome(
     }
 
     Box(modifier = modifier) {
-        ChannelPill(channel = channel, playing = playing, modifier = Modifier.align(Alignment.TopEnd))
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(OverscanMargin),
+        ) {
+            ChannelPill(channel = channel, playing = playing)
+        }
         if (numberEntry.isNotEmpty()) {
             NumberEntry(
                 digits = numberEntry,
                 channelName = numberEntryChannelName,
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier.align(Alignment.TopStart).padding(OverscanMargin),
             )
         }
         AnimatedVisibility(
-            visible = visible,
+            visible = visible && showProgrammeBar,
             enter = slideInVertically { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomStart),
+            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
         ) {
-            NowPlayingBar(channel = channel, info = guideInfo)
+            NowPlayingBar(channel = channel, info = guideInfo, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -299,27 +308,43 @@ private fun NumberEntry(
 private fun NowPlayingBar(
     channel: Channel,
     info: ChannelGuideInfo?,
+    modifier: Modifier = Modifier,
 ) {
+    val contentInset = OverscanMargin + LoomarrTokens.Space.S4
     Column(
         modifier =
-            Modifier
+            modifier
+                .testTag(NOW_PLAYING_BAR_TAG)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            LoomarrTokens.Color.Static950.copy(alpha = 0f),
-                            LoomarrTokens.Color.Static950.copy(alpha = 0.96f),
-                        ),
-                    ),
-                ).padding(top = LoomarrTokens.Space.S8, start = LoomarrTokens.Space.S4, end = LoomarrTokens.Space.S4),
+                .background(LoomarrTokens.Color.Static950.copy(alpha = 0.78f))
+                .padding(top = LoomarrTokens.Space.S6),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Heading(info?.current?.heading ?: channel.name)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = contentInset),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Body(
+                info?.current?.let { current ->
+                    current.episodeTitle?.let { "${current.heading} — “$it”" } ?: current.heading
+                } ?: channel.name,
+                color = LoomarrTokens.Color.Static0,
+                fontSize = LoomarrTokens.Type.Lg,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             info?.current?.episodeLabel?.takeIf(String::isNotEmpty)?.let {
                 MonoData(
                     it,
                     color = LoomarrTokens.Color.Static400,
-                    modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
+                )
+            }
+            info?.current?.year?.takeIf { it > 0 }?.let {
+                MonoData(
+                    it.toString(),
+                    color = LoomarrTokens.Color.Static400,
+                    fontSize = LoomarrTokens.Type.Sm,
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
                 )
             }
             info?.current?.let {
@@ -327,7 +352,7 @@ private fun NowPlayingBar(
                     "${tv.loomarr.tv.guide.clockLabel(it.startMs)}–${tv.loomarr.tv.guide.clockLabel(it.stopMs)}",
                     color = LoomarrTokens.Color.Static400,
                     fontSize = LoomarrTokens.Type.Sm,
-                    modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
                 )
             }
         }
@@ -349,7 +374,15 @@ private fun NowPlayingBar(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = LoomarrTokens.Space.S3),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = contentInset,
+                        top = LoomarrTokens.Space.S3,
+                        end = contentInset,
+                        bottom = LoomarrTokens.Space.S4,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Body(
@@ -359,7 +392,7 @@ private fun NowPlayingBar(
                 modifier = Modifier.weight(1f),
             )
             MonoData(
-                "▲▼ surf · 0–9 jump · OK guide · MENU channels",
+                "▲▼ tune · ◀ channels · 0–9 jump · OK guide",
                 color = LoomarrTokens.Color.Static500,
                 fontSize = LoomarrTokens.Type.Xs2,
                 maxLines = 1,
@@ -368,6 +401,10 @@ private fun NowPlayingBar(
         }
     }
 }
+
+internal fun Modifier.watchingChromeContainer(): Modifier = fillMaxSize()
+
+internal const val NOW_PLAYING_BAR_TAG = "now-playing-bar"
 
 /** The mock's grouped Surf rail. It owns focus while open and never tears down the player below. */
 @Composable
@@ -434,8 +471,7 @@ internal fun SurfRail(
                     }
                 },
     ) {
-        LazyColumn(
-            state = list,
+        Column(
             modifier =
                 Modifier
                     .fillMaxHeight()
@@ -443,40 +479,72 @@ internal fun SurfRail(
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                LoomarrTokens.Color.Static950,
-                                LoomarrTokens.Color.Static950.copy(alpha = 0.92f),
+                                LoomarrTokens.Color.Static950.copy(alpha = 0.88f),
+                                LoomarrTokens.Color.Static950.copy(alpha = 0.78f),
                             ),
                         ),
-                    ).padding(start = OverscanMargin, top = OverscanMargin, bottom = OverscanMargin),
-            verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S1),
+                    ).padding(
+                        start = OverscanMargin,
+                        top = OverscanMargin,
+                        end = LoomarrTokens.Space.S4,
+                        bottom = OverscanMargin,
+                    ),
         ) {
-            items(rows.size) { index ->
-                when (val row = rows[index]) {
-                    is SurfRow.Heading ->
-                        SectionHeading(
-                            "${row.title} · ${row.count}",
-                            modifier = Modifier.padding(top = LoomarrTokens.Space.S3, bottom = LoomarrTokens.Space.S1),
-                        )
-                    is SurfRow.Empty ->
-                        Body(
-                            if (row.section == "Favorites") "No favorites yet" else "No recent channels yet",
-                            fontSize = LoomarrTokens.Type.Xs,
-                        )
-                    is SurfRow.ChannelRow ->
-                        SurfChannelRow(
-                            channel = row.channel,
-                            info = guide.infoFor(row.channel.id),
-                            focused = index == selected,
-                            watching = row.channel.id == currentId,
-                        )
+            LazyColumn(
+                state = list,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S1),
+            ) {
+                items(rows.size) { index ->
+                    when (val row = rows[index]) {
+                        is SurfRow.Heading ->
+                            SectionHeading(
+                                "${row.title} · ${row.count}",
+                                modifier =
+                                    Modifier.padding(
+                                        top = LoomarrTokens.Space.S3,
+                                        bottom = LoomarrTokens.Space.S1,
+                                    ),
+                            )
+                        is SurfRow.Empty ->
+                            Body(
+                                if (row.section == "Favorites") "No favorites yet" else "No recent channels yet",
+                                fontSize = LoomarrTokens.Type.Xs,
+                            )
+                        is SurfRow.ChannelRow ->
+                            SurfChannelRow(
+                                channel = row.channel,
+                                info = guide.infoFor(row.channel.id),
+                                focused = index == selected,
+                                watching = row.channel.id == currentId,
+                            )
+                    }
                 }
             }
+            MonoData(
+                "${selectable.indexOf(selected) + 1} of ${selectable.size} · ▲▼ browse",
+                color = LoomarrTokens.Color.Static500,
+                fontSize = LoomarrTokens.Type.Xs2,
+                maxLines = 1,
+                modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
+            )
         }
         MonoData(
             "OK tune · BACK cancel",
-            color = LoomarrTokens.Color.Static500,
+            color = LoomarrTokens.Color.Static400,
             fontSize = LoomarrTokens.Type.Xs2,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(OverscanMargin),
+            maxLines = 1,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(OverscanMargin)
+                    .clip(RoundedCornerShape(LoomarrTokens.Radius.Md))
+                    .background(LoomarrTokens.Color.Static950.copy(alpha = 0.78f))
+                    .border(
+                        1.dp,
+                        LoomarrTokens.Color.Static700,
+                        RoundedCornerShape(LoomarrTokens.Radius.Md),
+                    ).padding(horizontal = LoomarrTokens.Space.S3, vertical = LoomarrTokens.Space.S2),
         )
     }
 }
@@ -491,7 +559,7 @@ private fun SurfChannelRow(
     Column(
         modifier =
             Modifier
-                .width(SURF_ROW_WIDTH)
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
                 .background(if (focused) LoomarrTokens.Color.Static900 else LoomarrTokens.Color.Static950)
                 .border(
@@ -513,21 +581,56 @@ private fun SurfChannelRow(
                 modifier = Modifier.padding(start = LoomarrTokens.Space.S3).weight(1f),
             )
             if (watching) {
-                MonoData(
-                    "watching",
-                    color = LoomarrTokens.Color.Static500,
-                    fontSize = LoomarrTokens.Type.Xs2,
-                    modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(start = LoomarrTokens.Space.S3)
+                            .width(8.dp)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
+                            .background(LoomarrTokens.Color.Lock),
                 )
             }
         }
         if (focused) {
-            Body(
-                info?.current?.heading ?: "Nothing scheduled",
-                fontSize = LoomarrTokens.Type.Xs,
-                maxLines = 1,
+            val current = info?.current
+            Row(
                 modifier = Modifier.padding(start = LoomarrTokens.Space.S8, top = LoomarrTokens.Space.S1),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Body(
+                    current?.episodeTitle ?: current?.heading ?: "Nothing scheduled",
+                    fontSize = LoomarrTokens.Type.Xs,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                if (current != null) {
+                    MonoData(
+                        "${info.minutesRemaining}m left",
+                        color = LoomarrTokens.Color.Static500,
+                        fontSize = LoomarrTokens.Type.Xs2,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = LoomarrTokens.Space.S2),
+                    )
+                }
+            }
+            Box(
+                modifier =
+                    Modifier
+                        .padding(start = LoomarrTokens.Space.S8, top = LoomarrTokens.Space.S2)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
+                        .background(LoomarrTokens.Color.Static950),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(info?.progress ?: 0f)
+                            .fillMaxHeight()
+                            .background(LoomarrTokens.Color.Signal),
+                )
+            }
         }
     }
 }
@@ -537,7 +640,13 @@ private data class ChannelGuideInfo(
     val current: Airing?,
     val next: Airing?,
     val progress: Float,
-)
+) {
+    val minutesRemaining: Int
+        get() =
+            current
+                ?.let { (((1f - progress) * it.durationMs) / 60_000f).toInt().coerceAtLeast(1) }
+                ?: 0
+}
 
 private fun GuideUiState.infoFor(channelId: String): ChannelGuideInfo? {
     val ready = this as? GuideUiState.Ready ?: return null
@@ -582,7 +691,6 @@ private sealed interface SurfRow {
 }
 
 private val SURF_RAIL_WIDTH = 420.dp
-private val SURF_ROW_WIDTH = 350.dp
 private const val MAX_CHANNEL_DIGITS = 3
 private const val NUMBER_ENTRY_MS = 1_200L
 private const val BANNER_VISIBLE_MS = 5_000L

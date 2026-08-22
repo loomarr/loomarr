@@ -96,6 +96,28 @@ class TvNavigationTest {
         assertEquals(1, cursor.airing)
     }
 
+    @Test
+    fun `guide focus moves from the first row into enabled filters and back`() {
+        val rows =
+            listOf(
+                timeline("a", 1, 0L, 100L),
+                timeline("b", 2, 0L, 90L),
+            )
+        val enabledFilters = listOf(0, 2)
+
+        var focus = GuideFocus(cursor = GuideCursor(row = 0, airing = 1))
+        focus = focus.move(rows, GuideMove.Up, enabledFilters, activeFilterIndex = 0)
+        assertEquals(GuideFocusTarget.Filters, focus.target)
+        assertEquals(0, focus.filterIndex)
+
+        focus = focus.move(rows, GuideMove.Right, enabledFilters, activeFilterIndex = 0)
+        assertEquals(2, focus.filterIndex)
+
+        focus = focus.move(rows, GuideMove.Down, enabledFilters, activeFilterIndex = 0)
+        assertEquals(GuideFocusTarget.Grid, focus.target)
+        assertEquals(GuideCursor(row = 0, airing = 1), focus.cursor)
+    }
+
     private fun timeline(
         id: String,
         number: Int,

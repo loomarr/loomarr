@@ -46,6 +46,8 @@ class GuideClientTest {
                   {"channelId":"ch-1","name":"90s Cartoons","number":12,"status":"live","pendingCount":0,
                    "airings":[
                      {"kind":"program","title":"Wakko's Wish","series":"Animaniacs","season":2,"episode":4,
+                      "description":"The Warners make one last wish.","genres":["Animation","Comedy"],
+                      "year":1999,"rating":"TV-G","thumbUrl":"/v1/images/abc/w500.jpg","runtimeMs":1320000,
                       "startMs":1000,"stopMs":1800000}
                    ]}
                 ]}
@@ -61,6 +63,13 @@ class GuideClientTest {
             val airing = channel.airings.first()
             assertEquals("Animaniacs", airing.series)
             assertEquals("S2E4", airing.episodeLabel)
+            assertEquals("Wakko's Wish", airing.episodeTitle)
+            assertEquals("The Warners make one last wish.", airing.description)
+            assertEquals(listOf("Animation", "Comedy"), airing.genres)
+            assertEquals(1999, airing.year)
+            assertEquals("TV-G", airing.rating)
+            assertEquals(server.url("/v1/images/abc/w500.jpg").toString(), airing.thumbUrl)
+            assertEquals(1_320_000L, airing.runtimeMs)
             // An episode leads with its SERIES — that is what a viewer scans a guide for.
             assertEquals("Animaniacs", airing.heading)
         }
@@ -88,6 +97,30 @@ class GuideClientTest {
             assertNull(airing.series)
             assertEquals("The Thing", airing.heading)
             assertEquals("", airing.episodeLabel)
+        }
+
+    @Test
+    fun `rejects guide artwork outside the paired server origin`() =
+        runTest {
+            respond(
+                """
+                {"fromMs":0,"toMs":3600000,"channels":[
+                  {"channelId":"ch-2","name":"Horror","number":14,"status":"live","pendingCount":0,
+                   "airings":[{"kind":"program","title":"The Thing","thumbUrl":"https://tracker.example/art.jpg",
+                               "startMs":0,"stopMs":6300000}]}
+                ]}
+                """.trimIndent(),
+            )
+
+            assertNull(
+                client
+                    .window()
+                    .channels
+                    .first()
+                    .airings
+                    .first()
+                    .thumbUrl,
+            )
         }
 
     /**

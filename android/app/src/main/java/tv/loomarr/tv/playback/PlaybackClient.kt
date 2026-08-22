@@ -1,6 +1,12 @@
 package tv.loomarr.tv.playback
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -8,6 +14,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /** One channel, as the tuner list shows it. */
 data class Channel(
@@ -67,6 +74,62 @@ class PlaybackClient(
         }
 
     /**
+     * Open the authenticated state-change stream and expose only catalog-relevant signals.
+     *
+     * The payload is intentionally ignored. `/v1/events` is lossy, so constructing a lineup from
+     * frames would eventually drift; callers reconcile through [channels] after every signal.
+     * [ChannelStreamEvent.Connected] is emitted only after the server accepts the stream, allowing
+     * every reconnect to trigger the same authoritative read as a foreground start.
+     */
+    internal fun channelEvents(): Flow<ChannelStreamEvent> =
+        flow {
+            val request =
+                authed(Request.Builder().url("$baseUrl/v1/events"))
+                    .header("Accept", "text/event-stream")
+                    .build()
+            // SSE is intentionally quiet between changes. OkHttp's normal 10-second read timeout
+            // would turn silence into a reconnect loop (and therefore an accidental GET poll), so
+            // this one derived client has no read timeout while retaining the shared pool/settings.
+            val call =
+                http
+                    .newBuilder()
+                    .readTimeout(0, TimeUnit.MILLISECONDS)
+                    .build()
+                    .newCall(request)
+            // OkHttp's blocking read does not observe coroutine cancellation by itself. Cancelling
+            // the call is what lets a backgrounded TV close a quiet, long-lived stream immediately.
+            val cancellation = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) throw IOException("events failed: ${response.code}")
+                    val source = response.body?.source() ?: throw IOException("events returned no body")
+                    emit(ChannelStreamEvent.Connected)
+
+                    var eventName: String? = null
+                    while (currentCoroutineContext().isActive) {
+                        val line = source.readUtf8Line() ?: break
+                        when {
+                            line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
+                            // The payload is irrelevant, but its first data line completes the SSE
+                            // frame. Emitting here also tolerates a proxy closing immediately after
+                            // the data bytes without forwarding the conventional trailing blank.
+                            line.startsWith("data:") && eventName == "channel" -> {
+                                emit(ChannelStreamEvent.ChannelChanged)
+                                eventName = null
+                            }
+                            line.isEmpty() -> eventName = null
+                        }
+                    }
+                    // EOF is a normal reconnect boundary. Returning (rather than throwing) lets
+                    // flowOn deliver any invalidation already read before the proxy closed.
+                }
+            } finally {
+                cancellation.dispose()
+                call.cancel()
+            }
+        }.flowOn(Dispatchers.IO)
+
+    /**
      * Mint a signed HLS URL for one channel.
      *
      * The profile is posted per playback rather than registered once, because capability is a
@@ -96,6 +159,13 @@ class PlaybackClient(
                 PlayUrl(url = url, expiresAt = payload.optString("expiresAt"))
             }
         }
+}
+
+/** Connection lifecycle plus the one SSE frame that invalidates the Channel catalog. */
+internal sealed interface ChannelStreamEvent {
+    data object Connected : ChannelStreamEvent
+
+    data object ChannelChanged : ChannelStreamEvent
 }
 
 /**

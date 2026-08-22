@@ -6,14 +6,14 @@ import org.junit.Test
 
 class GuideWindowLoaderTest {
     @Test
-    fun `opens four hours around the server's now without reading device time`() =
+    fun `opens two readable hours around the server's now without reading device time`() =
         runTest {
             val serverNow = 9_000_000L
             val requests = mutableListOf<Pair<Long?, Long?>>()
             val visible =
                 GuideWindow(
                     fromMs = serverNow - 30 * 60 * 1000L,
-                    toMs = serverNow + 210 * 60 * 1000L,
+                    toMs = serverNow + 90 * 60 * 1000L,
                     channels = emptyList(),
                 )
 
@@ -28,7 +28,7 @@ class GuideWindowLoaderTest {
 
             assertEquals(
                 listOf(
-                    serverNow - 30 * 60 * 1000L to serverNow + 210 * 60 * 1000L,
+                    serverNow - 30 * 60 * 1000L to serverNow + 90 * 60 * 1000L,
                 ),
                 requests,
             )

@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * The guide timeline's geometry and per-kind styling.
@@ -57,6 +59,22 @@ class TimelineTest {
      * the 12dp position rail. The same canvas maps to either 1080p/xhdpi or 4K/xxxhdpi.
      */
     private val pane = 642.dp
+
+    @Test
+    fun `clock labels use twelve hour time`() {
+        fun localEpoch(
+            hour: Int,
+            minute: Int,
+        ) = LocalDate
+            .of(2026, 8, 22)
+            .atTime(hour, minute)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals("12:05 AM", clockLabel(localEpoch(0, 5)))
+        assertEquals("7:24 PM", clockLabel(localEpoch(19, 24)))
+    }
 
     @Test
     fun `block width is proportional to duration`() {

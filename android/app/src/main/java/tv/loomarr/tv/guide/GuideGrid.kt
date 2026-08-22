@@ -35,14 +35,18 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import tv.loomarr.tv.design.Body
-import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
+import tv.loomarr.tv.design.OverscanMargin
+import tv.loomarr.tv.design.RemoteArtwork
 import tv.loomarr.tv.design.SectionHeading
 import tv.loomarr.tv.navigation.GuideCursor
+import tv.loomarr.tv.navigation.GuideFocus
+import tv.loomarr.tv.navigation.GuideFocusTarget
 import tv.loomarr.tv.navigation.GuideMove
 
 /** The mock's Channel-by-time Guide with one explicit, never-lost remote cursor. */
@@ -55,10 +59,20 @@ fun GuideGrid(
     onBack: () -> Unit = {},
     favoriteChannelIds: Set<String> = emptySet(),
     recentChannelIds: List<String> = emptyList(),
+    artworkAuthorization: String? = null,
 ) {
     var filter by remember { mutableStateOf(GuideFilter.All) }
     val rows = filteredRows(window.channels, filter, favoriteChannelIds, recentChannelIds)
-    var cursor by remember { mutableStateOf(GuideCursor()) }
+    val favoriteCount = window.channels.count { it.channelId in favoriteChannelIds }
+    val recentCount = window.channels.count { it.channelId in recentChannelIds }
+    val enabledFilterIndices =
+        buildList {
+            add(GuideFilter.All.ordinal)
+            if (favoriteCount > 0) add(GuideFilter.Favorites.ordinal)
+            if (recentCount > 0) add(GuideFilter.Recent.ordinal)
+        }
+    var guideFocus by remember { mutableStateOf(GuideFocus()) }
+    val cursor = guideFocus.cursor
     val focus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -68,15 +82,21 @@ fun GuideGrid(
     LaunchedEffect(rows) {
         if (rows.isEmpty()) {
             filter = GuideFilter.All
-            cursor = GuideCursor()
+            guideFocus = GuideFocus()
         } else {
-            cursor =
-                cursor.copy(
-                    row = cursor.row.coerceIn(0, rows.lastIndex),
-                    airing = cursor.airing.coerceIn(
-                        0,
-                        rows[cursor.row.coerceIn(0, rows.lastIndex)].airings.lastIndex.coerceAtLeast(0),
-                    ),
+            guideFocus =
+                guideFocus.copy(
+                    cursor =
+                        cursor.copy(
+                            row = cursor.row.coerceIn(0, rows.lastIndex),
+                            airing = cursor.airing.coerceIn(
+                                0,
+                                rows[cursor.row.coerceIn(0, rows.lastIndex)].airings.lastIndex.coerceAtLeast(0),
+                            ),
+                        ),
+                    filterIndex =
+                        guideFocus.filterIndex.takeIf { it in enabledFilterIndices }
+                            ?: filter.ordinal,
                 )
         }
     }
@@ -87,34 +107,43 @@ fun GuideGrid(
     Column(
         modifier =
             modifier
+                .testTag(GUIDE_GRID_TAG)
                 .focusRequester(focus)
                 .focusable()
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                     when (event.key) {
                         Key.DirectionUp -> {
-                            cursor = cursor.move(rows, GuideMove.Up)
+                            guideFocus =
+                                guideFocus.move(rows, GuideMove.Up, enabledFilterIndices, filter.ordinal)
                             true
                         }
                         Key.DirectionDown -> {
-                            cursor = cursor.move(rows, GuideMove.Down)
+                            guideFocus =
+                                guideFocus.move(rows, GuideMove.Down, enabledFilterIndices, filter.ordinal)
                             true
                         }
                         Key.DirectionLeft -> {
-                            cursor = cursor.move(rows, GuideMove.Left)
+                            guideFocus =
+                                guideFocus.move(rows, GuideMove.Left, enabledFilterIndices, filter.ordinal)
                             true
                         }
                         Key.DirectionRight -> {
-                            cursor = cursor.move(rows, GuideMove.Right)
+                            guideFocus =
+                                guideFocus.move(rows, GuideMove.Right, enabledFilterIndices, filter.ordinal)
                             true
                         }
                         Key.DirectionCenter, Key.Enter -> {
-                            focusedChannel?.let(onTune)
+                            if (guideFocus.target == GuideFocusTarget.Filters) {
+                                filter = GuideFilter.entries[guideFocus.filterIndex]
+                            } else {
+                                focusedChannel?.let(onTune)
+                            }
                             true
                         }
                         Key.Menu -> {
                             filter = nextAvailableFilter(filter, window.channels, favoriteChannelIds, recentChannelIds)
-                            cursor = GuideCursor()
+                            guideFocus = GuideFocus()
                             true
                         }
                         Key.Back -> {
@@ -127,9 +156,13 @@ fun GuideGrid(
     ) {
         GuideHeader(
             selected = filter,
+            focused =
+                guideFocus.filterIndex
+                    .takeIf { guideFocus.target == GuideFocusTarget.Filters }
+                    ?.let(GuideFilter.entries::get),
             allCount = window.channels.size,
-            favoriteCount = window.channels.count { it.channelId in favoriteChannelIds },
-            recentCount = window.channels.count { it.channelId in recentChannelIds },
+            favoriteCount = favoriteCount,
+            recentCount = recentCount,
         )
 
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -138,7 +171,10 @@ fun GuideGrid(
                 Row(modifier = Modifier.fillMaxWidth().height(RULER_HEIGHT)) {
                     SectionHeading(
                         "Channel",
-                        modifier = Modifier.width(CHANNEL_COLUMN_WIDTH).padding(start = LoomarrTokens.Space.S3),
+                        modifier =
+                            Modifier
+                                .width(CHANNEL_COLUMN_WIDTH)
+                                .padding(start = OverscanMargin + LoomarrTokens.Space.S3),
                     )
                     TimeRuler(window = window, timelineWidth = timelineWidth)
                 }
@@ -148,6 +184,7 @@ fun GuideGrid(
                     nowMs = nowMs,
                     timelineWidth = timelineWidth,
                     cursor = cursor,
+                    focusVisible = guideFocus.target == GuideFocusTarget.Grid,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -171,8 +208,7 @@ fun GuideGrid(
         FocusedDetail(
             channel = focusedChannel,
             airing = focusedAiring,
-            row = cursor.row,
-            count = rows.size,
+            artworkAuthorization = artworkAuthorization,
         )
     }
 }
@@ -180,25 +216,55 @@ fun GuideGrid(
 @Composable
 private fun GuideHeader(
     selected: GuideFilter,
+    focused: GuideFilter?,
     allCount: Int,
     favoriteCount: Int,
     recentCount: Int,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = LoomarrTokens.Space.S3),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = OverscanMargin,
+                    top = OverscanMargin,
+                    end = OverscanMargin,
+                    bottom = LoomarrTokens.Space.S3,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Heading("Guide")
-        FilterChip("All · $allCount", selected == GuideFilter.All)
-        FilterChip("★ Favorites · $favoriteCount", selected == GuideFilter.Favorites)
-        FilterChip("Recent · $recentCount", selected == GuideFilter.Recent)
-        MonoData(
-            "◀▶ time · ▲▼ channel · OK tune · MENU filter",
-            color = LoomarrTokens.Color.Static500,
-            fontSize = LoomarrTokens.Type.Xs2,
+        Body(
+            "Guide",
+            color = LoomarrTokens.Color.Static0,
+            fontSize = LoomarrTokens.Type.Lg,
             maxLines = 1,
-            modifier = Modifier.padding(start = LoomarrTokens.Space.S6),
         )
+        FilterChip(
+            "All · $allCount",
+            active = selected == GuideFilter.All,
+            focused = focused == GuideFilter.All,
+            enabled = true,
+        )
+        FilterChip(
+            "★ Favorites · $favoriteCount",
+            active = selected == GuideFilter.Favorites,
+            focused = focused == GuideFilter.Favorites,
+            enabled = favoriteCount > 0,
+        )
+        FilterChip(
+            "Recent · $recentCount",
+            active = selected == GuideFilter.Recent,
+            focused = focused == GuideFilter.Recent,
+            enabled = recentCount > 0,
+        )
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            MonoData(
+                if (focused == null) "▲  Filters" else "◀▶ Choose · OK Apply · ▼ Grid",
+                color = LoomarrTokens.Color.Static500,
+                fontSize = LoomarrTokens.Type.Xs2,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -206,21 +272,38 @@ private fun GuideHeader(
 private fun FilterChip(
     label: String,
     active: Boolean,
+    focused: Boolean,
+    enabled: Boolean,
 ) {
     MonoData(
         label,
-        color = if (active) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static400,
+        color =
+            when {
+                focused -> LoomarrTokens.Color.Signal
+                !enabled -> LoomarrTokens.Color.Static700
+                active -> LoomarrTokens.Color.Static0
+                else -> LoomarrTokens.Color.Static400
+            },
         fontSize = LoomarrTokens.Type.Xs2,
         maxLines = 1,
         modifier =
             Modifier
                 .padding(start = LoomarrTokens.Space.S3)
+                .then(if (focused) Modifier.testTag(GUIDE_FOCUSED_FILTER_TAG) else Modifier)
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
                 .background(
-                    if (active) LoomarrTokens.Color.Signal.copy(alpha = 0.1f) else LoomarrTokens.Color.Static950,
+                    when {
+                        focused -> LoomarrTokens.Color.Signal.copy(alpha = 0.18f)
+                        active -> LoomarrTokens.Color.Signal.copy(alpha = 0.1f)
+                        else -> LoomarrTokens.Color.Static950
+                    },
                 ).border(
-                    1.dp,
-                    if (active) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static700,
+                    if (focused) 2.dp else 1.dp,
+                    when {
+                        focused || active -> LoomarrTokens.Color.Signal
+                        enabled -> LoomarrTokens.Color.Static700
+                        else -> LoomarrTokens.Color.Static900
+                    },
                     RoundedCornerShape(LoomarrTokens.Radius.Lg),
                 ).padding(horizontal = LoomarrTokens.Space.S3, vertical = LoomarrTokens.Space.S1),
     )
@@ -233,6 +316,7 @@ private fun ChannelRows(
     nowMs: Long,
     timelineWidth: Dp,
     cursor: GuideCursor,
+    focusVisible: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val list = rememberLazyListState()
@@ -248,8 +332,8 @@ private fun ChannelRows(
                 window = window,
                 nowMs = nowMs,
                 timelineWidth = timelineWidth,
-                selectedRow = index == cursor.row,
-                selectedAiring = if (index == cursor.row) cursor.airing else -1,
+                selectedRow = focusVisible && index == cursor.row,
+                selectedAiring = if (focusVisible && index == cursor.row) cursor.airing else -1,
             )
         }
     }
@@ -313,7 +397,10 @@ private fun ChannelCell(
                 .fillMaxHeight()
                 .padding(end = LoomarrTokens.Space.S2, bottom = LoomarrTokens.Space.S1)
                 .background(if (selected) LoomarrTokens.Color.Static900 else LoomarrTokens.Color.Static950)
-                .padding(horizontal = LoomarrTokens.Space.S3),
+                .padding(
+                    start = OverscanMargin + LoomarrTokens.Space.S3,
+                    end = LoomarrTokens.Space.S3,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MonoData(
@@ -324,8 +411,8 @@ private fun ChannelCell(
         Body(
             channel.name,
             color = if (selected) LoomarrTokens.Color.Static0 else LoomarrTokens.Color.Static100,
-            fontSize = LoomarrTokens.Type.Xs,
-            maxLines = 2,
+            fontSize = LoomarrTokens.Type.Xs2,
+            maxLines = 1,
             modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
         )
     }
@@ -361,8 +448,7 @@ private fun PositionRail(
 private fun FocusedDetail(
     channel: ChannelTimeline?,
     airing: Airing?,
-    row: Int,
-    count: Int,
+    artworkAuthorization: String?,
 ) {
     Row(
         modifier =
@@ -371,33 +457,76 @@ private fun FocusedDetail(
                 .height(DETAIL_HEIGHT)
                 .border(1.dp, LoomarrTokens.Color.Static700)
                 .background(LoomarrTokens.Color.Static900)
-                .padding(horizontal = LoomarrTokens.Space.S4),
+                .padding(
+                    start = OverscanMargin + LoomarrTokens.Space.S2,
+                    top = LoomarrTokens.Space.S2,
+                    end = OverscanMargin + LoomarrTokens.Space.S2,
+                    bottom = LoomarrTokens.Space.S2,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Body(
-            airing?.heading ?: "Nothing scheduled",
-            color = LoomarrTokens.Color.Static0,
-            fontSize = LoomarrTokens.Type.Sm,
-            maxLines = 1,
+        RemoteArtwork(
+            url = airing?.thumbUrl,
+            title = airing?.heading ?: channel?.name ?: "Programme artwork",
+            authorization = artworkAuthorization,
+            modifier = Modifier.width(136.dp).height(76.dp),
         )
-        if (airing != null && channel != null) {
-            MonoData(
-                "${clockLabel(airing.startMs)}–${clockLabel(airing.stopMs)} · CH ${channel.number}",
-                color = LoomarrTokens.Color.Static400,
-                fontSize = LoomarrTokens.Type.Xs2,
+        Column(
+            modifier = Modifier.padding(start = LoomarrTokens.Space.S3).weight(1f),
+        ) {
+            Body(
+                airing?.heading ?: "Nothing scheduled",
+                color = LoomarrTokens.Color.Static0,
+                fontSize = LoomarrTokens.Type.Sm,
                 maxLines = 1,
-                modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
             )
+            airing?.episodeFacts()?.takeIf { it.isNotEmpty() }?.let {
+                MonoData(
+                    it,
+                    color = LoomarrTokens.Color.Static100,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                )
+            }
+            val facts = airing?.scheduleFacts(channel).orEmpty()
+            if (facts.isNotEmpty()) {
+                MonoData(
+                    facts,
+                    color = LoomarrTokens.Color.Static400,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                )
+            }
+            airing?.description?.let {
+                Body(
+                    it,
+                    color = LoomarrTokens.Color.Static400,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                )
+            }
         }
-        MonoData(
-            "row ${(row + 1).coerceAtMost(count)} of $count · OK to tune",
-            color = LoomarrTokens.Color.Signal,
-            fontSize = LoomarrTokens.Type.Xs2,
-            maxLines = 1,
-            modifier = Modifier.padding(start = LoomarrTokens.Space.S6),
-        )
     }
 }
+
+private fun Airing.episodeFacts(): String =
+    buildList {
+        episodeTitle?.let { add("“$it”") }
+        episodeLabel.takeIf { it.isNotEmpty() }?.let(::add)
+        year.takeIf { it > 0 }?.toString()?.let(::add)
+        rating?.let(::add)
+    }.joinToString(" · ")
+
+private fun Airing.scheduleFacts(channel: ChannelTimeline?): String =
+    buildList {
+        genres
+            .take(2)
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString(" / ")
+            ?.let(::add)
+        add("${clockLabel(startMs)}–${clockLabel(stopMs)}")
+        channel?.let { add("CH ${it.number}") }
+    }.joinToString(" · ")
 
 private enum class GuideFilter {
     All,
@@ -434,9 +563,11 @@ private fun nextAvailableFilter(
     return GuideFilter.All
 }
 
-private val CHANNEL_COLUMN_WIDTH = 210.dp
+private val CHANNEL_COLUMN_WIDTH = 250.dp + OverscanMargin
 private val POSITION_RAIL_WIDTH = 12.dp
 private val RULER_HEIGHT = 36.dp
 private val ROW_HEIGHT = 48.dp
-private val DETAIL_HEIGHT = 52.dp
-private const val VISIBLE_ROWS = 6
+private val DETAIL_HEIGHT = 124.dp
+private const val VISIBLE_ROWS = 5
+internal const val GUIDE_GRID_TAG = "guide-grid"
+internal const val GUIDE_FOCUSED_FILTER_TAG = "guide-focused-filter"
