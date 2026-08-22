@@ -53,7 +53,7 @@ func VerifyAndroidReleaseWorkflow(path string) error {
 		return err
 	}
 	if scalarValue(root, "name") != "Android TV beta" {
-		return errors.New("Android release workflow name must be Android TV beta")
+		return errors.New("android release workflow name must be Android TV beta")
 	}
 	if err := verifyAndroidTrigger(root); err != nil {
 		return err
@@ -70,7 +70,7 @@ func VerifyAndroidReleaseWorkflow(path string) error {
 		return err
 	}
 	if len(jobs.Content) != 2 || jobs.Content[0].Value != "release" {
-		return errors.New("Android release workflow must contain only the audited release job")
+		return errors.New("android release workflow must contain only the audited release job")
 	}
 	job, err := requiredMap(jobs, "release")
 	if err != nil {
@@ -80,7 +80,7 @@ func VerifyAndroidReleaseWorkflow(path string) error {
 		return err
 	}
 	if scalarValue(job, "runs-on") != "ubuntu-latest" || scalarValue(job, "environment") != "android-beta" {
-		return errors.New("Android release job must run on ubuntu-latest in the android-beta environment")
+		return errors.New("android release job must run on ubuntu-latest in the android-beta environment")
 	}
 	if err := verifyAndroidEnvironment(job); err != nil {
 		return err
@@ -108,7 +108,7 @@ func verifyAndroidTrigger(root *yaml.Node) error {
 		return err
 	}
 	if len(inputs.Content) != 6 {
-		return errors.New("Android release workflow must expose exactly version_name, publish_to_play, and track")
+		return errors.New("android release workflow must expose exactly version_name, publish_to_play, and track")
 	}
 	for _, name := range []string{"version_name", "publish_to_play", "track"} {
 		if _, err := requiredMap(inputs, name); err != nil {
@@ -117,18 +117,18 @@ func verifyAndroidTrigger(root *yaml.Node) error {
 	}
 	publish, _ := requiredMap(inputs, "publish_to_play")
 	if scalarValue(publish, "type") != "boolean" || scalarValue(publish, "default") != "false" || scalarValue(publish, "required") != "true" {
-		return errors.New("Play publication must be an explicit, default-false boolean input")
+		return errors.New("play publication must be an explicit, default-false boolean input")
 	}
 	track, _ := requiredMap(inputs, "track")
 	if scalarValue(track, "type") != "choice" || scalarValue(track, "default") != "internal" {
-		return errors.New("Android release track must be an internal-default choice")
+		return errors.New("android release track must be an internal-default choice")
 	}
 	options, err := requiredSequence(track, "options")
 	if err != nil {
 		return err
 	}
 	if len(options.Content) != 2 || options.Content[0].Value != "internal" || options.Content[1].Value != "closed-beta" {
-		return errors.New("Android release workflow may target only internal and closed-beta")
+		return errors.New("android release workflow may target only internal and closed-beta")
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func verifyAndroidPermissions(root *yaml.Node) error {
 		return err
 	}
 	if scalarValue(permissions, "contents") != "read" || scalarValue(permissions, "actions") != "read" {
-		return errors.New("Android release workflow may read only contents and CI evidence")
+		return errors.New("android release workflow may read only contents and CI evidence")
 	}
 	return nil
 }
@@ -156,7 +156,7 @@ func verifyAndroidConcurrency(root *yaml.Node) error {
 		return err
 	}
 	if scalarValue(concurrency, "group") != "android-beta-release" || scalarValue(concurrency, "cancel-in-progress") != "false" {
-		return errors.New("Android release publication must serialize globally without cancellation")
+		return errors.New("android release publication must serialize globally without cancellation")
 	}
 	return nil
 }
@@ -174,11 +174,11 @@ func verifyAndroidEnvironment(job *yaml.Node) error {
 		"ANDROID_RELEASE_OUTPUT_DIR":         "${{ github.workspace }}/.artifacts/android-release",
 	}
 	if len(env.Content) != len(required)*2 {
-		return errors.New("Android release environment contains unaudited keys")
+		return errors.New("android release environment contains unaudited keys")
 	}
 	for name, want := range required {
 		if got := scalarValue(env, name); got != want {
-			return fmt.Errorf("Android release environment %s = %q, want %q", name, got, want)
+			return fmt.Errorf("android release environment %s = %q, want %q", name, got, want)
 		}
 	}
 	return nil
@@ -190,7 +190,7 @@ func verifyAndroidSteps(job *yaml.Node) error {
 		return err
 	}
 	if len(steps.Content) != 11 {
-		return fmt.Errorf("Android release job must contain exactly 11 audited steps, found %d", len(steps.Content))
+		return fmt.Errorf("android release job must contain exactly 11 audited steps, found %d", len(steps.Content))
 	}
 
 	actions := map[int]string{
@@ -210,25 +210,25 @@ func verifyAndroidSteps(job *yaml.Node) error {
 	}
 	for index, step := range steps.Content {
 		if step.Kind != yaml.MappingNode {
-			return fmt.Errorf("Android release step %d must be a mapping", index+1)
+			return fmt.Errorf("android release step %d must be a mapping", index+1)
 		}
 		uses := scalarValue(step, "uses")
 		run := strings.TrimSpace(scalarValue(step, "run"))
 		if action, ok := actions[index]; ok {
 			if strings.SplitN(uses, "@", 2)[0] != action || run != "" {
-				return fmt.Errorf("Android release step %d must use %s", index+1, action)
+				return fmt.Errorf("android release step %d must use %s", index+1, action)
 			}
 		} else if want, ok := runs[index]; ok {
 			if uses != "" || run != want {
-				return fmt.Errorf("Android release step %d is not the audited command", index+1)
+				return fmt.Errorf("android release step %d is not the audited command", index+1)
 			}
 		}
 	}
 	if scalarValue(steps.Content[9], "if") != "inputs.publish_to_play" {
-		return errors.New("Play publication step must require the explicit publish_to_play input")
+		return errors.New("play publication step must require the explicit publish_to_play input")
 	}
 	if scalarValue(steps.Content[10], "if") != "always()" {
-		return errors.New("Android credential cleanup must run always")
+		return errors.New("android credential cleanup must run always")
 	}
 	return verifyAndroidStepDetails(steps)
 }
@@ -236,7 +236,7 @@ func verifyAndroidSteps(job *yaml.Node) error {
 func verifyAndroidStepDetails(steps *yaml.Node) error {
 	validationEnv, err := requiredMap(steps.Content[1], "env")
 	if err != nil || scalarValue(validationEnv, "GH_TOKEN") != "${{ github.token }}" {
-		return errors.New("Android source validation must receive only the workflow token")
+		return errors.New("android source validation must receive only the workflow token")
 	}
 	publishEnv, err := requiredMap(steps.Content[9], "env")
 	if err != nil {
@@ -244,7 +244,7 @@ func verifyAndroidStepDetails(steps *yaml.Node) error {
 	}
 	if len(publishEnv.Content) != 4 || scalarValue(publishEnv, "ANDROID_RELEASE_TRACK") != "${{ inputs.track }}" ||
 		scalarValue(publishEnv, "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64") != "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" {
-		return errors.New("Play publisher must receive only the selected track and protected service account")
+		return errors.New("play publisher must receive only the selected track and protected service account")
 	}
 	uploadWith, err := requiredMap(steps.Content[8], "with")
 	if err != nil {
