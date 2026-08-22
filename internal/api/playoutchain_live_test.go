@@ -4,11 +4,14 @@ package api_test
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"os/exec"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,15 +21,12 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/testkit"
-	"log/slog"
 )
 
-// THE WHOLE MECHANISM (make test-ffmpeg), end to end, with a real ffmpeg parent.
-//
-// A real concat demuxer reads our real playlist endpoint, opens our real program endpoint,
-// gets a finite encode, sees EOF, ADVANCES, and re-requests. This is the only test that proves
-// programs actually sequence — every other test asserts one request in isolation.
-func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
+// This is the complete production transport shape: a real Go block supervisor repeatedly opens
+// the authenticated finite-program endpoint, real child encoders end at their Airing boundaries,
+// and one real copy mux keeps emitting. It guards the boundary handoff independently of browser HLS.
+func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 	bin, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("no ffmpeg")
@@ -34,43 +34,28 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 
 	st := openTestStore(t, t.TempDir()+"/chain.db")
 	t.Cleanup(func() { _ = st.Close() })
-
-	// Each program request returns a SHORT synthetic encode. Counting requests is how we
-	// observe the demuxer advancing.
-	var requests int64
+	var requests atomic.Int64
 	profile := playout.DefaultProfile()
 	profile.Width, profile.Height = 320, 180
 
-	// A 10s local clip standing in for a library item, so this needs no media server.
 	srcFile := t.TempDir() + "/src.mp4"
-	if o, err := exec.Command(bin, "-hide_banner", "-loglevel", "error",
-		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=10",
+	if output, err := exec.Command(bin, "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=2",
 		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
 		"-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
 		srcFile).CombinedOutput(); err != nil {
-		t.Fatalf("could not build the source clip: %v\n%s", err, o)
+		t.Fatalf("build source clip: %v\n%s", err, output)
 	}
 
-	var srv *httptest.Server
 	opts := api.Options{
-		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
-		Log:             slog.New(slog.DiscardHandler),
-		PlayoutSecret:   func() string { return playoutToken },
-		Playout:         &testkit.Playout{},
-		PlayoutResolver: &chainResolver{profile: profile, n: &requests, src: srcFile},
-		PlayoutEncoder: func(ctx context.Context, args []string, onProgress func(playout.Progress)) (*playout.Process, error) {
-			return playout.Start(ctx, bin, args, nil, onProgress)
+		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: slog.New(slog.DiscardHandler),
+		PlayoutSecret: func() string { return playoutToken }, Playout: &testkit.Playout{},
+		PlayoutResolver: &chainResolver{profile: profile, requests: &requests, src: srcFile},
+		PlayoutEncoder: func(ctx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
+			return playout.Start(ctx, bin, args, nil, progress)
 		},
 	}
-	cfg := map[string]string{"playout.backend": "internal"}
-	opts.LiveConfig = func(k string) string {
-		if k == "server.public_url" {
-			return srv.URL
-		}
-		return cfg[k]
-	}
-	srv = httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)
 
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", Name: "Chain", Number: 1}}
@@ -79,110 +64,116 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The REAL parent args against the REAL playlist endpoint.
-	playlistURL := srv.URL + "/v1/playout/playlist/ch1?token=" + playoutToken
-	args := playout.ConcatArgs(playlistURL)
-	// Bound the infinite parent and write to a file we can probe.
-	out := t.TempDir() + "/joined.ts"
-	var bounded []string
-	for _, a := range args {
-		if a == "pipe:1" {
-			continue
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	channel, err := playout.BlockSpawner(bin, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	outPath := t.TempDir() + "/channel.ts"
+	out, err := os.Create(outPath)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(out, channel.Stdout)
+		copyDone <- copyErr
+	}()
+
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for requests.Load() < 5 && ctx.Err() == nil {
+		<-ticker.C
+	}
+	cancel()
+	_ = channel.Wait()
+	if err := <-copyDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := requests.Load(); got < 5 {
+		t.Fatalf("program requests = %d, want programme/commercial/card/return to finish", got)
+	}
+	if info, err := os.Stat(outPath); err != nil || info.Size() == 0 {
+		t.Fatalf("continuous mux produced no MPEG-TS: info=%v err=%v", info, err)
+	}
+}
+
+func liveHTTPBlockSource(srv *httptest.Server) playout.BlockSource {
+	var broadcast string
+	return func(ctx context.Context, channel string, plan playout.EncodePlan) (playout.Block, error) {
+		query := url.Values{
+			"token": []string{playoutToken},
+			"plan":  []string{plan.String()},
 		}
-		bounded = append(bounded, a)
-	}
-	bounded = append(bounded, "-t", "12", out)
-	// NOTE: offlineCardDuration is 30s, so a 12s parent cannot span a boundary — the
-	// resolver below returns a SHORT program instead.
-
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-	proc, err := playout.Start(ctx, bin, bounded, nil, nil)
-	if err != nil {
-		t.Fatalf("parent start: %v", err)
-	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("the parent failed: %v\nlast stderr: %s", err, proc.LastError())
-	}
-
-	got := atomic.LoadInt64(&requests)
-	t.Logf("the demuxer requested %d programs in 12s of playout", got)
-	// Each card is ~4s, so 12s of output requires the demuxer to have advanced at least twice.
-	if got < 2 {
-		t.Errorf("only %d program request(s) — the demuxer did not ADVANCE, so programs are "+
-			"not sequencing.\n"+
-			"  ⚠ BEFORE suspecting Loomarr: run TestLive_ConcatAdvancesPastAChunkedHTTPEntry\n"+
-			"  (internal/playout). If that also fails, the ffmpeg on PATH cannot read a chunked\n"+
-			"  concat entry to EOF and this failure is environmental, not a regression — ffmpeg\n"+
-			"  n9.0 is known bad, n7.1.x (the Dockerfile pin) is known good.", got)
-	}
-
-	probe, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return
-	}
-	o, err := exec.CommandContext(ctx, probe, "-v", "error",
-		"-show_entries", "format=duration,nb_streams", "-of", "csv=p=0", out).Output()
-	if err != nil {
-		t.Fatalf("ffprobe: %v", err)
-	}
-	t.Logf("joined output: %s", strings.TrimSpace(string(o)))
-	if strings.HasPrefix(strings.TrimSpace(string(o)), "0") {
-		t.Error("the joined stream has no duration — nothing was concatenated")
+		if broadcast != "" {
+			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+			srv.URL+"/v1/playout/program/"+url.PathEscape(channel)+"?"+query.Encode(), nil)
+		if err != nil {
+			return playout.Block{}, err
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return playout.Block{}, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return playout.Block{}, fmt.Errorf("program status %s", resp.Status)
+		}
+		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
+		if !ok {
+			_ = resp.Body.Close()
+			return playout.Block{}, fmt.Errorf("invalid broadcast format")
+		}
+		if broadcast == "" {
+			broadcast = format.String()
+		}
+		identity, ok := api.ParsePlayoutAiringIdentity(resp.Header)
+		if !ok {
+			_ = resp.Body.Close()
+			return playout.Block{}, fmt.Errorf("invalid airing identity")
+		}
+		return playout.Block{Content: resp.Body, Identity: identity}, nil
 	}
 }
 
 type chainResolver struct {
-	profile playout.Profile
-	n       *int64
-	src     string // a local file standing in for a library item
+	profile  playout.Profile
+	requests *atomic.Int64
+	src      string
 }
 
 func (c *chainResolver) AiringNow(context.Context, string) (playout.Airing, string, error) {
-	atomic.AddInt64(c.n, 1)
-	// A real PLAYABLE program, short, from a local file — so the child exits quickly and the
-	// demuxer has to advance. The offline card is hardcoded to 30s, which cannot span a
-	// boundary inside a short test.
-	return playout.Airing{
+	n := c.requests.Add(1)
+	airing := playout.Airing{
+		StartedAt: time.Unix(n, 0).UTC(), Identity: fmt.Sprintf("block-%d", n),
 		Kind: schedule.SlotProgram, LibraryItemID: "local", Title: "Short",
-		Offset: 0, Remaining: 3 * time.Second,
-	}, c.src, nil
+		Remaining: 2 * time.Second,
+	}
+	switch n % 4 {
+	case 2:
+		airing.Kind, airing.LibraryItemID = schedule.SlotFiller, ""
+		airing.Source, airing.Title = c.src, "Commercial"
+	case 3:
+		airing.Kind, airing.LibraryItemID = schedule.SlotFiller, ""
+		airing.Title = "Filler card"
+		return airing, "", nil
+	}
+	return airing, c.src, nil
 }
 
-func (c *chainResolver) Profile(context.Context) playout.Profile { return c.profile }
-
-// The source clip is built with a single `anullsrc` track, so track 0 is the only honest
-// answer here — and 0 is also the interface's documented fallback, which keeps this double
-// from asserting a language preference the chain test does not exercise.
+func (c *chainResolver) Profile(context.Context) playout.Profile           { return c.profile }
 func (c *chainResolver) AudioTrackFor(context.Context, string, string) int { return 0 }
-
-// Tracks and PlanFor complete api.PlayoutResolver.
-//
-// ⚠ This double had been INCOMPLETE and therefore uncompilable since V47 added PlanFor to the
-// interface — in the same commit, which left the stub behind. Nothing noticed for months because
-// `make check` runs untagged, so every file behind `//go:build ffmpeg` (plus `eval` and
-// `integration`) is invisible to the gate: `go vet ./...` exits 0 in silence while
-// `go vet -tags 'ffmpeg eval integration' ./...` exits 1.
-//
-// The cost was specific. TestLiveChain_RealFfmpegAdvancesThroughPrograms is, by its own comment,
-// "the only test that proves programs actually sequence" — so the one test covering the concat
-// mechanism had not run since the direct-play work that most needed it.
-//
-// A CI step that BUILDS the tagged tests (no hardware required) is the durable fix and is not part
-// of this change; this restores the double so the suite compiles again.
 func (c *chainResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
 	return playout.MediaTracks{}, nil
 }
-
-// PlanFor: transcode both, with no source probe.
-//
-// The zero MediaFormat is the honest answer here — this double has no prober — and it is also the
-// value the real resolver returns when a probe fails, so the chain test exercises the same
-// fail-safe path a live install falls back to. It means no tone-mapping, which is correct: the
-// fixture is SDR `testsrc`.
 func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
 	return playout.CopyPlan{}, playout.MediaFormat{}
 }
-
-var _ = http.MethodGet
+func (c *chainResolver) ChannelCodec(context.Context, string) string { return "h264" }

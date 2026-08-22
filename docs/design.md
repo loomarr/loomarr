@@ -1288,18 +1288,27 @@ an encode genuinely could not fit.
 Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
 **tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an
 Airing and more than ten seconds remain. A child opened near the start of an Airing, or for its short
-remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the concat parent asks
+remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, the block supervisor asks
 “what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
 return from a commercial block appear roughly ten seconds late.
 
-**This removes the old uniform-profile constraint.** Playout previously concatenated programs with a
-single `-c copy` parent that REQUIRED every program to share one profile (codec/resolution/fps/pixel
-format) — which is exactly why everything was transcoded into that profile. Programs now differ:
-program A direct-copied at its native profile, program B transcoded or copied at a different one. The
-session marks each program boundary with an HLS **`#EXT-X-DISCONTINUITY`** — the standard mechanism
-for heterogeneous sources — and the client (hls.js, native, a media server) handles it. The "one
-encode/repackage per channel, N refcounted viewers" invariant, the wall-clock epoch, and the
-single-source-of-truth cycle arithmetic are all unchanged; only the "force one profile" rule is gone.
+**A live session has one stable broadcast format across every Airing boundary.** Codec compatibility
+alone is not enough to direct-copy a source into that session: resolution, frame rate, pixel format,
+audio codec and channel layout are decoder state too. A programme, Clip or fallback card may copy a
+stream only when every known property matches the session's broadcast format; an unknown or mismatched
+property fails safe toward transcoding. This keeps programme → programme, programme → Pod, Clip → Clip
+and Pod → programme handoffs on one monotonic decoder timeline. It deliberately spends an encode when
+the alternative is an in-stream format change that makes a browser or media-server tuner stall.
+
+An Airing boundary remains explicit inside playout even when no transport reset is necessary. The
+session supervisor opens one finite block at a time and owns the handoff; it does not reduce the
+schedule to an anonymous infinite `ffconcat` byte source. A continuous live mux does not force an HLS
+discontinuity merely because the title changed. A packager MUST emit `#EXT-X-DISCONTINUITY`, the new
+init map where applicable, `#EXT-X-PROGRAM-DATE-TIME`, and the matching discontinuity sequence when
+timestamps, track identity, codec configuration, packaging, or a mux restart actually changes. The
+prepared origin necessarily does so between immutable publications because each publication has its
+own timestamps and init data. The "one encode/repackage per channel, N refcounted viewers" invariant,
+wall-clock epoch, accepted cycle, admission gate, and filler fallback remain unchanged.
 
 ### What internal playout serves
 
@@ -1935,8 +1944,9 @@ boolean bolted onto it) is what did not scale. The model is two types with a pur
 Therefore the session's identity is **`(channelID, EncodePlan)`**, not `channelID` alone, and not a
 device target — many DeviceProfiles bucket into few EncodePlans, so encoder fan-out is bounded by the
 (small, fixed) bucket count, never by the number of distinct devices. It threads the whole chain: a
-viewer attaches *with* a plan; the session key carries it; the parent reads `/playout/playlist/{id}
-?plan=P`; each program child plans its copy against `P`. The tuner path (`/playout/stream`) sends no
+viewer attaches *with* a plan; the session key carries it; the block supervisor requests
+`/playout/program/{id}?plan=P`; each finite child plans its copy against `P` and acknowledges the
+session's pinned broadcast format. The tuner path (`/playout/stream`) sends no
 profile and resolves to `full`; the HLS/Watch remux resolves the client's profile to its plan.
 
 ⚠ **`?plan=` replaces `?target=` (V48).** The old `browser`/`mediaserver` token is retired; the
@@ -2000,17 +2010,18 @@ neither axis replaces the other.
 ### Admission is cost-aware, against measured capacity (V49)
 
 The admission gate bounds *what saturates the box*, which is the **video transcode**, not the number
-of sessions. A `-c copy` session — an h264 channel at any plan, or an HEVC channel to an HEVC-capable
-client — costs ≈0 GPU and is **always admitted**; only a session that *re-encodes video* counts. This
+of sessions. A proven `-c copy` session — an h264 channel at any plan, or an HEVC channel to an
+HEVC-capable client — costs ≈0 GPU; only a session that *re-encodes video* remains counted. This
 is what stops the plan-split from halving capacity: a channel watched at `baseline` + `hevc8` costs
 **one** (the baseline transcode), not two, because the hevc8 copy is free. (`playout.Admit` /
 `CopyPlan.Cost` / `EncodePlan.EstimatedCost`.)
 
-The cost is not known at attach — the program's codec is probed later, per program child — so a new
-session's cost is **estimated from its plan** (`baseline`→1, the HEVC/full plans→0) and **corrected to
-the truth** on the first program report (`ReportProgram(..., transcoding)` adjusts the committed sum by
-the delta). Over-estimating baseline on an h264 channel is safe — it never over-admits — and
-self-corrects to 0 within one program.
+The cost is not known at attach — the source is probed later, per program child, and even a supported
+codec may require conformance for geometry or decoder state. Every cold session therefore reserves
+one transcode slot and is **corrected to the truth** on the first program report
+(`ReportProgram(..., transcoding)` adjusts the committed sum by the delta). A proven copy releases
+the reservation immediately. The conservative cold estimate may briefly refuse a new copy session;
+it never over-admits work the measured encoder cannot sustain.
 
 The budget is **not a static magic number**. It is `playout.Manager`'s injected `budget func() int`,
 re-read on every admission, composed from three live sources:
@@ -4972,7 +4983,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 - **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
 
   ⚠ **`testing` itself DOES reach the binary, through exactly one package, and that is now pinned rather than merely true.** `internal/store`'s conformance suite (7 files, ~4,450 lines — 42% of the non-test package) is ordinary package code on purpose: both backend drivers must import `RunConformance`, SQLite in-package and Postgres behind a build tag, so the assertions cannot live in `_test.go`. `flag` follows `testing` in. The principle above is right, so `TestOnlyStoreLinksTestingIntoTheBinary` names the one permitted package and fails on a second — the exemption cannot spread by precedent. The exit is known and unblocked: verified 2026-08-10 that the suite references **zero** unexported store identifiers, so it can move to a sibling package the binary never reaches. That is a ~4,450-line mechanical move across the tree's highest-churn files, so it is sequenced, not taken opportunistically.
-- **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the ffconcat mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
+- **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the block-supervisor mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
 - **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
 - **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
 

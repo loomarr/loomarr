@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 func ffmpegBin(t *testing.T) string {
@@ -273,7 +275,7 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	}
 	// Resolution and framerate must match the profile EXACTLY, not approximately.
 	if !strings.Contains(s, itoa(p.Width)+","+itoa(p.Height)) {
-		t.Errorf("output is not %dx%d — the concat parent would reject it mid-stream:\n%s",
+		t.Errorf("output is not %dx%d — the continuous mux would reject it mid-stream:\n%s",
 			p.Width, p.Height, s)
 	}
 	if !strings.Contains(s, itoa(p.Framerate)+"/1") {
@@ -290,110 +292,230 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	}
 }
 
-// TWO programs encoded independently must be byte-compatible enough to CONCATENATE. This is
-// the actual invariant `-c copy` needs, and no arg-shape test can prove it: it requires
-// encoding twice and then remuxing the pair through the concat demuxer.
-//
-// Different seek offsets stand in for "two different programs" — the point is that two
-// separate ffmpeg invocations produced output the demuxer will splice.
-func TestLive_TwoProgramsConcatenateWithCopy(t *testing.T) {
+// A channel is one decoder timeline, even when its source blocks are not. Two individually valid
+// H.264/AAC files may still disagree on geometry, frame cadence, pixel format or audio layout; the
+// old codec-only copy decision passed both through and made the shared MPEG-TS change shape at EOF.
+// Media servers stalled while reinitialising there, and the live HLS remux inherited the same
+// anonymous format change. This is the smallest real-media reproduction of that transition bug.
+func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 	bin := ffmpegBin(t)
 	probe := ffprobeBin(t)
-	url := embyStreamURL(t)
 	dir := t.TempDir()
 
-	p := DefaultProfile()
-	p.Encoder = Detect(context.Background(), bin, p, "").Chosen
-
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Encode two "programs" from different offsets, exactly as two children would.
-	parts := []string{dir + "/a.ts", dir + "/b.ts"}
-	for i, offset := range []time.Duration{30 * time.Second, 300 * time.Second} {
-		args := replaceOutput(transcodeArgs(p, url, offset, 2*time.Second), parts[i])
-		proc, err := Start(ctx, bin, args, nil, nil)
+	type source struct {
+		path          string
+		width, height int
+		colour        string
+	}
+	sources := []source{
+		{path: dir + "/episode.ts", width: 320, height: 180, colour: "red"},
+		{path: dir + "/commercial.ts", width: 640, height: 360, colour: "blue"},
+	}
+	for _, src := range sources {
+		args := []string{
+			"-hide_banner", "-loglevel", "error", "-y",
+			"-f", "lavfi", "-i", fmt.Sprintf("color=c=%s:s=%dx%d:r=25:d=2", src.colour, src.width, src.height),
+			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "2",
+			"-c:v", "libx264", "-preset", "ultrafast", "-g", "25", "-sc_threshold", "0",
+			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-f", "mpegts", src.path,
+		}
+		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+			t.Fatalf("generate %dx%d source: %v\n%s", src.width, src.height, err, out)
+		}
+	}
+
+	profile := DefaultProfile()
+	profile.Width, profile.Height = 320, 180
+	profile.Framerate = 25
+	profile.Encoder = EncoderSoftware
+
+	parts := make([]string, 0, len(sources))
+	for i, src := range sources {
+		part := fmt.Sprintf("%s/block-%d.ts", dir, i)
+		format := MediaFormat{
+			VideoCodec: "h264", Width: src.width, Height: src.height,
+			FrameRate: 25, PixelFormat: "yuv420p",
+			AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
+		}
+		plan := ConformCopyPlan(format, PlanCopy(format, PlanBaseline), profile, "h264")
+		spec := ProgramSpec{
+			Profile: profile, Input: src.path, Limit: 2 * time.Second,
+			Plan: plan, Source: format,
+		}
+		proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), part), nil, nil)
 		if err != nil {
-			t.Fatalf("part %d start: %v", i, err)
+			t.Fatalf("block %d start: %v", i, err)
 		}
 		go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
 		if err := proc.Wait(); err != nil {
-			t.Fatalf("part %d failed: %v\n%s", i, err, proc.LastError())
+			t.Fatalf("block %d: %v\n%s", i, err, proc.LastError())
 		}
+		parts = append(parts, part)
 	}
 
-	// Now concatenate them with -c copy, which is what the parent does. If the children
-	// disagreed on any pinned property, THIS is where it surfaces.
-	list := dir + "/list.txt"
-	if err := os.WriteFile(list,
-		[]byte("file '"+parts[0]+"'\nfile '"+parts[1]+"'\n"), 0o600); err != nil {
+	joined := dir + "/channel.ts"
+	proc, err := StartPiped(ctx, bin, BlockMuxArgs(), nil, nil)
+	if err != nil {
+		t.Fatalf("channel mux start: %v", err)
+	}
+	joinedFile, err := os.Create(joined)
+	if err != nil {
 		t.Fatal(err)
 	}
-	joinedOut := dir + "/joined.ts"
-	cmd := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error",
-		"-f", "concat", "-safe", "0", "-i", list,
-		"-c", "copy", "-f", "mpegts", joinedOut)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("-c copy concatenation of two independently-encoded programs FAILED — "+
-			"the children are not normalizing identically: %v\n%s", err, out)
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(joinedFile, proc.Stdout)
+		copyDone <- copyErr
+	}()
+	for _, part := range parts {
+		input, openErr := os.Open(part)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		_, copyErr := io.Copy(proc.Stdin, input)
+		_ = input.Close()
+		if copyErr != nil {
+			t.Fatal(copyErr)
+		}
+	}
+	_ = proc.Stdin.Close()
+	if err := <-copyDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("channel mux: %v\n%s", err, proc.LastError())
+	}
+	if err := joinedFile.Close(); err != nil {
+		t.Fatal(err)
 	}
 
-	// The joined stream must be longer than either part, i.e. both actually made it in.
-	got, err := exec.CommandContext(ctx, probe, "-v", "error",
-		"-show_entries", "format=duration", "-of", "csv=p=0", joinedOut).Output()
+	frames, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
+		"-show_frames", "-show_entries", "frame=width,height", "-of", "csv=p=0", joined).Output()
 	if err != nil {
-		t.Fatalf("ffprobe: %v", err)
+		t.Fatalf("probe channel frames: %v", err)
 	}
-	t.Logf("joined duration: %s", strings.TrimSpace(string(got)))
-	if d := strings.TrimSpace(string(got)); strings.HasPrefix(d, "0") || d == "" {
-		t.Errorf("joined stream has no duration (%q) — concatenation produced nothing", d)
+	for _, line := range strings.Split(strings.TrimSpace(string(frames)), "\n") {
+		// ffprobe appends a side-data description to frames carrying H.264 SEI, so width and
+		// height are the stable leading columns rather than necessarily the entire CSV row.
+		if !strings.HasPrefix(line, "320,180") {
+			t.Fatalf("broadcast format changed at the block boundary: frame is %s, want every frame 320,180", line)
+		}
 	}
 }
 
-// The parent's concat args must be ACCEPTED by ffmpeg. The protocol whitelist and -safe 0 are
-// easy to get wrong, and both failures read as "the playlist is broken" rather than naming
-// the flag.
-//
-// This uses a local playlist of local files rather than HTTP, because the point is that the
-// demuxer + copy muxer accept the flag combination — the HTTP half is covered by the routes.
-func TestLive_ConcatArgsAreAcceptedByFfmpeg(t *testing.T) {
+// A logical Airing change does not require a decoder reset once both blocks conform to the same
+// live-session format. The HLS presentation must keep advancing, retain wall-clock mapping, and
+// avoid an unnecessary EXT-X-DISCONTINUITY that would itself flush the browser decoder.
+func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	bin := ffmpegBin(t)
+	probe := ffprobeBin(t)
 	dir := t.TempDir()
 
-	// A short real-ish part to concatenate: the synthetic card, so this test needs no Emby.
-	part := dir + "/part.ts"
-	p := DefaultProfile()
-	p.Width, p.Height = 320, 180
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	blocks := []string{dir + "/episode.ts", dir + "/commercial.ts", dir + "/return.ts"}
+	for i, colour := range []string{"red", "blue", "red"} {
+		args := []string{
+			"-hide_banner", "-loglevel", "error", "-y",
+			"-f", "lavfi", "-i", fmt.Sprintf("color=c=%s:s=320x180:r=25:d=5", colour),
+			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "5",
+			"-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-sc_threshold", "0",
+			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", blocks[i],
+		}
+		if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
+			t.Fatalf("generate block %d: %v\n%s", i, err, out)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	cardArgs := replaceOutput(TestCardArgs(p, "", "", ""), "-t", "1", part)
-	proc, err := Start(ctx, bin, cardArgs, nil, nil)
+	var opened atomic.Int64
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+		i := int(opened.Add(1)) - 1
+		if i >= len(blocks) {
+			<-ctx.Done()
+			return Block{}, ctx.Err()
+		}
+		content, err := os.Open(blocks[i])
+		return Block{
+			Content: content,
+			Identity: AiringIdentity{
+				StartedAt: time.Unix(int64(i), 0), Kind: schedule.SlotProgram,
+				ContentID: fmt.Sprintf("block-%d", i),
+			},
+		}, err
+	})
+	channel, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
-		t.Fatalf("card start: %v", err)
+		t.Fatalf("channel start: %v", err)
 	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("card: %v\n%s", err, proc.LastError())
-	}
-
-	playlist := dir + "/list.ffconcat"
-	if err := os.WriteFile(playlist, []byte(Playlist(part)), 0o600); err != nil {
+	hlsDir := dir + "/hls"
+	if err := os.Mkdir(hlsDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-
-	// The real ConcatArgs, with the trailing pipe swapped for a bounded file. `-stream_loop
-	// -1` would otherwise run forever, so bound it with -t.
-	args := replaceOutput(ConcatArgs(playlist), "-t", "3", dir+"/out.ts")
-	proc, err = Start(ctx, bin, args, nil, nil)
+	hls, err := startHLSFFmpeg(ctx, bin, hlsDir, PlanBaseline, nil)
 	if err != nil {
-		t.Fatalf("concat start: %v", err)
+		t.Fatalf("HLS start: %v", err)
 	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("the parent's own args were rejected by ffmpeg: %v\nlast stderr: %s",
-			err, proc.LastError())
+	copyDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(hls.stdin, channel.Stdout)
+		_ = hls.closeStdin()
+		close(copyDone)
+	}()
+
+	manifestPath := hlsDir + "/" + hlsPlaylistName
+	var manifest []byte
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		manifest, _ = os.ReadFile(manifestPath)
+		if strings.Count(string(manifest), "#EXTINF:") >= 2 && opened.Load() >= 3 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
+	if strings.Count(string(manifest), "#EXTINF:") < 2 {
+		t.Fatalf("HLS did not advance across blocks:\n%s\nlast error: %s", manifest, hls.LastError())
+	}
+	if !strings.Contains(string(manifest), "#EXT-X-PROGRAM-DATE-TIME:") {
+		t.Fatalf("HLS lost its wall-clock mapping:\n%s", manifest)
+	}
+	if strings.Contains(string(manifest), "#EXT-X-DISCONTINUITY") {
+		t.Fatalf("stable blocks forced an unnecessary decoder reset:\n%s", manifest)
+	}
+
+	entries, err := os.ReadDir(hlsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	segments := 0
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".ts") {
+			continue
+		}
+		segments++
+		got, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
+			"-show_entries", "stream=width,height", "-of", "csv=p=0", hlsDir+"/"+entry.Name()).Output()
+		if err != nil {
+			t.Fatalf("probe %s: %v", entry.Name(), err)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(string(got)), "320,180") {
+			t.Fatalf("%s changed decoder geometry: %s", entry.Name(), got)
+		}
+	}
+	if segments < 2 {
+		t.Fatalf("HLS wrote %d segments, want at least two across the block boundary", segments)
+	}
+
+	cancel()
+	<-copyDone
+	_ = hls.wait()
+	_ = channel.Wait()
 }
 
 // replaceOutput swaps the trailing "pipe:1" for a bounded file output.
@@ -557,35 +679,10 @@ func frameHash(t *testing.T, bin, path string) string {
 
 // CAN THIS FFMPEG ADVANCE A CONCAT PLAYLIST PAST A CHUNKED HTTP ENTRY?
 //
-// This is a CAPABILITY test, not a version assertion, and the distinction is the point: the answer
-// depends on the ffmpeg binary in front of it, and there are three different ones in play (the
-// image pins n7.1, CI installs Ubuntu's apt build, a developer has whatever is on PATH). Asking the
-// binary is the only honest check — the same rule capability.go and filters.go already follow.
-//
-// ⚠ **What it guards.** `/v1/playout/program/{id}` streams a LIVE encode, so Go's net/http sends it
-// chunked with no `Content-Length` — and it can never send one, because the byte length of a live
-// encode is unknowable. On ffmpeg **n9.0** that is fatal to the whole mechanism:
-//
-//	[http] Stream ends prematurely at 85916, should be 18446744073709551615
-//	[in#0/concat] Error during demuxing: Input/output error
-//
-// 18446744073709551615 is UINT64_MAX — ffmpeg 9 treats an unknown-length body as INFINITE, so any
-// termination reads as premature, the demuxer raises EIO and STOPS rather than opening the next
-// playlist entry. A channel then plays one programme forever.
-//
-// Measured 2026-08-09 on an identical minimal harness (a static file + a throwaway server, no
-// Loomarr code): n7.1.5 chunked → 5 entry fetches, advances; n9.0 chunked → 1 fetch, 3× EIO;
-// n9.0 with Content-Length → 5 fetches, advances. So it is the missing length, not HTTP itself.
-//
-// ⚠ **This is a hard blocker on bumping FFMPEG_TAG in the Dockerfile.** Nothing else in the tree
-// would catch it: `-stream_loop -1` REPLAYS the buffered programme, so the parent still emits
-// continuous output and exits 0, and the EIO lines are swallowed by `-loglevel error`. The symptom
-// is a channel stuck on one programme, not a failure. Run this before changing the pin.
-//
-// Mitigations tested and REFUTED on 9 — do not spend time re-trying them: dropping `-reconnect` /
-// `-reconnect_at_eof`; `-seekable 0`; connection-close (HTTP/1.0) framing; `-ignore_io_errors`
-// (HLS-only, not a concat option); `-multiple_requests 1` (hangs).
-func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
+// A chunked finite response is the real programme contract: its unknowable encoded byte length
+// means net/http cannot send Content-Length. Go must observe that EOF and open the next block; it
+// must not delegate advancement to a media-tool demuxer whose behavior can change by release.
+func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 	bin := ffmpegBin(t)
 
 	// One short MPEG-TS, shaped like a program child's output.
@@ -603,13 +700,7 @@ func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
 	}
 
 	var fetches atomic.Int64
-	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/playlist") {
-			// The same two-identical-entries shape the real playlist endpoint emits.
-			_, _ = fmt.Fprintf(w, "ffconcat version 1.0\nfile '%s/seg'\nfile '%s/seg'\n", srv.URL, srv.URL)
-			return
-		}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fetches.Add(1)
 		// NO Content-Length, flushed per chunk — byte-for-byte how pipeChild streams a live
 		// programme, which is what makes this a faithful test rather than a synthetic one.
@@ -626,31 +717,38 @@ func TestLive_ConcatAdvancesPastAChunkedHTTPEntry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// The REAL ConcatArgs, bounded to a file so the run terminates.
-	args := replaceOutput(ConcatArgs(srv.URL+"/playlist"), "-t", "6", t.TempDir()+"/joined.ts")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	proc, err := Start(ctx, bin, args, nil, nil)
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+		if err != nil {
+			return Block{}, err
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return Block{}, err
+		}
+		if fetches.Load() >= 3 {
+			// Let the third body reach the mux before ending the live session.
+			time.AfterFunc(100*time.Millisecond, cancel)
+		}
+		return Block{
+			Content: resp.Body,
+			Identity: AiringIdentity{
+				StartedAt: time.Unix(fetches.Load(), 0), Kind: schedule.SlotProgram,
+				ContentID: fmt.Sprintf("fetch-%d", fetches.Load()),
+			},
+		}, nil
+	})
+	proc, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
-		t.Fatalf("parent start: %v", err)
+		t.Fatalf("block spawner start: %v", err)
 	}
 	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if werr := proc.Wait(); werr != nil {
-		t.Fatalf("parent failed: %v\nlast stderr: %s", werr, proc.LastError())
-	}
+	_ = proc.Wait() // context cancellation ends this intentionally live process.
 
-	// 6s of output over 2s entries needs the demuxer to have opened a new entry at least twice.
-	if got := fetches.Load(); got < 2 {
-		v, _ := exec.CommandContext(ctx, bin, "-version").Output()
-		ver := strings.SplitN(strings.TrimSpace(string(v)), "\n", 2)[0]
-		t.Fatalf("this ffmpeg fetched the entry %d time(s) and never advanced.\n"+
-			"  %s\n"+
-			"  It cannot read a chunked (no Content-Length) concat entry to EOF, which is what\n"+
-			"  /v1/playout/program/{id} necessarily serves — so EVERY internal-playout channel on\n"+
-			"  this binary plays one programme and then repeats it.\n"+
-			"  Known good: n7.1.x (what the Dockerfile pins). Known bad: n9.0.\n"+
-			"  This is not a Loomarr regression; it is the ffmpeg on PATH.", got, ver)
+	if got := fetches.Load(); got < 3 {
+		t.Fatalf("block source opened %d times, want at least 3 finite blocks", got)
 	}
 }
 

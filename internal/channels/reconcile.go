@@ -332,7 +332,7 @@ func (e *Engine) reconcileOnce(
 	}
 	ch = committed
 	// A shared encoder is reading the previously accepted cycle until it is retired.
-	// Guide freshness alone cannot switch its current ffconcat session: live proof was a
+	// Guide freshness alone cannot switch its current playout session: live proof was a
 	// newly constrained Simpsons guide advertising S10 while the Shield reattached to a
 	// nine-minute-stale pre-edit stream. Stop only after the replacement Desired cycle is
 	// durable, and only when it actually changed; the next request starts at the correct

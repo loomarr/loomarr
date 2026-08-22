@@ -8,7 +8,7 @@ import "testing"
 const probeFixture = `{
   "streams": [
     {"codec_type":"video","codec_name":"h264","width":1920,"height":1080,"avg_frame_rate":"24000/1001","pix_fmt":"yuv420p"},
-    {"codec_type":"audio","codec_name":"eac3","channels":6,"tags":{"language":"ENG","title":"Surround"}},
+    {"codec_type":"audio","codec_name":"eac3","channels":6,"sample_rate":"48000","tags":{"language":"ENG","title":"Surround"}},
     {"codec_type":"audio","codec_name":"aac","channels":2,"tags":{"language":"rus"}},
     {"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"eng","title":"Forced"}},
     {"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"fra"}}
@@ -67,6 +67,9 @@ func TestFormatOf_FullFormat(t *testing.T) {
 	// FIRST audio stream is the primary (eac3 5.1) — track selection is a separate concern.
 	if f.AudioCodec != "eac3" || f.AudioChannels != 6 {
 		t.Fatalf("audio: %q %dch, want eac3 6", f.AudioCodec, f.AudioChannels)
+	}
+	if f.AudioSampleRate != 48000 {
+		t.Fatalf("audio sample rate = %d, want 48000", f.AudioSampleRate)
 	}
 	if f.Container != "matroska,webm" || f.Duration < 1327 || f.Bitrate != 5000000 {
 		t.Fatalf("container=%q dur=%.0f br=%d", f.Container, f.Duration, f.Bitrate)

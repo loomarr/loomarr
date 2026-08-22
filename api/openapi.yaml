@@ -8807,37 +8807,6 @@ paths:
       summary: Channel HLS segment or media playlist (signed-URL authed)
       tags:
         - playout
-  /v1/playout/playlist/{id}:
-    get:
-      operationId: playout-playlist
-      parameters:
-        - description: Loomarr channel id
-          in: path
-          name: id
-          required: true
-          schema:
-            description: Loomarr channel id
-            examples:
-              - ch_abc123
-            type: string
-      responses:
-        "200":
-          content:
-            text/plain:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-          description: The ffconcat playlist the parent ffmpeg reads to sequence programs.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Channel ffconcat playlist (device-authed)
-      tags:
-        - playout
   /v1/playout/program/{id}:
     get:
       operationId: playout-program
@@ -8859,7 +8828,7 @@ paths:
                 contentMediaType: application/octet-stream
                 format: binary
                 type: string
-          description: One program's transport stream; the concat demuxer re-opens this per program.
+          description: One finite transport block; the channel supervisor re-opens this at each airing boundary.
         default:
           content:
             application/problem+json:

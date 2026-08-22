@@ -7,16 +7,9 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
-// "What is airing right now?" — the question the ffconcat loop asks (§9.1).
-//
-// The mechanism (prior-art §1, Tunarr's): one long-lived `-c copy` ffmpeg reads a two-line
-// HTTP ffconcat playlist whose entries BOTH point at a "what's on now" endpoint. Each time
-// the concat demuxer opens it, that endpoint answers for the current wall-clock, spawns a
-// child encode for that one item, and streams finite MPEG-TS until it ends. The demuxer
-// advances, loops, asks again — and gets the next thing.
-//
-// So the program boundary is the concat demuxer's EOF-and-advance. There is no splicing
-// code, and this file is the whole sequencing layer.
+// "What is airing right now?" — the question the block supervisor asks at each finite EOF (§9.1).
+// The wall-clock answer, including its stable identity and start time, is what advances the
+// long-lived mux; process timing is never treated as scheduling truth.
 //
 // Deliberately NOT a new scheduler. `schedule.ComputeDesiredAt` already answers "what does
 // this channel air at instant T", honouring curation rules, seasonality, ordering,
@@ -27,6 +20,13 @@ import (
 
 // Airing is what a channel should be playing at a given instant.
 type Airing struct {
+	// StartedAt is the authoritative wall-clock boundary for this airing. Unlike request time it is
+	// stable across retries and mid-program tune-ins, so downstream playout can distinguish a real
+	// transition from reopening the same item.
+	StartedAt time.Time
+	// Identity is the stable content identity within StartedAt: a provisioning key for programmes,
+	// a clip hash for commercials, and the slot kind for an unplayable scheduled card.
+	Identity string
 	// Kind mirrors the scheduler's slot kind, so a caller can distinguish "play this
 	// program" from "play a filler clip" from "there is nothing".
 	Kind schedule.SlotKind
@@ -57,8 +57,7 @@ type Airing struct {
 	// that begins when someone watches.
 	Offset time.Duration
 	// Remaining is how much of the item is left. The child encode is bounded by it, so the
-	// process exits at the item boundary and the concat demuxer advances — that EOF is the
-	// sequencing signal.
+	// process exits at the item boundary and the block supervisor resolves again.
 	Remaining time.Duration
 }
 
@@ -76,10 +75,10 @@ type Airing struct {
 // required LibraryItemID unconditionally, which made every resolved commercial fall through to
 // the offline card — the ad was picked correctly and then silently never played.
 func (a Airing) Playable() bool {
-	if a.Kind != schedule.SlotProgram {
-		return false
+	if a.Kind == schedule.SlotFiller {
+		return a.Source != ""
 	}
-	return a.LibraryItemID != "" || a.Source != ""
+	return a.Kind == schedule.SlotProgram && a.LibraryItemID != ""
 }
 
 // AiringAt walks a computed lineup against the wall clock and returns what is on.
@@ -116,7 +115,16 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 			continue // unknown duration — not airable, see above
 		}
 		if into < d {
+			identity := string(s.Key)
+			if identity == "" {
+				identity = s.LibraryItemID
+			}
+			if identity == "" {
+				identity = string(s.Kind)
+			}
 			return Airing{
+				StartedAt:     now.Add(-into),
+				Identity:      identity,
 				Kind:          s.Kind,
 				LibraryItemID: s.LibraryItemID,
 				// Key identifies WHAT aired independently of which library item served it —

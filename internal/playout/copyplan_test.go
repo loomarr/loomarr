@@ -47,6 +47,75 @@ func TestPlanCopy(t *testing.T) {
 	}
 }
 
+func TestConformCopyPlanRequiresTheSessionFormat(t *testing.T) {
+	profile := Profile{Width: 1280, Height: 720, Framerate: 25}
+	matching := MediaFormat{
+		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
+	}
+	allowed := CopyPlan{CopyVideo: true, CopyAudio: true}
+
+	if got := ConformCopyPlan(matching, allowed, profile, "h264"); !got.DirectPlay() {
+		t.Fatalf("matching source = %+v, want direct play", got)
+	}
+
+	cases := []struct {
+		name   string
+		change func(*MediaFormat)
+		video  bool
+		audio  bool
+	}{
+		{"different codec", func(f *MediaFormat) { f.VideoCodec = "hevc" }, false, true},
+		{"different width", func(f *MediaFormat) { f.Width = 1920 }, false, true},
+		{"different height", func(f *MediaFormat) { f.Height = 1080 }, false, true},
+		{"different cadence", func(f *MediaFormat) { f.FrameRate = 24 }, false, true},
+		{"different pixel format", func(f *MediaFormat) { f.PixelFormat = "yuv420p10le" }, false, true},
+		{"HDR", func(f *MediaFormat) { f.ColorTransfer = "smpte2084" }, false, true},
+		{"different audio codec", func(f *MediaFormat) { f.AudioCodec = "eac3" }, true, false},
+		{"different audio layout", func(f *MediaFormat) { f.AudioChannels = 6 }, true, false},
+		{"different audio sample rate", func(f *MediaFormat) { f.AudioSampleRate = 44100 }, true, false},
+		{"unknown geometry", func(f *MediaFormat) { f.Width = 0 }, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := matching
+			tc.change(&f)
+			got := ConformCopyPlan(f, allowed, profile, "h264")
+			if got.CopyVideo != tc.video || got.CopyAudio != tc.audio {
+				t.Fatalf("ConformCopyPlan = %+v, want video=%v audio=%v", got, tc.video, tc.audio)
+			}
+		})
+	}
+}
+
+func TestBroadcastVideoCodecMakesTheTunerStable(t *testing.T) {
+	if got := BroadcastVideoCodec(PlanFull, "h264"); got != "h264" {
+		t.Fatalf("h264 tuner codec = %q", got)
+	}
+	if got := BroadcastVideoCodec(PlanFull, "hevc"); got != "hevc" {
+		t.Fatalf("HEVC tuner codec = %q", got)
+	}
+	if got := BroadcastVideoCodec(PlanHEVC8, "h264"); got != "hevc" {
+		t.Fatalf("HEVC session codec = %q", got)
+	}
+}
+
+func TestBroadcastFormatRoundTripsThePinnedSessionShape(t *testing.T) {
+	want := BroadcastFormat{
+		VideoCodec: "hevc", Width: 1920, Height: 1080, Framerate: 25,
+		VideoBitrate: 5000, AudioBitrate: 160,
+	}
+	got, ok := ParseBroadcastFormat(want.String())
+	if !ok || got != want {
+		t.Fatalf("round trip = %+v, %v; want %+v, true", got, ok, want)
+	}
+	for _, raw := range []string{"", "av1-1920x1080-25-5000-160", "h264-0x720-25-5000-160", "h264-1280x720-0-5000-160", "h264-99999x720-25-5000-160", "h264-1280x720-999-5000-160", "h264-1280x720-25-0-160", "h264-1280x720-25-5000-0"} {
+		if got, ok := ParseBroadcastFormat(raw); ok {
+			t.Errorf("ParseBroadcastFormat(%q) = %+v, true; want miss", raw, got)
+		}
+	}
+}
+
 // resolve buckets a DeviceProfile into the richest plan it FULLY satisfies, rounding DOWN, and NEVER
 // grants a capability the profile did not advertise (§9.1 V48 — the black-frame guard).
 func TestResolvePlan(t *testing.T) {
@@ -134,6 +203,14 @@ func TestEncodePlan_ParseStringRoundTrip(t *testing.T) {
 	for _, s := range []string{"", "browser", "mediaserver", "BASELINE", "tv", "hevc"} {
 		if got := ParseEncodePlan(s); got != PlanBaseline {
 			t.Errorf("ParseEncodePlan(%q) = %v, must default to PlanBaseline", s, got)
+		}
+	}
+}
+
+func TestEncodePlanEstimatedCostNeverOptimisticallyOverAdmits(t *testing.T) {
+	for _, plan := range []EncodePlan{PlanBaseline, PlanHEVC8, PlanHEVC10, PlanFull} {
+		if got := plan.EstimatedCost(); got != 1 {
+			t.Errorf("%s estimated cost = %d, want one until the first block proves copy", plan, got)
 		}
 	}
 }

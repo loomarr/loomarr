@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS. Debugging a channel that plays black in the browser repeatedly needs the
 # same three answers, none of which the app surfaces at shell level: (1) what ffmpeg processes
-# are live and how they map to channels/targets, (2) what the GPU + the resident LLM are doing
+# are live and how they map to channels/plans, (2) what the GPU + the resident LLM are doing
 # (they share VRAM — §8.2, §9.1 V47), and (3) per channel, what codec is airing and whether it
 # is direct-played or transcoded, on hardware or software. This session hand-rolled all three a
 # dozen times; this script makes them one command.
@@ -33,19 +33,21 @@ cmdline() { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null; }
 # in its own argv is not matched — a trap this session hit repeatedly).
 ffmpeg_pids() { pgrep -x ffmpeg 2>/dev/null; }
 
-# role CMD → parent(concat) | remux(hls) | program(child) | card(offline) | other.
+# role CMD → supervisor(block mux) | remux(hls) | program(child) | card(offline) | other.
 #
 # Keyed off what each tier's ACTUAL argv carries (verified against live processes), which is not
 # always the URL you'd expect:
-#   - parent: reads the ffconcat playlist over HTTP — argv has `-f concat` and `/playlist/`.
+#   - supervisor: the long-lived copy mux reads finite child blocks from stdin — argv has
+#     `-f mpegts -i pipe:0` and writes MPEG-TS to `pipe:1`.
 #   - remux:  the `-c copy -f hls` repackager — argv has `-f hls` and a `/loomarr-hls-*/` dir.
 #   - program child: spawned server-side with the RESOLVED FILE PATH directly — argv has
-#     `-i /path -f mpegts` and NO `/program/` (that URL is the parent's, not the child's). This
-#     was the trap: matching `/program/` found nothing and mislabeled every child as "other".
+#     `-i /path -f mpegts` and NO `/program/` (Go opens that URL and pipes the response into the
+#     supervisor). This was the trap: matching `/program/` found nothing and mislabeled every
+#     child as "other".
 #   - card: the synthetic offline card — lavfi/drawtext.
 role() {
   case "$1" in
-    *" -f concat "*|*"/playlist/"*) echo "parent" ;;
+    *" -f mpegts -i pipe:0 "*)      echo "supervisor" ;;
     *loomarr-hls-*|*" hls "*)       echo "remux" ;;
     *lavfi*|*drawtext*)             echo "card" ;;
     *" -i "*" -f mpegts "*)         echo "program" ;;
@@ -80,14 +82,14 @@ for m in d.get("models", []):
 
 # --- per-process classification --------------------------------------------
 
-# Emits one TSV row per live ffmpeg: pid \t role \t channel \t target \t encoder \t input
+# Emits one TSV row per live ffmpeg: pid \t role \t channel \t plan \t encoder \t input
 classify() {
   for pid in $(ffmpeg_pids); do
     cmd=$(cmdline "$pid")
     [ -z "$cmd" ] && continue
     r=$(role "$cmd")
     ch=$(field "$cmd" 'ch_[a-f0-9]{16}')
-    tgt=$(field "$cmd" 'target=[a-z]+'); tgt=${tgt#target=}
+    tgt=$(field "$cmd" 'plan=[a-z0-9]+'); tgt=${tgt#plan=}
     enc=$(field "$cmd" '\-c:v (copy|libx264|h264_[a-z0-9]+|hevc_[a-z0-9]+)'); enc=${enc#-c:v }
     # Input path can contain spaces (real library files do), so match up to the next flag/redirect
     # (` -` or ` pipe:`) rather than the first space — else a "Star Trek …" file truncates to "Star".
@@ -109,7 +111,7 @@ out = subprocess.run(["bash", os.environ["DIAG"], "--_rows"], capture_output=Tru
 for line in out.splitlines():
     p = line.split("\t")
     if len(p) == 6:
-        rows.append(dict(pid=p[0], role=p[1], channel=p[2], target=p[3], encoder=p[4], input=p[5]))
+        rows.append(dict(pid=p[0], role=p[1], channel=p[2], plan=p[3], encoder=p[4], input=p[5]))
 llm = []
 lout = subprocess.run(["bash", os.environ["DIAG"], "--_llm"], capture_output=True, text=True).stdout
 for line in lout.splitlines():
@@ -147,32 +149,32 @@ else
 fi
 
 echo
-echo "=== live ffmpeg by channel + target ========================================"
+echo "=== live ffmpeg by channel + plan =========================================="
 rows=$(classify)
 if [ -z "$rows" ]; then
   echo "  (no ffmpeg running — no channel is being streamed right now)"
 else
-  printf '  %-8s %-8s %-20s %-11s %-13s %s\n' PID ROLE CHANNEL TARGET ENCODER INPUT
+  printf '  %-8s %-10s %-20s %-11s %-13s %s\n' PID ROLE CHANNEL PLAN ENCODER INPUT
   echo "$rows" | while IFS="$(printf '\t')" read -r pid r ch tgt enc inp; do
     # Trim the input to a basename for readability.
     base=$(basename "$inp" 2>/dev/null); [ "$inp" = "–" ] && base="–"
-    printf '  %-8s %-8s %-20s %-11s %-13s %s\n' "$pid" "$r" "$ch" "$tgt" "$enc" "$base"
+    printf '  %-8s %-10s %-20s %-11s %-13s %s\n' "$pid" "$r" "$ch" "$tgt" "$enc" "$base"
   done
 
   echo
   echo "=== pipeline summary ======================================================="
-  # Honest scope: a program CHILD is spawned with just its file path (no channel id / target in
+  # Honest scope: a program CHILD is spawned with just its file path (no channel id / plan in
   # argv), and a REMUX writes to a HASHED dir — so shell forensics cannot reliably map either back
   # to its channel. That mapping lives in the app, which spawned them: `GET /v1/playout/sessions`
-  # (per (channel,target) encoder + speed) and the doctor endpoint are the per-channel truth. What
+  # (per (channel,plan) encoder + speed) and the doctor endpoint are the per-channel truth. What
   # the process table CAN answer authoritatively is the shape and the load:
-  n_parent=$(echo "$rows"  | awk -F'\t' '$2=="parent"'  | wc -l | tr -d ' ')
+  n_supervisor=$(echo "$rows" | awk -F'\t' '$2=="supervisor"' | wc -l | tr -d ' ')
   n_remux=$(echo "$rows"   | awk -F'\t' '$2=="remux"'   | wc -l | tr -d ' ')
   n_program=$(echo "$rows" | awk -F'\t' '$2=="program"' | wc -l | tr -d ' ')
   n_copy=$(echo "$rows"    | awk -F'\t' '$5=="copy"'    | wc -l | tr -d ' ')
   n_soft=$(echo "$rows"    | awk -F'\t' '$5=="libx264"' | wc -l | tr -d ' ')
   n_hw=$(echo "$rows"      | awk -F'\t' '$5 ~ /^(h264|hevc)_/' | wc -l | tr -d ' ')
-  echo "  sessions (concat parents):  $n_parent"
+  echo "  sessions (block supervisors): $n_supervisor"
   echo "  HLS remuxes (browser Watch): $n_remux"
   echo "  program children live now:   $n_program  (direct-copy: $n_copy, hardware: $n_hw, SOFTWARE: $n_soft)"
   echo
@@ -181,10 +183,5 @@ else
   if [ "${n_soft:-0}" -ge 2 ]; then
     echo "  ⚠ $n_soft concurrent SOFTWARE transcodes — the CPU realtime ceiling. If a channel"
     echo "    stalls, this is the first suspect (an old codec with no hardware decoder, §9.1 ladder)."
-  fi
-  parents_browser=$(echo "$rows" | awk -F'\t' '$2=="parent" && $4=="browser"' | wc -l | tr -d ' ')
-  if [ "${parents_browser:-0}" -gt "${n_remux:-0}" ]; then
-    echo "  ⚠ $parents_browser browser session(s) but only $n_remux remux(es) — a browser session"
-    echo "    with no remux serves no HLS (the <video> element gets nothing). Check the doctor endpoint."
   fi
 fi

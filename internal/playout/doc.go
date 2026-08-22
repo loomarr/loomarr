@@ -8,16 +8,15 @@
 // and it is a tar pit — timestamps, keyframes, and stream parameters all have to be reconciled
 // across the join.
 //
-// This package does not splice. Following Tunarr's design (docs/engineering/archive/playout-prior-art.md
-// §1), ONE long-lived parent ffmpeg runs `-c copy` over a two-line HTTP ffconcat playlist whose
-// entries BOTH resolve to "what is on now". Each time the concat demuxer opens an entry it asks
-// the server that question, receives one finite programme, plays it to EOF, and advances to the
-// other entry — which asks again. The demuxer's EOF-and-advance IS the programme boundary. There
-// is no splicing code in this package because there is no splice.
+// This package does not splice transport files. A Go block supervisor asks the server what is on,
+// receives one finite programme/commercial/card MPEG-TS response, and writes it into one long-lived
+// `-c copy` mux. EOF is an explicit block boundary: Go closes the response and resolves the next
+// authoritative Airing from the wall clock. The mux rebases those finite timestamp domains onto one
+// monotonic output timeline.
 //
-//	parent ffmpeg ──> GET /playout/playlist/{ch}   (two lines, both "what's on now")
-//	                    └─> GET /playout/program/{ch}  ──> one finite encoded programme
-//	                    └─> GET /playout/program/{ch}  ──> the next one, asked at EOF
+//	block supervisor ──> GET /playout/program/{ch} ──> finite episode
+//	                 └─> GET /playout/program/{ch} ──> finite commercial/card
+//	                 └─> one long-lived copy mux ─────> continuous channel MPEG-TS
 //
 // # The invariants
 //

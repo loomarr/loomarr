@@ -169,8 +169,8 @@ func familyOf(e Encoder) encoderFamily {
 
 // Profile is the normalized output every program is encoded to.
 //
-// Normalization is not cosmetic — it is what makes the concat mechanism legal. The
-// parent process concatenates per-program streams with `-c copy`, which is only valid
+// Normalization is not cosmetic — it is what makes the continuous copy mux legal. The
+// mux consumes per-program streams with `-c copy`, which is only valid
 // if every child produced identical resolution, framerate, codec and pixel format.
 // A child that quietly differs produces a stream players reject mid-program, and the
 // symptom (a channel that dies a few minutes in) points nowhere near the cause.
@@ -448,9 +448,9 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 //
 // The bound is the whole difference, and it is required rather than cosmetic. TestCardArgs loops
 // FOREVER by design (`-stream_loop -1`, so a generated source never EOFs mid-channel), which is
-// right for a standing test pattern and wrong for a program slot: the concat parent advances on
+// right for a standing test pattern and wrong for a program slot: the block supervisor advances on
 // its child's EOF, so a card that never ends means the channel can never pick up content that
-// later lands. Bounding it makes the demuxer come back and ask again.
+// later lands. Bounding it makes the supervisor ask again.
 //
 // `-t` goes before the output target, where it applies to the OUTPUT. As an input option it
 // would instead limit how much of the looping source is READ, which for an infinite generated

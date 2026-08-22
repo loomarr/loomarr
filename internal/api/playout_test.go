@@ -233,7 +233,7 @@ func TestPlayout_RejectsMissingOrWrongToken(t *testing.T) {
 	for _, path := range []string{
 		"/v1/playout/tuner.m3u",
 		"/v1/playout/stream/ch1",
-		"/v1/playout/playlist/ch1",
+		"/v1/playout/program/ch1",
 		// The in-app HLS surface (§9.1 Watch, V46) authenticates exactly like the rest.
 		"/v1/playout/hls/ch1/master.m3u8",
 		"/v1/playout/hls/ch1/seg-0.ts",
@@ -277,7 +277,7 @@ func TestPlayout_NoConfiguredTokenRefusesEverything(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, noSecret: true})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	for _, path := range []string{"/v1/playout/tuner.m3u", "/v1/playout/stream/ch1", "/v1/playout/playlist/ch1"} {
+	for _, path := range []string{"/v1/playout/tuner.m3u", "/v1/playout/stream/ch1", "/v1/playout/program/ch1"} {
 		// Even presenting an empty token — which would "match" an unset secret under a naive
 		// equality check — must be refused.
 		for _, q := range []string{"", "?token=", "?token=" + playoutToken} {
@@ -518,101 +518,6 @@ func TestPlayoutStream_NotRunningExplainsItself(t *testing.T) {
 	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", resp.StatusCode)
-	}
-}
-
-// --- The ffconcat playlist ---
-
-// TWO identical entries pointing at the program endpoint. That is the mechanism: the demuxer
-// needs a second entry to advance to when the first EOFs (prior-art §1).
-func TestPlayoutPlaylist_IsTheTwoLineFfconcat(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
-	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
-
-	resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	got := string(body)
-
-	if !strings.HasPrefix(got, "ffconcat version 1.0\n") {
-		t.Errorf("missing the ffconcat header: %q", got)
-	}
-	if n := strings.Count(got, "file '"); n != 2 {
-		t.Errorf("%d entries, want 2 — one entry ends the channel after the first program", n)
-	}
-	// Entries must be ABSOLUTE and carry the token: ffmpeg is a separate process with no
-	// notion of "the origin this came from", and it cannot set headers.
-	if !strings.Contains(got, "http://loomarr.local:8080/v1/playout/program/ch1") {
-		t.Errorf("entries are not absolute URLs built from server.public_url: %q", got)
-	}
-	if !strings.Contains(got, "token="+playoutToken) {
-		t.Errorf("entries carry no token; ffmpeg cannot authenticate any other way: %q", got)
-	}
-}
-
-func TestPlayoutPlaylistUsesCanonicalLifecycleAdmission(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		err    error
-		status int
-	}{
-		{name: "channel outside transport catalog", err: playout.ErrIneligible, status: http.StatusNotFound},
-		{name: "durable lifecycle unavailable", err: playout.ErrUnavailable, status: http.StatusServiceUnavailable},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sessions := &fakePlayoutSessions{admitErr: tc.err}
-			srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
-			seedChannel(t, st, "ch1", "Channel One", 1, "internal")
-
-			resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
-			if resp.StatusCode != tc.status {
-				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
-			}
-		})
-	}
-}
-
-// The URL must come from server.public_url, NEVER from the Host header. The playlist URL is
-// what the parent ffmpeg re-opens forever, so a spoofed Host points a long-lived channel at an
-// attacker's server for as long as it runs.
-func TestPlayoutPlaylist_IgnoresHostHeaderSpoofing(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
-	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
-
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/playout/playlist/ch1?token="+playoutToken, nil)
-	req.Host = "evil.example.com"
-	req.Header.Set("X-Forwarded-Host", "evil.example.com")
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(body), "evil.example.com") {
-		t.Errorf("a spoofed Host reached the playlist URL — the channel would stream from "+
-			"an attacker's server: %s", body)
-	}
-	if !strings.Contains(string(body), "loomarr.local") {
-		t.Errorf("want the configured public_url: %s", body)
-	}
-}
-
-// No public_url ⇒ say so. There is no safe relative fallback: ffmpeg resolves these URLs
-// itself and a relative one is simply not fetchable.
-func TestPlayoutPlaylist_UnsetPublicURLIsExplained(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, publicURL: " "})
-	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
-
-	resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("status %d, want 503 when public_url is unset", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "public address") {
-		t.Errorf("the error does not name the missing setting: %s", body)
 	}
 }
 

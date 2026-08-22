@@ -89,6 +89,10 @@ RETIRED=(
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
   'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
   'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
+  # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
+  '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'
+  'ConcatArgs|retired: BlockSpawner and BlockMuxArgs own finite block advancement'
   # Live TV wiring stopped being an operator ACTION: it is idempotent and fully derived from the
   # Tunarr connection, so it auto-runs on a Connections save (settings.go autoWireAfterSave) and a
   # manual endpoint would be a redundant no-op. The route was deleted; five documents kept telling

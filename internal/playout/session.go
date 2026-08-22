@@ -98,12 +98,12 @@ type Session struct {
 	// streams and one.
 	//
 	// ⚠ Reported from OUTSIDE, by the per-program child, not captured at session start. The
-	// session's own ffmpeg is the `-c copy` PARENT — it reads the ffconcat playlist and
-	// remuxes, and never encodes anything. Its speed would measure remuxing throughput and its
+	// session's own ffmpeg is the `-c copy` mux fed by the block supervisor; it never encodes.
+	// Its speed would measure remuxing throughput and its
 	// "encoder" would be copy, so sourcing telemetry from it would put a confident,
 	// meaningless number on the dashboard. Encoding happens in the per-program children the
-	// concat demuxer requests, and Resolve is load-aware, so the answer can legitimately
-	// change from one program to the next on the same channel.
+	// supervisor requests. The session format is pinned, while the selected hardware engine may
+	// legitimately change after a child falls back.
 	encoder Encoder
 
 	mu      sync.Mutex
@@ -210,19 +210,17 @@ func (m *Manager) notifyChange() {
 // Spawner starts an encoder for a channel and returns the supervised process. The
 // implementation builds args from the resolved Airing and the load-aware Profile.
 //
-// It takes the TARGET as well as the channel (§9.1 V47): the parent fetches its ffconcat playlist
-// over HTTP, and that playlist URL must carry `?target=` so every program it requests plans its
-// copy for the right codec audience. A browser session's parent and a tuner session's parent read
-// DIFFERENT playlist URLs for the same channel.
+// It takes the plan as well as the channel (§9.1 V47), so every finite block is normalized for the
+// same codec audience. Browser and tuner sessions can therefore serve the same channel differently
+// without changing format inside either session.
 type Spawner func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error)
 
 // NewManager builds a session manager.
 //
-// There is deliberately NO resolver here. The manager owns the long-lived PARENT process (one
-// `-c copy` ffmpeg per channel, reading an ffconcat playlist); resolving "what is airing now"
-// happens in the /playout/program handler, once per program, because that is the request the
-// concat demuxer makes. An earlier draft gave the manager a Resolver seam and nothing ever read
-// it — dead surface whose only effect was a nil argument at the call site.
+// There is deliberately NO resolver here. The manager owns one long-lived copy mux per
+// channel/plan; the block supervisor resolves "what is airing now" through /playout/program at
+// each finite EOF. An earlier draft gave the manager a Resolver seam and nothing ever read it —
+// dead surface whose only effect was a nil argument at the call site.
 // budget returns the CURRENT admission budget (concurrent video transcodes this box can sustain);
 // see the field doc. A nil budget means "unmeasured" — admission never blocks (Admit's budget<=0
 // path), which is the safe default for a unit Manager built without capacity wiring.
@@ -316,7 +314,7 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
 	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
-	// ESTIMATED from the plan here (baseline→1, hevc→0) and corrected to the real cost on the first
+	// conservatively estimated as one here and corrected to the real cost on the first
 	// program report. Checked under the lock against the live committedCost so parallel starts cannot
 	// overshoot the budget.
 	newCost := key.plan.EstimatedCost()
@@ -839,10 +837,9 @@ func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, 
 	s.mu.Unlock()
 
 	// Correct the session's admission cost to REALITY (§9.1 V49). At attach we ESTIMATED cost from the
-	// plan (baseline→1, hevc→0); now the program has actually resolved its copy plan, so we know the
-	// truth: cost 1 iff it transcodes video. This is what makes a baseline session on an h264 channel
-	// (estimated 1) correctly free up its slot (→0) once it proves it only copies — and an hevc plan
-	// that somehow had to transcode (estimated 0) correctly claim one. Adjust committedCost by the
+	// plan (every plan reserves one); now the program has actually resolved its copy plan, so we know
+	// the truth: cost 1 iff it transcodes video. Any session correctly frees its slot once it proves
+	// it only copies. Adjust committedCost by the
 	// DELTA under m.mu, keyed to this live session so a report racing teardown cannot corrupt the sum.
 	realCost := 0
 	if transcoding {

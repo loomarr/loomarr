@@ -91,6 +91,8 @@ func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (pla
 	return f.plan, f.sourceFormat
 }
 
+func (f *fakeResolver) ChannelCodec(context.Context, string) string { return "h264" }
+
 func (f *fakeResolver) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -294,7 +296,7 @@ func TestPlayoutProgram_RequiresTheDeviceToken(t *testing.T) {
 }
 
 // THE CORE BEHAVIOUR: one program's bytes, then the response ENDS. That EOF is what makes the
-// concat demuxer advance to the next program — a response that never ended would pin the
+// block supervisor advance to the next program — a response that never ended would pin the
 // channel to one program forever.
 func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 	enc := &fakeEncoder{output: "program-bytes"}
@@ -417,16 +419,9 @@ func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
 
 // A resolver failure shows the CARD, not a 502.
 //
-// ⚠ This test used to be TestPlayoutProgram_ResolverFailureIsRetryable and asserted the opposite,
-// on the stated premise that a 502 was "retryable — the demuxer will come back". That premise was
-// false: `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP
-// error STATUS, so a 5xx written into a concat entry ends the parent ffmpeg (measured on the
-// pinned n7.1 build: `Error during demuxing` then `signal: segmentation fault`) and drops every
-// viewer on the channel.
-//
 // The usual cause of a resolver failure is the media server being briefly unreachable — the single
 // most likely failure this handler sees. Trading the whole broadcast for it is the wrong trade, so
-// the handler now renders the card and the demuxer re-asks 30s later, by which time the outage has
+// the handler renders the card and the supervisor re-asks 30s later, by which time the outage has
 // usually passed.
 func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
 	enc := &fakeEncoder{output: "card-bytes"}
@@ -530,6 +525,43 @@ func TestPlayoutProgram_IsCalledRepeatedlyAndStaysConsistent(t *testing.T) {
 	}
 	if got := res.callCount(); got != 5 {
 		t.Errorf("resolver called %d times for 5 requests — the handler is caching or skipping", got)
+	}
+}
+
+func TestPlayoutProgram_PinsTheFirstBlocksBroadcastFormat(t *testing.T) {
+	res := &fakeResolver{
+		airing: playableAiring(0, time.Minute), url: "http://emby/v/1",
+		profile: playout.Profile{
+			Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 2500,
+			AudioBitrate: 128, Encoder: playout.EncoderSoftware,
+		},
+	}
+	enc := &fakeEncoder{output: "chunk"}
+	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+
+	first := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	_, _ = io.Copy(io.Discard, first.Body)
+	format := first.Header.Get(api.PlayoutBroadcastFormatHeader)
+	if _, ok := playout.ParseBroadcastFormat(format); !ok {
+		t.Fatalf("first response broadcast format = %q, want a valid token", format)
+	}
+
+	// Simulate another channel starting between blocks and moving the live quality ladder. The
+	// session token, not this newly resolved profile, must still govern the next child.
+	res.profile = playout.Profile{
+		Width: 1920, Height: 1080, Framerate: 30, VideoBitrate: 5000,
+		AudioBitrate: 160, Encoder: playout.EncoderSoftware,
+	}
+	second := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken+"&"+
+		api.PlayoutBroadcastFormatQuery+"="+format)
+	_, _ = io.Copy(io.Discard, second.Body)
+	if got := second.Header.Get(api.PlayoutBroadcastFormatHeader); got != format {
+		t.Fatalf("second response broadcast format = %q, want pinned %q", got, format)
+	}
+	args := strings.Join(enc.args(), " ")
+	if !strings.Contains(args, "scale=1280:720") || !strings.Contains(args, "fps=25") ||
+		!strings.Contains(args, "-b:v 2500k") || !strings.Contains(args, "-b:a 128k") {
+		t.Fatalf("second block did not retain first block profile:\n%s", args)
 	}
 }
 
@@ -736,6 +768,10 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 			airing: playableAiring(0, time.Hour),
 			url:    "http://emby/v/1",
 			plan:   playout.CopyPlan{CopyVideo: true, CopyAudio: true}, // direct play
+			sourceFormat: playout.MediaFormat{
+				VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+				AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
+			},
 		},
 		encoder:     enc.start,
 		reclaimVRAM: func(context.Context) { evicted++ },
@@ -757,7 +793,7 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 	if cards := enc.cardPath(); len(cards) == 0 {
 		t.Error("a failing copy produced no offline card — the channel is left with nothing to play")
 	}
-	// The status is the point: a 5xx here is written INTO the concat demuxer's stream and kills the
+	// The status is the point: a terminal 5xx leaves the supervisor without a transport block and
 	// parent ffmpeg, taking every viewer with it. One bad file must not end the broadcast.
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200: a 5xx on a concat entry kills the parent and drops every viewer", resp.StatusCode)
@@ -866,7 +902,7 @@ func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
 // That existing field is the discriminator the loudness gate reads, so it needed no new plumbing.
 func fillerAiring(remaining time.Duration) playout.Airing {
 	return playout.Airing{
-		Kind: schedule.SlotProgram, Source: "/filler/14/36/abc.mp4", Title: "Frosted Flakes",
+		Kind: schedule.SlotFiller, Source: "/filler/14/36/abc.mp4", Title: "Frosted Flakes",
 		Remaining: remaining,
 	}
 }

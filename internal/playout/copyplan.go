@@ -2,6 +2,9 @@ package playout
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -35,8 +38,9 @@ type MediaFormat struct {
 	ColorTransfer string  // e.g. "smpte2084" (HDR10/PQ), "arib-std-b67" (HLG); "" for SDR
 
 	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
-	AudioCodec    string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
-	AudioChannels int    // 2 = stereo, 6 = 5.1, …; 0 when unknown
+	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
+	AudioChannels   int    // 2 = stereo, 6 = 5.1, …; 0 when unknown
+	AudioSampleRate int    // Hz; the live copy format is fixed at 48000
 
 	// Container + overall.
 	Container string  // format_name, e.g. "matroska,webm", "mov,mp4,…"; "" when unknown
@@ -265,17 +269,12 @@ func (p EncodePlan) WantsHEVCOutput() bool {
 // It is the conservative guess used at session start, corrected to the real cost once the first
 // program reports whether it actually transcoded (see Manager.ReportProgram):
 //
-//   - PlanBaseline MIGHT transcode (an HEVC/incompatible channel to an h264-only client) → cost 1.
-//   - The HEVC/full plans COPY the video (that is their whole point) → cost 0.
-//
-// Over-counting baseline on an h264 channel (guessing 1 when it will copy) is SAFE — it never
-// over-admits — and self-corrects to 0 on the first program report. The video transcode is the only
-// thing that consumes the GPU budget; audio transcode (a cheap AAC encode) is not counted.
+// Every plan may transcode: codec support alone no longer grants copy when geometry, cadence, pixel
+// format, audio shape, or another decoder property is unknown/mismatched. Reserving one slot is the
+// only fail-closed estimate; the first program report immediately releases it when copy is proven.
+// Video transcode is the only thing that consumes the GPU budget; audio transcode is not counted.
 func (p EncodePlan) EstimatedCost() int {
-	if p == PlanBaseline {
-		return 1
-	}
-	return 0
+	return 1
 }
 
 // CopyPlan is the per-stream copy/transcode decision for one source against one EncodePlan. It maps
@@ -322,4 +321,126 @@ func PlanCopy(f MediaFormat, plan EncodePlan) CopyPlan {
 		CopyVideo: copyVideo,
 		CopyAudio: a == "" || planCopyAudio[plan][a],
 	}
+}
+
+// BroadcastVideoCodec resolves the one video codec a live session emits. EncodePlan describes a
+// consumer bucket, not permission to switch codecs inside one stream: the HEVC plans are HEVC end
+// to end, baseline is H.264 end to end, and the broad tuner plan follows the Channel's persisted
+// broadcast codec.
+func BroadcastVideoCodec(plan EncodePlan, channelCodec string) string {
+	if plan.WantsHEVCOutput() || (plan == PlanFull && IsHEVCCodec(channelCodec)) {
+		return "hevc"
+	}
+	return "h264"
+}
+
+// BroadcastFormat is the decoder state pinned for the lifetime of one live session. It is small
+// enough to round-trip on the internal block request, which lets independently resolved finite
+// children conform to the format chosen by the first block rather than re-running the load ladder.
+type BroadcastFormat struct {
+	VideoCodec   string
+	Width        int
+	Height       int
+	Framerate    int
+	VideoBitrate int
+	AudioBitrate int
+}
+
+// NewBroadcastFormat captures the output properties ProgramArgs can vary today. Audio is always
+// AAC stereo/48k and pixel format is always 8-bit SDR yuv420p on the live transcode path.
+func NewBroadcastFormat(profile Profile, videoCodec string) BroadcastFormat {
+	return BroadcastFormat{
+		VideoCodec: BroadcastVideoCodecForToken(videoCodec),
+		Width:      profile.Width, Height: profile.Height, Framerate: profile.Framerate,
+		VideoBitrate: profile.VideoBitrate, AudioBitrate: profile.AudioBitrate,
+	}
+}
+
+func BroadcastVideoCodecForToken(codec string) string {
+	if IsHEVCCodec(codec) {
+		return "hevc"
+	}
+	return "h264"
+}
+
+// String returns the canonical opaque token carried only on Loomarr's internal block hop.
+func (f BroadcastFormat) String() string {
+	return fmt.Sprintf("%s-%dx%d-%d-%d-%d", BroadcastVideoCodecForToken(f.VideoCodec), f.Width, f.Height,
+		f.Framerate, f.VideoBitrate, f.AudioBitrate)
+}
+
+// ParseBroadcastFormat accepts only a complete, bounded canonical token. A malformed value is a
+// miss, never a partial override: the caller falls back to selecting a fresh safe profile.
+func ParseBroadcastFormat(raw string) (BroadcastFormat, bool) {
+	codec, rest, ok := strings.Cut(raw, "-")
+	if !ok || (codec != "h264" && codec != "hevc") {
+		return BroadcastFormat{}, false
+	}
+	geometry, rest, ok := strings.Cut(rest, "-")
+	if !ok {
+		return BroadcastFormat{}, false
+	}
+	fpsRaw, rest, ok := strings.Cut(rest, "-")
+	if !ok {
+		return BroadcastFormat{}, false
+	}
+	videoBitrateRaw, audioBitrateRaw, ok := strings.Cut(rest, "-")
+	if !ok || strings.Contains(audioBitrateRaw, "-") {
+		return BroadcastFormat{}, false
+	}
+	widthRaw, heightRaw, ok := strings.Cut(geometry, "x")
+	if !ok {
+		return BroadcastFormat{}, false
+	}
+	width, widthErr := strconv.Atoi(widthRaw)
+	height, heightErr := strconv.Atoi(heightRaw)
+	fps, fpsErr := strconv.Atoi(fpsRaw)
+	videoBitrate, videoBitrateErr := strconv.Atoi(videoBitrateRaw)
+	audioBitrate, audioBitrateErr := strconv.Atoi(audioBitrateRaw)
+	if widthErr != nil || heightErr != nil || fpsErr != nil || width <= 0 || height <= 0 || fps <= 0 ||
+		videoBitrateErr != nil || audioBitrateErr != nil || videoBitrate <= 0 || audioBitrate <= 0 ||
+		width > 7680 || height > 4320 || fps > 240 || videoBitrate > 100000 || audioBitrate > 2000 {
+		return BroadcastFormat{}, false
+	}
+	return BroadcastFormat{
+		VideoCodec: codec, Width: width, Height: height, Framerate: fps,
+		VideoBitrate: videoBitrate, AudioBitrate: audioBitrate,
+	}, true
+}
+
+// Apply pins decoder shape and rate control while retaining the current child encoder selection.
+func (f BroadcastFormat) Apply(profile Profile) Profile {
+	profile.Width, profile.Height, profile.Framerate = f.Width, f.Height, f.Framerate
+	profile.VideoBitrate, profile.AudioBitrate = f.VideoBitrate, f.AudioBitrate
+	return profile
+}
+
+// ConformCopyPlan narrows a codec-capability decision to the stable format of one live session.
+// A source can be decodable by the audience and still be unsafe to splice into the current decoder
+// timeline. Unknown properties deliberately fail toward transcode: extra work is recoverable; an
+// in-stream format change is not.
+func ConformCopyPlan(f MediaFormat, allowed CopyPlan, profile Profile, videoCodec string) CopyPlan {
+	copyVideo := allowed.CopyVideo && sameBroadcastVideo(f, profile, videoCodec)
+	copyAudio := allowed.CopyAudio && strings.EqualFold(strings.TrimSpace(f.AudioCodec), "aac") &&
+		f.AudioChannels == 2 && f.AudioSampleRate == 48000
+	return CopyPlan{CopyVideo: copyVideo, CopyAudio: copyAudio}
+}
+
+func sameBroadcastVideo(f MediaFormat, profile Profile, videoCodec string) bool {
+	sourceCodec := strings.ToLower(strings.TrimSpace(f.VideoCodec))
+	targetCodec := strings.ToLower(strings.TrimSpace(videoCodec))
+	if IsHEVCCodec(sourceCodec) {
+		sourceCodec = "hevc"
+	}
+	if IsHEVCCodec(targetCodec) {
+		targetCodec = "hevc"
+	}
+	if sourceCodec == "" || sourceCodec != targetCodec || f.Width <= 0 || f.Height <= 0 ||
+		f.Width != profile.Width || f.Height != profile.Height || f.FrameRate <= 0 ||
+		math.Abs(f.FrameRate-float64(profile.Framerate)) > 0.01 {
+		return false
+	}
+	// Every live encoder currently emits 8-bit SDR yuv420p. Copying a deeper/HDR source would
+	// silently change decoder and colour state even when its codec and geometry happened to match.
+	return strings.EqualFold(strings.TrimSpace(f.PixelFormat), "yuv420p") && !f.HDR()
 }

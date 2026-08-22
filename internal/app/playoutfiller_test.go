@@ -178,6 +178,9 @@ func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 	if airing.LibraryItemID != "" {
 		t.Errorf("a local clip must not carry a library id: %q", airing.LibraryItemID)
 	}
+	if airing.Kind != schedule.SlotFiller {
+		t.Errorf("kind = %q, want filler preserved through playout", airing.Kind)
+	}
 }
 
 // The pod is a SEQUENCE, so the resolver must pick whichever clip covers this instant —
@@ -206,6 +209,9 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	if airing.Offset != 2*time.Second {
 		t.Errorf("offset = %v, want 2s INTO the ad — a mid-break joiner must not restart it",
 			airing.Offset)
+	}
+	if airing.StartedAt != base.Add(4*time.Second) {
+		t.Errorf("started at = %v, want second clip boundary %v", airing.StartedAt, base.Add(4*time.Second))
 	}
 }
 

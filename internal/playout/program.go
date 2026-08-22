@@ -15,12 +15,10 @@ import (
 // track. Transcoding the whole program is the exception, for a codec the target genuinely cannot
 // play (HEVC/MPEG-2 to an h264-only client).
 //
-// ⚠ **This removed the old uniform-profile burden.** Programs used to be force-transcoded into
-// ONE profile so the parent could concatenate them with `-c copy` — which required every child to
-// be byte-identical (same resolution/framerate/codec/pixfmt). That constraint is gone: the session
-// marks each program boundary with an HLS `#EXT-X-DISCONTINUITY` (session/hls layer), so programs
-// may differ. What is pinned now is only what the CHOSEN PATH needs — a transcode still normalizes
-// to the Profile so a re-encoded program is internally consistent; a copy passes the source through.
+// Every child conforms to the session's pinned broadcast format before it enters the continuous
+// copy mux. Direct copy is therefore conservative: codec, geometry, cadence, pixel format and audio
+// shape must already match; unknown or mismatched properties transcode to the pinned profile. A
+// logical airing boundary alone does not require an HLS decoder discontinuity.
 //
 // The transcode flags below are each verified in Tunarr's source or against the live dev Emby
 // (prior-art §5a–§5c); the ones that look redundant are the ones a real failure found.
@@ -309,62 +307,6 @@ func (p Profile) scaleFilterArgs(tonemap string) []string {
 	return []string{"-vf", strings.Join(parts, ",")}
 }
 
-// ConcatArgs builds the PARENT process: one long-lived `-c copy` ffmpeg that reads an HTTP
-// ffconcat playlist and never exits (prior-art §1).
-//
-// It re-muxes and never re-encodes. All the encoding happens in the children, which is what
-// makes one channel cost one encode regardless of how many programs it plays — and why the
-// children's output must be byte-compatible.
-func ConcatArgs(playlistURL string) []string {
-	args := []string{
-		"-hide_banner", "-loglevel", "error",
-		"-progress", progressPipeArg(), "-nostats",
-	}
-
-	// Reconnect flags, PARENT tier — and ONLY for an http playlist. See isHTTP.
-	//
-	// ⚠ These are RESILIENCE, not the advance mechanism. This comment used to claim
-	// `-reconnect_at_eof 1` was "THE MECHANISM … without it the channel plays exactly one program
-	// and stops". Measured 2026-08-09 against a minimal harness: on n7.1 with NO reconnect flags
-	// at all, the demuxer still opened five entries and advanced correctly. What actually makes
-	// the advance work is the concat demuxer reading an entry to a clean EOF — see
-	// TestLive_ConcatAdvancesPastAChunkedHTTPEntry, which is the real guard.
-	//
-	// They are kept because a transient network blip mid-programme should not end a channel, which
-	// is a genuine (if narrower) job than the one previously claimed.
-	if isHTTP(playlistURL) {
-		args = append(args, "-reconnect", "1", "-reconnect_at_eof", "1")
-	}
-
-	return append(args,
-		// The concat demuxer must be told which protocols its ENTRIES may use, or it
-		// refuses to open an http:// entry — a playlist of local files is its default
-		// assumption. This is about the entries, not the playlist itself, so it is
-		// unconditional.
-		"-protocol_whitelist", "file,http,https,tcp,tls,pipe",
-		// Both playlist entries are the same URL; looping forever is what makes the channel
-		// continuous (prior-art §1).
-		//
-		// ⚠ It also MASKS a broken advance, which is worth knowing when diagnosing a channel that
-		// seems stuck. If the demuxer cannot open the next entry, this replays the buffered
-		// programme instead — so the parent keeps emitting continuous output and exits 0, and the
-		// only evidence is `Error during demuxing` lines that `-loglevel error` plus
-		// Process.LastError (last line only) discard. Measured: a 3s programme became 12s of
-		// output from ONE HTTP fetch. Symptom is "the channel repeats one programme", never a
-		// failure. See TestLive_ConcatAdvancesPastAChunkedHTTPEntry.
-		"-stream_loop", "-1",
-		"-f", "concat",
-		// Entries are absolute URLs, so the demuxer's relative-path safety check must be
-		// off or it rejects them.
-		"-safe", "0",
-		"-i", playlistURL,
-
-		// COPY, never encode. See above.
-		"-c", "copy",
-		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
-	)
-}
-
 // isHTTP reports whether a URL uses a protocol that accepts ffmpeg's `-reconnect*` options.
 //
 // THIS CONDITION IS LOAD-BEARING, and omitting it is a hard failure rather than a missed
@@ -378,38 +320,6 @@ func ConcatArgs(playlistURL string) []string {
 // that dies at the first break, with a message that names an option rather than a file.
 func isHTTP(u string) bool {
 	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
-}
-
-// Playlist renders the two-line ffconcat playlist the parent reads (prior-art §1).
-//
-// Two identical entries, not one, and this is the trick that makes the whole mechanism work.
-// The concat demuxer needs at least two entries to have something to ADVANCE TO when the
-// first hits EOF; combined with `-stream_loop -1` on the parent it cycles between them
-// forever. Each open of the URL asks "what is airing right now?" and gets the current
-// program — so looping over two static lines yields an unbounded sequence of different
-// programs.
-//
-// A one-line playlist would EOF the demuxer at the end of the first program and end the
-// channel, which is the bug this shape exists to avoid.
-func Playlist(programURL string) string {
-	return "ffconcat version 1.0\n" +
-		"file '" + escapePlaylistURL(programURL) + "'\n" +
-		"file '" + escapePlaylistURL(programURL) + "'\n"
-}
-
-// escapePlaylistURL neutralises the quote that would terminate a `file '…'` directive.
-//
-// The URL carries a token (§11 device auth) and channel id, so it is not arbitrary operator
-// text — but it is assembled from configuration (`server.public_url`) and a channel id, and
-// a stray apostrophe there would produce a playlist that parses as something else entirely
-// rather than failing cleanly.
-func escapePlaylistURL(s string) string {
-	// ffconcat's escape for a quote inside a single-quoted string is to close, escape, and
-	// reopen: it's → 'it'\''s'. Newlines are dropped rather than escaped — there is no valid
-	// escape for them in a line-oriented directive.
-	s = strings.ReplaceAll(s, "\n", "")
-	s = strings.ReplaceAll(s, "\r", "")
-	return strings.ReplaceAll(s, "'", `'\''`)
 }
 
 // seconds formats a duration for ffmpeg's -ss / -t, keeping millisecond precision.
