@@ -79,10 +79,12 @@ func FuzzGroundPolicy(f *testing.F) {
 		if p.Audience.Ceiling != "" && !onLadderCeilings[p.Audience.Ceiling] {
 			t.Fatalf("off-ladder ceiling survived: input %q -> result %q", ceiling, p.Audience.Ceiling)
 		}
-		// And it must equal what NormalizeRating yields for the raw input — the one
-		// canonicalizer the boundary trusts (never a raw pass-through).
-		if want := schedule.NormalizeRating(ceiling); p.Audience.Ceiling != want {
-			t.Fatalf("ceiling not canonicalized via NormalizeRating: input %q -> result %q, want %q", ceiling, p.Audience.Ceiling, want)
+		// The seed intent explicitly says "for kids", so the result must always retain
+		// the deterministic TV-Y7-or-stricter boundary regardless of model output.
+		gotRank, gotOK := p.Audience.Ceiling.Rank()
+		maxRank, _ := schedule.NormalizeRating("TV-Y7").Rank()
+		if !gotOK || gotRank > maxRank {
+			t.Fatalf("child-safety ceiling relaxed: input %q -> result %q", ceiling, p.Audience.Ceiling)
 		}
 
 		// Unrated grounding: only the two explicit modes survive; anything else

@@ -453,13 +453,9 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 	}
 }
 
-// ⚠ An UNRATED pick is NOT refused, even though the §4 gate fails closed on unrated under a kids
-// ceiling. At proposal time "unrated" overwhelmingly means "not looked up yet": the reconcile
-// heal (§389) exists to fill an empty rating once the title is in the library, and TMDB
-// enrichment for an acquisition is best-effort. Refusing here would reject titles that go on to
-// air perfectly well — and nothing is ADMITTED by the leniency, because the enforcer still fails
-// closed at airtime.
-func TestProposal_DoesNotRefuseAnUnratedPick(t *testing.T) {
+// An explicit child-safety promise refuses unrated content before approval. Metadata healing is
+// not allowed to make unknown content actionable under that promise.
+func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(
 		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
@@ -481,19 +477,52 @@ func TestProposal_DoesNotRefuseAnUnratedPick(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Refused) != 0 {
-		t.Fatalf("an unrated pick must not be refused at proposal time, got %+v", prop.Refused)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 5001 {
+		t.Fatalf("lineup = %+v, want only the rated TV-Y7 pick", prop.Lineup)
 	}
-	// ⚠ Asserted positively too: "not refused" would also be true if the pick had been dropped
-	// by grounding, which would make this test pass for entirely the wrong reason.
-	var found bool
-	for _, it := range prop.Lineup {
-		if it.TMDBID == 5005 {
-			found = true
+	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 5005 || prop.Refused[0].Reason != "over_ceiling" {
+		t.Fatalf("refused = %+v, want the unrated pick as over_ceiling", prop.Refused)
+	}
+}
+
+func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"simpsons"}, LibraryItemID: "lib-simpsons", Name: "The Simpsons",
+		Type: "Series", Year: 1989, TMDBID: 456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
+	})
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "simpsons"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "breaking bad"}),
+		testkit.FinalResponse(`{"rationale":"bright cartoons","picks":[
+			{"mediaType":"series","tmdbId":456,"name":"The Simpsons"},
+			{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}
+		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
+	)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).WithRatings(tm)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{
+		Description: "Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Audience.Ceiling != "TV-Y7" {
+		t.Fatalf("ceiling = %q, want fail-closed TV-Y7", prop.Policy.Audience.Ceiling)
+	}
+	if len(prop.Lineup) != 0 || len(prop.Acquisitions) != 0 {
+		t.Fatalf("actionable picks must be empty, lineup=%+v acquisitions=%+v", prop.Lineup, prop.Acquisitions)
+	}
+	if len(prop.Refused) != 2 {
+		t.Fatalf("refused = %+v, want both the TV-PG and unrated picks", prop.Refused)
+	}
+	for _, refused := range prop.Refused {
+		if refused.Reason != "over_ceiling" {
+			t.Fatalf("refusal = %+v, want over_ceiling", refused)
 		}
-	}
-	if !found {
-		t.Fatalf("the unrated pick should still be offered, lineup = %+v", prop.Lineup)
 	}
 }
 
