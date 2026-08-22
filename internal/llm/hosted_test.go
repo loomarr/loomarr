@@ -87,9 +87,10 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 		}
 		// - a FREE untiered coding model (cheapest, tool-capable) — must NOT be recommended
 		// - a tier-3 gpt-4o family model (pricier) — SHOULD be recommended first
-		// - a tier-2 claude-haiku family model (cheaper than gpt-4o) — recommended after
+		// - a tier-2 claude-haiku family model (cheaper than gpt-4o) — explained alternative
 		// - a non-tool model — filtered out
 		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-4.1-nano:batch","name":"GPT-4.1 nano Batch","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000001","completion":"0.0000004"}},
 			{"id":"someorg/free-coder","name":"FreeCoder","context_length":1000000,"supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
 			{"id":"openai/gpt-4o","name":"GPT-4o","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000025","completion":"0.00001"}},
 			{"id":"anthropic/claude-haiku-4.5","name":"Claude Haiku","context_length":200000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000008","completion":"0.000004"}},
@@ -98,7 +99,7 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	hp := HostedProvider{BaseURL: srv.URL}
+	hp := HostedProvider{Key: "openrouter", BaseURL: srv.URL}
 	models, live := hp.LiveModels(context.Background(), "key")
 	if !live {
 		t.Fatal("expected live=true")
@@ -111,6 +112,17 @@ func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	// free coder and pricier than haiku.
 	if models[0].ID != "openai/gpt-4o" || !models[0].Recommended {
 		t.Errorf("first = %+v, want openai/gpt-4o recommended (tier beats cheaper)", models[0])
+	}
+	for i, model := range models {
+		if strings.HasSuffix(model.ID, ":batch") {
+			t.Errorf("batch-only model remained selectable: %+v", model)
+		}
+		if i > 0 && model.Recommended {
+			t.Errorf("model %d = %+v, want exactly one safe default", i, model)
+		}
+	}
+	if models[1].Recommended || models[1].Why == "" {
+		t.Errorf("strong alternative = %+v, want a differentiated rationale without another recommendation", models[1])
 	}
 	// The Why names the family (the quality signal), not just cost.
 	if !strings.Contains(models[0].Why, "GPT-4o") {
@@ -139,7 +151,7 @@ func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	hp := HostedProvider{BaseURL: srv.URL}
+	hp := HostedProvider{Key: "openrouter", BaseURL: srv.URL}
 	models, live := hp.LiveModels(context.Background(), "key")
 	if !live || len(models) != 2 {
 		t.Fatalf("thin provider should still return the 2 live ids, got live=%v n=%d", live, len(models))
@@ -148,6 +160,32 @@ func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
 		if m.Recommended {
 			t.Error("thin metadata must NOT produce recommendations (no data to rank on)")
 		}
+	}
+}
+
+func TestLiveModels_ThinMetadataExcludesBatchOnlyVariants(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-4.1-nano:batch"},{"id":"openai/gpt-4.1-nano"}]}`))
+	}))
+	defer srv.Close()
+
+	hp := HostedProvider{Key: "openrouter", BaseURL: srv.URL}
+	models, live := hp.LiveModels(context.Background(), "key")
+	if !live || len(models) != 1 || models[0].ID != "openai/gpt-4.1-nano" {
+		t.Fatalf("thin catalog = %+v, live=%v; want only the synchronous model", models, live)
+	}
+}
+
+func TestLiveModels_CustomPreservesProviderDefinedModelIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"local/model:batch"}]}`))
+	}))
+	defer srv.Close()
+
+	hp := HostedProvider{Key: CustomProviderKey, BaseURL: srv.URL}
+	models, live := hp.LiveModels(context.Background(), "key")
+	if !live || len(models) != 1 || models[0].ID != "local/model:batch" {
+		t.Fatalf("custom catalog = %+v, live=%v; custom ids must remain provider-defined", models, live)
 	}
 }
 
