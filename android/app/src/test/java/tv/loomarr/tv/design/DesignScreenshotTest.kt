@@ -18,7 +18,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +43,7 @@ import tv.loomarr.tv.playback.SurfRail
 import tv.loomarr.tv.playback.WatchUiState
 import tv.loomarr.tv.playback.WatchingChrome
 import tv.loomarr.tv.playback.watchingChromeContainer
+import java.util.TimeZone
 
 /**
  * Screenshots of the design system's pieces.
@@ -62,6 +65,21 @@ import tv.loomarr.tv.playback.watchingChromeContainer
 class DesignScreenshotTest {
     @get:Rule
     val compose = createComposeRule()
+
+    private lateinit var originalTimeZone: TimeZone
+
+    @Before
+    fun useDeterministicTimeZone() {
+        originalTimeZone = TimeZone.getDefault()
+        // Production intentionally uses the television's zone. Pin only the screenshot fixture so
+        // a developer workstation and GitHub's UTC runner render the same schedule labels.
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    }
+
+    @After
+    fun restoreTimeZone() {
+        TimeZone.setDefault(originalTimeZone)
+    }
 
     @Test
     fun `live badge`() {
