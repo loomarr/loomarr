@@ -14,7 +14,7 @@ import (
 // that erodes silently — an import added in one file, in a PR about something else.
 //
 // Deliberately NOT here: line counts and field counts. The sweep that produced §14.1 flagged
-// `BuildHandler` (630 lines) and `api.Server` (33 fields) from metrics alone, and reading the
+// the composition root and `api.Server` from metrics alone, and reading the
 // code showed both were correct as they stood. A threshold test on either would fire forever on
 // something nobody should change.
 //

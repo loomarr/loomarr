@@ -151,7 +151,7 @@ func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) 
 	}
 }
 
-func TestBuildHandlerInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransition(t *testing.T) {
+func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testkit.MigratedSQLiteStore(t)
@@ -163,10 +163,14 @@ func TestBuildHandlerInitializesMissingCheckpointFromDesiredWithoutRunningNetwor
 	t.Setenv("PLAYOUT_BACKEND", schedule.PlayoutBackendInternal)
 	t.Setenv("API_TOKEN", "transition-init-test")
 	tunarr := testkit.NewTunarr()
-	if _, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr}); err != nil {
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})
+	if err != nil {
 		t.Fatal(err)
 	}
 	cancel() // this test isolates synchronous initialization from owned scheduler retries.
+	if err := application.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	state, err := backendtransition.Load(context.Background(), st, backendtransition.BackendInternal)
 	if err != nil {
 		t.Fatal(err)

@@ -255,9 +255,15 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
 	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
-.PHONY: eval
+.PHONY: eval eval-cert
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
+
+eval-cert: ## certify exact starter/adversarial intents; fails on missing config and writes a scorecard
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/semantic-certification.json}"; \
+	  LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_OUT="$$report" \
+	    $(GO) test -count=1 -tags=eval -v -timeout 20m ./internal/eval/
 
 ## ---- build / run ---------------------------------------------------------
 

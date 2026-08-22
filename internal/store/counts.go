@@ -55,6 +55,74 @@ func (s *sqlStore) CountJobsByStatus(ctx context.Context) (map[string]int, error
 	return out, rows.Err()
 }
 
+// OldestProposalJobsByStatus returns the oldest retained caller-owned Proposal
+// Job creation time for each nonterminal status. Re-curation Jobs have a
+// different operator lifecycle and do not enter the First-channel health view.
+func (s *sqlStore) OldestProposalJobsByStatus(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT status, MIN(created_at) FROM jobs
+		WHERE kind = 'suggest' AND status IN ('queued', 'running') GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("oldest Proposal Jobs by status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]time.Time)
+	for rows.Next() {
+		var status string
+		var createdAt int64
+		if err := rows.Scan(&status, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan oldest Proposal Job: %w", err)
+		}
+		out[status] = fromEpoch(createdAt)
+	}
+	return out, rows.Err()
+}
+
+// CountProposalJobAttemptsByStatus counts durable terminal Attempt history for
+// caller-owned Proposal Jobs. Running Attempts are represented by the current
+// Job status/age gauges instead of a second, potentially contradictory gauge.
+func (s *sqlStore) CountProposalJobAttemptsByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT a.status, COUNT(*)
+		FROM proposal_job_attempts a JOIN jobs j ON j.id = a.job_id
+		WHERE j.kind = 'suggest' AND a.status IN ('succeeded', 'failed', 'interrupted')
+		GROUP BY a.status`)
+	if err != nil {
+		return nil, fmt.Errorf("count Proposal Job Attempts by status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, fmt.Errorf("scan Proposal Job Attempt count: %w", err)
+		}
+		out[status] = n
+	}
+	return out, rows.Err()
+}
+
+// CountFailedProposalJobsByCode counts retained failed caller-owned Proposal
+// Jobs. Returning raw values here keeps policy out of persistence; the metrics
+// module owns the closed public label set and maps every unknown value to other.
+func (s *sqlStore) CountFailedProposalJobsByCode(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT failure_code, COUNT(*) FROM jobs
+		WHERE kind = 'suggest' AND status = 'failed' GROUP BY failure_code`)
+	if err != nil {
+		return nil, fmt.Errorf("count failed Proposal Jobs by code: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]int)
+	for rows.Next() {
+		var code string
+		var n int
+		if err := rows.Scan(&code, &n); err != nil {
+			return nil, fmt.Errorf("scan failed Proposal Job count: %w", err)
+		}
+		out[code] = n
+	}
+	return out, rows.Err()
+}
+
 // CountActiveSessions returns the number of unexpired sessions as of now — the
 // active-sessions gauge (§17). Mirrors the freshness predicate GetSession uses
 // (expires_at strictly greater than now).

@@ -15,7 +15,7 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
+func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	const token = "filler-layout-generation-token"
 	t.Setenv("API_TOKEN", token)
 	unsetForTest(t, "FILLER_DIR")
@@ -39,16 +39,17 @@ func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctxA, cancelA := context.WithCancel(context.Background())
-	hA, err := BuildHandler(ctxA, st, slog.New(slog.DiscardHandler), Overrides{Restart: func() {}})
+	appA, err := Build(ctxA, st, slog.New(slog.DiscardHandler), Overrides{Restart: func() {}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	hA := appA.Handler()
 
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Fatalf("generation A source target = %q, want %q", got, appliedA)
 	}
-	if lastPlayoutResolver == nil || lastPlayoutResolver.fillerDir != appliedA {
-		t.Fatalf("generation A playout root = %v, want %q", lastPlayoutResolver, appliedA)
+	if appA.playoutResolver == nil || appA.playoutResolver.fillerDir != appliedA {
+		t.Fatalf("generation A playout root = %v, want %q", appA.playoutResolver, appliedA)
 	}
 	patchSettings(t, hA, token, map[string]string{
 		"filler.dir": desiredB, "filler.watch_dir": watchB,
@@ -57,8 +58,8 @@ func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Errorf("running generation source target = %q after save, want applied %q", got, appliedA)
 	}
-	if lastPlayoutResolver.fillerDir != appliedA {
-		t.Errorf("running generation playout root = %q after save, want applied %q", lastPlayoutResolver.fillerDir, appliedA)
+	if appA.playoutResolver.fillerDir != appliedA {
+		t.Errorf("running generation playout root = %q after save, want applied %q", appA.playoutResolver.fillerDir, appliedA)
 	}
 	assertPendingLayout(t, restartCost(t, hA, token), true)
 
@@ -81,6 +82,9 @@ func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	assertPendingLayout(t, restartCost(t, hA, token), true)
 
 	cancelA()
+	if err := appA.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -92,15 +96,17 @@ func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	ctxB, cancelB := context.WithCancel(context.Background())
 	t.Cleanup(cancelB)
 	t.Cleanup(func() { _ = st.Close() })
-	hB, err := BuildHandler(ctxB, st, slog.New(slog.DiscardHandler), Overrides{Restart: func() {}})
+	appB, err := Build(ctxB, st, slog.New(slog.DiscardHandler), Overrides{Restart: func() {}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = appB.Shutdown(context.Background()) })
+	hB := appB.Handler()
 	if got := fillerFolderTarget(t, hB, token); got != desiredB {
 		t.Errorf("generation B source target = %q, want newly applied %q", got, desiredB)
 	}
-	if lastPlayoutResolver == nil || lastPlayoutResolver.fillerDir != desiredB {
-		t.Errorf("generation B playout root = %v, want newly applied %q", lastPlayoutResolver, desiredB)
+	if appB.playoutResolver == nil || appB.playoutResolver.fillerDir != desiredB {
+		t.Errorf("generation B playout root = %v, want newly applied %q", appB.playoutResolver, desiredB)
 	}
 	if got := restartCost(t, hB, token); got.RestartRequired || len(got.PendingKeys) != 0 {
 		t.Errorf("restart cost in generation B = %+v, want no pending layout", got)

@@ -10,7 +10,7 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-func TestStartReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {
+func TestTrackReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {
 	var reads atomic.Int64
 	loader := settings.StoreLoader{List: func(context.Context) ([]settings.SettingRow, error) {
 		reads.Add(1)
@@ -20,9 +20,13 @@ func TestStartReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if startReplicaSettingsRefresh(ctx, store.DialectSQLite, svc, time.Nanosecond, nil) {
+	owner := newGenerationLifecycle(context.Background())
+	t.Cleanup(func() {
+		if err := owner.shutdown(context.Background()); err != nil {
+			t.Errorf("shutdown settings lifecycle: %v", err)
+		}
+	})
+	if trackReplicaSettingsRefresh(owner, store.DialectSQLite, svc, time.Nanosecond, nil) {
 		t.Fatal("SQLite started a replica settings refresher")
 	}
 	time.Sleep(time.Millisecond)

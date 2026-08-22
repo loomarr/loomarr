@@ -27,7 +27,7 @@ const (
 // the "a built component nobody imported" defect this repo has now recorded against V1, V17a, V23
 // and V52 phase 2. Four jobs constructed here and never handed to the registry would fail the same
 // way and look identical from inside every test that constructs them directly, which is why the
-// guard for this lives in jobset_test.go, against the real BuildHandler.
+// guard for this lives in jobset_test.go, against the real Application.
 
 // registerImageJobs constructs the artwork jobs and adds them to the registry.
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on

@@ -24,7 +24,7 @@ import (
 // So the gate is repetition: build the real handler N times against a real store, serve a
 // request from each generation, and assert the goroutine count is stable across the last
 // few. A prose rule ("don't use package-level mutable state") would not have caught it.
-func TestBuildHandler_RepeatsWithoutLeaking(t *testing.T) {
+func TestBuild_RepeatsWithoutLeaking(t *testing.T) {
 	const generations = 5
 
 	// Warm one generation before measuring. The first build legitimately starts
@@ -64,10 +64,11 @@ func buildServeShutdown(t *testing.T, generation int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
-		t.Fatalf("generation %d: build handler: %v", generation, err)
+		t.Fatalf("generation %d: build application: %v", generation, err)
 	}
+	h := application.Handler()
 
 	// Actually serve. A handler that is built and never used would not exercise the
 	// lazily-started machinery a real generation starts.
@@ -102,7 +103,11 @@ func buildServeShutdown(t *testing.T, generation int) {
 
 	// Teardown in runOnce's order: cancel background work, then release the store.
 	cancel()
-	settle()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	if err := application.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("generation %d: shutdown application: %v", generation, err)
+	}
 }
 
 // settle waits for cancelled goroutines to exit, stopping as soon as the count holds

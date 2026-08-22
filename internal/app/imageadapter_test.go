@@ -7,7 +7,6 @@ import (
 	"image/color"
 	"image/png"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +25,7 @@ import (
 // routes 404'd in a running instance. PROGRESS.md records the same shape against V1, V17a and V23.
 //
 // No unit test can catch it, because the defect is precisely the absence of a caller. Only driving
-// the real composition root can — hence BuildHandler, the same choice backupjob_test.go makes and
+// the real composition root can — hence Build, the same choice backupjob_test.go makes and
 // for the same reason.
 
 // imageDTO mirrors the fields of api.ImageDTO this test asserts on.
@@ -97,10 +96,7 @@ func imageServer(t *testing.T) *httptest.Server {
 
 	st := testkit.MigratedSQLiteStore(t)
 
-	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := buildTestApplication(t, st, Overrides{}).Handler()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv

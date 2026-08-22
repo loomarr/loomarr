@@ -1,7 +1,7 @@
 # Durable first-channel workflow
 
-- Status: implementation validated; delivery pending
-- Branch: `durable-first-channel-workflow`
+- Status: merged in PR #453
+- Merge commit: `7934994185bea5bfb37464ae7ab6a951acc819cd`
 - Contract: `docs/design.md` §8, `CONTEXT.md` Proposal Job / Attempt / First-channel Journey
 
 ## Outcome
@@ -15,9 +15,9 @@ This is a Loomarr-native workflow module. It keeps the one Go runtime, SQLite/Po
 conformance, River's named recurring Tasks, deterministic grounding, authorization, and the approval
 gate. It adds no generic DAG engine or external workflow server.
 
-## Current-state assessment
+## Original current-state assessment
 
-Current `main` persists Jobs and Proposals, but callers can mutate a whole Job record, generation
+Before PR #453, `main` persisted Jobs and Proposals, but callers could mutate a whole Job record, generation
 success is two writes, a process can strand `running` work, attempts are only a counter, and reconnect
 documentation points at a Proposal route even though a failed Job has no Proposal. A preserved,
 unpublished `first-channel-success-plan` branch proved atomic completion, expired-lease recovery,
@@ -87,3 +87,6 @@ this branch rebased it into the workflow module's atomic failure transition and 
 - `make check` reaches the same inherited pinned golangci/staticcheck panic in dependency package
   `poll` recorded at baseline. All later gate targets were run independently; the unrelated
   `cmd/image-bench` synthetic fixture hash failure is also reproducible from an `origin/main` archive.
+- PR #453 merged on 2026-08-22. Its replacement CI run completed every required Go, Postgres,
+  frontend, visual/a11y/e2e, tuner-browser, image, Android, Windows, docs, and aggregation job with
+  no failing required check.

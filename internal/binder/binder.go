@@ -96,7 +96,7 @@ type Binder struct {
 // creates/patches the due-now channel row, it just skips immediate reconciliation.
 // codec may be nil (no playout wiring); the bind then leaves the channel's stored
 // broadcast codec (h264 default) untouched — see CodecComputer.
-func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
+func New(st Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
 	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
 

@@ -564,6 +564,16 @@ type CountStore interface {
 	// CountJobsByStatus returns the suggester-job count per status
 	// (queued/running/done/failed) — the queue-depth gauge.
 	CountJobsByStatus(ctx context.Context) (map[string]int, error)
+	// OldestProposalJobsByStatus returns the oldest created_at retained for each
+	// nonterminal caller-owned Proposal Job status. Empty statuses are absent.
+	OldestProposalJobsByStatus(ctx context.Context) (map[string]time.Time, error)
+	// CountProposalJobAttemptsByStatus counts retained terminal Attempts for
+	// caller-owned Proposal Jobs. The metrics adapter bounds the label set.
+	CountProposalJobAttemptsByStatus(ctx context.Context) (map[string]int, error)
+	// CountFailedProposalJobsByCode counts retained failed caller-owned Proposal
+	// Jobs by their bounded failure code. Unknown persisted values are returned so
+	// the metrics adapter can collapse them to `other`.
+	CountFailedProposalJobsByCode(ctx context.Context) (map[string]int, error)
 	// CountActiveSessions returns the number of unexpired sessions as of now.
 	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
 }

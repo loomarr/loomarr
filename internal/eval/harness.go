@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/library"
@@ -61,6 +62,20 @@ func buildProvider() llm.Provider {
 		return llm.NewOllama(url, model)
 	}
 	return llm.NewOpenAI(url, model, key)
+}
+
+func buildJudgeProvider() llm.Provider {
+	judgeModel := os.Getenv("LOOMARR_EVAL_JUDGE")
+	if judgeModel == "" {
+		return buildProvider()
+	}
+	provider := os.Getenv("LLM_PROVIDER")
+	url := os.Getenv("LLM_URL")
+	key := os.Getenv("LLM_API_KEY")
+	if provider == "ollama" || provider == "" {
+		return llm.NewOllama(url, judgeModel)
+	}
+	return llm.NewOpenAI(url, judgeModel, key)
 }
 
 // libPresence adapts the library client to catalog.LibraryPresence (mirrors main.go).
@@ -156,6 +171,20 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 			if r != "" && !ratingAtOrBelow(r, ceiling) {
 				f = append(f, fmt.Sprintf("grounded item %q is rated %q, above the forbidden ceiling %q",
 					it.Name, it.OfficialRating, c.ForbidRatingsAbove))
+			}
+		}
+	}
+	for _, it := range allItems(prop) {
+		for _, forbidden := range c.ForbidGenres {
+			for _, genre := range it.Genres {
+				if strings.EqualFold(strings.TrimSpace(genre), strings.TrimSpace(forbidden)) {
+					f = append(f, fmt.Sprintf("grounded item %q carries forbidden genre %q", it.Name, genre))
+				}
+			}
+		}
+		for _, forbidden := range c.ForbidTitleTerms {
+			if strings.Contains(strings.ToLower(it.Name), strings.ToLower(forbidden)) {
+				f = append(f, fmt.Sprintf("grounded item %q contains forbidden title term %q", it.Name, forbidden))
 			}
 		}
 	}

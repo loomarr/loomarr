@@ -21,8 +21,7 @@ func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel,
 	return s.channel, nil
 }
 
-func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
-	lastPlayoutResolver = nil
+func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	t.Setenv("API_TOKEN", "capacity-test-token")
 
 	st := testkit.MigratedSQLiteStore(t)
@@ -38,13 +37,15 @@ func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	h, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := lastPlayoutResolver
+	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
+	h := application.Handler()
+	r := application.playoutResolver
 	if r == nil {
-		t.Fatal("BuildHandler wired no playout resolver")
+		t.Fatal("Build wired no playout resolver")
 	}
 	// Detection is lazy; install the result a real encoder trial would publish without running
 	// ffmpeg in a unit test. The configured 9 is deliberately above the measured 3.
@@ -99,7 +100,7 @@ func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
 // after construction, and deleting the assignment broke NO test. It is now set in the
 // constructor literal, and this is the test that notices if it stops being.
 func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
-	// A resolver wired the way BuildHandler wires it — every ladder input present.
+	// A resolver wired the way Build wires it — every ladder input present.
 	full := func() *playoutResolver {
 		return &playoutResolver{
 			tier:           func() string { return "720p" },
@@ -143,17 +144,15 @@ func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 }
 
 // ⚠ **THE ASSERTION THAT WAS MISSING.** The test above pins the invariant (an unset ladder
-// input panics); this pins that BuildHandler actually SATISFIES it.
+// input panics); this pins that Build actually satisfies it.
 //
 // Both are needed, and the gap between them is exactly where the original defect lived:
 // `activeChannels` was back-patched after construction, and deleting the assignment left
 // every test green while a viewer tuning in would panic.
 //
-// Reads the resolver BuildHandler really constructed rather than one assembled here, since
+// Reads the resolver Build really constructed rather than one assembled here, since
 // a test-built resolver only proves the test knows how to fill a struct.
-func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
-	lastPlayoutResolver = nil
-
+func TestBuild_WiresEveryLadderInput(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	// Playout is only wired on the internal backend; without this the resolver is nil and
 	// the test would pass vacuously.
@@ -161,12 +160,14 @@ func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{}); err != nil {
+	application, err := Build(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	r := lastPlayoutResolver
+	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
+	r := application.playoutResolver
 	if r == nil {
-		t.Fatal("BuildHandler wired no playout resolver on the internal backend — " +
+		t.Fatal("Build wired no playout resolver on the internal backend — " +
 			"this test can no longer see what it is meant to guard")
 	}
 
@@ -180,7 +181,7 @@ func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
 		{"activeChannels", r.activeChannels != nil},
 	} {
 		if !tc.set {
-			t.Errorf("BuildHandler left %s unset — Profile calls it unguarded, so a viewer "+
+			t.Errorf("Build left %s unset — Profile calls it unguarded, so a viewer "+
 				"tuning in would panic", tc.name)
 		}
 	}

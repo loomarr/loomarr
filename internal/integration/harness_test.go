@@ -18,7 +18,7 @@ import (
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
-// harness drives the REAL composition root (app.BuildHandler) end to end, faking
+// harness drives the REAL composition root (app.Build) end to end, faking
 // only the true external boundaries (media server, Seerr, TMDB, Tunarr, LLM,
 // Ollama) via testkit doubles. Unlike pipeline_test.go's rig — which hand-wires a
 // SUBSET of api.Options — this exercises the WHOLE surface the FE will call:
@@ -119,7 +119,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	handler, err := app.BuildHandler(ctx, st, testkit.Logger(), app.Overrides{
+	application, err := app.Build(ctx, st, testkit.Logger(), app.Overrides{
 		Programmer:  h.tun,
 		LLM:         h.llm,
 		TMDBBaseURL: h.tmdb.URL,
@@ -127,7 +127,14 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.srv = httptest.NewServer(handler)
+	t.Cleanup(func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer shutdownCancel()
+		if err := application.Shutdown(shutdownCtx); err != nil {
+			t.Errorf("shutdown application: %v", err)
+		}
+	})
+	h.srv = httptest.NewServer(application.Handler())
 	t.Cleanup(h.srv.Close)
 	return h
 }
