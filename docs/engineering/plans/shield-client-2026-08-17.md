@@ -256,7 +256,10 @@ jank on a Shield at 60fps. Use standard `LazyRow`/`LazyColumn` (the `Tv*` varian
 **The 100 × 4h sizing is reasoned from virtualization behaviour, not measured.** Validate with a
 Macrobenchmark scroll test on a 2GB tube before committing to the design.
 
-**Gate:** navigate a 100-channel × 4-hour grid without dropped focus or dropped frames.
+**Gate:** navigate a 100-channel × 4-hour grid without dropped focus or dropped frames. For every
+Android UI change, install the current APK in a windowed, centred API-30 TV emulator and traverse all
+touched surfaces with D-pad, OK, Back, Menu, and any changed number-key path. Screenshot/headless
+evidence supplements this hands-on gate; it does not replace it.
 
 ### S4 — Program detail + polish
 

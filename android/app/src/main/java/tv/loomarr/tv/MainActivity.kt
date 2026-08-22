@@ -154,7 +154,7 @@ private fun PairingScreen(model: PairingViewModel) {
  * can be expected to work out from a remote.
  */
 @Composable
-private fun PairingOffer(
+internal fun PairingOffer(
     state: PairingUiState.AwaitingApproval,
     onRefresh: () -> Unit,
 ) {
@@ -200,7 +200,11 @@ private fun PairingOffer(
                 verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S4),
             ) {
                 SectionHeading("Visit Website")
-                MonoData(state.verificationUri)
+                MonoData(
+                    state.verificationUri,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    maxLines = 1,
+                )
                 CodeDisplay(state.userCode)
             }
         }

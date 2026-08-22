@@ -63,13 +63,32 @@ seconds with KVM.
 ```sh
 sdkmanager "emulator" "system-images;android-30;android-tv;x86"
 avdmanager create avd -n loomarr-tv -k "system-images;android-30;android-tv;x86" -d tv_1080p
-emulator -avd loomarr-tv -no-window -no-audio -gpu swiftshader_indirect -port 5560
+emulator -avd loomarr-tv -no-audio -gpu swiftshader_indirect -port 5560
 
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 # 10.0.2.2 is the emulator's alias for the HOST — localhost inside the VM is the VM.
 adb shell am start -n tv.loomarr.tv/.MainActivity -e server http://10.0.2.2:18305
 adb exec-out screencap -p > screen.png
 ```
+
+### Required UI acceptance gate
+
+Screenshot tests and a headless emulator are automation evidence, not UI acceptance. Every Android
+layout, focus, or navigation change must also install the **current APK** into a **windowed** API-30
+TV emulator, center that window on the active display, and traverse every touched surface with the
+remote controls it exposes. Check D-pad focus, OK, Back, Menu, number entry, overscan, clipping, and
+text overflow; record the traversed path in the PR. Do not count a launch that leaves the emulator
+off-centre or opens an older installed APK.
+
+On KDE, mixed-DPI Wayland makes X11 coordinates unreliable. Center the launched emulator through
+KWin itself:
+
+```sh
+wmctrl -a "Android Emulator - loomarr-tv"
+qdbus6 org.kde.kglobalaccel /component/kwin invokeShortcut "Window Move Center"
+```
+
+Other desktops may center it manually. `-no-window` remains suitable for unattended CI only.
 
 **What the emulator proves:** the screen renders at 10-foot scale, the pairing handshake completes,
 the token persists. **What it cannot:** hardware HEVC/AV1 decoding, surround passthrough, or real

@@ -1650,6 +1650,12 @@ dp/sp rather than physical pixels. The Media3 player remains a full-screen `Surf
 UI density does not cap a supported stream at the UI reference resolution. Screenshot gates cover
 both density classes; 1080p is a reference capture, not a playback or display ceiling.
 
+An Android UI change is not accepted from screenshot tests or a headless launch alone. The current
+APK must also run in a windowed, centred API-30 Android TV emulator, and the touched path must be
+traversed with its real remote keys while focus, overscan, clipping, and text overflow are observed.
+That hands-on checkpoint is required evidence in the PR; an off-centre emulator or a stale installed
+APK does not satisfy it.
+
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.
 

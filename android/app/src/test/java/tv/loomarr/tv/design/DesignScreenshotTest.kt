@@ -14,11 +14,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.loomarr.tv.PairingOffer
 import tv.loomarr.tv.guide.Airing
 import tv.loomarr.tv.guide.ChannelTimeline
 import tv.loomarr.tv.guide.GuideGrid
 import tv.loomarr.tv.guide.GuideUiState
 import tv.loomarr.tv.guide.GuideWindow
+import tv.loomarr.tv.pairing.PairingUiState
 import tv.loomarr.tv.playback.Channel
 import tv.loomarr.tv.playback.SurfRail
 import tv.loomarr.tv.playback.WatchUiState
@@ -67,6 +69,27 @@ class DesignScreenshotTest {
         compose.setContent {
             Box(modifier = Modifier.background(LoomarrTokens.Color.Static950)) {
                 ColorBars()
+            }
+        }
+        compose.onRoot().captureRoboImage()
+    }
+
+    @Test
+    fun `pairing with a real hostname stays on one line`() {
+        compose.setContent {
+            CenteredScreen {
+                ColorBars(modifier = Modifier.padding(bottom = LoomarrTokens.Space.S6))
+                PairingOffer(
+                    state =
+                        PairingUiState.AwaitingApproval(
+                            userCode = "WMQJ-QVFJ",
+                            verificationUri = "loomarr.projectguacamole.com/pair",
+                            verificationUriComplete =
+                                "https://loomarr.projectguacamole.com/pair?code=WMQJ-QVFJ",
+                            secondsRemaining = 593,
+                        ),
+                    onRefresh = {},
+                )
             }
         }
         compose.onRoot().captureRoboImage()
