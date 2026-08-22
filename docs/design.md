@@ -1071,6 +1071,14 @@ domain-specific leased executor because their Job/Attempt/Proposal history and c
 business state, not River execution history. No additional runtime, workflow server, or scheduler is
 introduced.
 
+**Operational visibility.** Durability must be observable without exposing a caller or provider
+diagnostic as a metric label. `/metrics` reports the current Proposal Job count by the closed Job
+status set, the age of the oldest queued/running Job, the durable Attempt count by the closed outcome
+set, and failed Jobs by the bounded requester-safe failure code. Unknown persisted values collapse to
+`other`; Job ids, owner ids, Intent text, model output, and private diagnostics are never labels.
+These are health signals, not another workflow read model: the Journey endpoints remain authoritative
+for an individual request.
+
 **A phase must name what is happening NOW, not what is about to.** The tool loop alternates — the model thinks, calls the catalog, reads the results, thinks again — for up to `maxToolRounds` iterations, so `searching` and `reasoning` are *repeating* states, not a one-way sequence. Emitting `searching` once before the loop and `reasoning` only after it exits (the original shape) meant the label read "Searching the library" for the entire run including every model turn, which is where the operator's time actually goes: it named the fastest step in the job as the explanation for the slowest. Each phase is therefore emitted **inside** the loop at the transition it describes, and may repeat. `round` (1-based, `0` = not in the tool loop) carries the iteration so a long run is legibly *progressing* rather than hung — the UI pairs it with elapsed time. Grounding is untouched: progress is display-only, and `buildProposal`'s surfaced-id chokepoint is the only thing that decides which picks survive. Cache proposals by hash(normalized intent + constraints) with a short TTL (default 24h) — **but only a *successful* job is a cache hit**: a run that grounds no titles (or fails/times out) must NOT be cached, or an operator retrying the same intent would be wedged to the empty result for the TTL. A zero-grounded-title result **fails the job** (with a clear "no grounded titles found" reason surfaced via `last_error`), rather than persisting an empty `submitted` proposal. The grounded turns are generated at a **low sampling temperature** (JSON/tool-call adherence over creativity), with a small **bounded repair loop** that re-asks when the model's final turn isn't valid schema JSON. The suggester is an internal subsystem using the Store like the others; the *external* thing it talks to is the LLM, and that boundary is what the grounding rules police.
 
 ### 8.2 Model residency — keeping the local model warm
@@ -4847,7 +4855,11 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 - **`BuildHandler` must not become methods on a shared builder.** That decomposition would convert ~70 locals into fields on a mutable carrier — *widening* their scope, and trading compile-time use-before-assignment errors for runtime nils. The sections are sequential and genuinely interdependent (three deliberate back-patches). Its heavy `if st != nil` nesting is likewise deliberate: a container started without `DATABASE_URL` must answer `/readyz` with the reason rather than crash-loop past the probe that would explain it.
 
-  ⚠ **What has NOT survived is the claim that it "stays ~630 lines".** Measured 2026-08-10 it is **1,457 lines** (`app.go:131`→`:1587`, the only substantive function in the file): 94 branches, 46 top-level assignments, **15** separate `if st != nil` blocks, and the same `library.NewDynamic(...)` client constructed **5 times** because the sections cannot see each other's locals. "A composition root may be long; it may not be unnavigable" was the right test and it now fails — a section map makes 1,457 lines navigable in the sense that you can find a heading, not in the sense that you can hold it.
+  ⚠ **What has NOT survived is the claim that it "stays ~630 lines".** Measured at `79349941`
+  on 2026-08-22, `app.go` is **1,636 lines** and `BuildHandler` spans lines 169–1,635. "A
+  composition root may be long; it may not be unnavigable" was the right test and it now fails — a
+  section map makes the function navigable in the sense that you can find a heading, not in the sense
+  that you can hold it.
 
   **The sanctioned decomposition is per-subsystem functions, not a builder.** `buildFiller(deps) (…, error)`, `buildPlayout(deps) (…, error)` and so on: each takes what it needs, owns its own `if st != nil` guard, and *returns values* — so nothing widens to a mutable field and the use-before-assignment errors stay. That is a different shape from the one rejected above, which is why the rejection does not cover it. The three back-patches stay explicit in the root, where they are already named.
 - **`api.Server`'s fields are not a service locator.** Every field is a narrow, purpose-named interface (`LoginService`, `PodPreviewer`, `ChannelBinder`) with a doc comment stating what it wires and what `nil` means, and the nil-means-501 convention is uniform — one optional capability, one `errNotImplemented` guard. That is what lets an unconfigured install boot and explain itself. Grouping them into sub-structs would add indirection at every call site and bury the one thing the comments make plain.
@@ -4855,6 +4867,34 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
   ⚠ **The count was 33 and is 51 (2026-08-10)**, with `api.Options` at 50 — and `Options`→`Server` is a hand-written copy of all 50 pairs in `api.go`, ~400 lines from where either struct is declared. The argument above still holds field-by-field; what the growth costs is the copy, and that is already guarded rather than trusted: `optionsparity_test.go` parses `api.go`'s AST to catch an omitted line, because a missed pair is silent.
 
 **The general rule the two exceptions illustrate:** a line count or a field count is a prompt to go and read something, never a finding on its own. Both of the above were "obvious" refactors until the code was read, and both would have made the system worse.
+
+**The application generation owns an explicit lifecycle.** Building the application starts River,
+settings refresh, playout lifecycle listeners, and other generation-scoped work, so returning only an
+`http.Handler` hides half of the interface and forced shutdown ordering into `store.OnClose` plus a
+test-only mutable production global. The composition root returns one application value with a
+read-only Handler and an idempotent `Shutdown(ctx) error`. Build derives one generation context;
+parent cancellation asks it to stop, while `Shutdown` cancels and waits for every owned subsystem in
+reverse dependency order. The caller still owns the listener, signal handling, and Store: it drains
+HTTP, waits for the application, then closes the Store. A failed Build unwinds everything it already
+started before returning. Tests observe wiring through the returned application or through behavior,
+never through package globals.
+
+**Persistence is broad only at the root.** `store.Store` remains the full union held by the
+composition root and the one SQLite/Postgres conformance suite. A domain module accepts the smallest
+role interface that expresses the tables and transactions it actually needs, normally declared by
+that module. Its constructor must not widen that interface back to `store.Store`. Narrowing happens
+when a module is touched; it is not permission to split the shared SQL implementation or duplicate
+repositories per database.
+
+**Semantic certification is explicit and inference-spending.** `make eval` remains an exploratory
+run that may skip when no live library, catalog, or model is configured. `make eval-cert` is the
+release/operator assertion: missing configuration, an unexecuted case, a failed deterministic gate,
+or a judge score below its declared floor fails the command. Its versioned corpus contains the exact
+four starter-template Intents plus adversarial grounding cases, uses the real production suggester and
+catalog path, and writes a machine-readable scorecard naming the schema version, corpus version,
+provider/model (never credentials), every case outcome, and the aggregate certification result.
+Network and inference keep it outside `make check`; a stored scorecard is evidence for one named
+model/catalog snapshot, not a timeless claim that every provider is certified.
 
 ### 14.2 The package map
 
