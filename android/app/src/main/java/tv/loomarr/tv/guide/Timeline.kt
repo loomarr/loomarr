@@ -3,9 +3,9 @@ package tv.loomarr.tv.guide
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -22,77 +22,17 @@ import tv.loomarr.tv.design.Body
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 
-/**
- * One channel's schedule drawn against time — the web guide's visual language, for a single channel.
- *
- * The web guide is a channel × time grid and it earns that shape with a pointer: every cell is one
- * click away, so breadth is nearly free. On a D-pad, distance is button presses, so this shows the
- * time axis for the FOCUSED channel only. The viewer moves down the channel list to change which
- * channel the strip describes, rather than steering a cursor across a plane.
- *
- * What survives from web, because it is what made that guide legible rather than merely dense:
- *  - proportional block widths, so a 4-minute break is visibly a quarter of a 16-minute one
- *  - the now-line, so "how far into this am I" is answered without arithmetic
- *  - blocks styled by [Airing.kind], so filler reads as a break without being labelled one
- */
-@Composable
-fun ChannelTimelineStrip(
-    channel: ChannelTimeline,
-    window: GuideWindow,
-    nowMs: Long,
-    modifier: Modifier = Modifier,
-) {
-    BoxWithConstraints(modifier = modifier) {
-        val paneWidth = maxWidth
-
-        Column {
-            TimeRuler(window = window, paneWidth = paneWidth)
-
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(StripHeight)
-                        .padding(top = LoomarrTokens.Space.S2),
-            ) {
-                // Behind the blocks, so a block's fill covers the line rather than being cut by it.
-                // The web grid does the same: the hour rules are the surface the schedule sits ON.
-                HourGridlines(window = window, paneWidth = paneWidth)
-
-                channel.airings.forEach { airing ->
-                    val start = airing.offsetIn(window, paneWidth)
-                    val width = airing.widthIn(window, paneWidth)
-
-                    // A block clipped entirely outside the served window contributes nothing but
-                    // overdraw. Zero-width blocks are dropped for the same reason: a border on a
-                    // 0dp box still paints a 1dp line, which reads as a mystery tick mark.
-                    if (width > 0.dp) {
-                        TimelineBlock(
-                            airing = airing,
-                            width = width,
-                            // Measured against the SERVER's now, the same instant the now-line
-                            // uses — so the amber block and the red line always agree.
-                            onAir = nowMs >= airing.startMs && nowMs < airing.stopMs,
-                            modifier = Modifier.offset(x = start),
-                        )
-                    }
-                }
-
-                NowLine(
-                    nowMs = nowMs,
-                    window = window,
-                    paneWidth = paneWidth,
-                )
-            }
-        }
-    }
-}
-
-/** Tall enough for a two-line block at TV type sizes without the text touching its border. */
-private val StripHeight = 132.dp
+// The pieces every timeline in the guide is drawn from: a ruler, hour rules, the now-line, and a
+// block.
+//
+// Shared rather than owned by one screen because GuideGrid draws one timeline PER CHANNEL against a
+// single window, and these must agree to the pixel — a ruler that measured differently from the
+// gridlines beneath it, or a now-line that landed at a different offset than the blocks it crosses,
+// would make the grid lie about time. They take their width and height as parameters for that
+// reason: the geometry is shared, the size is the caller's.
 
 /**
- * The hour labels above the strip.
+ * The hour labels above a timeline.
  *
  * ⚠ Each label is offset to its hour and then nudged right by [RulerLabelInset] — and that nudge is
  * only honest because [HourGridlines] draws a rule at the unnudged position. A label is a claim
@@ -100,13 +40,13 @@ private val StripHeight = 132.dp
  * without moving the hour. The first build did exactly that and the ruler was wrong by the inset.
  */
 @Composable
-private fun TimeRuler(
+internal fun TimeRuler(
     window: GuideWindow,
-    paneWidth: Dp,
+    timelineWidth: Dp,
+    modifier: Modifier = Modifier,
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(LoomarrTokens.Space.S6)) {
+    Box(modifier = modifier.fillMaxWidth().height(LoomarrTokens.Space.S6)) {
         hourBoundaries(window).forEach { boundaryMs ->
-            val x = window.offsetOf(boundaryMs, paneWidth)
             MonoData(
                 text = clockLabel(boundaryMs),
                 color = LoomarrTokens.Color.Static500,
@@ -114,7 +54,10 @@ private fun TimeRuler(
                 // ⚠ Capped, per the MonoData comment: an uncapped ruler label wrapped into a
                 // vertical column of single characters when its box was narrower than the text.
                 maxLines = 1,
-                modifier = Modifier.offset(x = x + RulerLabelInset),
+                modifier =
+                    Modifier.offset(
+                        x = window.offsetOf(boundaryMs, timelineWidth) + RulerLabelInset,
+                    ),
             )
         }
     }
@@ -126,22 +69,23 @@ private val RulerLabelInset = 6.dp
 /**
  * A hairline at every hour, behind the blocks.
  *
- * Without these the ruler is decoration: the labels float over the strip with nothing tying a time
- * to a position, so a viewer cannot tell whether a block starts at half past or quarter to. The
- * gridline is what turns the row of numbers into a scale.
+ * Without these the ruler is decoration: the labels float over the timeline with nothing tying a
+ * time to a position, so a viewer cannot tell whether a block starts at half past or quarter to.
+ * The gridline is what turns the row of numbers into a scale.
  */
 @Composable
-private fun HourGridlines(
+internal fun HourGridlines(
     window: GuideWindow,
-    paneWidth: Dp,
+    timelineWidth: Dp,
+    height: Dp,
 ) {
     hourBoundaries(window).forEach { boundaryMs ->
         Box(
             modifier =
                 Modifier
-                    .offset(x = window.offsetOf(boundaryMs, paneWidth))
+                    .offset(x = window.offsetOf(boundaryMs, timelineWidth))
                     .width(1.dp)
-                    .height(StripHeight)
+                    .height(height)
                     .background(LoomarrTokens.Color.Static700),
         )
     }
@@ -153,22 +97,28 @@ private fun HourGridlines(
  * ⚠ [nowMs] is the SERVER's now, threaded down from `GuideWindow.fromMs`, not
  * `System.currentTimeMillis()`. A television is exactly the hardware whose clock cannot be trusted —
  * some boxes have no RTC and NTP may not have synced — and reading device time here would slide this
- * line to an arbitrary place on the strip, or off it entirely.
+ * line to an arbitrary place, or off the grid entirely.
+ *
+ * ⚠ `onair` red, not `signal` amber. Amber is the brand and marks what is AIRING, so an amber line
+ * through amber blocks disappears into them — the web grid carries the same note.
  */
 @Composable
-private fun NowLine(
+internal fun NowLine(
     nowMs: Long,
     window: GuideWindow,
-    paneWidth: Dp,
+    timelineWidth: Dp,
+    modifier: Modifier = Modifier,
 ) {
     if (nowMs < window.fromMs || nowMs > window.toMs) return
 
     Box(
         modifier =
-            Modifier
-                .offset(x = window.offsetOf(nowMs, paneWidth))
+            modifier
+                .offset(x = window.offsetOf(nowMs, timelineWidth))
                 .width(NowLineWidth)
-                .height(StripHeight)
+                // Spans whatever it is drawn into — in the grid that is every row at once, which is
+                // what makes it a single mark across the whole schedule rather than a per-row tick.
+                .fillMaxHeight()
                 .background(LoomarrTokens.Color.Onair),
     )
 }
@@ -178,10 +128,11 @@ private val NowLineWidth = 3.dp
 
 /** One block, rendered according to what its width can actually hold. */
 @Composable
-private fun TimelineBlock(
+internal fun TimelineBlock(
     airing: Airing,
     width: Dp,
     onAir: Boolean,
+    height: Dp,
     modifier: Modifier = Modifier,
 ) {
     val treatment = blockTreatment(width.value, airing.kind, onAir)
@@ -190,9 +141,9 @@ private fun TimelineBlock(
         modifier =
             modifier
                 .width(width)
-                .height(StripHeight)
+                .height(height)
                 // A hairline gap so adjacent blocks read as two things, not one wide one.
-                .padding(end = 2.dp)
+                .padding(end = 2.dp, bottom = 2.dp)
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
                 .background(treatment.fill)
                 .border(
@@ -233,7 +184,7 @@ private fun TimelineBlock(
                             MonoData(
                                 text = "≈",
                                 color = LoomarrTokens.Color.Caution,
-                                fontSize = LoomarrTokens.Type.Xs,
+                                fontSize = LoomarrTokens.Type.Xs2,
                                 maxLines = 1,
                                 modifier = Modifier.padding(start = LoomarrTokens.Space.S2),
                             )
@@ -396,4 +347,22 @@ private fun hourBoundaries(window: GuideWindow): List<Long> {
         t += hour
     }
     return out
+}
+
+/**
+ * "8:30" in the device's own timezone.
+ *
+ * ⚠ Converted through `ZoneId.systemDefault()`, not by arithmetic on the epoch. Dividing epoch ms
+ * into hours and minutes yields UTC, which is right only in Britain in winter.
+ *
+ * The server sends absolute epoch ms deliberately: "a timezone is a formatting choice, and putting
+ * instants on the wire in local time would invite a client to reinterpret rather than merely format
+ * them." This is that formatting choice.
+ */
+internal fun clockLabel(epochMs: Long): String {
+    val local =
+        java.time.Instant
+            .ofEpochMilli(epochMs)
+            .atZone(java.time.ZoneId.systemDefault())
+    return "%d:%02d".format(local.hour, local.minute)
 }

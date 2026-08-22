@@ -7,17 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The timeline strip's geometry and per-kind styling.
+ * The guide timeline's geometry and per-kind styling.
  *
  * These are plain JVM tests because the interesting behaviour is arithmetic on the served window and
  * a lookup by block kind — neither needs a device, a view to inflate, or a screenshot. Only the
  * painting does, and painting is not what breaks here.
  */
-class ChannelTimelineStripTest {
+class TimelineTest {
     private val hour = 3_600_000L
     private val windowStart = 1_700_000_000_000L
 
-    /** A four-hour window across a 412dp pane — the real geometry on a 1080p television. */
+    /** A four-hour window across the grid's real timeline pane on a 1080p television. */
     private fun window(vararg airings: Airing) =
         GuideWindow(
             fromMs = windowStart,
@@ -53,20 +53,20 @@ class ChannelTimelineStripTest {
     )
 
     /**
-     * The real strip width on a 1080p television: 960dp, less 96dp of overscan, less the 320dp
-     * channel list and the 24dp gap beside it.
+     * The real timeline width on a 1080p television: 960dp, less 96dp of overscan and the grid's
+     * 260dp channel column.
      */
-    private val pane = 520.dp
+    private val pane = 604.dp
 
     @Test
     fun `block width is proportional to duration`() {
         val w = window()
-        // A 4h window across 520dp puts an hour at 130dp, so a two-hour film takes half the pane.
+        // A two-hour film occupies half of the four-hour pane.
         val twoHours = airing(startMinutes = 0, durationMinutes = 120)
-        assertEquals(260f, twoHours.widthIn(w, pane).value, 0.5f)
+        assertEquals(302f, twoHours.widthIn(w, pane).value, 0.5f)
 
         val fourMinutes = airing(startMinutes = 0, durationMinutes = 4)
-        assertEquals(8.7f, fourMinutes.widthIn(w, pane).value, 0.5f)
+        assertEquals(10.1f, fourMinutes.widthIn(w, pane).value, 0.5f)
     }
 
     @Test
@@ -87,7 +87,7 @@ class ChannelTimelineStripTest {
         // Started an hour before the window opened and runs an hour into it. Only the hour INSIDE
         // the window may be drawn — sizing it by full duration overhangs the strip.
         val overhanging = airing(startMinutes = -60, durationMinutes = 120)
-        assertEquals(130f, overhanging.widthIn(w, pane).value, 0.5f)
+        assertEquals(151f, overhanging.widthIn(w, pane).value, 0.5f)
         assertEquals(0f, overhanging.offsetIn(w, pane).value, 0.01f)
     }
 
@@ -102,9 +102,9 @@ class ChannelTimelineStripTest {
     fun `offsets are measured against the served window`() {
         val w = window()
         // Halfway through a four-hour window is halfway across the pane.
-        assertEquals(260f, w.offsetOf(windowStart + 2 * hour, pane).value, 0.5f)
+        assertEquals(302f, w.offsetOf(windowStart + 2 * hour, pane).value, 0.5f)
         assertEquals(0f, w.offsetOf(windowStart, pane).value, 0.01f)
-        assertEquals(520f, w.offsetOf(windowStart + 4 * hour, pane).value, 0.5f)
+        assertEquals(604f, w.offsetOf(windowStart + 4 * hour, pane).value, 0.5f)
     }
 
     @Test

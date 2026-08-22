@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 
 /**
  * Exercises the guide parser against payloads shaped like the server's own DTO.
@@ -144,6 +145,23 @@ class GuideClientTest {
             val path = server.takeRequest().path.orEmpty()
             assertTrue("missing from= in $path", path.contains("from=111"))
             assertTrue("missing to= in $path", path.contains("to=222"))
+        }
+
+    @Test
+    fun `reads server time from the cheap public health response`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Date", "Sat, 22 Aug 2026 15:30:00 GMT")
+                    .setBody("{\"status\":\"ok\"}"),
+            )
+
+            assertEquals(Instant.parse("2026-08-22T15:30:00Z").toEpochMilli(), client.serverNowMs())
+
+            val request = server.takeRequest()
+            assertEquals("/v1/healthz", request.path)
+            assertNull(request.getHeader("Authorization"))
         }
 
     /** `airingAt` is what the now-playing overlay will read; a gap must be a gap, not the next block. */

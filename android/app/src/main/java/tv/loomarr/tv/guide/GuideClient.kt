@@ -6,6 +6,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * Reads the guide — the same endpoint the web grid and XMLTV are built from.
@@ -18,6 +20,31 @@ class GuideClient(
     private val token: String,
     private val http: OkHttpClient = OkHttpClient(),
 ) {
+    /**
+     * Reads the server clock without computing the guide just to learn what time it is.
+     *
+     * `/v1/healthz` is deliberately public and cheap. Its HTTP `Date` header is server-authored,
+     * unlike the TV clock, and avoids the previous two-guide-request path doubling 100 channel
+     * timeline computation before the grid could render.
+     */
+    suspend fun serverNowMs(): Long =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder().url("$baseUrl/v1/healthz").build()
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("server clock failed: ${response.code}")
+                response
+                    .header("Date")
+                    ?.let { value ->
+                        runCatching {
+                            ZonedDateTime
+                                .parse(value, DateTimeFormatter.RFC_1123_DATE_TIME)
+                                .toInstant()
+                                .toEpochMilli()
+                        }.getOrNull()
+                    } ?: throw IOException("server clock response had no valid Date header")
+            }
+        }
+
     /**
      * Fetch the window between two epoch-ms instants.
      *

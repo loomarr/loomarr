@@ -3,11 +3,12 @@
 The native client. **Android TV generally**, not one device: the Nvidia Shield is the reference
 hardware and sets the `minSdk` floor, but nothing here is Shield-specific.
 
-## What this slice does
+## What the client does
 
-Device pairing (§11, Shield P1) and nothing else. The app starts a pairing, shows the code and the
-address on screen, polls until a human approves it in the web UI, and receives a durable token.
-Playback is the next slice.
+The app pairs without asking someone to type a password on a D-pad, reports the device's real codec
+capabilities, opens on a channel-by-time guide, and tunes Loomarr's live HLS through Media3. The
+guide and player share the paired server address, so stream URLs are resolved against the server the
+TV actually reached rather than an address embedded for another machine.
 
 ## Why it works on more than a Shield
 
@@ -36,7 +37,7 @@ export ANDROID_HOME=$HOME/Android     # cmdline-tools + platform 35 + build-tool
 ```sh
 cd android
 ./gradlew :app:assembleDebug          # → app/build/outputs/apk/debug/app-debug.apk
-./gradlew :app:testDebugUnitTest      # pairing client, against a mock server
+./gradlew :app:testDebugUnitTest      # pairing, guide geometry/windowing, and playback contracts
 ```
 
 ## Notes worth keeping
