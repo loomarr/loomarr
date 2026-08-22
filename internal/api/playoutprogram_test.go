@@ -535,6 +535,43 @@ func TestPlayoutProgram_IsCalledRepeatedlyAndStaysConsistent(t *testing.T) {
 	}
 }
 
+func TestPlayoutProgram_PinsTheFirstBlocksBroadcastFormat(t *testing.T) {
+	res := &fakeResolver{
+		airing: playableAiring(0, time.Minute), url: "http://emby/v/1",
+		profile: playout.Profile{
+			Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 2500,
+			AudioBitrate: 128, Encoder: playout.EncoderSoftware,
+		},
+	}
+	enc := &fakeEncoder{output: "chunk"}
+	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+
+	first := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	_, _ = io.Copy(io.Discard, first.Body)
+	format := first.Header.Get(api.PlayoutBroadcastFormatHeader)
+	if _, ok := playout.ParseBroadcastFormat(format); !ok {
+		t.Fatalf("first response broadcast format = %q, want a valid token", format)
+	}
+
+	// Simulate another channel starting between blocks and moving the live quality ladder. The
+	// session token, not this newly resolved profile, must still govern the next child.
+	res.profile = playout.Profile{
+		Width: 1920, Height: 1080, Framerate: 30, VideoBitrate: 5000,
+		AudioBitrate: 160, Encoder: playout.EncoderSoftware,
+	}
+	second := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken+"&"+
+		api.PlayoutBroadcastFormatQuery+"="+format)
+	_, _ = io.Copy(io.Discard, second.Body)
+	if got := second.Header.Get(api.PlayoutBroadcastFormatHeader); got != format {
+		t.Fatalf("second response broadcast format = %q, want pinned %q", got, format)
+	}
+	args := strings.Join(enc.args(), " ")
+	if !strings.Contains(args, "scale=1280:720") || !strings.Contains(args, "fps=25") ||
+		!strings.Contains(args, "-b:v 2500k") || !strings.Contains(args, "-b:a 128k") {
+		t.Fatalf("second block did not retain first block profile:\n%s", args)
+	}
+}
+
 // A client disconnecting mid-program must not leave the encoder running. The child's lifetime is
 // bound to the request, and a leaked child is a core burned until the process dies.
 func TestPlayoutProgram_DisconnectStopsTheEncoder(t *testing.T) {

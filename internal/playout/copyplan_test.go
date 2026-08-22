@@ -99,6 +99,22 @@ func TestBroadcastVideoCodecMakesTheTunerStable(t *testing.T) {
 	}
 }
 
+func TestBroadcastFormatRoundTripsThePinnedSessionShape(t *testing.T) {
+	want := BroadcastFormat{
+		VideoCodec: "hevc", Width: 1920, Height: 1080, Framerate: 25,
+		VideoBitrate: 5000, AudioBitrate: 160,
+	}
+	got, ok := ParseBroadcastFormat(want.String())
+	if !ok || got != want {
+		t.Fatalf("round trip = %+v, %v; want %+v, true", got, ok, want)
+	}
+	for _, raw := range []string{"", "av1-1920x1080-25-5000-160", "h264-0x720-25-5000-160", "h264-1280x720-0-5000-160", "h264-99999x720-25-5000-160", "h264-1280x720-999-5000-160", "h264-1280x720-25-0-160", "h264-1280x720-25-5000-0"} {
+		if got, ok := ParseBroadcastFormat(raw); ok {
+			t.Errorf("ParseBroadcastFormat(%q) = %+v, true; want miss", raw, got)
+		}
+	}
+}
+
 // resolve buckets a DeviceProfile into the richest plan it FULLY satisfies, rounding DOWN, and NEVER
 // grants a capability the profile did not advertise (§9.1 V48 — the black-frame guard).
 func TestResolvePlan(t *testing.T) {

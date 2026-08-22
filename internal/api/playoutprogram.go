@@ -66,6 +66,14 @@ type PlayoutResolver interface {
 	ChannelCodec(ctx context.Context, channelID string) string
 }
 
+// The block supervisor pins the first child's output format and returns it on every later internal
+// request. These names are exported only for the composition adapter that performs that owned HTTP
+// hop; device clients never set or consume them.
+const (
+	PlayoutBroadcastFormatQuery  = "broadcast"
+	PlayoutBroadcastFormatHeader = "X-Loomarr-Broadcast-Format"
+)
+
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
 // tested without executing a binary; the composition root supplies playout.Start.
 //
@@ -105,6 +113,16 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// canonical token (safe PlanBaseline default on absent). Parsed once here so the offline-card path
 	// (which also spawns a child) carries it too.
 	encPlan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
+	profile := s.playoutResolver.Profile(r.Context())
+	broadcastCodec := playout.BroadcastVideoCodec(encPlan, s.playoutResolver.ChannelCodec(r.Context(), channelID))
+	if pinned, ok := playout.ParseBroadcastFormat(r.URL.Query().Get(PlayoutBroadcastFormatQuery)); ok {
+		profile = pinned.Apply(profile)
+		broadcastCodec = pinned.VideoCodec
+	}
+	if playout.IsHEVCCodec(broadcastCodec) {
+		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
+	}
+	w.Header().Set(PlayoutBroadcastFormatHeader, playout.NewBroadcastFormat(profile, broadcastCodec).String())
 
 	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
 	if r.Context().Err() != nil {
@@ -119,13 +137,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		// unreachable, which is upstream of us and typically transient — and writing an error
 		// document into the concat demuxer's stream would end the channel for every viewer
 		// rather than the one program we could not resolve.
-		if !s.serveCard(w, r, channelID, encPlan, s.playoutResolver.Profile(r.Context()), cardUnavailable, offlineCardDuration) {
+		if !s.serveCard(w, r, channelID, encPlan, profile, cardUnavailable, offlineCardDuration) {
 			s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
 		}
 		return
 	}
-
-	profile := s.playoutResolver.Profile(r.Context())
 
 	// Nothing airing ⇒ the offline card, NOT an error and NOT an empty body.
 	//
@@ -181,7 +197,6 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// can act on what was already learned (HDR today) without a second ffprobe at the program
 	// boundary — the one moment continuity is most fragile.
 	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
-	broadcastCodec := playout.BroadcastVideoCodec(encPlan, s.playoutResolver.ChannelCodec(r.Context(), channelID))
 	plan = playout.ConformCopyPlan(source, plan, profile, broadcastCodec)
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
@@ -190,10 +205,6 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// shows), transcode it to HEVC — not the profile's default h264 — so the fMP4 the browser plays
 	// never switches codec. A source already matching the complete HEVC session format still copies;
 	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
-	if playout.IsHEVCCodec(broadcastCodec) && !plan.CopyVideo {
-		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
-	}
-
 	spec := playout.ProgramSpec{
 		Profile:    profile,
 		Input:      streamURL,

@@ -445,6 +445,109 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 	}
 }
 
+// A logical Airing change does not require a decoder reset once both blocks conform to the same
+// live-session format. The HLS presentation must keep advancing, retain wall-clock mapping, and
+// avoid an unnecessary EXT-X-DISCONTINUITY that would itself flush the browser decoder.
+func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
+	bin := ffmpegBin(t)
+	probe := ffprobeBin(t)
+	dir := t.TempDir()
+
+	blocks := []string{dir + "/episode.ts", dir + "/commercial.ts", dir + "/return.ts"}
+	for i, colour := range []string{"red", "blue", "red"} {
+		args := []string{
+			"-hide_banner", "-loglevel", "error", "-y",
+			"-f", "lavfi", "-i", fmt.Sprintf("color=c=%s:s=320x180:r=25:d=5", colour),
+			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "5",
+			"-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-sc_threshold", "0",
+			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", blocks[i],
+		}
+		if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
+			t.Fatalf("generate block %d: %v\n%s", i, err, out)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var opened atomic.Int64
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (io.ReadCloser, error) {
+		i := int(opened.Add(1)) - 1
+		if i >= len(blocks) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return os.Open(blocks[i])
+	})
+	channel, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
+	if err != nil {
+		t.Fatalf("channel start: %v", err)
+	}
+	hlsDir := dir + "/hls"
+	if err := os.Mkdir(hlsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hls, err := startHLSFFmpeg(ctx, bin, hlsDir, PlanBaseline, nil)
+	if err != nil {
+		t.Fatalf("HLS start: %v", err)
+	}
+	copyDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(hls.stdin, channel.Stdout)
+		_ = hls.closeStdin()
+		close(copyDone)
+	}()
+
+	manifestPath := hlsDir + "/" + hlsPlaylistName
+	var manifest []byte
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		manifest, _ = os.ReadFile(manifestPath)
+		if strings.Count(string(manifest), "#EXTINF:") >= 2 && opened.Load() >= 3 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if strings.Count(string(manifest), "#EXTINF:") < 2 {
+		t.Fatalf("HLS did not advance across blocks:\n%s\nlast error: %s", manifest, hls.LastError())
+	}
+	if !strings.Contains(string(manifest), "#EXT-X-PROGRAM-DATE-TIME:") {
+		t.Fatalf("HLS lost its wall-clock mapping:\n%s", manifest)
+	}
+	if strings.Contains(string(manifest), "#EXT-X-DISCONTINUITY") {
+		t.Fatalf("stable blocks forced an unnecessary decoder reset:\n%s", manifest)
+	}
+
+	entries, err := os.ReadDir(hlsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	segments := 0
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".ts") {
+			continue
+		}
+		segments++
+		got, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
+			"-show_entries", "stream=width,height", "-of", "csv=p=0", hlsDir+"/"+entry.Name()).Output()
+		if err != nil {
+			t.Fatalf("probe %s: %v", entry.Name(), err)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(string(got)), "320,180") {
+			t.Fatalf("%s changed decoder geometry: %s", entry.Name(), got)
+		}
+	}
+	if segments < 2 {
+		t.Fatalf("HLS wrote %d segments, want at least two across the block boundary", segments)
+	}
+
+	cancel()
+	<-copyDone
+	_ = hls.wait()
+	_ = channel.Wait()
+}
+
 // The parent's concat args must be ACCEPTED by ffmpeg. The protocol whitelist and -safe 0 are
 // easy to get wrong, and both failures read as "the playlist is broken" rather than naming
 // the flag.

@@ -1040,24 +1040,50 @@ func playoutSpawner(
 		if base == "" {
 			return nil, fmt.Errorf("playout: server.public_url is not set, so the session cannot open blocks")
 		}
-		source := playout.BlockSource(func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (io.ReadCloser, error) {
-			programURL := fmt.Sprintf("%s/v1/playout/program/%s?token=%s&plan=%s",
-				strings.TrimRight(base, "/"), url.PathEscape(blockChannel), url.QueryEscape(token()),
-				url.QueryEscape(blockPlan.String()))
-			req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
-			if err != nil {
-				return nil, err
-			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return nil, err
-			}
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				_ = resp.Body.Close()
-				return nil, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
-			}
-			return resp.Body, nil
-		})
+		source := playoutBlockSource(base, token, http.DefaultClient)
 		return playout.BlockSpawner(ffmpegBin, source, log)(ctx, channelID, target)
+	}
+}
+
+// playoutBlockSource owns the internal HTTP hop and the session-scoped broadcast token. The first
+// child chooses a format from the load ladder; every later child must acknowledge that exact format
+// before its bytes can enter the long-lived mux.
+func playoutBlockSource(base string, token func() string, client *http.Client) playout.BlockSource {
+	var broadcast string
+	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (io.ReadCloser, error) {
+		query := url.Values{
+			"token": []string{token()},
+			"plan":  []string{blockPlan.String()},
+		}
+		if broadcast != "" {
+			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)
+		}
+		programURL := fmt.Sprintf("%s/v1/playout/program/%s?%s",
+			strings.TrimRight(base, "/"), url.PathEscape(blockChannel), query.Encode())
+		req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
+		}
+		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
+		if !ok {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("playout: block endpoint returned no valid broadcast format")
+		}
+		canonical := format.String()
+		if broadcast == "" {
+			broadcast = canonical
+		} else if canonical != broadcast {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("playout: block format changed from %s to %s", broadcast, canonical)
+		}
+		return resp.Body, nil
 	}
 }
