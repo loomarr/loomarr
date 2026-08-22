@@ -60,9 +60,10 @@ func (c *rotatingCycle) asks() int {
 func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 	t.Parallel()
 	eng := &rotatingCycle{window: 24 * time.Hour}
-	r := &playoutResolver{engine: eng, now: time.Now}
-
 	from := time.Now().Truncate(24 * time.Hour)
+	accepted := &stubChannels{}
+	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
+	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
 	to := from.Add(72 * time.Hour) // three windows
 
 	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, playout.BroadcastsBetween)
@@ -87,9 +88,10 @@ func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 func TestSegmentedBroadcasts_UnboundedWindowResolvesOnce(t *testing.T) {
 	t.Parallel()
 	eng := &rotatingCycle{window: 0}
-	r := &playoutResolver{engine: eng, now: time.Now}
-
 	from := time.Now().Truncate(time.Hour)
+	accepted := &stubChannels{}
+	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
+	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
 	if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, from.Add(72*time.Hour),
 		playout.BroadcastsBetween); err != nil {
 		t.Fatalf("segmentedBroadcasts: %v", err)
@@ -103,9 +105,10 @@ func TestSegmentedBroadcasts_UnboundedWindowResolvesOnce(t *testing.T) {
 func TestSegmentedBroadcasts_IsBoundedBySegmentCap(t *testing.T) {
 	t.Parallel()
 	eng := &rotatingCycle{window: time.Minute} // absurd: a one-minute rotation
-	r := &playoutResolver{engine: eng, now: time.Now}
-
 	from := time.Now().Truncate(time.Minute)
+	accepted := &stubChannels{}
+	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
+	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
 	if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, from.Add(24*time.Hour),
 		playout.BroadcastsBetween); err != nil {
 		t.Fatalf("segmentedBroadcasts: %v", err)
