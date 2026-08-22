@@ -17,6 +17,7 @@ import (
 // journey. HTTP handlers never join raw Job, Proposal, and Channel records.
 type ProposalWorkflow interface {
 	Inspect(context.Context, proposalworkflow.Viewer, string) (proposalworkflow.Journey, error)
+	List(context.Context, proposalworkflow.Viewer, proposalworkflow.ListOptions) ([]proposalworkflow.Journey, error)
 }
 
 type ProposalJourneyDTO struct {
@@ -48,9 +49,13 @@ type ProposalJourneyFailureDTO struct {
 }
 
 type ProposalJourneyProposalDTO struct {
-	ID       string           `json:"id"`
-	Status   string           `json:"status" enum:"submitted,approved,denied"`
-	Proposal suggest.Proposal `json:"proposal"`
+	ID         string           `json:"id"`
+	Status     string           `json:"status" enum:"submitted,approved,denied"`
+	ApprovedBy string           `json:"approvedBy,omitempty"`
+	DenyReason string           `json:"denyReason,omitempty"`
+	ModSummary string           `json:"modSummary,omitempty"`
+	Note       string           `json:"note,omitempty"`
+	Proposal   suggest.Proposal `json:"proposal"`
 }
 
 type ProposalJourneyChannelDTO struct {
@@ -60,11 +65,55 @@ type ProposalJourneyChannelDTO struct {
 
 func (s *Server) registerProposalJourneys(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "list-proposal-jobs", Method: http.MethodGet, Path: "/v1/proposal-jobs",
+		Summary:     "List authoritative First-channel Journeys",
+		Description: "Lists bounded Proposal Job journeys newest-first, including queued, running, and failed requests with no Proposal. Members are always caller-scoped; admins may inspect all or request mine=true.",
+		Tags:        []string{"proposal-jobs"},
+	}, RoleMember), s.listProposalJourneys)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-proposal-job", Method: http.MethodGet, Path: "/v1/proposal-jobs/{jobId}",
 		Summary:     "Get the authoritative First-channel Journey",
 		Description: "Restores one versioned Proposal Job, bounded Attempt history, safe failure, Proposal, intent-bound Channel, milestone, and server-authorized actions. Members may read only their own Job; admins may read any.",
 		Tags:        []string{"proposal-jobs"},
 	}, RoleMember), s.getProposalJourney)
+}
+
+type proposalJourneyListInput struct {
+	Mine   bool   `query:"mine" doc:"For admins, scope the list to the caller; members are always caller-scoped"`
+	Status string `query:"status" enum:"generating,awaiting_approval,denied,building,live,failed" doc:"Optional Journey milestone filter"`
+}
+
+type proposalJourneyListOutput struct {
+	Body struct {
+		Journeys []ProposalJourneyDTO `json:"journeys"`
+	}
+}
+
+func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyListInput) (*proposalJourneyListOutput, error) {
+	if s.proposalWorkflow == nil {
+		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
+	}
+	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
+	if user, ok := userFrom(ctx); ok {
+		viewer.UserID = user.ID
+	}
+	journeys, err := s.proposalWorkflow.List(ctx, viewer, proposalworkflow.ListOptions{
+		Mine: in.Mine, Milestone: proposalworkflow.Milestone(in.Status),
+	})
+	if errors.Is(err, proposalworkflow.ErrInvalidState) {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't restore channel requests",
+			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
+	}
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
+			"Loomarr couldn't restore your channel requests. Try again in a moment.", err)
+	}
+	out := &proposalJourneyListOutput{}
+	out.Body.Journeys = make([]ProposalJourneyDTO, 0, len(journeys))
+	for _, journey := range journeys {
+		out.Body.Journeys = append(out.Body.Journeys, proposalJourneyDTO(journey))
+	}
+	return out, nil
 }
 
 type proposalJourneyInput struct {
@@ -119,7 +168,10 @@ func proposalJourneyDTO(journey proposalworkflow.Journey) ProposalJourneyDTO {
 	dto.Failure = proposalJourneyFailureDTO(journey.Failure)
 	if journey.Proposal != nil {
 		dto.Proposal = &ProposalJourneyProposalDTO{
-			ID: journey.Proposal.ID, Status: string(journey.Proposal.Status), Proposal: journey.Proposal.Proposal,
+			ID: journey.Proposal.ID, Status: string(journey.Proposal.Status),
+			ApprovedBy: journey.Proposal.ApprovedBy, DenyReason: journey.Proposal.DenyReason,
+			ModSummary: journey.Proposal.ModSummary, Note: journey.Proposal.Note,
+			Proposal: journey.Proposal.Proposal,
 		}
 	}
 	if journey.Channel != nil {

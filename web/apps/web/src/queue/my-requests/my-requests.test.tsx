@@ -1,34 +1,43 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
-import type { ReactElement, ReactNode } from "react";
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MyRequests } from "./my-requests";
-
-const makeWrapper = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
-};
-
-const render = (ui: ReactElement) => rtlRender(ui, { wrapper: makeWrapper() });
 
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-// Answers per status, and records every requested URL so a test can assert the SCOPING
-// parameter actually goes out — the whole point of the feature is that this list is mine.
-const stubProposals = (byStatus: Record<string, unknown[]>) => {
+const journey = (over: Record<string, unknown> = {}) => ({
+  version: 1,
+  jobId: "j1",
+  milestone: "generating",
+  intent: { description: "90s action night" },
+  attempts: [],
+  actions: ["wait"],
+  createdAt: "2026-08-22T10:00:00Z",
+  updatedAt: "2026-08-22T10:00:00Z",
+  ...over,
+});
+
+const renderRequests = () => {
+  const rootRoute = createRootRoute();
+  const route = createRoute({ getParentRoute: () => rootRoute, path: "/", component: MyRequests });
+  const router = createRouter({ routeTree: rootRoute.addChildren([route]), history: createMemoryHistory() });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+};
+
+const stubJourneys = (journeys: unknown[]) => {
   const urls: string[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
-      if (typeof url === "string" && url.includes("/v1/proposals")) {
-        urls.push(url);
-        const status = new URL(url, "http://x").searchParams.get("status") ?? "";
-        return Promise.resolve(jsonResponse({ proposals: byStatus[status] ?? [] }));
-      }
-      return Promise.resolve(jsonResponse({}));
+      if (typeof url === "string" && url.includes("/v1/proposal-jobs")) urls.push(url);
+      return Promise.resolve(jsonResponse({ journeys }));
     }),
   );
   return urls;
@@ -36,59 +45,40 @@ const stubProposals = (byStatus: Record<string, unknown[]>) => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const proposal = (over: Record<string, unknown> = {}) => ({
-  id: "p1",
-  jobId: "j1",
-  status: "submitted",
-  proposal: { intent: { description: "90s action night" }, lineup: [], acquisitions: [] },
-  ...over,
-});
-
 describe("MyRequests", () => {
-  // The reachability assertion the phase gate asks for. `A2`'s defect was that a member could
-  // submit a request and see NOTHING — the queue page never queried /v1/proposals at all.
-  it("mounts and renders the member's requests", async () => {
-    stubProposals({ submitted: [proposal()] });
-    render(<MyRequests />);
-
+  it("restores an in-flight request that has no Proposal", async () => {
+    stubJourneys([journey()]);
+    renderRequests();
     expect(await screen.findByText("My requests")).toBeInTheDocument();
     expect(screen.getByText("90s action night")).toBeInTheDocument();
+    expect(screen.getByText("Generating")).toBeInTheDocument();
   });
 
-  // ⚠ Scoping is the feature. Without `mine=true` this renders every member's requests — which
-  // is the unscoped approval queue, on a page headed "My requests".
   it("asks the server to scope the list to the caller", async () => {
-    const urls = stubProposals({ submitted: [proposal()] });
-    render(<MyRequests />);
-
+    const urls = stubJourneys([journey()]);
+    renderRequests();
     await screen.findByText("My requests");
-    expect(urls.length).toBeGreaterThan(0);
-    for (const u of urls) {
-      expect(u).toContain("mine=true");
-    }
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("mine=true");
   });
 
-  // A member's question is "what happened to what I asked for?", and the two answers that
-  // matter most live outside `submitted`. The endpoint filters by one status per call.
-  it("covers submitted, approved and denied", async () => {
-    const urls = stubProposals({
-      submitted: [proposal()],
-      approved: [proposal({ id: "p2", status: "approved" })],
-      denied: [proposal({ id: "p3", status: "denied", denyReason: "over the cap" })],
-    });
-    render(<MyRequests />);
-
-    await waitFor(() => expect(screen.getAllByText("90s action night")).toHaveLength(3));
-    const statuses = urls.map((u) => new URL(u, "http://x").searchParams.get("status"));
-    expect(new Set(statuses)).toEqual(new Set(["submitted", "approved", "denied"]));
+  it("shows safe failure recovery from server-authorized actions", async () => {
+    stubJourneys([
+      journey({
+        milestone: "failed",
+        failure: { code: "no_grounded_titles", message: "No grounded titles matched this request." },
+        actions: ["edit", "retry"],
+      }),
+    ]);
+    renderRequests();
+    expect(await screen.findByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText("No grounded titles matched this request.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit and try again" })).toHaveAttribute("href", "/guide?intent=90s+action+night");
   });
 
-  // The tracked-titles table below is the page's real content; an "you have asked for nothing"
-  // panel above it would be noise on the common path.
   it("renders nothing when the member has no requests", async () => {
-    stubProposals({});
-    const { container } = render(<MyRequests />);
-
+    stubJourneys([]);
+    const { container } = renderRequests();
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 });

@@ -130,6 +130,10 @@ type SeriesEpisodeStore interface {
 type JobStore interface {
 	CreateJob(ctx context.Context, j Job) error
 	GetJob(ctx context.Context, id string) (Job, error)
+	// ListProposalJobIDs returns user-submitted generation jobs newest-first.
+	// Re-curation jobs are operator maintenance and never appear in My requests.
+	ListProposalJobIDs(ctx context.Context, limit int) ([]string, error)
+	ListProposalJobIDsByCreator(ctx context.Context, createdBy string, limit int) ([]string, error)
 	// GetProposalJob returns one consistent execution snapshot. An older
 	// proposal is hidden while a reused refine job is queued/running/failed;
 	// only a done job exposes its newest proposal in any decision state.

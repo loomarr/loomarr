@@ -103,6 +103,45 @@ func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
 }
 
+func (s *sqlStore) ListProposalJobIDs(ctx context.Context, limit int) ([]string, error) {
+	return s.listProposalJobIDs(ctx, "", false, limit)
+}
+
+func (s *sqlStore) ListProposalJobIDsByCreator(ctx context.Context, createdBy string, limit int) ([]string, error) {
+	return s.listProposalJobIDs(ctx, createdBy, true, limit)
+}
+
+func (s *sqlStore) listProposalJobIDs(ctx context.Context, createdBy string, scoped bool, limit int) ([]string, error) {
+	if limit <= 0 {
+		return []string{}, nil
+	}
+	query := `SELECT id FROM jobs WHERE kind = 'suggest'`
+	args := []any{}
+	if scoped {
+		query += ` AND created_by = ?`
+		args = append(args, createdBy)
+	}
+	query += ` ORDER BY updated_at DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list Proposal Job ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("list Proposal Job ids: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list Proposal Job ids: %w", err)
+	}
+	return ids, nil
+}
+
 func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {

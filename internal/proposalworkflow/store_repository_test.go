@@ -120,3 +120,32 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 		t.Fatalf("private persisted failure = (%+v, %v)", persisted, err)
 	}
 }
+
+func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "list.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.August, 22, 18, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	for _, job := range []store.Job{
+		{ID: "alice-running", Kind: "suggest", Status: "queued", CreatedBy: "alice", IntentJSON: `{"description":"Anime after school"}`, WorkflowVersion: store.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "bob-running", Kind: "suggest", Status: "queued", CreatedBy: "bob", IntentJSON: `{"description":"Noir"}`, WorkflowVersion: store.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := st.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	journeys, err := workflow.List(ctx, Viewer{UserID: "alice"}, ListOptions{Mine: true})
+	if err != nil || len(journeys) != 1 || journeys[0].JobID != "alice-running" || journeys[0].Proposal != nil {
+		t.Fatalf("alice Journeys = %+v, %v", journeys, err)
+	}
+	all, err := workflow.List(ctx, Viewer{UserID: "admin", Admin: true}, ListOptions{})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("admin Journeys = %+v, %v", all, err)
+	}
+}

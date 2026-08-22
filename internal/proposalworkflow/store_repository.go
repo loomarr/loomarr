@@ -16,9 +16,18 @@ import (
 type Store interface {
 	GetJob(context.Context, string) (store.Job, error)
 	GetProposalJob(context.Context, string) (store.ProposalJob, error)
+	ListProposalJobIDs(context.Context, int) ([]string, error)
+	ListProposalJobIDsByCreator(context.Context, string, int) ([]string, error)
 	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
 	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
 	CommitSuggestionFailure(context.Context, string, int, string, string, time.Time) error
+}
+
+func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error) {
+	if all {
+		return r.store.ListProposalJobIDs(ctx, limit)
+	}
+	return r.store.ListProposalJobIDsByCreator(ctx, ownerID, limit)
 }
 
 type storeRepository struct {
@@ -65,7 +74,9 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 			return Record{}, fmt.Errorf("decode Proposal Job %s Proposal: %w", jobID, err)
 		}
 		record.Proposal = &ProposalRef{
-			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status), Proposal: proposal,
+			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status),
+			ApprovedBy: snapshot.Proposal.ApprovedBy, DenyReason: snapshot.Proposal.DenyReason,
+			ModSummary: snapshot.Proposal.ModSummary, Note: snapshot.Proposal.Note, Proposal: proposal,
 		}
 	}
 	if snapshot.Channel != nil {

@@ -4343,10 +4343,35 @@ components:
         - code
         - message
       type: object
+    ProposalJourneyListOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ProposalJourneyListOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        journeys:
+          items:
+            $ref: "#/components/schemas/ProposalJourneyDTO"
+          type: array
+      required:
+        - journeys
+      type: object
     ProposalJourneyProposalDTO:
       additionalProperties: false
       properties:
+        approvedBy:
+          type: string
+        denyReason:
+          type: string
         id:
+          type: string
+        modSummary:
+          type: string
+        note:
           type: string
         proposal:
           $ref: "#/components/schemas/Proposal"
@@ -8956,6 +8981,48 @@ paths:
       summary: The closed rule authoring vocabulary
       tags:
         - channels
+  /v1/proposal-jobs:
+    get:
+      description: Lists bounded Proposal Job journeys newest-first, including queued, running, and failed requests with no Proposal. Members are always caller-scoped; admins may inspect all or request mine=true.
+      operationId: list-proposal-jobs
+      parameters:
+        - description: For admins, scope the list to the caller; members are always caller-scoped
+          explode: false
+          in: query
+          name: mine
+          schema:
+            description: For admins, scope the list to the caller; members are always caller-scoped
+            type: boolean
+        - description: Optional Journey milestone filter
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Optional Journey milestone filter
+            enum:
+              - generating
+              - awaiting_approval
+              - denied
+              - building
+              - live
+              - failed
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalJourneyListOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List authoritative First-channel Journeys
+      tags:
+        - proposal-jobs
   /v1/proposal-jobs/{jobId}:
     get:
       description: Restores one versioned Proposal Job, bounded Attempt history, safe failure, Proposal, intent-bound Channel, milestone, and server-authorized actions. Members may read only their own Job; admins may read any.

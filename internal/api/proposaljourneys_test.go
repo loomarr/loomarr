@@ -48,6 +48,33 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	}
 }
 
+func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
+	t.Parallel()
+
+	workflow := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-running",
+		Milestone: proposalworkflow.MilestoneGenerating, Intent: suggest.Intent{Description: "Anime after school"},
+	}}}
+	srv := proposalJourneyServer(t, workflow)
+	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs?mine=true&status=generating", memberToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET Journeys = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Journeys []api.ProposalJourneyDTO `json:"journeys"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Journeys) != 1 || body.Journeys[0].JobID != "job-running" {
+		t.Fatalf("Journeys = %+v", body.Journeys)
+	}
+	if workflow.viewer.Admin || !workflow.options.Mine || workflow.options.Milestone != proposalworkflow.MilestoneGenerating {
+		t.Fatalf("workflow list call = viewer %+v options %+v", workflow.viewer, workflow.options)
+	}
+}
+
 func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testing.T) {
 	t.Parallel()
 
@@ -73,10 +100,21 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 }
 
 type fakeProposalWorkflow struct {
-	journey proposalworkflow.Journey
-	err     error
-	viewer  proposalworkflow.Viewer
-	jobID   string
+	journey  proposalworkflow.Journey
+	journeys []proposalworkflow.Journey
+	err      error
+	viewer   proposalworkflow.Viewer
+	jobID    string
+	options  proposalworkflow.ListOptions
+}
+
+func (f *fakeProposalWorkflow) List(
+	_ context.Context,
+	viewer proposalworkflow.Viewer,
+	options proposalworkflow.ListOptions,
+) ([]proposalworkflow.Journey, error) {
+	f.viewer, f.options = viewer, options
+	return f.journeys, f.err
 }
 
 func (f *fakeProposalWorkflow) Inspect(

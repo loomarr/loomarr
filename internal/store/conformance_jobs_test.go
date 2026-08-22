@@ -69,6 +69,33 @@ func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testProposalJobListScope(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	aliceOld := sampleJob("alice-old", "h1", now, now.Add(-time.Minute))
+	aliceOld.CreatedBy = "alice"
+	aliceNew := sampleJob("alice-new", "h2", now, now)
+	aliceNew.CreatedBy = "alice"
+	bob := sampleJob("bob", "h3", now, now.Add(time.Minute))
+	bob.CreatedBy = "bob"
+	maintenance := sampleJob("recurate", "h4", now, now.Add(2*time.Minute))
+	maintenance.CreatedBy, maintenance.Kind = "alice", "recurate"
+	for _, job := range []Job{aliceOld, aliceNew, bob, maintenance} {
+		if err := s.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	owned, err := s.ListProposalJobIDsByCreator(ctx, "alice", 100)
+	if err != nil || len(owned) != 2 || owned[0] != "alice-new" || owned[1] != "alice-old" {
+		t.Fatalf("alice Proposal Jobs = %v, %v", owned, err)
+	}
+	all, err := s.ListProposalJobIDs(ctx, 2)
+	if err != nil || len(all) != 2 || all[0] != "bob" || all[1] != "alice-new" {
+		t.Fatalf("bounded Proposal Jobs = %v, %v", all, err)
+	}
+}
+
 func testClaimDueJobs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

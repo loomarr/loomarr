@@ -83,9 +83,13 @@ const (
 )
 
 type ProposalRef struct {
-	ID       string
-	Status   ProposalStatus
-	Proposal suggest.Proposal
+	ID         string
+	Status     ProposalStatus
+	ApprovedBy string
+	DenyReason string
+	ModSummary string
+	Note       string
+	Proposal   suggest.Proposal
 }
 
 type ChannelRef struct {
@@ -149,6 +153,15 @@ type Journey struct {
 
 type repository interface {
 	Load(context.Context, string) (Record, error)
+}
+
+type listRepository interface {
+	ListIDs(context.Context, string, bool, int) ([]string, error)
+}
+
+type ListOptions struct {
+	Mine      bool
+	Milestone Milestone
 }
 
 // Workflow keeps lifecycle and projection rules behind one interface. The
@@ -235,6 +248,34 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	}
 
 	return journeyFrom(record, milestone, actions, nil), nil
+}
+
+// List returns bounded authoritative Journeys newest-first. Member reads are
+// always caller-scoped; Mine only changes admin behavior.
+func (w *Workflow) List(ctx context.Context, viewer Viewer, options ListOptions) ([]Journey, error) {
+	lister, ok := w.repository.(listRepository)
+	if !ok {
+		return nil, fmt.Errorf("%w: list repository unavailable", ErrInvalidState)
+	}
+	all := viewer.Admin && !options.Mine
+	if !all && viewer.UserID == "" {
+		return []Journey{}, nil
+	}
+	ids, err := lister.ListIDs(ctx, viewer.UserID, all, 100)
+	if err != nil {
+		return nil, fmt.Errorf("list Proposal Jobs: %w", err)
+	}
+	journeys := make([]Journey, 0, len(ids))
+	for _, id := range ids {
+		journey, err := w.Inspect(ctx, viewer, id)
+		if err != nil {
+			return nil, err
+		}
+		if options.Milestone == "" || journey.Milestone == options.Milestone {
+			journeys = append(journeys, journey)
+		}
+	}
+	return journeys, nil
 }
 
 func journeyFrom(record Record, milestone Milestone, actions []Action, failure *Failure) Journey {

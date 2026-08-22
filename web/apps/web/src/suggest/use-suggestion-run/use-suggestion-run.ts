@@ -14,19 +14,9 @@ const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
 // Owns one suggestion run: submit an intent, follow it through the live phases, and
 // surface the proposal it produced.
 //
-// The phases (searching · reasoning · scoring) exist ONLY on the SSE stream — no GET
-// returns them — so they come from the shared event fan-out. The proposal itself comes
-// from the list, matched on jobId: `GET /v1/proposals` filters by status but not by
-// job, and ProposalDTO carries jobId, so the match is client-side rather than an
-// invented query param. The list is the approval queue, so it is bounded.
-//
-// Per §8 the stream is a latency optimisation, never the source of truth. The phases ride
-// the stream; the proposal rides the list. This hook only tracks the phase for the
-// stepper — it does NOT refetch the list itself, because the app-lifetime stream already
-// does: useLoomarrEvents invalidates the `/v1/proposals` prefix on every suggestion
-// frame (events.ts), and the proposals query lives under that prefix, so the proposal is
-// pulled in as the run progresses. A dropped frame therefore costs a beat, not a proposal
-// — the next frame (or a manual reload) still surfaces it.
+// Detailed phases (searching · reasoning · scoring) are transient SSE hints. The
+// Proposal Job Journey is the durable source of truth, restored from session storage
+// after reload and polled while generating; SSE only invalidates that same read sooner.
 const useSuggestionRun = (): SuggestionRun => {
   const queryClient = useQueryClient();
   const [jobId, setJobIdState] = useState<string | undefined>(() =>
