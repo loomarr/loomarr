@@ -174,6 +174,8 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	e := newEngineForBackend(st, nil, avail, guide,
 		func() string { return schedule.PlayoutBackendInternal })
+	playout := &testkit.Playout{}
+	e.WithScheduleInvalidator(playout)
 	seedChannel(t, st, "internal-change", 7,
 		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
 
@@ -181,6 +183,7 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 		t.Fatal(err)
 	}
 	guide.pokes, guide.rescans = 0, 0
+	stopsAfterMaterialization := len(playout.StoppedChannels())
 
 	avail["movie:tmdb:2"] = "lib-2"
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
@@ -189,6 +192,16 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	if guide.rescans != 0 || guide.pokes != 1 {
 		t.Fatalf("internal desired change freshness = %d rescans/%d pokes, want 0/1",
 			guide.rescans, guide.pokes)
+	}
+	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization+1 {
+		t.Fatalf("changed internal cycle produced %d total session stops, want %d", got, stopsAfterMaterialization+1)
+	}
+
+	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization+1 {
+		t.Fatalf("unchanged reconcile restarted internal playout: %d stops", got)
 	}
 }
 

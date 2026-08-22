@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,10 @@ type Invalidation struct {
 	Backend   string                 `json:"backend,omitempty"`
 	Key       string                 `json:"key,omitempty"`
 	Value     string                 `json:"value,omitempty"`
+	// ScheduleVersion fingerprints the committed Desired cycle. Process-local
+	// encoders compare it with the last durable version they observed so a changed
+	// lineup cuts over on every Postgres replica without restarting unchanged sweeps.
+	ScheduleVersion string `json:"scheduleVersion,omitempty"`
 }
 
 // InvalidationKind identifies the durable record family changed by an invalidation.
@@ -45,7 +50,19 @@ func channelInvalidation(ch Channel) (string, error) {
 	}
 	return marshalInvalidation(Invalidation{
 		Kind: InvalidationChannel, ChannelID: ch.ID, Status: ch.Status, Backend: backend,
+		ScheduleVersion: ChannelScheduleVersion(ch),
 	})
+}
+
+// ChannelScheduleVersion returns a stable fingerprint of the accepted broadcast
+// cycle carried by a channel invalidation. The Desired JSON is already the durable
+// commit boundary; hashing keeps NOTIFY payloads small even for large lineups.
+func ChannelScheduleVersion(ch Channel) string {
+	b, err := json.Marshal(ch.Desired)
+	if err != nil {
+		return "" // schedule.Slot is currently infallible; empty degrades to no cutover hint
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 
 func settingInvalidation(key, value string) (string, error) {

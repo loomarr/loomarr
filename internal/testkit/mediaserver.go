@@ -60,6 +60,10 @@ type MediaServer struct {
 	// The same stubs answer the AnyProviderIdEquals presence check (by tmdb id), so
 	// in-library backfill is consistent. Pinned fixtures still serve when unset.
 	SearchItems []SearchStub
+	// EpisodeItems, when set, answers a ParentId-scoped episode enumeration. This
+	// keeps episode adapter tests on the shared media-server double while allowing
+	// them to exercise fields that the filler fixture does not model.
+	EpisodeItems []EpisodeStub
 }
 
 // MediaServerRequest is one captured call to the shared media-server double. Tests that
@@ -98,6 +102,19 @@ type SearchStub struct {
 	// the by-id lookup the scheduler uses for program duration (§9). Lets a test give
 	// each in-library title a real, distinct runtime so the break interleave fires.
 	RunTimeTicks int64
+}
+
+// EpisodeStub is one Emby/Jellyfin episode returned from a ParentId-scoped
+// /Items query. RunTimeMs is converted to the server's 100-nanosecond ticks.
+type EpisodeStub struct {
+	LibraryItemID  string
+	Name           string
+	RunTimeMs      int64
+	Season         int
+	Episode        int
+	EpisodeEnd     int
+	ProductionYear int
+	OfficialRating string
 }
 
 // stubRuntime returns the RunTimeTicks a scripted stub declares for a library item
@@ -229,8 +246,17 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// to the search fixture; otherwise AnyProviderIdEquals decides present/absent.
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
-		// Filler-library read (§10): scoped by ParentId → serve the filler fixture.
+		// Episode enumeration (§9) is also ParentId-scoped. Scripted episodes take
+		// precedence; the pinned filler fixture remains the default for §10 reads.
 		if pid := r.URL.Query().Get("ParentId"); pid != "" {
+			if strings.EqualFold(r.URL.Query().Get("IncludeItemTypes"), "Episode") {
+				if items := ms.episodeItems(); items != nil {
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"Items": items, "TotalRecordCount": len(items),
+					})
+					return
+				}
+			}
 			_, _ = w.Write(Fixture(t, "emby/filler_library.json"))
 			return
 		}
@@ -408,6 +434,34 @@ func (ms *MediaServer) SetSearchItems(items ...SearchStub) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.SearchItems = items
+}
+
+// SetEpisodeItems sets the scriptable episode enumeration under the lock.
+func (ms *MediaServer) SetEpisodeItems(items ...EpisodeStub) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.EpisodeItems = items
+}
+
+func (ms *MediaServer) episodeItems() []map[string]any {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if ms.EpisodeItems == nil {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(ms.EpisodeItems))
+	for _, e := range ms.EpisodeItems {
+		item := map[string]any{
+			"Id": e.LibraryItemID, "Name": e.Name, "RunTimeTicks": e.RunTimeMs * 10_000,
+			"ParentIndexNumber": e.Season, "IndexNumber": e.Episode,
+			"ProductionYear": e.ProductionYear, "OfficialRating": e.OfficialRating,
+		}
+		if e.EpisodeEnd > 0 {
+			item["IndexNumberEnd"] = e.EpisodeEnd
+		}
+		items = append(items, item)
+	}
+	return items
 }
 
 // searchItems reads the scriptable items under the read lock, for the handlers.

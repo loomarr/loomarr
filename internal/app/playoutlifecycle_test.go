@@ -57,6 +57,30 @@ func TestPostgresPlayoutLifecyclePreservesCommittedPausePayload(t *testing.T) {
 	}
 }
 
+func TestPostgresPlayoutLifecycleRestartsOnlyChangedInternalSchedule(t *testing.T) {
+	t.Parallel()
+	origin := &testkit.Playout{}
+	lifecycle := &postgresPlayoutLifecycle{
+		checkpoint: testkit.Snapshotter[backendtransition.Snapshot]{Result: backendtransition.Snapshot{
+			Applied: schedule.PlayoutBackendInternal, PublishedInternal: true,
+		}},
+		origin: origin,
+	}
+	lifecycle.rememberSchedule("simpsons", "old-cycle")
+
+	for _, version := range []string{"old-cycle", "new-cycle", "new-cycle"} {
+		if err := lifecycle.apply(context.Background(), store.Invalidation{
+			Kind: store.InvalidationChannel, ChannelID: "simpsons", Status: schedule.StatusLive,
+			ScheduleVersion: version,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := origin.StoppedChannels(); len(got) != 1 || got[0] != "simpsons" {
+		t.Fatalf("schedule cutover stops = %v, want exactly one for the changed version", got)
+	}
+}
+
 func TestPostgresPlayoutLifecycleBackendCutoverKeepsExplicitInternalPins(t *testing.T) {
 	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)

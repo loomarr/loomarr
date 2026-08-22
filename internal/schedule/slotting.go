@@ -65,10 +65,11 @@ func (r *ExclusionReport) merge(o ExclusionReport) {
 // audience (§4 fail-closed). Audience and explicit scope are the NEVER-relaxed
 // filters (§7) — they run here, before the relaxation ladder ever sees the pool.
 //
-// It does NOT enforce the per-series Seasons window or the Series allowlist at the
-// entry level for a series entry — those apply at episode expansion (resolveEntry
-// already honors SeasonMin/Max) — but a Series allowlist, an Era, a Genre, and a
-// RuntimeMax filter apply here.
+// It does NOT enforce the per-series Seasons window at the entry level for a series
+// entry — that applies at episode expansion (resolveEntry already honors
+// SeasonMin/Max). A Series allowlist, Era, Genre, and RuntimeMax filter apply here;
+// resolveEntry re-applies Era to each episode's own production year because a
+// long-running series' first-air year cannot represent its whole run.
 func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	eligible := make([]LineupEntry, 0, len(entries))

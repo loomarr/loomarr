@@ -60,7 +60,7 @@ func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
 	}
 	event := awaitInvalidation(t, events)
 	if event.Kind != InvalidationChannel || event.ChannelID != committed.ID ||
-		event.Status != schedule.StatusLive {
+		event.Status != schedule.StatusLive || event.ScheduleVersion == "" {
 		t.Fatalf("commit event = %+v", event)
 	}
 

@@ -104,6 +104,9 @@ type ResolvedProgram struct {
 	Title         string
 	DurationMs    int64
 	Season        int
+	// Year is this episode's production year (0 = unknown), used to enforce a
+	// series Channel's era scope at the playable-program boundary.
+	Year int
 	// Episode / EpisodeEnd are the episode number and (for a single-file multi-part
 	// item) its last spanned number — the media server's IndexNumber/IndexNumberEnd.
 	// Feed multi-part detection (§5): 0 = unknown/movie. EpisodeEnd 0 = single episode.
@@ -562,9 +565,23 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 			// half of a two-parter from an already-tagged group would leave a PartGroup whose
 			// missing member the deck still treats as atomic.
 			inRange := eps[:0:0]
+			scopeDropped := 0
 			audienceDropped := 0
 			for _, ep := range eps {
 				if !e.inSeasonRange(ep.Season) { // outside the entry's season range → drop
+					continue
+				}
+				// Era is a playable-program constraint, not merely a series-entry check. The
+				// Simpsons began in 1989 but a 1989–1999 Channel must not therefore admit a
+				// 2022 episode. Unknown episode years fail open: scope is taste, not safety,
+				// and older persisted episode caches decode this new field as zero.
+				if ep.Year > 0 && !rp.Scope.Era.Contains(ep.Year) {
+					scopeDropped++
+					if report != nil {
+						report.Items = append(report.Items, ExcludedItem{
+							Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_scope",
+						})
+					}
 					continue
 				}
 				// §4 per-episode ceiling. A series entry reached this far because its SUMMARY
@@ -623,6 +640,12 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 			// show whose every episode the ceiling refused: it is not late, it is excluded,
 			// and promising it on a kids channel is the leak wearing a different hat.
 			if audienceDropped > 0 {
+				return nil
+			}
+			// Likewise, a series whose known episodes were all outside the era is
+			// excluded, not advertised as still acquiring. An explicit season window
+			// with no local match retains the existing pending behavior below.
+			if scopeDropped > 0 {
 				return nil
 			}
 			// The range matched no in-library episodes yet → pending (like an

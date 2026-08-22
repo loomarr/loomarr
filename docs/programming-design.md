@@ -24,7 +24,7 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
     "series":      ["tmdb:456"],   // resolved ids only — never names
     "collections": [],             // media-server collection (BoxSet) ids — §2.2
     "seasons":     {"min": 1, "max": 10},   // per-series season window
-    "era":         {"from": 1990, "to": 1999}, // by first-air/release year
+    "era":         {"from": 1990, "to": 1999}, // by first-air/release year, including episodes
     "genres":      {"include": ["Animation"], "exclude": ["Documentary"]},
     "runtimeMax":  3600            // seconds; "nothing over an hour"
   },
@@ -45,6 +45,14 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
   }
 }
 ```
+
+`scope.era` applies at the playable programme boundary. A movie is judged by its release year;
+a series entry is judged once by its own first-air year and every expanded episode is judged again
+by that episode's production year. This is what makes `1989–1999 Simpsons` mean episodes from that
+period instead of every episode of a series that happened to begin in 1989. An episode whose year
+is unavailable passes the era check: scope is a taste filter rather than a safety boundary, and a
+stale pre-year episode cache must not empty a Channel until its next refresh. An explicit
+per-Lineup season window still narrows independently and wins by intersection.
 
 **Single-series channels** (a Simpsons channel) auto-relax `seriesMinGap`/`blockMax` — separation there means *episode* spacing, not series spacing. The relaxation is rule-based, not LLM judgment.
 
@@ -158,7 +166,7 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 - **The ceiling is enforced TWICE: on the entry, and again on every expanded episode.** A series entry is gated at its *series* rating in `filterEntries` — but that rating is a lossy **summary**, so `resolveEntry` re-checks each episode as it expands (`episodeVerdict`), and an episode rated above the ceiling is dropped even though its parent cleared the gate. A series whose *every* episode is refused resolves to **nothing**, never a pending slot: a pending slot means "approved, still acquiring", which advertises the title and (under PodFill) holds airtime for it — a show the ceiling refused is not late, it is excluded.
   - ⚠ **This paragraph used to say the opposite, and called it safe.** It described entry-only gating as "a small, deliberate safety *narrowing* … at worst a below-ceiling series with an occasional harder episode is admitted" — which is not a narrowing, it is the leak, stated as if it were the mitigation. Live proof (2026-08-10, maintainer's library): `90s Cartoon Classics`, `ceiling: TV-PG`, aired **King of the Hill** — a TV-PG series whose 275 episodes are 253 × TV-PG, **2 × TV-14**, and 20 × unrated. TMDB lists *both* TV-PG and TV-14 for the show. South Park and Futurama were dropped correctly at the entry gate, which is what made the leak look like correct behaviour.
   - **An episode with no rating of its own INHERITS its parent's** rather than failing closed — the one place §4's "never guess" is deliberately not applied. The parent has already cleared the ceiling as a whole title, so inheriting falls back to a check that just ran rather than guessing at unknown content; blank episode ratings are a metadata gap (20 of those 275) and refusing them would silently drop ~7% of an approved show. It is also what makes the change safe to deploy: `store.SeriesEpisodes` persists `[]ResolvedProgram`, so every cached row predating this field decodes as unrated, and a fail-closed reading would have emptied every kids channel until the refresh sweep repopulated the cache — trading a content leak for dead air, which §9 forbids just as firmly. The asymmetry still holds where it counts: an episode that **is** rated is judged on its own rating and can never be lifted by a permissive parent.
-  - The rating/genres/year an *entry* is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand). Episode ratings ride the episode cache (`library.ListEpisodes` requests `OfficialRating`), so both gates stay pure entry/slot-set filters with no per-reconcile library I/O.
+  - The rating/genres/year an *entry* is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand). Episode ratings and production years ride the episode cache (`library.ListEpisodes` requests `OfficialRating,ProductionYear`), so both gates stay pure entry/slot-set filters with no per-reconcile library I/O.
 - **Kids ceilings (`TV-Y`…`TV-PG`) default `unrated: "exclude"`** — an item with missing or unmappable rating metadata is *excluded*, never guessed at. Metadata gaps are the real-world failure mode; a kids' channel must be safe against them by construction. Adult/general channels default `allow`.
 - **Transparency at review:** the proposal shows the policy's effect — so gaps are visible *before* approval, and the fix (rate your media, or relax the policy) is a human decision.
   - **The suggester REFUSES its own unairable picks** (`refuseUnairable`, after `groundPolicy`). A grounded pick whose known rating is above the extracted ceiling is moved out of `Lineup`/`Acquisitions` into `Proposal.Refused` with the same `over_ceiling` vocabulary §4 uses elsewhere, and the approval card names it. ⚠ **Refused, not deleted** — the operator's usual fix is to raise the ceiling, and a pick that vanished between the model's answer and the approval screen is indistinguishable from one the model never made. It is not provisioned either: approval acts only on what it offered.

@@ -70,6 +70,27 @@ func TestEnforce_EraBinds(t *testing.T) {
 	}
 }
 
+func TestEnforce_EraBindsEveryExpandedEpisode(t *testing.T) {
+	series := ratedEntry("series:tmdb:456", "The Simpsons", "TV-PG", 1989, "Animation", "Comedy")
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
+		"series:tmdb:456": {
+			{LibraryItemID: "classic", Title: "Marge vs. the Monorail", DurationMs: 1_320_000, Season: 4, Episode: 12, Year: 1993},
+			{LibraryItemID: "modern", Title: "Top Goon", DurationMs: 1_320_000, Season: 34, Episode: 11, Year: 2022},
+		},
+	})
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1989, To: 1999}},
+	}}
+
+	desired := computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)
+	if desired.ProgramCount() != 1 || desired.Slots[0].LibraryItemID != "classic" {
+		t.Fatalf("1989-1999 series scope scheduled %+v, want only the 1993 episode", desired.Slots)
+	}
+	if len(desired.Excluded.Items) != 1 || desired.Excluded.Items[0].Reason != "out_of_scope" {
+		t.Fatalf("episode exclusion report = %+v, want one out_of_scope episode", desired.Excluded)
+	}
+}
+
 func TestEnforce_GenreBinds(t *testing.T) {
 	entries := []schedule.LineupEntry{
 		ratedEntry("movie:tmdb:1", "Toon", "", 1994, "Animation"),
