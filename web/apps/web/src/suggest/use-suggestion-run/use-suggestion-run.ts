@@ -9,43 +9,39 @@ import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
 import type { SuggestionRun } from "./use-suggestion-run.type";
 
-const TERMINAL: SuggestionPhase[] = ["done", "failed"];
+const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
 
 // Owns one suggestion run: submit an intent, follow it through the live phases, and
 // surface the proposal it produced.
 //
-// The phases (searching · reasoning · scoring) exist only on the SSE stream, so they come
-// from the shared event fan-out. Lifecycle, preserved Intent, and bounded failure come from
-// `GET /v1/proposal-jobs/{jobId}`; SSE invalidates that read at terminal transitions and a
-// short poll closes event-loss gaps. The proposal itself comes from the approval list,
-// matched client-side on jobId because ProposalDTO already carries it.
+// The phases (searching · reasoning · scoring) exist ONLY on the SSE stream — no GET
+// returns them — so they come from the shared event fan-out. The proposal itself comes
+// from the list, matched on jobId: `GET /v1/proposals` filters by status but not by
+// job, and ProposalDTO carries jobId, so the match is client-side rather than an
+// invented query param. The list is the approval queue, so it is bounded.
 //
-// Per §8 the stream is a latency optimisation, never the source of truth. This hook tracks
-// the phase only for the stepper. The app-lifetime event handler also invalidates the
-// proposals prefix, while the job poll owns execution recovery. A dropped frame therefore
-// costs at most a polling beat rather than hiding a durable failure.
+// Per §8 the stream is a latency optimisation, never the source of truth. The phases ride
+// the stream; the proposal rides the list. This hook only tracks the phase for the
+// stepper — it does NOT refetch the list itself, because the app-lifetime stream already
+// does: useLoomarrEvents invalidates the `/v1/proposals` prefix on every suggestion
+// frame (events.ts), and the proposals query lives under that prefix, so the proposal is
+// pulled in as the run progresses. A dropped frame therefore costs a beat, not a proposal
+// — the next frame (or a manual reload) still surfaces it.
 const useSuggestionRun = (): SuggestionRun => {
-  const [jobId, setJobId] = useState<string | undefined>();
-  const [intent, setIntent] = useState<Intent | undefined>();
+  const queryClient = useQueryClient();
+  const [jobId, setJobIdState] = useState<string | undefined>(() =>
+    typeof window === "undefined" ? undefined : (window.sessionStorage.getItem(ACTIVE_JOB_KEY) ?? undefined),
+  );
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
-  const queryClient = useQueryClient();
 
   const submit = proposalsApi.useSubmitProposal();
-  const proposals = proposalsApi.useListProposals(
-    { status: "submitted" },
-    { query: { enabled: jobId !== undefined } },
-  );
-  const jobQuery = proposalJobsApi.useGetProposalJob(jobId ?? "", {
+  const journeyQuery = proposalJobsApi.useGetProposalJob(jobId ?? "", {
     query: {
       enabled: jobId !== undefined,
-      retry: false,
       refetchInterval: (query) => {
         const response = query.state.data;
-        return response?.status === 200 &&
-          (response.data.status === "done" || response.data.status === "failed")
-          ? false
-          : 1_000;
+        return response?.status === 200 && response.data.milestone === "generating" ? 2_000 : false;
       },
     },
   });
@@ -55,53 +51,36 @@ const useSuggestionRun = (): SuggestionRun => {
       if (e.jobId !== jobId) return;
       setPhase(e.phase);
       setRound(roundOf(e.round));
-      if (TERMINAL.includes(e.phase)) {
-        void queryClient.invalidateQueries({ queryKey: proposalJobsApi.getGetProposalJobQueryKey(e.jobId) });
-      }
+      void queryClient.invalidateQueries({ queryKey: proposalJobsApi.getGetProposalJobQueryKey(e.jobId) });
     },
   });
 
-  const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
-  const proposal = jobId ? rows.find((p) => p.jobId === jobId) : undefined;
-  const job = unwrap(jobQuery.data, (body) => body);
-
-  const start = (nextIntent: Intent) => {
-    setJobId(undefined);
-    setIntent(nextIntent);
+  const journey = unwrap(journeyQuery.data);
+  const setJobId = (next: string | undefined) => {
+    setJobIdState(next);
+    if (typeof window === "undefined") return;
+    if (next) window.sessionStorage.setItem(ACTIVE_JOB_KEY, next);
+    else window.sessionStorage.removeItem(ACTIVE_JOB_KEY);
+  };
+  const start = (intent: Intent) => {
     setPhase(undefined);
     setRound(undefined);
-    submit.mutate(
-      { data: nextIntent },
-      { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) },
-    );
+    submit.mutate({ data: intent }, { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) });
   };
-
-  const failed =
-    job?.status === "failed" || (jobId !== undefined && proposal === undefined && phase === "failed");
 
   return {
     phase,
     round,
-    proposal,
-    // A run stops being "running" once it lands a proposal or reports a terminal phase,
-    // whichever the client learns first.
-    isRunning:
-      submit.isPending ||
-      (jobId !== undefined &&
-        proposal === undefined &&
-        !failed &&
-        job?.status !== "done" &&
-        !(phase && TERMINAL.includes(phase))),
-    // The durable job read owns this state; the SSE phase is an immediate fallback while
-    // that read catches up. Submit errors remain separate because no job exists for them.
-    failed,
-    failure: job?.failure,
-    error: submit.error,
+    proposal: journey?.proposal,
+    failure: journey?.failure,
+    actions: journey?.actions ?? [],
+    isRunning: jobId !== undefined && (!journey || journey.milestone === "generating"),
+    failed: journey?.milestone === "failed",
+    error: submit.error ?? journeyQuery.error,
     start,
-    retry: () => intent && start(intent),
+    retry: () => journey && start(journey.intent),
     reset: () => {
       setJobId(undefined);
-      setIntent(undefined);
       setPhase(undefined);
       setRound(undefined);
     },

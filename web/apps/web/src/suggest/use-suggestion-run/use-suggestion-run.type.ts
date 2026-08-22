@@ -1,6 +1,6 @@
 import type { Intent } from "@loomarr/api/models/intent";
-import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
-import type { ProposalFailure } from "@loomarr/api/models/proposalFailure";
+import type { ProposalJourneyFailureDTO } from "@loomarr/api/models/proposalJourneyFailureDTO";
+import type { ProposalJourneyProposalDTO } from "@loomarr/api/models/proposalJourneyProposalDTO";
 import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface SuggestionRun {
@@ -11,7 +11,11 @@ interface SuggestionRun {
   // a viewer a slow run is still advancing.
   round?: number;
   // The proposal the run produced, once it exists.
-  proposal?: ProposalDTO;
+  proposal?: ProposalJourneyProposalDTO;
+  // Bounded, requester-safe failure guidance from the authoritative Journey.
+  failure?: ProposalJourneyFailureDTO;
+  // Server-authorized actions; the UI does not reconstruct retry or settings policy.
+  actions: string[];
   // True from submit until the run reaches a terminal phase.
   isRunning: boolean;
   // True when the run reached the terminal `failed` phase without producing a proposal.
@@ -21,13 +25,8 @@ interface SuggestionRun {
   // null and only this flag surfaces the runtime failure — without it the panel silently
   // drops back to an empty form.
   failed: boolean;
-  // Bounded server-owned classification for a failed execution. Raw provider diagnostics
-  // never cross the API boundary.
-  failure?: ProposalFailure;
   error?: unknown;
   start: (intent: Intent) => void;
-  // Re-submit the exact preserved Intent as a fresh execution. Failed jobs are deliberately
-  // excluded from the cache, so this performs real generation again.
   retry: () => void;
   reset: () => void;
 }
