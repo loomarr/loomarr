@@ -2,19 +2,91 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/config"
+	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
+
+func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *config.Config) {
+	var service api.RestartService
+	if overrides.Restart != nil {
+		service = restartAdapter{fn: overrides.Restart}
+	}
+	bootConfig, err := config.Load()
+	if err != nil {
+		log.Warn("could not read boot config for restart-required detection", "err", err)
+		bootConfig = nil
+	}
+	return service, bootConfig
+}
+
+func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) api.DatabaseService {
+	if st == nil {
+		return nil
+	}
+	dataDir := ""
+	if store.DialectOf(st) == store.DialectSQLite {
+		dataDir = filepath.Dir(store.SQLitePath(st))
+	}
+	return newDatabaseService(st, dataDir, func() string { return set.str("backup.dir") }, eventBus).
+		WithMigrationRequest(overrides.DatabaseMigration).
+		WithLastError(overrides.DatabaseMigrationError)
+}
+
+type residentLLMBuild struct {
+	probe   func(context.Context) (float64, string)
+	reclaim func(context.Context)
+}
+
+func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
+	probe := func(ctx context.Context) (float64, string) {
+		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+			return 0, ""
+		}
+		resident, err := llm.NewOllama(set.str("llm.url"), set.str("llm.model")).ListResident(ctx)
+		if err != nil {
+			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
+			return 0, ""
+		}
+		var total float64
+		var largest llm.ResidentModel
+		for _, model := range resident {
+			total += model.VRAMGiB
+			if model.VRAMGiB > largest.VRAMGiB {
+				largest = model
+			}
+		}
+		return total, largest.Name
+	}
+	reclaim := func(ctx context.Context) {
+		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+			return
+		}
+		provider := llm.NewProvider("ollama", set.str("llm.url"), set.str("llm.model"), "")
+		evictor, ok := provider.(llm.Evictor)
+		if !ok {
+			return
+		}
+		if err := evictor.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
+			log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
+		}
+	}
+	return residentLLMBuild{probe: probe, reclaim: reclaim}
+}
 
 func buildBackups(st store.Store, set resolved, jobs *scheduler.Registry, log *slog.Logger) api.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {

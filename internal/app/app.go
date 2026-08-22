@@ -6,17 +6,12 @@ package app
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/llm"
-	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
@@ -161,9 +156,8 @@ func buildHandler(
 	if err != nil {
 		return nil, err
 	}
-	ready := foundation.ready
 	set, desiredSet := foundation.set, foundation.desiredSet
-	appliedRestartSettings, fillerLayout := foundation.appliedRestartSettings, foundation.fillerLayout
+	fillerLayout := foundation.fillerLayout
 	secrets, log := foundation.secrets, foundation.log
 	libraryClient, tmdbClient := foundation.libraryClient, foundation.tmdbClient
 	refreshSecretRedactor, readGeneratedSecret := foundation.refreshSecretRedactor, foundation.readGeneratedSecret
@@ -179,20 +173,13 @@ func buildHandler(
 	if err != nil {
 		return nil, err
 	}
-	channelSvc, liveTVSvc := channelsBuilt.channelService, channelsBuilt.liveTV
-	tunerRescanner, tunarrConnectSvc := channelsBuilt.tunerRescanner, channelsBuilt.tunarrConnector
-	backendController := channelsBuilt.backendController
-	refreshBackendSettings, desiredBackend := channelsBuilt.refreshBackendSettings, channelsBuilt.desiredBackend
+	channelSvc := channelsBuilt.channelService
 	appliedBackendContext := channelsBuilt.appliedBackend
-	checkpointSnapshot := channelsBuilt.checkpoint
-	playoutObserver, preparedObserver := channelsBuilt.playoutObserver, channelsBuilt.preparedObserver
-	playoutSvc, playoutResolverSvc := channelsBuilt.playout, channelsBuilt.playoutResolverService
-	encodePool, playoutGuideSvc := channelsBuilt.encodePool, channelsBuilt.playoutGuide
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
 	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, log)
-	chBinder, proposalApprover := approval.binder, approval.approver
+	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
@@ -201,42 +188,14 @@ func buildHandler(
 	if err != nil {
 		return nil, err
 	}
-	suggestSvc, proposalWorkflow := suggestions.suggest, suggestions.workflow
-	searchSvc, collectionsSvc := suggestions.search, suggestions.collections
-	systemLLM, iconSvc := suggestions.systemLLM, suggestions.icons
-	imageSvc := suggestions.images
-	timelineThumbs := suggestions.timelineThumbs
-
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 	)
-	fillerSvc, podPreview := fillers.service, fillers.preview
-
 	backupsSvc := buildBackups(st, set, jobReg, log)
 
-	// Restart control (§9.2, V13). Wired only when main passed a restart func — a handler
-	// built by a test or the integration harness has no generation loop behind it, and
-	// 501 is the honest answer there rather than a button that silently does nothing.
-	var restartSvc api.RestartService
-	if ov.Restart != nil {
-		restartSvc = restartAdapter{fn: ov.Restart}
-	}
-	// What this generation booted with, for the RestartRequired derivation. A load
-	// failure leaves it nil, which reports no drift — the safe direction, since a false
-	// "restart required" points the operator at an action that cannot help.
-	bootCfg, cfgErr := config.Load()
-	if cfgErr != nil {
-		log.Warn("could not read boot config for restart-required detection", "err", cfgErr)
-		bootCfg = nil
-	}
+	restartSvc, bootCfg := buildRestart(ov, log)
 
 	authServices := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
-	backup, authorizer := authServices.backup, authServices.authorizer
-	loginSvc, ssoSvc := authServices.login, authServices.sso
-	sessMgr, userSync := authServices.sessions, authServices.userSync
-	provisionSvc, passwordSvc := authServices.provision, authServices.password
-	deviceMgr, deviceLimiter := authServices.deviceManager, authServices.deviceLimiter
-	playoutSecret, playoutSecretCurrent := authServices.playoutSecret, authServices.playoutSecretCurrent
 
 	guideSvc := buildGuide(st, set, playoutRes, appliedBackendContext)
 	settingsSvc := buildSettings(
@@ -256,171 +215,19 @@ func buildHandler(
 
 	jobsSvc := buildScheduler(rootCtx, st, set, jobReg, emitter, owner, log)
 
-	// Database migration stepper (§18, V11). Keep the status service on Postgres so the
-	// browser polling across an atomic cutover can observe the new backend. Mutations
-	// fail closed there, while backup.dir remains hot-applied for SQLite.
-	var databaseSvc api.DatabaseService
-	if st != nil {
-		dataDir := ""
-		if store.DialectOf(st) == store.DialectSQLite {
-			dataDir = filepath.Dir(store.SQLitePath(st))
-		}
-		databaseSvc = newDatabaseService(st, dataDir,
-			func() string { return set.str("backup.dir") }, eventBus).
-			WithMigrationRequest(ov.DatabaseMigration).
-			WithLastError(ov.DatabaseMigrationError)
-	}
-
-	// residentLLMVRAMFn — the TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is
-	// actually loaded now, rather than estimating from on-disk size. Extracted to a named var (not an
-	// inline opts field) because TWO consumers need it: the doctor's GPU header (below) AND the
-	// admission budget's VRAM shading (V49) — the manager was built earlier with a late-bound hook
-	// (residentVRAM), which we now point at this. Local ollama only; a hosted provider holds no local
-	// VRAM → (0, ""). Read LIVE so a provider/URL change hot-applies.
-	residentLLMVRAMFn := func(ctx context.Context) (float64, string) {
-		if set.str("llm.provider") != "ollama" {
-			return 0, ""
-		}
-		url := set.str("llm.url")
-		if url == "" {
-			return 0, ""
-		}
-		resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
-		if err != nil {
-			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
-			return 0, ""
-		}
-		var total float64
-		var largest llm.ResidentModel
-		for _, m := range resident {
-			total += m.VRAMGiB
-			if m.VRAMGiB > largest.VRAMGiB {
-				largest = m
-			}
-		}
-		return total, largest.Name
-	}
-	// Point the admission budget's late-bound VRAM hook at the real getter now that it exists, so a
-	// resident model shades the transcode budget down (V49). Guarded: playout may be unwired.
+	databaseSvc := buildDatabase(st, set, ov, eventBus)
+	residentLLM := buildResidentLLM(set, log)
 	if playoutRes != nil {
-		setResidentVRAM(residentLLMVRAMFn)
+		setResidentVRAM(residentLLM.probe)
 	}
 
-	handler := api.Router(log, api.Options{
-		Store:            st,
-		Auth:             authorizer,
-		Log:              log,
-		BackupSQLite:     backup,
-		Ready:            ready,
-		Login:            loginSvc,
-		Sessions:         sessMgr,
-		Passwords:        passwordSvc,
-		UserSync:         userSync,
-		Devices:          deviceMgr,
-		DeviceLimiter:    deviceLimiter,
-		CookieSecure:     set.str("cookie.secure"),
-		TrustProxy:       set.boolv("security.trust_proxy"),
-		DevLogin:         ov.DevLogin,
-		Pprof:            ov.Pprof,
-		Channels:         channelSvc,
-		LiveTV:           liveTVSvc,
-		TunerRescanner:   tunerRescanner,
-		TunarrConnect:    tunarrConnectSvc,
-		Suggest:          suggestSvc,
-		ProposalWorkflow: proposalWorkflow,
-		Search:           searchSvc,
-		Collections:      collectionsSvc,
-		Icons:            iconSvc,
-		Images:           imageService(imageSvc),
-		Events:           eventBus,
-		Shutdown:         rootCtx.Done(),
-		Filler:           fillerSvc,
-		Pods:             podPreview,
-		SystemLLM:        systemLLM,
-		Database:         databaseSvc,
-		Backups:          backupsSvc,
-		SSO:              ssoSvc,
-		Restart:          restartSvc,
-		Activity:         activityRec,
-		// The baseline for "has a restart-scoped setting changed?" is what THIS
-		// generation booted with, captured here rather than per call (config-design §3).
-		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
-		Jobs:         jobsSvc,
-		Settings:     settingsSvc,
-		BackendTransition: currentBackendTransition{
-			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
-		},
-		Guide:             guideSvc,
-		Provision:         provisionSvc,
-		Approver:          proposalApprover,
-		Binder:            chBinder,
-		FillerLayout:      fillerLayout,
-		LiveConfig:        liveConfig,
-		LibraryConfigured: libraryConfigured,
-		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
-			snapshot, err := checkpointSnapshot(ctx)
-			return api.BackendCheckpoint{
-				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
-				PublishedInternal: snapshot.PublishedInternal,
-			}, err
-		},
-		LiveConfigInt: set.intv,
-		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
-		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
-		LiveConfigBoolOn: set.boolOn,
-		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
-		// effect without a restart (§11 rotation).
-		PlayoutObserver:  playoutObserver,
-		PreparedObserver: preparedObserver,
-		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
-		Playout:         playoutSvc,
-		PlayoutResolver: playoutResolverSvc,
-		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:         playoutGuideSvc,
-		TimelineThumbs:       timelineThumbs,
-		PlayoutSecret:        playoutSecret,
-		PlayoutSecretCurrent: playoutSecretCurrent,
-		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
-		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
-		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont:    playout.CardFontFor(set.str("playout.ffmpeg_path")),
-		PlayoutTonemap: playout.TonemapperFor(set.str("playout.ffmpeg_path")),
-		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
-		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
-		// always targets whatever model is currently resident. Only the local ollama provider holds
-		// VRAM on this box — a hosted provider has nothing local to reclaim, so it is a no-op there
-		// (the ladder then goes straight to the software fallback).
-		ReclaimVRAM: func(ctx context.Context) {
-			if set.str("llm.provider") != "ollama" {
-				return // hosted: nothing local to evict
-			}
-			url := set.str("llm.url")
-			if url == "" {
-				return
-			}
-			p := llm.NewProvider("ollama", url, set.str("llm.model"), "")
-			ev, ok := p.(llm.Evictor)
-			if !ok {
-				return
-			}
-			if err := ev.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
-				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
-			}
-		},
-		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
-		// the admission budget's VRAM shading (V49) shares the exact same source.
-		ResidentLLMVRAM: residentLLMVRAMFn,
-		// The same pool is consumed by live playout here and by the prepared-media planner. Live work
-		// has foreground priority; preparation is cancellable and cannot consume the final slot.
-		EncodePool: encodePool,
-		PlayoutEncoder: func(
-			ctx context.Context, args []string, onProgress func(playout.Progress),
-		) (*playout.Process, error) {
-			// `onProgress` was nil here since the supervisor was written, so ffmpeg's parsed
-			// progress samples were discarded every time. Passing it through is what makes the
-			// dashboard's encoder speed measured rather than invented (V16).
-			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress)
-		},
+	handler := buildHTTP(httpBuild{
+		rootCtx: rootCtx, store: st, log: log, overrides: ov, foundation: foundation,
+		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
+		auth: authServices, backups: backupsSvc, restart: restartSvc, bootConfig: bootCfg,
+		guide: guideSvc, settings: settingsSvc, liveConfig: liveConfig,
+		libraryConfigured: libraryConfigured, jobs: jobsSvc, database: databaseSvc,
+		residentLLM: residentLLM,
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits
