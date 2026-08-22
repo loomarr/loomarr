@@ -68,7 +68,7 @@ func currentGeneratedSecret(
 // Every getter tolerates a nil service, because "no store ⇒ no settings service" is a
 // SUPPORTED state, not a bug: starting without DATABASE_URL logs "running without a
 // store (not ready)" and is expected to keep serving so /readyz can report why. It did
-// not — the first unguarded read panicked during BuildHandler, so a misconfigured
+// not — the first unguarded read panicked during application composition, so a misconfigured
 // container crash-looped instead of answering the probe that would have explained it.
 // An unset key already resolves to a zero value; an absent service is the same answer.
 func (r resolved) value(key string) any {

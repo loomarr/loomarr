@@ -85,11 +85,10 @@ type Overrides struct {
 	ImageWorkerExecutable string
 }
 
-// BuildHandler wires every subsystem from the already-open store + logger and
-// returns the fully-configured API handler (all api.Options). Background goroutines
-// start under ctx. It is the seam run() (production) and the integration harness
-// (tests) both call — so tests drive the REAL composition, not a copy. It does not
-// open/close the store, read env, listen, or handle signals; those stay in run().
+// Build wires every subsystem from the already-open store + logger and returns one
+// lifecycle-owned application generation. It is the seam run() (production) and the integration
+// harness (tests) both call, so tests drive the real composition rather than a copy. It does not
+// open/close the store, read process config, listen, or handle signals; those stay in run().
 //
 // # Why this is one long function
 //
@@ -116,7 +115,7 @@ type Overrides struct {
 // Most sections sit inside `if st != nil`. That guard is not defensive habit: a container
 // started without DATABASE_URL must still build a handler and answer /readyz with the reason,
 // rather than crash-looping past the probe that would explain the problem. See
-// TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking — the nesting is the price of
+// TestBuildWithoutStoreServesReadinessInsteadOfPanicking — the nesting is the price of
 // that behaviour.
 //
 // # Section map (in dependency order — later sections read earlier ones)
@@ -173,16 +172,6 @@ func trackReplicaSettingsRefresh(
 	}
 	owner.goRun(func(ctx context.Context) { svc.RefreshEvery(ctx, interval, after) })
 	return true
-}
-
-// BuildHandler is the compatibility entry point for callers that still tie background work to
-// the parent context. New process and integration owners use Build and explicitly call Shutdown.
-func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov Overrides) (http.Handler, error) {
-	application, err := Build(rootCtx, st, log, ov)
-	if err != nil {
-		return nil, err
-	}
-	return application.Handler(), nil
 }
 
 func buildHandler(
@@ -1459,27 +1448,10 @@ func buildHandler(
 				log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
 			} else {
 				owner.addStop(stop)
-				// ⚠ BuildHandler returns only a handler — there is no teardown seam to hang a
-				// Stop on — so River is stopped when rootCtx ends. This matters for the §9.2
-				// restart loop, which rebuilds the app IN-PROCESS: without an explicit stop,
-				// each generation leaves its client's goroutines running. The goleak test
-				// caught exactly that on the first attempt here.
-				//
 				// ⚠ StartRiver already stops the client when rootCtx is cancelled; this waits
-				// for that to FINISH before letting the store close. River's shutdown issues
+				// for that to FINISH before Application.Shutdown lets the store close. River's shutdown issues
 				// queries, so a pool closed underneath it strands its goroutines — measured at
 				// 4 leaked per generation, which the §9.2 restart loop's goleak test caught.
-				//
-				// Compatibility callers still use BuildHandler and therefore cannot invoke the
-				// Application stop above. Keep the store hook until those callers migrate; both
-				// stops only wait on River's one idempotent completion channel.
-				store.OnClose(st, func() {
-					waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-					defer cancel()
-					if err := stop(waitCtx); err != nil {
-						log.Warn("scheduler: timed out waiting for River to stop", "err", err)
-					}
-				})
 			}
 		} else {
 			log.Error("scheduler: store exposes no pool — no job will run on its schedule")

@@ -7,7 +7,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// postJob drives POST /v1/jobs/{name}/run through a real BuildHandler and returns the
+// postJob drives POST /v1/jobs/{name}/run through a real Application and returns the
 // status code, so a caller can assert the SERVER's refusal rather than the UI's. Lives in
 // the integration file because that is where its only caller is — in the default build it
 // would be dead code, which `unused` correctly rejects.
@@ -28,10 +27,7 @@ func postJob(t *testing.T, st store.Store, name string) int {
 	t.Helper()
 	t.Setenv("API_TOKEN", "test-app-token")
 
-	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := buildTestApplication(t, st, Overrides{}).Handler()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 

@@ -221,7 +221,7 @@ func BackupWriter(st Store) interface {
 // SQLitePath returns the file a SQLite store is backed by, or "" for any other backend.
 //
 // Exists so a caller can locate the data directory (where bootstrap.json lives) without
-// being handed the DSN — BuildHandler deliberately takes a Store rather than the config,
+// being handed the DSN — app.Build deliberately takes a Store rather than the config,
 // and threading DATABASE_URL through it just to re-derive a path the store already knows
 // would widen that signature for no gain.
 func SQLitePath(st Store) string {

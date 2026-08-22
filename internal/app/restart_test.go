@@ -24,7 +24,7 @@ import (
 // So the gate is repetition: build the real handler N times against a real store, serve a
 // request from each generation, and assert the goroutine count is stable across the last
 // few. A prose rule ("don't use package-level mutable state") would not have caught it.
-func TestBuildHandler_RepeatsWithoutLeaking(t *testing.T) {
+func TestBuild_RepeatsWithoutLeaking(t *testing.T) {
 	const generations = 5
 
 	// Warm one generation before measuring. The first build legitimately starts

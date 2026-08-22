@@ -19,7 +19,7 @@ import (
 // This exercises the real composition root and HTTP gate together. The channels package's nil-
 // Programmer test is the hard no-call proof; the shared Tunarr double here additionally proves
 // the real app wiring made no remote writes while it persisted the local desired state.
-func TestBuildHandler_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
+func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	t.Setenv("API_TOKEN", "internal-reconcile-token")
 	// Empty means no environment override, so the registry's actual default (internal) wins.
 	// This guards the shortest supported install path rather than a test-only explicit choice.
@@ -34,7 +34,7 @@ func TestBuildHandler_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	t.Setenv("LIBRARY_TOKEN", mediaServer.AdminToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	// BuildHandler owns background work under ctx. Stop it before the store closes (via
+	// Application owns background work under ctx. Stop it before the store closes (via
 	// t.Cleanup registered inside MigratedSQLiteStore) or its shutdown waits on workers
 	// that can no longer finish their final database operation. t.Cleanup funcs run in
 	// LIFO order, so registering cancel's cleanup AFTER the store's ensures cancel fires
@@ -43,12 +43,14 @@ func TestBuildHandler_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 
 	tunarr := testkit.NewTunarr()
-	handler, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})
 	if err != nil {
-		t.Fatalf("BuildHandler: %v", err)
+		t.Fatalf("Build: %v", err)
 	}
+	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
+	handler := application.Handler()
 
-	// Seed after BuildHandler so the one-time codec backfill observes the intentionally empty
+	// Seed after Build so the one-time codec backfill observes the intentionally empty
 	// store. The channel then reaches reconciliation only through the HTTP request below.
 	title := provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999}
 	key, err := title.Key()

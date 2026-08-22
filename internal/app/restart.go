@@ -84,7 +84,7 @@ func canonicalFillerRestartBaseline(applied map[string]string, layout filler.Lay
 }
 
 // canonicalRestartCurrent resolves the desired filler pair through the same Layout seam used by
-// BuildHandler. Invalid pair topology stays visibly different and remains pending until fixed.
+// Build. Invalid pair topology stays visibly different and remains pending until fixed.
 func canonicalRestartCurrent(set resolved) func(string) string {
 	return func(key string) string {
 		if key != "filler.dir" && key != "filler.watch_dir" {

@@ -15,7 +15,7 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-func TestBuildHandler_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
+func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	const token = "filler-layout-generation-token"
 	t.Setenv("API_TOKEN", token)
 	unsetForTest(t, "FILLER_DIR")

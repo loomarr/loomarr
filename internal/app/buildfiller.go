@@ -18,15 +18,15 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// This file holds BuildHandler's per-subsystem builders (§14.1).
+// This file holds the composition root's per-subsystem builders (§14.1).
 //
 // ⚠ **The shape matters, and it is NOT the one §14.1 rejected.** That rejection was for methods
-// on a shared builder struct, which would convert ~70 of BuildHandler's locals into fields on a
+// on a shared builder struct, which would convert ~70 composition locals into fields on a
 // mutable carrier — widening their scope and trading compile-time use-before-assignment errors
 // for runtime nils. A `buildX` FUNCTION takes only what it needs and RETURNS values, so nothing
 // widens and the compiler still catches use-before-assignment. §14.1 records the distinction.
 //
-// The measurement that makes this tractable: BuildHandler's 434-line filler section reads only
+// The measurement that makes this tractable: the 434-line filler section reads only
 // EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
@@ -217,7 +217,7 @@ func buildFillerMediaTools(set resolved) *mediatools.FFmpegTools {
 // was wrong, and the way it was wrong is worth keeping.** The window had been drawn at the
 // `pipelineStages` slice, so `langDetect`, `fillerTools`, `fillerDrop`, `visionProvider` and
 // `clipDir` — all of them DEFINED in the preamble immediately above and referenced nowhere
-// else in BuildHandler — counted as inputs crossing the boundary. They are locals of this
+// else in the composition root — counted as inputs crossing the boundary. They are locals of this
 // unit, not couplings to the rest of the composition root. Widened to the whole unit, the
 // external inputs are the six parameters below, which is `buildSyncer`'s number.
 //

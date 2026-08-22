@@ -12,7 +12,7 @@ import (
 )
 
 // backendTransitionDependencies are the composition-owned adapters needed to construct the
-// durable backend workflow. Keeping initialization here prevents BuildHandler from knowing the
+// durable backend workflow. Keeping initialization here prevents the composition root from knowing the
 // controller's boot ordering in addition to all of its other subsystem wiring.
 type backendTransitionDependencies struct {
 	store     store.Store
