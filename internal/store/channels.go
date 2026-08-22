@@ -47,6 +47,9 @@ type Channel struct {
 	// not probed at runtime. One of BroadcastCodecH264 / BroadcastCodecHEVC; empty
 	// (an un-backfilled row read before the DDL default applies) reads as H264.
 	BroadcastCodec string
+	// PlayoutAnchor is the immutable wall-clock origin of this channel's accepted
+	// broadcast cycle. Building/empty channels may be zero until first activation.
+	PlayoutAnchor time.Time
 	// ReconcileDeadline: the channel is due for a sweep reconcile at/before this
 	// time. Leased forward on claim (§9/§18).
 	ReconcileDeadline time.Time
@@ -142,7 +145,7 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 	args := []any{ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
 		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
-		epoch(ch.ReconcileDeadline), ch.UpdatedAt}
+		epoch(ch.PlayoutAnchor), epoch(ch.ReconcileDeadline), ch.UpdatedAt}
 	invalidation := ""
 	if s.dialect == DialectPostgres {
 		invalidation, err = channelInvalidation(ch)
@@ -155,8 +158,8 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 			`INSERT INTO channels
 			   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
 			    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-			    reconcile_deadline, updated_at, revision)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+			    playout_anchor, reconcile_deadline, updated_at, revision)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 			 RETURNING revision`
 		queryArgs := append([]any{ch.ID}, args...)
 		if s.dialect == DialectPostgres {
@@ -180,7 +183,7 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		`UPDATE channels SET
 		   intent_ref=?, name=?, number=?, grp=?, logo=?, strategy=?, filler_ref=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
-		   policy_json=?, broadcast_codec=?, reconcile_deadline=?, updated_at=?,
+		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
 		 WHERE id=? AND revision=?
 		 RETURNING revision`
@@ -357,7 +360,7 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // this order so scanChannel serves both paths (mirrors scanTitle).
 const channelSelect = `SELECT id, intent_ref, name, number, grp, logo, strategy, filler_ref,
 		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-		reconcile_deadline, updated_at, revision
+		playout_anchor, reconcile_deadline, updated_at, revision
 	FROM channels`
 
 func scanChannel(sc scannable) (Channel, error) {
@@ -365,11 +368,11 @@ func scanChannel(sc scannable) (Channel, error) {
 		ch                                  Channel
 		strategy, status                    string
 		lineupBlob, desiredBlob, policyBlob string
-		seed, deadline, updatedAt           int64
+		seed, anchor, deadline, updatedAt   int64
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
-		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &deadline, &updatedAt, &ch.Revision)
+		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision)
 	if err == sql.ErrNoRows {
 		return Channel{}, ErrNotFound
 	}
@@ -379,6 +382,7 @@ func scanChannel(sc scannable) (Channel, error) {
 	ch.Strategy = schedule.Strategy(strategy)
 	ch.Status = schedule.ChannelStatus(status)
 	ch.Shuffle.Seed = seed
+	ch.PlayoutAnchor = fromEpoch(anchor)
 	if err := json.Unmarshal([]byte(lineupBlob), &ch.Lineup); err != nil {
 		return Channel{}, fmt.Errorf("unmarshal lineup %s: %w", ch.ID, err)
 	}

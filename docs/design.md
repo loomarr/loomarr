@@ -1114,8 +1114,12 @@ Turns an approved proposal + live availability into a durable, filled channel on
   for unsaved drafts and future rolling windows, never a runtime substitute for the accepted
   snapshot. This distinction is load-bearing: preview includes mutable airing-history and live
   availability inputs, so recomputing it at a finite ffmpeg child's EOF can reorder the deck and
-  put the same wall clock in the middle of an unrelated episode. Persisted Desired plus the stable
-  per-channel epoch also means a process restart resumes the same schedule position.
+  put the same wall clock in the middle of an unrelated episode. The channel row also carries one
+  immutable **playout anchor**, stamped when a building/empty Channel first becomes live. A first
+  tune therefore starts near the beginning of the first accepted programme; later viewers still
+  join the shared live edge. Reconcile, lineup maintenance, backend changes, and restart preserve
+  that anchor. The migration seeds existing rows once from their last durable channel timestamp;
+  runtime code has no legacy epoch branch.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
 - **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land.

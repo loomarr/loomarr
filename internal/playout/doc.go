@@ -32,8 +32,8 @@
 //
 //   - A CHANNEL IS A WALL CLOCK, NOT A PLAYLIST. Tuning in 40 minutes into a 60-minute film
 //     lands 40 minutes in, for every viewer simultaneously. That is what `epoch` anchors: a
-//     stable per-channel origin that survives restarts and reconciles (see playoutEpoch in
-//     internal/app — deliberately NOT time.Now, NOT process start, NOT Channel.UpdatedAt).
+//     persisted first-live origin that survives restarts and reconciles. It is stamped once,
+//     rather than recomputed from query time, process start, or Channel.UpdatedAt.
 //
 //   - ONE ENCODER PER CHANNEL, N REFCOUNTED VIEWERS. A second viewer joins the existing stream
 //     rather than starting a second encode. Admission is bounded (AtCapacity); viewers are

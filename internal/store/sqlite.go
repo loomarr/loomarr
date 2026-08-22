@@ -47,7 +47,7 @@ WHERE id IN (
 )
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
           status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-          reconcile_deadline, updated_at, revision`
+          playout_anchor, reconcile_deadline, updated_at, revision`
 
 // SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteJobClaimSQL = `
