@@ -48,8 +48,9 @@ type ProposalJourneyFailureDTO struct {
 }
 
 type ProposalJourneyProposalDTO struct {
-	ID     string `json:"id"`
-	Status string `json:"status" enum:"submitted,approved,denied"`
+	ID       string           `json:"id"`
+	Status   string           `json:"status" enum:"submitted,approved,denied"`
+	Proposal suggest.Proposal `json:"proposal"`
 }
 
 type ProposalJourneyChannelDTO struct {
@@ -117,7 +118,9 @@ func proposalJourneyDTO(journey proposalworkflow.Journey) ProposalJourneyDTO {
 	}
 	dto.Failure = proposalJourneyFailureDTO(journey.Failure)
 	if journey.Proposal != nil {
-		dto.Proposal = &ProposalJourneyProposalDTO{ID: journey.Proposal.ID, Status: string(journey.Proposal.Status)}
+		dto.Proposal = &ProposalJourneyProposalDTO{
+			ID: journey.Proposal.ID, Status: string(journey.Proposal.Status), Proposal: journey.Proposal.Proposal,
+		}
 	}
 	if journey.Channel != nil {
 		dto.Channel = &ProposalJourneyChannelDTO{ID: journey.Channel.ID, Status: string(journey.Channel.Status)}

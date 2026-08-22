@@ -252,18 +252,21 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("claim failing job = %+v, %v", claimed, err)
 	}
 	failed = claimed[0]
-	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts, "provider unavailable", now.Add(time.Minute)); err != nil {
+	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts,
+		"provider unavailable", "generation_failed", now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	gotFailed, err := s.GetJob(ctx, failed.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" || gotFailed.Attempts != 1 {
+	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" ||
+		gotFailed.FailureCode != "generation_failed" || gotFailed.Attempts != 1 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
 	}
 	if attempts, err := s.ListProposalJobAttempts(ctx, failed.ID); err != nil || len(attempts) != 1 ||
-		attempts[0].Status != "failed" || !attempts[0].CompletedAt.Equal(now.Add(time.Minute)) {
+		attempts[0].Status != "failed" || attempts[0].FailureCode != "generation_failed" ||
+		!attempts[0].CompletedAt.Equal(now.Add(time.Minute)) {
 		t.Fatalf("failed Attempt history = %+v, %v", attempts, err)
 	}
 
@@ -300,7 +303,8 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CommitSuggestionSuccess(ctx, stale.ID, stale.Attempts, staleProposal, now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale success = %v, want ErrJobNotRunning", err)
 	}
-	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts, "old failure", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts,
+		"old failure", "generation_failed", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
 		t.Fatalf("stale failure = %v, want ErrJobNotRunning", err)
 	}
 	winner, err := s.GetJob(ctx, stale.ID)

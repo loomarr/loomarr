@@ -18,7 +18,7 @@ type Store interface {
 	GetProposalJob(context.Context, string) (store.ProposalJob, error)
 	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
 	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
-	CommitSuggestionFailure(context.Context, string, int, string, time.Time) error
+	CommitSuggestionFailure(context.Context, string, int, string, string, time.Time) error
 }
 
 type storeRepository struct {
@@ -60,8 +60,12 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 		record.Attempts = append(record.Attempts, attempt)
 	}
 	if snapshot.Proposal != nil {
+		var proposal suggest.Proposal
+		if err := json.Unmarshal([]byte(snapshot.Proposal.ProposalJSON), &proposal); err != nil {
+			return Record{}, fmt.Errorf("decode Proposal Job %s Proposal: %w", jobID, err)
+		}
 		record.Proposal = &ProposalRef{
-			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status),
+			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status), Proposal: proposal,
 		}
 	}
 	if snapshot.Channel != nil {
@@ -70,11 +74,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 		}
 	}
 	if record.Status == JobFailed {
-		if len(record.Attempts) != 0 && record.Attempts[len(record.Attempts)-1].Failure != nil {
-			record.FailureCode = record.Attempts[len(record.Attempts)-1].Failure.Code
-		} else {
-			record.FailureCode = FailureGenerationFailed
-		}
+		record.FailureCode = FailureCode(snapshot.Job.FailureCode)
 		record.Diagnostic = snapshot.Job.LastError
 	}
 	return record, nil
@@ -128,7 +128,7 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 
 func (r *storeRepository) FailAttempt(ctx context.Context, failure AttemptFailure) error {
 	if err := r.store.CommitSuggestionFailure(
-		ctx, failure.Work.JobID, failure.Work.Attempt, failure.Diagnostic, r.now(),
+		ctx, failure.Work.JobID, failure.Work.Attempt, failure.Diagnostic, string(failure.Code), r.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			return ErrStaleAttempt

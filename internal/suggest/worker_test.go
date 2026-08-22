@@ -179,7 +179,7 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`)))
-	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpson Episodes"}, "alice")
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +194,10 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		if job.Status == "failed" {
 			if job.FailureCode != suggest.FailureCodeNoGroundedTitles {
 				t.Fatalf("failure code = %q, want %q", job.FailureCode, suggest.FailureCodeNoGroundedTitles)
+			}
+			attempts, listErr := st.ListProposalJobAttempts(context.Background(), jobID)
+			if listErr != nil || len(attempts) != 1 || attempts[0].FailureCode != suggest.FailureCodeNoGroundedTitles {
+				t.Fatalf("failed Attempt history = %+v, %v", attempts, listErr)
 			}
 			return
 		}
@@ -273,7 +277,7 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	cause string,
+	cause, failureCode string,
 	updatedAt time.Time,
 ) error {
 	select {
@@ -283,7 +287,7 @@ func (s *lifecycleErrorStore) CommitSuggestionFailure(
 	if s.failureErr != nil {
 		return s.failureErr
 	}
-	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, updatedAt)
+	return s.Store.CommitSuggestionFailure(ctx, jobID, expectedAttempt, cause, failureCode, updatedAt)
 }
 
 func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {

@@ -61,8 +61,8 @@ WITH due AS (
 )
 UPDATE jobs j SET deadline = $1, status = 'running', attempts = j.attempts + 1, updated_at = $2
 FROM due WHERE j.id = due.id
-RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
-	      j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at`
+RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
+	      j.failure_code, j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at`
 
 // postgresScheduledJobClaimSQL leases every due scheduled job (§18.1) via SKIP LOCKED so two
 // replicas never both run one job in a tick. Placeholders: $1=leaseUntil, $2=now.

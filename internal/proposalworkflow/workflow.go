@@ -83,8 +83,9 @@ const (
 )
 
 type ProposalRef struct {
-	ID     string
-	Status ProposalStatus
+	ID       string
+	Status   ProposalStatus
+	Proposal suggest.Proposal
 }
 
 type ChannelRef struct {

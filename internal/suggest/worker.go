@@ -28,7 +28,7 @@ type ProposalStore interface {
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause string, updatedAt time.Time) error
+	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode string, updatedAt time.Time) error
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 }
@@ -347,7 +347,9 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
-	if err := s.store.CommitSuggestionFailure(ctx, job.ID, job.Attempts, cause.Error(), s.now()); err != nil {
+	if err := s.store.CommitSuggestionFailure(
+		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), s.now(),
+	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
 				"cause", cause, "err", err)

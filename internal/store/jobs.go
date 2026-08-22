@@ -84,8 +84,8 @@ type Proposal struct {
 
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error,
-		                    failure_code, workflow_version, reached_live, deadline, attempts, created_at, updated_at)
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
+		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
@@ -111,8 +111,8 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, s.ph(
-		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
-		        j.failure_code, j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at,
+		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
+		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
@@ -324,8 +324,7 @@ func scanJob(sc scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive,
-		&deadline, &j.Attempts, &createdAt, &updatedAt)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Job{}, ErrNotFound
 	}

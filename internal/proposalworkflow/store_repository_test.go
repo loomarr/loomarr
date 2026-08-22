@@ -78,3 +78,45 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 		t.Fatalf("completed Attempt history = %+v", journey.Attempts)
 	}
 }
+
+func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "failure.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.August, 22, 17, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-failed", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
+		IntentJSON:      `{"description":"Obscure regional monster movies"}`,
+		WorkflowVersion: store.ProposalWorkflowVersion,
+		Deadline:        now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	works, err := workflow.Claim(ctx, now, time.Minute, 1)
+	if err != nil || len(works) != 1 {
+		t.Fatalf("Claim = %+v, %v", works, err)
+	}
+	diagnostic := "provider secret-token returned catalog internals"
+	if err := workflow.Fail(ctx, works[0], FailureNoGroundedTitles, diagnostic); err != nil {
+		t.Fatal(err)
+	}
+
+	journey, err := workflow.Inspect(ctx, Viewer{UserID: "member-1"}, "job-failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journey.Failure == nil || journey.Failure.Code != FailureNoGroundedTitles ||
+		journey.Failure.Message == diagnostic {
+		t.Fatalf("safe Journey failure = %+v", journey.Failure)
+	}
+	persisted, err := st.GetJob(ctx, "job-failed")
+	if err != nil || persisted.LastError != diagnostic || persisted.FailureCode != string(FailureNoGroundedTitles) {
+		t.Fatalf("private persisted failure = (%+v, %v)", persisted, err)
+	}
+}

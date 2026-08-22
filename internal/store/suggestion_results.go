@@ -31,7 +31,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs SET status='done', last_error='', updated_at=?
+		`UPDATE jobs SET status='done', last_error='', failure_code='', updated_at=?
 		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
 		epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *sqlStore) RequeueSuggestionJob(
 ) error {
 	result, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE jobs
-		    SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', deadline=?, updated_at=?
+		    SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', failure_code='', deadline=?, updated_at=?
 		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?`),
 		kind, intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	cause string,
+	cause, failureCode string,
 	updatedAt time.Time,
 ) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -151,9 +151,9 @@ func (s *sqlStore) CommitSuggestionFailure(
 
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE jobs
-		    SET status='failed', last_error=?, updated_at=?
+		    SET status='failed', last_error=?, failure_code=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
-		cause, epoch(updatedAt), jobID, expectedAttempt)
+		cause, failureCode, epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: transition: %w", jobID, err)
 	}
@@ -174,9 +174,9 @@ func (s *sqlStore) CommitSuggestionFailure(
 	}
 	result, err = tx.ExecContext(ctx, s.ph(
 		`UPDATE proposal_job_attempts
-		    SET status='failed', completed_at=?
+		    SET status='failed', completed_at=?, failure_code=?
 		  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
-		epoch(updatedAt), jobID, expectedAttempt, ProposalWorkflowVersion)
+		epoch(updatedAt), failureCode, jobID, expectedAttempt, ProposalWorkflowVersion)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: close Attempt %d: %w", jobID, expectedAttempt, err)
 	}
@@ -212,10 +212,10 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	// source changes concurrently, the later SELECT still sees one coherent
 	// snapshot instead of failing a deferred read-to-write upgrade.
 	if _, err := tx.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error,
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, job.LastError,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, job.LastError, job.FailureCode,
 		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
 		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
