@@ -1,6 +1,6 @@
 # Durable first-channel workflow
 
-- Status: implementing
+- Status: implementation validated; delivery pending
 - Branch: `durable-first-channel-workflow`
 - Contract: `docs/design.md` §8, `CONTEXT.md` Proposal Job / Attempt / First-channel Journey
 
@@ -72,5 +72,18 @@ The worktree was created from `origin/main` at `c650d7cb`. The unchanged baselin
 vet, Windows cross-build, and package compilation, then the pinned golangci/staticcheck analyzer
 panicked internally while building package `poll`; this is inherited baseline evidence, not a green
 gate and must be rerun unchanged before final attribution. Claims: `migrations`, `openapi-client`, and
-`proposal-workflow`. `fix-grounding-error` concurrently owns `suggestion-failure-classification`, so
-failure classifier edits must be integrated after that claim lands rather than duplicated.
+`proposal-workflow`. The earlier `suggestion-failure-classification` task ended without publishing;
+this branch absorbed the bounded classifier and safe failure projection behind the workflow module.
+
+## Validation
+
+- Focused race tests pass for API, app, proposal workflow, store, and suggestion packages.
+- The full frontend suite passes (1,529 app tests plus package suites), along with lint, typecheck,
+  production bundle limits, and Storybook build.
+- Browser-rendered Vite acceptance passes at 1440×1000 and 390×844 for My requests and Guide failure
+  recovery, including zero horizontal overflow. Captures live under the worktree's agent artifacts.
+- SQLite conformance passes. Postgres conformance was invoked but this host has no Docker provider;
+  CI remains the required Postgres execution environment.
+- `make check` reaches the same inherited pinned golangci/staticcheck panic in dependency package
+  `poll` recorded at baseline. All later gate targets were run independently; the unrelated
+  `cmd/image-bench` synthetic fixture hash failure is also reproducible from an `origin/main` archive.
