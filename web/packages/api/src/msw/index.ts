@@ -25,6 +25,7 @@ export * from "../../generated/endpoints/jobs/jobs.msw";
 export * from "../../generated/endpoints/library/library.msw";
 export * from "../../generated/endpoints/ops/ops.msw";
 export * from "../../generated/endpoints/playout/playout.msw";
+export * from "../../generated/endpoints/proposal-jobs/proposal-jobs.msw";
 export * from "../../generated/endpoints/proposals/proposals.msw";
 export * from "../../generated/endpoints/search/search.msw";
 export * from "../../generated/endpoints/settings/settings.msw";

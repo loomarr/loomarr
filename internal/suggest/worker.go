@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -65,6 +66,9 @@ type ChannelAutoCurator interface {
 const (
 	jobKindSuggest  = "suggest"
 	jobKindRecurate = "recurate"
+
+	FailureCodeNoGroundedTitles = "no_grounded_titles"
+	FailureCodeGenerationFailed = "generation_failed"
 )
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
@@ -333,10 +337,18 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	s.log.Error("suggestion job failed", "job", job.ID, "err", cause)
 	job.Status = "failed"
 	job.LastError = cause.Error()
+	job.FailureCode = classifyFailure(cause)
 	job.Attempts++
 	job.UpdatedAt = s.now()
 	_ = s.store.UpdateJob(ctx, job)
 	s.emitPhase(job.ID, PhaseFailed, 0)
+}
+
+func classifyFailure(cause error) string {
+	if errors.Is(cause, ErrNoGroundedTitles) {
+		return FailureCodeNoGroundedTitles
+	}
+	return FailureCodeGenerationFailed
 }
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field

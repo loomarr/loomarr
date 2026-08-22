@@ -19,6 +19,7 @@ export * as jobsApi from "../generated/endpoints/jobs/jobs";
 export * as libraryApi from "../generated/endpoints/library/library";
 export * as opsApi from "../generated/endpoints/ops/ops";
 export * as playoutApi from "../generated/endpoints/playout/playout";
+export * as proposalJobsApi from "../generated/endpoints/proposal-jobs/proposal-jobs";
 export * as proposalsApi from "../generated/endpoints/proposals/proposals";
 export * as searchApi from "../generated/endpoints/search/search";
 export * as settingsApi from "../generated/endpoints/settings/settings";

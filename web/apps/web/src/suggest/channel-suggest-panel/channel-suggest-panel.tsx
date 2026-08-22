@@ -82,20 +82,17 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
         <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
       )}
 
-      {/* Failed — the job started but errored mid-flight (e.g. the AI provider is
-          unreachable). GenerationProgress renders the failed step; we add the way back the
-          component itself has no opinion on. Most failures here are an unconfigured/unreachable
-          AI provider, so the hint points there. */}
+      {/* Failed — the job read is authoritative; SSE only shortens the wait before the next
+          read. The server sends bounded requester-safe copy, never a raw provider diagnostic. */}
       {run.failed && (
         <div className="flex flex-col gap-3">
           <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
           <p className="text-muted-foreground text-sm">
-            The run didn't finish. If you haven't connected an AI provider yet, add one under Settings → AI,
-            then try again.
+            {run.failure?.message ?? "Loomarr couldn't generate this channel. Try the request again."}
           </p>
           <div>
-            <Button variant="outline" size="sm" onClick={run.reset}>
-              Try again
+            <Button variant="outline" size="sm" onClick={run.retry}>
+              Retry request
             </Button>
           </div>
         </div>

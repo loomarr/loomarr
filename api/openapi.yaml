@@ -4169,6 +4169,20 @@ components:
         - status
         - proposal
       type: object
+    ProposalFailure:
+      additionalProperties: false
+      properties:
+        code:
+          enum:
+            - no_grounded_titles
+            - generation_failed
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+      type: object
     ProposalItem:
       additionalProperties: false
       properties:
@@ -4222,6 +4236,34 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    ProposalJobDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ProposalJobDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        failure:
+          $ref: "#/components/schemas/ProposalFailure"
+        intent:
+          $ref: "#/components/schemas/Intent"
+        jobId:
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - done
+            - failed
+          type: string
+      required:
+        - jobId
+        - status
+        - intent
       type: object
     ProposeFillerPullInputBody:
       additionalProperties: false
@@ -8818,6 +8860,32 @@ paths:
       summary: The closed rule authoring vocabulary
       tags:
         - channels
+  /v1/proposal-jobs/{jobId}:
+    get:
+      description: Returns the preserved Intent, execution lifecycle, and bounded failure. Members may read only jobs they submitted; admins may read any (§7/§8).
+      operationId: get-proposal-job
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalJobDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get authoritative proposal-job state
+      tags:
+        - proposal-jobs
   /v1/proposals:
     get:
       description: status=submitted is the approval queue.

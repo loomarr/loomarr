@@ -42,6 +42,7 @@ func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	want := sampleJob("job-1", "hash-abc", now, now)
+	want.FailureCode = "no_grounded_titles"
 	if err := s.CreateJob(ctx, want); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "queued" || got.IntentHash != "hash-abc" || got.CreatedBy != "user-1" {
+	if got.Status != "queued" || got.IntentHash != "hash-abc" || got.CreatedBy != "user-1" || got.FailureCode != "no_grounded_titles" {
 		t.Errorf("job round-trip mismatch: %+v", got)
 	}
 	// Update transitions status.

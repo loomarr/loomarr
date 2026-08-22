@@ -1,6 +1,7 @@
 import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
+  getGetProposalJobMockHandler,
   getListProposalsMockHandler,
   getMeMockHandler,
   getSubmitProposalMockHandler,
@@ -34,8 +35,13 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   proposal: undefined,
   isRunning: false,
   failed: true,
+  failure: {
+    code: "no_grounded_titles",
+    message: "No grounded titles matched this request. Try the same request again.",
+  },
   error: undefined,
   start: vi.fn(),
+  retry: vi.fn(),
   reset: vi.fn(),
   ...over,
 });
@@ -94,6 +100,11 @@ const stubSuggest = (
     getSubmitProposalMockHandler(async ({ request }) => {
       submissions.push(await request.json());
       return { jobId: "job-1" };
+    }),
+    getGetProposalJobMockHandler({
+      jobId: "job-1",
+      status: "running",
+      intent: { description: "80s teen comedies" },
     }),
     getListProposalsMockHandler({ proposals: opts.proposals ?? [] }),
   );
@@ -208,20 +219,21 @@ describe("ChannelSuggestPanel", () => {
 
   // The reported bug: describe a channel, the job fails (e.g. no AI provider), and the panel
   // silently dropped back to an empty describe form — no error, no way to tell what happened.
-  it("surfaces a failed run with a message and a retry instead of a silent empty form", async () => {
-    const reset = vi.fn();
-    runOverride = failedRun({ reset });
+  it("surfaces the grounded-title failure with a direct unchanged retry", async () => {
+    const retry = vi.fn();
+    runOverride = failedRun({ retry });
     stubSuggest();
     renderPanel(() => {});
 
     // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/Settings → AI/)).toBeInTheDocument();
+    expect(screen.getByText(/No grounded titles matched this request/)).toBeInTheDocument();
+    expect(screen.queryByText(/Settings → AI/)).not.toBeInTheDocument();
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
 
-    // Try again clears the run back to the form.
-    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
-    expect(reset).toHaveBeenCalled();
+    // Retry re-submits the preserved Intent; it does not merely clear the failure.
+    await userEvent.click(screen.getByRole("button", { name: /retry request/i }));
+    expect(retry).toHaveBeenCalled();
   });
 });
