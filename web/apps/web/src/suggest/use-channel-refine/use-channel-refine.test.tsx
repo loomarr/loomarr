@@ -1,10 +1,10 @@
-import type { Proposal, ProposalDTO } from "@loomarr/api";
-import { getListProposalsMockHandler, getRefineChannelMockHandler } from "@loomarr/api/msw";
+import type { Proposal, ProposalJourneyDTO } from "@loomarr/api";
+import { getGetProposalJobMockHandler, getRefineChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { useChannelRefine } from "./use-channel-refine";
 
@@ -23,33 +23,32 @@ const proposal: Proposal = {
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
 };
 
-// Two real endpoints: `POST /v1/channels/{id}/refine` starts the run, `GET /v1/proposals` is the
-// approval-queue read the hook watches for its jobId.
-//
-// ⚠ The stub this replaced dispatched on METHOD ALONE — `if (init?.method === "POST")` — and its
-// own comment said it did so "without pinning to exact URL strings". That was the honest
-// description of a real weakness: any POST anywhere satisfied the refine branch, and every other
-// request in the app fell into the proposals branch. Route-bound handlers remove the choice.
-//
-// ⚠ THE DEFERRAL IS PRESERVED, and it is load-bearing rather than incidental. The list response is
-// an externally-resolvable promise so a test can observe the run's "in flight" state before letting
-// the list answer. MSW supports this directly — a resolver may return a promise — so the mechanism
-// survives the migration intact. This hook's list query has no refetchInterval (same as
-// useSuggestionRun, which it mirrors: neither polls on a timer), so it resolves once per enable and
-// there is nothing to race by resolving eagerly.
+const journey = (over: Partial<ProposalJourneyDTO> = {}): ProposalJourneyDTO => ({
+  version: 1,
+  jobId: "job-1",
+  milestone: "generating",
+  intent: proposal.intent,
+  attempts: [],
+  actions: ["wait"],
+  createdAt: "2026-08-22T10:00:00Z",
+  updatedAt: "2026-08-22T10:00:00Z",
+  ...over,
+});
+
+// The Journey response is externally resolvable so a test can observe the run
+// in flight before its authoritative state lands.
 const stubRefine = () => {
-  let resolveProposals: ((rows: ProposalDTO[]) => void) | undefined;
-  const proposalsRequested = new Promise<ProposalDTO[]>((resolve) => {
-    resolveProposals = resolve;
+  let resolveJourney: ((value: ProposalJourneyDTO) => void) | undefined;
+  const journeyRequested = new Promise<ProposalJourneyDTO>((resolve) => {
+    resolveJourney = resolve;
   });
 
   server.use(
     getRefineChannelMockHandler({ jobId: "job-1" }),
-    getListProposalsMockHandler(async () => ({ proposals: await proposalsRequested })),
+    getGetProposalJobMockHandler(async () => journeyRequested),
   );
 
-  // Lets the list query settle with the given rows, once a test wants it to.
-  return { landProposals: (rows: ProposalDTO[]) => resolveProposals?.(rows) };
+  return { landJourney: (value: ProposalJourneyDTO) => resolveJourney?.(value) };
 };
 
 // ⚠ Hand-written: the failure is a STATUS (422), and this spec declares errors with `default:`
@@ -60,11 +59,7 @@ const refineRejects = () =>
     HttpResponse.json({ title: "Change is required" }, { status: 422 }),
   );
 
-const row = (over: Partial<ProposalDTO> & Pick<ProposalDTO, "id" | "jobId">): ProposalDTO => ({
-  status: "submitted",
-  proposal,
-  ...over,
-});
+afterEach(() => window.sessionStorage.clear());
 
 describe("useChannelRefine", () => {
   it("starts idle with no phase or proposal", () => {
@@ -76,7 +71,7 @@ describe("useChannelRefine", () => {
   });
 
   it("starts a run on submit and flips isRunning until the proposal lands", async () => {
-    const { landProposals } = stubRefine();
+    const { landJourney } = stubRefine();
     const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
 
     act(() => result.current.start("ch-1", "add more Schwarzenegger"));
@@ -86,28 +81,44 @@ describe("useChannelRefine", () => {
     await waitFor(() => expect(result.current.isRunning).toBe(true));
     expect(result.current.proposal).toBeUndefined();
 
-    act(() => landProposals([row({ id: "p1", jobId: "job-1" })]));
+    act(() =>
+      landJourney(
+        journey({ milestone: "awaiting_approval", proposal: { id: "p1", status: "submitted", proposal } }),
+      ),
+    );
 
     await waitFor(() => expect(result.current.proposal?.jobId).toBe("job-1"));
     expect(result.current.isRunning).toBe(false);
   });
 
-  it("only matches the proposal whose jobId equals the started run's", async () => {
-    const { landProposals } = stubRefine();
+  it("restores a started run from session storage after reload", async () => {
+    const { landJourney } = stubRefine();
     const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
 
     act(() => result.current.start("ch-1", "less horror, more action"));
-    act(() => landProposals([row({ id: "other", jobId: "job-other" }), row({ id: "mine", jobId: "job-1" })]));
-
+    await waitFor(() => expect(result.current.isRunning).toBe(true));
+    act(() =>
+      landJourney(
+        journey({ milestone: "awaiting_approval", proposal: { id: "mine", status: "submitted", proposal } }),
+      ),
+    );
     await waitFor(() => expect(result.current.proposal?.id).toBe("mine"));
+
+    const restored = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(restored.result.current.proposal?.id).toBe("mine"));
+    expect(restored.result.current.channelId).toBe("ch-1");
   });
 
   it("resets back to idle", async () => {
-    const { landProposals } = stubRefine();
+    const { landJourney } = stubRefine();
     const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
 
     act(() => result.current.start("ch-1", "swap the finale"));
-    act(() => landProposals([row({ id: "p1", jobId: "job-1" })]));
+    act(() =>
+      landJourney(
+        journey({ milestone: "awaiting_approval", proposal: { id: "p1", status: "submitted", proposal } }),
+      ),
+    );
     await waitFor(() => expect(result.current.proposal).toBeDefined());
 
     act(() => result.current.reset());

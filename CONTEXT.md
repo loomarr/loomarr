@@ -53,11 +53,30 @@ _Avoid_: download, request (a request is the downstream act, not the pick)
 The operator's natural-language description of a channel — the input to the Suggester.
 _Avoid_: prompt, query, description
 
+**Proposal Job**:
+One caller-owned durable execution of an Intent. Its id is the correlation spine for generation,
+the optional Proposal it produces, and the intent-bound Channel created on approval. A Proposal Job
+may have multiple execution Attempts after worker-loss recovery or a channel Refine, but it is never
+the Proposal itself.
+_Avoid_: request, suggestion, generation job, Proposal
+
+**Proposal Job Attempt**:
+One leased execution of a Proposal Job, identified by the Proposal Job id plus a monotonically
+increasing attempt number. Attempts finish as `succeeded`, `failed`, or `interrupted`; an expired
+`running` attempt is durably interrupted before its replacement is claimed.
+_Avoid_: retry (an operator retry creates a new Proposal Job; recovery creates a new Attempt)
+
 **Proposal**:
 The Suggester's grounded answer to an Intent: a lineup of picks plus an extracted policy.
 Statuses are `submitted`, `approved`, `denied` (§7, §8).
 Lives at `/v1/proposals*`; every operationId is `*-proposal(s)`.
 _Avoid_: suggestion, recommendation, plan
+
+**First-channel Journey**:
+The authoritative, caller-visible snapshot composed from one Proposal Job, its newest Proposal, and
+its intent-bound Channel. It explains the current milestone and permitted next actions without
+moving ownership of those domain records into a new mega-state-machine.
+_Avoid_: wizard state, SSE state, workflow row
 
 ⚠ The routes said `/v1/suggestions` until V41 (retired-ok — named here to record the rename),
 and one operationId (`submit-suggestion`) sat
@@ -65,7 +84,7 @@ among five `*-proposal` siblings in the same file — so one resource was submit
 "suggestion" and read, approved and denied as a "proposal". A glossary nothing follows is not a
 glossary. `scripts/check-retired.sh` now guards the old path.
 
-⚠ Two survivors are deliberate, and both are the VERB, not the artifact. The suggester job's
+⚠ Two survivors are deliberate, and both are the VERB, not the artifact. The Proposal Job's
 persisted `kind` is `"suggest"` (renaming it is a data migration, and the job is not the
 proposal), and the SSE frame `"suggestion"` reports that job's PHASE — its Go→TS handler pairing
 has no drift guard, so churning it is real risk for no glossary gain. The banned noun is the name

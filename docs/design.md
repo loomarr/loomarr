@@ -156,10 +156,10 @@ flowchart TD
   p_llm["llm<br/><small>5 importers</small>"]
   p_metrics["metrics<br/><small>6 importers</small>"]
   p_provision["provision<br/><small>16 importers</small>"]
-  p_schedule["schedule<br/><small>13 importers</small>"]
+  p_schedule["schedule<br/><small>14 importers</small>"]
   p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>14 importers</small>"]
-  p_suggest["suggest<br/><small>5 importers</small>"]
+  p_store["store<br/><small>15 importers</small>"]
+  p_suggest["suggest<br/><small>6 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
   p_filler --> p_llm
@@ -209,7 +209,7 @@ flowchart TD
 
 - **`prepared`** · 3 importers · → `media`
   Owns immutable, reusable playout publications.
-- **`schedule`** · 13 importers · → `provision`
+- **`schedule`** · 14 importers · → `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -253,7 +253,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 15 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -283,7 +283,7 @@ flowchart TD
   Prepares an isolated agent worktree for UI development.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
-- **`suggest`** · 5 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
+- **`suggest`** · 6 importers · → `catalog`, `llm`, `provision`, `schedule`, `store`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`tmdb`** · 2 importers · → `catalog`, `httpx`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
@@ -294,17 +294,19 @@ flowchart TD
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`eval`** · → `catalog`, `library`, `llm`, `provision`, `schedule`, `suggest`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
+- **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
+  Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 
 **Layer 11**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `events`, `filler`, `images`, `media`, `metrics`, `playout`, `prepared`, `proposalworkflow`, `provision`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 12**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `events`, `filler`, `images`, `library`, `llm`, `media`, `mediatools`, `metrics`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -410,10 +412,11 @@ Store interface:
   GetUser/UpsertUser/ListUsers            # keyed by media-server user id
   CreateSession/GetSession/RevokeSessionsForUser
   # jobs & proposals (§8, §10)
-  CreateJob/GetJob/UpdateJob
-  ClaimDueJobs(now, limit)                # same SKIP LOCKED pattern as titles
+  CreateProposalJob/GetProposalJourney/ListProposalJourneys
+  ClaimProposalJobAttempts(now, limit)    # recover expired running attempts; same SKIP LOCKED pattern
+  Complete/FailProposalJobAttempt         # checked attempt-token transitions; success also inserts Proposal
   GetProposal/UpsertProposal
-  ListProposals(status[, user])           # approval queue; My proposals
+  ListProposals(status[, user])           # approval queue and decision audit
   # settings KV (small, typed accessors over one table)
   GetSetting/SetSetting                   # instance id (§11 DeviceId)
 ```
@@ -781,9 +784,10 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/channels/{id}/reconcile` | Force channel convergence: materialize local desired state and, only for a Tunarr-backed channel, reconcile its remote projection. Idempotent (§9); NOT a user-facing "rebuild" — edits reconcile automatically, and the periodic sweep is the guarantee. |
 | DELETE | `/v1/channels/{id}` | Remove channel; `?purge=true` hard-deletes local state plus any retained managed Tunarr projection (default detaches only). |
 | POST | `/v1/proposals` | Start a suggestion job from an intent. |
-| GET | `/v1/proposal-jobs/{jobId}` | Authoritative state for one suggestion execution: its preserved Intent, lifecycle, and a bounded requester-safe failure classification. Members may read only jobs they submitted; admins may read any. The private provider diagnostic remains server-side. |
-| GET | `/v1/proposals?status=…&mine=true` | List proposals by status (`submitted` = the admin approval queue). **`mine=true` scopes the list to the caller's own proposals** — the "My requests" surface (§12). Scoping is resolved **server-side from the session**, never from a client-supplied user id: a `?user=` parameter would let any member read another's requests by editing a URL. A break-glass `API_TOKEN` caller has no user record, so `mine=true` returns **empty** rather than everyone's — an unscopable caller asking for "mine" must not silently receive all. |
-| GET | `/v1/proposals/{id}` | Job status + proposal (the source of truth on SSE reconnect; generation progress streams over `/v1/events` as `suggestion` frames, not a per-job endpoint). |
+| GET | `/v1/proposals?status=…&mine=true` | List proposal artifacts by decision status (`submitted` = the admin approval queue). **`mine=true` scopes the list to the caller's own proposals** and remains the decision audit; failed or still-running Proposal Jobs have no Proposal and therefore never appear here. Scoping is resolved **server-side from the session**, never from a client-supplied user id. A break-glass `API_TOKEN` caller has no user record, so `mine=true` returns empty rather than everyone's. |
+| GET | `/v1/proposals/{id}` | Read one Proposal artifact by Proposal id. Approve and deny use the same id; this route is never overloaded with Proposal Job state. |
+| GET | `/v1/proposal-jobs/{jobId}` | Read the authoritative, versioned First-channel Journey for one Proposal Job: complete Intent, current execution, bounded attempt history, safe failure, newest Proposal, intent-bound Channel, derived milestone, and server-authorized next actions. A member may read only their own job; an admin may read any. This is the reconnect source of truth. |
+| GET | `/v1/proposal-jobs?mine=true&status=…` | List bounded Proposal Job journeys newest-first. Members are always caller-scoped; admins may inspect all or request `mine=true`. This powers My requests, including queued, running, and failed work that has no Proposal. |
 | POST | `/v1/proposals/{id}/approve` | Approve (admin) → enqueue acquisitions **+ create/patch the channel**, returning its id. This is the primary path from an approved intent to a live channel — §13's flow is describe → review → approve, so **the everyday way to make a channel is to describe one, not fill out a form** (the two other origination seeds — a hand-made single-series or empty channel via `POST /v1/channels` — are express doors into the same object, not a separate "create screen" model; see §12 origination-vs-evolution). **The local result is one commit:** the audited approval, title insertions, and intent-bound channel either all persist or none do; a local planning or store failure leaves the proposal submitted and retryable. That transaction rejects an older proposal when the same job already has an approved proposal created in the same persisted second or later; second-resolution ties fail closed with 409 rather than guessing an order and rolling the channel back. **Idempotent on `intentRef`** (the suggestion job id): re-approving the same intent patches that channel rather than minting a second one, enforced by a partial unique database index for non-empty intent refs. The channel is created `building` with the proposal's lineup + grounded policy, then codec derivation and reconciliation run after commit (§9 "live immediately — never dead air"). An immediate external failure does not undo the approval: the due `building` row is durable retry state for the channel sweep. **Number** = the lowest free positive integer across both Loomarr and Tunarr, so an operator never has to think about numbering to get on air; **name** = the intent description, trimmed to a channel-sized label. Both are ordinary editable fields afterwards (§7 `PATCH /v1/channels/{id}`) — the point is that approving is *sufficient*, not that the derived values are final. A channel is **shaped over time** after creation: direct edits (name/number/rules/lineup) via `PATCH`, or by *refining* it with the LLM (`POST /v1/channels/{id}/refine` → review the diff → approve → the same idempotent patch). |
 | POST | `/v1/proposals/{id}/deny` | Deny (admin) with optional reason; proposal → `denied`, member sees it in My proposals. |
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, by `taxon` (an exact graph node whose descendant rollups match too), by `unclassified` (no directly asserted taxonomy tags on any axis), or by `withoutAxis` (no direct assertion on one named axis; neutral because cue axes are intentionally sparse), plus `q` across name, brand, visible text, and tags (§7.2 — clip search lives here, not in `/v1/search`). |
@@ -987,7 +991,85 @@ The grounding rules (above) are untouched — provider/model selection changes *
 Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant **hard-gated by the pending-acquisition cap** (§11): a proposal auto-approves only while its requester stays within quota, and otherwise falls back to the admin queue rather than being denied. `approved_by` records `auto` for that path, so the audit distinguishes a machine decision from a human one. Every approval for one requester — manual or automatic — enters the same **store-owned, requester-scoped ordering**, but only automatic approval evaluates and may be rejected by the unattended-spend cap. SQLite uses an in-process keyed semaphore (SQLite remains single-instance). Postgres takes a transaction-scoped database advisory lock, performs the quota reads through that transaction's read view, and commits the approval on the same transaction and connection; a lost session therefore rolls back the guarded work instead of releasing its ordering while another pooled connection can still commit. Waiting approvals use only their own transaction connection, so the holder never needs a second pooled connection to finish. Ordering ends with the durable commit or rollback, before best-effort post-commit channel reconciliation. Any ordering or quota-read failure leaves the proposal `submitted`; a manual admin approval remains exempt from quota rejection because the admin *is* the approval gate.
 
 ### Execution model
-Generation is a **job**, persisted in the store (§5) and executed by the in-process worker pool (§14; `JOB_WORKERS` default 2, per-job `JOB_TIMEOUT` default 10m — so one hung LLM call can never starve the queue) — on Postgres replicas, jobs are claimed via the same `SKIP LOCKED` pattern as titles. Proposals are persisted too, each recording `created_by` (powers My proposals, §12): the approval queue (`GET /v1/proposals?status=submitted`) and pending approvals must survive restarts. Generation progress streams over the shared `/v1/events` SSE bus (§7) as `suggestion` frames — payload `{jobId, phase, round}` where phase advances `searching` (the model is calling the catalog tool) → `reasoning` (the model is composing the grounded lineup) → `scoring` (deterministic post-scoring) → `done`/`failed`; on reconnect, `GET /v1/proposal-jobs/{jobId}` is the authoritative execution state (dropped progress events are a latency bug, never a correctness bug). A failed job persists both its private diagnostic and a bounded failure code. Only the code crosses the requester-facing API: `no_grounded_titles` receives its own retry guidance, while unknown failures fail closed to `generation_failed`; raw provider errors never become browser copy.
+A **Proposal Job** is the caller-owned durable execution of an Intent. `internal/proposalworkflow`
+is the deep module that owns its lifecycle, attempt recovery, caller visibility, result joining, and
+First-channel Journey projection. Its external interface is intentionally small: submit or re-run an
+Intent, claim bounded work, complete/fail one claimed Attempt, and inspect/list authoritative Journey
+snapshots. The Store and the model/catalog runner are private ports inside that implementation; API,
+worker, and frontend callers do not reconstruct lifecycle rules from raw Job/Proposal/Channel reads.
+
+The Proposal Job id is the correlation spine, not a mega-state-machine key that steals domain
+ownership. A Proposal remains the grounded artifact and approval audit. Approval remains the only
+authority to create acquisitions and atomically materializes the intent-bound Channel. The Channel
+continues to own `building`/`live` and reconciliation. The Journey is a consistent composed read of
+those records, with one derived milestone:
+
+```text
+queued/running                              -> generating
+done + Proposal submitted                  -> awaiting_approval
+done + Proposal denied                     -> denied
+done + Proposal approved + Channel building -> building
+done + Proposal approved + Channel live     -> live
+failed                                     -> failed
+```
+
+A later operator pause does not erase that the first-channel Journey reached `live`; current Channel
+status is returned separately. An impossible combination (for example an approved Proposal with no
+intent-bound Channel, which the approval transaction forbids) fails the Journey read closed and is
+recorded for operators rather than being guessed into a reassuring milestone.
+
+**Execution and attempt history.** The Job row is the current execution pointer and carries a
+persisted workflow-schema version. Each lease creates a monotonically numbered Proposal Job Attempt
+with its own start/completion times and terminal outcome (`succeeded`, `failed`, or `interrupted`).
+Claiming is one transaction: it selects due `queued` jobs and expired `running` jobs, marks an expired
+Attempt `interrupted`, increments the attempt token, creates the replacement Attempt as `running`, and
+renews the Job lease. SQLite performs the guarded write on its one process; Postgres uses
+`FOR UPDATE SKIP LOCKED`. A process crash therefore causes bounded re-execution after the lease, not a
+permanently stranded `running` row. Completion and failure compare-and-swap on `(job_id, attempt)`;
+stale workers cannot publish a Proposal or overwrite a newer failure. Successful completion inserts
+the Proposal and marks both Attempt and Job terminal in the same transaction.
+
+Failures persist both a private diagnostic for operators and a bounded requester-safe code. Only the
+bounded code crosses the API: `no_grounded_titles` receives specific retry guidance, while every
+unknown cause fails closed to `generation_failed`; raw provider diagnostics never become browser copy.
+
+An operator retry of a failed first request creates a fresh caller-owned Proposal Job, preserving the
+failed execution as history. Refine/re-curate deliberately keep the Channel's stable intent reference
+and create a new Attempt on that Proposal Job. A successful cache hit saves model inference only: it
+copies grounded Proposal content into a fresh caller-owned Job/Proposal lifecycle atomically and never
+shares another caller's id, ownership, approval decision, or history.
+
+**Versioning.** Persisted workflow documents and Attempts carry an explicit version. The reader accepts
+every version still supported by an upgrade and projects it into the current Journey schema; unknown,
+future, corrupt, or structurally impossible state fails closed. A new release may add a versioned
+transition path but never reinterpret an existing persisted state in place. Upgrade fixtures prove the
+previous shipped form remains readable and recoverable.
+
+**Queries, commands, and progress.** `GET /v1/proposal-jobs/{jobId}` is authoritative after reload,
+restart, replica change, or event loss. It returns the complete Intent, bounded Attempt history, safe
+failure code/message, newest Proposal in any decision state, intent-bound Channel, milestone, and
+server-derived permitted actions (`wait`, `review`, `retry`, `edit`, `check_ai`, `open_channel`). Those
+actions incorporate ownership and role; the frontend never reconstructs authorization or retry policy.
+Generation progress still streams over `/v1/events` as `suggestion` frames with
+`{jobId, phase, round}`. SSE only invalidates/refetches the Journey; a dropped terminal frame is a
+latency defect, never a correctness defect.
+
+**Workflow versus activities.** Ordering, transitions, attempt tokens, approval, grounding gates, and
+retry classification are deterministic workflow logic. Model turns, catalog reads, and external
+publication are activities with explicit timeout, idempotency, and retry contracts:
+
+| Activity | Contract |
+| --- | --- |
+| Catalog tool | Read-only, bounded, safe to retry inside the configured tool-round ceiling. |
+| Model turn | Bounded by the Proposal Job timeout; may re-execute after worker loss, but only the current Attempt token may commit. |
+| Proposal completion | One local transaction; a Proposal is never visible for a Job that did not become `done`. |
+| Approval | Existing atomic `submitted -> approved` decision; authorization and quota ordering remain outside model control. |
+| Acquisition/publication | Idempotent desired-vs-actual reconciliation after approval; repair by converging again, not by model-authored compensation. |
+
+River remains the engine for named recurring operator Tasks (§18.1). Proposal Jobs retain their
+domain-specific leased executor because their Job/Attempt/Proposal history and caller visibility are
+business state, not River execution history. No additional runtime, workflow server, or scheduler is
+introduced.
 
 **A phase must name what is happening NOW, not what is about to.** The tool loop alternates — the model thinks, calls the catalog, reads the results, thinks again — for up to `maxToolRounds` iterations, so `searching` and `reasoning` are *repeating* states, not a one-way sequence. Emitting `searching` once before the loop and `reasoning` only after it exits (the original shape) meant the label read "Searching the library" for the entire run including every model turn, which is where the operator's time actually goes: it named the fastest step in the job as the explanation for the slowest. Each phase is therefore emitted **inside** the loop at the transition it describes, and may repeat. `round` (1-based, `0` = not in the tool loop) carries the iteration so a long run is legibly *progressing* rather than hung — the UI pairs it with elapsed time. Grounding is untouched: progress is display-only, and `buildProposal`'s surfaced-id chokepoint is the only thing that decides which picks survive. Cache proposals by hash(normalized intent + constraints) with a short TTL (default 24h) — **but only a *successful* job is a cache hit**: a run that grounds no titles (or fails/times out) must NOT be cached, or an operator retrying the same intent would be wedged to the empty result for the TTL. A zero-grounded-title result **fails the job** (with a clear "no grounded titles found" reason surfaced via `last_error`), rather than persisting an empty `submitted` proposal. The grounded turns are generated at a **low sampling temperature** (JSON/tool-call adherence over creativity), with a small **bounded repair loop** that re-asks when the model's final turn isn't valid schema JSON. The suggester is an internal subsystem using the Store like the others; the *external* thing it talks to is the LLM, and that boundary is what the grounding rules police.
 
@@ -4764,7 +4846,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **42 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **43 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -4774,6 +4856,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 
 | Package | Job |
 | --- | --- |
+| `proposalworkflow` | Owns durable Proposal Job commands, Attempt recovery, authorization, and authoritative First-channel Journeys (§8) |
 | `suggest` | Turns an intent into a grounded proposal (§8) |
 | `catalog` | The federated search boundary the suggester is grounded against (§7.2, §8) |
 | `binder` | Materialises an APPROVED proposal onto a channel — the one path (§7) |
@@ -5257,7 +5340,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
 - **Webhook idempotency/replay:** duplicate/out-of-order events converge.
 - **Scheduler reconcile:** desired-vs-actual against a **mock Tunarr** — idempotent (second reconcile = no-op), minimal-diff, and **backfill** (pending slot filled with filler → real title on `available` → re-push; `unavailable` → substitute). **Event-loss recovery:** drop the availability event entirely and assert the periodic sweep still backfills. Per-channel single-leader claim under concurrency.
-- **Jobs:** `ClaimDueJobs` concurrency (no job claimed twice); a hung mock LLM hits `JOB_TIMEOUT` and the worker pool keeps draining other jobs; proposals and the approval queue survive a restart.
+- **Proposal workflow:** interface-level tests cover every legal Journey milestone and permitted action without reading raw tables. SQLite/Postgres conformance proves atomic claim, expired-running recovery, monotonically increasing Attempt tokens, stale-worker rejection, success/failure rollback, caller-owned cache cloning, and bounded history. Crash tests stop after claim, after model return, after Proposal insert, and after approval commit; restart converges to exactly one visible outcome. Previous-version fixtures remain readable; unknown versions and impossible approved-without-Channel combinations fail closed. Dropping every SSE frame does not change the authoritative result.
 - **Lifecycle:** the downgrade guard refuses to start on a newer-schema DB; the janitor purges expired sessions/old jobs on schedule; `GET /v1/backup` (SQLite) yields a snapshot that restores to a working instance; deleting a scheduled item from the mock library → the sweep flags drift and substitutes.
 - **Search:** `/v1/search` fans out to mock media server + mock TMDB + clip store; `in_library` flags correct; a member can search (read-only) but adding a missing title still routes through submit→approve; scope filters honored.
 - **Suggestion grounding (critical):** mock LLM returns fabricated titles → **zero** unresolvable items reach a proposal, **nothing** unapproved reaches `/v1/titles`; already-present acquisitions filtered; `auto_approve` respects quota; output validates against schema.

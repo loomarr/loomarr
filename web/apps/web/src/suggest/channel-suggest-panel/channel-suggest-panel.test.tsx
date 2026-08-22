@@ -2,7 +2,6 @@ import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
-  getListProposalsMockHandler,
   getMeMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
@@ -33,12 +32,10 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   phase: "failed",
   round: undefined,
   proposal: undefined,
+  failure: { code: "generation_failed", message: "Loomarr couldn't generate this channel. Try again later." },
+  actions: ["retry", "check_ai"],
   isRunning: false,
   failed: true,
-  failure: {
-    code: "no_grounded_titles",
-    message: "No grounded titles matched this request. Try the same request again.",
-  },
   error: undefined,
   start: vi.fn(),
   retry: vi.fn(),
@@ -101,12 +98,29 @@ const stubSuggest = (
       submissions.push(await request.json());
       return { jobId: "job-1" };
     }),
-    getGetProposalJobMockHandler({
-      jobId: "job-1",
-      status: "running",
-      intent: { description: "80s teen comedies" },
+    getGetProposalJobMockHandler(() => {
+      const proposal = opts.proposals?.[0];
+      return {
+        version: 1,
+        jobId: "job-1",
+        milestone: proposal ? "awaiting_approval" : "generating",
+        intent: { description: "80s teen comedies" },
+        attempts: [
+          {
+            version: 1,
+            number: 1,
+            status: proposal ? "succeeded" : "running",
+            startedAt: "2026-08-22T12:00:00Z",
+          },
+        ],
+        proposal: proposal
+          ? { id: proposal.id, status: proposal.status, proposal: proposal.proposal }
+          : undefined,
+        actions: proposal ? ["review"] : ["wait"],
+        createdAt: "2026-08-22T12:00:00Z",
+        updatedAt: "2026-08-22T12:00:00Z",
+      };
     }),
-    getListProposalsMockHandler({ proposals: opts.proposals ?? [] }),
   );
 
   return { approvals, submissions };
@@ -130,6 +144,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
     runOverride = undefined; // default every test back to the real hook
+    window.sessionStorage.clear();
   });
 
   it("submits the typed intent to start a run", async () => {
@@ -219,7 +234,7 @@ describe("ChannelSuggestPanel", () => {
 
   // The reported bug: describe a channel, the job fails (e.g. no AI provider), and the panel
   // silently dropped back to an empty describe form — no error, no way to tell what happened.
-  it("surfaces the grounded-title failure with a direct unchanged retry", async () => {
+  it("surfaces a failed run with a message and a retry instead of a silent empty form", async () => {
     const retry = vi.fn();
     runOverride = failedRun({ retry });
     stubSuggest();
@@ -227,13 +242,13 @@ describe("ChannelSuggestPanel", () => {
 
     // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/No grounded titles matched this request/)).toBeInTheDocument();
-    expect(screen.queryByText(/Settings → AI/)).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn't generate this channel/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
 
-    // Retry re-submits the preserved Intent; it does not merely clear the failure.
-    await userEvent.click(screen.getByRole("button", { name: /retry request/i }));
+    // Try again re-submits the preserved Intent through a fresh caller-owned Job.
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(retry).toHaveBeenCalled();
   });
 });

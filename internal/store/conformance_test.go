@@ -56,9 +56,15 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Jobs", func(t *testing.T) {
 		t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
+		t.Run("ProposalJobListScope", func(t *testing.T) { testProposalJobListScope(t, newStore) })
 		t.Run("ClaimDueJobs", func(t *testing.T) { testClaimDueJobs(t, newStore) })
 		t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
 		t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
+		t.Run("SuggestionSuccessAtomic", func(t *testing.T) { testSuggestionSuccessAtomic(t, newStore) })
+		t.Run("SuggestionRequeueCAS", func(t *testing.T) { testSuggestionRequeueCAS(t, newStore) })
+		t.Run("CloneSuggestionSuccess", func(t *testing.T) { testCloneSuggestionSuccess(t, newStore) })
+		t.Run("ProposalJobSnapshot", func(t *testing.T) { testProposalJobSnapshot(t, newStore) })
+		t.Run("ProposalJobFirstLiveMonotonic", func(t *testing.T) { testProposalJobFirstLiveMonotonic(t, newStore) })
 		t.Run("ScheduledJobRoundTrip", func(t *testing.T) { testScheduledJobRoundTrip(t, newStore) })
 		t.Run("ClaimDueScheduledJobs", func(t *testing.T) { testClaimDueScheduledJobs(t, newStore) })
 		t.Run("ScheduledJobPaused", func(t *testing.T) { testScheduledJobPaused(t, newStore) })

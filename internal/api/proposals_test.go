@@ -16,6 +16,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/events"
+	"github.com/mantonx/loomarr/internal/proposalworkflow"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -56,13 +57,15 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 	}}}
 	log := slog.New(slog.DiscardHandler)
 	chBinder := binder.New(st, nil, nil, log)
+	workflow := proposalworkflow.New(st, func() string { return "test-proposal-job" }, time.Now)
 	h := api.Router(log, api.Options{
-		Store:   st,
-		Auth:    testAuthorizer{},
-		Log:     log,
-		Suggest: fs,
-		Search:  search,
-		Events:  events.NewBus(),
+		Store:            st,
+		Auth:             testAuthorizer{},
+		Log:              log,
+		Suggest:          fs,
+		Search:           search,
+		Events:           events.NewBus(),
+		ProposalWorkflow: workflow,
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the
 		// channel row and just skips the immediate Tunarr reconcile push.
@@ -138,12 +141,22 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	intent := `{"description":"Classic Simpson Episodes"}`
+	now := time.Now()
 	err := st.CreateJob(context.Background(), store.Job{
-		ID: "job-grounding", Kind: "suggest", Status: "failed", IntentJSON: intent,
-		IntentHash: "hash", CreatedBy: "alice", LastError: "suggester: no grounded titles found for this intent at https://private.invalid",
-		FailureCode: suggest.FailureCodeNoGroundedTitles, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		ID: "job-grounding", Kind: "suggest", Status: "queued", IntentJSON: intent,
+		IntentHash: "hash", CreatedBy: "alice", WorkflowVersion: store.ProposalWorkflowVersion,
+		Deadline: now, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := st.ClaimDueJobs(context.Background(), now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim job: %+v, %v", claimed, err)
+	}
+	if err := st.CommitSuggestionFailure(context.Background(), "job-grounding", claimed[0].Attempts,
+		"suggester: no grounded titles found for this intent at https://private.invalid",
+		suggest.FailureCodeNoGroundedTitles, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 

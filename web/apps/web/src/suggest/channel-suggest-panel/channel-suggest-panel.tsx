@@ -1,11 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useElapsed } from "../use-elapsed";
@@ -82,18 +83,32 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
         <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
       )}
 
-      {/* Failed — the job read is authoritative; SSE only shortens the wait before the next
-          read. The server sends bounded requester-safe copy, never a raw provider diagnostic. */}
+      {/* Failed — the job started but errored mid-flight (e.g. the AI provider is
+          unreachable). GenerationProgress renders the failed step; we add the way back the
+          component itself has no opinion on. Most failures here are an unconfigured/unreachable
+          AI provider, so the hint points there. */}
       {run.failed && (
         <div className="flex flex-col gap-3">
           <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
           <p className="text-muted-foreground text-sm">
-            {run.failure?.message ?? "Loomarr couldn't generate this channel. Try the request again."}
+            {run.failure?.message ?? "The run didn't finish. Try again in a moment."}
           </p>
           <div>
-            <Button variant="outline" size="sm" onClick={run.retry}>
-              Retry request
-            </Button>
+            {run.actions.includes("retry") && (
+              <Button variant="outline" size="sm" onClick={run.retry}>
+                Try again
+              </Button>
+            )}
+            {run.actions.includes("edit") && (
+              <Button variant="ghost" size="sm" onClick={run.reset}>
+                Edit request
+              </Button>
+            )}
+            {run.actions.includes("check_ai") && (
+              <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+                Check AI settings
+              </Link>
+            )}
           </div>
         </div>
       )}

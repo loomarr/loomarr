@@ -34,6 +34,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/proposalworkflow"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/retention"
@@ -959,6 +960,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// which configured capabilities each operation may use. The catalog + search
 	// share one impl (§7.2).
 	var suggestSvc api.SuggestService
+	var proposalWorkflow api.ProposalWorkflow
+	var durableWorkflow *proposalworkflow.Workflow
 	var searchSvc api.SearchService
 	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
@@ -970,6 +973,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// callers that adopt on a request (the icon picker — see iconAdapter). One fetcher, so the
 	// SSRF allowlist and the concurrency cap are enforced identically whoever asks.
 	var imageFetcher *images.Fetcher
+	if st != nil {
+		// Journey restoration remains available even when an LLM provider is not:
+		// persisted workflow state is the recovery surface for configuring it.
+		durableWorkflow = proposalworkflow.New(st, newID, time.Now)
+		proposalWorkflow = durableWorkflow
+	}
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
 	// It remains wired while the key is empty so a later settings save hot-applies; the resolver
 	// degrades an unconfigured lookup to the timeline's supported image-less rendering.
@@ -1035,7 +1044,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		sug.WithRatings(tmdbClient)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
+		}, newID, time.Now, log).
+			WithProgressEmitter(emitter).
+			WithDurableWorkflow(durableWorkflow) // §8 SSE + durable lifecycle
 
 		// The §11 auto-approve grant, hard-gated by the pending-acquisition cap. The
 		// default limit is read PER CALL so raising suggest.max_acquisitions takes
@@ -1500,40 +1511,41 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	}
 
 	handler := api.Router(log, api.Options{
-		Store:          st,
-		Auth:           authorizer,
-		Log:            log,
-		BackupSQLite:   backup,
-		Ready:          ready,
-		Login:          loginSvc,
-		Sessions:       sessMgr,
-		Passwords:      passwordSvc,
-		UserSync:       userSync,
-		Devices:        deviceMgr,
-		DeviceLimiter:  deviceLimiter,
-		CookieSecure:   set.str("cookie.secure"),
-		TrustProxy:     set.boolv("security.trust_proxy"),
-		DevLogin:       ov.DevLogin,
-		Pprof:          ov.Pprof,
-		Channels:       channelSvc,
-		LiveTV:         liveTVSvc,
-		TunerRescanner: tunerRescanner,
-		TunarrConnect:  tunarrConnectSvc,
-		Suggest:        suggestSvc,
-		Search:         searchSvc,
-		Collections:    collectionsSvc,
-		Icons:          iconSvc,
-		Images:         imageService(imageSvc),
-		Events:         eventBus,
-		Shutdown:       rootCtx.Done(),
-		Filler:         fillerSvc,
-		Pods:           podPreview,
-		SystemLLM:      systemLLM,
-		Database:       databaseSvc,
-		Backups:        backupsSvc,
-		SSO:            ssoSvc,
-		Restart:        restartSvc,
-		Activity:       activityRec,
+		Store:            st,
+		Auth:             authorizer,
+		Log:              log,
+		BackupSQLite:     backup,
+		Ready:            ready,
+		Login:            loginSvc,
+		Sessions:         sessMgr,
+		Passwords:        passwordSvc,
+		UserSync:         userSync,
+		Devices:          deviceMgr,
+		DeviceLimiter:    deviceLimiter,
+		CookieSecure:     set.str("cookie.secure"),
+		TrustProxy:       set.boolv("security.trust_proxy"),
+		DevLogin:         ov.DevLogin,
+		Pprof:            ov.Pprof,
+		Channels:         channelSvc,
+		LiveTV:           liveTVSvc,
+		TunerRescanner:   tunerRescanner,
+		TunarrConnect:    tunarrConnectSvc,
+		Suggest:          suggestSvc,
+		ProposalWorkflow: proposalWorkflow,
+		Search:           searchSvc,
+		Collections:      collectionsSvc,
+		Icons:            iconSvc,
+		Images:           imageService(imageSvc),
+		Events:           eventBus,
+		Shutdown:         rootCtx.Done(),
+		Filler:           fillerSvc,
+		Pods:             podPreview,
+		SystemLLM:        systemLLM,
+		Database:         databaseSvc,
+		Backups:          backupsSvc,
+		SSO:              ssoSvc,
+		Restart:          restartSvc,
+		Activity:         activityRec,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
 		RestartDrift: restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),

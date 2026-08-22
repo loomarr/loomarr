@@ -1,14 +1,10 @@
-import type { ProposalDTO, ProposalJobDTO } from "@loomarr/api";
-import {
-  getGetProposalJobMockHandler,
-  getListProposalsMockHandler,
-  getSubmitProposalMockHandler,
-} from "@loomarr/api/msw";
+import type { ProposalJourneyDTO } from "@loomarr/api";
+import { getGetProposalJobMockHandler, getSubmitProposalMockHandler } from "@loomarr/api/msw";
 import type { EventHandlers, SuggestionPhase } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { useSuggestionRun } from "./use-suggestion-run";
 
@@ -32,46 +28,52 @@ const makeWrapper = () => {
   );
 };
 
-const queuedJob: ProposalJobDTO = {
-  jobId: "job-1",
-  status: "queued",
-  intent: { description: "90s action movies" },
-};
-
-// The SUBMIT succeeds (200 + jobId) even when the job later fails. The job read, not the
-// latency-only SSE phase, carries the authoritative failure classification and preserved Intent.
-const stub = (proposals: ProposalDTO[] = [], job: ProposalJobDTO = queuedJob) => {
+// The SUBMIT succeeds (200 + jobId) even when the job later fails, so the proposals list
+// stays empty and no `error` is ever set — the failure arrives only as a `failed` phase.
+const stub = () => {
+  const journey: ProposalJourneyDTO = {
+    version: 1,
+    jobId: "job-1",
+    milestone: "generating",
+    intent: { description: "90s action movies" },
+    attempts: [{ version: 1, number: 1, status: "running", startedAt: "2026-08-22T12:00:00Z" }],
+    actions: ["wait"],
+    createdAt: "2026-08-22T12:00:00Z",
+    updatedAt: "2026-08-22T12:00:00Z",
+  };
   server.use(
     getSubmitProposalMockHandler({ jobId: "job-1" }),
-    getGetProposalJobMockHandler(job),
-    getListProposalsMockHandler({ proposals }),
+    getGetProposalJobMockHandler(() => journey),
   );
+  return journey;
 };
 
 describe("useSuggestionRun", () => {
-  it("surfaces the authoritative no-grounded-titles failure", async () => {
-    stub([], {
-      ...queuedJob,
-      status: "failed",
-      failure: {
-        code: "no_grounded_titles",
-        message: "No grounded titles matched this request. Try the same request again.",
-      },
-    });
+  beforeEach(() => window.sessionStorage.clear());
+
+  it("surfaces a terminal `failed` phase as run.failed (not a silent empty state)", async () => {
+    const journey = stub();
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
 
     act(() => result.current.start({ description: "90s action movies" }));
-    await waitFor(() => expect(result.current.failed).toBe(true));
+    await waitFor(() => expect(result.current.isRunning).toBe(true));
 
+    // The job errors mid-flight; the backend emits `failed` over the stream.
+    journey.milestone = "failed";
+    journey.failure = { code: "generation_failed", message: "Loomarr couldn't generate this channel." };
+    journey.actions = ["retry"];
+    await emit("job-1", "failed");
+
+    // Without the fix this is the silent hole: isRunning goes false, no proposal, error is
+    // null — the panel would fall through to a blank form. `failed` is what makes it visible.
+    await waitFor(() => expect(result.current.failed).toBe(true));
     expect(result.current.isRunning).toBe(false);
-    expect(result.current.failure?.code).toBe("no_grounded_titles");
-    expect(result.current.failure?.message).toMatch(/No grounded titles/);
     expect(result.current.proposal).toBeUndefined();
     expect(result.current.error).toBeFalsy();
   });
 
   it("is not `failed` when the run is still in flight", async () => {
-    stub([]);
+    stub();
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
 
     act(() => result.current.start({ description: "90s action movies" }));
@@ -81,28 +83,17 @@ describe("useSuggestionRun", () => {
     expect(result.current.isRunning).toBe(true);
   });
 
-  it("retries with the exact preserved Intent", async () => {
-    const submissions: unknown[] = [];
-    server.use(
-      getSubmitProposalMockHandler(async ({ request }) => {
-        submissions.push(await request.json());
-        return { jobId: `job-${submissions.length}` };
-      }),
-      getGetProposalJobMockHandler({
-        ...queuedJob,
-        status: "failed",
-        failure: { code: "no_grounded_titles", message: "No grounded titles matched this request." },
-      }),
-      getListProposalsMockHandler({ proposals: [] }),
-    );
+  it("restores the active Job from authoritative state after a reload", async () => {
+    const journey = stub();
+    journey.milestone = "failed";
+    journey.failure = { code: "no_grounded_titles", message: "No grounded titles matched this request." };
+    journey.actions = ["edit", "retry"];
+    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
+
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
-    const intent = { description: "Classic Simpson Episodes", era: "1989-1999", maxAcquire: 2 };
 
-    act(() => result.current.start(intent));
     await waitFor(() => expect(result.current.failed).toBe(true));
-    act(() => result.current.retry());
-    await waitFor(() => expect(submissions).toHaveLength(2));
-
-    expect(submissions).toEqual([intent, intent]);
+    expect(result.current.failure?.code).toBe("no_grounded_titles");
+    expect(result.current.actions).toEqual(["edit", "retry"]);
   });
 });
