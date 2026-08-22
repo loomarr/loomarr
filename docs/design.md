@@ -1292,14 +1292,23 @@ remaining tail, has no burst. Otherwise it reaches EOF ahead of the schedule, th
 “what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
 return from a commercial block appear roughly ten seconds late.
 
-**This removes the old uniform-profile constraint.** Playout previously concatenated programs with a
-single `-c copy` parent that REQUIRED every program to share one profile (codec/resolution/fps/pixel
-format) — which is exactly why everything was transcoded into that profile. Programs now differ:
-program A direct-copied at its native profile, program B transcoded or copied at a different one. The
-session marks each program boundary with an HLS **`#EXT-X-DISCONTINUITY`** — the standard mechanism
-for heterogeneous sources — and the client (hls.js, native, a media server) handles it. The "one
-encode/repackage per channel, N refcounted viewers" invariant, the wall-clock epoch, and the
-single-source-of-truth cycle arithmetic are all unchanged; only the "force one profile" rule is gone.
+**A live session has one stable broadcast format across every Airing boundary.** Codec compatibility
+alone is not enough to direct-copy a source into that session: resolution, frame rate, pixel format,
+audio codec and channel layout are decoder state too. A programme, Clip or fallback card may copy a
+stream only when every known property matches the session's broadcast format; an unknown or mismatched
+property fails safe toward transcoding. This keeps programme → programme, programme → Pod, Clip → Clip
+and Pod → programme handoffs on one monotonic decoder timeline. It deliberately spends an encode when
+the alternative is an in-stream format change that makes a browser or media-server tuner stall.
+
+An Airing boundary remains explicit inside playout even when no transport reset is necessary. The
+session supervisor opens one finite block at a time and owns the handoff; it does not reduce the
+schedule to an anonymous infinite `ffconcat` byte source. A continuous live mux does not force an HLS
+discontinuity merely because the title changed. A packager MUST emit `#EXT-X-DISCONTINUITY`, the new
+init map where applicable, `#EXT-X-PROGRAM-DATE-TIME`, and the matching discontinuity sequence when
+timestamps, track identity, codec configuration, packaging, or a mux restart actually changes. The
+prepared origin necessarily does so between immutable publications because each publication has its
+own timestamps and init data. The "one encode/repackage per channel, N refcounted viewers" invariant,
+wall-clock epoch, accepted cycle, admission gate, and filler fallback remain unchanged.
 
 ### What internal playout serves
 

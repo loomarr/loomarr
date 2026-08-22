@@ -185,4 +185,6 @@ func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (pl
 	return playout.CopyPlan{}, playout.MediaFormat{}
 }
 
+func (c *chainResolver) ChannelCodec(context.Context, string) string { return "h264" }
+
 var _ = http.MethodGet

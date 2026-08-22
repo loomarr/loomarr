@@ -61,6 +61,9 @@ type PlayoutResolver interface {
 	// Tone-mapping is the first caller; the zero value means "not probed", which every consumer
 	// must treat as unknown rather than as a positive claim.
 	PlanFor(ctx context.Context, input string, target playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat)
+	// ChannelCodec returns the persisted codec the Channel's live timeline normalizes to. It is
+	// needed only to turn the broad tuner capability plan into one stable output codec.
+	ChannelCodec(ctx context.Context, channelID string) string
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -178,14 +181,16 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// can act on what was already learned (HDR today) without a second ffprobe at the program
 	// boundary — the one moment continuity is most fragile.
 	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
+	broadcastCodec := playout.BroadcastVideoCodec(encPlan, s.playoutResolver.ChannelCodec(r.Context(), channelID))
+	plan = playout.ConformCopyPlan(source, plan, profile, broadcastCodec)
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
 	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
 	// change. So when THIS program must transcode video (a VP9/h264/mpeg2 commercial between HEVC
 	// shows), transcode it to HEVC — not the profile's default h264 — so the fMP4 the browser plays
-	// never switches codec. The HEVC show itself still `-c copy`s (plan.CopyVideo); only the odd
-	// incompatible program pays an HEVC transcode. For a baseline (h264/TS) session this is a no-op.
-	if encPlan.WantsHEVCOutput() && !plan.CopyVideo {
+	// never switches codec. A source already matching the complete HEVC session format still copies;
+	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
+	if playout.IsHEVCCodec(broadcastCodec) && !plan.CopyVideo {
 		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
 	}
 

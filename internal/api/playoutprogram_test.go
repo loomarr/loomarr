@@ -91,6 +91,8 @@ func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (pla
 	return f.plan, f.sourceFormat
 }
 
+func (f *fakeResolver) ChannelCodec(context.Context, string) string { return "h264" }
+
 func (f *fakeResolver) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -736,6 +738,10 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 			airing: playableAiring(0, time.Hour),
 			url:    "http://emby/v/1",
 			plan:   playout.CopyPlan{CopyVideo: true, CopyAudio: true}, // direct play
+			sourceFormat: playout.MediaFormat{
+				VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+				AudioCodec: "aac", AudioChannels: 2,
+			},
 		},
 		encoder:     enc.start,
 		reclaimVRAM: func(context.Context) { evicted++ },

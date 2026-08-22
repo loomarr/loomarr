@@ -2,6 +2,7 @@ package playout
 
 import (
 	"context"
+	"math"
 	"strings"
 )
 
@@ -322,4 +323,45 @@ func PlanCopy(f MediaFormat, plan EncodePlan) CopyPlan {
 		CopyVideo: copyVideo,
 		CopyAudio: a == "" || planCopyAudio[plan][a],
 	}
+}
+
+// BroadcastVideoCodec resolves the one video codec a live session emits. EncodePlan describes a
+// consumer bucket, not permission to switch codecs inside one stream: the HEVC plans are HEVC end
+// to end, baseline is H.264 end to end, and the broad tuner plan follows the Channel's persisted
+// broadcast codec.
+func BroadcastVideoCodec(plan EncodePlan, channelCodec string) string {
+	if plan.WantsHEVCOutput() || (plan == PlanFull && IsHEVCCodec(channelCodec)) {
+		return "hevc"
+	}
+	return "h264"
+}
+
+// ConformCopyPlan narrows a codec-capability decision to the stable format of one live session.
+// A source can be decodable by the audience and still be unsafe to splice into the current decoder
+// timeline. Unknown properties deliberately fail toward transcode: extra work is recoverable; an
+// in-stream format change is not.
+func ConformCopyPlan(f MediaFormat, allowed CopyPlan, profile Profile, videoCodec string) CopyPlan {
+	copyVideo := allowed.CopyVideo && sameBroadcastVideo(f, profile, videoCodec)
+	copyAudio := allowed.CopyAudio && strings.EqualFold(strings.TrimSpace(f.AudioCodec), "aac") &&
+		f.AudioChannels == 2
+	return CopyPlan{CopyVideo: copyVideo, CopyAudio: copyAudio}
+}
+
+func sameBroadcastVideo(f MediaFormat, profile Profile, videoCodec string) bool {
+	sourceCodec := strings.ToLower(strings.TrimSpace(f.VideoCodec))
+	targetCodec := strings.ToLower(strings.TrimSpace(videoCodec))
+	if IsHEVCCodec(sourceCodec) {
+		sourceCodec = "hevc"
+	}
+	if IsHEVCCodec(targetCodec) {
+		targetCodec = "hevc"
+	}
+	if sourceCodec == "" || sourceCodec != targetCodec || f.Width <= 0 || f.Height <= 0 ||
+		f.Width != profile.Width || f.Height != profile.Height || f.FrameRate <= 0 ||
+		math.Abs(f.FrameRate-float64(profile.Framerate)) > 0.01 {
+		return false
+	}
+	// Every live encoder currently emits 8-bit SDR yuv420p. Copying a deeper/HDR source would
+	// silently change decoder and colour state even when its codec and geometry happened to match.
+	return strings.EqualFold(strings.TrimSpace(f.PixelFormat), "yuv420p") && !f.HDR()
 }

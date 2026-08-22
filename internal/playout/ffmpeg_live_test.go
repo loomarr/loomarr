@@ -350,6 +350,101 @@ func TestLive_TwoProgramsConcatenateWithCopy(t *testing.T) {
 	}
 }
 
+// A channel is one decoder timeline, even when its source blocks are not. Two individually valid
+// H.264/AAC files may still disagree on geometry, frame cadence, pixel format or audio layout; the
+// old codec-only copy decision passed both through and made the shared MPEG-TS change shape at EOF.
+// Media servers stalled while reinitialising there, and the live HLS remux inherited the same
+// anonymous format change. This is the smallest real-media reproduction of that transition bug.
+func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
+	bin := ffmpegBin(t)
+	probe := ffprobeBin(t)
+	dir := t.TempDir()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	type source struct {
+		path          string
+		width, height int
+		colour        string
+	}
+	sources := []source{
+		{path: dir + "/episode.ts", width: 320, height: 180, colour: "red"},
+		{path: dir + "/commercial.ts", width: 640, height: 360, colour: "blue"},
+	}
+	for _, src := range sources {
+		args := []string{
+			"-hide_banner", "-loglevel", "error", "-y",
+			"-f", "lavfi", "-i", fmt.Sprintf("color=c=%s:s=%dx%d:r=25:d=2", src.colour, src.width, src.height),
+			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "2",
+			"-c:v", "libx264", "-preset", "ultrafast", "-g", "25", "-sc_threshold", "0",
+			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-f", "mpegts", src.path,
+		}
+		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+			t.Fatalf("generate %dx%d source: %v\n%s", src.width, src.height, err, out)
+		}
+	}
+
+	profile := DefaultProfile()
+	profile.Width, profile.Height = 320, 180
+	profile.Framerate = 25
+	profile.Encoder = EncoderSoftware
+
+	parts := make([]string, 0, len(sources))
+	for i, src := range sources {
+		part := fmt.Sprintf("%s/block-%d.ts", dir, i)
+		format := MediaFormat{
+			VideoCodec: "h264", Width: src.width, Height: src.height,
+			FrameRate: 25, PixelFormat: "yuv420p",
+			AudioCodec: "aac", AudioChannels: 2,
+		}
+		plan := ConformCopyPlan(format, PlanCopy(format, PlanBaseline), profile, "h264")
+		spec := ProgramSpec{
+			Profile: profile, Input: src.path, Limit: 2 * time.Second,
+			Plan: plan, Source: format,
+		}
+		proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), part), nil, nil)
+		if err != nil {
+			t.Fatalf("block %d start: %v", i, err)
+		}
+		go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
+		if err := proc.Wait(); err != nil {
+			t.Fatalf("block %d: %v\n%s", i, err, proc.LastError())
+		}
+		parts = append(parts, part)
+	}
+
+	playlist := dir + "/blocks.ffconcat"
+	contents := fmt.Sprintf("ffconcat version 1.0\nfile '%s'\nfile '%s'\n", parts[0], parts[1])
+	if err := os.WriteFile(playlist, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	joined := dir + "/channel.ts"
+	proc, err := Start(ctx, bin, replaceOutput(ConcatArgs(playlist), "-t", "4", joined), nil, nil)
+	if err != nil {
+		t.Fatalf("channel parent start: %v", err)
+	}
+	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("channel parent: %v\n%s", err, proc.LastError())
+	}
+
+	frames, err := exec.CommandContext(ctx, probe, "-v", "error", "-select_streams", "v:0",
+		"-show_frames", "-show_entries", "frame=width,height", "-of", "csv=p=0", joined).Output()
+	if err != nil {
+		t.Fatalf("probe channel frames: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(frames)), "\n") {
+		// ffprobe appends a side-data description to frames carrying H.264 SEI, so width and
+		// height are the stable leading columns rather than necessarily the entire CSV row.
+		if !strings.HasPrefix(line, "320,180") {
+			t.Fatalf("broadcast format changed at the block boundary: frame is %s, want every frame 320,180", line)
+		}
+	}
+}
+
 // The parent's concat args must be ACCEPTED by ffmpeg. The protocol whitelist and -safe 0 are
 // easy to get wrong, and both failures read as "the playlist is broken" rather than naming
 // the flag.
