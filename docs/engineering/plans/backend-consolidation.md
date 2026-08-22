@@ -49,6 +49,57 @@ package `poll`. That inherited failure is not a green gate and must be compared 
    auto-merge after required gates, verify the merge, release claims, and remove only a clean task
    worktree.
 
+## Composition extraction map
+
+Measured at `79349941`, `BuildHandler` spans `internal/app/app.go:169–1635`. Extraction follows the
+existing dependency order. Each builder is an internal seam: a concrete immutable dependency value
+in, a concrete immutable result value out. Neither value is a generic service locator, and no builder
+starts work it cannot return a shutdown handle for.
+
+| Builder | Owns | Required earlier inputs | Result consumed later |
+| --- | --- | --- | --- |
+| `buildFoundation` | readiness, settings generation, secrets/redaction, dynamic library/TMDB clients, event bus, job registry, activity recorder | Store, logger, external-origin Overrides | resolved settings, clients, emitter, registry, activity, secret readers |
+| `buildProvisioning` | title reconcile, availability scan, queue poll, episode refresh, retention registrations | Foundation | provisioning runner and episode resolver |
+| `buildChannels` | dynamic Programmer, availability, channel engine, Live TV connector, backend-transition view, channel-number source | Foundation + Provisioning | channel HTTP roles, engine, connector, backend checkpoint functions |
+| `buildPlayout` | media budget, session/HLS managers, prepared origin, resolver, guide, backend transition controller, playout lifecycle | Foundation + Channels | playout HTTP roles, observers, resolver roles, lifecycle shutdown |
+| `buildApproval` | binder and approval coordinator | Foundation + Channels + Playout codec role | binder and approver roles |
+| `buildSuggestions` | LLM/catalog, Journey workflow, search, icon/image adapters, re-curation registration, resident-model hooks | Foundation + Approval + Provisioning | suggestion/search/workflow/image/system-LLM roles and VRAM hooks |
+| `buildFiller` | existing tag/sync/pipeline/split/fetch builders and scheduler registrations | Foundation + Suggestions | filler roles and pod adapter |
+| `buildOperations` | backup, auth/device/SSO, settings/restart/database, River start | All prior results | operational HTTP roles and scheduler shutdown |
+| `buildHTTP` | one `api.Options` assembly | All immutable results | configured Handler only |
+
+The three deliberate late connections remain visible in the short root: attach the channel engine to
+the event emitter, attach pods to channel/playout consumers, and attach resident-model eviction to
+playout. They become one-time methods that reject a second attachment rather than mutable public
+fields.
+
+The external application interface is deliberately smaller than the internal extraction map:
+
+```go
+app, err := Build(parent, store, logger, overrides)
+handler := app.Handler()
+err = app.Shutdown(ctx)
+```
+
+`BuildHandler` remains only as a short compatibility adapter during migration and is deleted once
+main plus integration callers use `Build`. Shutdown order is the reverse of successful startup;
+partial Build failure uses the same stack. The Store is not on that stack because its caller owns it
+and closes it only after application shutdown.
+
+### Replacement tests
+
+- Application-interface tests cover no-store readiness, real route wiring, restart generations, and
+  idempotent bounded Shutdown.
+- Builder tests cover only their returned roles and failure cleanup. They do not inspect another
+  builder's fields.
+- Playout dependencies become constructor-required; deleting a ladder input fails construction,
+  replacing the `lastPlayoutResolver` global and its post-build nil inspection.
+- Filler-layout generation behavior is asserted through the playout builder result before HTTP
+  assembly and through the running route behavior after assembly; no process-global observation
+  point remains.
+- The existing goleak restart test moves to `Application.Shutdown`, then closes the Store, which is
+  the production ordering it is intended to certify.
+
 ## Completion evidence
 
 | Requirement | Proof |
