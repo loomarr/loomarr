@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/backendtransition"
 	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/channels"
@@ -28,7 +27,6 @@ import (
 	"github.com/mantonx/loomarr/internal/prepared"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
-	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/store"
@@ -821,33 +819,7 @@ func buildHandler(
 	)
 	fillerSvc, podPreview := fillers.service, fillers.preview
 
-	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`
-	// and `backup.retain` were declared without in V4. Writes one snapshot into
-	// `backup.dir`, then prunes to the newest `backup.retain`.
-	//
-	// ⚠ On Postgres this registers as a DISABLED job rather than not registering at all.
-	// `WriteBackup` is SQLite-only by design (Postgres has mature backup tooling and an
-	// operator running it already has a strategy) — but an omitted row is indistinguishable
-	// on the Tasks page from a job that runs fine and has never failed, and for backup that
-	// ambiguity means believing you are covered when you are not. So the row is present and
-	// states why it cannot run. It is never scheduled and Run-now 409s (§18.1).
-	var backupsSvc api.BackupsService
-	if w := store.BackupWriter(st); w != nil {
-		bs := &backupsService{
-			w:      w,
-			dir:    func() string { return set.str("backup.dir") },
-			retain: func() int { return set.intv("backup.retain") },
-			sched:  func() string { return set.str("backup.schedule") },
-		}
-		backupsSvc = bs
-		jobReg.Add(bs.Job(log))
-	} else if st != nil {
-		// No writer, but there IS a store — i.e. Postgres. (A store-less boot registers
-		// nothing at all, since there is no scheduler to list it on.) The job is still
-		// LISTED, carrying why it cannot run — see unavailableBackupJob.
-		jobReg.Add(unavailableBackupJob(
-			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
-	}
+	backupsSvc := buildBackups(st, set, jobReg, log)
 
 	// Restart control (§9.2, V13). Wired only when main passed a restart func — a handler
 	// built by a test or the integration harness has no generation loop behind it, and
@@ -865,145 +837,19 @@ func buildHandler(
 		bootCfg = nil
 	}
 
-	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
-	// Session auth (cookie) with API_TOKEN Bearer break-glass; SQLite gets a
-	// backup streamer, Postgres passes nil (→ 501).
-	var backup api.BackupStreamer
-	if st != nil {
-		if b := store.SQLiteBackuper(st); b != nil {
-			backup = b
-		}
-	}
-	apiToken := ""
-	if secrets != nil {
-		apiToken = secrets.Value(settings.SecretAPI)
-	}
-	authorizer := api.Authorizer(api.NewTokenAuthorizer(apiToken))
-	var loginSvc api.LoginService
-	var ssoSvc api.SSOService
-	var sessMgr api.SessionManager
-	var userSync api.UserSyncer
-	var provisionSvc api.Provisioner
-	var passwordSvc api.PasswordService
-	var deviceMgr *auth.DeviceManager
-	var deviceLimiter *auth.RateLimiter
-	if st != nil {
-		// Auth wires on the STORE alone (§11 rework): identity is Loomarr-owned, so
-		// bootstrap + local login work with zero media-server config. The media-server
-		// verifier and user lister stay present while unconfigured; the dynamic client
-		// fails closed until the complete live triple exists.
-		lib := libraryClient
-		mgr := auth.NewManager(st, set.dur("session.ttl"), time.Now)
-		limiter := auth.NewRateLimiter(0.2, 5) // ~5 attempts, refill 1/5s (§11)
-		loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
-		userSync = auth.NewUserSync(lib, st, time.Now)
-		provisionSvc = auth.NewProvisioner(st, lib, newID, time.Now)
-		// SSO: the third credential path (§11, D-F, V8). Config is read PER CALL so a saved
-		// change applies without a restart (config-design §3).
-		//
-		// ⚠ The redirect URL is DERIVED from `server.public_url` rather than configured
-		// separately. Two places to state one address is two places for it to disagree, and
-		// a mismatched redirect is the most common OIDC misconfiguration — the provider
-		// refuses and neither side says which value it expected.
-		ssoSvc = auth.NewSSOService(func() auth.SSOConfig {
-			base := strings.TrimRight(set.str("server.public_url"), "/")
-			redirect := ""
-			if base != "" {
-				redirect = base + "/v1/auth/sso/callback"
-			}
-			return auth.SSOConfig{
-				Enabled:      set.boolv("auth.sso.enabled"),
-				Issuer:       set.str("auth.sso.issuer"),
-				ClientID:     set.str("auth.sso.client_id"),
-				ClientSecret: set.str("auth.sso.client_secret"),
-				RedirectURL:  redirect,
-			}
-		}, st, mgr, time.Now, log)
+	authServices := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
+	backup, authorizer := authServices.backup, authServices.authorizer
+	loginSvc, ssoSvc := authServices.login, authServices.sso
+	sessMgr, userSync := authServices.sessions, authServices.userSync
+	provisionSvc, passwordSvc := authServices.provision, authServices.password
+	deviceMgr, deviceLimiter := authServices.deviceManager, authServices.deviceLimiter
+	playoutSecret, playoutSecretCurrent := authServices.playoutSecret, authServices.playoutSecretCurrent
 
-		// Local account management (§11) needs no media server — a local user is
-		// verified entirely in-app, exactly like the bootstrap admin. So it is wired
-		// unconditionally alongside the store, not inside the `lib != nil` branch.
-		passwordSvc = auth.NewPasswordService(st, newID, time.Now)
-		sessMgr = mgr
-		// Device pairing (§11, Shield P1) — the credential path for a client with no keyboard.
-		// Wired alongside local accounts and for the same reason: it needs no media server, since a
-		// device inherits the role of the Loomarr user who approved it.
-		deviceMgr = auth.NewDeviceManager(st, time.Now)
-		// Deliberately tighter than the login limiter: a login attempt is a human retyping a
-		// password they know, while a pairing-code attempt is a guess at a short code. Five tries
-		// refilling at one per twenty seconds leaves normal use untouched and makes grinding the
-		// keyspace hopeless within the ten-minute window a code lives for.
-		deviceLimiter = auth.NewRateLimiter(0.05, 5)
-		authorizer = api.NewSessionAuthorizerCurrent(mgr, deviceMgr, func(ctx context.Context) (string, error) {
-			return readGeneratedSecret(ctx, settings.SecretAPI)
-		})
-	}
-
-	// The playout device token (§11). A FUNC, not a captured value, so a REGENERATED token
-	// takes effect immediately — rotation is an operator action the UI offers, and a value read
-	// once at boot would keep authorizing the old token until restart.
-	//
-	// Nil when secrets are unavailable (no store), which makes the playout routes fail CLOSED:
-	// serving streams unauthenticated because a secret could not be minted would silently
-	// remove the only auth those routes have.
-	var playoutSecret func() string
-	var playoutSecretCurrent func(context.Context) (string, error)
-	if secrets != nil {
-		playoutSecret = func() string { return secrets.Value(settings.SecretPlayout) }
-		playoutSecretCurrent = func(ctx context.Context) (string, error) {
-			return readGeneratedSecret(ctx, settings.SecretPlayout)
-		}
-	}
-
-	// The settings API surface (config-design §8): wired when the store (hence the
-	// settings service) is up. Connection Test probes reuse the live adapters.
-	// The guide reader powers /v1/channels/now-next and …/{id}/upcoming.
-	//
-	// ⚠ ROUTED PER CHANNEL, by the backend that actually streams it (§9.1). Reading Tunarr's
-	// guide for a channel Loomarr plays internally is a real bug and was a shipped one: the
-	// channel keeps its `tunarr_id`, Tunarr keeps generating listings, and the card confidently
-	// reports a DIFFERENT programme than the grid and the XMLTV the television reads — measured
-	// ~30 minutes apart on the dev install. See nowNextRouter.
-	//
-	// The Tunarr half still reads LIVE config at the start of each operation, so saving a new
-	// Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
-	// comfortably longer than any single program, so "next" is always present.
-	var guideSvc api.GuideReader
-	if st != nil {
-		// Always construct the dynamic adapter, even when Tunarr is unconfigured at boot.
-		// Its config resolves per operation, so adding tunarr.url later hot-applies; while
-		// empty, reads fail softly through nowNextRouter's existing no-guide behaviour.
-		var tunarrGuide tunarrGuideReader = guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConfig()),
-			window: 2 * time.Hour,
-		}
-		// playoutRes is nil when internal playout is not wired; the router then has no reader
-		// for internal channels and gives them no entry — never a fallback to Tunarr's guide,
-		// which is precisely the defect this replaces.
-		var internalGuide broadcastReader
-		if playoutRes != nil {
-			internalGuide = playoutRes
-		}
-		guideSvc = nowNextRouter{
-			tunarr:   tunarrGuide,
-			internal: internalGuide,
-			channels: st,
-			// The same nil-means-inherit precedence playoutChannels uses (§15): a channel's own
-			// policy.playout.backend wins, else the durable applied global. A prepared target
-			// cannot leak into the next render before publication.
-			appliedBackend: appliedBackendContext,
-			window:         2 * time.Hour,
-		}
-	}
-
-	var settingsSvc api.SettingsService
-	if st != nil && secrets != nil {
-		settingsSvc = settingsAdapter{
-			svc: set.svc, secrets: secrets, store: st, log: log,
-			tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshSecretRedactor,
-			readSecret: readGeneratedSecret,
-		}
-	}
+	guideSvc := buildGuide(st, set, playoutRes, appliedBackendContext)
+	settingsSvc := buildSettings(
+		st, set, desiredSet, secrets, libraryClient, tmdbClient,
+		refreshSecretRedactor, readGeneratedSecret, log,
+	)
 
 	// liveConfig lets the always-constructed feature routes gate on the CURRENT
 	// config (config-design §3 hot-apply): a saved connection enables the route with
@@ -1015,40 +861,7 @@ func buildHandler(
 		libraryConfigured = set.libraryConfigured
 	}
 
-	// Build + start the job scheduler once every subsystem has registered its jobs (§18.1).
-	// Each job's CRON schedule resolves from its settings key (falling back to the job's
-	// default cron), so a changed schedule hot-applies on the next tick. The notifier emits a
-	// `job` SSE frame on each state change so the Tasks page updates live. Only with a store.
-	var jobsSvc api.JobService
-	if st != nil {
-		sched := scheduler.New(st, jobReg, func(key, def string) string {
-			if c := set.str(key); c != "" {
-				return c
-			}
-			return def
-		}, time.Now, log).WithNotifier(emitter)
-		// Seed the state rows the Tasks page reads, then hand execution to River (§14, §18.1).
-		sched.SeedRegistry(rootCtx)
-		if pool := store.PoolOf(st); pool != nil {
-			stop, err := sched.StartRiver(rootCtx, st, pool, log)
-			if err != nil {
-				// ⚠ A failure here is fatal to the FEATURE, not to the process: without the
-				// queue nothing runs on a schedule, and the Tasks page must say so rather
-				// than list jobs whose next-run time is fiction. Logged loudly; the page
-				// still renders the rows with their real (stale) state.
-				log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
-			} else {
-				owner.addStop(stop)
-				// ⚠ StartRiver already stops the client when rootCtx is cancelled; this waits
-				// for that to FINISH before Application.Shutdown lets the store close. River's shutdown issues
-				// queries, so a pool closed underneath it strands its goroutines — measured at
-				// 4 leaked per generation, which the §9.2 restart loop's goleak test caught.
-			}
-		} else {
-			log.Error("scheduler: store exposes no pool — no job will run on its schedule")
-		}
-		jobsSvc = jobsAdapter{s: sched}
-	}
+	jobsSvc := buildScheduler(rootCtx, st, set, jobReg, emitter, owner, log)
 
 	// Database migration stepper (§18, V11). Keep the status service on Postgres so the
 	// browser polling across an atomic cutover can observe the new backend. Mutations
