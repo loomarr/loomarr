@@ -13,6 +13,7 @@ const AiSettings = () => (
         group: "ai",
         title: "Lineup model",
         check: "llm",
+        checkLabel: "Check AI readiness",
         keys: ["llm.provider", "llm.url", "llm.api_key", "llm.keep_alive"],
       },
       {

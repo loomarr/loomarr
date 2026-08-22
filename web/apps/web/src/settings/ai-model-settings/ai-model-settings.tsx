@@ -6,6 +6,7 @@ import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
 
 // The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
@@ -69,6 +70,7 @@ const AiModelSettings = ({
   };
 
   const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: modelChanged } });
+  const testProvider = systemApi.useSystemLlmTest();
   const pull = systemApi.useSystemLlmPull();
 
   // The compatible-to-download list: the BE ranks popular HF models against this
@@ -111,9 +113,48 @@ const AiModelSettings = ({
   // Reacts to the LIVE provider, so it appears the instant the dropdown flips, before Save.
   if (isHosted) {
     const hosted = status.hosted ?? [];
+    const activeProvider =
+      hosted.find((candidate) => candidate.active) ??
+      hosted.find((candidate) => candidate.baseUrl === baseUrl) ??
+      hosted.find((candidate) => candidate.key === "openrouter");
+    const testResult = unwrap(testProvider.data);
+    const modelReady = Boolean(
+      status.model && activeProvider?.models?.some((model) => model.id === status.model && model.tools),
+    );
     return (
       <div className="flex flex-col gap-3">
         {select.error != null && <ErrorState error={select.error} />}
+        {activeProvider?.keyConfigured && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={testProvider.isPending}
+              onClick={() =>
+                testProvider.mutate({
+                  data: {
+                    provider: activeProvider.key,
+                    ...(activeProvider.key === "custom" ? { baseUrl: activeProvider.baseUrl } : {}),
+                  },
+                })
+              }
+            >
+              {testProvider.isPending ? "Testing credentials…" : "Test provider credentials"}
+            </Button>
+            {testResult?.ok && (
+              <p role="status" className="text-lock text-sm">
+                {activeProvider.label} credentials authorized.{" "}
+                {modelReady
+                  ? `${status.model} is ready for lineup suggestions.`
+                  : "Choose a tool-capable lineup model to finish AI setup."}
+              </p>
+            )}
+            {testResult && !testResult.ok && (
+              <p role="status" className="text-onair-300 text-sm">
+                {testResult.error ?? `${activeProvider.label} rejected these credentials.`}
+              </p>
+            )}
+          </div>
+        )}
         <HostedModelPicker
           providers={hosted}
           activeModel={status.model}
