@@ -10,6 +10,7 @@ cross-harness contract and points here for detail.
 | [Dev loop](dev-loop.md) | Running both halves with live reload |
 | [Testing](testing.md) | The test layers and which are gates |
 | [CI](ci.md) | The jobs, path filters, and what's required |
+| [Android TV beta](android-beta.md) | Play identity, signing, testing tracks, and Shield acceptance |
 | [Codegen](codegen.md) | What's generated and what's committed |
 | [Commands](commands.md) | Every `make` target — generated, don't hand-edit |
 | [AI in this project](ai.md) | Built with coding agents, and what that expects of a PR |

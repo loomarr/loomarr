@@ -44,12 +44,36 @@ roborazzi {
     outputDir.set(file("src/test/screenshots"))
 }
 
+val releaseVersionName = providers.environmentVariable("LOOMARR_ANDROID_VERSION_NAME").orElse("0.1.0-dev")
+val releaseVersionCode =
+    providers.environmentVariable("LOOMARR_ANDROID_VERSION_CODE").orElse("1").map { raw ->
+        raw.toIntOrNull()?.takeIf { it in 1 until 2_100_000_000 }
+            ?: error("LOOMARR_ANDROID_VERSION_CODE must be between 1 and 2099999999")
+    }
+val releaseStoreFile = providers.environmentVariable("LOOMARR_ANDROID_KEYSTORE_PATH")
+val releaseStorePassword = providers.environmentVariable("LOOMARR_ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("LOOMARR_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("LOOMARR_ANDROID_KEY_PASSWORD")
+val hasReleaseSigning =
+    listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { it.isPresent }
+
 android {
-    namespace = "tv.loomarr.tv"
+    namespace = "loomarr.media"
     compileSdk = 36
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
+    }
+
     defaultConfig {
-        applicationId = "tv.loomarr.tv"
+        applicationId = "loomarr.media"
         // Matching Jellyfin's Android TV client, which ships these levels and supports the Shield.
         //
         // ⚠ minSdk and targetSdk answer DIFFERENT questions, and conflating them is the usual
@@ -62,14 +86,20 @@ android {
         // all support it, and it widens the device range at no design cost.
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode.get()
+        versionName = releaseVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            // A local build must never overwrite or masquerade as the Play-signed application.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -220,4 +250,17 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+val verifyAndroidReleaseInputs =
+    tasks.register<Exec>("verifyAndroidReleaseInputs") {
+        group = "verification"
+        description = "Fail closed unless Android release identity and upload signing are configured"
+        commandLine("sh", rootProject.file("../scripts/check-android-release-env.sh"))
+    }
+
+tasks.configureEach {
+    if (name == "assembleRelease" || name == "bundleRelease") {
+        dependsOn(verifyAndroidReleaseInputs)
+    }
 }
