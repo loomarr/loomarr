@@ -314,7 +314,7 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
 	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
-	// ESTIMATED from the plan here (baseline→1, hevc→0) and corrected to the real cost on the first
+	// conservatively estimated as one here and corrected to the real cost on the first
 	// program report. Checked under the lock against the live committedCost so parallel starts cannot
 	// overshoot the budget.
 	newCost := key.plan.EstimatedCost()
@@ -837,10 +837,9 @@ func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, 
 	s.mu.Unlock()
 
 	// Correct the session's admission cost to REALITY (§9.1 V49). At attach we ESTIMATED cost from the
-	// plan (baseline→1, hevc→0); now the program has actually resolved its copy plan, so we know the
-	// truth: cost 1 iff it transcodes video. This is what makes a baseline session on an h264 channel
-	// (estimated 1) correctly free up its slot (→0) once it proves it only copies — and an hevc plan
-	// that somehow had to transcode (estimated 0) correctly claim one. Adjust committedCost by the
+	// plan (every plan reserves one); now the program has actually resolved its copy plan, so we know
+	// the truth: cost 1 iff it transcodes video. Any session correctly frees its slot once it proves
+	// it only copies. Adjust committedCost by the
 	// DELTA under m.mu, keyed to this live session so a report racing teardown cannot corrupt the sum.
 	realCost := 0
 	if transcoding {

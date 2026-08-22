@@ -84,8 +84,7 @@ func countingSpawner(t *testing.T) (Spawner, func() int) {
 }
 
 // testManager builds a Manager whose admission budget is a fixed number of concurrent TRANSCODES
-// (§9.1 V49). Tests that exercise the cap attach as PlanBaseline (EstimatedCost 1) so each session
-// counts; a PlanFull/hevc session copies (cost 0) and is always admitted.
+// (§9.1 V49). Every cold session reserves one slot until its first block reports the real cost.
 func testManager(t *testing.T, spawn Spawner, budget int, grace time.Duration) *Manager {
 	t.Helper()
 	m := NewManager(spawn, func() int { return budget }, grace, nil)
@@ -509,8 +508,7 @@ func TestAttachSink_PreservesWarmStartupBurst(t *testing.T) {
 // The admission bound (§9.1 V49 — COST-AWARE). viewra EVICTED an existing session to make room
 // (prior-art viewra §1); for playout that means one person tuning in kills someone else's channel.
 // We refuse the newcomer instead and keep faith with whoever is already watching. ⚠ The bound counts
-// concurrent TRANSCODES — so these channels attach as PlanBaseline (EstimatedCost 1) to consume the
-// budget; a copy session (PlanFull/hevc, cost 0) is a separate case tested below.
+// concurrent TRANSCODES. Cold sessions reserve conservatively and copy sessions release below.
 func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
 	m := testManager(t, spawn, 2, time.Minute) // budget = 2 concurrent transcodes
@@ -551,29 +549,24 @@ func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	}
 }
 
-// ⚠ A COPY session never consumes the transcode budget (§9.1 V49) — this is what fixes the
-// plan-doubling that halved capacity. Even at a budget of 1 already full of a transcode, an hevc
-// copy of another channel is admitted, because it costs ~no GPU.
+// A copy session releases its conservative cold reservation as soon as the first block proves copy.
+// This preserves cost-aware capacity without optimistically over-admitting an HEVC/full session
+// whose first source may still require format conformance.
 func TestAttach_CopySessionsDoNotConsumeBudget(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
 	m := testManager(t, spawn, 1, time.Minute) // budget = 1 transcode
 
-	// One baseline transcode fills the transcode budget.
-	if _, _, err := m.Attach(context.Background(), "ch1", PlanBaseline); err != nil {
+	// The HEVC session reserves one while cold, then proves its first block is video-copy.
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanHEVC8); err != nil {
 		t.Fatal(err)
 	}
-	// A SECOND baseline transcode is refused — budget is 1.
-	if _, _, err := m.Attach(context.Background(), "ch2", PlanBaseline); err != ErrAtCapacity {
-		t.Fatalf("second transcode err = %v, want ErrAtCapacity", err)
+	m.ReportProgram("ch1", PlanHEVC8, EncoderSoftwareHEVC, false, Progress{})
+	// Its released slot admits one real baseline transcode, while a third cold session is refused.
+	if _, _, err := m.Attach(context.Background(), "ch2", PlanBaseline); err != nil {
+		t.Errorf("copy session retained a transcode slot: %v", err)
 	}
-	// But an hevc COPY of another channel is admitted anyway — it costs 0.
-	if _, _, err := m.Attach(context.Background(), "ch3", PlanHEVC8); err != nil {
-		t.Errorf("an hevc copy was refused despite costing no transcode budget: %v", err)
-	}
-	// And a channel watched at BOTH plans: the baseline (ch1, above) counts, the hevc copy is free —
-	// so watching one channel two ways costs ONE slot, not two (the plan-double fix).
-	if _, _, err := m.Attach(context.Background(), "ch1", PlanHEVC8); err != nil {
-		t.Errorf("the hevc copy of an already-transcoding channel was refused: %v", err)
+	if _, _, err := m.Attach(context.Background(), "ch3", PlanFull); err != ErrAtCapacity {
+		t.Fatalf("third cold session err = %v, want ErrAtCapacity", err)
 	}
 }
 

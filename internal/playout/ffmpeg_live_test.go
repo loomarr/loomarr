@@ -340,7 +340,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 		format := MediaFormat{
 			VideoCodec: "h264", Width: src.width, Height: src.height,
 			FrameRate: 25, PixelFormat: "yuv420p",
-			AudioCodec: "aac", AudioChannels: 2,
+			AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
 		}
 		plan := ConformCopyPlan(format, PlanCopy(format, PlanBaseline), profile, "h264")
 		spec := ProgramSpec{
@@ -384,11 +384,11 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 		}
 	}
 	_ = proc.Stdin.Close()
-	if err := proc.Wait(); err != nil {
-		t.Fatalf("channel mux: %v\n%s", err, proc.LastError())
-	}
 	if err := <-copyDone; err != nil {
 		t.Fatal(err)
+	}
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("channel mux: %v\n%s", err, proc.LastError())
 	}
 	if err := joinedFile.Close(); err != nil {
 		t.Fatal(err)

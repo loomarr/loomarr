@@ -84,7 +84,7 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
-	for requests.Load() < 3 && ctx.Err() == nil {
+	for requests.Load() < 5 && ctx.Err() == nil {
 		<-ticker.C
 	}
 	cancel()
@@ -95,8 +95,8 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := requests.Load(); got < 3 {
-		t.Fatalf("program requests = %d, want at least three finite block advances", got)
+	if got := requests.Load(); got < 5 {
+		t.Fatalf("program requests = %d, want programme/commercial/card/return to finish", got)
 	}
 	if info, err := os.Stat(outPath); err != nil || info.Size() == 0 {
 		t.Fatalf("continuous mux produced no MPEG-TS: info=%v err=%v", info, err)
@@ -106,7 +106,10 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 func liveHTTPBlockSource(srv *httptest.Server) playout.BlockSource {
 	var broadcast string
 	return func(ctx context.Context, channel string, plan playout.EncodePlan) (playout.Block, error) {
-		query := url.Values{"token": {playoutToken}, "plan": {plan.String()}}
+		query := url.Values{
+			"token": []string{playoutToken},
+			"plan":  []string{plan.String()},
+		}
 		if broadcast != "" {
 			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)
 		}
@@ -148,11 +151,21 @@ type chainResolver struct {
 
 func (c *chainResolver) AiringNow(context.Context, string) (playout.Airing, string, error) {
 	n := c.requests.Add(1)
-	return playout.Airing{
+	airing := playout.Airing{
 		StartedAt: time.Unix(n, 0).UTC(), Identity: fmt.Sprintf("block-%d", n),
 		Kind: schedule.SlotProgram, LibraryItemID: "local", Title: "Short",
 		Remaining: 2 * time.Second,
-	}, c.src, nil
+	}
+	switch n % 4 {
+	case 2:
+		airing.Kind, airing.LibraryItemID = schedule.SlotFiller, ""
+		airing.Source, airing.Title = c.src, "Commercial"
+	case 3:
+		airing.Kind, airing.LibraryItemID = schedule.SlotFiller, ""
+		airing.Title = "Filler card"
+		return airing, "", nil
+	}
+	return airing, c.src, nil
 }
 
 func (c *chainResolver) Profile(context.Context) playout.Profile           { return c.profile }

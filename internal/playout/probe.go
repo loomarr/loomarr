@@ -29,6 +29,7 @@ type probedStream struct {
 	PixFmt        string `json:"pix_fmt"`        // "yuv420p10le" → 10-bit signal
 	ColorTransfer string `json:"color_transfer"` // "smpte2084"/"arib-std-b67" → HDR
 	Channels      int    `json:"channels"`       // audio channel count (2, 6, …)
+	SampleRate    string `json:"sample_rate"`    // audio Hz, emitted as a JSON string
 	Tags          struct {
 		Language string `json:"language"`
 		Title    string `json:"title"`
@@ -58,7 +59,7 @@ func runFFprobe(ctx context.Context, bin, input string) (probed, error) {
 	cmd := exec.CommandContext(ctx, bin,
 		"-v", "error",
 		"-show_entries",
-		"stream=codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,color_transfer,channels"+
+		"stream=codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,color_transfer,channels,sample_rate"+
 			":stream_tags=language,title"+
 			":format=format_name,duration,bit_rate",
 		"-of", "json",
@@ -193,6 +194,7 @@ func formatOf(p probed) MediaFormat {
 			if f.AudioCodec == "" {
 				f.AudioCodec = strings.ToLower(s.CodecName)
 				f.AudioChannels = s.Channels
+				f.AudioSampleRate = int(parseInt(s.SampleRate))
 			}
 		}
 	}

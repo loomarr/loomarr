@@ -38,8 +38,9 @@ type MediaFormat struct {
 	ColorTransfer string  // e.g. "smpte2084" (HDR10/PQ), "arib-std-b67" (HLG); "" for SDR
 
 	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
-	AudioCodec    string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
-	AudioChannels int    // 2 = stereo, 6 = 5.1, …; 0 when unknown
+	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
+	AudioChannels   int    // 2 = stereo, 6 = 5.1, …; 0 when unknown
+	AudioSampleRate int    // Hz; the live copy format is fixed at 48000
 
 	// Container + overall.
 	Container string  // format_name, e.g. "matroska,webm", "mov,mp4,…"; "" when unknown
@@ -268,17 +269,12 @@ func (p EncodePlan) WantsHEVCOutput() bool {
 // It is the conservative guess used at session start, corrected to the real cost once the first
 // program reports whether it actually transcoded (see Manager.ReportProgram):
 //
-//   - PlanBaseline MIGHT transcode (an HEVC/incompatible channel to an h264-only client) → cost 1.
-//   - The HEVC/full plans COPY the video (that is their whole point) → cost 0.
-//
-// Over-counting baseline on an h264 channel (guessing 1 when it will copy) is SAFE — it never
-// over-admits — and self-corrects to 0 on the first program report. The video transcode is the only
-// thing that consumes the GPU budget; audio transcode (a cheap AAC encode) is not counted.
+// Every plan may transcode: codec support alone no longer grants copy when geometry, cadence, pixel
+// format, audio shape, or another decoder property is unknown/mismatched. Reserving one slot is the
+// only fail-closed estimate; the first program report immediately releases it when copy is proven.
+// Video transcode is the only thing that consumes the GPU budget; audio transcode is not counted.
 func (p EncodePlan) EstimatedCost() int {
-	if p == PlanBaseline {
-		return 1
-	}
-	return 0
+	return 1
 }
 
 // CopyPlan is the per-stream copy/transcode decision for one source against one EncodePlan. It maps
@@ -426,7 +422,7 @@ func (f BroadcastFormat) Apply(profile Profile) Profile {
 func ConformCopyPlan(f MediaFormat, allowed CopyPlan, profile Profile, videoCodec string) CopyPlan {
 	copyVideo := allowed.CopyVideo && sameBroadcastVideo(f, profile, videoCodec)
 	copyAudio := allowed.CopyAudio && strings.EqualFold(strings.TrimSpace(f.AudioCodec), "aac") &&
-		f.AudioChannels == 2
+		f.AudioChannels == 2 && f.AudioSampleRate == 48000
 	return CopyPlan{CopyVideo: copyVideo, CopyAudio: copyAudio}
 }
 

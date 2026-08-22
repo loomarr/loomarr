@@ -51,7 +51,7 @@ func TestConformCopyPlanRequiresTheSessionFormat(t *testing.T) {
 	profile := Profile{Width: 1280, Height: 720, Framerate: 25}
 	matching := MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
-		AudioCodec: "aac", AudioChannels: 2,
+		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
 	}
 	allowed := CopyPlan{CopyVideo: true, CopyAudio: true}
 
@@ -73,6 +73,7 @@ func TestConformCopyPlanRequiresTheSessionFormat(t *testing.T) {
 		{"HDR", func(f *MediaFormat) { f.ColorTransfer = "smpte2084" }, false, true},
 		{"different audio codec", func(f *MediaFormat) { f.AudioCodec = "eac3" }, true, false},
 		{"different audio layout", func(f *MediaFormat) { f.AudioChannels = 6 }, true, false},
+		{"different audio sample rate", func(f *MediaFormat) { f.AudioSampleRate = 44100 }, true, false},
 		{"unknown geometry", func(f *MediaFormat) { f.Width = 0 }, false, true},
 	}
 	for _, tc := range cases {
@@ -202,6 +203,14 @@ func TestEncodePlan_ParseStringRoundTrip(t *testing.T) {
 	for _, s := range []string{"", "browser", "mediaserver", "BASELINE", "tv", "hevc"} {
 		if got := ParseEncodePlan(s); got != PlanBaseline {
 			t.Errorf("ParseEncodePlan(%q) = %v, must default to PlanBaseline", s, got)
+		}
+	}
+}
+
+func TestEncodePlanEstimatedCostNeverOptimisticallyOverAdmits(t *testing.T) {
+	for _, plan := range []EncodePlan{PlanBaseline, PlanHEVC8, PlanHEVC10, PlanFull} {
+		if got := plan.EstimatedCost(); got != 1 {
+			t.Errorf("%s estimated cost = %d, want one until the first block proves copy", plan, got)
 		}
 	}
 }

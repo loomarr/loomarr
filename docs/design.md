@@ -1966,17 +1966,18 @@ neither axis replaces the other.
 ### Admission is cost-aware, against measured capacity (V49)
 
 The admission gate bounds *what saturates the box*, which is the **video transcode**, not the number
-of sessions. A `-c copy` session — an h264 channel at any plan, or an HEVC channel to an HEVC-capable
-client — costs ≈0 GPU and is **always admitted**; only a session that *re-encodes video* counts. This
+of sessions. A proven `-c copy` session — an h264 channel at any plan, or an HEVC channel to an
+HEVC-capable client — costs ≈0 GPU; only a session that *re-encodes video* remains counted. This
 is what stops the plan-split from halving capacity: a channel watched at `baseline` + `hevc8` costs
 **one** (the baseline transcode), not two, because the hevc8 copy is free. (`playout.Admit` /
 `CopyPlan.Cost` / `EncodePlan.EstimatedCost`.)
 
-The cost is not known at attach — the program's codec is probed later, per program child — so a new
-session's cost is **estimated from its plan** (`baseline`→1, the HEVC/full plans→0) and **corrected to
-the truth** on the first program report (`ReportProgram(..., transcoding)` adjusts the committed sum by
-the delta). Over-estimating baseline on an h264 channel is safe — it never over-admits — and
-self-corrects to 0 within one program.
+The cost is not known at attach — the source is probed later, per program child, and even a supported
+codec may require conformance for geometry or decoder state. Every cold session therefore reserves
+one transcode slot and is **corrected to the truth** on the first program report
+(`ReportProgram(..., transcoding)` adjusts the committed sum by the delta). A proven copy releases
+the reservation immediately. The conservative cold estimate may briefly refuse a new copy session;
+it never over-admits work the measured encoder cannot sustain.
 
 The budget is **not a static magic number**. It is `playout.Manager`'s injected `budget func() int`,
 re-read on every admission, composed from three live sources:
