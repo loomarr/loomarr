@@ -8,6 +8,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 func boxSetGeneration(t *testing.T, connection library.Connection) library.ConnectionGeneration {
@@ -71,5 +72,23 @@ func TestLibraryBoxSetsValidatesConnectionBeforeCacheHit(t *testing.T) {
 		if _, err := cache.ensureIndex(context.Background()); !errors.Is(err, library.ErrConnectionRequired) {
 			t.Fatalf("ensureIndex error = %v, want ErrConnectionRequired", err)
 		}
+	}
+}
+
+func TestEpisodeResolverCarriesProductionYearToScheduler(t *testing.T) {
+	mediaServer := testkit.NewMediaServer(t)
+	t.Cleanup(mediaServer.Close)
+	mediaServer.SetEpisodeItems(testkit.EpisodeStub{
+		LibraryItemID: "episode-1", Name: "Homer at the Bat", RunTimeMs: 1_320_000,
+		Season: 3, Episode: 17, ProductionYear: 1992, OfficialRating: "TV-PG",
+	})
+	lib := library.New(library.Emby, mediaServer.URL, mediaServer.AdminToken, "test-device")
+
+	episodes, err := episodeResolver(lib)(context.Background(), "the-simpsons")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 || episodes[0].Year != 1992 {
+		t.Fatalf("resolved episodes = %+v, want one episode carrying year 1992", episodes)
 	}
 }

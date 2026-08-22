@@ -615,6 +615,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			playout.DefaultGrace,
 			log,
 		)
+		// A committed internal Desired-cycle change must retire the encoder reading the
+		// previous cycle. The next tune starts from the new wall-clock position; peer
+		// Postgres replicas receive the same cutover through durable invalidations.
+		channelEngine.WithScheduleInvalidator(playoutMgr)
 		playoutRes = &playoutResolver{
 			engine: channelEngine, lib: lib, now: time.Now,
 			detectContext: rootCtx,

@@ -24,6 +24,10 @@ type Episode struct {
 	// double-episode). 0 when unset (a normal single episode). Used with the title-
 	// suffix heuristic to keep two-parters together (§5 multi-part adjacency floor).
 	EpisodeEnd int
+	// ProductionYear is this episode's own first-air year. Series-level era scope is
+	// re-applied to expanded episodes, because a show that began in 1989 can still
+	// contain episodes from 2026. Zero means the library did not supply a year.
+	ProductionYear int
 	// OfficialRating is THIS EPISODE's content rating, which is not always the show's
 	// (§4 audience ceiling). "" when the media server has none for the episode.
 	//
@@ -47,6 +51,7 @@ type episodeItem struct {
 	// Absent on most episodes even when the SHOW is rated — hence a plain string with ""
 	// meaning "the server has none", not "unrated content".
 	OfficialRating string `json:"OfficialRating"`
+	ProductionYear int    `json:"ProductionYear"`
 }
 
 type episodesResponse struct {
@@ -56,7 +61,8 @@ type episodesResponse struct {
 // ListEpisodes enumerates a series' episodes (§9):
 //
 //	GET /Items?ParentId=<showItemID>&Recursive=true&IncludeItemTypes=Episode
-//	           &Fields=RunTimeTicks&SortBy=ParentIndexNumber,IndexNumber
+//	           &Fields=RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear
+//	           &SortBy=ParentIndexNumber,IndexNumber
 //
 // Returned in season/episode order. Duration comes from RunTimeTicks (the core
 // never probes media). Episodes with no positive runtime are dropped — a program
@@ -71,7 +77,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", "Episode")
-	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating")
+	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear")
 	q.Set("SortBy", "ParentIndexNumber,IndexNumber")
 	q.Set("SortOrder", "Ascending")
 
@@ -91,7 +97,13 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 		if dur <= 0 {
 			continue // unplayable as a program slot (Tunarr requires duration > 0)
 		}
-		e := Episode{LibraryItemID: it.ID, Name: it.Name, DurationMs: dur, OfficialRating: it.OfficialRating}
+		e := Episode{
+			LibraryItemID:  it.ID,
+			Name:           it.Name,
+			DurationMs:     dur,
+			ProductionYear: it.ProductionYear,
+			OfficialRating: it.OfficialRating,
+		}
 		if it.SeasonNumber != nil {
 			e.Season = *it.SeasonNumber
 		}

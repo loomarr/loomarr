@@ -331,6 +331,15 @@ func (e *Engine) reconcileOnce(
 		return fmt.Errorf("persist channel %s: %w", channelID, err)
 	}
 	ch = committed
+	// A shared encoder is reading the previously accepted cycle until it is retired.
+	// Guide freshness alone cannot switch its current ffconcat session: live proof was a
+	// newly constrained Simpsons guide advertising S10 while the Shield reattached to a
+	// nine-minute-stale pre-edit stream. Stop only after the replacement Desired cycle is
+	// durable, and only when it actually changed; the next request starts at the correct
+	// wall-clock offset. Postgres lifecycle invalidations repeat this on peer replicas.
+	if playsInternally && desiredChangedLocally && e.scheduleInvalidator != nil {
+		e.scheduleInvalidator.StopChannel(ch.ID)
+	}
 
 	// Tell the UI the channel changed so it updates live (no manual refresh — the
 	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a

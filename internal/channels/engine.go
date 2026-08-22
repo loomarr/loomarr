@@ -93,6 +93,10 @@ type Engine struct {
 	// (unit tests, no-events path). A local interface so this package needn't import
 	// internal/events — same accept-interfaces style as GuidePoker/RatingResolver.
 	notify ChannelNotifier
+	// scheduleInvalidator cuts over process-local internal playout after a newly
+	// committed Desired cycle differs from the one an active encoder may be using.
+	// Optional: nil when internal playout is not wired.
+	scheduleInvalidator ScheduleInvalidator
 	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
 	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
 	acts ActivityRecorder
@@ -247,6 +251,19 @@ func (e *Engine) WithPods(p PodFiller) *Engine {
 // status after the reconcile, so a subscriber can update without a refetch if it wants.
 type ChannelNotifier interface {
 	ChannelChanged(channelID, status string)
+}
+
+// ScheduleInvalidator retires an internal-playout session whose durable cycle
+// changed. The next viewer request starts a session from the committed cycle.
+type ScheduleInvalidator interface {
+	StopChannel(channelID string)
+}
+
+// WithScheduleInvalidator wires internal playout's process-local session manager.
+// Postgres durable invalidations perform the same cutover on peer replicas.
+func (e *Engine) WithScheduleInvalidator(invalidator ScheduleInvalidator) *Engine {
+	e.scheduleInvalidator = invalidator
+	return e
 }
 
 // WithNotifier wires the `channel` SSE emitter so a reconcile that changes a channel

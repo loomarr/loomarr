@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,6 +66,8 @@ type postgresPlayoutLifecycle struct {
 		func(context.Context) error,
 		func(context.Context, store.Invalidation) error,
 	) error
+	schedulesMu sync.Mutex
+	schedules   map[string]string
 }
 
 func (l *postgresPlayoutLifecycle) Start(ctx context.Context) error {
@@ -149,6 +152,7 @@ func (l *postgresPlayoutLifecycle) reconcileAll(ctx context.Context) error {
 		return fmt.Errorf("list channels: %w", err)
 	}
 	for _, channel := range channels {
+		l.rememberSchedule(channel.ID, store.ChannelScheduleVersion(channel))
 		if !schedule.InternalTransportPlayable(
 			channel.Status, channel.Policy, snapshot.PublishedInternal,
 		) {
@@ -164,6 +168,7 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 		if event.ChannelID == "" {
 			return fmt.Errorf("channel invalidation has no channel id")
 		}
+		scheduleChanged := l.rememberSchedule(event.ChannelID, event.ScheduleVersion)
 		// Payload state preserves an off-air transition even if a later resume is already
 		// durable by the time this notification is handled.
 		if !event.Status.Reconcilable() || event.Status == schedule.StatusEmpty ||
@@ -172,13 +177,16 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 			return nil
 		}
 		if event.Backend == schedule.PlayoutBackendInternal {
+			if scheduleChanged {
+				l.origin.StopChannel(event.ChannelID)
+			}
 			return nil
 		}
 		snapshot, err := l.checkpoint.Snapshot(ctx)
 		if err != nil {
 			return fmt.Errorf("read backend checkpoint for channel %s: %w", event.ChannelID, err)
 		}
-		if !snapshot.PublishedInternal {
+		if !snapshot.PublishedInternal || scheduleChanged {
 			l.origin.StopChannel(event.ChannelID)
 		}
 		return nil
@@ -209,4 +217,21 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 	default:
 		return fmt.Errorf("unknown durable invalidation kind %q", event.Kind)
 	}
+}
+
+// rememberSchedule records the latest committed cycle fingerprint and reports a
+// change only when an earlier version is known. Initial catch-up primes the map;
+// an empty version from an older sender is not evidence of a changed cycle.
+func (l *postgresPlayoutLifecycle) rememberSchedule(channelID, version string) bool {
+	if channelID == "" || version == "" {
+		return false
+	}
+	l.schedulesMu.Lock()
+	defer l.schedulesMu.Unlock()
+	if l.schedules == nil {
+		l.schedules = make(map[string]string)
+	}
+	previous, known := l.schedules[channelID]
+	l.schedules[channelID] = version
+	return known && previous != version
 }

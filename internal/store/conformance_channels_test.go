@@ -409,7 +409,7 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 
 	fetched := time.Now().Truncate(time.Second)
 	eps := []schedule.ResolvedProgram{
-		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1},
+		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993},
 		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
 	}
 	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-a", Episodes: eps, FetchedAt: fetched}); err != nil {
@@ -422,6 +422,9 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(got.Episodes) != 2 || got.Episodes[0].LibraryItemID != "ep-1" {
 		t.Fatalf("round-trip lost episodes: %+v", got.Episodes)
+	}
+	if got.Episodes[0].Year != 1993 {
+		t.Fatalf("Year = %d, want 1993 (episode era must survive the cache blob)", got.Episodes[0].Year)
 	}
 	// EpisodeEnd is the multi-part span (§5) — a field a naive round-trip silently drops.
 	if got.Episodes[1].EpisodeEnd != 3 {
