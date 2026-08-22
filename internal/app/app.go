@@ -133,11 +133,6 @@ type Overrides struct {
 //	playout device token     §11 rotation-safe (a func, never a captured value)
 //	scheduler start          §18.1 — after every subsystem has registered its jobs
 //	api.Options              the single assembly point
-//
-// lastPlayoutResolver records the resolver the most recent BuildHandler constructed, for
-// the package's own tests. Never read by production code — see the note at its assignment.
-var lastPlayoutResolver *playoutResolver
-
 const replicaSettingsRefreshInterval = 30 * time.Second
 
 // internalPlayoutNeedsPublicURL reports whether the boot path should warn that internal
@@ -166,7 +161,38 @@ func startReplicaSettingsRefresh(
 	return true
 }
 
+func trackReplicaSettingsRefresh(
+	owner *generationLifecycle,
+	dialect store.Dialect,
+	svc *settings.Service,
+	interval time.Duration,
+	after func(),
+) bool {
+	if dialect != store.DialectPostgres || svc == nil {
+		return false
+	}
+	owner.goRun(func(ctx context.Context) { svc.RefreshEvery(ctx, interval, after) })
+	return true
+}
+
+// BuildHandler is the compatibility entry point for callers that still tie background work to
+// the parent context. New process and integration owners use Build and explicitly call Shutdown.
 func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov Overrides) (http.Handler, error) {
+	application, err := Build(rootCtx, st, log, ov)
+	if err != nil {
+		return nil, err
+	}
+	return application.Handler(), nil
+}
+
+func buildHandler(
+	rootCtx context.Context,
+	st store.Store,
+	log *slog.Logger,
+	ov Overrides,
+	owner *generationLifecycle,
+	capturePlayoutResolver func(*playoutResolver),
+) (http.Handler, error) {
 	// Readiness is true only once the store is connected + migrated (§17).
 	ready := func() (bool, string) {
 		if st == nil {
@@ -709,10 +735,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				"err", herr)
 		} else {
 			liveHLS = hlsMgr
-			go func() {
-				<-rootCtx.Done()
+			owner.addStop(func(context.Context) error {
 				hlsMgr.Stop()
-			}()
+				return nil
+			})
 		}
 		playoutResolverSvc = playoutRes
 
@@ -727,23 +753,23 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// writes the measured majority every time — so it needs no "already backfilled" marker
 		// and re-running on a later boot is harmless bounded work.
 		if st != nil {
-			go func() {
-				chans, lerr := st.ListChannels(rootCtx)
+			owner.goRun(func(ctx context.Context) {
+				chans, lerr := st.ListChannels(ctx)
 				if lerr != nil {
 					log.Warn("playout: broadcast-codec backfill skipped (channel list failed)", "err", lerr)
 					return
 				}
 				for _, ch := range chans {
-					if rootCtx.Err() != nil {
+					if ctx.Err() != nil {
 						return // shutting down mid-backfill
 					}
-					if _, cerr := playoutRes.ComputeChannelCodec(rootCtx, ch.ID); cerr != nil {
+					if _, cerr := playoutRes.ComputeChannelCodec(ctx, ch.ID); cerr != nil {
 						log.Debug("playout: broadcast-codec backfill for a channel failed",
 							"channel", ch.ID, "err", cerr)
 					}
 				}
 				log.Info("playout: broadcast-codec backfill complete", "channels", len(chans))
-			}()
+			})
 		}
 
 		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
@@ -868,26 +894,23 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			lifecycle := &postgresPlayoutLifecycle{
 				store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
 			}
-			if err := lifecycle.Start(rootCtx); err != nil {
+			if err := lifecycle.StartTracked(rootCtx, owner); err != nil {
 				return nil, fmt.Errorf("start postgres playout lifecycle: %w", err)
 			}
 		}
-		// ⚠ A test-only observation point, unexported and write-only from here.
-		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
 		// Profile, so leaving one unset is a panic when a viewer tunes in. `Profile` is
-		// invoked by the spawner rather than over HTTP, so no route reaches it and no
-		// end-to-end test can observe the wiring. This lets the package's own test assert
-		// that BuildHandler wired them — the assertion that was missing when the old
-		// back-patch could be deleted with every test still green.
-		lastPlayoutResolver = playoutRes
+		// invoked by the spawner rather than over HTTP. Build captures the concrete resolver
+		// on the returned generation, which lets package tests assert the real wiring without
+		// mutable package state crossing concurrent builds.
+		capturePlayoutResolver(playoutRes)
 		playoutGuideSvc = playoutRes
 		// A live encoder never exits on its own (playout/process.go), so shutdown MUST tear
 		// them down explicitly or they outlive the process that started them.
-		go func() {
-			<-rootCtx.Done()
+		owner.addStop(func(context.Context) error {
 			playoutMgr.Stop()
-		}()
+			return nil
+		})
 		log.Info("internal playout registered",
 			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
 
@@ -1079,7 +1102,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
-		go svc.Run(rootCtx)
+		owner.goRun(func(ctx context.Context) { svc.Run(ctx) })
 		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb_configured", set.str("tmdb.api_key") != "")
 	}
 
@@ -1435,6 +1458,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				// still renders the rows with their real (stale) state.
 				log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
 			} else {
+				owner.addStop(stop)
 				// ⚠ BuildHandler returns only a handler — there is no teardown seam to hang a
 				// Stop on — so River is stopped when rootCtx ends. This matters for the §9.2
 				// restart loop, which rebuilds the app IN-PROCESS: without an explicit stop,
@@ -1446,10 +1470,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				// queries, so a pool closed underneath it strands its goroutines — measured at
 				// 4 leaked per generation, which the §9.2 restart loop's goleak test caught.
 				//
-				// Hung off the store's own teardown rather than returned from BuildHandler:
-				// the ordering constraint is precisely "not before the pool closes", so the
-				// wait belongs with the thing being protected, and every caller
-				// (main, tests, the integration harness) gets it without changing signature.
+				// Compatibility callers still use BuildHandler and therefore cannot invoke the
+				// Application stop above. Keep the store hook until those callers migrate; both
+				// stops only wait on River's one idempotent completion channel.
 				store.OnClose(st, func() {
 					waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 					defer cancel()
@@ -1634,7 +1657,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// through this process's writes and needs no polling reads. Postgres permits
 	// ordinary replicas; one cancellable refresher per application generation keeps
 	// their complete runtime snapshot within the documented ~30-second bound.
-	startReplicaSettingsRefresh(rootCtx, store.DialectOf(st), set.svc,
+	trackReplicaSettingsRefresh(owner, store.DialectOf(st), set.svc,
 		replicaSettingsRefreshInterval, refreshSecretRedactor)
 	return handler, nil
 }

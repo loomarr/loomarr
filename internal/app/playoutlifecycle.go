@@ -71,11 +71,21 @@ type postgresPlayoutLifecycle struct {
 }
 
 func (l *postgresPlayoutLifecycle) Start(ctx context.Context) error {
+	return l.start(ctx, func(run func()) { go run() })
+}
+
+func (l *postgresPlayoutLifecycle) StartTracked(ctx context.Context, owner *generationLifecycle) error {
+	return l.start(ctx, func(run func()) {
+		owner.goRun(func(context.Context) { run() })
+	})
+}
+
+func (l *postgresPlayoutLifecycle) start(ctx context.Context, launch func(func())) error {
 	if l == nil || l.store == nil || l.checkpoint == nil || l.origin == nil || l.gate == nil {
 		return fmt.Errorf("postgres playout lifecycle is incomplete")
 	}
 	first := make(chan error, 1)
-	go l.run(ctx, first)
+	launch(func() { l.run(ctx, first) })
 	select {
 	case err := <-first:
 		return err

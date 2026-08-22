@@ -3,15 +3,36 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // Application is one fully wired Loomarr generation. The process owns the listener, signals,
 // and store; Application owns the handler and every generation-scoped worker built behind it.
 type Application struct {
-	handler   http.Handler
-	lifecycle *generationLifecycle
+	handler         http.Handler
+	lifecycle       *generationLifecycle
+	playoutResolver *playoutResolver
+}
+
+// Build constructs one application generation. If composition fails after starting any owned
+// work, Build unwinds that partial generation before returning the construction error.
+func Build(parent context.Context, st store.Store, log *slog.Logger, ov Overrides) (*Application, error) {
+	lifecycle := newGenerationLifecycle(parent)
+	var resolver *playoutResolver
+	handler, err := buildHandler(lifecycle.ctx, st, log, ov, lifecycle, func(built *playoutResolver) {
+		resolver = built
+	})
+	if err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return nil, errors.Join(err, lifecycle.shutdown(shutdownCtx))
+	}
+	return &Application{handler: handler, lifecycle: lifecycle, playoutResolver: resolver}, nil
 }
 
 // Handler returns the generation's immutable HTTP entry point.

@@ -22,7 +22,6 @@ func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel,
 }
 
 func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
-	lastPlayoutResolver = nil
 	t.Setenv("API_TOKEN", "capacity-test-token")
 
 	st := testkit.MigratedSQLiteStore(t)
@@ -38,11 +37,13 @@ func TestBuildHandler_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	h, err := BuildHandler(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := lastPlayoutResolver
+	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
+	h := application.Handler()
+	r := application.playoutResolver
 	if r == nil {
 		t.Fatal("BuildHandler wired no playout resolver")
 	}
@@ -152,8 +153,6 @@ func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 // Reads the resolver BuildHandler really constructed rather than one assembled here, since
 // a test-built resolver only proves the test knows how to fill a struct.
 func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
-	lastPlayoutResolver = nil
-
 	st := testkit.MigratedSQLiteStore(t)
 	// Playout is only wired on the internal backend; without this the resolver is nil and
 	// the test would pass vacuously.
@@ -161,10 +160,12 @@ func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{}); err != nil {
+	application, err := Build(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	r := lastPlayoutResolver
+	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
+	r := application.playoutResolver
 	if r == nil {
 		t.Fatal("BuildHandler wired no playout resolver on the internal backend — " +
 			"this test can no longer see what it is meant to guard")

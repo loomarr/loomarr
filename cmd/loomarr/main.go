@@ -168,7 +168,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
-	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{
+	application, err := app.Build(rootCtx, st, log, app.Overrides{
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
 		Restart:                lifecycle.RequestRestart,
@@ -188,7 +188,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// `inShutdown` and never clears it, so a reused one would refuse to serve (§9.2).
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           handler,
+		Handler:           application.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -249,7 +249,9 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
 	// contexts are independent, so the accepted migration response can still finish.
 	cancelRoot()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	drainErr := srv.Shutdown(shutdownCtx)
+	applicationErr := application.Shutdown(shutdownCtx)
+	if err := errors.Join(drainErr, applicationErr); err != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up
 		// because a client held a connection open is the outage this feature prevents.
