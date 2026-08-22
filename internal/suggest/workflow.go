@@ -26,9 +26,16 @@ type WorkflowProposal struct {
 	CreatedAt time.Time
 }
 
+type WorkflowSubmission struct {
+	JobID          string
+	CachedProposal *WorkflowProposal
+}
+
 // DurableWorkflow is the worker-facing deep-module seam. The suggest package
 // owns model/catalog activities; it does not own lifecycle transitions.
 type DurableWorkflow interface {
+	Submit(context.Context, Intent, string, time.Time) (WorkflowSubmission, error)
+	Requeue(context.Context, string, Intent, string) error
 	Claim(context.Context, time.Time, time.Duration, int) ([]WorkflowWork, error)
 	Complete(context.Context, WorkflowWork, Proposal) (WorkflowProposal, error)
 	Fail(context.Context, WorkflowWork, string, string) error

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +13,57 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
+
+func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "submit.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
+	var next atomic.Int64
+	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+	intent := suggest.Intent{Description: "Saturday morning cartoons"}
+	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
+	if err != nil || first.JobID == "" || first.CachedProposal != nil {
+		t.Fatalf("first Submit = %+v, %v", first, err)
+	}
+	work, err := workflow.Claim(ctx, now, time.Minute, 1)
+	if err != nil || len(work) != 1 {
+		t.Fatalf("Claim = %+v, %v", work, err)
+	}
+	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
+	}}}
+	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := workflow.Submit(ctx, intent, "bob", now.Add(-time.Hour))
+	if err != nil || second.JobID == first.JobID || second.CachedProposal == nil {
+		t.Fatalf("cached Submit = %+v, %v", second, err)
+	}
+	journey, err := workflow.Inspect(ctx, Viewer{UserID: "bob"}, second.JobID)
+	if err != nil || journey.Milestone != MilestoneAwaitingApproval || journey.Proposal == nil {
+		t.Fatalf("bob cached Journey = %+v, %v", journey, err)
+	}
+	if _, err := workflow.Inspect(ctx, Viewer{UserID: "alice"}, second.JobID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("cross-owner cached Journey = %v, want ErrForbidden", err)
+	}
+
+	refined := intent
+	refined.RefineText = "more action"
+	if err := workflow.Requeue(ctx, second.JobID, refined, jobKindSuggest); err != nil {
+		t.Fatal(err)
+	}
+	requeued, err := workflow.Inspect(ctx, Viewer{UserID: "bob"}, second.JobID)
+	if err != nil || requeued.Milestone != MilestoneGenerating || requeued.Intent.RefineText != "more action" || requeued.Proposal != nil {
+		t.Fatalf("requeued Journey = %+v, %v", requeued, err)
+	}
+}
 
 func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	t.Parallel()

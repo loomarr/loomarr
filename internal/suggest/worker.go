@@ -156,6 +156,25 @@ func NewService(st ProposalStore, sug *Suggester, cfg Config, newID func() strin
 // cache hit copies only proposal content into a fresh job/proposal lifecycle; it
 // never reuses another request's id, owner, or approval state. Returns the job id.
 func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (string, error) {
+	if s.workflow != nil {
+		submission, err := s.workflow.Submit(ctx, intent, createdBy, s.now().Add(-s.cacheTTL))
+		if err != nil {
+			return "", err
+		}
+		if submission.CachedProposal != nil {
+			blob, marshalErr := json.Marshal(submission.CachedProposal.Proposal)
+			if marshalErr == nil {
+				s.considerAutomaticApproval(ctx, store.Job{
+					ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
+				}, store.Proposal{
+					ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
+					CreatedBy: createdBy, ProposalJSON: string(blob),
+					CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
+				})
+			}
+		}
+		return submission.JobID, nil
+	}
 	hash := IntentHash(intent)
 	blob, err := json.Marshal(intent)
 	if err != nil {
@@ -209,6 +228,12 @@ func (s *Service) Recurate(ctx context.Context, jobID string, intent Intent) (st
 }
 
 func (s *Service) requeue(ctx context.Context, jobID string, intent Intent, kind, operation string) (string, error) {
+	if s.workflow != nil {
+		if err := s.workflow.Requeue(ctx, jobID, intent, kind); err != nil {
+			return "", fmt.Errorf("%s: %w", operation, err)
+		}
+		return jobID, nil
+	}
 	job, err := s.store.GetJob(ctx, jobID)
 	if err != nil {
 		return "", fmt.Errorf("%s: load job %q: %w", operation, jobID, err)
