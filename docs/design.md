@@ -4846,7 +4846,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **42 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **43 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -4856,6 +4856,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 
 | Package | Job |
 | --- | --- |
+| `proposalworkflow` | Owns durable Proposal Job commands, Attempt recovery, authorization, and authoritative First-channel Journeys (§8) |
 | `suggest` | Turns an intent into a grounded proposal (§8) |
 | `catalog` | The federated search boundary the suggester is grounded against (§7.2, §8) |
 | `binder` | Materialises an APPROVED proposal onto a channel — the one path (§7) |
