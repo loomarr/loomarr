@@ -60,8 +60,9 @@ type Server struct {
 	tunarrConnect TunarrConnector
 	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
-	suggest SuggestService
-	search  SearchService
+	suggest          SuggestService
+	proposalWorkflow ProposalWorkflow
+	search           SearchService
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
 	// nil-semantics every other optional service here uses.
 	collections CollectionService
@@ -778,19 +779,20 @@ type Options struct {
 	Devices *auth.DeviceManager
 	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
 	// acceptable only in tests. Production wires it at composition beside Devices.
-	DeviceLimiter  *auth.RateLimiter
-	CookieSecure   string            // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy     bool              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
-	DevLogin       bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof          bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	Channels       ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV         LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunerRescanner TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
-	TunarrConnect  TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest        SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	Search         SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
-	Collections    CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
-	Icons          IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	DeviceLimiter    *auth.RateLimiter
+	CookieSecure     string            // COOKIE_SECURE: auto|true|false (§11)
+	TrustProxy       bool              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	DevLogin         bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof            bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	Channels         ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV           LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner   TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect    TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest          SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	ProposalWorkflow ProposalWorkflow  // authoritative /v1/proposal-jobs Journey reads
+	Search           SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
+	Collections      CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
+	Icons            IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.

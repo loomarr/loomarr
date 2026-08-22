@@ -80,6 +80,28 @@ func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) 
 }
 
 func (s *sqlStore) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
+	if ch.Status == schedule.StatusLive && ch.IntentRef != "" {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return Channel{}, fmt.Errorf("save live channel %s: begin: %w", ch.ID, err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		saved, err := s.saveChannel(ctx, tx, ch)
+		if isConstraintViolation(err) {
+			return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+		}
+		if err != nil {
+			return Channel{}, err
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs SET reached_live=TRUE WHERE id=?`), ch.IntentRef); err != nil {
+			return Channel{}, fmt.Errorf("save live channel %s Journey milestone: %w", ch.ID, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return Channel{}, fmt.Errorf("save live channel %s: commit: %w", ch.ID, err)
+		}
+		return saved, nil
+	}
 	saved, err := s.saveChannel(ctx, s.db, ch)
 	if isConstraintViolation(err) {
 		return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)

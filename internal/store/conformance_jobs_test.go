@@ -479,6 +479,38 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testProposalJobFirstLiveMonotonic(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-first-live", "hash-first-live", now, now)
+	job.Status = "done"
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+
+	channel := approvalChannel("channel-first-live", job.ID, 199)
+	channel = mustSaveChannel(t, s, channel)
+	before, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || before.Job.ReachedLive {
+		t.Fatalf("building Journey snapshot = (%+v, %v)", before, err)
+	}
+
+	channel.Status = schedule.StatusLive
+	channel = mustSaveChannel(t, s, channel)
+	live, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || !live.Job.ReachedLive || live.Channel == nil || live.Channel.Status != schedule.StatusLive {
+		t.Fatalf("live Journey snapshot = (%+v, %v)", live, err)
+	}
+
+	channel.Status = schedule.StatusPaused
+	channel = mustSaveChannel(t, s, channel)
+	paused, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || !paused.Job.ReachedLive || paused.Channel == nil || paused.Channel.Status != schedule.StatusPaused {
+		t.Fatalf("paused-after-live Journey snapshot = (%+v, %v)", paused, err)
+	}
+}
+
 func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
