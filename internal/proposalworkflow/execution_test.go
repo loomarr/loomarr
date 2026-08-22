@@ -53,7 +53,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	repo := &executionRepositorySpy{}
 	workflow := newWorkflow(repo)
 
-	err := workflow.Complete(context.Background(), work, suggest.Proposal{})
+	_, err := workflow.Complete(context.Background(), work, suggest.Proposal{})
 	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
 		t.Fatalf("Complete empty Proposal error = %v, want ErrNoGroundedTitles", err)
 	}
@@ -64,7 +64,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
 	}}}
-	err = workflow.Complete(context.Background(), work, proposal)
+	_, err = workflow.Complete(context.Background(), work, proposal)
 	if err != nil {
 		t.Fatalf("Complete grounded Proposal: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 
 	repo := &executionRepositorySpy{completeErr: ErrStaleAttempt}
 	workflow := newWorkflow(repo)
-	err := workflow.Complete(context.Background(), Work{
+	_, err := workflow.Complete(context.Background(), Work{
 		Version: WorkflowVersion1, JobID: "job-1", Attempt: 1,
 	}, suggest.Proposal{Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
@@ -97,7 +97,7 @@ func TestWorkflowFailBoundsCodeButPreservesPrivateDiagnostic(t *testing.T) {
 	work := Work{Version: WorkflowVersion1, JobID: "job-1", Attempt: 2}
 	diagnostic := "provider returned private diagnostic"
 
-	if err := workflow.Fail(context.Background(), work, FailureCode("future_code"), diagnostic); err != nil {
+	if err := workflow.Fail(context.Background(), work, "future_code", diagnostic); err != nil {
 		t.Fatalf("Fail: %v", err)
 	}
 	if repo.failed == nil || repo.failed.Code != FailureGenerationFailed || repo.failed.Diagnostic != diagnostic {
@@ -123,9 +123,9 @@ func (r *executionRepositorySpy) ClaimAttempts(_ context.Context, now time.Time,
 	return append([]Work(nil), r.works...), r.claimErr
 }
 
-func (r *executionRepositorySpy) CompleteAttempt(_ context.Context, completion Completion) error {
+func (r *executionRepositorySpy) CompleteAttempt(_ context.Context, completion Completion) (suggest.WorkflowProposal, error) {
 	r.completed = &completion
-	return r.completeErr
+	return suggest.WorkflowProposal{}, r.completeErr
 }
 
 func (r *executionRepositorySpy) FailAttempt(_ context.Context, failure AttemptFailure) error {

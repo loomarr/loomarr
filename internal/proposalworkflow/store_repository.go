@@ -97,20 +97,21 @@ func (r *storeRepository) ClaimAttempts(
 			return nil, fmt.Errorf("decode claimed Proposal Job %s Intent: %w", job.ID, err)
 		}
 		works = append(works, Work{
-			Version: job.WorkflowVersion, JobID: job.ID, Attempt: job.Attempts, Intent: intent,
+			Version: job.WorkflowVersion, JobID: job.ID, Attempt: job.Attempts,
+			Kind: job.Kind, CreatedBy: job.CreatedBy, Intent: intent,
 		})
 	}
 	return works, nil
 }
 
-func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Completion) error {
+func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Completion) (suggest.WorkflowProposal, error) {
 	job, err := r.store.GetJob(ctx, completion.Work.JobID)
 	if err != nil {
-		return err
+		return suggest.WorkflowProposal{}, err
 	}
 	blob, err := json.Marshal(completion.Proposal)
 	if err != nil {
-		return fmt.Errorf("encode Proposal: %w", err)
+		return suggest.WorkflowProposal{}, fmt.Errorf("encode Proposal: %w", err)
 	}
 	now := r.now()
 	proposal := store.Proposal{
@@ -119,11 +120,14 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 	}
 	if err := r.store.CommitSuggestionSuccess(ctx, job.ID, completion.Work.Attempt, proposal, now); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
-			return ErrStaleAttempt
+			return suggest.WorkflowProposal{}, ErrStaleAttempt
 		}
-		return err
+		return suggest.WorkflowProposal{}, err
 	}
-	return nil
+	return suggest.WorkflowProposal{
+		ID: proposal.ID, JobID: proposal.JobID, CreatedBy: proposal.CreatedBy,
+		Proposal: completion.Proposal, CreatedAt: proposal.CreatedAt,
+	}, nil
 }
 
 func (r *storeRepository) FailAttempt(ctx context.Context, failure AttemptFailure) error {

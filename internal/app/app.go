@@ -961,6 +961,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// share one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var proposalWorkflow api.ProposalWorkflow
+	var durableWorkflow *proposalworkflow.Workflow
 	var searchSvc api.SearchService
 	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
@@ -975,7 +976,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil {
 		// Journey restoration remains available even when an LLM provider is not:
 		// persisted workflow state is the recovery surface for configuring it.
-		proposalWorkflow = proposalworkflow.New(st, newID, time.Now)
+		durableWorkflow = proposalworkflow.New(st, newID, time.Now)
+		proposalWorkflow = durableWorkflow
 	}
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
 	// It remains wired while the key is empty so a later settings save hot-applies; the resolver
@@ -1042,7 +1044,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		sug.WithRatings(tmdbClient)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
+		}, newID, time.Now, log).
+			WithProgressEmitter(emitter).
+			WithDurableWorkflow(durableWorkflow) // §8 SSE + durable lifecycle
 
 		// The §11 auto-approve grant, hard-gated by the pending-acquisition cap. The
 		// default limit is read PER CALL so raising suggest.max_acquisitions takes

@@ -56,13 +56,13 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	proposal := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
 	}}}
-	if err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
+	if _, err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("late Attempt completion = %v, want ErrStaleAttempt", err)
 	}
 	if _, err := st.GetProposal(ctx, "proposal-1"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("late Attempt published Proposal: %v", err)
 	}
-	if err := workflow.Complete(ctx, second[0], proposal); err != nil {
+	if _, err := workflow.Complete(ctx, second[0], proposal); err != nil {
 		t.Fatalf("current Attempt completion: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 		t.Fatalf("Claim = %+v, %v", works, err)
 	}
 	diagnostic := "provider secret-token returned catalog internals"
-	if err := workflow.Fail(ctx, works[0], FailureNoGroundedTitles, diagnostic); err != nil {
+	if err := workflow.Fail(ctx, works[0], string(FailureNoGroundedTitles), diagnostic); err != nil {
 		t.Fatal(err)
 	}
 

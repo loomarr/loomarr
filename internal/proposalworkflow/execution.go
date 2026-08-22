@@ -14,12 +14,7 @@ var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")
 // Work is a versioned lease token. The Job id alone is never sufficient to
 // commit an activity result because an expired worker may finish after recovery
 // has already issued the next Attempt.
-type Work struct {
-	Version int
-	JobID   string
-	Attempt int
-	Intent  suggest.Intent
-}
+type Work = suggest.WorkflowWork
 
 // Completion is committed atomically: the Proposal and the terminal Job and
 // Attempt transitions either all become visible or none do.
@@ -36,7 +31,7 @@ type AttemptFailure struct {
 
 type executionRepository interface {
 	ClaimAttempts(context.Context, time.Time, time.Duration, int) ([]Work, error)
-	CompleteAttempt(context.Context, Completion) error
+	CompleteAttempt(context.Context, Completion) (suggest.WorkflowProposal, error)
 	FailAttempt(context.Context, AttemptFailure) error
 }
 
@@ -63,39 +58,41 @@ func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration
 
 // Complete atomically publishes a grounded Proposal and closes the current
 // Attempt. A stale lease token must be rejected by the repository guard.
-func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Proposal) error {
+func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Proposal) (suggest.WorkflowProposal, error) {
 	if err := validateWork(work); err != nil {
-		return err
+		return suggest.WorkflowProposal{}, err
 	}
 	if len(proposal.Lineup)+len(proposal.Acquisitions) == 0 {
-		return suggest.ErrNoGroundedTitles
+		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
 	}
 	if err := validateProposalIdentities(proposal); err != nil {
-		return err
+		return suggest.WorkflowProposal{}, err
 	}
 	if w.execution == nil {
-		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
 	}
-	if err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: proposal}); err != nil {
-		return fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
+	completed, err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: proposal})
+	if err != nil {
+		return suggest.WorkflowProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
-	return nil
+	return completed, nil
 }
 
 // Fail closes the current Attempt while preserving the private diagnostic only
 // for operator logging. Unknown codes collapse to the bounded general failure.
-func (w *Workflow) Fail(ctx context.Context, work Work, code FailureCode, diagnostic string) error {
+func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic string) error {
 	if err := validateWork(work); err != nil {
 		return err
 	}
-	if code != FailureNoGroundedTitles {
-		code = FailureGenerationFailed
+	boundedCode := FailureCode(code)
+	if boundedCode != FailureNoGroundedTitles {
+		boundedCode = FailureGenerationFailed
 	}
 	if w.execution == nil {
 		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
 	}
 	if err := w.execution.FailAttempt(ctx, AttemptFailure{
-		Work: work, Code: code, Diagnostic: diagnostic,
+		Work: work, Code: boundedCode, Diagnostic: diagnostic,
 	}); err != nil {
 		return fmt.Errorf("fail Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}

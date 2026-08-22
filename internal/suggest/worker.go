@@ -53,6 +53,15 @@ type Service struct {
 	// proposal. nil ⇒ re-curation proposals wait for an admin (the closed default). Distinct
 	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
 	autoCurate ChannelAutoCurator
+	workflow   DurableWorkflow
+}
+
+// WithDurableWorkflow routes worker lifecycle transitions through the deep
+// proposal workflow module. Submission/refine stay on Service until their HTTP
+// contracts move, but workers no longer join or mutate raw lifecycle rows.
+func (s *Service) WithDurableWorkflow(workflow DurableWorkflow) *Service {
+	s.workflow = workflow
+	return s
 }
 
 // ChannelAutoCurator applies the §8.2 channel-scoped auto-curate grant: it decides whether a
@@ -243,6 +252,10 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 	if available <= 0 {
 		return
 	}
+	if s.workflow != nil {
+		s.drainWorkflow(ctx, sem, available)
+		return
+	}
 	// Lease horizon must exceed JOB_TIMEOUT so a running job isn't re-claimed.
 	jobs, err := s.store.ClaimDueJobs(ctx, s.now(), s.timeout+time.Minute, available)
 	if err != nil {
@@ -260,6 +273,66 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 			s.runJob(ctx, j)
 		}(job)
 	}
+}
+
+func (s *Service) drainWorkflow(ctx context.Context, sem chan struct{}, available int) {
+	works, err := s.workflow.Claim(ctx, s.now(), s.timeout+time.Minute, available)
+	if err != nil {
+		s.log.Error("claim Proposal Jobs", "err", err)
+		return
+	}
+	for _, work := range works {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		go func() {
+			defer func() { <-sem }()
+			s.runWorkflow(ctx, work)
+		}()
+	}
+}
+
+func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
+	jobCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(work.JobID, p, round) })
+
+	proposal, err := s.suggester.Suggest(jobCtx, work.Intent)
+	if err != nil {
+		s.failWorkflow(ctx, work, err)
+		return
+	}
+	completed, err := s.workflow.Complete(ctx, work, proposal)
+	if err != nil {
+		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err))
+		return
+	}
+	blob, err := json.Marshal(completed.Proposal)
+	if err != nil {
+		// The same value was already encoded by the workflow repository, so this
+		// can only affect the optional post-commit grant, never durability.
+		s.log.Error("marshal committed Proposal for automatic approval", "job", work.JobID, "err", err)
+	} else {
+		s.considerAutomaticApproval(ctx, store.Job{
+			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, Attempts: work.Attempt,
+		}, store.Proposal{
+			ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
+			ProposalJSON: string(blob), CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
+		})
+	}
+	s.emitPhase(work.JobID, PhaseDone, 0)
+}
+
+func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error) {
+	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error()); err != nil {
+		s.log.Info("discarding stale or undurable Proposal Job failure",
+			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
+		return
+	}
+	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause)
+	s.emitPhase(work.JobID, PhaseFailed, 0)
 }
 
 // runJob executes one suggestion job under JOB_TIMEOUT (§8). A hung LLM hits the

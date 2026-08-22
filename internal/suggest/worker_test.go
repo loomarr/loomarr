@@ -13,6 +13,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/proposalworkflow"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -178,7 +179,9 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`)))
+	workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
+	svc := buildService(t, st, testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))).
+		WithDurableWorkflow(workflow)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +201,13 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 			attempts, listErr := st.ListProposalJobAttempts(context.Background(), jobID)
 			if listErr != nil || len(attempts) != 1 || attempts[0].FailureCode != suggest.FailureCodeNoGroundedTitles {
 				t.Fatalf("failed Attempt history = %+v, %v", attempts, listErr)
+			}
+			journey, inspectErr := workflow.Inspect(context.Background(), proposalworkflow.Viewer{UserID: "alice"}, jobID)
+			if inspectErr != nil {
+				t.Fatalf("Inspect failed Journey: %v", inspectErr)
+			}
+			if journey.Milestone != proposalworkflow.MilestoneFailed || journey.Failure == nil || journey.Failure.Code != proposalworkflow.FailureNoGroundedTitles {
+				t.Fatalf("failed Journey = %+v", journey)
 			}
 			return
 		}
