@@ -1,7 +1,7 @@
 # Backend consolidation
 
 - Status: active
-- Base: `79349941`
+- Base: `b9d33f91`
 - Claims: `backend-readiness`, `dev-runtime`, `proposal-observability`
 
 ## Outcome
@@ -17,10 +17,9 @@ promote multi-replica support without the two-process evidence in `multi-replica
 
 ## Coordination
 
-The `fix-playout-activation-anchor` agent released its claim after publishing PR #455 with green CI.
-That PR remains draft as of 2026-08-22, so this branch does not depend on its unmerged commit and must
-still rebase after it lands. Its changed store/playout-adapter files were not edited here; the
-composition extraction proceeded in the unclaimed application assembly files.
+PR #455 (`fix-playout-activation-anchor`) and PR #456 (`series-era`) merged with green CI on
+2026-08-22. This branch is rebased on both. The schedule invalidator added by #456 now lives in
+`buildPlayout`, preserving its encoder-cutover behavior at the extracted composition seam.
 
 The unchanged worktree baseline passed Rust, shell, private-fixture, vet, tagged-vet, and Windows
 cross-compilation, then reproduced the pinned golangci/staticcheck analyzer panic in dependency
@@ -90,8 +89,8 @@ and closes it only after application shutdown.
 
 - Application-interface tests cover no-store readiness, real route wiring, restart generations, and
   idempotent bounded Shutdown.
-- Builder tests cover only their returned roles and failure cleanup. They do not inspect another
-  builder's fields.
+- Application and focused subsystem tests cover returned behavior and failure cleanup. They do not
+  reach through a shared mutable builder or inspect process-global composition state.
 - Playout dependencies become constructor-required; deleting a ladder input fails construction,
   replacing the `lastPlayoutResolver` global and its post-build nil inspection.
 - Filler-layout generation behavior is asserted through the playout builder result before HTTP

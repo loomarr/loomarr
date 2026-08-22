@@ -13,7 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
-func TestPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing.T) {
+func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing.T) {
 	stores := testkit.PostgresStores(t, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -30,7 +30,15 @@ func TestPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !startReplicaSettingsRefresh(ctx, store.DialectOf(stores[1]), set.svc, 5*time.Millisecond, nil) {
+	owner := newGenerationLifecycle(ctx)
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := owner.shutdown(shutdownCtx); err != nil {
+			t.Errorf("shutdown settings lifecycle: %v", err)
+		}
+	})
+	if !trackReplicaSettingsRefresh(owner, store.DialectOf(stores[1]), set.svc, 5*time.Millisecond, nil) {
 		t.Fatal("Postgres did not start its settings refresher")
 	}
 

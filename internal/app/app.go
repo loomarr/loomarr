@@ -60,25 +60,13 @@ type Overrides struct {
 // harness (tests) both call, so tests drive the real composition rather than a copy. It does not
 // open/close the store, read process config, listen, or handle signals; those stay in run().
 //
-// # Why this is one long function
+// # Why composition uses functions instead of a builder object
 //
-// Decomposing it into methods on a shared builder struct was tried on paper and rejected: the
-// sections are sequential and genuinely interdependent (three back-patches — emitter.setEngine,
-// playoutRes.activeChannels, playoutRes.pods), so splitting them would convert ~70 locals into
-// fields on a mutable carrier. That WIDENS their scope rather than narrowing it, and trades
-// compile-time use-before-assignment errors for runtime nils.
-//
-// ⚠ **It said "~630 lines and stays that way". Measured 2026-08-10 it is 1,457** — 94 branches
-// and 15 separate `if st != nil` blocks. "A composition root is allowed to be
-// long; it is not allowed to be unnavigable" was the right test and it now fails: the section
-// map below makes it possible to FIND a heading, not to hold the whole.
-//
-// The sanctioned decomposition (§14.1) is per-subsystem FUNCTIONS returning values —
-// `buildFiller(deps) (…, error)` — each owning its own `if st != nil` guard. That is a
-// different shape from the rejected builder: nothing widens to a mutable field, and the
-// use-before-assignment errors stay. The three back-patches stay explicit here in the root.
-// Measured coupling, which is what makes this tractable: the 434-line filler section reads
-// only EIGHT locals from earlier sections. Section size does not predict extraction cost.
+// Each subsystem builder takes immutable inputs and returns a concrete result. A shared mutable
+// builder would widen intermediate values into fields whose validity depends on call order and
+// trade compile-time use-before-assignment errors for runtime nils. The short ordered assembly in
+// buildHandler keeps the dependency direction visible; the few deliberate late connections remain
+// explicit at their owning seams (§14.1).
 //
 // # The nil-store path is deliberate
 //
@@ -88,20 +76,17 @@ type Overrides struct {
 // TestBuildWithoutStoreServesReadinessInsteadOfPanicking — the nesting is the price of
 // that behaviour.
 //
-// # Section map (in dependency order — later sections read earlier ones)
+// # Builder map (in dependency order — later builders consume earlier results)
 //
-//	readiness + metrics      /readyz truth, store gauges
-//	event bus + emitter      §7 SSE, §4 terminal-transition fan-out
-//	job registry             §18.1 — every recurring job registers here, started at the end
-//	provisioning reconciler  §7 acquisition loop + session sweep
-//	scheduler + Tunarr       §9 channel reconcile engine
-//	internal playout         §9.1 sessions, resolver, XMLTV guide (one resolver, both uses)
-//	channel binder           §7 the ONE approved-proposal → channel path
-//	suggester + search       §8 catalog boundary, LLM, grounding
-//	filler + commercials     §10 catalog sync, pod assembly
-//	playout device token     §11 rotation-safe (a func, never a captured value)
-//	scheduler start          §18.1 — after every subsystem has registered its jobs
-//	api.Options              the single assembly point
+//	foundation    readiness, settings, clients, events, jobs
+//	provisioning  acquisition, availability, retention
+//	channels      scheduler, Tunarr, Live TV, backend view
+//	playout       sessions, resolver, HLS, lifecycle
+//	approval      the one approved-proposal to channel path
+//	suggestions   LLM, catalog, grounding, search, images
+//	filler        catalog sync and pod assembly
+//	operations    auth, backup, settings, restart, River
+//	HTTP          the single api.Options assembly point
 const replicaSettingsRefreshInterval = 30 * time.Second
 
 // internalPlayoutNeedsPublicURL reports whether the boot path should warn that internal
@@ -111,23 +96,6 @@ const replicaSettingsRefreshInterval = 30 * time.Second
 // a usable URL. (beta-readiness D-4.)
 func internalPlayoutNeedsPublicURL(publicURL string) bool {
 	return strings.TrimSpace(publicURL) == ""
-}
-
-// startReplicaSettingsRefresh owns the one periodic settings reader for a Postgres
-// application generation. SQLite is single-process by contract and returns without
-// starting a goroutine or issuing any additional store reads.
-func startReplicaSettingsRefresh(
-	ctx context.Context,
-	dialect store.Dialect,
-	svc *settings.Service,
-	interval time.Duration,
-	after func(),
-) bool {
-	if dialect != store.DialectPostgres || svc == nil {
-		return false
-	}
-	go svc.RefreshEvery(ctx, interval, after)
-	return true
 }
 
 func trackReplicaSettingsRefresh(
