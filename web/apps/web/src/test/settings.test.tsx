@@ -415,6 +415,8 @@ describe("Settings honesty", () => {
     renderAt("/settings/ai");
 
     expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
+    await userEvent.click(screen.getByRole("button", { name: /lineup model/i }));
+    expect(screen.getByRole("button", { name: "Check AI readiness" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();

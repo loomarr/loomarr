@@ -4,9 +4,11 @@ import {
   getSettingsListMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
+  getSystemLlmTestMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { WizardAiBlock } from "./wizard-ai-block";
@@ -101,5 +103,49 @@ describe("WizardAiBlock", () => {
     // provider=ollama → the openai-only URL + key fields are not shown.
     expect(screen.queryByText(/LLM url/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/LLM api key/i)).not.toBeInTheDocument();
+  });
+
+  it("reports valid hosted credentials separately from missing model readiness", async () => {
+    const requests: unknown[] = [];
+    server.use(
+      getSystemLlmStatusMockHandler({
+        provider: "openrouter",
+        local: false,
+        reachable: true,
+        model: "",
+        catalog: [],
+        hosted: [
+          {
+            key: "openrouter",
+            label: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            keysUrl: "https://openrouter.ai/keys",
+            keyConfigured: true,
+            active: true,
+            modelsLive: true,
+            models: [{ id: "openai/gpt-4o-mini", label: "GPT-4o mini", tools: true }],
+          },
+        ],
+      }),
+      getSettingsListMockHandler({
+        settings: AI_ENTRIES.map((candidate) =>
+          candidate.key === "llm.provider" ? { ...candidate, value: "openai" } : candidate,
+        ),
+        features: {},
+      }),
+      getSystemLlmTestMockHandler(async ({ request }) => {
+        requests.push(await request.json());
+        return { ok: true };
+      }),
+      getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+    );
+
+    renderBlock();
+    await userEvent.click(await screen.findByRole("button", { name: "Test provider credentials" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "OpenRouter credentials authorized. Choose a tool-capable lineup model to finish AI setup.",
+    );
+    expect(requests).toEqual([{ provider: "openrouter" }]);
   });
 });

@@ -14,6 +14,9 @@ interface SettingsBlock {
   keys?: string[];
   // The named connection check this block can run, when it has one (§8 per-block Test).
   check?: string;
+  // Override the generic action when the check covers broader readiness than connectivity.
+  // AI uses this to keep provider authorization distinct from lineup-model readiness.
+  checkLabel?: string;
   // Marks a connection the current install can leave disconnected. The status still reports
   // truthfully; the label explains that a failure need not become work for this operator.
   optional?: boolean;

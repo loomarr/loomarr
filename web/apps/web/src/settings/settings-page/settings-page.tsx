@@ -183,7 +183,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                       onClick={() => test(block.check as string)}
                       disabled={testing !== undefined}
                     >
-                      {testing === block.check ? "Testing…" : "Test connection"}
+                      {testing === block.check ? "Testing…" : (block.checkLabel ?? "Test connection")}
                     </Button>
                   }
                 >
