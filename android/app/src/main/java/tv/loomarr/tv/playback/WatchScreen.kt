@@ -58,8 +58,10 @@ import tv.loomarr.tv.guide.ChannelTimeline
 import tv.loomarr.tv.guide.GuideUiState
 import tv.loomarr.tv.guide.GuideViewModel
 import tv.loomarr.tv.guide.rememberServerNow
+import tv.loomarr.tv.navigation.WatchingRemoteAction
 import tv.loomarr.tv.navigation.channelIndexForNumber
 import tv.loomarr.tv.navigation.channelSections
+import tv.loomarr.tv.navigation.watchingRemoteAction
 
 /** Full-screen playback plus the mock's Watching and Surf remote states. */
 @Composable
@@ -110,16 +112,16 @@ fun WatchScreen(
                         return@onKeyEvent true
                     }
                     bannerNonce++
-                    when (event.key) {
-                        Key.DirectionUp, Key.ChannelUp -> {
+                    when (watchingRemoteAction(event.key)) {
+                        WatchingRemoteAction.ChannelUp -> {
                             model.channelUp()
                             true
                         }
-                        Key.DirectionDown, Key.ChannelDown -> {
+                        WatchingRemoteAction.ChannelDown -> {
                             model.channelDown()
                             true
                         }
-                        Key.DirectionCenter, Key.Enter -> {
+                        WatchingRemoteAction.OpenGuide -> {
                             if (numberEntry.isNotEmpty()) {
                                 model.tuneChannelNumber(numberEntry)
                                 numberEntry = ""
@@ -128,16 +130,11 @@ fun WatchScreen(
                             }
                             true
                         }
-                        Key.DirectionLeft, Key.Menu -> {
+                        WatchingRemoteAction.OpenSurf -> {
                             onOpenSurf()
                             true
                         }
-                        Key.Back -> {
-                            val hasLast = (state as? WatchUiState.Ready)?.lastChannelId != null
-                            if (hasLast) model.lastChannel()
-                            hasLast
-                        }
-                        else -> false
+                        null -> false
                     }
                 },
     ) {

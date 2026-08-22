@@ -1630,8 +1630,8 @@ The remote has three explicit surfaces:
 
 - **Watching** keeps video full-screen. Up/down (and dedicated Channel Up/Down keys) tune the
   adjacent playable Channel, number keys collect an exact Channel number, OK opens Guide, D-pad
-  Left opens Surf (with Menu retained as an alias), and Back returns to the last tuned Channel when
-  one exists. The transient chrome
+  Left opens Surf (with Menu retained as an alias), and Back follows the Android TV convention by
+  returning to the device launcher. The transient chrome
   shows Channel identity, the on-air block, progress, and next block from the member JSON Guide.
   The Channel identity and programme bar are one transient state: both clear after five seconds of
   inactivity and reappear together after a remote action or tune. The programme bar and its

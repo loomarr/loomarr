@@ -38,6 +38,13 @@ class TvNavigationTest {
     }
 
     @Test
+    fun `watching leaves Back to Android instead of changing channel`() {
+        assertNull(watchingRemoteAction(Key.Back))
+        assertEquals(WatchingRemoteAction.ChannelUp, watchingRemoteAction(Key.DirectionUp))
+        assertEquals(WatchingRemoteAction.OpenGuide, watchingRemoteAction(Key.DirectionCenter))
+    }
+
+    @Test
     fun `tune history preserves last channel and newest-first recents`() {
         val history =
             TuneHistory()
@@ -46,7 +53,6 @@ class TvNavigationTest {
                 .tuned("horror")
 
         assertEquals("horror", history.currentChannelId)
-        assertEquals("nature", history.lastChannelId)
         assertEquals(listOf("nature", "sci-fi"), history.recentChannelIds)
         assertEquals(history.tuned("horror"), history)
     }

@@ -21,7 +21,6 @@ sealed interface WatchUiState {
         val channels: List<Channel>,
         val selected: Int,
         val playUrl: String?,
-        val lastChannelId: String? = null,
         val recentChannelIds: List<String> = emptyList(),
     ) : WatchUiState
 
@@ -113,7 +112,6 @@ class WatchViewModel(
                 channels = channels,
                 selected = selected,
                 playUrl = previous?.playUrl.takeIf { keptCurrentChannel },
-                lastChannelId = history.lastChannelId,
                 recentChannelIds = history.recentChannelIds,
             )
 
@@ -135,7 +133,6 @@ class WatchViewModel(
             current.copy(
                 selected = wrapped,
                 playUrl = null,
-                lastChannelId = history.lastChannelId,
                 recentChannelIds = history.recentChannelIds,
             )
 
@@ -173,12 +170,6 @@ class WatchViewModel(
     fun tuneChannelNumber(digits: String) {
         val current = _state.value as? WatchUiState.Ready ?: return
         channelIndexForNumber(current.channels, digits)?.let(::tune)
-    }
-
-    /** Swap to the immediately previous Channel; a second press swaps back. */
-    fun lastChannel() {
-        val current = _state.value as? WatchUiState.Ready ?: return
-        current.lastChannelId?.let(::tuneChannelId)
     }
 
     fun channelUp() {

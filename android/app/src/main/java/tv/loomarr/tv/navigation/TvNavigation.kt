@@ -9,6 +9,31 @@ enum class TvSurface {
     Guide,
 }
 
+enum class WatchingRemoteAction {
+    ChannelUp,
+    ChannelDown,
+    OpenGuide,
+    OpenSurf,
+}
+
+/** Back is intentionally absent: Android owns it and returns the viewer to the TV launcher. */
+fun watchingRemoteAction(key: androidx.compose.ui.input.key.Key): WatchingRemoteAction? =
+    when (key) {
+        androidx.compose.ui.input.key.Key.DirectionUp,
+        androidx.compose.ui.input.key.Key.ChannelUp,
+        -> WatchingRemoteAction.ChannelUp
+        androidx.compose.ui.input.key.Key.DirectionDown,
+        androidx.compose.ui.input.key.Key.ChannelDown,
+        -> WatchingRemoteAction.ChannelDown
+        androidx.compose.ui.input.key.Key.DirectionCenter,
+        androidx.compose.ui.input.key.Key.Enter,
+        -> WatchingRemoteAction.OpenGuide
+        androidx.compose.ui.input.key.Key.DirectionLeft,
+        androidx.compose.ui.input.key.Key.Menu,
+        -> WatchingRemoteAction.OpenSurf
+        else -> null
+    }
+
 /** The paired app's three-state shell; Surf is an overlay on Watching, never another player. */
 data class TvHomeState(
     val surface: TvSurface = TvSurface.Watching,
@@ -23,10 +48,9 @@ data class TvHomeState(
     fun watch() = copy(surface = TvSurface.Watching, surfVisible = false)
 }
 
-/** The bounded tune history needed by Surf and the remote's last-channel key. */
+/** The bounded tune history used by Surf's recent-Channels group. */
 data class TuneHistory(
     val currentChannelId: String? = null,
-    val lastChannelId: String? = null,
     val recentChannelIds: List<String> = emptyList(),
 ) {
     fun tuned(channelId: String): TuneHistory {
@@ -34,7 +58,6 @@ data class TuneHistory(
         val previous = currentChannelId
         return copy(
             currentChannelId = channelId,
-            lastChannelId = previous,
             recentChannelIds =
                 if (previous == null) {
                     recentChannelIds
