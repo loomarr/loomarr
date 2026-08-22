@@ -119,9 +119,10 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
 .PHONY: release-verify
-release-verify: ## verify release tag, OCI naming, and immutable publication policy
+release-verify: ## verify server and Android release identity and publication policy
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
+	@./scripts/android-version-code.sh --self-test
 	@$(GO) test ./internal/releaseverify
 	@$(GO) run ./cmd/releaseverify -root .
 
@@ -673,6 +674,10 @@ android: android-tokens-verify ## Android TV client — tokens + ktlint + Androi
 # in record or verify mode, so under plain `testDebugUnitTest` the screenshot tests still execute,
 # capture nothing, and pass — a gate that cannot fail.
 	cd android && ./gradlew ktlintCheck lintDebug verifyRoborazziDebug assembleDebug
+
+.PHONY: android-release-test
+android-release-test: ## build an ephemeral signed AAB and verify release identity, ABIs, and 16 KiB alignment
+	@./scripts/test-android-release.sh
 
 .PHONY: android-fmt
 android-fmt: ## Android TV client — apply ktlint formatting

@@ -37,7 +37,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: workflow policy: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("release-verify: workflows use immutable actions and sign verified digests before tag promotion")
+	if err := releaseverify.VerifyAndroidReleaseWorkflow(filepath.Join(*root, ".github", "workflows", "android-beta.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: Android workflow policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: workflows use immutable actions and keep server and Android publication behind audited signing paths")
 	if err := releaseverify.VerifyNotices(*root); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: notice policy: %v\n", err)
 		os.Exit(1)

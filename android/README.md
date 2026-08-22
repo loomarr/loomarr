@@ -41,6 +41,10 @@ cd android
 ./gradlew :app:testDebugUnitTest      # pairing, guide geometry/windowing, and playback contracts
 ```
 
+Release bundles use the permanent `loomarr.media` Play identity, protected upload signing, and a
+separate testing-track workflow. See [Android TV beta releases](../docs/dev/android-beta.md). Local
+debug builds install as `loomarr.media.debug`, so they can coexist with the Play app.
+
 The checked-in TV launcher banner is generated from the same Geist compact lockup as the web shell.
 After changing that brand system, run `scripts/generate-android-tv-brand.sh` from a bootstrapped
 worktree before rebuilding the APK.
@@ -74,7 +78,7 @@ ANDROID_HOME=/path/to/Android scripts/run-android-tv-emulator.sh
 
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 # 10.0.2.2 is the emulator's alias for the HOST — localhost inside the VM is the VM.
-adb shell am start -n tv.loomarr.tv/.MainActivity -e server http://10.0.2.2:18305
+adb shell am start -n loomarr.media.debug/tv.loomarr.tv.MainActivity -e server http://10.0.2.2:18305
 adb exec-out screencap -p > screen.png
 ```
 

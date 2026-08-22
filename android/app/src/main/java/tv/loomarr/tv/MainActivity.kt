@@ -67,7 +67,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val store = DeviceStore(applicationContext)
 
-        // Development affordance: `adb shell am start -n tv.loomarr.tv/.MainActivity -e server
+        // Development affordance: `adb shell am start -n
+        // loomarr.media.debug/tv.loomarr.tv.MainActivity -e server
         // http://10.0.2.2:18305` sets the address without a keyboard. A TV cannot practically type a
         // URL, so the shipped path will be discovery or an on-screen entry step — this exists so the
         // app is testable before that lands, and it is inert when the extra is absent.

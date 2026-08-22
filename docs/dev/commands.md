@@ -36,7 +36,7 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make doctor` |  | report toolchain drift, worktrees, ports, caches, and misplaced artifacts |
 | `make agent-harness-test` | ✅ | regression-test worktree isolation and shared-output claims |
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify release tag, OCI naming, and immutable publication policy |
+| `make release-verify` |  | verify server and Android release identity and publication policy |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
 
@@ -156,13 +156,14 @@ of `make check`. The *runs:* note on a row lists what it pulls in.
 | `make android-tokens-verify` |  | regenerated tokens must match committed (CI red on drift) <br>*runs:* `android-tokens` |
 | `make android-load` |  | report heavy local processes before starting a build |
 | `make android` | ✅ | Android TV client — tokens + ktlint + Android Lint + unit tests + screenshots + debug APK <br>*runs:* `android-tokens-verify` |
+| `make android-release-test` | ✅ | build an ephemeral signed AAB and verify release identity, ABIs, and 16 KiB alignment |
 | `make android-fmt` |  | Android TV client — apply ktlint formatting |
 | `make android-screenshots` |  | Android TV client — re-record screenshot baselines (review the diff!) |
 | `make android-stop` |  | stop the Gradle/Kotlin daemons this module started |
 
 ## What CI runs
 
-`agent-harness-test` · `android` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
+`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `check` · `ci-lint` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `openapi-verify` · `retired-verify` · `test-pg` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 `fmt`, `vet`, `vet-tags`, `lint` and `test` are all covered by `check` — so read the
