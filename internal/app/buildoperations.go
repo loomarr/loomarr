@@ -52,6 +52,59 @@ type residentLLMBuild struct {
 	reclaim func(context.Context)
 }
 
+type operationsBuild struct {
+	backups           api.BackupsService
+	restart           api.RestartService
+	bootConfig        *config.Config
+	auth              authBuild
+	guide             api.GuideReader
+	settings          api.SettingsService
+	liveConfig        func(string) string
+	libraryConfigured func() bool
+	jobs              api.JobService
+	database          api.DatabaseService
+	residentLLM       residentLLMBuild
+}
+
+func buildOperations(
+	rootCtx context.Context,
+	st store.Store,
+	set resolved,
+	desiredSet resolved,
+	secrets *settings.Secrets,
+	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
+	refreshSecretRedactor func(),
+	libraryClient *library.Client,
+	tmdbClient *tmdb.Client,
+	eventBus *events.Bus,
+	emitter *eventEmitter,
+	registry *scheduler.Registry,
+	owner *generationLifecycle,
+	playoutResolver *playoutResolver,
+	appliedBackend func(context.Context) (string, error),
+	overrides Overrides,
+	log *slog.Logger,
+) operationsBuild {
+	restart, bootConfig := buildRestart(overrides, log)
+	result := operationsBuild{
+		backups: buildBackups(st, set, registry, log), restart: restart, bootConfig: bootConfig,
+		auth:  buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log),
+		guide: buildGuide(st, set, playoutResolver, appliedBackend),
+		settings: buildSettings(
+			st, set, desiredSet, secrets, libraryClient, tmdbClient,
+			refreshSecretRedactor, readGeneratedSecret, log,
+		),
+		jobs:        buildScheduler(rootCtx, st, set, registry, emitter, owner, log),
+		database:    buildDatabase(st, set, overrides, eventBus),
+		residentLLM: buildResidentLLM(set, log),
+	}
+	if st != nil {
+		result.liveConfig = set.str
+		result.libraryConfigured = set.libraryConfigured
+	}
+	return result
+}
+
 func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	probe := func(ctx context.Context) (float64, string) {
 		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {

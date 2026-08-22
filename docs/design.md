@@ -696,8 +696,8 @@ constructed, including on an install where the connection is empty. At the start
 operation it resolves `library.flavor`, `library.url`, and `library.token` together from one settings
 snapshot and carries that immutable `{flavor, url, token}` through every nested or batched request.
 All three values must be present and valid before the operation makes an outbound request. Saving a
-complete Emby or Jellyfin connection therefore enables the next operation without rebuilding
-`BuildHandler`; changing flavor, repointing the URL, rotating the token, or clearing any member takes
+complete Emby or Jellyfin connection therefore enables the next operation without rebuilding the
+application generation; changing flavor, repointing the URL, rotating the token, or clearing any member takes
 effect on the next operation. A concurrent save can never send one server's credential to another
 server or choose authentication headers from a different generation of settings.
 
@@ -4853,7 +4853,11 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 **Two things that look like problems and are not.** Both were flagged from metrics during the sweep and both survived contact with the code:
 
-- **`BuildHandler` must not become methods on a shared builder.** That decomposition would convert ~70 locals into fields on a mutable carrier — *widening* their scope, and trading compile-time use-before-assignment errors for runtime nils. The sections are sequential and genuinely interdependent (three deliberate back-patches). Its heavy `if st != nil` nesting is likewise deliberate: a container started without `DATABASE_URL` must answer `/readyz` with the reason rather than crash-loop past the probe that would explain it.
+- **Application composition must not become methods on a shared mutable builder.** That
+  decomposition would convert local results into fields on a carrier whose validity depends on call
+  order — *widening* their scope, and trading compile-time use-before-assignment errors for runtime
+  nils. A container started without `DATABASE_URL` must still answer `/readyz` with the reason rather
+  than crash-loop past the probe that would explain it.
 
   ⚠ **What has NOT survived is the claim that it "stays ~630 lines".** Measured at `79349941`
   on 2026-08-22, `app.go` is **1,636 lines** and `BuildHandler` spans lines 169–1,635. "A
@@ -4861,7 +4865,13 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
   section map makes the function navigable in the sense that you can find a heading, not in the sense
   that you can hold it.
 
-  **The sanctioned decomposition is per-subsystem functions, not a builder.** `buildFiller(deps) (…, error)`, `buildPlayout(deps) (…, error)` and so on: each takes what it needs, owns its own `if st != nil` guard, and *returns values* — so nothing widens to a mutable field and the use-before-assignment errors stay. That is a different shape from the one rejected above, which is why the rejection does not cover it. The three back-patches stay explicit in the root, where they are already named.
+  **The implemented decomposition is per-subsystem functions, not a builder object.** At the same
+  baseline, `app.go` was 1,636 lines and `BuildHandler` spanned lines 169–1,635. After extraction on
+  2026-08-22, `app.go` is **219 lines**, its ordered `buildHandler` assembly spans lines 147–219, and
+  the public handler-only constructor is gone. `buildFoundation`, `buildProvisioning`,
+  `buildChannels`, `buildPlayout`, `buildApproval`, `buildSuggestions`, `buildFillerSubsystem`,
+  `buildOperations`, and `buildHTTP` take immutable inputs and return concrete results. The event,
+  pod, and resident-model late connections remain explicit and occur exactly once during assembly.
 - **`api.Server`'s fields are not a service locator.** Every field is a narrow, purpose-named interface (`LoginService`, `PodPreviewer`, `ChannelBinder`) with a doc comment stating what it wires and what `nil` means, and the nil-means-501 convention is uniform — one optional capability, one `errNotImplemented` guard. That is what lets an unconfigured install boot and explain itself. Grouping them into sub-structs would add indirection at every call site and bury the one thing the comments make plain.
 
   ⚠ **The count was 33 and is 51 (2026-08-10)**, with `api.Options` at 50 — and `Options`→`Server` is a hand-written copy of all 50 pairs in `api.go`, ~400 lines from where either struct is declared. The argument above still holds field-by-field; what the growth costs is the copy, and that is already guarded rather than trusted: `optionsparity_test.go` parses `api.go`'s AST to catch an omitted line, because a missed pair is silent.
@@ -4874,8 +4884,8 @@ settings refresh, playout lifecycle listeners, and other generation-scoped work,
 test-only mutable production global. The composition root returns one application value with a
 read-only Handler and an idempotent `Shutdown(ctx) error`. Build derives one generation context;
 parent cancellation asks it to stop, while `Shutdown` cancels and waits for every owned subsystem in
-reverse dependency order. The caller still owns the listener, signal handling, and Store: it drains
-HTTP, waits for the application, then closes the Store. A failed Build unwinds everything it already
+reverse dependency order. The caller still owns the listener, signal handling, and Store: it cancels
+the generation, drains HTTP, waits for the application, then closes the Store. A failed Build unwinds everything it already
 started before returning. Tests observe wiring through the returned application or through behavior,
 never through package globals.
 

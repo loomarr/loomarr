@@ -191,43 +191,23 @@ func buildHandler(
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 	)
-	backupsSvc := buildBackups(st, set, jobReg, log)
-
-	restartSvc, bootCfg := buildRestart(ov, log)
-
-	authServices := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
-
-	guideSvc := buildGuide(st, set, playoutRes, appliedBackendContext)
-	settingsSvc := buildSettings(
-		st, set, desiredSet, secrets, libraryClient, tmdbClient,
-		refreshSecretRedactor, readGeneratedSecret, log,
+	operations := buildOperations(
+		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
+		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
+		appliedBackendContext, ov, log,
 	)
-
-	// liveConfig lets the always-constructed feature routes gate on the CURRENT
-	// config (config-design §3 hot-apply): a saved connection enables the route with
-	// no restart (§8.1). Only when the settings service exists (a store is open).
-	var liveConfig func(key string) string
-	var libraryConfigured func() bool
-	if st != nil {
-		liveConfig = set.str
-		libraryConfigured = set.libraryConfigured
-	}
-
-	jobsSvc := buildScheduler(rootCtx, st, set, jobReg, emitter, owner, log)
-
-	databaseSvc := buildDatabase(st, set, ov, eventBus)
-	residentLLM := buildResidentLLM(set, log)
 	if playoutRes != nil {
-		setResidentVRAM(residentLLM.probe)
+		setResidentVRAM(operations.residentLLM.probe)
 	}
 
 	handler := buildHTTP(httpBuild{
 		rootCtx: rootCtx, store: st, log: log, overrides: ov, foundation: foundation,
 		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
-		auth: authServices, backups: backupsSvc, restart: restartSvc, bootConfig: bootCfg,
-		guide: guideSvc, settings: settingsSvc, liveConfig: liveConfig,
-		libraryConfigured: libraryConfigured, jobs: jobsSvc, database: databaseSvc,
-		residentLLM: residentLLM,
+		auth: operations.auth, backups: operations.backups,
+		restart: operations.restart, bootConfig: operations.bootConfig,
+		guide: operations.guide, settings: operations.settings, liveConfig: operations.liveConfig,
+		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
+		database: operations.database, residentLLM: operations.residentLLM,
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits

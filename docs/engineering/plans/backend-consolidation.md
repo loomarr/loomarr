@@ -17,10 +17,10 @@ promote multi-replica support without the two-process evidence in `multi-replica
 
 ## Coordination
 
-`fix-playout-activation-anchor` is actively changing playout/store/design seams. Composition-root and
-lifecycle implementation wait until that work lands; the readiness correction, proposal metrics, and
-semantic-certification slices can proceed where their files do not overlap. Rebase before touching
-`internal/app` or finalizing `docs/design.md`.
+The `fix-playout-activation-anchor` agent released its claim after publishing PR #455 with green CI.
+That PR remains draft as of 2026-08-22, so this branch does not depend on its unmerged commit and must
+still rebase after it lands. Its changed store/playout-adapter files were not edited here; the
+composition extraction proceeded in the unclaimed application assembly files.
 
 The unchanged worktree baseline passed Rust, shell, private-fixture, vet, tagged-vet, and Windows
 cross-compilation, then reproduced the pinned golangci/staticcheck analyzer panic in dependency
@@ -64,14 +64,14 @@ starts work it cannot return a shutdown handle for.
 | `buildPlayout` | media budget, session/HLS managers, prepared origin, resolver, guide, backend transition controller, playout lifecycle | Foundation + Channels | playout HTTP roles, observers, resolver roles, lifecycle shutdown |
 | `buildApproval` | binder and approval coordinator | Foundation + Channels + Playout codec role | binder and approver roles |
 | `buildSuggestions` | LLM/catalog, Journey workflow, search, icon/image adapters, re-curation registration, resident-model hooks | Foundation + Approval + Provisioning | suggestion/search/workflow/image/system-LLM roles and VRAM hooks |
-| `buildFiller` | existing tag/sync/pipeline/split/fetch builders and scheduler registrations | Foundation + Suggestions | filler roles and pod adapter |
+| `buildFillerSubsystem` | existing tag/sync/pipeline/split/fetch builders and scheduler registrations | Foundation + Suggestions | filler roles and pod adapter |
 | `buildOperations` | backup, auth/device/SSO, settings/restart/database, River start | All prior results | operational HTTP roles and scheduler shutdown |
 | `buildHTTP` | one `api.Options` assembly | All immutable results | configured Handler only |
 
-The three deliberate late connections remain visible in the short root: attach the channel engine to
-the event emitter, attach pods to channel/playout consumers, and attach resident-model eviction to
-playout. They become one-time methods that reject a second attachment rather than mutable public
-fields.
+The three deliberate late connections remain visible at their owning seams: `buildChannels` attaches
+the channel engine to the event emitter, `buildFillerSubsystem` attaches pods to channel/playout
+consumers, and the short root attaches the returned resident-model probe to playout. They occur once
+during ordered construction and are not exposed as mutable application state.
 
 The external application interface is deliberately smaller than the internal extraction map:
 
@@ -81,8 +81,8 @@ handler := app.Handler()
 err = app.Shutdown(ctx)
 ```
 
-`BuildHandler` remains only as a short compatibility adapter during migration and is deleted once
-main plus integration callers use `Build`. Shutdown order is the reverse of successful startup;
+The handler-only compatibility constructor has been deleted; main, tests, and the integration harness
+all own an `Application` and call `Shutdown`. Shutdown order is the reverse of successful startup;
 partial Build failure uses the same stack. The Store is not on that stack because its caller owns it
 and closes it only after application shutdown.
 
@@ -105,7 +105,7 @@ and closes it only after application shutdown.
 | Requirement | Proof |
 | --- | --- |
 | Readiness truth | No merged workflow is listed as active/blocked; cluster evidence remains explicitly pending. |
-| Composition depth | `BuildHandler` is a short ordered assembly over immutable subsystem results; tests drive those seams. |
+| Composition depth | `app.go` is 219 lines and its 73-line ordered assembly consumes immutable subsystem results; tests drive the real `Build` seam. |
 | Lifecycle | Application shutdown is idempotent, reverse-ordered, bounded, leak-tested, and precedes Store close. |
 | Persistence seams | Selected domains compile against narrow role interfaces; Store conformance remains one suite over both dialects. |
 | Workflow observability | Prometheus tests prove closed labels, ages/counts, unknown-to-other mapping, and diagnostic/id absence. |
