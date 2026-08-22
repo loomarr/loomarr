@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -799,7 +798,9 @@ func (r *playoutResolver) airingFiller(
 				}
 			}
 			return playout.Airing{
-				Kind: schedule.SlotProgram, // playable: the handler encodes it like any program
+				StartedAt: now.Add(-into),
+				Identity:  e.Hash,
+				Kind:      schedule.SlotFiller,
 				// Source, not LibraryItemID: this is a local file, not a media-server item.
 				// Playable() checks Source for exactly this case.
 				Source:    full,
@@ -1050,7 +1051,7 @@ func playoutSpawner(
 // before its bytes can enter the long-lived mux.
 func playoutBlockSource(base string, token func() string, client *http.Client) playout.BlockSource {
 	var broadcast string
-	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (io.ReadCloser, error) {
+	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (playout.Block, error) {
 		query := url.Values{
 			"token": []string{token()},
 			"plan":  []string{blockPlan.String()},
@@ -1062,28 +1063,33 @@ func playoutBlockSource(base string, token func() string, client *http.Client) p
 			strings.TrimRight(base, "/"), url.PathEscape(blockChannel), query.Encode())
 		req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
 		if err != nil {
-			return nil, err
+			return playout.Block{}, err
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, err
+			return playout.Block{}, err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
+			return playout.Block{}, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
 		}
 		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
 		if !ok {
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("playout: block endpoint returned no valid broadcast format")
+			return playout.Block{}, fmt.Errorf("playout: block endpoint returned no valid broadcast format")
 		}
 		canonical := format.String()
 		if broadcast == "" {
 			broadcast = canonical
 		} else if canonical != broadcast {
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("playout: block format changed from %s to %s", broadcast, canonical)
+			return playout.Block{}, fmt.Errorf("playout: block format changed from %s to %s", broadcast, canonical)
 		}
-		return resp.Body, nil
+		identity, ok := api.ParsePlayoutAiringIdentity(resp.Header)
+		if !ok {
+			_ = resp.Body.Close()
+			return playout.Block{}, fmt.Errorf("playout: block endpoint returned no valid airing identity")
+		}
+		return playout.Block{Content: resp.Body, Identity: identity}, nil
 	}
 }

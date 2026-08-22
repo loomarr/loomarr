@@ -27,6 +27,13 @@ import (
 
 // Airing is what a channel should be playing at a given instant.
 type Airing struct {
+	// StartedAt is the authoritative wall-clock boundary for this airing. Unlike request time it is
+	// stable across retries and mid-program tune-ins, so downstream playout can distinguish a real
+	// transition from reopening the same item.
+	StartedAt time.Time
+	// Identity is the stable content identity within StartedAt: a provisioning key for programmes,
+	// a clip hash for commercials, and the slot kind for an unplayable scheduled card.
+	Identity string
 	// Kind mirrors the scheduler's slot kind, so a caller can distinguish "play this
 	// program" from "play a filler clip" from "there is nothing".
 	Kind schedule.SlotKind
@@ -76,10 +83,10 @@ type Airing struct {
 // required LibraryItemID unconditionally, which made every resolved commercial fall through to
 // the offline card — the ad was picked correctly and then silently never played.
 func (a Airing) Playable() bool {
-	if a.Kind != schedule.SlotProgram {
-		return false
+	if a.Kind == schedule.SlotFiller {
+		return a.Source != ""
 	}
-	return a.LibraryItemID != "" || a.Source != ""
+	return a.Kind == schedule.SlotProgram && a.LibraryItemID != ""
 }
 
 // AiringAt walks a computed lineup against the wall clock and returns what is on.
@@ -116,7 +123,16 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 			continue // unknown duration — not airable, see above
 		}
 		if into < d {
+			identity := string(s.Key)
+			if identity == "" {
+				identity = s.LibraryItemID
+			}
+			if identity == "" {
+				identity = string(s.Kind)
+			}
 			return Airing{
+				StartedAt:     now.Add(-into),
+				Identity:      identity,
 				Kind:          s.Kind,
 				LibraryItemID: s.LibraryItemID,
 				// Key identifies WHAT aired independently of which library item served it —

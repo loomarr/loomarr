@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 func ffmpegBin(t *testing.T) string {
@@ -472,13 +474,20 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var opened atomic.Int64
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (io.ReadCloser, error) {
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
 		i := int(opened.Add(1)) - 1
 		if i >= len(blocks) {
 			<-ctx.Done()
-			return nil, ctx.Err()
+			return Block{}, ctx.Err()
 		}
-		return os.Open(blocks[i])
+		content, err := os.Open(blocks[i])
+		return Block{
+			Content: content,
+			Identity: AiringIdentity{
+				StartedAt: time.Unix(int64(i), 0), Kind: schedule.SlotProgram,
+				ContentID: fmt.Sprintf("block-%d", i),
+			},
+		}, err
 	})
 	channel, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
@@ -795,20 +804,26 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (io.ReadCloser, error) {
+	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
 		if err != nil {
-			return nil, err
+			return Block{}, err
 		}
 		resp, err := srv.Client().Do(req)
 		if err != nil {
-			return nil, err
+			return Block{}, err
 		}
 		if fetches.Load() >= 3 {
 			// Let the third body reach the mux before ending the live session.
 			time.AfterFunc(100*time.Millisecond, cancel)
 		}
-		return resp.Body, nil
+		return Block{
+			Content: resp.Body,
+			Identity: AiringIdentity{
+				StartedAt: time.Unix(fetches.Load(), 0), Kind: schedule.SlotProgram,
+				ContentID: fmt.Sprintf("fetch-%d", fetches.Load()),
+			},
+		}, nil
 	})
 	proc, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {

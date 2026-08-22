@@ -5,12 +5,28 @@ import (
 	"io"
 	"log/slog"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/schedule"
 )
+
+// AiringIdentity is the scheduler-owned boundary metadata carried beside a finite transport block.
+// It never enters the MPEG-TS payload; the supervisor uses it to identify real transitions without
+// guessing from process exits or request timing.
+type AiringIdentity struct {
+	StartedAt time.Time
+	Kind      schedule.SlotKind
+	ContentID string
+}
+
+type Block struct {
+	Content  io.ReadCloser
+	Identity AiringIdentity
+}
 
 // BlockSource opens the finite MPEG-TS block that belongs on a Channel now. EOF is an Airing
 // boundary: the supervisor closes that body, resolves again from the authoritative wall clock, and
 // opens the next programme, Clip or fallback card.
-type BlockSource func(context.Context, string, EncodePlan) (io.ReadCloser, error)
+type BlockSource func(context.Context, string, EncodePlan) (Block, error)
 
 // BlockSpawner builds the production session spawner around finite, explicit blocks. One long-lived
 // copy mux keeps output timestamps monotonic; Go owns the EOF-and-advance loop so an Airing boundary
@@ -44,6 +60,7 @@ func pumpBlocks(
 	channelID string, plan EncodePlan, log *slog.Logger,
 ) {
 	defer func() { _ = dst.Close() }()
+	var previous AiringIdentity
 	for ctx.Err() == nil {
 		block, err := source(ctx, channelID, plan)
 		if err != nil {
@@ -55,8 +72,16 @@ func pumpBlocks(
 			}
 			continue
 		}
-		n, copyErr := io.Copy(dst, block)
-		closeErr := block.Close()
+		if previous != (AiringIdentity{}) && block.Identity != previous && log != nil {
+			log.Info("playout: block transition",
+				"channel", channelID,
+				"from_kind", previous.Kind, "from_content", previous.ContentID,
+				"to_kind", block.Identity.Kind, "to_content", block.Identity.ContentID,
+				"started_at", block.Identity.StartedAt)
+		}
+		previous = block.Identity
+		n, copyErr := io.Copy(dst, block.Content)
+		closeErr := block.Content.Close()
 		if copyErr != nil || closeErr != nil {
 			if log != nil && ctx.Err() == nil {
 				log.Warn("playout: block ended with an error; resolving current Airing",

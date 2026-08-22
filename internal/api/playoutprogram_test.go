@@ -909,7 +909,7 @@ func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
 // That existing field is the discriminator the loudness gate reads, so it needed no new plumbing.
 func fillerAiring(remaining time.Duration) playout.Airing {
 	return playout.Airing{
-		Kind: schedule.SlotProgram, Source: "/filler/14/36/abc.mp4", Title: "Frosted Flakes",
+		Kind: schedule.SlotFiller, Source: "/filler/14/36/abc.mp4", Title: "Frosted Flakes",
 		Remaining: remaining,
 	}
 }

@@ -72,7 +72,30 @@ type PlayoutResolver interface {
 const (
 	PlayoutBroadcastFormatQuery  = "broadcast"
 	PlayoutBroadcastFormatHeader = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringKindHeader      = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader   = "X-Loomarr-Airing-Content"
 )
+
+func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
+	header.Set(PlayoutAiringStartedAtHeader, airing.StartedAt.UTC().Format(time.RFC3339Nano))
+	header.Set(PlayoutAiringKindHeader, string(airing.Kind))
+	header.Set(PlayoutAiringContentHeader, airing.Identity)
+}
+
+// ParsePlayoutAiringIdentity is the composition adapter's inverse of setPlayoutAiringIdentity.
+// The hop is authenticated and internal, but malformed metadata still fails closed: accepting it
+// would make transition telemetry claim an identity the scheduler never supplied.
+func ParsePlayoutAiringIdentity(header http.Header) (playout.AiringIdentity, bool) {
+	startedAt, err := time.Parse(time.RFC3339Nano, header.Get(PlayoutAiringStartedAtHeader))
+	kind := schedule.SlotKind(header.Get(PlayoutAiringKindHeader))
+	contentID := header.Get(PlayoutAiringContentHeader)
+	if err != nil || startedAt.IsZero() || contentID == "" ||
+		(kind != schedule.SlotProgram && kind != schedule.SlotFiller && kind != schedule.SlotFlex) {
+		return playout.AiringIdentity{}, false
+	}
+	return playout.AiringIdentity{StartedAt: startedAt, Kind: kind, ContentID: contentID}, true
+}
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
 // tested without executing a binary; the composition root supplies playout.Start.
@@ -133,6 +156,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err != nil {
 		s.log.Warn("playout: could not resolve what is airing — showing the card", "channel", channelID, "err", err)
+		setPlayoutAiringIdentity(w.Header(), playout.Airing{
+			StartedAt: time.Now().UTC().Truncate(offlineCardDuration),
+			Identity:  "unavailable-card",
+			Kind:      schedule.SlotFlex,
+		})
 		// The card, not a 502 (see serveCard): the usual cause is the media server being
 		// unreachable, which is upstream of us and typically transient — and writing an error
 		// document into the concat demuxer's stream would end the channel for every viewer
@@ -142,6 +170,16 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if airing.StartedAt.IsZero() {
+		airing.StartedAt = time.Now().UTC().Truncate(offlineCardDuration)
+	}
+	if airing.Identity == "" {
+		airing.Identity = string(airing.Kind)
+		if airing.Identity == "" {
+			airing.Identity = string(schedule.SlotFlex)
+		}
+	}
+	setPlayoutAiringIdentity(w.Header(), airing)
 
 	// Nothing airing ⇒ the offline card, NOT an error and NOT an empty body.
 	//

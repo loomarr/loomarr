@@ -33,6 +33,9 @@ func TestAiringAt_MidProgramTuneInLandsAtTheRightOffset(t *testing.T) {
 	if got.Remaining != 20*time.Minute {
 		t.Errorf("remaining = %v, want 20m", got.Remaining)
 	}
+	if got.StartedAt != epoch || got.Identity != "a" {
+		t.Errorf("identity = %q at %v, want a at %v", got.Identity, got.StartedAt, epoch)
+	}
 }
 
 // THE property the shared-encoder model rests on: two callers asking at the same instant get
@@ -139,6 +142,9 @@ func TestAiring_PlayableRejectsUnstreamableSlots(t *testing.T) {
 	}
 	if !(Airing{Kind: schedule.SlotProgram, LibraryItemID: "x"}).Playable() {
 		t.Error("a program with an item id must be playable")
+	}
+	if !(Airing{Kind: schedule.SlotFiller, Source: "/clip.mp4"}).Playable() {
+		t.Error("a resolved filler clip must be playable without becoming a program")
 	}
 }
 
