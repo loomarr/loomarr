@@ -1,15 +1,14 @@
-import type { Proposal, ProposalDTO } from "@loomarr/api";
+import type { Proposal, ProposalDTO, ProposalJourneyDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
-  getListProposalsMockHandler,
+  getGetProposalJobMockHandler,
   getRefineChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LoomarrEventsProvider } from "@/events";
 import { server } from "@/test/msw/server";
 import { RefinePanel } from "./refine-panel";
 
@@ -17,37 +16,6 @@ const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
-};
-
-// A minimal EventSource stand-in that lets a test push SSE frames. jsdom has no
-// EventSource, and the failed-run path depends on a real `suggestion` frame reaching the
-// panel (via LoomarrEventsProvider → useChannelRefine.onSuggestion) — a no-op stub can't
-// exercise it. `emit(type, data)` dispatches to the matching addEventListener callback.
-class MockEventSource {
-  static last: MockEventSource | undefined;
-  private handlers = new Map<string, (e: MessageEvent) => void>();
-  constructor() {
-    MockEventSource.last = this;
-  }
-  addEventListener(type: string, cb: (e: MessageEvent) => void) {
-    this.handlers.set(type, cb);
-  }
-  close() {}
-  emit(type: string, data: unknown) {
-    this.handlers.get(type)?.({ data: JSON.stringify(data) } as MessageEvent);
-  }
-}
-
-// Wraps in the events provider so onSuggestion frames actually fan out (the plain
-// makeWrapper omits it, which is fine for the happy path where the enable-fetch alone
-// lands the proposal).
-const makeEventfulWrapper = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
-    </QueryClientProvider>
   );
 };
 
@@ -59,24 +27,47 @@ const proposal: Proposal = {
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
 };
 
-// Dispatches by method+path: POST .../refine starts the run, GET /v1/proposals is the
-// approval-queue poll that lands the proposal, POST .../approve applies it.
+const journey = (proposalRow?: ProposalDTO): ProposalJourneyDTO => ({
+  version: 1,
+  jobId: "job-1",
+  milestone: proposalRow ? "awaiting_approval" : "generating",
+  intent: proposal.intent,
+  attempts: [],
+  actions: proposalRow ? ["review"] : ["wait"],
+  proposal: proposalRow
+    ? { id: proposalRow.id, status: proposalRow.status, proposal: proposalRow.proposal }
+    : undefined,
+  createdAt: "2026-08-22T10:00:00Z",
+  updatedAt: "2026-08-22T10:00:00Z",
+});
+
+// Dispatches by method+path: POST .../refine starts the run, the Journey read
+// lands its Proposal, and POST .../approve applies it.
 // ⚠ Three route-bound handlers replacing three substring branches, and the last one was the
 // dangerous shape: an unconditional `{ proposals }` for EVERY unmatched request, at any path.
 // `url.includes("/approve")` was also true of `POST /v1/proposals/approve` (the BULK route), which
 // is a different endpoint from the per-proposal one this panel calls.
-const stubRefine = (opts: { proposals: ProposalDTO[] }) =>
+const stubRefine = (opts: { proposals: ProposalDTO[]; failed?: boolean }) =>
   server.use(
     getRefineChannelMockHandler({ jobId: "job-1" }),
     // ⚠ `status` is REQUIRED on ApproveOutputBody and no stub ever sent it.
     getApproveProposalMockHandler({ channelId: "ch-1", enqueued: 0, status: "approved" }),
-    getListProposalsMockHandler({ proposals: opts.proposals }),
+    getGetProposalJobMockHandler(
+      opts.failed
+        ? {
+            ...journey(),
+            milestone: "failed",
+            failure: { code: "generation_failed", message: "Refine couldn't complete. Try again." },
+            actions: ["retry", "check_ai"],
+          }
+        : journey(opts.proposals[0]),
+    ),
   );
 
-// ⚠ `unstubAllGlobals`, not `restoreAllMocks`: the last test installs MockEventSource with
-// `vi.stubGlobal`, and restoreAllMocks does not undo a stubbed global — it would leak into the
-// next file's EventSource.
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  window.sessionStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 describe("RefinePanel", () => {
   it("starts collapsed with the entry point only", () => {
@@ -150,23 +141,17 @@ describe("RefinePanel", () => {
     expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
   });
 
-  // A generation FAILURE (the model errored/timed out mid-run — a `failed` SSE phase,
-  // never a proposal) must not dead-end the panel: it drops back to the form with an
+  // A generation FAILURE restored from the durable Journey (never a proposal)
+  // must not dead-end the panel: it drops back to the form with an
   // inline notice and the typed change preserved, so retry is one click away. This is the
   // "inline error + keep the text" behaviour, not a toast-and-collapse.
   it("surfaces a generation failure inline and keeps the typed change", async () => {
-    vi.stubGlobal("EventSource", MockEventSource);
-    // The queue never lands a proposal for this job — a failed run produces none.
-    stubRefine({ proposals: [] });
-    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeEventfulWrapper() });
+    stubRefine({ proposals: [], failed: true });
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
     await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
     await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
-
-    // The worker fails the job → a `failed` suggestion frame for this run's job id.
-    act(() => MockEventSource.last?.emit("suggestion", { jobId: "job-1", phase: "failed" }));
-
     // Back on the form, with a recoverable error and the text intact — no diff, no Apply.
     expect(await screen.findByText(/couldn't complete/i)).toBeInTheDocument();
     expect(screen.getByLabelText("What to change")).toHaveValue("add more Schwarzenegger");

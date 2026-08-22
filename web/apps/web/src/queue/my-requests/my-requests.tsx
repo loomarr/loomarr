@@ -72,7 +72,11 @@ const MyRequests = () => {
           const proposal = proposalFrom(journey);
           return (
             <li key={journey.jobId}>
-              {proposal ? <MyRequestCard proposal={proposal} /> : <RequestWithoutProposal journey={journey} />}
+              {proposal ? (
+                <MyRequestCard proposal={proposal} />
+              ) : (
+                <RequestWithoutProposal journey={journey} />
+              )}
             </li>
           );
         })}

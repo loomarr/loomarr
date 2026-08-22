@@ -1,7 +1,7 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
 import { ChevronDown, Loader2, Sparkles, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -34,6 +34,13 @@ const RefinePanel = ({
   const refine = useChannelRefine();
   const elapsed = useElapsed(refine.isRunning);
 
+  useEffect(() => {
+    if (refine.channelId !== channelId) return;
+    if (refine.proposal) setState("landed");
+    else if (refine.isRunning) setState("running");
+    else if (refine.phase === "failed") setState("open");
+  }, [channelId, refine.channelId, refine.isRunning, refine.phase, refine.proposal]);
+
   const close = () => {
     setState("idle");
     setChange("");
@@ -57,14 +64,6 @@ const RefinePanel = ({
     setState("running");
     refine.start(channelId, text);
   };
-
-  // The run landed a proposal — move from the progress stepper to the diff, once.
-  if (state === "running" && refine.proposal) setState("landed");
-  // The run FAILED with no proposal (the model errored/timed out mid-generation — a
-  // `failed` SSE phase, distinct from a mutation error). Drop back to the form so the
-  // typed change is preserved and a retry is one click away — a recoverable stop, not a
-  // dead end (the seamless principle: fix it in place).
-  if (state === "running" && !refine.proposal && refine.phase === "failed") setState("open");
 
   const landed = state === "landed" ? refine.proposal : undefined;
   // Show the generation-failed notice on the form whenever the last run ended in `failed`
@@ -100,7 +99,8 @@ const RefinePanel = ({
             <p className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
-                Refine couldn't complete. The model didn't return a lineup. Try again or rephrase your change.
+                {refine.failure?.message ??
+                  "Refine couldn't complete. The model didn't return a lineup. Try again or rephrase your change."}
               </span>
             </p>
           )}

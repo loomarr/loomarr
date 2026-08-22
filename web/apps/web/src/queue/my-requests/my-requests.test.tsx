@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MyRequests } from "./my-requests";
@@ -73,7 +79,10 @@ describe("MyRequests", () => {
     renderRequests();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("No grounded titles matched this request.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Edit and try again" })).toHaveAttribute("href", "/guide?intent=90s+action+night");
+    expect(screen.getByRole("link", { name: "Edit and try again" })).toHaveAttribute(
+      "href",
+      "/guide?intent=90s+action+night",
+    );
   });
 
   it("renders nothing when the member has no requests", async () => {
