@@ -78,38 +78,36 @@ func TestGroundPolicy_NilIsEmpty(t *testing.T) {
 	}
 }
 
-// THE empty-channel bug (live smoke): a small model set a TV-G ceiling but picked The
-// Simpsons (TV-PG). The fail-closed audience gate would drop every episode → an empty
-// channel. groundPolicy must RAISE the ceiling to admit the grounded picks.
-func TestGroundPolicy_CeilingRaisedToAdmitPicks(t *testing.T) {
+// A model-selected title cannot relax an explicit child-safety boundary. A small model once
+// paired a TV-G ceiling with The Simpsons (TV-PG); the title must be refused later, not allowed
+// to raise the policy that protects the channel.
+func TestGroundPolicy_PicksNeverRaiseChildSafetyCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-G" // rank 2 — stricter than the pick
 	lineup := []ProposalItem{
 		{Name: "The Simpsons", OfficialRating: "TV-PG"}, // rank 3
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent())
-	if p.Audience.Ceiling != "TV-PG" {
-		t.Errorf("ceiling = %q, want TV-PG (raised to admit the TV-PG pick)", p.Audience.Ceiling)
+	if p.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("ceiling = %q, want TV-Y7 (deterministic child-safety bound)", p.Audience.Ceiling)
 	}
 }
 
-// The guard NEVER lowers a ceiling: a kids channel (TV-Y7) whose picks are all at/below
-// stays capped, so a stray adult title can't sneak in via a low-rated pick set.
-func TestGroundPolicy_CeilingNotLoweredBelowPicks(t *testing.T) {
+// Explicit child safety clamps a looser model ceiling even when the current picks happen to fit.
+func TestGroundPolicy_ChildSafetyClampsLooserModelCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-PG" // rank 3
 	lineup := []ProposalItem{
 		{Name: "Kids Show", OfficialRating: "TV-Y7"}, // rank 1 — below the ceiling
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent())
-	if p.Audience.Ceiling != "TV-PG" {
-		t.Errorf("ceiling = %q, want TV-PG (unchanged — picks are below it)", p.Audience.Ceiling)
+	if p.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("ceiling = %q, want TV-Y7 (model cannot relax explicit child safety)", p.Audience.Ceiling)
 	}
 }
 
-// An unrated pick doesn't raise the ceiling (it's governed by UnratedPolicy, not the
-// ladder) — so an unrated title can't blow the roof off a kids ceiling.
-func TestGroundPolicy_UnratedPickDoesNotRaiseCeiling(t *testing.T) {
+// An unrated pick cannot affect the deterministic child-safety ceiling.
+func TestGroundPolicy_UnratedPickDoesNotChangeCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-Y7"
 	lineup := []ProposalItem{
@@ -119,6 +117,13 @@ func TestGroundPolicy_UnratedPickDoesNotRaiseCeiling(t *testing.T) {
 	p := groundPolicy(raw, lineup, nil, kidsIntent())
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("ceiling = %q, want TV-Y7 (unrated picks never raise it)", p.Audience.Ceiling)
+	}
+}
+
+func TestGroundPolicy_ChildSafetySurvivesOmittedModelPolicy(t *testing.T) {
+	p := groundPolicy(nil, nil, nil, Intent{Description: "bright, silly, kid-safe cartoons"})
+	if p.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("ceiling = %q, want TV-Y7 when the model omits the safety policy", p.Audience.Ceiling)
 	}
 }
 
@@ -136,18 +141,25 @@ func TestGroundPolicy_NoKidsSignalDropsProposedCeiling(t *testing.T) {
 	}
 }
 
-// With a kids/teen signal present, the proposed ceiling is KEPT and enforced — the guardrail
-// still works for the channels it's for. Tested across several signal phrasings.
-func TestGroundPolicy_KidsSignalKeepsCeiling(t *testing.T) {
+// Broad family/teen signals keep a valid proposed ceiling; explicit child-safety signals clamp
+// it to TV-Y7.
+func TestGroundPolicy_YoungAudienceSignalKeepsOrClampsCeiling(t *testing.T) {
 	for _, desc := range []string{
-		"cartoons for kids", "family-friendly adventures", "a Bluey channel",
-		"Saturday morning cartoons", "wholesome shows for children", "teen dramas",
+		"family-friendly adventures", "a Bluey channel", "teen dramas",
 	} {
 		raw := &pickPolicy{}
 		raw.Audience.Ceiling = "TV-Y7"
 		p := groundPolicy(raw, nil, nil, Intent{Description: desc})
 		if p.Audience.Ceiling != "TV-Y7" {
 			t.Errorf("intent %q: ceiling = %q, want TV-Y7 (kids signal keeps it)", desc, p.Audience.Ceiling)
+		}
+	}
+	for _, desc := range []string{"cartoons for kids", "Saturday morning cartoons", "wholesome shows for children"} {
+		raw := &pickPolicy{}
+		raw.Audience.Ceiling = "TV-PG"
+		p := groundPolicy(raw, nil, nil, Intent{Description: desc})
+		if p.Audience.Ceiling != "TV-Y7" {
+			t.Errorf("intent %q: ceiling = %q, want TV-Y7 child-safety clamp", desc, p.Audience.Ceiling)
 		}
 	}
 }
@@ -163,10 +175,8 @@ func TestGroundPolicy_KidsSignalFromOtherIntentFields(t *testing.T) {
 	}
 }
 
-// Even on a kept (kids) ceiling, the raise-to-admit-picks NEVER crosses the kids→adult line:
-// a stray R pick on a kids channel does NOT lift the ceiling to R — it's left for the §4
-// enforcer to DROP. This is the safety bound on the auto-raise.
-func TestGroundPolicy_RaiseNeverCrossesKidsLine(t *testing.T) {
+// A stray adult pick never changes the child-safety ceiling; the refusal pass drops it.
+func TestGroundPolicy_AdultPickCannotChangeChildSafetyCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-Y7" // rank 1
 	lineup := []ProposalItem{
@@ -174,8 +184,8 @@ func TestGroundPolicy_RaiseNeverCrossesKidsLine(t *testing.T) {
 		{Name: "A Mistake", OfficialRating: "R"},   // rank 5 — must NOT pull the ceiling up
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent())
-	if r, _ := p.Audience.Ceiling.Rank(); r > schedule.KidsCeilingRank {
-		t.Errorf("ceiling = %q raised above the kids line — a kids channel must never admit adult content via a stray pick", p.Audience.Ceiling)
+	if p.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("ceiling = %q, want unchanged TV-Y7 child-safety boundary", p.Audience.Ceiling)
 	}
 }
 

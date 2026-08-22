@@ -156,7 +156,8 @@ type Proposal struct {
 	Rationale    string         `json:"rationale,omitempty"`
 	// Policy is the grounded ChannelPolicy the suggester extracted (programming-
 	// design §8): scope/audience/ordering/seasonal, validated + clamped (off-ladder
-	// ceilings dropped, era bounded). It rides the proposal into channel-create,
+	// ceilings dropped unless explicit child safety supplies its deterministic bound;
+	// era bounded). It rides the proposal into channel-create,
 	// where it lands on the channel row. Empty = the channel uses built-in defaults.
 	Policy schedule.ChannelPolicy `json:"policy,omitempty"`
 	// Retired are lineup keys the auto-curate turnstile decided to rotate OUT to make room

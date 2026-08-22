@@ -385,14 +385,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent)
 
 	// §4 honesty pass (#259). The ceiling is now FINAL — groundPolicy has already dropped an
-	// unjustified one and applied ceilingAdmittingPicks — so this is the first moment the
+	// unjustified one and applied the deterministic child-safety bound — so this is the first moment the
 	// question "will this pick actually air?" has a settled answer. Ask it here, and move the
 	// certain no's out of what the operator is being asked to approve.
-	//
-	// ⚠ This runs AFTER groundPolicy and cannot be folded into it. The raise reads the picks to
-	// decide the ceiling; the refusal reads the ceiling to decide the picks. Reversed, a pick
-	// would be refused by a ceiling that the pick itself was about to lift.
-	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(prop.Policy.Audience, prop.Lineup, prop.Acquisitions)
+	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(
+		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, intentRequiresChildSafety(intent),
+	)
 
 	// ⚠ Scored on what SURVIVED. Scoring the refused picks too would report an availability
 	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
@@ -405,10 +403,11 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 // refuseUnairable partitions grounded picks against the channel's own final audience policy
 // (§4), returning the survivors plus what was refused and why.
 //
-// ⚠ It refuses only what is CERTAINLY unairable — a pick whose known rating is above the
-// ceiling. An UNRATED pick is left in, even though the §4 gate fails closed on unrated under a
-// kids ceiling, because at proposal time "unrated" overwhelmingly means "not looked up yet"
-// rather than "unknown content":
+// It always refuses what is certainly unairable: a pick whose known rating is above the
+// ceiling. For an explicit child-safety intent it also refuses unrated picks, because unknown
+// content cannot be actionable under that promise. Other guarded intents leave an unrated pick
+// available for metadata healing because at proposal time "unrated" often means "not looked up
+// yet" rather than "unknown content":
 //
 //   - The reconcile heal (§389 `RatingResolver`) exists precisely to fill an empty rating once
 //     the title is in the library, and an acquisition cannot be rated by a library that does not
@@ -416,10 +415,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 //   - TMDB enrichment for acquisitions is best-effort; a sparse record or a lookup error leaves
 //     the field empty, which is a fact about the network, not about the content.
 //
-// Nothing is admitted by this leniency that was not already admitted: the §4 enforcer still
-// fails closed at airtime. The difference is only whether the approval screen makes a promise it
-// can keep, and "this WILL be dropped" is the only claim worth making with certainty.
-func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalItem) (
+// Nothing is admitted by that ordinary-intent leniency that was not already admitted: the §4
+// enforcer still fails closed at airtime.
+func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalItem, refuseUnrated bool) (
 	keptLineup, keptAcquisitions []ProposalItem, refused []RefusedPick,
 ) {
 	if a.Ceiling == "" {
@@ -429,8 +427,12 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 		kept := make([]ProposalItem, 0, len(items))
 		for _, it := range items {
 			rating := schedule.NormalizeRating(it.OfficialRating)
-			// Only a KNOWN rating can produce a certain refusal, so the unrated verdict is
-			// deliberately ignored here (see the doc comment).
+			if rating == "" && refuseUnrated {
+				refused = append(refused, RefusedPick{Item: it, Reason: "over_ceiling"})
+				continue
+			}
+			// Outside an explicit child-safety request, only a KNOWN rating can produce a
+			// certain refusal; the reconcile heal can still fill an ordinary metadata gap.
 			if ok, reason := a.Admits(rating); !ok && reason == "over_ceiling" {
 				refused = append(refused, RefusedPick{Item: it, Reason: reason})
 				continue
@@ -447,11 +449,17 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 // machine-checked: the ceiling must be on the closed rating ladder (else dropped),
 // enums must be known (else dropped), the era is taken as-is (the enforcer clamps),
 // and any series allowlist is intersected with the actually-grounded picks so the
-// model can't scope to a series that never surfaced. Returns an empty policy (⇒
-// built-in defaults) when raw is nil or nothing survives validation.
+// model can't scope to a series that never surfaced. Explicit child-safety intent contributes
+// its deterministic ceiling even when the model omits or hallucinates the policy.
 func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent Intent) schedule.ChannelPolicy {
+	childSafetyCeiling := schedule.Rating("")
+	if intentRequiresChildSafety(intent) {
+		childSafetyCeiling = schedule.NormalizeRating("TV-Y7")
+	}
 	if raw == nil {
-		return schedule.ChannelPolicy{}
+		return schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+			Audience: schedule.AudiencePolicy{Ceiling: childSafetyCeiling},
+		}}
 	}
 	var p schedule.ChannelPolicy
 
@@ -463,15 +471,11 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	// and that must not silently strip the R-rated content the channel is about. The prompt says
 	// "adult/no mention → omit," but the model isn't trusted to obey it — this is the enforcement.
 	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && intentSignalsKids(intent) {
-		p.Audience.Ceiling = c
-		// A ceiling STRICTER than a title the model actually grounded would silently empty the
-		// channel: the fail-closed audience gate (§4) drops every over-ceiling pick. Raise the
-		// ceiling to admit the grounded picks — the operator asked for THESE titles — but BOUNDED
-		// by the kids line: on a kids/teen channel the raise never lifts above TV-PG (a stray
-		// harder pick is dropped, not admitted), so admitting-your-picks is never a safety hole.
-		if raised := ceilingAdmittingPicks(p.Audience.Ceiling, lineup); raised != "" {
-			p.Audience.Ceiling = raised
-		}
+		p.Audience.Ceiling = stricterCeiling(c, childSafetyCeiling)
+	} else if childSafetyCeiling != "" {
+		// Explicit child safety is deterministic and cannot disappear because the model
+		// omitted or hallucinated the policy value.
+		p.Audience.Ceiling = childSafetyCeiling
 	}
 	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
 	case schedule.UnratedExclude, schedule.UnratedAllow:
@@ -685,13 +689,6 @@ func intersectSeries(want, grounded []provision.Key) []provision.Key {
 	return kept
 }
 
-// tvGRank / tvPGRank are the "family" band on the audience ladder — the ONLY band within
-// which an auto-raise is safe (see ceilingAdmittingPicks).
-const (
-	tvGRank  = 2 // TV-G / G
-	tvPGRank = 3 // TV-PG / PG (== schedule.KidsCeilingRank)
-)
-
 // multiSeries reports whether a grounded lineup spans more than one DISTINCT series —
 // the condition under which syndication (deck-deal intermix) is the sensible default
 // ordering rather than sequential (programming-design §5). It counts distinct series by
@@ -718,39 +715,9 @@ func multiSeries(lineup []ProposalItem) bool {
 	return false
 }
 
-// ceilingAdmittingPicks fixes a small-model self-contradiction: a ceiling STRICTER than the
-// channel's own grounded picks, which the fail-closed audience gate (§4) would silently empty
-// (e.g. a TV-G ceiling on a TV-PG Simpsons pick). It raises the ceiling to the highest pick
-// rating it needs to admit — the operator asked for THOSE titles — BUT never crosses the
-// kids→adult line: the raise is clamped to KidsCeilingRank (TV-PG). This function only runs
-// for a kept ceiling, which now only exists on a kids/teen channel (groundPolicy drops a
-// ceiling entirely when the intent gives no kids signal), so the clamp is the whole safety
-// story: a stray R/TV-MA pick on a kids channel is NOT admitted here — it's left for the §4
-// enforcer to drop. Returns "" when no raise is warranted. Only rated, on-ladder picks count.
-func ceilingAdmittingPicks(ceiling schedule.Rating, picks []ProposalItem) schedule.Rating {
-	ceilRank, ok := ceiling.Rank()
-	if !ok {
-		return ""
-	}
-	// The highest pick rating at or below the kids line — the ceiling we'd need to admit the
-	// picks without ever lifting above TV-PG. A pick above the line doesn't pull the ceiling up.
-	needed := ceilRank
-	for _, it := range picks {
-		if rank, ok := schedule.NormalizeRating(it.OfficialRating).Rank(); ok {
-			if rank > needed && rank <= schedule.KidsCeilingRank {
-				needed = rank
-			}
-		}
-	}
-	if needed <= ceilRank {
-		return "" // nothing to admit that a raise (within the kids band) would fix
-	}
-	return ratingForRank(needed)
-}
-
 // eraAdmittingPicks widens a model-proposed year window just far enough to include the
-// channel's OWN grounded picks (programming-design §4), the era twin of
-// ceilingAdmittingPicks. It returns the era to persist, never nil for a non-empty input.
+// channel's OWN grounded picks (programming-design §4). It returns the era to persist, never
+// nil for a non-empty input.
 //
 // Caught live: a "Midnight Sci-Fi Horror" proposal carried era.from 1982 AND Alien (1979)
 // on its approved lineup, so the §4 enforcer filtered out a title the operator had
@@ -784,19 +751,16 @@ func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) *schedule.R
 	return &out
 }
 
-// ratingForRank returns the canonical TV rating at a ladder rank (for the kids band the
-// suggester's auto-raise stays within). Only ranks 0..KidsCeilingRank are produced here.
-func ratingForRank(rank int) schedule.Rating {
-	switch rank {
-	case 0:
-		return schedule.NormalizeRating("TV-Y")
-	case 1:
-		return schedule.NormalizeRating("TV-Y7")
-	case tvGRank:
-		return schedule.NormalizeRating("TV-G")
-	default: // tvPGRank / KidsCeilingRank
-		return schedule.NormalizeRating("TV-PG")
+func stricterCeiling(candidate, maximum schedule.Rating) schedule.Rating {
+	if maximum == "" {
+		return candidate
 	}
+	candidateRank, candidateOK := candidate.Rank()
+	maximumRank, maximumOK := maximum.Rank()
+	if !candidateOK || !maximumOK || candidateRank > maximumRank {
+		return maximum
+	}
+	return candidate
 }
 
 // intentSignalsKids reports whether the channel intent asks for kids/teen-appropriate
@@ -835,6 +799,26 @@ var kidsIntentCues = []string{
 	"for the family", "for families", "cartoon", "all ages", "all-ages", "wholesome",
 	"preschool", "toddler", "bluey", "saturday morning", "teen", "teenager", "tween",
 	"g-rated", "pg-rated", "clean ", "safe for",
+}
+
+// intentRequiresChildSafety recognizes explicit requests whose unknown or harder content must
+// be refused before approval. These are intentionally stronger than the broad kids/teen cues
+// above: they state a child audience or safety promise, rather than merely describing a tone.
+func intentRequiresChildSafety(intent Intent) bool {
+	hay := strings.ToLower(strings.Join([]string{
+		intent.Description, intent.Tone, intent.Era, intent.RefineText,
+		strings.Join(intent.MustInclude, " "),
+	}, " "))
+	for _, cue := range []string{
+		"kid-safe", "kid safe", "kids-safe", "kids safe", "child-safe", "child safe",
+		"safe for kids", "safe for children", "for kids", "for children",
+		"young children", "preschool", "toddler", "saturday morning",
+	} {
+		if strings.Contains(hay, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 // clampSeasonWindow validates a model-proposed AIRING season window (§8 grounding
