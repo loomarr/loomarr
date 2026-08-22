@@ -72,8 +72,8 @@ The worktree was created from `origin/main` at `c650d7cb`. The unchanged baselin
 vet, Windows cross-build, and package compilation, then the pinned golangci/staticcheck analyzer
 panicked internally while building package `poll`; this is inherited baseline evidence, not a green
 gate and must be rerun unchanged before final attribution. Claims: `migrations`, `openapi-client`, and
-`proposal-workflow`. The earlier `suggestion-failure-classification` task ended without publishing;
-this branch absorbed the bounded classifier and safe failure projection behind the workflow module.
+`proposal-workflow`. The bounded failure classifier subsequently landed on `origin/main` in PR #452;
+this branch rebased it into the workflow module's atomic failure transition and safe Journey projection.
 
 ## Validation
 
