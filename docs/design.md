@@ -158,7 +158,7 @@ flowchart TD
   p_provision["provision<br/><small>16 importers</small>"]
   p_schedule["schedule<br/><small>14 importers</small>"]
   p_scheduler["scheduler<br/><small>6 importers</small>"]
-  p_store["store<br/><small>15 importers</small>"]
+  p_store["store<br/><small>14 importers</small>"]
   p_suggest["suggest<br/><small>6 importers</small>"]
   p_catalog --> p_library
   p_catalog --> p_provision
@@ -220,6 +220,8 @@ flowchart TD
   One pipeline every image in Loomarr travels (§22).
 - **`playout`** · 4 importers · → `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
+- **`retention`** · 1 importer · → `scheduler`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
 
 **Layer 3**
 
@@ -253,7 +255,7 @@ flowchart TD
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`library`** · 7 importers · → `filler`, `httpx`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 15 importers · → `filler`, `provision`, `schedule`, `taxonomy`
+- **`store`** · 14 importers · → `filler`, `provision`, `schedule`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 8**
@@ -268,8 +270,6 @@ flowchart TD
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`channels`** · 2 importers · → `filler`, `metrics`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
-- **`retention`** · 1 importer · → `scheduler`, `store`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity rows.
 - **`settings`** · 1 importer · → `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
