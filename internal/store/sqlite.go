@@ -58,7 +58,7 @@ WHERE id IN (
     ORDER BY deadline LIMIT ?3
 )
 RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-          deadline, attempts, created_at, updated_at`
+	      workflow_version, reached_live, deadline, attempts, created_at, updated_at`
 
 // sqliteScheduledJobClaimSQL leases every due scheduled job (§18.1): advance next_run to the
 // lease so a concurrent tick/replica won't re-claim it until this run finishes and reschedules

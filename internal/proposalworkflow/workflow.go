@@ -12,7 +12,10 @@ import (
 	"github.com/mantonx/loomarr/internal/suggest"
 )
 
-const WorkflowVersion1 = 1
+const (
+	WorkflowVersionLegacy = 0
+	WorkflowVersion1      = 1
+)
 
 var (
 	ErrForbidden    = errors.New("proposal workflow: forbidden")
@@ -22,6 +25,7 @@ var (
 type JobStatus string
 
 const (
+	JobQueued  JobStatus = "queued"
 	JobRunning JobStatus = "running"
 	JobDone    JobStatus = "done"
 	JobFailed  JobStatus = "failed"
@@ -30,9 +34,10 @@ const (
 type AttemptStatus string
 
 const (
-	AttemptRunning   AttemptStatus = "running"
-	AttemptSucceeded AttemptStatus = "succeeded"
-	AttemptFailed    AttemptStatus = "failed"
+	AttemptRunning     AttemptStatus = "running"
+	AttemptSucceeded   AttemptStatus = "succeeded"
+	AttemptFailed      AttemptStatus = "failed"
+	AttemptInterrupted AttemptStatus = "interrupted"
 )
 
 type Milestone string
@@ -88,10 +93,12 @@ type ChannelRef struct {
 }
 
 type Attempt struct {
-	Version   int
-	Number    int
-	Status    AttemptStatus
-	StartedAt time.Time
+	Version     int
+	Number      int
+	Status      AttemptStatus
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Failure     *Failure
 }
 
 // Record is the repository-owned state from which Workflow derives one Journey.
@@ -166,17 +173,27 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	if !viewer.Admin && (viewer.UserID == "" || viewer.UserID != record.OwnerID) {
 		return Journey{}, ErrForbidden
 	}
-	if record.Version != WorkflowVersion1 {
+	legacy := record.Version == WorkflowVersionLegacy
+	if legacy && len(record.Attempts) != 0 {
+		return Journey{}, fmt.Errorf("%w: legacy Job has versioned Attempt history", ErrInvalidState)
+	}
+	if !legacy && record.Version != WorkflowVersion1 {
 		return Journey{}, fmt.Errorf("%w: version=%d status=%q", ErrInvalidState, record.Version, record.Status)
 	}
-	if err := validateAttempts(record); err != nil {
-		return Journey{}, err
+	if !legacy {
+		if err := validateAttempts(record); err != nil {
+			return Journey{}, err
+		}
 	}
+	// Version 0 is the pre-history persisted form. Project it into the current
+	// Journey schema without fabricating Attempts; its first new claim performs
+	// the durable version transition.
+	record.Version = WorkflowVersion1
 
 	milestone := MilestoneGenerating
 	actions := []Action{ActionWait}
 	switch record.Status {
-	case JobRunning:
+	case JobQueued, JobRunning:
 	case JobDone:
 		if record.Proposal == nil {
 			return Journey{}, fmt.Errorf("%w: done job has no Proposal", ErrInvalidState)
@@ -222,7 +239,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 func journeyFrom(record Record, milestone Milestone, actions []Action, failure *Failure) Journey {
 	return Journey{
 		Version: record.Version, JobID: record.JobID, Milestone: milestone,
-		Intent: record.Intent, Attempts: append([]Attempt(nil), record.Attempts...),
+		Intent: record.Intent, Attempts: cloneAttempts(record.Attempts),
 		Proposal: cloneProposal(record.Proposal), Channel: cloneChannel(record.Channel),
 		Failure: cloneFailure(failure), Actions: append([]Action(nil), actions...),
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
@@ -244,6 +261,9 @@ func safeFailure(code FailureCode) Failure {
 
 func validateAttempts(record Record) error {
 	if len(record.Attempts) == 0 {
+		if record.Status == JobQueued {
+			return nil
+		}
 		return fmt.Errorf("%w: %s job has no Attempt", ErrInvalidState, record.Status)
 	}
 	for i, attempt := range record.Attempts {
@@ -254,7 +274,7 @@ func validateAttempts(record Record) error {
 			return fmt.Errorf("%w: Attempt number %d follows index %d", ErrInvalidState, attempt.Number, i)
 		}
 		switch attempt.Status {
-		case AttemptRunning, AttemptSucceeded, AttemptFailed:
+		case AttemptRunning, AttemptSucceeded, AttemptFailed, AttemptInterrupted:
 		default:
 			return fmt.Errorf("%w: Attempt %d has status %q", ErrInvalidState, attempt.Number, attempt.Status)
 		}
@@ -266,6 +286,11 @@ func validateAttempts(record Record) error {
 	latest := record.Attempts[len(record.Attempts)-1]
 	want := AttemptStatus("")
 	switch record.Status {
+	case JobQueued:
+		if latest.Status == AttemptRunning {
+			return fmt.Errorf("%w: queued job has a running Attempt", ErrInvalidState)
+		}
+		return nil
 	case JobRunning:
 		want = AttemptRunning
 	case JobDone:
@@ -279,6 +304,14 @@ func validateAttempts(record Record) error {
 		return fmt.Errorf("%w: %s job has current Attempt status %q", ErrInvalidState, record.Status, latest.Status)
 	}
 	return nil
+}
+
+func cloneAttempts(attempts []Attempt) []Attempt {
+	clones := append([]Attempt(nil), attempts...)
+	for i := range clones {
+		clones[i].Failure = cloneFailure(clones[i].Failure)
+	}
+	return clones
 }
 
 func approvedMilestone(record Record) (Milestone, error) {

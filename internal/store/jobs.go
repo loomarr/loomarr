@@ -13,18 +13,34 @@ import (
 // carry the suggest.Intent / suggest.Proposal so the store stays domain-neutral
 // (like titles.title_json). IntentHash is the cache key.
 type Job struct {
-	ID          string
-	Kind        string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
-	Status      string // queued | running | done | failed
-	IntentJSON  string
-	IntentHash  string
-	CreatedBy   string
-	LastError   string
-	FailureCode string
-	Deadline    time.Time
-	Attempts    int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              string
+	Kind            string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
+	Status          string // queued | running | done | failed
+	IntentJSON      string
+	IntentHash      string
+	CreatedBy       string
+	LastError       string
+	FailureCode     string
+	WorkflowVersion int
+	ReachedLive     bool
+	Deadline        time.Time
+	Attempts        int
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+const ProposalWorkflowVersion = 1
+
+// ProposalJobAttempt is one exact execution lease. Attempt is a monotonically
+// increasing compare-and-swap token within its Job.
+type ProposalJobAttempt struct {
+	JobID           string
+	Attempt         int
+	WorkflowVersion int
+	Status          string
+	StartedAt       time.Time
+	CompletedAt     time.Time
+	FailureCode     string
 }
 
 // ProposalJob is the consistent read projection for one generation execution.
@@ -32,7 +48,9 @@ type Job struct {
 // approved, or denied independently from the job lifecycle.
 type ProposalJob struct {
 	Job      Job
+	Attempts []ProposalJobAttempt
 	Proposal *Proposal
+	Channel  *Channel
 }
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
@@ -66,10 +84,12 @@ type Proposal struct {
 
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code, deadline, attempts, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error,
+		                    failure_code, workflow_version, reached_live, deadline, attempts, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
-		epoch(j.Deadline), j.Attempts, epoch(j.CreatedAt), epoch(j.UpdatedAt))
+		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
+		epoch(j.CreatedAt), epoch(j.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -77,16 +97,22 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 }
 
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-	deadline, attempts, created_at, updated_at FROM jobs`
+	workflow_version, reached_live, deadline, attempts, created_at, updated_at FROM jobs`
 
 func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
 }
 
 func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return ProposalJob{}, fmt.Errorf("get proposal job %s: begin snapshot: %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	row := tx.QueryRowContext(ctx, s.ph(
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
-		        j.deadline, j.attempts, j.created_at, j.updated_at,
+		        j.failure_code, j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
@@ -109,9 +135,10 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		pNote, pJSON                          sql.NullString
 		pApprovedAt, pCreatedAt, pUpdatedAt   sql.NullInt64
 	)
-	err := row.Scan(
+	err = row.Scan(
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
-		&out.Job.CreatedBy, &out.Job.LastError, &deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt,
+		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
+		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt,
 		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
@@ -133,15 +160,28 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 			UpdatedAt: fromEpoch(pUpdatedAt.Int64),
 		}
 	}
+	out.Attempts, err = listProposalJobAttempts(ctx, tx, s.ph, id)
+	if err != nil {
+		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
+	}
+	channel, channelErr := scanChannel(tx.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), id))
+	if channelErr == nil {
+		out.Channel = &channel
+	} else if !errors.Is(channelErr, ErrNotFound) {
+		return ProposalJob{}, fmt.Errorf("get proposal job %s Channel: %w", id, channelErr)
+	}
+	if err := tx.Commit(); err != nil {
+		return ProposalJob{}, fmt.Errorf("get proposal job %s: commit snapshot: %w", id, err)
+	}
 	return out, nil
 }
 
 func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
-		   last_error=?, failure_code=?, deadline=?, attempts=?, updated_at=? WHERE id=?`),
+		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=? WHERE id=?`),
 		j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
-		epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), j.ID)
+		j.WorkflowVersion, j.ReachedLive, epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), j.ID)
 	if err != nil {
 		return fmt.Errorf("update job %s: %w", j.ID, err)
 	}
@@ -151,12 +191,121 @@ func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 // ClaimDueJobs atomically starts and leases due queued jobs (§8/§18).
 // Placeholders: 1=leaseUntil, 2=now, 3=limit.
 func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error) {
-	rows, err := s.db.QueryContext(ctx, s.jobClaimSQL, epoch(now.Add(lease)), epoch(now), limit)
+	if limit <= 0 || lease <= 0 {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("claim due jobs: %w", err)
+		return nil, fmt.Errorf("claim due jobs: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	query := jobSelect + ` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
+		ORDER BY deadline LIMIT ?`
+	if s.dialect == DialectPostgres {
+		query += ` FOR UPDATE SKIP LOCKED`
+	}
+	rows, err := tx.QueryContext(ctx, s.ph(query), epoch(now), limit)
+	if err != nil {
+		return nil, fmt.Errorf("claim due jobs: select: %w", err)
+	}
+	jobs, err := scanJobs(rows)
+	closeErr := rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("claim due jobs: scan: %w", err)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("claim due jobs: close rows: %w", closeErr)
+	}
+
+	for i := range jobs {
+		job := &jobs[i]
+		if job.WorkflowVersion == ProposalWorkflowVersion && job.Status == "running" {
+			result, err := tx.ExecContext(ctx, s.ph(
+				`UPDATE proposal_job_attempts
+				    SET status='interrupted', completed_at=?
+				  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
+				epoch(now), job.ID, job.Attempts, ProposalWorkflowVersion)
+			if err != nil {
+				return nil, fmt.Errorf("claim due jobs: interrupt %s Attempt %d: %w", job.ID, job.Attempts, err)
+			}
+			affected, err := result.RowsAffected()
+			if err != nil || affected != 1 {
+				return nil, fmt.Errorf("claim due jobs: %s current Attempt %d is missing or terminal", job.ID, job.Attempts)
+			}
+		}
+
+		nextAttempt := job.Attempts + 1
+		if job.WorkflowVersion == 0 {
+			nextAttempt = 1
+		}
+		result, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs
+			    SET status='running', workflow_version=?, attempts=?, deadline=?, updated_at=?
+			  WHERE id=? AND status IN ('queued', 'running') AND deadline <= ? AND deadline > 0`),
+			ProposalWorkflowVersion, nextAttempt, epoch(now.Add(lease)), epoch(now), job.ID, epoch(now))
+		if err != nil {
+			return nil, fmt.Errorf("claim due jobs: start %s: %w", job.ID, err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil || affected != 1 {
+			return nil, fmt.Errorf("claim due jobs: lost locked Job %s", job.ID)
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`INSERT INTO proposal_job_attempts
+			    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
+			 VALUES (?, ?, ?, 'running', ?, 0, '')`),
+			job.ID, nextAttempt, ProposalWorkflowVersion, epoch(now)); err != nil {
+			return nil, fmt.Errorf("claim due jobs: create %s Attempt %d: %w", job.ID, nextAttempt, err)
+		}
+		job.Status = "running"
+		job.WorkflowVersion = ProposalWorkflowVersion
+		job.Attempts = nextAttempt
+		job.Deadline = now.Add(lease)
+		job.UpdatedAt = now
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("claim due jobs: commit: %w", err)
+	}
+	return jobs, nil
+}
+
+const proposalJobAttemptSelect = `SELECT job_id, attempt, workflow_version, status,
+	started_at, completed_at, failure_code FROM proposal_job_attempts`
+
+func (s *sqlStore) ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error) {
+	return listProposalJobAttempts(ctx, s.db, s.ph, jobID)
+}
+
+type attemptQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func listProposalJobAttempts(
+	ctx context.Context,
+	queryer attemptQueryer,
+	placeholder func(string) string,
+	jobID string,
+) ([]ProposalJobAttempt, error) {
+	rows, err := queryer.QueryContext(ctx, placeholder(
+		proposalJobAttemptSelect+` WHERE job_id = ? ORDER BY attempt`), jobID)
+	if err != nil {
+		return nil, fmt.Errorf("list Proposal Job Attempts for %s: %w", jobID, err)
 	}
 	defer func() { _ = rows.Close() }()
-	return scanJobs(rows)
+	var attempts []ProposalJobAttempt
+	for rows.Next() {
+		var attempt ProposalJobAttempt
+		var startedAt, completedAt int64
+		if err := rows.Scan(&attempt.JobID, &attempt.Attempt, &attempt.WorkflowVersion,
+			&attempt.Status, &startedAt, &completedAt, &attempt.FailureCode); err != nil {
+			return nil, err
+		}
+		attempt.StartedAt = fromEpoch(startedAt)
+		attempt.CompletedAt = fromEpoch(completedAt)
+		attempts = append(attempts, attempt)
+	}
+	return attempts, rows.Err()
 }
 
 // FindJobByIntentHash returns a recent job with a matching intent hash (§8 cache).
@@ -175,7 +324,8 @@ func scanJob(sc scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &deadline, &j.Attempts, &createdAt, &updatedAt)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive,
+		&deadline, &j.Attempts, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Job{}, ErrNotFound
 	}
@@ -186,6 +336,13 @@ func scanJob(sc scannable) (Job, error) {
 	j.CreatedAt = fromEpoch(createdAt)
 	j.UpdatedAt = fromEpoch(updatedAt)
 	return j, nil
+}
+
+func workflowVersionForCreate(version int) int {
+	if version == 0 {
+		return ProposalWorkflowVersion
+	}
+	return version
 }
 
 func scanJobs(rows *sql.Rows) ([]Job, error) {

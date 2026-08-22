@@ -57,6 +57,18 @@ func (s *sqlStore) CommitSuggestionSuccess(
 		}
 		return fmt.Errorf("%w: job %s has status %s", ErrJobNotRunning, jobID, status)
 	}
+	result, err = tx.ExecContext(ctx, s.ph(
+		`UPDATE proposal_job_attempts
+		    SET status='succeeded', completed_at=?, failure_code=''
+		  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
+		epoch(updatedAt), jobID, expectedAttempt, ProposalWorkflowVersion)
+	if err != nil {
+		return fmt.Errorf("complete suggestion job %s: close Attempt %d: %w", jobID, expectedAttempt, err)
+	}
+	affected, err = result.RowsAffected()
+	if err != nil || affected != 1 {
+		return fmt.Errorf("%w: job %s Attempt %d is missing or terminal", ErrJobNotRunning, jobID, expectedAttempt)
+	}
 
 	// Proposal timestamps are stored at second precision. Make successive
 	// executions on a stable channel job strictly monotonic so "newest" remains
@@ -131,7 +143,13 @@ func (s *sqlStore) CommitSuggestionFailure(
 	cause string,
 	updatedAt time.Time,
 ) error {
-	result, err := s.db.ExecContext(ctx, s.ph(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("fail suggestion job %s: begin: %w", jobID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE jobs
 		    SET status='failed', last_error=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
@@ -143,19 +161,33 @@ func (s *sqlStore) CommitSuggestionFailure(
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: transition count: %w", jobID, err)
 	}
-	if affected == 1 {
-		return nil
+	if affected != 1 {
+		var status string
+		err = tx.QueryRowContext(ctx, s.ph(`SELECT status FROM jobs WHERE id = ?`), jobID).Scan(&status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("fail suggestion job %s: read status: %w", jobID, err)
+		}
+		return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotRunning, jobID, status)
 	}
-
-	var status string
-	err = s.db.QueryRowContext(ctx, s.ph(`SELECT status FROM jobs WHERE id = ?`), jobID).Scan(&status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
+	result, err = tx.ExecContext(ctx, s.ph(
+		`UPDATE proposal_job_attempts
+		    SET status='failed', completed_at=?
+		  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
+		epoch(updatedAt), jobID, expectedAttempt, ProposalWorkflowVersion)
 	if err != nil {
-		return fmt.Errorf("fail suggestion job %s: read status: %w", jobID, err)
+		return fmt.Errorf("fail suggestion job %s: close Attempt %d: %w", jobID, expectedAttempt, err)
 	}
-	return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotRunning, jobID, status)
+	affected, err = result.RowsAffected()
+	if err != nil || affected != 1 {
+		return fmt.Errorf("%w: job %s Attempt %d is missing or terminal", ErrJobNotRunning, jobID, expectedAttempt)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("fail suggestion job %s: commit: %w", jobID, err)
+	}
+	return nil
 }
 
 // CloneSuggestionSuccess copies only cached proposal content. The new job and
@@ -180,10 +212,12 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	// source changes concurrently, the later SELECT still sees one coherent
 	// snapshot instead of failing a deferred read-to-write upgrade.
 	if _, err := tx.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, deadline, attempts, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error,
+		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, job.LastError,
-		epoch(job.Deadline), job.Attempts, epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
+		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
 	}
 
@@ -211,6 +245,18 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	}
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`INSERT INTO proposal_job_attempts
+		    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
+		 VALUES (?, 1, ?, 'succeeded', ?, ?, '')`),
+		job.ID, ProposalWorkflowVersion, epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		return Proposal{}, fmt.Errorf("clone suggestion job %s: create cached Attempt: %w", job.ID, err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE jobs SET workflow_version=?, attempts=1 WHERE id=?`),
+		ProposalWorkflowVersion, job.ID); err != nil {
+		return Proposal{}, fmt.Errorf("clone suggestion job %s: version cached result: %w", job.ID, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: commit: %w", job.ID, err)

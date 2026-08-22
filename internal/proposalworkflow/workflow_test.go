@@ -251,6 +251,41 @@ func TestWorkflowInspectRejectsStructurallyImpossibleAttemptHistory(t *testing.T
 	}
 }
 
+func TestWorkflowInspectProjectsLegacyJobWithoutInventingAttemptHistory(t *testing.T) {
+	t.Parallel()
+
+	workflow := newWorkflow(&recordingRepository{record: Record{
+		Version:  WorkflowVersionLegacy,
+		JobID:    "job-legacy",
+		OwnerID:  "member-1",
+		Status:   JobDone,
+		Proposal: &ProposalRef{ID: "proposal-legacy", Status: ProposalSubmitted},
+	}})
+
+	journey, err := workflow.Inspect(context.Background(), Viewer{UserID: "member-1"}, "job-legacy")
+	if err != nil {
+		t.Fatalf("Inspect legacy Journey: %v", err)
+	}
+	if journey.Version != WorkflowVersion1 || journey.Milestone != MilestoneAwaitingApproval {
+		t.Fatalf("legacy Journey = version %d milestone %q", journey.Version, journey.Milestone)
+	}
+	if len(journey.Attempts) != 0 {
+		t.Fatalf("legacy history was invented: %+v", journey.Attempts)
+	}
+}
+
+func TestWorkflowInspectRejectsUnknownFutureWorkflowVersion(t *testing.T) {
+	t.Parallel()
+
+	workflow := newWorkflow(&recordingRepository{record: Record{
+		Version: WorkflowVersion1 + 1, JobID: "job-future", OwnerID: "member-1", Status: JobRunning,
+	}})
+	_, err := workflow.Inspect(context.Background(), Viewer{UserID: "member-1"}, "job-future")
+	if !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("Inspect future Journey error = %v, want ErrInvalidState", err)
+	}
+}
+
 func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 	t.Parallel()
 

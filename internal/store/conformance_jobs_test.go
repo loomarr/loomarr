@@ -21,7 +21,8 @@ func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 	return Job{
 		ID: id, Kind: "suggest", Status: "queued",
 		IntentJSON: `{"description":"90s action"}`, IntentHash: hash,
-		CreatedBy: "user-1", Deadline: deadline, CreatedAt: createdAt, UpdatedAt: createdAt,
+		CreatedBy: "user-1", WorkflowVersion: ProposalWorkflowVersion,
+		Deadline: deadline, CreatedAt: createdAt, UpdatedAt: createdAt,
 	}
 }
 
@@ -72,15 +73,22 @@ func testClaimDueJobs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	// Seed two real running attempts first: one lease remains current, the other
+	// expires and must be interrupted when this test's main claim recovers it.
+	running := sampleJob("running", "h3", now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	_ = s.CreateJob(ctx, running)
+	if got, err := s.ClaimDueJobs(ctx, now.Add(-2*time.Hour), 3*time.Hour, 1); err != nil || len(got) != 1 {
+		t.Fatalf("seed unexpired running Attempt = %+v, %v", got, err)
+	}
+	orphaned := sampleJob("orphaned", "h4", now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	_ = s.CreateJob(ctx, orphaned)
+	if got, err := s.ClaimDueJobs(ctx, now.Add(-2*time.Hour), 30*time.Minute, 1); err != nil || len(got) != 1 {
+		t.Fatalf("seed expired running Attempt = %+v, %v", got, err)
+	}
+
 	_ = s.CreateJob(ctx, sampleJob("due", "h1", now.Add(-time.Hour), now))
 	future := sampleJob("future", "h2", now.Add(time.Hour), now)
 	_ = s.CreateJob(ctx, future)
-	running := sampleJob("running", "h3", now.Add(time.Hour), now)
-	running.Status = "running"
-	_ = s.CreateJob(ctx, running)
-	orphaned := sampleJob("orphaned", "h4", now.Add(-time.Hour), now.Add(-time.Hour))
-	orphaned.Status = "running"
-	_ = s.CreateJob(ctx, orphaned)
 
 	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 10)
 	if err != nil {
@@ -90,15 +98,27 @@ func testClaimDueJobs(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("ClaimDueJobs = %d, want due + orphaned: %+v", len(claimed), claimed)
 	}
 	for _, job := range claimed {
-		if job.Status != "running" || job.Attempts != 1 || !job.UpdatedAt.Equal(now) {
+		wantAttempt := 1
+		if job.ID == "orphaned" {
+			wantAttempt = 2
+		}
+		if job.Status != "running" || job.Attempts != wantAttempt || !job.UpdatedAt.Equal(now) {
 			t.Fatalf("claimed job was not atomically started: %+v", job)
 		}
+	}
+	orphanedAttempts, err := s.ListProposalJobAttempts(ctx, "orphaned")
+	if err != nil || len(orphanedAttempts) != 2 {
+		t.Fatalf("orphaned Attempt history = %+v, %v", orphanedAttempts, err)
+	}
+	if orphanedAttempts[0].Status != "interrupted" || !orphanedAttempts[0].CompletedAt.Equal(now) ||
+		orphanedAttempts[1].Status != "running" || !orphanedAttempts[1].StartedAt.Equal(now) {
+		t.Fatalf("recovered Attempt history = %+v", orphanedAttempts)
 	}
 	gotRunning, err := s.GetJob(ctx, "running")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotRunning.Status != "running" || gotRunning.Attempts != 0 {
+	if gotRunning.Status != "running" || gotRunning.Attempts != 1 {
 		t.Fatalf("unexpired running job was disturbed: %+v", gotRunning)
 	}
 	// Leased: second claim returns nothing.
@@ -152,10 +172,14 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	job := sampleJob("job-success", "hash-success", now, now)
-	job.Status = "running"
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim success job = %+v, %v", claimed, err)
+	}
+	job = claimed[0]
 	proposal := Proposal{
 		ID: "proposal-success", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
 		ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now,
@@ -177,10 +201,15 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if gotProposal.JobID != job.ID || gotProposal.Status != "submitted" {
 		t.Fatalf("completed proposal = %+v", gotProposal)
 	}
+	if attempts, err := s.ListProposalJobAttempts(ctx, job.ID); err != nil || len(attempts) != 1 ||
+		attempts[0].Status != "succeeded" || !attempts[0].CompletedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("successful Attempt history = %+v, %v", attempts, err)
+	}
 
 	// A non-running job cannot acquire a proposal. The insert and guarded transition
 	// are one transaction, so the failed transition leaves no orphan proposal behind.
 	queued := sampleJob("job-queued", "hash-queued", now, now)
+	queued.Deadline = now.Add(time.Hour)
 	if err := s.CreateJob(ctx, queued); err != nil {
 		t.Fatal(err)
 	}
@@ -195,10 +224,14 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	owned := sampleJob("job-owned", "hash-owned", now, now)
-	owned.Status = "running"
 	if err := s.CreateJob(ctx, owned); err != nil {
 		t.Fatal(err)
 	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 || claimed[0].ID != owned.ID {
+		t.Fatalf("claim owned job = %+v, %v", claimed, err)
+	}
+	owned = claimed[0]
 	foreign := proposal
 	foreign.ID = "proposal-foreign"
 	foreign.JobID = owned.ID
@@ -211,11 +244,14 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	failed := sampleJob("job-failed", "hash-failed", now, now)
-	failed.Status = "running"
-	failed.Attempts = 2
 	if err := s.CreateJob(ctx, failed); err != nil {
 		t.Fatal(err)
 	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 || claimed[0].ID != failed.ID {
+		t.Fatalf("claim failing job = %+v, %v", claimed, err)
+	}
+	failed = claimed[0]
 	if err := s.CommitSuggestionFailure(ctx, failed.ID, failed.Attempts, "provider unavailable", now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -223,28 +259,28 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" || gotFailed.Attempts != 2 {
+	if gotFailed.Status != "failed" || gotFailed.LastError != "provider unavailable" || gotFailed.Attempts != 1 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
+	}
+	if attempts, err := s.ListProposalJobAttempts(ctx, failed.ID); err != nil || len(attempts) != 1 ||
+		attempts[0].Status != "failed" || !attempts[0].CompletedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("failed Attempt history = %+v, %v", attempts, err)
 	}
 
 	// An old worker may finish after a refine was claimed as a new execution.
 	// The attempt token makes both terminal transitions lose without rewriting it.
 	stale := sampleJob("job-stale", "hash-old", now, now)
-	stale.Status = "running"
-	stale.Attempts = 1
 	if err := s.CreateJob(ctx, stale); err != nil {
 		t.Fatal(err)
 	}
-	newExecution := stale
-	newExecution.IntentJSON = `{"description":"new refine"}`
-	newExecution.IntentHash = "hash-new"
-	newExecution.Status = "queued"
-	newExecution.Deadline = now.Add(2 * time.Minute)
-	newExecution.UpdatedAt = now.Add(2 * time.Minute)
-	if err := s.UpdateJob(ctx, newExecution); err != nil {
-		t.Fatal(err)
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 || claimed[0].ID != stale.ID {
+		t.Fatalf("claim stale job = %+v, %v", claimed, err)
 	}
-	claimed, err := s.ClaimDueJobs(ctx, now.Add(2*time.Minute), time.Minute, 10)
+	stale = claimed[0]
+	// Let Attempt 1's lease expire. Recovery, not an unguarded whole-row write,
+	// creates Attempt 2 and makes every late Attempt-1 result stale.
+	claimed, err = s.ClaimDueJobs(ctx, now.Add(2*time.Minute), time.Minute, 10)
 	if err != nil || len(claimed) == 0 {
 		t.Fatalf("claim replacement execution = %+v, %v", claimed, err)
 	}
@@ -271,11 +307,15 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if winner.Status != "running" || winner.Attempts != 2 || winner.IntentHash != "hash-new" || winner.LastError != "" {
+	if winner.Status != "running" || winner.Attempts != 2 || winner.IntentHash != "hash-old" || winner.LastError != "" {
 		t.Fatalf("replacement execution was overwritten: %+v", winner)
 	}
 	if _, err := s.GetProposal(ctx, staleProposal.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("stale proposal lookup = %v, want ErrNotFound", err)
+	}
+	if attempts, err := s.ListProposalJobAttempts(ctx, stale.ID); err != nil || len(attempts) != 2 ||
+		attempts[0].Status != "interrupted" || attempts[1].Status != "running" {
+		t.Fatalf("stale recovery Attempt history = %+v, %v", attempts, err)
 	}
 }
 
@@ -284,16 +324,19 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	job := sampleJob("job-requeue", "hash-original", now, now)
-	job.Status = "done"
-	job.Attempts = 1
 	if err := s.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim original job = %+v, %v", claimed, err)
+	}
+	job = claimed[0]
 	first := Proposal{
-		ID: "proposal-first", JobID: job.ID, Status: "approved", CreatedBy: job.CreatedBy,
+		ID: "proposal-first", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
 		ProposalJSON: `{"lineup":[{"name":"First"}]}`, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := s.CreateProposal(ctx, first); err != nil {
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, first, now); err != nil {
 		t.Fatal(err)
 	}
 
@@ -313,7 +356,7 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("stale requeue overwrote winner: %+v", queued)
 	}
 
-	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("claim refined job = %+v, %v", claimed, err)
 	}
@@ -340,6 +383,10 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !snapshot.Proposal.CreatedAt.Equal(now.Add(time.Second)) {
 		t.Fatalf("refine proposal timestamp = %v, want monotonic %v", snapshot.Proposal.CreatedAt, now.Add(time.Second))
+	}
+	if attempts, err := s.ListProposalJobAttempts(ctx, job.ID); err != nil || len(attempts) != 2 ||
+		attempts[0].Status != "succeeded" || attempts[1].Status != "succeeded" {
+		t.Fatalf("refine Attempt history = %+v, %v", attempts, err)
 	}
 }
 
