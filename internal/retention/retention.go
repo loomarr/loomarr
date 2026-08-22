@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/scheduler"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // Windows are the configured retention periods, read per run.
@@ -29,16 +28,26 @@ type Windows struct {
 	Activity  func() time.Duration
 }
 
+// Store is the destructive persistence role behind retention policy. The
+// composite store remains at the composition root; this module can delete only
+// the four record classes its interface names.
+type Store interface {
+	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
+	PurgeActivity(ctx context.Context, before time.Time) (int, error)
+	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+}
+
 // Service runs the purges.
 type Service struct {
-	store store.Store
+	store Store
 	win   Windows
 	now   func() time.Time
 	log   *slog.Logger
 }
 
 // New builds the retention service. A nil `now` means time.Now.
-func New(st store.Store, win Windows, now func() time.Time, log *slog.Logger) *Service {
+func New(st Store, win Windows, now func() time.Time, log *slog.Logger) *Service {
 	if now == nil {
 		now = time.Now
 	}

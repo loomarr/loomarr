@@ -18,15 +18,27 @@ import (
 // CookieName is the session cookie (§11).
 const CookieName = "loomarr_session"
 
+// SessionStore is the exact persistence role session issuance and validation
+// require. Keeping this seam local prevents auth from learning the unrelated
+// acquisition, channel, filler, and scheduler surfaces on store.Store.
+type SessionStore interface {
+	CreateSession(ctx context.Context, sess store.Session) error
+	GetSession(ctx context.Context, tokenHash string, now time.Time) (store.Session, error)
+	GetUser(ctx context.Context, id string) (store.User, error)
+	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	RevokeSession(ctx context.Context, tokenHash string) error
+	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]store.Session, error)
+}
+
 // Manager issues, validates, and revokes sessions.
 type Manager struct {
-	store store.Store
+	store SessionStore
 	ttl   time.Duration // sliding SESSION_TTL (§11)
 	now   func() time.Time
 }
 
 // NewManager builds a session manager. now defaults to time.Now.
-func NewManager(st store.Store, ttl time.Duration, now func() time.Time) *Manager {
+func NewManager(st SessionStore, ttl time.Duration, now func() time.Time) *Manager {
 	if now == nil {
 		now = time.Now
 	}

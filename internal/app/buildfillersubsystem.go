@@ -1,0 +1,100 @@
+package app
+
+import (
+	"log/slog"
+	"os"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/channels"
+	"github.com/mantonx/loomarr/internal/events"
+	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/scheduler"
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+type fillerBuild struct {
+	service api.FillerService
+	preview api.PodPreviewer
+}
+
+func buildFillerSubsystem(
+	st store.Store,
+	set resolved,
+	layout filler.Layout,
+	log *slog.Logger,
+	libraryClient *library.Client,
+	eventBus *events.Bus,
+	emitter *eventEmitter,
+	jobs *scheduler.Registry,
+	playoutResolver *playoutResolver,
+	channelService api.ChannelService,
+) fillerBuild {
+	var result fillerBuild
+	if st == nil {
+		return result
+	}
+
+	if dir := layout.ClipDir(); dir != "" {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			log.Warn("could not create the filler drop-folder; the catalog scan will report it",
+				"dir", dir, "err", err)
+		}
+		if watch := layout.WatchDir(); watch != "" {
+			if err := os.MkdirAll(watch, 0o750); err != nil {
+				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
+					"dir", watch, "err", err)
+			}
+		}
+	}
+
+	fillerProgrammer := programmer.NewDynamic(set.tunarrConfig())
+	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
+	taggerProvider, tagger := buildTagger(st, set, layout, log)
+	fetcher := buildFetcher(set, layout, log)
+	splitter := buildSplitter(st, set, layout, log)
+	adapter := fillerServiceAdapter{
+		syncer: syncer, tagger: tagger, fetcher: fetcher,
+		bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
+		sources: st, now: time.Now,
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st},
+	}
+
+	pods := buildPodAdapter(st, set, log)
+	result.preview = podPreviewAdapter{store: st, pods: pods}
+	if playoutResolver != nil {
+		playoutResolver.pods = result.preview
+	}
+	if engine, ok := channelService.(*channels.Engine); ok {
+		engine.WithPods(pods)
+		log.Info("filler pod assembler wired into the scheduler")
+	}
+
+	jobs.Add(fillerSyncJob(syncer))
+	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
+		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider)
+	jobs.Add(fillerPipelineJob(pipeline))
+	adapter.pipeline = pipeline
+	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
+		fillerSweepStoreAdapter{st}, layout.ClipDir(),
+		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
+	)))
+	autoFetch := filler.NewFetcher(
+		fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
+		archiveDiscoverAdapter{}, adapter, layout.ClipDir(),
+		filler.FetchLimits{
+			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
+			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
+		}, log,
+	).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+	adapter.autoFetch = autoFetch
+	result.service = adapter
+	jobs.Add(fillerFetchJob(autoFetch))
+	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
+		"max_per_run", set.intv("filler.fetch.max_per_run"))
+	return result
+}

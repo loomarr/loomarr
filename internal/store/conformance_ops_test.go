@@ -270,18 +270,75 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Jobs: two queued (sampleJob defaults to queued), one flipped to running.
-	_ = s.CreateJob(ctx, sampleJob("job-1", "h1", now, now))
+	_ = s.CreateJob(ctx, sampleJob("job-1", "h1", now, now.Add(-5*time.Minute)))
 	_ = s.CreateJob(ctx, sampleJob("job-2", "h2", now, now))
 	running := sampleJob("job-3", "h3", now, now)
 	running.Status = "running"
 	_ = s.CreateJob(ctx, running)
+	failed := sampleJob("job-failed", "h4", now, now)
+	failed.Status, failed.FailureCode = "failed", "generation_failed"
+	_ = s.CreateJob(ctx, failed)
+	unknownFailure := sampleJob("job-unknown", "h5", now, now)
+	unknownFailure.Status, unknownFailure.FailureCode = "failed", "provider_secret"
+	_ = s.CreateJob(ctx, unknownFailure)
+	maintenance := sampleJob("recurate-job", "h6", now, now.Add(-time.Hour))
+	maintenance.Kind = "recurate"
+	_ = s.CreateJob(ctx, maintenance)
 
 	jobs, err := s.CountJobsByStatus(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if jobs["queued"] != 2 || jobs["running"] != 1 {
-		t.Errorf("CountJobsByStatus = %v, want queued:2 running:1", jobs)
+	if jobs["queued"] != 3 || jobs["running"] != 1 {
+		t.Errorf("CountJobsByStatus = %v, want queued:3 running:1", jobs)
+	}
+	oldest, err := s.OldestProposalJobsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldest["queued"].Equal(now.Add(-5*time.Minute)) || !oldest["running"].Equal(now) {
+		t.Errorf("OldestProposalJobsByStatus = %v", oldest)
+	}
+	if _, included := oldest["failed"]; included {
+		t.Errorf("terminal Proposal Job included in oldest ages: %v", oldest)
+	}
+	failures, err := s.CountFailedProposalJobsByCode(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failures["generation_failed"] != 1 || failures["provider_secret"] != 1 {
+		t.Errorf("CountFailedProposalJobsByCode = %v", failures)
+	}
+
+	// Create one succeeded and one failed terminal Attempt through the guarded
+	// transition methods so the aggregate observes the real durable history.
+	for i, outcome := range []string{"succeeded", "failed"} {
+		job := sampleJob(fmt.Sprintf("attempt-%d", i), fmt.Sprintf("ah-%d", i), now.Add(-2*time.Hour), now)
+		if err := s.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+		if err != nil || len(claimed) != 1 {
+			t.Fatalf("claim metric Attempt %d = %+v, %v", i, claimed, err)
+		}
+		claimedJob := claimed[0]
+		if outcome == "succeeded" {
+			proposal := Proposal{ID: "metric-proposal", JobID: claimedJob.ID, Status: "submitted",
+				CreatedBy: claimedJob.CreatedBy, ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+			if err := s.CommitSuggestionSuccess(ctx, claimedJob.ID, claimedJob.Attempts, proposal, now); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := s.CommitSuggestionFailure(ctx, claimedJob.ID, claimedJob.Attempts,
+			"private", "generation_failed", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attempts, err := s.CountProposalJobAttemptsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts["succeeded"] != 1 || attempts["failed"] != 1 {
+		t.Errorf("CountProposalJobAttemptsByStatus = %v", attempts)
 	}
 
 	// Sessions: two live, one expired — only the live ones count as of now.

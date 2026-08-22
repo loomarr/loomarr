@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,20 +59,17 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 // Starting with no store is a SUPPORTED degraded mode, not a misconfiguration to crash
 // on: main logs "running without a store (not ready)" and expects the server to keep
 // serving so /readyz can report why. It didn't — with no store there is no settings
-// service, and the first unguarded settings read panicked inside BuildHandler. A
+// service, and the first unguarded settings read panicked during Build. A
 // container missing DATABASE_URL therefore crash-looped instead of answering the probe
 // that would have explained the problem.
 //
 // The assertion is deliberately just "builds and answers": the value here is that the
 // process stays alive long enough to tell the operator what's wrong.
-func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T) {
+func TestBuildWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T) {
 	t.Parallel()
-	h, err := BuildHandler(t.Context(), nil, slog.New(slog.DiscardHandler), Overrides{})
-	if err != nil {
-		t.Fatalf("BuildHandler with no store returned an error: %v", err)
-	}
+	h := buildTestApplication(t, nil, Overrides{}).Handler()
 	if h == nil {
-		t.Fatal("BuildHandler returned a nil handler")
+		t.Fatal("Build returned a nil handler")
 	}
 
 	rec := httptest.NewRecorder()
@@ -92,17 +88,14 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	}
 }
 
-// BuildHandler must register the state-gauge collector (§17), so /metrics
+// Build must register the state-gauge collector (§17), so /metrics
 // exposes the domain gauges — not just the RED/runtime foundation. This is the
 // end-to-end wiring the metrics package unit tests can't prove on their own.
-func TestBuildHandlerExposesDomainMetrics(t *testing.T) {
+func TestBuildExposesDomainMetrics(t *testing.T) {
 	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)
 
-	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
-	if err != nil {
-		t.Fatalf("BuildHandler: %v", err)
-	}
+	h := buildTestApplication(t, st, Overrides{}).Handler()
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))

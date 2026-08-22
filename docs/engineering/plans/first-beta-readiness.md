@@ -31,7 +31,6 @@ The beta ships only when every blocker below is either closed on `main` or delib
 | Blocker | Evidence | Ownership / exit |
 | --- | --- | --- |
 | Internal playout requires `server.public_url`, but the default wizard never collects it. | `web/apps/web/src/wizard/steps/steps.ts`; `web/apps/web/src/wizard/playout-step/playout-step.tsx`; `web/apps/web/src/test/wizard-router.test.tsx`; `internal/settings/declared.go`; `internal/app/playoutadapter.go` | This slice adds the internal-only registry field, reachable-address guidance, env-lock behavior, persisted completion gate, and routed valid/invalid/error regressions. Close only after it merges to `main`. |
-| Suggestion jobs can strand on restart and the UI depends on one SSE terminal frame. | `internal/store/{sqlite,postgres}.go`; `internal/suggest/worker.go`; `web/apps/web/src/suggest/use-suggestion-run/use-suggestion-run.ts` | Active `first-channel-success` / `proposal-jobs` claim. Re-audit after merge; do not duplicate it here. |
 | Concurrent auto-approval can exceed a user's unattended-acquisition quota. | `internal/suggest/autoapprove.go`; `internal/store/approval.go`; store conformance | This change orders every approval for a requester, then runs automatic quota reads and commit on one transaction/session; manual approval participates in ordering without being quota-rejected, and post-commit reconciliation runs after ordering is released. Exit: merge after SQLite/Postgres concurrent, cancellation/reacquisition, and independent-Postgres-pool evidence is green. |
 | Channel status and post-approval routing assume Tunarr in some places and internal HLS in others. | `web/apps/web/src/routes/_authed/channels/$id/route.tsx`; `channel-watch.tsx`; `use-hls-player.ts`; `internal/api/channelplayurl.go` | Partly active first-channel/playback work. Remaining exit: use canonical `inAppPlayable`; route Tunarr to a real handoff rather than Watch. |
 | The product calls AI/TMDB optional while the only normal channel-origination UI requires suggestions. | `README.md`; `docs/install/index.md`; `docs/help/quickstart.md`; `internal/api/proposals.go`; `docs/design.md` §12 | Beta documentation now names TMDB and an LLM as prerequisites for the defining flow. Close after merge; a non-AI UI is not promised for this beta. |
@@ -88,6 +87,15 @@ suggest→proposal end-to-end. **These do not close the release.** The distribut
 proposal-job durability, and platform-proof (decoded-playback / browser-runtime certification)
 blockers in the ledger above remain open and are owned separately; a set of green component
 cleanups is not the full beta journey.
+
+### Update — 2026-08-22
+
+PR #453 merged the durable first-channel workflow at `79349941`. Proposal Jobs now carry versioned
+Attempts, recover expired running work, reject stale completions, expose caller-owned authoritative
+Journey reads, and use SSE only as an invalidation/latency path. The previous suggestion-job blocker
+is closed for the supported single-replica beta and by SQLite/Postgres store conformance. The separate
+two-process Postgres recovery proof remains part of the scale investigation; it is not needed to
+pretend the beta supports more than one Loomarr replica.
 
 ## Delivery sequence
 

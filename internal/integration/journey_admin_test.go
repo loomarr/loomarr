@@ -13,7 +13,7 @@ import (
 )
 
 // TestJourney_NewAdmin drives the entire first-run admin experience through the
-// REAL composition root (app.BuildHandler) exactly as the FE will: bootstrap the
+// real composition root (app.Build) exactly as the FE will: bootstrap the
 // owner, log in locally, read settings + feature gates, test a connection, pick a
 // model, then run an intent → approve → channel. Every step protects a seam that
 // no other test exercises end to end (the picker's real Prober, the local-bcrypt

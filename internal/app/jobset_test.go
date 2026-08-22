@@ -1,13 +1,14 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/app"
 	"github.com/mantonx/loomarr/internal/testkit"
@@ -86,11 +87,18 @@ func TestJobSet(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 
 	t.Setenv("API_TOKEN", "jobset-token")
-	h, err := app.BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), app.Overrides{})
+	application, err := app.Build(t.Context(), st, testkit.Logger(), app.Overrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(h)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := application.Shutdown(ctx); err != nil {
+			t.Errorf("Shutdown: %v", err)
+		}
+	})
+	srv := httptest.NewServer(application.Handler())
 	t.Cleanup(srv.Close)
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/jobs", nil)

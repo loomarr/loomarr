@@ -12,6 +12,21 @@ import (
 	"time"
 )
 
+const (
+	scorecardSchemaVersion = 1
+	corpusVersion          = "2026-08-22.1"
+)
+
+type Scorecard struct {
+	SchemaVersion int       `json:"schemaVersion"`
+	CorpusVersion string    `json:"corpusVersion"`
+	GeneratedAt   time.Time `json:"generatedAt"`
+	Provider      string    `json:"provider"`
+	Model         string    `json:"model"`
+	Certified     bool      `json:"certified"`
+	Results       []Result  `json:"results"`
+}
+
 // TestEvalCorpus runs the whole intent corpus through the REAL suggester against
 // the REAL configured LLM + catalog, applying the deterministic hard gates and an
 // optional judge score. It is gated behind the `eval` build tag so it never runs
@@ -22,13 +37,20 @@ import (
 // with LLM_* + LIBRARY_URL + LIBRARY_TOKEN + TMDB_API_KEY set. It skips (not fails)
 // when the env isn't configured, so it's safe to leave in CI as a no-op until wired.
 func TestEvalCorpus(t *testing.T) {
+	required := os.Getenv("LOOMARR_EVAL_REQUIRED") == "1"
+	if required && os.Getenv("LOOMARR_EVAL_OUT") == "" {
+		t.Fatal("LOOMARR_EVAL_OUT is required in certification mode")
+	}
 	sug, _, err := buildSuggester()
 	if err != nil {
+		if required {
+			t.Fatalf("semantic certification is not configured: %v", err)
+		}
 		t.Skipf("eval not configured: %v", err)
 	}
 	// The judge uses the same configured provider by default. LOOMARR_EVAL_JUDGE can
 	// point at a stronger model later; for now reuse the suggester's provider.
-	judgeProvider := buildProvider()
+	judgeProvider := buildJudgeProvider()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
 	defer cancel()
@@ -49,7 +71,7 @@ func TestEvalCorpus(t *testing.T) {
 			if res.Passed() && c.JudgeRubric != "" {
 				score, note := judge(ctx, judgeProvider, c, prop)
 				res.JudgeScore, res.JudgeNote = score, note
-				if score >= 0 && c.MinJudgeScore > 0 && score < c.MinJudgeScore {
+				if c.MinJudgeScore > 0 && score < c.MinJudgeScore && (required || score >= 0) {
 					res.Failures = append(res.Failures,
 						fmt.Sprintf("judge score %.2f < required %.2f: %s", score, c.MinJudgeScore, note))
 				}
@@ -65,12 +87,12 @@ func TestEvalCorpus(t *testing.T) {
 	}
 
 	// Emit a scorecard artifact (stdout + optional file) so a run is inspectable.
-	writeScorecard(t, results)
+	writeScorecard(t, results, required)
 }
 
 // writeScorecard prints a summary table and, when LOOMARR_EVAL_OUT is set, writes
 // the JSON scorecard there for CI archiving / trend tracking.
-func writeScorecard(t *testing.T, results []Result) {
+func writeScorecard(t *testing.T, results []Result, required bool) {
 	pass := 0
 	var b strings.Builder
 	b.WriteString("\n=== Eval scorecard ===\n")
@@ -91,9 +113,29 @@ func writeScorecard(t *testing.T, results []Result) {
 	t.Log(b.String())
 
 	if out := os.Getenv("LOOMARR_EVAL_OUT"); out != "" {
-		blob, _ := json.MarshalIndent(results, "", "  ")
+		certified := len(results) == len(Corpus)
+		for _, result := range results {
+			certified = certified && result.Passed()
+		}
+		provider := os.Getenv("LLM_PROVIDER")
+		if provider == "" {
+			provider = "ollama"
+		}
+		scorecard := Scorecard{
+			SchemaVersion: scorecardSchemaVersion, CorpusVersion: corpusVersion,
+			GeneratedAt: time.Now().UTC(), Provider: provider, Model: os.Getenv("LLM_MODEL"),
+			Certified: certified, Results: results,
+		}
+		blob, err := json.MarshalIndent(scorecard, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal semantic scorecard: %v", err)
+		}
 		if err := os.WriteFile(out, blob, 0o644); err != nil {
-			t.Logf("could not write scorecard to %s: %v", out, err)
+			if required {
+				t.Errorf("write required semantic scorecard to %s: %v", out, err)
+			} else {
+				t.Logf("could not write scorecard to %s: %v", out, err)
+			}
 		}
 	}
 }

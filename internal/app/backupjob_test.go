@@ -2,7 +2,6 @@ package app
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,10 +16,10 @@ type jobView struct {
 	DisabledReason string `json:"disabledReason"`
 }
 
-// listJobs drives GET /v1/jobs through a REAL BuildHandler.
+// listJobs drives GET /v1/jobs through a real Application.
 //
 // Going through the composition root and the HTTP surface — rather than reaching into the
-// registry — is the point: the registry is local to BuildHandler, and what matters is what
+// registry — is the point: the registry is local to composition, and what matters is what
 // an operator's Tasks page actually shows. `API_TOKEN` is pinned via the environment so the
 // break-glass admin path authenticates; there is deliberately no skip-on-403 escape here,
 // because a test that can silently skip is a green tick asserting nothing.
@@ -28,10 +27,7 @@ func listJobs(t *testing.T, st store.Store) []jobView {
 	t.Helper()
 	t.Setenv("API_TOKEN", "test-app-token")
 
-	h, err := BuildHandler(t.Context(), st, slog.New(slog.DiscardHandler), Overrides{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := buildTestApplication(t, st, Overrides{}).Handler()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
