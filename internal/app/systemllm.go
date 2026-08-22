@@ -471,6 +471,9 @@ func validOpenRouterModelID(model string) bool {
 	if model == "" || strings.TrimSpace(model) != model || strings.ContainsAny(model, "\t\r\n ") {
 		return false
 	}
+	if strings.HasSuffix(strings.ToLower(model), ":batch") {
+		return false
+	}
 	vendor, id, found := strings.Cut(model, "/")
 	return found && vendor != "" && id != ""
 }

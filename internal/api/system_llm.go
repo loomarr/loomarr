@@ -250,7 +250,7 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 	case ErrUnknownProvider:
 		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	case ErrInvalidHostedModel:
-		return nil, errUnprocessable("Invalid hosted model", "OpenRouter models use a provider/model slug, such as openai/gpt-4o-mini. Ollama tags such as qwen3:8b only work with Ollama.")
+		return nil, errUnprocessable("Invalid hosted model", "Choose a synchronous OpenRouter provider/model slug, such as openai/gpt-4o-mini. Ollama tags and :batch variants cannot serve Loomarr's chat-completions requests.")
 	case ErrKeyInvalid:
 		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:

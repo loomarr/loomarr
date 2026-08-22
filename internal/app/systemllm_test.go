@@ -113,6 +113,18 @@ func TestSelectHosted_RejectsAnOllamaTagBeforeCallingTheProvider(t *testing.T) {
 	}
 }
 
+func TestSelectHosted_RejectsOpenRouterBatchModelBeforeCallingTheProvider(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // any provider call would fail differently; validation must happen first
+
+	sut := &systemLLMService{log: slog.Default()}
+	err := sut.selectHosted(ctx, "openrouter", "", "openai/gpt-4.1-nano:batch", "unused")
+	if err == nil || !strings.Contains(err.Error(), "hosted model") {
+		t.Fatalf("selectHosted(batch model) error = %v, want a hosted-model shape error", err)
+	}
+}
+
 func TestHostedSelectionMatchesGenericOpenAIByCanonicalURL(t *testing.T) {
 	t.Parallel()
 	openRouter, _ := llm.HostedProviderByKey("openrouter")

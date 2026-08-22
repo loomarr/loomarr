@@ -220,11 +220,12 @@ func tierOf(id string) (int, string) {
 // them by rules derived from the live metadata (§8.1) — NOT from hardcoded ids, so
 // recommendations stay good as the catalog turns over:
 //
-//  1. HARD FILTER (when metadata is rich): keep only models the provider says support
-//     tool-calling — grounding is impossible without it.
-//  2. RANK: cheapest first (a suggestion job is small; cost dominates), context length
-//     breaks ties. The top few tool-capable + cheap models are marked Recommended
-//     with a rule-derived Why ("tool-calling, ~$X/1M tokens").
+//  1. HARD FILTER: exclude batch-only variants because Loomarr uses synchronous chat
+//     completions. When metadata is rich, also keep only models the provider says
+//     support tool-calling — grounding is impossible without it.
+//  2. RANK: curated quality tier first, then cost within a tier; context length
+//     breaks ties. Exactly one tiered model is marked Recommended, while other
+//     tiered models retain rule-derived rationales for the guided alternatives.
 //
 // When the provider returns THIN metadata (just ids — OpenAI/Groq/Gemini's /models),
 // the rules can't rank, so it degrades gracefully to the live id list unranked (still
@@ -236,6 +237,15 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		return hp.Fallback, false
 	}
 	live = true
+
+	// OpenRouter exposes Batch API variants in the same catalog as synchronous
+	// chat-completions models. They can advertise tools yet return 404 on the endpoint
+	// Loomarr uses, so they are never a selectable catalog entry.
+	if hp.Key == "openrouter" {
+		metas = slices.DeleteFunc(metas, func(m modelMeta) bool {
+			return strings.HasSuffix(strings.ToLower(m.ID), ":batch")
+		})
+	}
 
 	// Does this provider expose capability metadata at all? If NONE of the models
 	// advertise supported_parameters, it's a thin provider — don't hard-filter
@@ -288,18 +298,20 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		return b.Context - a.Context
 	})
 
-	// Recommend the top-N — but ONLY tiered models (tier > 0). We never star an
+	// Recommend the top model — but ONLY a tiered model (tier > 0). We never star an
 	// untiered model just because it floated up: "recommended" must mean "a family
-	// we vouch for for grounding", not "cheapest capable-looking".
-	const recommendCount = 3
-	recommended := 0
+	// we vouch for for grounding", not "cheapest capable-looking". Other tiered
+	// models keep their rationale so the UI can explain its short alternatives.
+	recommended := false
 	for _, m := range capable {
 		tier, fam := tierOf(m.ID)
 		hm := HostedModel{ID: m.ID, Label: labelOf(m), Tools: m.supportsTools()}
-		if tier > 0 && recommended < recommendCount {
-			hm.Recommended = true
+		if tier > 0 {
 			hm.Why = whyFor(m, fam)
-			recommended++
+			if !recommended {
+				hm.Recommended = true
+				recommended = true
+			}
 		}
 		models = append(models, hm)
 	}
