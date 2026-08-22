@@ -148,10 +148,13 @@ type repository interface {
 // newWorkflow so they exercise this same interface without exposing that seam.
 type Workflow struct {
 	repository repository
+	execution  executionRepository
 }
 
 func newWorkflow(repository repository) *Workflow {
-	return &Workflow{repository: repository}
+	workflow := &Workflow{repository: repository}
+	workflow.execution, _ = repository.(executionRepository)
+	return workflow
 }
 
 // Inspect returns one owner-authorized authoritative Journey.
