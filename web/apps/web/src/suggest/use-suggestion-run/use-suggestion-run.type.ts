@@ -1,5 +1,6 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
+import type { ProposalFailure } from "@loomarr/api/models/proposalFailure";
 import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface SuggestionRun {
@@ -20,8 +21,14 @@ interface SuggestionRun {
   // null and only this flag surfaces the runtime failure — without it the panel silently
   // drops back to an empty form.
   failed: boolean;
+  // Bounded server-owned classification for a failed execution. Raw provider diagnostics
+  // never cross the API boundary.
+  failure?: ProposalFailure;
   error?: unknown;
   start: (intent: Intent) => void;
+  // Re-submit the exact preserved Intent as a fresh execution. Failed jobs are deliberately
+  // excluded from the cache, so this performs real generation again.
+  retry: () => void;
   reset: () => void;
 }
 

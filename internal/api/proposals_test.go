@@ -135,6 +135,65 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 	}
 }
 
+func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	intent := `{"description":"Classic Simpson Episodes"}`
+	err := st.CreateJob(context.Background(), store.Job{
+		ID: "job-grounding", Kind: "suggest", Status: "failed", IntentJSON: intent,
+		IntentHash: "hash", CreatedBy: "alice", LastError: "suggester: no grounded titles found for this intent at https://private.invalid",
+		FailureCode: suggest.FailureCodeNoGroundedTitles, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-grounding", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get proposal job → %d, want 200", resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "private.invalid") {
+		t.Fatalf("response leaked private diagnostic: %s", body)
+	}
+	var got struct {
+		Intent  suggest.Intent `json:"intent"`
+		Failure struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"failure"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Intent.Description != "Classic Simpson Episodes" {
+		t.Errorf("intent = %q, want preserved request", got.Intent.Description)
+	}
+	if got.Failure.Code != suggest.FailureCodeNoGroundedTitles || !strings.Contains(got.Failure.Message, "No grounded titles") {
+		t.Errorf("failure = %+v, want grounded-title guidance", got.Failure)
+	}
+}
+
+func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	if err := st.CreateJob(context.Background(), store.Job{
+		ID: "job-owned", Kind: "suggest", Status: "queued", IntentJSON: `{"description":"Comedy"}`,
+		IntentHash: "hash", CreatedBy: "alice", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-owned", memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("unscoped member get → %d, want 403", resp.StatusCode)
+	}
+	if resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-owned", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anonymous get → %d, want 401", resp.StatusCode)
+	}
+}
+
 // THE APPROVAL GATE (§19): approve requires admin. A member (anonymous here /
 // wrong token) gets 403 — and crucially, no title is enqueued.
 func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {

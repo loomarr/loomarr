@@ -87,6 +87,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
 	srv.registerProposals(humaAPI)
+	srv.registerProposalJobs(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerCollections(humaAPI)
 	srv.registerFiller(humaAPI)

@@ -1,5 +1,9 @@
-import type { ProposalDTO } from "@loomarr/api";
-import { getListProposalsMockHandler, getSubmitProposalMockHandler } from "@loomarr/api/msw";
+import type { ProposalDTO, ProposalJobDTO } from "@loomarr/api";
+import {
+  getGetProposalJobMockHandler,
+  getListProposalsMockHandler,
+  getSubmitProposalMockHandler,
+} from "@loomarr/api/msw";
 import type { EventHandlers, SuggestionPhase } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -28,27 +32,40 @@ const makeWrapper = () => {
   );
 };
 
-// The SUBMIT succeeds (200 + jobId) even when the job later fails, so the proposals list
-// stays empty and no `error` is ever set — the failure arrives only as a `failed` phase.
-const stub = (proposals: ProposalDTO[] = []) => {
-  server.use(getSubmitProposalMockHandler({ jobId: "job-1" }), getListProposalsMockHandler({ proposals }));
+const queuedJob: ProposalJobDTO = {
+  jobId: "job-1",
+  status: "queued",
+  intent: { description: "90s action movies" },
+};
+
+// The SUBMIT succeeds (200 + jobId) even when the job later fails. The job read, not the
+// latency-only SSE phase, carries the authoritative failure classification and preserved Intent.
+const stub = (proposals: ProposalDTO[] = [], job: ProposalJobDTO = queuedJob) => {
+  server.use(
+    getSubmitProposalMockHandler({ jobId: "job-1" }),
+    getGetProposalJobMockHandler(job),
+    getListProposalsMockHandler({ proposals }),
+  );
 };
 
 describe("useSuggestionRun", () => {
-  it("surfaces a terminal `failed` phase as run.failed (not a silent empty state)", async () => {
-    stub([]); // job produced no proposal
+  it("surfaces the authoritative no-grounded-titles failure", async () => {
+    stub([], {
+      ...queuedJob,
+      status: "failed",
+      failure: {
+        code: "no_grounded_titles",
+        message: "No grounded titles matched this request. Try the same request again.",
+      },
+    });
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
 
     act(() => result.current.start({ description: "90s action movies" }));
-    await waitFor(() => expect(result.current.isRunning).toBe(true));
+    await waitFor(() => expect(result.current.failed).toBe(true));
 
-    // The job errors mid-flight; the backend emits `failed` over the stream.
-    await emit("job-1", "failed");
-
-    // Without the fix this is the silent hole: isRunning goes false, no proposal, error is
-    // null — the panel would fall through to a blank form. `failed` is what makes it visible.
-    expect(result.current.failed).toBe(true);
     expect(result.current.isRunning).toBe(false);
+    expect(result.current.failure?.code).toBe("no_grounded_titles");
+    expect(result.current.failure?.message).toMatch(/No grounded titles/);
     expect(result.current.proposal).toBeUndefined();
     expect(result.current.error).toBeFalsy();
   });
@@ -62,5 +79,30 @@ describe("useSuggestionRun", () => {
 
     expect(result.current.failed).toBe(false);
     expect(result.current.isRunning).toBe(true);
+  });
+
+  it("retries with the exact preserved Intent", async () => {
+    const submissions: unknown[] = [];
+    server.use(
+      getSubmitProposalMockHandler(async ({ request }) => {
+        submissions.push(await request.json());
+        return { jobId: `job-${submissions.length}` };
+      }),
+      getGetProposalJobMockHandler({
+        ...queuedJob,
+        status: "failed",
+        failure: { code: "no_grounded_titles", message: "No grounded titles matched this request." },
+      }),
+      getListProposalsMockHandler({ proposals: [] }),
+    );
+    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const intent = { description: "Classic Simpson Episodes", era: "1989-1999", maxAcquire: 2 };
+
+    act(() => result.current.start(intent));
+    await waitFor(() => expect(result.current.failed).toBe(true));
+    act(() => result.current.retry());
+    await waitFor(() => expect(submissions).toHaveLength(2));
+
+    expect(submissions).toEqual([intent, intent]);
   });
 });

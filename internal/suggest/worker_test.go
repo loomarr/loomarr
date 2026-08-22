@@ -154,6 +154,32 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	}
 }
 
+func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`)))
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpson Episodes"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		job, _ := st.GetJob(context.Background(), jobID)
+		if job.Status == "failed" {
+			if job.FailureCode != suggest.FailureCodeNoGroundedTitles {
+				t.Fatalf("failure code = %q, want %q", job.FailureCode, suggest.FailureCodeNoGroundedTitles)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("job did not reach failed state")
+}
+
 // A hung LLM hits JOB_TIMEOUT and the job fails cleanly; the pool keeps draining
 // OTHER jobs (§8 — one hung call can't starve the queue).
 func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
@@ -190,6 +216,9 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	}
 	if j.LastError == "" {
 		t.Error("failed job should record the timeout error")
+	}
+	if j.FailureCode != suggest.FailureCodeGenerationFailed {
+		t.Errorf("timeout failure code = %q, want bounded generic code", j.FailureCode)
 	}
 }
 
