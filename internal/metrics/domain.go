@@ -26,6 +26,9 @@ import (
 type StoreCounts interface {
 	CountTitlesByState(ctx context.Context) (map[provision.State]int, error)
 	CountJobsByStatus(ctx context.Context) (map[string]int, error)
+	OldestProposalJobsByStatus(ctx context.Context) (map[string]time.Time, error)
+	CountProposalJobAttemptsByStatus(ctx context.Context) (map[string]int, error)
+	CountFailedProposalJobsByCode(ctx context.Context) (map[string]int, error)
 	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
 }
 
@@ -36,7 +39,9 @@ var (
 		provision.Wanted, provision.Requested, provision.Downloading,
 		provision.Available, provision.Unavailable,
 	}
-	knownJobStatuses = []string{"queued", "running", "done", "failed"}
+	knownJobStatuses             = []string{"queued", "running", "done", "failed"}
+	knownProposalAttemptOutcomes = []string{"succeeded", "failed", "interrupted", "other"}
+	knownProposalFailureCodes    = []string{"no_grounded_titles", "generation_failed", "other"}
 )
 
 var (
@@ -68,10 +73,13 @@ func LoginResult(success bool) {
 // Reading on scrape (not on every mutation) keeps the gauges correct without
 // threading a recorder through the provisioning, job, and session write paths.
 type storeCollector struct {
-	binding  atomic.Pointer[storeCollectorBinding]
-	titles   *prometheus.Desc
-	jobs     *prometheus.Desc
-	sessions *prometheus.Desc
+	binding           atomic.Pointer[storeCollectorBinding]
+	titles            *prometheus.Desc
+	jobs              *prometheus.Desc
+	sessions          *prometheus.Desc
+	proposalOldestAge *prometheus.Desc
+	proposalAttempts  *prometheus.Desc
+	proposalFailures  *prometheus.Desc
 }
 
 // storeCollectorBinding is published as one immutable value so a scrape never
@@ -85,6 +93,9 @@ func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.titles
 	ch <- c.jobs
 	ch <- c.sessions
+	ch <- c.proposalOldestAge
+	ch <- c.proposalAttempts
+	ch <- c.proposalFailures
 }
 
 func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -115,6 +126,57 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 	} else {
 		ch <- prometheus.MustNewConstMetric(c.sessions, prometheus.GaugeValue, float64(n))
 	}
+
+	if oldest, err := binding.counts.OldestProposalJobsByStatus(ctx); err != nil {
+		storeScrapeErrors.WithLabelValues("proposal_job_age").Inc()
+	} else {
+		now := binding.now()
+		for _, status := range []string{"queued", "running"} {
+			age := 0.0
+			if createdAt, ok := oldest[status]; ok {
+				age = max(0, now.Sub(createdAt).Seconds())
+			}
+			ch <- prometheus.MustNewConstMetric(c.proposalOldestAge, prometheus.GaugeValue, age, status)
+		}
+	}
+
+	if raw, err := binding.counts.CountProposalJobAttemptsByStatus(ctx); err != nil {
+		storeScrapeErrors.WithLabelValues("proposal_job_attempts").Inc()
+	} else {
+		bounded := boundCounts(raw, knownProposalAttemptOutcomes[:len(knownProposalAttemptOutcomes)-1])
+		for _, outcome := range knownProposalAttemptOutcomes {
+			ch <- prometheus.MustNewConstMetric(c.proposalAttempts, prometheus.GaugeValue,
+				float64(bounded[outcome]), outcome)
+		}
+	}
+
+	if raw, err := binding.counts.CountFailedProposalJobsByCode(ctx); err != nil {
+		storeScrapeErrors.WithLabelValues("proposal_job_failures").Inc()
+	} else {
+		bounded := boundCounts(raw, knownProposalFailureCodes[:len(knownProposalFailureCodes)-1])
+		for _, code := range knownProposalFailureCodes {
+			ch <- prometheus.MustNewConstMetric(c.proposalFailures, prometheus.GaugeValue,
+				float64(bounded[code]), code)
+		}
+	}
+}
+
+func boundCounts(raw map[string]int, known []string) map[string]int {
+	out := make(map[string]int, len(known)+1)
+	for label, n := range raw {
+		matched := false
+		for _, allowed := range known {
+			if label == allowed {
+				out[label] += n
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			out["other"] += n
+		}
+	}
+	return out
 }
 
 // newStoreCollector builds the collector with its metric descriptors. Split from
@@ -127,6 +189,12 @@ func newStoreCollector(counts StoreCounts, now func() time.Time) *storeCollector
 			"Suggester jobs currently in each status (queue depth).", []string{"status"}, nil),
 		sessions: prometheus.NewDesc("loomarr_active_sessions",
 			"Unexpired sessions right now.", nil, nil),
+		proposalOldestAge: prometheus.NewDesc("loomarr_proposal_job_oldest_age_seconds",
+			"Age of the oldest retained nonterminal Proposal Job.", []string{"status"}, nil),
+		proposalAttempts: prometheus.NewDesc("loomarr_proposal_job_attempts",
+			"Retained terminal Proposal Job Attempts by bounded outcome.", []string{"outcome"}, nil),
+		proposalFailures: prometheus.NewDesc("loomarr_proposal_job_failures",
+			"Retained failed Proposal Jobs by bounded requester-safe code.", []string{"code"}, nil),
 	}
 	c.rebind(counts, now)
 	return c
