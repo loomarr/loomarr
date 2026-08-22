@@ -29,8 +29,18 @@ const OPENROUTER = (over: Partial<HostedProviderView> = {}): HostedProviderView 
       recommended: true,
       tools: true,
     },
-    { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku", tools: true },
-    { id: "meta-llama/llama-3.3-70b", label: "Llama 3.3 70B", tools: true },
+    {
+      id: "anthropic/claude-3.5-haiku",
+      label: "Claude 3.5 Haiku",
+      why: "Claude Haiku — strong grounded tool-caller, ~$4.80/1M tokens, 200k context",
+      tools: true,
+    },
+    {
+      id: "meta-llama/llama-3.3-70b",
+      label: "Llama 3.3 70B",
+      why: "Llama 3.3 — strong grounded tool-caller, ~$0.12/1M tokens, 128k context",
+      tools: true,
+    },
   ],
   ...over,
 });
