@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import tv.loomarr.tv.navigation.TuneHistory
+import tv.loomarr.tv.navigation.channelIndexForNumber
 import tv.loomarr.tv.pairing.DeviceStore
 
 /** What the watch surface is showing. */
@@ -18,6 +20,8 @@ sealed interface WatchUiState {
         val channels: List<Channel>,
         val selected: Int,
         val playUrl: String?,
+        val lastChannelId: String? = null,
+        val recentChannelIds: List<String> = emptyList(),
     ) : WatchUiState
 
     data class Failed(
@@ -51,6 +55,7 @@ class WatchViewModel(
     val state: StateFlow<WatchUiState> = _state.asStateFlow()
 
     private var client: PlaybackClient? = null
+    private var history = TuneHistory()
 
     init {
         load()
@@ -83,7 +88,15 @@ class WatchViewModel(
                 return@launch
             }
 
-            _state.value = WatchUiState.Ready(channels = channels, selected = 0, playUrl = null)
+            history = history.tuned(channels.first().id)
+            _state.value =
+                WatchUiState.Ready(
+                    channels = channels,
+                    selected = 0,
+                    playUrl = null,
+                    lastChannelId = history.lastChannelId,
+                    recentChannelIds = history.recentChannelIds,
+                )
             tune(0)
         }
     }
@@ -93,10 +106,17 @@ class WatchViewModel(
         val current = _state.value as? WatchUiState.Ready ?: return
         val playback = client ?: return
         val wrapped = ((index % current.channels.size) + current.channels.size) % current.channels.size
+        history = history.tuned(current.channels[wrapped].id)
 
         // Clear the URL first so the player tears down the old stream rather than showing the
         // previous channel while the next one is still being minted.
-        _state.value = current.copy(selected = wrapped, playUrl = null)
+        _state.value =
+            current.copy(
+                selected = wrapped,
+                playUrl = null,
+                lastChannelId = history.lastChannelId,
+                recentChannelIds = history.recentChannelIds,
+            )
 
         viewModelScope.launch {
             try {
@@ -126,6 +146,18 @@ class WatchViewModel(
         val current = _state.value as? WatchUiState.Ready ?: return
         val index = current.channels.indexOfFirst { it.id == channelId }
         if (index >= 0) tune(index)
+    }
+
+    /** Tune an exact Channel number after the remote's bounded digit-entry timeout. */
+    fun tuneChannelNumber(digits: String) {
+        val current = _state.value as? WatchUiState.Ready ?: return
+        channelIndexForNumber(current.channels, digits)?.let(::tune)
+    }
+
+    /** Swap to the immediately previous Channel; a second press swaps back. */
+    fun lastChannel() {
+        val current = _state.value as? WatchUiState.Ready ?: return
+        current.lastChannelId?.let(::tuneChannelId)
     }
 
     fun channelUp() {

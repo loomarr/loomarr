@@ -1614,6 +1614,42 @@ request-to-first-decoded-frame timings plus the resolved copy/transcode plan. It
 maintainer's normal database or media-server configuration, and no agent invokes the `make smoke*`
 targets. Android TV, Roku, and Apple TV remain later adapters over the same controller vocabulary.
 
+### Android TV is a watching-first remote surface
+
+The paired Android TV client opens on **Watching** and keeps one tuned Channel as its home state.
+It is a member-scoped native adapter over the same Channel, Guide, device-profile, and signed-HLS
+contracts as Web; it does not gain an admin session, a media-server device token, or a second
+playback API.
+
+The remote has three explicit surfaces:
+
+- **Watching** keeps video full-screen. Up/down (and dedicated Channel Up/Down keys) tune the
+  adjacent playable Channel, number keys collect an exact Channel number, OK opens Guide, Menu
+  opens Surf, and Back returns to the last tuned Channel when one exists. The transient chrome
+  shows Channel identity, the on-air block, progress, and next block from the member JSON Guide.
+  It must not invent codec, caption, resolution, favourite, or schedule metadata the server did
+  not supply.
+- **Surf** is an overlay on the still-mounted player, not a replacement playback surface. It groups
+  available favourites, session recents, then every playable Channel; OK tunes the focused row and
+  Back cancels. Until a user-preference contract supplies favourites, that group is present but
+  empty rather than populated with guessed Channels.
+- **Guide** is a Channel-by-time grid. Up/down changes Channel, left/right changes the focused
+  airing, the detail bar follows that focus, OK tunes the focused Channel, and Back returns to
+  Watching without tuning. All/Favourites/Recent filters and a visible row-position rail keep a
+  long lineup understandable; empty optional filters must not strand focus.
+
+Focus is never implicit: each surface requests focus after placement, clamps every move to a valid
+target, and keeps the focused row visible under remote repeat. Guide and Watching derive "now" from
+the server-authored clock, never the television RTC. Pairing, device capability probing,
+latest-request-wins tuning, signed URL handling, bounded player error recovery, and overscan-safe
+margins remain unchanged.
+
+The surface is resolution-independent: layout is authored against Android TV's 960 × 540 dp canvas
+and renders that same composition at 1920 × 1080 xhdpi or 3840 × 2160 xxxhdpi. Text and controls use
+dp/sp rather than physical pixels. The Media3 player remains a full-screen `SurfaceView`, so a TV's
+UI density does not cap a supported stream at the UI reference resolution. Screenshot gates cover
+both density classes; 1080p is a reference capture, not a playback or display ceiling.
+
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.
 

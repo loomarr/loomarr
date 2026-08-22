@@ -21,6 +21,10 @@ import tv.loomarr.tv.design.TuningText
 fun GuideScreen(
     model: GuideViewModel,
     onTune: (ChannelTimeline) -> Unit,
+    onBack: () -> Unit = {},
+    favoriteChannelIds: Set<String> = emptySet(),
+    recentChannelIds: List<String> = emptyList(),
+    playableChannelIds: Set<String>? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
 
@@ -39,9 +43,17 @@ fun GuideScreen(
                     description = "No channels are scheduled yet. Create one in Loomarr and it will appear here.",
                 )
 
-            is GuideUiState.Ready ->
+            is GuideUiState.Ready -> {
+                val liveNowMs = rememberServerNow(current.nowMs)
+                val playableWindow =
+                    current.window.copy(
+                        channels =
+                            current.window.channels.filter { channel ->
+                                playableChannelIds == null || channel.channelId in playableChannelIds
+                            },
+                    )
                 GuideGrid(
-                    window = current.window,
+                    window = playableWindow,
                     // ⚠ "Now" comes from the SERVER, not System.currentTimeMillis().
                     //
                     // The device clock cannot be trusted — the emulator's sits hours behind its
@@ -54,10 +66,14 @@ fun GuideScreen(
                     // at now; it now opens deliberately EARLIER so the on-air block has room to its
                     // left, so the window's start and the current instant are different facts. The
                     // ViewModel carries the server's now separately.
-                    nowMs = current.nowMs,
+                    nowMs = liveNowMs,
                     onTune = onTune,
+                    onBack = onBack,
+                    favoriteChannelIds = favoriteChannelIds,
+                    recentChannelIds = recentChannelIds,
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
         }
     }
 }

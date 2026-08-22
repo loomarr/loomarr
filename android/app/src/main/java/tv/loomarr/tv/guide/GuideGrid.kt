@@ -2,12 +2,13 @@ package tv.loomarr.tv.guide
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -29,309 +30,413 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import tv.loomarr.tv.design.Body
+import tv.loomarr.tv.design.Heading
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
 import tv.loomarr.tv.design.SectionHeading
+import tv.loomarr.tv.navigation.GuideCursor
+import tv.loomarr.tv.navigation.GuideMove
 
-/**
- * The guide: every channel against one shared timeline.
- *
- * ⚠ A GRID, and the earlier channel-list-plus-detail version was the wrong shape. That design
- * argued a dense grid spends a D-pad viewer's button presses on cells nobody is choosing — which
- * mistakes what breadth costs. Reading ACROSS rows costs nothing; the eye does it for free. Only
- * moving FOCUS costs presses, and focus still moves one channel row at a time here.
- *
- * What the grid buys back is the question a guide exists to answer: "what is on everywhere at nine
- * o'clock". The list version could only answer "what is on this one channel", and answering it for
- * a second channel meant focusing that row and re-reading the whole pane. Every set-top box ships
- * the grid on a D-pad for this reason.
- */
+/** The mock's Channel-by-time Guide with one explicit, never-lost remote cursor. */
 @Composable
 fun GuideGrid(
     window: GuideWindow,
     nowMs: Long,
     onTune: (ChannelTimeline) -> Unit,
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    favoriteChannelIds: Set<String> = emptySet(),
+    recentChannelIds: List<String> = emptyList(),
 ) {
-    var focusedRow by remember { mutableStateOf(0) }
-    val focused = window.channels.getOrNull(focusedRow)
+    var filter by remember { mutableStateOf(GuideFilter.All) }
+    val rows = filteredRows(window.channels, filter, favoriteChannelIds, recentChannelIds)
+    var cursor by remember { mutableStateOf(GuideCursor()) }
+    val focus = remember { FocusRequester() }
 
-    Column(modifier = modifier) {
-        // The detail pane sits ABOVE the grid rather than beside it: a row of channels needs the
-        // full width to be worth having, and what is on the focused channel is one line of text.
-        FocusedAiring(channel = focused, nowMs = nowMs)
-
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxWidth().padding(top = LoomarrTokens.Space.S4),
-        ) {
-            // The timeline starts after the channel column and runs to the right edge.
-            val timelineWidth = maxWidth - ChannelColumnWidth
-
-            Column {
-                TimeRuler(
-                    window = window,
-                    timelineWidth = timelineWidth,
-                    modifier = Modifier.padding(start = ChannelColumnWidth),
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        focus.requestFocus()
+    }
+    LaunchedEffect(rows) {
+        if (rows.isEmpty()) {
+            filter = GuideFilter.All
+            cursor = GuideCursor()
+        } else {
+            cursor =
+                cursor.copy(
+                    row = cursor.row.coerceIn(0, rows.lastIndex),
+                    airing = cursor.airing.coerceIn(
+                        0,
+                        rows[cursor.row.coerceIn(0, rows.lastIndex)].airings.lastIndex.coerceAtLeast(0),
+                    ),
                 )
+        }
+    }
 
+    val focusedChannel = rows.getOrNull(cursor.row)
+    val focusedAiring = focusedChannel?.airings?.getOrNull(cursor.airing)
+
+    Column(
+        modifier =
+            modifier
+                .focusRequester(focus)
+                .focusable()
+                .onKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (event.key) {
+                        Key.DirectionUp -> {
+                            cursor = cursor.move(rows, GuideMove.Up)
+                            true
+                        }
+                        Key.DirectionDown -> {
+                            cursor = cursor.move(rows, GuideMove.Down)
+                            true
+                        }
+                        Key.DirectionLeft -> {
+                            cursor = cursor.move(rows, GuideMove.Left)
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            cursor = cursor.move(rows, GuideMove.Right)
+                            true
+                        }
+                        Key.DirectionCenter, Key.Enter -> {
+                            focusedChannel?.let(onTune)
+                            true
+                        }
+                        Key.Menu -> {
+                            filter = nextAvailableFilter(filter, window.channels, favoriteChannelIds, recentChannelIds)
+                            cursor = GuideCursor()
+                            true
+                        }
+                        Key.Back -> {
+                            onBack()
+                            true
+                        }
+                        else -> false
+                    }
+                },
+    ) {
+        GuideHeader(
+            selected = filter,
+            allCount = window.channels.size,
+            favoriteCount = window.channels.count { it.channelId in favoriteChannelIds },
+            recentCount = window.channels.count { it.channelId in recentChannelIds },
+        )
+
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            val timelineWidth = maxWidth - CHANNEL_COLUMN_WIDTH - POSITION_RAIL_WIDTH
+            Column(modifier = Modifier.fillMaxSize().padding(end = POSITION_RAIL_WIDTH)) {
+                Row(modifier = Modifier.fillMaxWidth().height(RULER_HEIGHT)) {
+                    SectionHeading(
+                        "Channel",
+                        modifier = Modifier.width(CHANNEL_COLUMN_WIDTH).padding(start = LoomarrTokens.Space.S3),
+                    )
+                    TimeRuler(window = window, timelineWidth = timelineWidth)
+                }
                 ChannelRows(
+                    rows = rows,
                     window = window,
                     nowMs = nowMs,
                     timelineWidth = timelineWidth,
-                    focusedRow = focusedRow,
-                    onFocusRow = { focusedRow = it },
-                    onTune = onTune,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    cursor = cursor,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-
-            // ⚠ Drawn LAST, so it crosses every row rather than being buried under them. It is the
-            // one mark that spans the whole grid, and it is what turns a set of blocks into "here
-            // is where you are".
             NowLine(
                 nowMs = nowMs,
                 window = window,
                 timelineWidth = timelineWidth,
-                modifier = Modifier.padding(start = ChannelColumnWidth),
+                modifier = Modifier.padding(
+                    start = CHANNEL_COLUMN_WIDTH,
+                    top = RULER_HEIGHT,
+                    end = POSITION_RAIL_WIDTH,
+                ),
+            )
+            PositionRail(
+                row = cursor.row,
+                count = rows.size,
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(POSITION_RAIL_WIDTH),
             )
         }
+
+        FocusedDetail(
+            channel = focusedChannel,
+            airing = focusedAiring,
+            row = cursor.row,
+            count = rows.size,
+        )
     }
 }
 
-/** Wide enough for a number and a channel name; every dp beyond that is one the timeline loses. */
-private val ChannelColumnWidth = 260.dp
-
-/** One channel's row height — two lines of block text plus breathing room. */
-private val RowHeight = 108.dp
-
-/**
- * What is on the focused channel — the detail the grid's own cells are too small to carry.
- *
- * ⚠ Leads with what the server RELIABLY sends. `season`, `episode`, `year`, `rating` and `genres`
- * are all omitempty and absent from real data — a pane built around them would be mostly blank, so
- * this shows title, time, duration and provenance, which actually arrive.
- */
 @Composable
-private fun FocusedAiring(
-    channel: ChannelTimeline?,
-    nowMs: Long,
+private fun GuideHeader(
+    selected: GuideFilter,
+    allCount: Int,
+    favoriteCount: Int,
+    recentCount: Int,
 ) {
-    val now = channel?.airingAt(nowMs)
-
-    Column {
-        SectionHeading("On now")
-        Row(
-            modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Body(
-                text = now?.heading ?: "Nothing scheduled",
-                color = LoomarrTokens.Color.Static0,
-                fontSize = LoomarrTokens.Type.Lg,
-                maxLines = 1,
-            )
-            if (now != null) {
-                MonoData(
-                    text = "${clockLabel(now.startMs)}–${clockLabel(now.stopMs)}",
-                    color = LoomarrTokens.Color.Static400,
-                    fontSize = LoomarrTokens.Type.Sm,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
-                )
-                if (now.episodeLabel.isNotEmpty()) {
-                    MonoData(
-                        text = now.episodeLabel,
-                        color = LoomarrTokens.Color.Static400,
-                        fontSize = LoomarrTokens.Type.Sm,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
-                    )
-                }
-                now.provenance?.takeIf { it.isNotBlank() }?.let {
-                    Body(
-                        text = it,
-                        fontSize = LoomarrTokens.Type.Sm,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
-                    )
-                }
-            }
-        }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = LoomarrTokens.Space.S3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Heading("Guide")
+        FilterChip("All · $allCount", selected == GuideFilter.All)
+        FilterChip("★ Favorites · $favoriteCount", selected == GuideFilter.Favorites)
+        FilterChip("Recent · $recentCount", selected == GuideFilter.Recent)
+        MonoData(
+            "◀▶ time · ▲▼ channel · OK tune · MENU filter",
+            color = LoomarrTokens.Color.Static500,
+            fontSize = LoomarrTokens.Type.Xs2,
+            maxLines = 1,
+            modifier = Modifier.padding(start = LoomarrTokens.Space.S6),
+        )
     }
 }
 
-/** The scrolling stack of channel rows. */
+@Composable
+private fun FilterChip(
+    label: String,
+    active: Boolean,
+) {
+    MonoData(
+        label,
+        color = if (active) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static400,
+        fontSize = LoomarrTokens.Type.Xs2,
+        maxLines = 1,
+        modifier =
+            Modifier
+                .padding(start = LoomarrTokens.Space.S3)
+                .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
+                .background(
+                    if (active) LoomarrTokens.Color.Signal.copy(alpha = 0.1f) else LoomarrTokens.Color.Static950,
+                ).border(
+                    1.dp,
+                    if (active) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static700,
+                    RoundedCornerShape(LoomarrTokens.Radius.Lg),
+                ).padding(horizontal = LoomarrTokens.Space.S3, vertical = LoomarrTokens.Space.S1),
+    )
+}
+
 @Composable
 private fun ChannelRows(
+    rows: List<ChannelTimeline>,
     window: GuideWindow,
     nowMs: Long,
     timelineWidth: Dp,
-    focusedRow: Int,
-    onFocusRow: (Int) -> Unit,
-    onTune: (ChannelTimeline) -> Unit,
+    cursor: GuideCursor,
     modifier: Modifier = Modifier,
 ) {
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        // LaunchedEffect begins after composition, but that is still before the LazyColumn's first
-        // row is guaranteed to be placed. Requesting immediately failed silently on the emulator:
-        // the row LOOKED selected while Android reported no focused element, so the first D-pad
-        // press merely established focus instead of moving. Waiting for the next frame puts the
-        // target in the focus tree before asking for it.
-        withFrameNanos { }
-        runCatching { first.requestFocus() }
-    }
-
-    val listState = rememberLazyListState()
-
-    // A LazyColumn does not reliably scroll to follow D-pad focus — it disposes items that leave
-    // the viewport, so on a long channel list the focus can walk off the bottom and leave the viewer
-    // steering something they cannot see.
-    //
-    // ⚠ Jump rather than animate. An animated scroll remains in flight for several remote-repeat
-    // key events, and Compose drops those events while the next focus target is moving. Measured on
-    // the 100-row emulator fixture, 99 Down presses only advanced 60 rows with animation. A direct
-    // scroll keeps every repeat actionable and moves by only one row, so it still reads as normal
-    // list navigation rather than a page jump.
-    LaunchedEffect(focusedRow) {
-        val onScreen = listState.layoutInfo.visibleItemsInfo.any { it.index == focusedRow }
-        if (!onScreen && window.channels.isNotEmpty()) {
-            runCatching { listState.scrollToItem(focusedRow) }
+    val list = rememberLazyListState()
+    LaunchedEffect(cursor.row) {
+        if (rows.isNotEmpty() && list.layoutInfo.visibleItemsInfo.none { it.index == cursor.row }) {
+            list.scrollToItem(cursor.row)
         }
     }
-
-    LazyColumn(state = listState, modifier = modifier) {
-        itemsIndexed(
-            window.channels,
-            // Keyed by id, not index: a refetch that reorders would otherwise move the highlight to
-            // whatever channel now occupies the focused slot.
-            key = { _, channel -> channel.channelId },
-        ) { index, channel ->
+    LazyColumn(state = list, modifier = modifier) {
+        itemsIndexed(rows, key = { _, row -> row.channelId }) { index, channel ->
             ChannelRow(
                 channel = channel,
                 window = window,
                 nowMs = nowMs,
                 timelineWidth = timelineWidth,
-                selected = index == focusedRow,
-                onFocus = { onFocusRow(index) },
-                onSelect = { onTune(channel) },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .then(if (index == 0) Modifier.focusRequester(first) else Modifier),
+                selectedRow = index == cursor.row,
+                selectedAiring = if (index == cursor.row) cursor.airing else -1,
             )
         }
     }
 }
 
-/** One channel: its identity on the left, its schedule laid out against time on the right. */
 @Composable
 private fun ChannelRow(
     channel: ChannelTimeline,
     window: GuideWindow,
     nowMs: Long,
     timelineWidth: Dp,
-    selected: Boolean,
-    onFocus: () -> Unit,
-    onSelect: () -> Unit,
-    modifier: Modifier = Modifier,
+    selectedRow: Boolean,
+    selectedAiring: Int,
 ) {
-    var focused by remember { mutableStateOf(false) }
-
-    // Either system focus or the browser's own idea of the current row. The second half is not
-    // redundant: the list asks for focus before its rows are placed, so the request can fail and
-    // leave every row unhighlighted while the pane above already describes the first one.
-    val highlighted = focused || selected
-
     Row(
         modifier =
-            modifier
-                .height(RowHeight)
-                .onFocusChanged {
-                    focused = it.isFocused
-                    if (it.isFocused) onFocus()
-                }.clickable(onClick = onSelect),
+            Modifier
+                .fillMaxWidth()
+                .height(ROW_HEIGHT)
+                .background(
+                    if (selectedRow) LoomarrTokens.Color.Signal.copy(alpha = 0.03f) else LoomarrTokens.Color.Static950,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChannelCell(
-            channel = channel,
-            highlighted = highlighted,
-            modifier = Modifier.width(ChannelColumnWidth).fillMaxHeight(),
-        )
-
-        Box(modifier = Modifier.fillMaxHeight()) {
-            HourGridlines(window = window, timelineWidth = timelineWidth, height = RowHeight)
-
-            channel.airings.forEach { airing ->
+        ChannelCell(channel = channel, selected = selectedRow)
+        Box(modifier = Modifier.fillMaxHeight().width(timelineWidth)) {
+            HourGridlines(window = window, timelineWidth = timelineWidth, height = ROW_HEIGHT)
+            channel.airings.forEachIndexed { index, airing ->
                 val width = airing.widthIn(window, timelineWidth)
                 if (width > 0.dp) {
                     TimelineBlock(
                         airing = airing,
                         width = width,
                         onAir = nowMs >= airing.startMs && nowMs < airing.stopMs,
-                        height = RowHeight,
+                        height = ROW_HEIGHT,
+                        focused = selectedAiring == index,
                         modifier = Modifier.offset(x = airing.offsetIn(window, timelineWidth)),
                     )
                 }
             }
-
             if (channel.airings.isEmpty()) {
                 Body(
                     "Nothing scheduled",
-                    fontSize = LoomarrTokens.Type.Sm,
-                    maxLines = 1,
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = LoomarrTokens.Space.S4),
+                    fontSize = LoomarrTokens.Type.Xs,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = LoomarrTokens.Space.S3),
                 )
             }
         }
     }
 }
 
-/** The channel's number and name, in the fixed left column. */
 @Composable
 private fun ChannelCell(
     channel: ChannelTimeline,
-    highlighted: Boolean,
-    modifier: Modifier = Modifier,
+    selected: Boolean,
 ) {
     Row(
         modifier =
-            modifier
+            Modifier
+                .width(CHANNEL_COLUMN_WIDTH)
+                .fillMaxHeight()
                 .padding(end = LoomarrTokens.Space.S2, bottom = LoomarrTokens.Space.S1)
-                .clip(RoundedCornerShape(LoomarrTokens.Radius.Md))
-                .background(
-                    if (highlighted) LoomarrTokens.Color.Static800 else LoomarrTokens.Color.Static900,
-                ).border(
-                    width = if (highlighted) 3.dp else 1.dp,
-                    color =
-                        if (highlighted) {
-                            LoomarrTokens.Color.Signal
-                        } else {
-                            LoomarrTokens.Color.Static700
-                        },
-                    shape = RoundedCornerShape(LoomarrTokens.Radius.Md),
-                ).padding(LoomarrTokens.Space.S3),
+                .background(if (selected) LoomarrTokens.Color.Static900 else LoomarrTokens.Color.Static950)
+                .padding(horizontal = LoomarrTokens.Space.S3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MonoData(
-            text = channel.number.toString(),
-            color = LoomarrTokens.Color.Signal,
-            fontSize = LoomarrTokens.Type.Lg,
-            maxLines = 1,
+            channel.number.toString().padStart(2, '0'),
+            color = if (selected) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static400,
+            fontSize = LoomarrTokens.Type.Sm,
         )
         Body(
-            text = channel.name,
-            color = LoomarrTokens.Color.Static0,
-            fontSize = LoomarrTokens.Type.Sm,
+            channel.name,
+            color = if (selected) LoomarrTokens.Color.Static0 else LoomarrTokens.Color.Static100,
+            fontSize = LoomarrTokens.Type.Xs,
             maxLines = 2,
             modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
         )
     }
 }
+
+@Composable
+private fun PositionRail(
+    row: Int,
+    count: Int,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier.background(LoomarrTokens.Color.Static950)) {
+        if (count > 0) {
+            val thumbFraction = (VISIBLE_ROWS.toFloat() / count).coerceIn(0.08f, 1f)
+            val thumbHeight = maxHeight * thumbFraction
+            val travel = maxHeight - thumbHeight
+            val position = if (count <= 1) 0f else row.toFloat() / (count - 1).toFloat()
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(thumbHeight)
+                        .offset(y = travel * position.coerceIn(0f, 1f))
+                        .padding(horizontal = LoomarrTokens.Space.S1)
+                        .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
+                        .background(LoomarrTokens.Color.Static700),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusedDetail(
+    channel: ChannelTimeline?,
+    airing: Airing?,
+    row: Int,
+    count: Int,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(DETAIL_HEIGHT)
+                .border(1.dp, LoomarrTokens.Color.Static700)
+                .background(LoomarrTokens.Color.Static900)
+                .padding(horizontal = LoomarrTokens.Space.S4),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Body(
+            airing?.heading ?: "Nothing scheduled",
+            color = LoomarrTokens.Color.Static0,
+            fontSize = LoomarrTokens.Type.Sm,
+            maxLines = 1,
+        )
+        if (airing != null && channel != null) {
+            MonoData(
+                "${clockLabel(airing.startMs)}–${clockLabel(airing.stopMs)} · CH ${channel.number}",
+                color = LoomarrTokens.Color.Static400,
+                fontSize = LoomarrTokens.Type.Xs2,
+                maxLines = 1,
+                modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+            )
+        }
+        MonoData(
+            "row ${(row + 1).coerceAtMost(count)} of $count · OK to tune",
+            color = LoomarrTokens.Color.Signal,
+            fontSize = LoomarrTokens.Type.Xs2,
+            maxLines = 1,
+            modifier = Modifier.padding(start = LoomarrTokens.Space.S6),
+        )
+    }
+}
+
+private enum class GuideFilter {
+    All,
+    Favorites,
+    Recent,
+}
+
+private fun filteredRows(
+    channels: List<ChannelTimeline>,
+    filter: GuideFilter,
+    favorites: Set<String>,
+    recents: List<String>,
+): List<ChannelTimeline> =
+    when (filter) {
+        GuideFilter.All -> channels
+        GuideFilter.Favorites -> channels.filter { it.channelId in favorites }
+        GuideFilter.Recent -> {
+            val byId = channels.associateBy { it.channelId }
+            recents.mapNotNull(byId::get)
+        }
+    }
+
+private fun nextAvailableFilter(
+    current: GuideFilter,
+    channels: List<ChannelTimeline>,
+    favorites: Set<String>,
+    recents: List<String>,
+): GuideFilter {
+    val order = GuideFilter.entries
+    for (offset in 1..order.size) {
+        val candidate = order[(current.ordinal + offset) % order.size]
+        if (filteredRows(channels, candidate, favorites, recents).isNotEmpty()) return candidate
+    }
+    return GuideFilter.All
+}
+
+private val CHANNEL_COLUMN_WIDTH = 210.dp
+private val POSITION_RAIL_WIDTH = 12.dp
+private val RULER_HEIGHT = 36.dp
+private val ROW_HEIGHT = 48.dp
+private val DETAIL_HEIGHT = 52.dp
+private const val VISIBLE_ROWS = 6

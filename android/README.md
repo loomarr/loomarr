@@ -6,9 +6,10 @@ hardware and sets the `minSdk` floor, but nothing here is Shield-specific.
 ## What the client does
 
 The app pairs without asking someone to type a password on a D-pad, reports the device's real codec
-capabilities, opens on a channel-by-time guide, and tunes Loomarr's live HLS through Media3. The
-guide and player share the paired server address, so stream URLs are resolved against the server the
-TV actually reached rather than an address embedded for another machine.
+capabilities, and opens a watching-first three-surface TV experience: full-screen Watching, a
+grouped Surf overlay, and a Channel-by-time Guide. It tunes Loomarr's signed live HLS through Media3.
+Guide and player share the paired server address, so stream URLs resolve against the server the TV
+actually reached rather than an address embedded for another machine.
 
 ## Why it works on more than a Shield
 

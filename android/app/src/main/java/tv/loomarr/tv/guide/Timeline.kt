@@ -134,6 +134,7 @@ internal fun TimelineBlock(
     onAir: Boolean,
     height: Dp,
     modifier: Modifier = Modifier,
+    focused: Boolean = false,
 ) {
     val treatment = blockTreatment(width.value, airing.kind, onAir)
 
@@ -147,8 +148,8 @@ internal fun TimelineBlock(
                 .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
                 .background(treatment.fill)
                 .border(
-                    width = 1.dp,
-                    color = treatment.stroke,
+                    width = if (focused) 3.dp else 1.dp,
+                    color = if (focused) LoomarrTokens.Color.Signal else treatment.stroke,
                     shape = RoundedCornerShape(LoomarrTokens.Radius.Sm),
                 ),
     ) {

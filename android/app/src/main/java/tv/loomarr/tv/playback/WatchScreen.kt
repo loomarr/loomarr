@@ -5,10 +5,22 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -16,77 +28,90 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import tv.loomarr.tv.design.Body
 import tv.loomarr.tv.design.DeadAir
 import tv.loomarr.tv.design.ErrorText
 import tv.loomarr.tv.design.Heading
-import tv.loomarr.tv.design.LiveBadge
 import tv.loomarr.tv.design.LoomarrTokens
 import tv.loomarr.tv.design.MonoData
-import tv.loomarr.tv.design.Panel
-import tv.loomarr.tv.design.Screen
+import tv.loomarr.tv.design.OverscanMargin
+import tv.loomarr.tv.design.SectionHeading
 import tv.loomarr.tv.design.TuningText
+import tv.loomarr.tv.guide.Airing
+import tv.loomarr.tv.guide.ChannelTimeline
+import tv.loomarr.tv.guide.GuideUiState
+import tv.loomarr.tv.guide.GuideViewModel
+import tv.loomarr.tv.guide.rememberServerNow
+import tv.loomarr.tv.navigation.channelIndexForNumber
+import tv.loomarr.tv.navigation.channelSections
 
-/**
- * The watch surface: full-screen video with a now-playing banner, surfed with the D-pad.
- *
- * [Screen] supplies the overscan margin, so the banner stays readable on a television that crops
- * its own picture.
- */
+/** Full-screen playback plus the mock's Watching and Surf remote states. */
 @Composable
 fun WatchScreen(
     model: WatchViewModel,
+    guideModel: GuideViewModel,
+    showingSurf: Boolean = false,
     onOpenGuide: () -> Unit = {},
+    onOpenSurf: () -> Unit = {},
+    onCloseSurf: () -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val guide by guideModel.state.collectAsStateWithLifecycle()
+    val guideAnchor = (guide as? GuideUiState.Ready)?.nowMs ?: 0L
+    val liveGuideNow = rememberServerNow(guideAnchor)
+    val liveGuide =
+        (guide as? GuideUiState.Ready)?.copy(nowMs = liveGuideNow)
+            ?: guide
     val focus = remember { FocusRequester() }
-
-    // Bumped by any key the screen handles, to re-show the now-playing banner. A counter rather
-    // than a boolean because the banner hides itself on a timer: setting a flag that is already
-    // true would not restart it, so pressing a key while the banner was fading would do nothing.
     var bannerNonce by remember { mutableIntStateOf(0) }
+    var numberEntry by remember { mutableStateOf("") }
 
-    // The screen owns the D-pad, so it must hold focus from the moment it appears — otherwise the
-    // first press goes nowhere and the remote feels broken.
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(showingSurf) {
+        if (!showingSurf) {
+            withFrameNanos { }
+            focus.requestFocus()
+        }
+    }
+    LaunchedEffect(numberEntry) {
+        if (numberEntry.isEmpty()) return@LaunchedEffect
+        delay(NUMBER_ENTRY_MS)
+        model.tuneChannelNumber(numberEntry)
+        numberEntry = ""
+    }
 
-    Screen(
+    Box(
         modifier =
             Modifier
+                .fillMaxSize()
+                .background(LoomarrTokens.Color.Static950)
                 .focusRequester(focus)
                 .focusable()
                 .onKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-
-                    // Any handled key re-shows the banner, including DPad centre — which is
-                    // otherwise inert here. On a television "where am I?" is the commonest
-                    // question during playback, and pressing something to find out is the
-                    // universal answer; a viewer should not have to change channel to see the
-                    // channel they are on.
+                    if (showingSurf || event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    remoteDigit(event.key)?.let { digit ->
+                        numberEntry = (numberEntry + digit).takeLast(MAX_CHANNEL_DIGITS)
+                        bannerNonce++
+                        return@onKeyEvent true
+                    }
                     bannerNonce++
-
                     when (event.key) {
-                        // DPad and the dedicated channel keys both surf: a TV remote may send
-                        // either, and a viewer pressing CHANNEL+ expects the same thing as up.
-                        // ⚠ Up opens the GUIDE rather than surfing. On a television that is the
-                        // near-universal convention, and the dedicated CHANNEL+ key still surfs —
-                        // so a viewer gets both behaviours without either being hidden.
-                        Key.DirectionUp, Key.Menu -> {
-                            onOpenGuide()
-                            true
-                        }
-                        Key.ChannelUp -> {
+                        Key.DirectionUp, Key.ChannelUp -> {
                             model.channelUp()
                             true
                         }
@@ -94,9 +119,24 @@ fun WatchScreen(
                             model.channelDown()
                             true
                         }
-                        // Consumed so it does not travel on and trigger something else; the reveal
-                        // above is the whole effect.
-                        Key.DirectionCenter, Key.Enter -> true
+                        Key.DirectionCenter, Key.Enter -> {
+                            if (numberEntry.isNotEmpty()) {
+                                model.tuneChannelNumber(numberEntry)
+                                numberEntry = ""
+                            } else {
+                                onOpenGuide()
+                            }
+                            true
+                        }
+                        Key.Menu -> {
+                            onOpenSurf()
+                            true
+                        }
+                        Key.Back -> {
+                            val hasLast = (state as? WatchUiState.Ready)?.lastChannelId != null
+                            if (hasLast) model.lastChannel()
+                            hasLast
+                        }
                         else -> false
                     }
                 },
@@ -104,59 +144,44 @@ fun WatchScreen(
         when (val current = state) {
             is WatchUiState.Loading ->
                 TuningText("Tuning in…", modifier = Modifier.align(Alignment.Center))
-
             is WatchUiState.Failed ->
                 ErrorText(current.message, modifier = Modifier.align(Alignment.Center))
-
-            // Nothing is wrong — there is simply nothing on, which is what a test card is for.
             is WatchUiState.DeadAir ->
                 DeadAir(
                     title = "Dead air",
                     description = "No channels are scheduled yet. Create one in Loomarr and it will appear here.",
                     modifier = Modifier.align(Alignment.Center),
                 )
-
             is WatchUiState.Ready -> {
                 val channel = current.channels[current.selected]
-                val playing = current.playUrl != null
-
                 if (current.playUrl != null) {
                     PlayerScreen(playUrl = current.playUrl)
                 } else {
-                    // `tune` cyan is the token for an in-progress state, so the colour carries the
-                    // meaning rather than the word alone.
-                    TuningText(
-                        "Tuning ${channel.name}…",
-                        modifier = Modifier.align(Alignment.Center),
-                    )
+                    TuningText("Tuning ${channel.name}…", modifier = Modifier.align(Alignment.Center))
                 }
 
-                // Re-shown whenever the channel changes — `selected` is the key, so surfing brings
-                // the banner back without the viewer asking. `bannerNonce` lets a plain key press
-                // do the same without a channel change, so a viewer who has forgotten where they
-                // are can check.
-                var banner by remember { mutableStateOf(true) }
-                LaunchedEffect(current.selected, bannerNonce) {
-                    banner = true
-                    delay(BANNER_VISIBLE_MS)
-                    banner = false
-                }
+                WatchingChrome(
+                    channel = channel,
+                    guide = liveGuide,
+                    playing = current.playUrl != null,
+                    numberEntry = numberEntry,
+                    numberEntryChannelName =
+                        channelIndexForNumber(current.channels, numberEntry)
+                            ?.let(current.channels::get)
+                            ?.name,
+                    visibleNonce = bannerNonce + current.selected,
+                    modifier = Modifier.fillMaxSize().padding(OverscanMargin),
+                )
 
-                AnimatedVisibility(
-                    visible = banner,
-                    // Slides from below rather than fading: over moving video a cross-fade reads as
-                    // a compression artefact, while motion from off-screen is unambiguous.
-                    enter = slideInVertically { it } + fadeIn(),
-                    exit = slideOutVertically { it } + fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomStart),
-                ) {
-                    NowPlaying(
-                        channel = channel,
-                        // Only claim LIVE while something is actually playing. A tuning channel is
-                        // not live yet, and a badge that is always on is decoration rather than
-                        // status.
-                        live = playing,
-                        modifier = Modifier.fillMaxWidth(),
+                if (showingSurf) {
+                    SurfRail(
+                        state = current,
+                        guide = liveGuide,
+                        onTune = {
+                            model.tuneChannelId(it.id)
+                            onCloseSurf()
+                        },
+                        onCancel = onCloseSurf,
                     )
                 }
             }
@@ -164,56 +189,400 @@ fun WatchScreen(
     }
 }
 
-/**
- * What is on, and how to change it — the TV counterpart of web's now-playing strip.
- *
- * Sits on a [Panel] so it stays legible over video: a bordered `static-900` surface rather than
- * text floating on a moving picture, which is unreadable the moment a bright frame passes under it.
- *
- * ⚠ It HIDES. A now-playing bar that never goes away is not information, it is an obstruction: it
- * covers the bottom of every frame for as long as the viewer watches, and the one thing a
- * television is for is the picture. It appears on a channel change, which is when a viewer wants
- * confirmation of where they landed, and withdraws once that question is answered.
- */
+/** The Watching chrome: Channel identity, programme detail, progress, next, and remote hints. */
 @Composable
-private fun NowPlaying(
+internal fun WatchingChrome(
     channel: Channel,
-    live: Boolean,
+    guide: GuideUiState,
+    numberEntry: String,
+    visibleNonce: Int,
+    modifier: Modifier = Modifier,
+    numberEntryChannelName: String? = null,
+    playing: Boolean = true,
+) {
+    val guideInfo = guide.infoFor(channel.id)
+    var visible by remember { mutableStateOf(true) }
+    LaunchedEffect(visibleNonce) {
+        visible = true
+        delay(BANNER_VISIBLE_MS)
+        visible = false
+    }
+
+    Box(modifier = modifier) {
+        ChannelPill(channel = channel, playing = playing, modifier = Modifier.align(Alignment.TopEnd))
+        if (numberEntry.isNotEmpty()) {
+            NumberEntry(
+                digits = numberEntry,
+                channelName = numberEntryChannelName,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomStart),
+        ) {
+            NowPlayingBar(channel = channel, info = guideInfo)
+        }
+    }
+}
+
+@Composable
+private fun ChannelPill(
+    channel: Channel,
+    playing: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Panel(modifier = modifier) {
+    Row(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(LoomarrTokens.Radius.Md))
+                .background(LoomarrTokens.Color.Static950.copy(alpha = 0.72f))
+                .border(1.dp, LoomarrTokens.Color.Static700, RoundedCornerShape(LoomarrTokens.Radius.Md))
+                .padding(horizontal = LoomarrTokens.Space.S4, vertical = LoomarrTokens.Space.S2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MonoData(channel.number.toString().padStart(2, '0'), color = LoomarrTokens.Color.Signal)
+        Body(
+            channel.name.uppercase(),
+            color = LoomarrTokens.Color.Static100,
+            fontSize = LoomarrTokens.Type.Sm,
+            maxLines = 1,
+            modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
+        )
+        if (playing) {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(start = LoomarrTokens.Space.S3)
+                        .width(8.dp)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
+                        .background(LoomarrTokens.Color.Lock),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NumberEntry(
+    digits: String,
+    channelName: String?,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(LoomarrTokens.Radius.Md))
+                .background(LoomarrTokens.Color.Static950.copy(alpha = 0.82f))
+                .border(
+                    1.dp,
+                    LoomarrTokens.Color.Signal.copy(alpha = 0.4f),
+                    RoundedCornerShape(LoomarrTokens.Radius.Md),
+                ).padding(horizontal = LoomarrTokens.Space.S5, vertical = LoomarrTokens.Space.S3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Text(
+            text = digits.toCharArray().joinToString(" ") + " _",
+            color = LoomarrTokens.Color.Signal,
+            fontSize = LoomarrTokens.Type.Xl,
+            fontFamily = FontFamily.Monospace,
+        )
+        channelName?.let {
+            Body(it, maxLines = 1, modifier = Modifier.padding(start = LoomarrTokens.Space.S4))
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingBar(
+    channel: Channel,
+    info: ChannelGuideInfo?,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            LoomarrTokens.Color.Static950.copy(alpha = 0f),
+                            LoomarrTokens.Color.Static950.copy(alpha = 0.96f),
+                        ),
+                    ),
+                ).padding(top = LoomarrTokens.Space.S8, start = LoomarrTokens.Space.S4, end = LoomarrTokens.Space.S4),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // ⚠ The channel number is mono. frontend-design §2.2 names channel numbers explicitly:
-            // "if it came from a machine, it's set in mono", and the web guide sets them the same
-            // way — a proportional number here would read as a different product.
-            MonoData(
-                channel.number.toString(),
-                color = LoomarrTokens.Color.Signal,
-                // Explicit, because the default dropped to `Md` for the pairing screen's long
-                // server address. A channel number is two or three glyphs and is the thing a
-                // viewer reads while surfing, so it keeps the larger size.
-                fontSize = LoomarrTokens.Type.Lg,
-            )
-            Heading(
-                channel.name,
-                modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
-            )
-            if (live) {
-                LiveBadge(modifier = Modifier.padding(start = LoomarrTokens.Space.S4))
+            Heading(info?.current?.heading ?: channel.name)
+            info?.current?.episodeLabel?.takeIf(String::isNotEmpty)?.let {
+                MonoData(
+                    it,
+                    color = LoomarrTokens.Color.Static400,
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+                )
+            }
+            info?.current?.let {
+                MonoData(
+                    "${tv.loomarr.tv.guide.clockLabel(it.startMs)}–${tv.loomarr.tv.guide.clockLabel(it.stopMs)}",
+                    color = LoomarrTokens.Color.Static400,
+                    fontSize = LoomarrTokens.Type.Sm,
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S4),
+                )
             }
         }
-        Body(
-            "Up and down to change channel",
-            modifier = Modifier.padding(top = LoomarrTokens.Space.S2),
+        Box(
+            modifier =
+                Modifier
+                    .padding(top = LoomarrTokens.Space.S3)
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(LoomarrTokens.Radius.Sm))
+                    .background(LoomarrTokens.Color.Static800),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(info?.progress ?: 0f)
+                        .fillMaxHeight()
+                        .background(LoomarrTokens.Color.Signal),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = LoomarrTokens.Space.S3),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Body(
+                info?.next?.let { "Up next · ${tv.loomarr.tv.guide.clockLabel(it.startMs)} — ${it.heading}" }
+                    ?: "No later programme in this guide window",
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            MonoData(
+                "▲▼ surf · 0–9 jump · OK guide · MENU channels",
+                color = LoomarrTokens.Color.Static500,
+                fontSize = LoomarrTokens.Type.Xs2,
+                maxLines = 1,
+                modifier = Modifier.padding(start = LoomarrTokens.Space.S6),
+            )
+        }
+    }
+}
+
+/** The mock's grouped Surf rail. It owns focus while open and never tears down the player below. */
+@Composable
+internal fun SurfRail(
+    state: WatchUiState.Ready,
+    guide: GuideUiState,
+    onTune: (Channel) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val sections = channelSections(state.channels, emptySet(), state.recentChannelIds)
+    val rows =
+        buildList {
+            sections.forEach { section ->
+                add(SurfRow.Heading(section.title, section.channels.size))
+                if (section.channels.isEmpty()) add(SurfRow.Empty(section.title))
+                section.channels.forEach { add(SurfRow.ChannelRow(it)) }
+            }
+        }
+    val selectable = rows.indices.filter { rows[it] is SurfRow.ChannelRow }
+    val currentId = state.channels[state.selected].id
+    var selected by remember(rows) {
+        mutableIntStateOf(
+            selectable.firstOrNull { (rows[it] as SurfRow.ChannelRow).channel.id == currentId }
+                ?: selectable.firstOrNull()
+                ?: 0,
+        )
+    }
+    val focus = remember { FocusRequester() }
+    val list = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        focus.requestFocus()
+    }
+    LaunchedEffect(selected) { list.scrollToItem(selected) }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(LoomarrTokens.Color.Static950.copy(alpha = 0.46f))
+                .focusRequester(focus)
+                .focusable()
+                .onKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    val position = selectable.indexOf(selected).coerceAtLeast(0)
+                    when (event.key) {
+                        Key.DirectionUp -> {
+                            selected = selectable[(position - 1).coerceAtLeast(0)]
+                            true
+                        }
+                        Key.DirectionDown -> {
+                            selected = selectable[(position + 1).coerceAtMost(selectable.lastIndex)]
+                            true
+                        }
+                        Key.DirectionCenter, Key.Enter -> {
+                            (rows.getOrNull(selected) as? SurfRow.ChannelRow)?.channel?.let(onTune)
+                            true
+                        }
+                        Key.Back, Key.Menu -> {
+                            onCancel()
+                            true
+                        }
+                        else -> false
+                    }
+                },
+    ) {
+        LazyColumn(
+            state = list,
+            modifier =
+                Modifier
+                    .fillMaxHeight()
+                    .width(SURF_RAIL_WIDTH)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                LoomarrTokens.Color.Static950,
+                                LoomarrTokens.Color.Static950.copy(alpha = 0.92f),
+                            ),
+                        ),
+                    ).padding(start = OverscanMargin, top = OverscanMargin, bottom = OverscanMargin),
+            verticalArrangement = Arrangement.spacedBy(LoomarrTokens.Space.S1),
+        ) {
+            items(rows.size) { index ->
+                when (val row = rows[index]) {
+                    is SurfRow.Heading ->
+                        SectionHeading(
+                            "${row.title} · ${row.count}",
+                            modifier = Modifier.padding(top = LoomarrTokens.Space.S3, bottom = LoomarrTokens.Space.S1),
+                        )
+                    is SurfRow.Empty ->
+                        Body(
+                            if (row.section == "Favorites") "No favorites yet" else "No recent channels yet",
+                            fontSize = LoomarrTokens.Type.Xs,
+                        )
+                    is SurfRow.ChannelRow ->
+                        SurfChannelRow(
+                            channel = row.channel,
+                            info = guide.infoFor(row.channel.id),
+                            focused = index == selected,
+                            watching = row.channel.id == currentId,
+                        )
+                }
+            }
+        }
+        MonoData(
+            "OK tune · BACK cancel",
+            color = LoomarrTokens.Color.Static500,
+            fontSize = LoomarrTokens.Type.Xs2,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(OverscanMargin),
         )
     }
 }
 
-/**
- * How long the now-playing banner stays up after a channel change or a key press.
- *
- * Five seconds, matching the convention every set-top box has trained viewers on. Long enough to
- * read a channel name and number without hurrying, short enough that it is gone before it starts
- * feeling like part of the picture.
- */
+@Composable
+private fun SurfChannelRow(
+    channel: Channel,
+    info: ChannelGuideInfo?,
+    focused: Boolean,
+    watching: Boolean,
+) {
+    Column(
+        modifier =
+            Modifier
+                .width(SURF_ROW_WIDTH)
+                .clip(RoundedCornerShape(LoomarrTokens.Radius.Lg))
+                .background(if (focused) LoomarrTokens.Color.Static900 else LoomarrTokens.Color.Static950)
+                .border(
+                    if (focused) 3.dp else 1.dp,
+                    if (focused) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static950,
+                    RoundedCornerShape(LoomarrTokens.Radius.Lg),
+                ).padding(horizontal = LoomarrTokens.Space.S4, vertical = LoomarrTokens.Space.S3),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            MonoData(
+                channel.number.toString().padStart(2, '0'),
+                color = if (focused) LoomarrTokens.Color.Signal else LoomarrTokens.Color.Static400,
+            )
+            Body(
+                channel.name,
+                color = if (focused) LoomarrTokens.Color.Static0 else LoomarrTokens.Color.Static100,
+                fontSize = LoomarrTokens.Type.Sm,
+                maxLines = 1,
+                modifier = Modifier.padding(start = LoomarrTokens.Space.S3).weight(1f),
+            )
+            if (watching) {
+                MonoData(
+                    "watching",
+                    color = LoomarrTokens.Color.Static500,
+                    fontSize = LoomarrTokens.Type.Xs2,
+                    modifier = Modifier.padding(start = LoomarrTokens.Space.S3),
+                )
+            }
+        }
+        if (focused) {
+            Body(
+                info?.current?.heading ?: "Nothing scheduled",
+                fontSize = LoomarrTokens.Type.Xs,
+                maxLines = 1,
+                modifier = Modifier.padding(start = LoomarrTokens.Space.S8, top = LoomarrTokens.Space.S1),
+            )
+        }
+    }
+}
+
+private data class ChannelGuideInfo(
+    val channel: ChannelTimeline,
+    val current: Airing?,
+    val next: Airing?,
+    val progress: Float,
+)
+
+private fun GuideUiState.infoFor(channelId: String): ChannelGuideInfo? {
+    val ready = this as? GuideUiState.Ready ?: return null
+    val channel = ready.window.channels.firstOrNull { it.channelId == channelId } ?: return null
+    val current = channel.airingAt(ready.nowMs)
+    val next = channel.airings.firstOrNull { it.startMs >= (current?.stopMs ?: ready.nowMs) }
+    val progress =
+        current?.let {
+            ((ready.nowMs - it.startMs).toFloat() / it.durationMs.toFloat()).coerceIn(0f, 1f)
+        } ?: 0f
+    return ChannelGuideInfo(channel, current, next, progress)
+}
+
+internal fun remoteDigit(key: Key): Char? =
+    when (key) {
+        Key.Zero -> '0'
+        Key.One -> '1'
+        Key.Two -> '2'
+        Key.Three -> '3'
+        Key.Four -> '4'
+        Key.Five -> '5'
+        Key.Six -> '6'
+        Key.Seven -> '7'
+        Key.Eight -> '8'
+        Key.Nine -> '9'
+        else -> null
+    }
+
+private sealed interface SurfRow {
+    data class Heading(
+        val title: String,
+        val count: Int,
+    ) : SurfRow
+
+    data class Empty(
+        val section: String,
+    ) : SurfRow
+
+    data class ChannelRow(
+        val channel: Channel,
+    ) : SurfRow
+}
+
+private val SURF_RAIL_WIDTH = 420.dp
+private val SURF_ROW_WIDTH = 350.dp
+private const val MAX_CHANNEL_DIGITS = 3
+private const val NUMBER_ENTRY_MS = 1_200L
 private const val BANNER_VISIBLE_MS = 5_000L
