@@ -10,21 +10,29 @@ readonly GATES=(
   contracts go go_full rust postgres windows web visual e2e tuner image docs agent android
 )
 
-declare -A selected=()
+selected=()
 strict=false
 unknown=false
-for gate in "${GATES[@]}"; do
-  selected["$gate"]=false
+for ((i = 0; i < ${#GATES[@]}; i++)); do
+  selected[i]=false
 done
 
 select_gate() {
-  selected["$1"]=true
+  local gate="$1" i
+  for ((i = 0; i < ${#GATES[@]}; i++)); do
+    if [[ "${GATES[$i]}" == "$gate" ]]; then
+      selected[i]=true
+      return
+    fi
+  done
+  printf 'ci-impact: internal error: unknown gate %q\n' "$gate" >&2
+  exit 2
 }
 
 select_all() {
-  local gate
-  for gate in "${GATES[@]}"; do
-    selected["$gate"]=true
+  local i
+  for ((i = 0; i < ${#GATES[@]}; i++)); do
+    selected[i]=true
   done
 }
 
@@ -195,6 +203,6 @@ if [[ "$strict" == true && "$unknown" == true ]]; then
   exit 1
 fi
 
-for gate in "${GATES[@]}"; do
-  printf '%s=%s\n' "$gate" "${selected[$gate]}"
+for ((i = 0; i < ${#GATES[@]}; i++)); do
+  printf '%s=%s\n' "${GATES[$i]}" "${selected[$i]}"
 done
