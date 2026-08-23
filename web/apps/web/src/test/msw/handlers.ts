@@ -23,6 +23,7 @@ import {
   getSetupStatusMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
+  getSystemVersionMockHandler,
 } from "@loomarr/api/msw";
 import type { RequestHandler } from "msw";
 import { channel } from "../fixtures/channels";
@@ -64,6 +65,9 @@ const appHandlers = (): RequestHandler[] => [
   // asks and the one the old catch-all most reliably answered with `{}`, which reads as
   // "not bootstrapped, no SSO, no dev login" whether or not that was true.
   getSetupStateMockHandler({ bootstrapped: true, devLogin: false, sso: false }),
+  // AppShell reads this once for every authenticated route. `dev` is the honest baseline for a
+  // test bundle; tests that exercise release/dirty presentation override the generated handler.
+  getSystemVersionMockHandler({ version: "dev", ready: true }),
   getSetupStatusMockHandler({ checks: [] }),
   // Settings → Security lists the operator's paired devices on mount (§11, Shield P1). Empty is
   // the honest default: a test that cares about devices overrides this, and every other test that

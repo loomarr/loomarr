@@ -34,6 +34,7 @@ import loomarr.media.playback.SurfRail
 import loomarr.media.playback.WatchUiState
 import loomarr.media.playback.WatchingChrome
 import loomarr.media.playback.watchingChromeContainer
+import loomarr.media.version.VersionIdentity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -240,6 +241,28 @@ class DesignScreenshotTest {
             }
         }
         compose.onRoot().captureRoboImage()
+    }
+
+    @Test
+    fun `surf exposes separate client and server versions`() {
+        compose.setContent {
+            SurfRail(
+                state =
+                    WatchUiState.Ready(
+                        channels = sampleChannels,
+                        selected = 2,
+                        playUrl = "preview",
+                    ),
+                guide = sampleGuide,
+                versionIdentity = VersionIdentity("0.1.0-dev-debug", "v0.9.3"),
+                onTune = {},
+                onCancel = {},
+            )
+        }
+
+        compose
+            .onNodeWithText("Loomarr TV 0.1.0-dev-debug · Server v0.9.3")
+            .assertIsDisplayed()
     }
 
     @Test

@@ -19,6 +19,8 @@ interface AppShellProps {
   children: ReactNode;
   isAdmin?: boolean;
   userName?: string;
+  /** Server-reported build identity from GET /v1/system/version. */
+  serverVersion?: string;
   onOpenCommand?: () => void;
   onLogout?: () => void;
 }
