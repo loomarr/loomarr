@@ -9,6 +9,10 @@ readonly APP_DIR="${WEB_ROOT}/apps/${APP_NAME}"
 readonly ARTIFACTS_DIR="${LOOMARR_APPLE_ARTIFACTS_DIR:-${WEB_ROOT}/../.artifacts/apple-client/${APP_NAME}}"
 readonly BUILD_DIR="${LOOMARR_APPLE_BUILD_DIR:-${ARTIFACTS_DIR}/build}"
 
+filter_react_native_pods_notice() {
+  awk -f "${WEB_ROOT}/scripts/filter-react-native-pods-notice.awk"
+}
+
 case "${APP_NAME}" in
   mobile)
     readonly SCHEME="LoomarrMobilePrototype"
@@ -95,17 +99,13 @@ expo_run=(
 if [[ "${APP_NAME}" == "tv" ]]; then
   (
     cd "${APP_DIR}"
-    # Expo owns the build entrypoint; silence React Native's nested pod helper notice.
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 RCT_IGNORE_PODS_DEPRECATION=1 \
-      EXPO_TV=1 "${expo_run[@]}"
-  )
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 EXPO_TV=1 "${expo_run[@]}"
+  ) 2>&1 | filter_react_native_pods_notice
 else
   (
     cd "${APP_DIR}"
-    # Expo owns the build entrypoint; silence React Native's nested pod helper notice.
-    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 RCT_IGNORE_PODS_DEPRECATION=1 \
-      "${expo_run[@]}"
-  )
+    NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 "${expo_run[@]}"
+  ) 2>&1 | filter_react_native_pods_notice
 fi
 
 # Expo owns dependency installation, CocoaPods, compilation, installation, and
